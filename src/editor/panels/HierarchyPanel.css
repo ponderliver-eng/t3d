@@ -1,0 +1,198 @@
+.scene-panel {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  background: var(--bg-panel-alt);
+}
+
+.scene-panel__bar {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 6px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.scene-panel__search {
+  position: relative;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.scene-panel__search svg:first-child {
+  position: absolute;
+  left: 6px;
+  color: var(--text-muted);
+}
+
+.scene-panel__search input {
+  width: 100%;
+  height: 24px;
+  padding: 0 22px;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.scene-panel__search button {
+  position: absolute;
+  right: 3px;
+  color: var(--text-muted);
+  display: flex;
+}
+
+.scene-panel__count {
+  padding: 1px 6px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--text-muted);
+  font-size: 10px;
+}
+
+.scene-panel__icon {
+  width: 20px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  border-radius: 3px;
+}
+
+.scene-panel__icon:hover:not(:disabled) {
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.scene-panel__popover,
+.scene-panel__context {
+  position: absolute;
+  z-index: 20;
+  min-width: 148px;
+  padding: 4px 0;
+  background: var(--bg-header);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
+}
+
+.scene-panel__popover { top: 32px; right: 6px; }
+
+.scene-panel__context { position: fixed; }
+
+.scene-panel__popover button,
+.scene-panel__context button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 5px 12px;
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+}
+
+.scene-panel__popover button:hover:not(:disabled),
+.scene-panel__context button:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.scene-panel__popover-label {
+  padding: 6px 12px 2px;
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.scene-panel__list {
+  flex: 1;
+  overflow: auto;
+  padding: 2px 0 8px;
+}
+
+.scene-panel__empty {
+  padding: 16px 12px;
+  color: var(--text-muted);
+  font-size: var(--font-size-sm);
+  line-height: 1.5;
+}
+
+.scene-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 24px;
+  padding-right: 4px;
+  color: var(--text-secondary);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+}
+
+.scene-item:hover { background: var(--bg-hover); color: var(--text-primary); }
+
+.scene-item--selected,
+.scene-item--selected:hover {
+  background: var(--bg-selected);
+  color: var(--text-primary);
+}
+
+.scene-item--drop {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+  background: rgba(74, 158, 255, 0.15);
+}
+
+.scene-item--hidden { opacity: 0.45; }
+.scene-item--ancestor-hidden { opacity: 0.35; }
+
+.scene-item__twist {
+  width: 14px;
+  height: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.scene-item__name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scene-item__rename {
+  flex: 1;
+  min-width: 0;
+  height: 18px;
+}
+
+.scene-item__actions {
+  margin-left: auto;
+  display: inline-flex;
+  opacity: 0;
+}
+
+.scene-item:hover .scene-item__actions,
+.scene-item--selected .scene-item__actions,
+.scene-item__actions:has(.scene-item__off),
+.scene-item__actions:has(.scene-item__locked) {
+  opacity: 1;
+}
+
+.scene-item__actions button {
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  border-radius: 3px;
+}
+
+.scene-item__actions button:hover { color: var(--text-primary); background: rgba(255, 255, 255, 0.08); }
+.scene-item__off { color: #f0883e !important; }
+.scene-item__locked { color: #ffb74d !important; }

@@ -1,0 +1,79 @@
+.ide-layout {
+  flex: 1;
+  min-height: 0;
+  position: relative;
+  overflow: hidden;
+}
+
+.flexlayout__layout {
+  --color-text: var(--text-primary);
+  --color-background: var(--bg-panel);
+  --color-base: var(--bg-base);
+  --color-1: var(--bg-panel);
+  --color-2: var(--bg-header);
+  --color-3: var(--bg-hover);
+  --color-4: var(--border);
+  --color-5: var(--border-light);
+  --color-6: #444444;
+  --color-drag1: var(--accent);
+  --color-drag2: var(--play-color);
+  --color-drag1-background: rgba(74, 158, 255, 0.15);
+  --color-drag2-background: rgba(76, 175, 80, 0.15);
+  --font-size: var(--font-size-sm);
+  --font-family: var(--font-ui);
+  --color-tabset-background: var(--bg-panel);
+  --color-tabset-background-selected: var(--bg-panel);
+  --color-tabset-background-maximized: var(--bg-header);
+  --color-tabset-divider-line: var(--border);
+  --color-tabset-header-background: var(--bg-header);
+  --color-tabset-header: var(--text-secondary);
+  --color-tab-selected: var(--text-primary);
+  --color-tab-selected-background: var(--bg-panel);
+  --color-tab-unselected: var(--text-muted);
+  --color-tab-unselected-background: transparent;
+  --color-splitter: var(--bg-base);
+  --color-splitter-hover: var(--accent);
+  --color-splitter-drag: var(--accent);
+  --color-drag-rect-border: var(--accent);
+  --color-drag-rect-background: rgba(74, 158, 255, 0.1);
+  --color-popup-border: var(--border-light);
+  --color-popup-unselected-background: var(--bg-header);
+  --color-popup-selected-background: var(--bg-selected);
+}
+
+.flexlayout__tabset_header,
+.flexlayout__tabset_tabbar_outer {
+  height: var(--tab-height) !important;
+  min-height: var(--tab-height) !important;
+}
+
+.flexlayout__tab_button {
+  padding: 0 10px !important;
+  font-size: var(--font-size-sm) !important;
+  border-radius: 0 !important;
+}
+
+.flexlayout__tab_button--selected {
+  border-bottom: 2px solid var(--accent) !important;
+  color: var(--text-primary) !important;
+}
+
+.flexlayout__tab {
+  overflow: hidden;
+  background: var(--bg-panel) !important;
+}
+
+.flexlayout__splitter {
+  background: var(--bg-base) !important;
+}
+
+.flexlayout__splitter:hover,
+.flexlayout__splitter_drag {
+  background: var(--accent) !important;
+}
+
+.ide-panel-unknown {
+  padding: 16px;
+  color: var(--text-error);
+  font-size: var(--font-size-sm);
+}

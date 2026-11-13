@@ -1,0 +1,117 @@
+.menubar {
+  height: var(--menubar-height);
+  background: var(--bg-header);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  padding: 0 var(--spacing-md);
+  flex-shrink: 0;
+  gap: var(--spacing-md);
+}
+
+.menubar__logo {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--accent);
+  letter-spacing: 1px;
+  padding-right: var(--spacing-lg);
+  border-right: 1px solid var(--border);
+}
+
+.menubar__items {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  gap: 2px;
+}
+
+.menubar__item {
+  padding: 3px 8px;
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  border-radius: var(--radius-sm);
+}
+
+.menubar__item:hover,
+.menubar__item--open {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.menubar__dropdown {
+  position: relative;
+}
+
+.menubar__menu {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  min-width: 220px;
+  background: var(--bg-header);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+  z-index: 1000;
+  padding: 4px 0;
+}
+
+.menubar__menu-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+  text-align: left;
+  padding: 5px 14px;
+  font-size: var(--font-size-sm);
+  color: var(--text-secondary);
+  background: none;
+  border: none;
+  white-space: nowrap;
+}
+
+.menubar__menu-item:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.menubar__menu-item:disabled {
+  color: var(--text-muted);
+}
+
+.menubar__hint {
+  margin-left: auto;
+  padding-left: 24px;
+  font-size: var(--font-size-xs);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+
+.menubar__sep {
+  height: 1px;
+  background: var(--border);
+  margin: 3px 0;
+}
+
+.menubar__submenu {
+  display: none;
+  position: absolute;
+  left: 100%;
+  top: 0;
+  min-width: 160px;
+  background: var(--bg-header);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+  padding: 4px 0;
+  z-index: 1001;
+}
+
+.menubar__menu-item--sub:hover > .menubar__submenu,
+.menubar__menu-item--sub:focus-within > .menubar__submenu {
+  display: block;
+}
+
+.menubar__arrow {
+  margin-left: auto;
+  color: var(--text-muted);
+}
