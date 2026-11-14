@@ -47,6 +47,9 @@ import { activeAnimatorState, stepAnimator } from '../animation/animator'
 import { lockClipInPlace, maskClip } from '../animation/playback'
 import { useAssetStore } from '../assets/library'
 import { bindTextureRenderer, environmentFor } from '../assets/textures'
+import { EDITOR_HELPER_LAYER, layerBitIndex } from '../project/taxonomy'
+import { tickPhysics } from '../../capabilities/physics/session'
+import { physicsDebugActive, syncPhysicsDebug } from './physicsDebug'
 import { boundsOf, refreshObjectBounds } from '../scene/bounds'
 import { isLight, isMesh } from '../scene/kinds'
 import { setSpawnProvider } from '../scene/spawn'
@@ -137,6 +140,7 @@ export class EditorViewport {
   private disposed = false
   private ready = false
   private picture: ScenePicturePipeline | null = null
+  private readonly physicsDebug = new Group()
   private readonly unsubscribe: () => void
   private readonly unsubscribeAssets: () => void
   private readonly resizeObserver: ResizeObserver
@@ -150,14 +154,18 @@ export class EditorViewport {
     this.renderer.shadowMap.enabled = true
     this.renderer.shadowMap.type = PCFShadowMap
     this.scene.background = new Color(0x141414)
-    this.rig.persp.layers.enable(1)
-    this.rig.ortho.layers.enable(1)
-    this.raycaster.layers.enable(1)
+    this.rig.persp.layers.enable(EDITOR_HELPER_LAYER)
+    this.rig.ortho.layers.enable(EDITOR_HELPER_LAYER)
+    this.raycaster.layers.enable(EDITOR_HELPER_LAYER)
 
     const root = new Group()
     this.scene.add(root)
+    this.physicsDebug.name = 'physics-debug'
+    this.scene.add(this.physicsDebug)
     root.add(this.world)
-    root.add(new AmbientLight(0xffffff, 0.28))
+    const ambient = new AmbientLight(0xffffff, 0.28)
+    ambient.layers.enableAll()
+    root.add(ambient)
 
     this.grid = createEditorGrid()
     root.add(this.grid)
@@ -283,8 +291,10 @@ export class EditorViewport {
         group.quaternion.copy(pose.quaternion)
         group.scale.copy(pose.scale)
       }
-      group.visible = node.visible
+      const layerBit = layerBitIndex(node.renderLayerId, state.layers)
+      group.visible = node.visible && (state.editorCullingMask & (1 << layerBit)) !== 0
       this.updateView(group, node, state.playState === 'stopped')
+      applyNodeLayers(group, layerBit)
     }
 
     this.pickables.length = 0
@@ -293,6 +303,9 @@ export class EditorViewport {
       if (pick) this.pickables.push(pick)
     }
 
+    applyCameraMask(this.rig.persp, state.editorCullingMask)
+    applyCameraMask(this.rig.ortho, state.editorCullingMask)
+    this.raycaster.layers.mask = this.rig.persp.layers.mask
     this.grid.visible = state.gridVisible && state.playState === 'stopped'
     this.transform.mode = state.gizmoMode
     this.transform.space = state.gizmoSpace
@@ -470,7 +483,7 @@ export class EditorViewport {
       if (box.isEmpty()) continue
       const origin = new Vector3(box.getCenter(new Vector3()).x, box.max.y + 0.05, box.getCenter(new Vector3()).z)
       const ray = new Raycaster(origin, down, 0, 800)
-      ray.layers.enable(1)
+      ray.layers.mask = this.raycaster.layers.mask
       let ground = 0
       let found = false
       for (const hit of ray.intersectObjects(this.pickables, true)) {
@@ -894,6 +907,14 @@ export class EditorViewport {
     const dt = Math.min(0.05, this.last ? (time - this.last) / 1000 : 0)
     this.last = time
     this.rig.update(dt)
+    tickPhysics(dt)
+    const editor = useEditorStore.getState()
+    syncPhysicsDebug(
+      this.scene,
+      this.physicsDebug,
+      editor.nodes,
+      physicsDebugActive(editor.capabilities, editor.playState !== 'stopped'),
+    )
     this.refreshGuides()
     for (const helper of this.selectionHelpers) {
       const target = (helper as { object?: Object3D }).object
@@ -1252,9 +1273,28 @@ function orderedIds(nodes: Record<string, SceneNode>): string[] {
   return out
 }
 
+function applyNodeLayers(group: Object3D, bit: number) {
+  group.traverse(child => {
+    const light = child as Light
+    if (light.isLight) {
+      light.layers.enableAll()
+      return
+    }
+    child.layers.set(bit)
+  })
+}
+
+function applyCameraMask(camera: { layers: { disableAll(): void, enable(bit: number): void } }, mask: number) {
+  camera.layers.disableAll()
+  for (let bit = 0; bit < 32; bit += 1) {
+    if ((mask & (1 << bit)) !== 0) camera.layers.enable(bit)
+  }
+  camera.layers.enable(EDITOR_HELPER_LAYER)
+}
+
 function markHelper(object: Object3D, blockRaycast = false) {
   object.traverse(child => {
-    child.layers.set(1)
+    child.layers.set(EDITOR_HELPER_LAYER)
     child.castShadow = false
     child.receiveShadow = false
     if (blockRaycast) child.raycast = () => {}

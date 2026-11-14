@@ -441,8 +441,7 @@ function slotFromMaterial(material: Material, seen: Set<string>, index: number):
     ao: standard.aoMapIntensity ?? 1,
     mapAssetId: matchedMap,
     normalAssetId: null,
-    roughnessAssetId: null,
-    metalnessAssetId: null,
+    metallicRoughnessAssetId: null,
     emissiveAssetId: null,
     aoAssetId: null,
   }]

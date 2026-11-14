@@ -19,6 +19,8 @@ import { translate } from '../i18n'
 import { usePrefsStore } from '../prefs/store'
 import { readPrefab } from './prefab'
 import type { ProjectDocument } from '../scene/document'
+import { normalizeCapabilities } from '../../capabilities/registry'
+import { ALL_LAYERS_VISIBLE_MASK, ensureLayers, ensureTags } from '../project/taxonomy'
 import { DEFAULT_PICTURE, type SceneNode } from '../scene/types'
 import { releaseModel } from './models'
 import { releaseTexture } from './textures'
@@ -56,7 +58,7 @@ import {
 import { RecentProjectService, type RecentProject } from '../project/recents'
 import { directoryBaseName, electronBridge, joinProjectPath } from '../project/electronBridge'
 
-const MAP_KEYS = ['mapAssetId', 'normalAssetId', 'roughnessAssetId', 'metalnessAssetId', 'emissiveAssetId', 'aoAssetId'] as const
+const MAP_KEYS = ['mapAssetId', 'normalAssetId', 'metallicRoughnessAssetId', 'roughnessAssetId', 'metalnessAssetId', 'emissiveAssetId', 'aoAssetId'] as const
 
 let opening: Promise<void> | null = null
 let saveTimer = 0
@@ -168,6 +170,12 @@ export async function saveProjectNow() {
     library,
     folders: catalog.folders,
     assetDirs: catalog.assetDirs,
+    capabilities: editor.capabilities,
+    tags: editor.tags,
+    layers: editor.layers,
+    editorCullingMask: editor.editorCullingMask,
+    physicsCollisionMatrixEnabled: editor.physicsCollisionMatrixEnabled,
+    physicsCollisionRowMasks: editor.physicsCollisionRowMasks,
   }
   await writeSceneDocument(document)
 }
@@ -728,6 +736,12 @@ function validDocument(document: ProjectDocument | null): ProjectDocument | null
     library,
     folders: Array.isArray(document.folders) ? document.folders.filter(item => typeof item === 'string') : [],
     assetDirs: cleanAssetDirs(document.assetDirs),
+    capabilities: normalizeCapabilities(document.capabilities),
+    tags: ensureTags(document.tags),
+    layers: ensureLayers(document.layers),
+    editorCullingMask: typeof document.editorCullingMask === 'number' ? document.editorCullingMask >>> 0 : ALL_LAYERS_VISIBLE_MASK,
+    physicsCollisionMatrixEnabled: document.physicsCollisionMatrixEnabled === true,
+    physicsCollisionRowMasks: document.physicsCollisionRowMasks ?? {},
   }
 }
 

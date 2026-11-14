@@ -8,7 +8,16 @@ import { AnimatorCard } from './AnimatorCard'
 import { ASSET_MIME, reimportModel, saveMaterialFromNode, savePrefabFromSelection, openAsset } from '../assets/import'
 import { primaryId, useEditorStore } from '../scene/store'
 import { isLight, isMesh } from '../scene/kinds'
-import { resolveModelSlot, slotFromNode } from '../assets/materials'
+import { capabilityEnabled } from '../../capabilities/registry'
+import { openProjectSettings } from '../project/ProjectSettingsDialog'
+import { PhysicsCard } from '../../capabilities/physics/PhysicsCard'
+import {
+  InspectorFrame,
+  useInspectorCardOpen,
+  useInspectorSlot,
+} from './inspectorMemory'
+import { TagLayerStrip } from './TagLayerCards'
+import { normalizeSlot, resolveModelSlot, slotFromNode } from '../assets/materials'
 import { assetDirectory, useAssetStore, type FileAsset } from '../assets/library'
 import { instanceDirty, isPrefabRoot } from '../assets/prefab'
 import { translate, useI18n, type MessageKey } from '../i18n'
@@ -28,6 +37,7 @@ export default function InspectorPanel() {
   const inspectedAssetId = useEditorStore(state => state.inspectedAssetId)
   const nodes = useEditorStore(state => state.nodes)
   const playing = useEditorStore(state => state.playState !== 'stopped')
+  const activeSceneId = useEditorStore(state => state.activeSceneId)
   const prefabSession = useEditorStore(state => state.prefabSession)
   const [unpackId, setUnpackId] = useState<string | null>(null)
   const [rebindId, setRebindId] = useState('')
@@ -41,17 +51,17 @@ export default function InspectorPanel() {
 
   if (asset && selection.length === 0) {
     return (
-      <div className="inspector">
+      <InspectorFrame subject={`asset:${asset.id}`}>
         {asset.kind === 'scene' ? <SceneSettings /> : <AssetSettings asset={asset} />}
-      </div>
+      </InspectorFrame>
     )
   }
 
   if (!node || selection.length === 0) {
     return (
-      <div className="inspector">
+      <InspectorFrame subject={`scene:${activeSceneId || 'current'}`}>
         <SceneSettings />
-      </div>
+      </InspectorFrame>
     )
   }
 
@@ -60,7 +70,7 @@ export default function InspectorPanel() {
   const prefabRoot = isPrefabRoot(node) ? node : (node.prefabInstanceId ? nodes[node.prefabInstanceId] : undefined)
 
   return (
-    <div className="inspector">
+    <InspectorFrame subject={`node:${node.id}`}>
       {playing && <div className="inspector__banner inspector__banner--play">{t('inspector.playBanner')}</div>}
       {selection.length > 1 && (
         <div className="inspector__banner">{t('inspector.multi', { count: selection.length })}</div>
@@ -69,16 +79,7 @@ export default function InspectorPanel() {
         <div className="inspector__kind">{kindName(node.kind)}{locked ? ` · ${t('inspector.locked')}` : ''}</div>
         <div className="inspector__header-row">
           {selection.length === 1 ? (
-            <input
-              value={node.name}
-              onFocus={() => useEditorStore.getState().beginGesture(t('gesture.rename'))}
-              onChange={event => useEditorStore.getState().updateNode(node.id, { name: event.target.value })}
-              onBlur={event => {
-                const name = event.target.value.trim() || node.name
-                useEditorStore.getState().updateNode(node.id, { name })
-                useEditorStore.getState().endGesture()
-              }}
-            />
+            <ObjectName node={node} disabled={locked || templateRoot} />
           ) : (
             <div className="inspector__multi">{node.name}</div>
           )}
@@ -89,12 +90,13 @@ export default function InspectorPanel() {
             <input type="checkbox" checked={node.locked} onChange={() => useEditorStore.getState().toggleLocked(node.id)} />
           </label>
         </div>
-        <button type="button" className="inspector__scene-link" onClick={() => useEditorStore.getState().setSelection([])}>{t('inspector.sceneSettings')}</button>
       </header>
+
+      <TagLayerStrip node={node} disabled={locked} />
 
       {templateRoot && <div className="inspector__banner">{t('prefab.rootLocked')}</div>}
       {prefabRoot && isPrefabRoot(prefabRoot) && (
-        <Card title={t('prefab.instance')} color="#c79bff">
+        <Card id="prefab" title={t('prefab.instance')} color="#c79bff">
           <div className="prefab-actions">
             <span>{prefabAssets.find(item => item.id === prefabRoot.prefabAssetId)?.name ?? t('prefab.missing')}</span>
             {instanceDirty(nodes, prefabRoot.id) && <em title={t('prefab.dirty')}>{t('prefab.dirty')}</em>}
@@ -132,7 +134,7 @@ export default function InspectorPanel() {
         document.body,
       )}
 
-      <Card title={t('inspector.transform')} color={kindColor(node.kind)}>
+      <Card id="transform" title={t('inspector.transform')} color={kindColor(node.kind)}>
         <Vec3Fields
           label={t('inspector.position')}
           value={node.position}
@@ -165,10 +167,14 @@ export default function InspectorPanel() {
         </div>
       </Card>
 
+      {(isMesh(node.kind) || node.kind === 'model' || node.kind === 'empty') && (
+        <PhysicsCard node={node} disabled={locked || playing} />
+      )}
+
       {(isMesh(node.kind) || node.kind === 'model') && <MeshRendererCard node={node} />}
 
       {node.kind === 'model' && (
-        <Card title={t('inspector.model')} color={kindColor(node.kind)}>
+        <Card id="model" title={t('inspector.model')} color={kindColor(node.kind)}>
           <AnimModeSwitch nodeId={node.id} />
           <AnimationCard
             nodeId={node.id}
@@ -196,7 +202,7 @@ export default function InspectorPanel() {
       )}
 
       {isLight(node.kind) && (
-        <Card title={t('inspector.light')} color={kindColor(node.kind)}>
+        <Card id="light" title={t('inspector.light')} color={kindColor(node.kind)}>
           <ColorField
             label={t('inspector.color')}
             value={node.color}
@@ -257,7 +263,7 @@ export default function InspectorPanel() {
       )}
 
       {node.kind === 'camera' && (
-        <Card title={t('inspector.camera')} color={kindColor(node.kind)}>
+        <Card id="camera" title={t('inspector.camera')} color={kindColor(node.kind)}>
           <NumberRow
             label={t('inspector.fov')}
             value={node.fov}
@@ -271,7 +277,7 @@ export default function InspectorPanel() {
           <NumberRow label={t('inspector.far')} value={node.far} min={1} max={500} step={1} gesture={t('gesture.camera')} onChange={far => useEditorStore.getState().updateNode(node.id, { far })} />
         </Card>
       )}
-    </div>
+    </InspectorFrame>
   )
 }
 
@@ -294,12 +300,12 @@ function AssetSettings({ asset }: { asset: import('../assets/library').ProjectAs
         />
       </header>
       {asset.kind === 'material' && (
-        <Card title={t('inspector.material')} color="#ab47bc">
-          <MaterialEditor slot={asset.slot} onChange={patch => useAssetStore.getState().updateMaterial(asset.id, patch)} />
+        <Card id="material" title={t('inspector.material')} color="#ab47bc">
+          <MaterialEditor slot={normalizeSlot(asset.slot)} onChange={patch => useAssetStore.getState().updateMaterial(asset.id, patch)} />
         </Card>
       )}
       {asset.kind !== 'material' && (
-        <Card title={t('inspector.asset')} color="#4a9eff">
+        <Card id="asset" title={t('inspector.asset')} color="#4a9eff">
           <label className="field"><span>{t('inspector.type')}</span><span>{assetKindLabel(asset.kind)}</span></label>
           {'fileName' in asset && <label className="field"><span>{t('inspector.file')}</span><span>{asset.fileName}</span></label>}
           {asset.kind === 'scene' && <label className="field"><span>{t('inspector.objects')}</span><span>{Object.keys(asset.nodes).length}</span></label>}
@@ -320,6 +326,54 @@ function AssetSettings({ asset }: { asset: import('../assets/library').ProjectAs
   )
 }
 
+function ObjectName({ node, disabled }: { node: SceneNode, disabled: boolean }) {
+  const { t } = useI18n()
+  const [editing, setEditing] = useState(false)
+  const [draft, setDraft] = useState(node.name)
+  const cancel = useRef(false)
+  useEffect(() => {
+    setEditing(false)
+    setDraft(node.name)
+  }, [node.id, node.name])
+  if (!editing) {
+    return (
+      <button type="button" className="inspector__name" disabled={disabled} onClick={() => { setDraft(node.name); setEditing(true) }}>
+        {node.name}
+      </button>
+    )
+  }
+  return (
+    <input
+      autoFocus
+      value={draft}
+      onFocus={event => event.target.select()}
+      onChange={event => setDraft(event.target.value)}
+      onKeyDown={event => {
+        if (event.key === 'Enter') event.currentTarget.blur()
+        if (event.key === 'Escape') {
+          cancel.current = true
+          event.currentTarget.blur()
+        }
+      }}
+      onBlur={() => {
+        const skipped = cancel.current
+        cancel.current = false
+        setEditing(false)
+        if (skipped) {
+          setDraft(node.name)
+          return
+        }
+        const name = draft.trim() || node.name
+        if (name === node.name) return
+        const store = useEditorStore.getState()
+        store.beginGesture(t('gesture.rename'))
+        store.updateNode(node.id, { name })
+        store.endGesture()
+      }}
+    />
+  )
+}
+
 function assetKindLabel(kind: string): string {
   const key = `asset.${kind}` as MessageKey
   const known = ['scene', 'model', 'texture', 'environment', 'material', 'animation', 'audio', 'prefab']
@@ -329,6 +383,8 @@ function assetKindLabel(kind: string): string {
 function SceneSettings() {
   const { t } = useI18n()
   const picture = useEditorStore(state => state.picture)
+  const capabilities = useEditorStore(state => state.capabilities)
+  const physicsOn = capabilityEnabled(capabilities, 'physics')
   const activeSceneId = useEditorStore(state => state.activeSceneId)
   const scene = useAssetStore(state => state.assets[activeSceneId])
   const name = scene?.kind === 'scene' ? scene.name : t('inspector.unnamedScene')
@@ -348,11 +404,28 @@ function SceneSettings() {
           }}
         />
       </header>
-      <Card title={t('inspector.sky')} color="#4a9eff">
+      {physicsOn && (
+        <Card id="scene-physics" title={t('physics.title')} color="#8bc34a">
+          <Vec3Fields
+            label={t('physics.gravity')}
+            value={picture.gravity ?? [0, -9.81, 0]}
+            step={0.1}
+            gesture={t('gesture.picture')}
+            onChange={gravity => set({ gravity })}
+          />
+        </Card>
+      )}
+      {!physicsOn && (
+        <Card id="scene-physics" title={t('physics.title')} color="#8bc34a">
+          <p className="settings-note">{t('physics.disabledHint')}</p>
+          <button type="button" onClick={openProjectSettings}>{t('menu.projectSettings')}</button>
+        </Card>
+      )}
+      <Card id="sky" title={t('inspector.sky')} color="#4a9eff">
         <ColorField label={t('inspector.background')} value={picture.background} gesture={t('gesture.picture')} onChange={background => set({ background })} />
         <NumberRow label={t('inspector.exposure')} value={picture.exposure} min={0} max={5} step={0.01} gesture={t('gesture.picture')} onChange={exposure => set({ exposure })} />
       </Card>
-      <Card title={t('inspector.fog')} color="#90a4ae">
+      <Card id="fog" title={t('inspector.fog')} color="#90a4ae">
         <label className="field"><span>{t('inspector.enabled')}</span><input type="checkbox" checked={picture.fog} onChange={event => set({ fog: event.target.checked })} /></label>
         {picture.fog && (
           <>
@@ -362,10 +435,10 @@ function SceneSettings() {
           </>
         )}
       </Card>
-      <Card title={t('inspector.environment')} color="#ffd36b">
+      <Card id="environment" title={t('inspector.environment')} color="#ffd36b">
         <EnvField value={picture.envAssetId} onChange={envAssetId => set({ envAssetId })} />
       </Card>
-      <Card title={t('inspector.bloom')} color="#ab47bc">
+      <Card id="bloom" title={t('inspector.bloom')} color="#ab47bc">
         <label className="field"><span>{t('inspector.enabled')}</span><input type="checkbox" checked={picture.bloom} onChange={event => set({ bloom: event.target.checked })} /></label>
         {picture.bloom && (
           <>
@@ -375,7 +448,7 @@ function SceneSettings() {
           </>
         )}
       </Card>
-      <Card title={t('inspector.dof')} color="#26a69a">
+      <Card id="dof" title={t('inspector.dof')} color="#26a69a">
         <label className="field"><span>{t('inspector.enabled')}</span><input type="checkbox" checked={picture.dof} onChange={event => set({ dof: event.target.checked })} /></label>
         {picture.dof && (
           <>
@@ -385,10 +458,10 @@ function SceneSettings() {
           </>
         )}
       </Card>
-      <Card title={t('inspector.occlusion')} color="#78909c">
+      <Card id="occlusion" title={t('inspector.occlusion')} color="#78909c">
         <label className="field"><span>{t('inspector.enabled')}</span><input type="checkbox" checked={picture.ao} onChange={event => set({ ao: event.target.checked })} /></label>
       </Card>
-      <Card title={t('inspector.grade')} color="#ef6c00">
+      <Card id="grade" title={t('inspector.grade')} color="#ef6c00">
         <NumberRow label={t('inspector.hue')} value={picture.hue} min={-1} max={1} step={0.01} gesture={t('gesture.picture')} onChange={hue => set({ hue })} />
         <NumberRow label={t('inspector.saturation')} value={picture.saturation} min={0} max={2} step={0.01} gesture={t('gesture.picture')} onChange={saturation => set({ saturation })} />
       </Card>
@@ -399,16 +472,19 @@ function SceneSettings() {
 function MeshRendererCard({ node }: { node: SceneNode }) {
   const { t } = useI18n()
   const assets = useAssetStore(state => state.assets)
-  const [listOpen, setListOpen] = useState(true)
-  const [openSlot, setOpenSlot] = useState<number | null>(0)
+  const [listOpen, setListOpen] = useInspectorCardOpen('material-slots')
+  const [storedSlot, setOpenSlot] = useInspectorSlot()
+  const openSlot = storedSlot === undefined
+    ? (node.kind === 'model' && node.slots.length > 1 ? null : 0)
+    : storedSlot
   const [query, setQuery] = useState('')
   const [dropSlot, setDropSlot] = useState<number | null>(null)
   const [picking, setPicking] = useState<number | null>(null)
   useEffect(() => {
-    setListOpen(true)
-    setOpenSlot(node.kind === 'model' && node.slots.length > 1 ? null : 0)
     setQuery('')
-  }, [node.id, node.kind, node.slots.length])
+    setDropSlot(null)
+    setPicking(null)
+  }, [node.id])
   const entries = node.kind === 'model'
     ? node.slots.map((slot, index) => ({ index, name: slot.name, linked: linkedMaterialId(slot.materialAssetId, assets) }))
     : [{ index: 0, name: node.name, linked: linkedMaterialId(node.materialAssetId, assets) }]
@@ -417,7 +493,7 @@ function MeshRendererCard({ node }: { node: SceneNode }) {
     ? entries.filter(entry => String(entry.index).includes(q) || entry.name.toLowerCase().includes(q) || (entry.linked ? assets[entry.linked]?.name.toLowerCase().includes(q) : t('inspector.inline').toLowerCase().includes(q)))
     : entries
   return (
-    <Card title={t('inspector.modelRenderer')} color={kindColor(node.kind)}>
+    <Card id="model-renderer" title={t('inspector.modelRenderer')} color={kindColor(node.kind)}>
       {node.kind === 'model' && (
         <>
           <button type="button" className="inspector__action" onClick={savePrefabFromSelection}>{t('inspector.savePrefab')}</button>
@@ -432,7 +508,7 @@ function MeshRendererCard({ node }: { node: SceneNode }) {
         <span>{t('inspector.receiveShadow')}</span>
         <input type="checkbox" checked={node.receiveShadow} onChange={event => commitNode(node.id, t('gesture.shadow'), { receiveShadow: event.target.checked })} />
       </label>
-      <button type="button" className="mesh-slots__head" aria-expanded={listOpen} onClick={() => setListOpen(value => !value)}>
+      <button type="button" className="mesh-slots__head" aria-expanded={listOpen} onClick={() => setListOpen(!listOpen)}>
         {listOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
         <span>{t('inspector.materialSlots')}</span>
         <em>{entries.length}</em>
@@ -586,12 +662,11 @@ function MaterialEditor({ slot, onChange }: { slot: PbrSlot, onChange: (patch: P
         <>
           <NumberRow label={t('material.metalness')} value={slot.metalness} min={0} max={1} step={0.01} gesture={t('gesture.material')} onChange={metalness => onChange({ metalness })} />
           <NumberRow label={t('material.roughness')} value={slot.roughness} min={0} max={1} step={0.01} gesture={t('gesture.material')} onChange={roughness => onChange({ roughness })} />
-          <MapField label={t('material.roughnessMap')} value={slot.roughnessAssetId ?? null} onChange={roughnessAssetId => onChange({ roughnessAssetId })} />
-          <MapField label={t('material.metalnessMap')} value={slot.metalnessAssetId ?? null} onChange={metalnessAssetId => onChange({ metalnessAssetId })} />
+          <MapField label={t('material.metallicRoughness')} title={t('material.metallicRoughnessHint')} value={slot.metallicRoughnessAssetId ?? null} onChange={metallicRoughnessAssetId => onChange({ metallicRoughnessAssetId, roughnessAssetId: metallicRoughnessAssetId, metalnessAssetId: metallicRoughnessAssetId })} />
           <MapField label={t('material.normal')} value={slot.normalAssetId ?? null} onChange={normalAssetId => onChange({ normalAssetId })} />
           <NumberRow label={t('material.normalScale')} value={slot.normalScale ?? 1} min={0} max={4} step={0.01} gesture={t('gesture.material')} onChange={normalScale => onChange({ normalScale })} />
           <NumberRow label={t('material.ao')} value={slot.ao} min={0} max={1} step={0.01} gesture={t('gesture.material')} onChange={ao => onChange({ ao })} />
-          <MapField label={t('material.aoMap')} value={slot.aoAssetId ?? null} onChange={aoAssetId => onChange({ aoAssetId })} />
+          <MapField label={t('material.aoMap')} title={t('material.aoMapHint')} value={slot.aoAssetId ?? null} onChange={aoAssetId => onChange({ aoAssetId })} />
           <div className="field-section">{t('material.emission')}</div>
           <ColorField label={t('material.emissionColor')} value={slot.emissive} gesture={t('gesture.material')} onChange={emissive => onChange({ emissive })} />
           <NumberRow label={t('material.emissionIntensity')} value={slot.emissiveIntensity} min={0} max={10} step={0.05} gesture={t('gesture.material')} onChange={emissiveIntensity => onChange({ emissiveIntensity })} />
@@ -819,7 +894,7 @@ function formatClipTime(seconds: number): string {
   return `${seconds.toFixed(2)}s`
 }
 
-function MapField({ label, value, onChange }: { label: string; value: string | null; onChange: (id: string | null) => void }) {
+function MapField({ label, title, value, onChange }: { label: string; title?: string; value: string | null; onChange: (id: string | null) => void }) {
   const { t } = useI18n()
   const [open, setOpen] = useState(false)
   const clickTimer = useRef<number | null>(null)
@@ -861,7 +936,7 @@ function MapField({ label, value, onChange }: { label: string; value: string | n
 
   return (
     <div className="tex-slot">
-      <span className="tex-slot__label">{label}</span>
+      <span className="tex-slot__label" title={title}>{label}</span>
       <div
         className="tex-slot__control"
         onDragOver={event => {
@@ -972,11 +1047,13 @@ function resetTransform(id: string, patch: Partial<SceneNode>) {
   commitNode(id, translate('gesture.reset'), patch)
 }
 
-function Card({ title, color, children }: { title: string; color: string; children: ReactNode }) {
-  const [open, setOpen] = useState(true)
+function Card({ id, title, color, children }: { id: string; title: string; color: string; children: ReactNode }) {
+  const [stored, setStored] = useInspectorCardOpen(id)
+  const open = stored
+  const setOpen = (value: boolean) => setStored(value)
   return (
     <section className="iv2-card">
-      <header className="iv2-card__header" onClick={() => setOpen(value => !value)}>
+      <header className="iv2-card__header" onClick={() => setOpen(!open)}>
         <span className="iv2-card__dot" style={{ background: color }} />
         <span>{title}</span>
         {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}

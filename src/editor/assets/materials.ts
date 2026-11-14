@@ -49,8 +49,7 @@ export function normalizeSlot(slot: Partial<PbrSlot> & Pick<PbrSlot, 'name' | 'c
     ao: slot.ao ?? 1,
     mapAssetId: slot.mapAssetId ?? null,
     normalAssetId: slot.normalAssetId ?? null,
-    roughnessAssetId: slot.roughnessAssetId ?? null,
-    metalnessAssetId: slot.metalnessAssetId ?? null,
+    metallicRoughnessAssetId: packedMetallicRoughness(slot),
     emissiveAssetId: slot.emissiveAssetId ?? null,
     aoAssetId: slot.aoAssetId ?? null,
     materialAssetId: slot.materialAssetId ?? DEFAULTS.materialAssetId,
@@ -76,8 +75,9 @@ export function nodePatchFromSlot(slot: SurfaceSlot): Partial<SceneNode> {
     ao: slot.ao,
     mapAssetId: slot.mapAssetId,
     normalAssetId: slot.normalAssetId,
-    roughnessAssetId: slot.roughnessAssetId,
-    metalnessAssetId: slot.metalnessAssetId,
+    metallicRoughnessAssetId: slot.metallicRoughnessAssetId,
+    roughnessAssetId: slot.metallicRoughnessAssetId,
+    metalnessAssetId: slot.metallicRoughnessAssetId,
     emissiveAssetId: slot.emissiveAssetId,
     aoAssetId: slot.aoAssetId,
     shader: slot.shader,
@@ -104,6 +104,7 @@ export function slotFromNode(node: SceneNode): SurfaceSlot {
     ao: node.ao,
     mapAssetId: node.mapAssetId,
     normalAssetId: node.normalAssetId,
+    metallicRoughnessAssetId: node.metallicRoughnessAssetId,
     roughnessAssetId: node.roughnessAssetId,
     metalnessAssetId: node.metalnessAssetId,
     emissiveAssetId: node.emissiveAssetId,
@@ -200,10 +201,10 @@ function paint(material: Material, slot: SurfaceSlot) {
     standard.normalScale = new Vector2(slot.normalScale, slot.normalScale)
     assignMap(standard, 'map', slot.mapAssetId, true)
     assignMap(standard, 'normalMap', slot.normalAssetId, false)
-    assignMap(standard, 'roughnessMap', slot.roughnessAssetId, false)
-    assignMap(standard, 'metalnessMap', slot.metalnessAssetId, false)
+    assignMap(standard, 'roughnessMap', slot.metallicRoughnessAssetId, false)
+    assignMap(standard, 'metalnessMap', slot.metallicRoughnessAssetId, false)
     assignMap(standard, 'emissiveMap', slot.emissiveAssetId, true)
-    assignMap(standard, 'aoMap', slot.aoAssetId, false)
+    assignMap(standard, 'aoMap', slot.aoAssetId ?? slot.metallicRoughnessAssetId, false)
   } else {
     assignMap(basic, 'map', slot.mapAssetId, true)
   }
@@ -224,6 +225,14 @@ function sideFor(cull: CullMode): Side {
   if (cull === 'front') return BackSide
   if (cull === 'off') return DoubleSide
   return FrontSide
+}
+
+function packedMetallicRoughness(slot: Partial<PbrSlot>): string | null {
+  if (slot.metallicRoughnessAssetId) return slot.metallicRoughnessAssetId
+  const roughness = slot.roughnessAssetId ?? null
+  const metalness = slot.metalnessAssetId ?? null
+  if (roughness && metalness) return roughness === metalness ? roughness : metalness
+  return metalness ?? roughness
 }
 
 function assignMap(material: MeshStandardMaterial | MeshBasicMaterial, key: 'map' | 'normalMap' | 'roughnessMap' | 'metalnessMap' | 'emissiveMap' | 'aoMap', assetId: string | null, colorMap: boolean) {

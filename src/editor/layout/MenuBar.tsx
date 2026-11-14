@@ -9,6 +9,8 @@ import { createDirectoryProject, notifyProjectSaved, openDirectoryProject, openR
 import { RecentProjectService, type RecentProject } from '../project/recents'
 import { bindPackagePicker, openPackagePicker, usePackageImportStore } from '../assets/packageImportStore'
 import { PackageExtractDialog } from '../panels/PackageExtractDialog'
+import { openProjectSettings } from '../project/ProjectSettingsDialog'
+import { useTaxonomyUi } from '../project/taxonomyUi'
 import { resetLayout } from './events'
 import type { CameraView, NodeKind } from '../scene/types'
 import './MenuBar.css'
@@ -80,6 +82,10 @@ export default function MenuBar() {
               )}
             </div>
           )}
+          <Sep />
+          <Item onClick={openProjectSettings}>{t('menu.projectSettings')}</Item>
+          <Item onClick={() => useTaxonomyUi.getState().openTags()}>{t('menu.tags')}</Item>
+          <Item onClick={() => useTaxonomyUi.getState().openLayers()}>{t('menu.layers')}</Item>
           <Sep />
           <Item onClick={askNewScene}>{t('menu.newScene')}<span className="menubar__hint">Ctrl+N</span></Item>
           <Item onClick={() => { void saveProjectNow().then(() => notifyProjectSaved()).catch(error => useEditorStore.getState().log('error', translate('log.projectFailed', { message: error instanceof Error ? error.message : String(error) }))) }}>{t('menu.save')}<span className="menubar__hint">Ctrl+S</span></Item>

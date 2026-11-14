@@ -11,6 +11,7 @@
     "preview": "vite preview --port 5180"
   },
   "dependencies": {
+    "@dimforge/rapier3d-compat": "^0.21.0",
     "@gltf-transform/core": "^4.5.1",
     "@gltf-transform/functions": "^4.5.1",
     "flexlayout-react": "^0.8.19",

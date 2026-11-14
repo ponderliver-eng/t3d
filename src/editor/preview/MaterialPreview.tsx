@@ -73,6 +73,7 @@ export function MaterialPreview({ assetId, kind, standalone = false }: { assetId
     scene.add(hemi, key, fill)
     const material = new MeshStandardMaterial({ color: '#d5dde6', roughness: 0.55, metalness: 0.04 })
     const mesh: Mesh = new Mesh(new SphereGeometry(0.72, 64, 48), material)
+    shareOcclusionUv(mesh)
     scene.add(mesh)
     let frame = 0
     const resize = () => {
@@ -95,6 +96,7 @@ export function MaterialPreview({ assetId, kind, standalone = false }: { assetId
       if (mesh.userData.shape !== nextShape) {
         mesh.geometry.dispose()
         mesh.geometry = geometryFor(nextShape)
+        shareOcclusionUv(mesh)
         mesh.userData.shape = nextShape
       }
       const lights = LIGHTS[presetRef.current]
@@ -144,6 +146,11 @@ export function MaterialPreview({ assetId, kind, standalone = false }: { assetId
       </div>
     </div>
   )
+}
+
+function shareOcclusionUv(mesh: Mesh) {
+  const geometry = mesh.geometry
+  if (geometry.attributes.uv && !geometry.attributes.uv2) geometry.setAttribute('uv2', geometry.attributes.uv)
 }
 
 function geometryFor(shape: Shape) {

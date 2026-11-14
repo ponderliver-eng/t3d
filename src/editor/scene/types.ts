@@ -19,6 +19,23 @@ export type SurfaceShader = 'lit' | 'unlit-color' | 'unlit-texture'
 export type AlphaMode = 'opaque' | 'blend' | 'clip'
 export type CullMode = 'back' | 'front' | 'off'
 
+export type PhysicsBodyKind = 'static' | 'dynamic' | 'kinematic'
+export type ColliderShape = 'box' | 'sphere' | 'capsule'
+
+export interface NodePhysics {
+  body: PhysicsBodyKind
+  shape: ColliderShape
+  /** 盒子是完整尺寸。球体用 x 当半径。胶囊用 x 当半径、y 当总高度。 */
+  size: Vec3
+  trigger: boolean
+  mass: number
+  friction: number
+  restitution: number
+  linearDamping: number
+  angularDamping: number
+  gravityScale: number
+}
+
 export interface PbrSlot {
   name: string
   color: string
@@ -30,9 +47,13 @@ export interface PbrSlot {
   ao: number
   mapAssetId: string | null
   normalAssetId: string | null
-  roughnessAssetId: string | null
-  metalnessAssetId: string | null
+  /** glTF 金属粗糙图：G 粗糙，B 金属，R 遮蔽。 */
+  metallicRoughnessAssetId: string | null
+  /** 旧工程里分开的两张图。读取时并进 metallicRoughnessAssetId。 */
+  roughnessAssetId?: string | null
+  metalnessAssetId?: string | null
   emissiveAssetId: string | null
+  /** 单独的遮蔽图。空着时用金属粗糙图的红通道。 */
   aoAssetId: string | null
   materialAssetId?: string | null
   shader?: SurfaceShader
@@ -63,6 +84,8 @@ export interface ScenePicture {
   hue: number
   saturation: number
   envAssetId: string | null
+  /** 场景重力，米/秒²。物理能力包读取。 */
+  gravity: Vec3
 }
 
 export const DEFAULT_PICTURE: ScenePicture = {
@@ -84,6 +107,7 @@ export const DEFAULT_PICTURE: ScenePicture = {
   hue: 0,
   saturation: 1,
   envAssetId: null,
+  gravity: [0, -9.81, 0],
 }
 
 export type GizmoMode = 'translate' | 'rotate' | 'scale'
@@ -133,8 +157,9 @@ export interface SceneNode {
   ao: number
   mapAssetId: string | null
   normalAssetId: string | null
-  roughnessAssetId: string | null
-  metalnessAssetId: string | null
+  metallicRoughnessAssetId: string | null
+  roughnessAssetId?: string | null
+  metalnessAssetId?: string | null
   emissiveAssetId: string | null
   aoAssetId: string | null
   materialAssetId: string | null
@@ -145,6 +170,14 @@ export interface SceneNode {
   cull: CullMode
   depthWrite: boolean
   wireframe: boolean
+  /** 空着表示这个节点不参与物理。关掉能力包不会清掉它。 */
+  physics?: NodePhysics | null
+  /** 主标签，对应工程标签表的 id。 */
+  tagId?: string | null
+  /** 额外层级标签，存标签 id。 */
+  tagIds?: string[]
+  /** 渲染层 id。缺省为 Default。 */
+  renderLayerId?: string
   slots: PbrSlot[]
   castShadow: boolean
   receiveShadow: boolean

@@ -9,6 +9,7 @@ import { assignClip } from '../assets/import'
 import { assetDirectory, useAssetStore } from '../assets/library'
 import { instanceDirty, isPrefabRoot } from '../assets/prefab'
 import { translate, useI18n, type MessageKey } from '../i18n'
+import { TAG_FILTER_UNTAGGED, sortedTags } from '../project/taxonomy'
 import { childrenOf, isLight, isMesh, LIGHT_KINDS, MESH_KINDS } from '../scene/kinds'
 import { useEditorStore, primaryId } from '../scene/store'
 import { isUnder } from '../scene/transform'
@@ -40,6 +41,8 @@ export default function HierarchyPanel() {
   const playing = useEditorStore(state => state.playState !== 'stopped')
   const { t } = useI18n()
   const [query, setQuery] = useState('')
+  const [tagFilter, setTagFilter] = useState('all')
+  const tags = useEditorStore(state => state.tags)
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
   const [drop, setDrop] = useState<{ id: string, zone: 'before' | 'into' | 'after' } | null>(null)
   const [menu, setMenu] = useState<{ x: number; y: number; id: string | null } | null>(null)
@@ -64,29 +67,33 @@ export default function HierarchyPanel() {
       if (cached !== undefined) return cached
       const node = nodes[id]
       if (!node) return false
-      const self = node.name.toLowerCase().includes(q)
+      const nameOk = !q || node.name.toLowerCase().includes(q)
+      const tagged = Boolean(node.tagId) || (node.tagIds?.length ?? 0) > 0
+      const tagOk = tagFilter === 'all'
+        || (tagFilter === TAG_FILTER_UNTAGGED ? !tagged : node.tagId === tagFilter || node.tagIds?.includes(tagFilter))
+      const self = nameOk && tagOk
       const child = childrenOf(nodes, id).some(item => visit(item.id))
       const ok = self || child
       cache.set(id, ok)
       return ok
     }
-    if (q) Object.keys(nodes).forEach(visit)
+    if (q || tagFilter !== 'all') Object.keys(nodes).forEach(visit)
     return cache
-  }, [nodes, q])
+  }, [nodes, q, tagFilter])
 
   const visibleRows = useMemo(() => {
     const rows: { node: SceneNode; depth: number }[] = []
     const walk = (parentId: string | null, depth: number) => {
       for (const node of childrenOf(nodes, parentId)) {
-        if (q && !matches.get(node.id)) continue
+        if ((q || tagFilter !== 'all') && !matches.get(node.id)) continue
         rows.push({ node, depth })
-        const open = q ? true : !collapsed[node.id]
+        const open = q || tagFilter !== 'all' ? true : !collapsed[node.id]
         if (open) walk(node.id, depth + 1)
       }
     }
     walk(null, 0)
     return rows
-  }, [nodes, collapsed, q, matches])
+  }, [nodes, collapsed, q, tagFilter, matches])
 
   useEffect(() => {
     if (!menu && !createOpen) return
@@ -304,6 +311,11 @@ export default function HierarchyPanel() {
             </button>
           )}
         </div>
+        <select className="scene-panel__filter" value={tagFilter} onChange={event => setTagFilter(event.target.value)} title={t('tags.filter')}>
+          <option value="all">{t('tags.filterAll')}</option>
+          <option value={TAG_FILTER_UNTAGGED}>{t('tags.filterUntagged')}</option>
+          {sortedTags(tags).map(tag => <option key={tag.id} value={tag.id}>{tag.name}</option>)}
+        </select>
         <span className="scene-panel__count">{Object.keys(nodes).length}</span>
         <button type="button" className="scene-panel__icon" title={t('hierarchy.expand')} onClick={() => setCollapsed({})}>
           <ChevronsUpDown size={14} />

@@ -247,8 +247,7 @@ function syncReimportedModelNodes(assetId: string, templateSlots: PbrSlot[], cli
           ...(prev.materialAssetId ? { materialAssetId: prev.materialAssetId } : {}),
           mapAssetId: prev.mapAssetId ?? fresh.mapAssetId,
           normalAssetId: prev.normalAssetId ?? fresh.normalAssetId,
-          roughnessAssetId: prev.roughnessAssetId ?? fresh.roughnessAssetId,
-          metalnessAssetId: prev.metalnessAssetId ?? fresh.metalnessAssetId,
+          metallicRoughnessAssetId: prev.metallicRoughnessAssetId ?? fresh.metallicRoughnessAssetId,
           emissiveAssetId: prev.emissiveAssetId ?? fresh.emissiveAssetId,
           aoAssetId: prev.aoAssetId ?? fresh.aoAssetId,
         }
@@ -436,8 +435,7 @@ export function createDefaultMaterial(dir?: string) {
       ao: 1,
       mapAssetId: null,
       normalAssetId: null,
-      roughnessAssetId: null,
-      metalnessAssetId: null,
+      metallicRoughnessAssetId: null,
       emissiveAssetId: null,
       aoAssetId: null,
     }),
@@ -519,7 +517,7 @@ function usesAsset(node: SceneNode, assetId: string): boolean {
 }
 
 function slotUses(slot: PbrSlot, assetId: string): boolean {
-  return [slot.mapAssetId, slot.normalAssetId, slot.roughnessAssetId, slot.metalnessAssetId, slot.emissiveAssetId, slot.aoAssetId].includes(assetId)
+  return [slot.mapAssetId, slot.normalAssetId, slot.metallicRoughnessAssetId, slot.roughnessAssetId, slot.metalnessAssetId, slot.emissiveAssetId, slot.aoAssetId].includes(assetId)
 }
 
 function uniqueAssetName(base: string): string {

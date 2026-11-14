@@ -1,4 +1,4 @@
-import { Vector3 } from 'three'
+import { Quaternion, Vector3 } from 'three'
 import { create } from 'zustand'
 import { getSpawn } from './spawn'
 import { createFreshScene, createSeed } from './seed'
@@ -26,7 +26,16 @@ import {
   subtreeIds,
   uniqueName,
 } from './kinds'
-import { isUnder, localPoseFromWorld, worldPointToLocal, worldPose, writePose } from './transform'
+import { defaultCapabilities, normalizeCapabilities } from '../../capabilities/registry'
+import {
+  ALL_LAYERS_VISIBLE_MASK,
+  LAYER_ID_DEFAULT,
+  defaultLayers,
+  defaultTags,
+  ensureLayers,
+  ensureTags,
+} from '../project/taxonomy'
+import { isUnder, localPoseFromWorld, poseComponents, worldPointToLocal, worldPose, writePose } from './transform'
 import { measureGroundSnap } from './viewportBridge'
 import type {
   CameraView,
@@ -174,6 +183,18 @@ export interface EditorState {
   unpackPrefabInstance: (id: string) => void
   assignMap: (id: string, assetId: string) => void
   assignMaterial: (id: string, materialId: string) => void
+  capabilities: Record<string, boolean>
+  tags: import('../project/taxonomy').TagDefinition[]
+  layers: import('../project/taxonomy').LayerDefinition[]
+  editorCullingMask: number
+  physicsCollisionMatrixEnabled: boolean
+  physicsCollisionRowMasks: Record<string, number>
+  setCapability: (id: string, enabled: boolean) => void
+  setTags: (tags: import('../project/taxonomy').TagDefinition[]) => void
+  setLayers: (layers: import('../project/taxonomy').LayerDefinition[]) => void
+  setEditorCullingMask: (mask: number) => void
+  setPhysicsCollisionMatrix: (enabled: boolean, rows: Record<string, number>) => void
+  applySimulation: (poses: Array<{ id: string, position: Vec3, rotation: [number, number, number, number] }>) => void
 }
 
 function pushHistory(
@@ -216,6 +237,12 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   cameraAction: 'focus',
   cameraView: 'persp',
   picture: structuredClone(DEFAULT_PICTURE),
+  capabilities: defaultCapabilities(),
+  tags: defaultTags(),
+  layers: defaultLayers(),
+  editorCullingMask: ALL_LAYERS_VISIBLE_MASK,
+  physicsCollisionMatrixEnabled: false,
+  physicsCollisionRowMasks: {},
   activeSceneId: '',
   inspectedAssetId: null,
   pendingRenameId: null,
@@ -793,6 +820,12 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       playSelection: [],
       playPicture: null,
       picture: { ...DEFAULT_PICTURE, ...document.picture },
+      capabilities: normalizeCapabilities(document.capabilities),
+      tags: ensureTags(document.tags),
+      layers: ensureLayers(document.layers),
+      editorCullingMask: typeof document.editorCullingMask === 'number' ? document.editorCullingMask >>> 0 : ALL_LAYERS_VISIBLE_MASK,
+      physicsCollisionMatrixEnabled: document.physicsCollisionMatrixEnabled === true,
+      physicsCollisionRowMasks: document.physicsCollisionRowMasks ?? {},
       activeSceneId: document.activeSceneId,
       prefabSession: null,
     })
@@ -814,6 +847,79 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   },
 
   setPicture: patch => set({ picture: { ...get().picture, ...patch } }),
+
+  setCapability: (id, enabled) => set(state => ({
+    capabilities: { ...state.capabilities, [id]: enabled },
+  })),
+
+  setTags: tags => {
+    const next = ensureTags(tags)
+    const ids = new Set(next.map(tag => tag.id))
+    set(state => {
+      const nodes = { ...state.nodes }
+      for (const [id, node] of Object.entries(nodes)) {
+        const tagId = node.tagId && ids.has(node.tagId) ? node.tagId : null
+        const tagIds = (node.tagIds ?? []).filter(tag => ids.has(tag))
+        const samePrimary = (node.tagId ?? null) === tagId
+        const sameExtra = (node.tagIds ?? []).join('|') === tagIds.join('|')
+        if (!samePrimary || !sameExtra) nodes[id] = { ...node, tagId, tagIds }
+      }
+      return { tags: next, nodes }
+    })
+  },
+
+  setLayers: layers => {
+    const next = ensureLayers(layers)
+    const ids = new Set(next.map(layer => layer.id))
+    set(state => {
+      const nodes = { ...state.nodes }
+      for (const [id, node] of Object.entries(nodes)) {
+        if (node.renderLayerId && !ids.has(node.renderLayerId)) {
+          nodes[id] = { ...node, renderLayerId: LAYER_ID_DEFAULT }
+        }
+      }
+      return { layers: next, nodes }
+    })
+  },
+
+  setEditorCullingMask: mask => set({ editorCullingMask: mask >>> 0 }),
+
+  setPhysicsCollisionMatrix: (enabled, rows) => set({
+    physicsCollisionMatrixEnabled: enabled,
+    physicsCollisionRowMasks: rows,
+  }),
+
+  applySimulation: poses => {
+    if (get().playState !== 'playing' || poses.length === 0) return
+    const depthOf = (id: string) => {
+      let depth = 0
+      let parent = get().nodes[id]?.parentId
+      const seen = new Set<string>()
+      while (parent && !seen.has(parent)) {
+        seen.add(parent)
+        depth += 1
+        parent = get().nodes[parent]?.parentId
+      }
+      return depth
+    }
+    const ordered = [...poses].sort((a, b) => depthOf(a.id) - depthOf(b.id))
+    set(state => {
+      const nodes = { ...state.nodes }
+      for (const pose of ordered) {
+        const node = nodes[pose.id]
+        if (!node) continue
+        const parent = node.parentId ? worldPose(nodes, node.parentId) : null
+        const local = localPoseFromWorld(parent, {
+          position: new Vector3(pose.position[0], pose.position[1], pose.position[2]),
+          quaternion: new Quaternion(pose.rotation[0], pose.rotation[1], pose.rotation[2], pose.rotation[3]),
+          scale: new Vector3(node.scale[0], node.scale[1], node.scale[2]),
+        })
+        const parts = poseComponents(local)
+        nodes[pose.id] = { ...node, position: parts.position, rotation: parts.rotation }
+      }
+      return { nodes }
+    })
+  },
   setRenderBackend: label => {
     if (get().renderBackend !== label) set({ renderBackend: label })
   },

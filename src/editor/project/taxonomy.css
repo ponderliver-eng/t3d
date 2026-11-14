@@ -1,0 +1,310 @@
+.tax-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tax-dialog {
+  width: min(480px, calc(100vw - 32px));
+  background: var(--bg-popup, #2a2d33);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-primary);
+  display: flex;
+  flex-direction: column;
+  max-height: min(640px, calc(100vh - 48px));
+}
+
+.tax-dialog--wide { width: min(560px, calc(100vw - 32px)); }
+
+.tax-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 12px 12px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.tax-head h2 {
+  margin: 0;
+  font-size: var(--font-size-md, 13px);
+  font-weight: 600;
+}
+
+.tax-head p {
+  margin: 4px 0 0;
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.tax-head__text { flex: 1; min-width: 0; }
+
+.tax-head button {
+  display: inline-flex;
+  color: var(--text-muted);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+
+.tax-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 8px 16px 0;
+}
+
+.tax-tabs button {
+  height: 26px;
+  padding: 0 10px;
+  border-radius: 4px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.tax-tabs button.is-on {
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.06);
+  border-color: var(--border);
+}
+
+.tax-scroll {
+  overflow: auto;
+  padding: 8px;
+}
+
+.tax-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 52px;
+  padding: 8px 8px 8px 10px;
+  border-radius: 4px;
+}
+
+.tax-item:hover { background: rgba(255, 255, 255, 0.04); }
+
+.tax-item__main { flex: 1; min-width: 0; }
+
+.tax-item input[type="text"] {
+  width: 100%;
+  height: 26px;
+  box-sizing: border-box;
+  padding: 0 8px;
+  color: var(--text-primary);
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
+.tax-item input[type="text"]:read-only {
+  opacity: 0.8;
+}
+
+.tax-item__meta {
+  margin-top: 4px;
+  color: var(--text-muted);
+  font-size: 10px;
+  font-family: ui-monospace, monospace;
+}
+
+.tax-bit {
+  flex: 0 0 28px;
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+  font-weight: 600;
+  background: rgba(76, 141, 232, 0.16);
+  color: #d6e6ff;
+}
+
+.tax-actions { display: flex; gap: 2px; }
+
+.tax-icon, .tax-delete {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.tax-icon:hover { background: rgba(255, 255, 255, 0.08); color: var(--text-primary); }
+.tax-delete:hover { color: #ef5350; background: rgba(239, 83, 80, 0.12); }
+.tax-icon[aria-pressed="false"] { opacity: 0.45; }
+
+.tax-foot {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 12px;
+  border-top: 1px solid var(--border);
+}
+
+.tax-foot button {
+  height: 28px;
+  padding: 0 12px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.tax-foot button:disabled { opacity: 0.4; cursor: default; }
+
+.tax-foot button.is-primary {
+  background: rgba(76, 141, 232, 0.22);
+  border-color: rgba(76, 141, 232, 0.45);
+}
+
+.tax-switch {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 4px 8px 8px;
+  padding: 8px 10px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.tax-note {
+  margin: 0 8px 10px;
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.tax-pair {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 36px;
+  margin: 0 8px;
+  padding: 0 10px;
+  border-radius: 4px;
+}
+
+.tax-pair:hover { background: rgba(255, 255, 255, 0.04); }
+
+.tax-pair span { font-size: 12px; }
+
+.identity-strip {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 0 8px 8px;
+}
+
+.identity-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 22px;
+}
+
+.identity-row svg { flex: 0 0 auto; color: var(--text-muted); }
+
+.identity-row select {
+  flex: 1;
+  min-width: 0;
+  height: 22px;
+  background: rgba(0, 0, 0, 0.25);
+  color: var(--text-primary);
+  border: none;
+  border-radius: 3px;
+}
+
+.identity-row button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.identity-gap { width: 22px; flex: 0 0 22px; }
+
+.identity-row button:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-primary);
+}
+
+.identity-extra {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 18px;
+}
+
+.identity-extra input {
+  flex: 1;
+  min-width: 0;
+  height: 20px;
+  padding: 0 6px;
+  font-size: 11px;
+  color: var(--text-primary);
+  background: rgba(0, 0, 0, 0.25);
+  border: none;
+  border-radius: 3px;
+}
+
+.tax-inline {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.tax-inline select,
+.tax-inline input[type="text"] {
+  flex: 1;
+  min-width: 0;
+  height: 22px;
+  background: rgba(0, 0, 0, 0.25);
+  color: var(--text-primary);
+  border: 1px solid transparent;
+  border-radius: 3px;
+}
+
+.tag-pills { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
+
+.tag-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-size: 10px;
+  border: 1px solid transparent;
+}
+
+.tag-pill button {
+  border: none;
+  background: transparent;
+  color: inherit;
+  padding: 0;
+  display: inline-flex;
+  cursor: pointer;
+}

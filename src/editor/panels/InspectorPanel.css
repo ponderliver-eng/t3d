@@ -45,20 +45,30 @@
 }
 
 .inspector__header-row input,
-.inspector__header-row .inspector__multi { flex: 1; }
+.inspector__header-row .inspector__multi,
+.inspector__name { flex: 1; }
+
+.inspector__name {
+  min-width: 0;
+  height: 26px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  font-weight: 600;
+  text-align: left;
+  cursor: text;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.inspector__name:disabled { cursor: default; }
 
 .inspector__flag {
   display: inline-flex;
   align-items: center;
 }
-
-.inspector__scene-link {
-  align-self: flex-start;
-  color: var(--text-muted);
-  font-size: 10px;
-}
-
-.inspector__scene-link:hover { color: var(--text-primary); }
 
 .field-section {
   margin-top: 4px;

@@ -535,18 +535,18 @@ function referencedIds(nodes: Record<string, { assetId?: string | null, clipAsse
   return ids
 }
 
-function collect(node: { assetId?: string | null, clipAssetId?: string | null, materialAssetId?: string | null, mapAssetId?: string | null, normalAssetId?: string | null, roughnessAssetId?: string | null, metalnessAssetId?: string | null, emissiveAssetId?: string | null, aoAssetId?: string | null, prefabAssetId?: string | null, nestedPrefabId?: string | null, slots?: Array<{ materialAssetId?: string | null, mapAssetId?: string | null, normalAssetId?: string | null, roughnessAssetId?: string | null, metalnessAssetId?: string | null, emissiveAssetId?: string | null, aoAssetId?: string | null }> }, ids: Set<string>) {
+function collect(node: { assetId?: string | null, clipAssetId?: string | null, materialAssetId?: string | null, mapAssetId?: string | null, normalAssetId?: string | null, metallicRoughnessAssetId?: string | null, roughnessAssetId?: string | null, metalnessAssetId?: string | null, emissiveAssetId?: string | null, aoAssetId?: string | null, prefabAssetId?: string | null, nestedPrefabId?: string | null, slots?: Array<{ materialAssetId?: string | null, mapAssetId?: string | null, normalAssetId?: string | null, metallicRoughnessAssetId?: string | null, roughnessAssetId?: string | null, metalnessAssetId?: string | null, emissiveAssetId?: string | null, aoAssetId?: string | null }> }, ids: Set<string>) {
   if (node.assetId) ids.add(node.assetId)
   if (node.prefabAssetId) ids.add(node.prefabAssetId)
   if (node.nestedPrefabId) ids.add(node.nestedPrefabId)
   if (node.clipAssetId) ids.add(node.clipAssetId)
   if (node.materialAssetId) ids.add(node.materialAssetId)
-  for (const id of [node.mapAssetId, node.normalAssetId, node.roughnessAssetId, node.metalnessAssetId, node.emissiveAssetId, node.aoAssetId]) {
+  for (const id of [node.mapAssetId, node.normalAssetId, node.metallicRoughnessAssetId, node.roughnessAssetId, node.metalnessAssetId, node.emissiveAssetId, node.aoAssetId]) {
     if (id) ids.add(id)
   }
   for (const slot of node.slots ?? []) {
     if (slot.materialAssetId) ids.add(slot.materialAssetId)
-    for (const id of [slot.mapAssetId, slot.normalAssetId, slot.roughnessAssetId, slot.metalnessAssetId, slot.emissiveAssetId, slot.aoAssetId]) {
+    for (const id of [slot.mapAssetId, slot.normalAssetId, slot.metallicRoughnessAssetId, slot.roughnessAssetId, slot.metalnessAssetId, slot.emissiveAssetId, slot.aoAssetId]) {
       if (id) ids.add(id)
     }
   }

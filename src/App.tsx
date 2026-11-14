@@ -8,6 +8,8 @@ import { useAssetStore } from './editor/assets/library'
 import { bindProjectAutosave, notifyProjectSaved, openDirectoryProject, saveProjectNow } from './editor/assets/project'
 import { translate } from './editor/i18n'
 import SettingsDialog from './editor/prefs/SettingsDialog'
+import ProjectSettingsDialog from './editor/project/ProjectSettingsDialog'
+import TaxonomyDialogs from './editor/project/TaxonomyDialogs'
 import { usePrefsStore } from './editor/prefs/store'
 import { PreviewHost } from './editor/preview/PreviewHost'
 import { isViewportNavigating } from './editor/viewport/cameraControls'
@@ -139,6 +141,8 @@ export default function App() {
       <StatusBar />
       <PreviewHost />
       <SettingsDialog />
+      <ProjectSettingsDialog />
+      <TaxonomyDialogs />
     </div>
   )
 }
