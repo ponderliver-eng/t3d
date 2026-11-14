@@ -4,10 +4,16 @@ import Toolbar from './editor/layout/Toolbar'
 import IDELayout from './editor/layout/IDELayout'
 import StatusBar from './editor/layout/StatusBar'
 import { askNewScene, useEditorStore } from './editor/scene/store'
+import { bindProjectAutosave, saveProjectNow } from './editor/assets/project'
+import { PreviewHost } from './editor/preview/PreviewHost'
 import { isViewportNavigating } from './editor/viewport/cameraControls'
 import './App.css'
 
 export default function App() {
+  useEffect(() => {
+    bindProjectAutosave()
+  }, [])
+
   useEffect(() => {
     const blockContext = (event: MouseEvent) => {
       const target = event.target as HTMLElement | null
@@ -27,7 +33,7 @@ export default function App() {
       }
       if (ctrl && event.code === 'KeyS') {
         event.preventDefault()
-        store.notify('工程保存还没接入')
+        void saveProjectNow().then(() => store.notify('已保存到本地缓存'))
         return
       }
       if (ctrl && event.code === 'KeyZ' && !event.shiftKey) {
@@ -43,6 +49,21 @@ export default function App() {
       if (ctrl && event.code === 'KeyD') {
         event.preventDefault()
         store.duplicateSelection()
+        return
+      }
+      if (ctrl && event.code === 'KeyC') {
+        event.preventDefault()
+        store.copySelection()
+        return
+      }
+      if (ctrl && event.code === 'KeyV') {
+        event.preventDefault()
+        store.pasteClipboard(null)
+        return
+      }
+      if (ctrl && event.code === 'KeyG') {
+        event.preventDefault()
+        store.groupSelection()
         return
       }
       if (ctrl && event.code === 'KeyA') {
@@ -89,6 +110,7 @@ export default function App() {
         <IDELayout />
       </div>
       <StatusBar />
+      <PreviewHost />
     </div>
   )
 }

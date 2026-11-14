@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { PbrSlot, SceneNode } from '../scene/types'
+import type { PbrSlot, SceneNode, ScenePicture } from '../scene/types'
 
 export type FileKind = 'model' | 'texture' | 'animation' | 'audio' | 'environment'
 
@@ -9,6 +9,8 @@ export interface FileAsset {
   kind: FileKind
   url: string
   fileName: string
+  hash: string
+  thumb: string | null
 }
 
 export interface MaterialAsset {
@@ -25,7 +27,15 @@ export interface PrefabAsset {
   nodes: SceneNode[]
 }
 
-export type ProjectAsset = FileAsset | MaterialAsset | PrefabAsset
+export interface SceneAsset {
+  id: string
+  name: string
+  kind: 'scene'
+  nodes: Record<string, SceneNode>
+  picture: ScenePicture
+}
+
+export type ProjectAsset = FileAsset | MaterialAsset | PrefabAsset | SceneAsset
 
 interface AssetState {
   assets: Record<string, ProjectAsset>
@@ -33,6 +43,9 @@ interface AssetState {
   add: (asset: ProjectAsset) => void
   remove: (id: string) => void
   rename: (id: string, name: string) => void
+  patch: (id: string, patch: Partial<FileAsset>) => void
+  writeScene: (id: string, nodes: Record<string, SceneNode>, picture: ScenePicture) => void
+  updateMaterial: (id: string, slot: Partial<PbrSlot>) => void
   bump: () => void
 }
 
@@ -49,6 +62,22 @@ export const useAssetStore = create<AssetState>(set => ({
     const asset = state.assets[id]
     if (!asset) return {}
     return { assets: { ...state.assets, [id]: { ...asset, name } }, revision: state.revision + 1 }
+  }),
+  patch: (id, patch) => set(state => {
+    const asset = state.assets[id]
+    if (!asset || !('url' in asset)) return {}
+    return { assets: { ...state.assets, [id]: { ...asset, ...patch } }, revision: state.revision + 1 }
+  }),
+  writeScene: (id, nodes, picture) => set(state => {
+    const asset = state.assets[id]
+    if (!asset || asset.kind !== 'scene') return {}
+    if (JSON.stringify(asset.nodes) === JSON.stringify(nodes) && JSON.stringify(asset.picture) === JSON.stringify(picture)) return {}
+    return { assets: { ...state.assets, [id]: { ...asset, nodes, picture } }, revision: state.revision + 1 }
+  }),
+  updateMaterial: (id, slot) => set(state => {
+    const asset = state.assets[id]
+    if (!asset || asset.kind !== 'material') return {}
+    return { assets: { ...state.assets, [id]: { ...asset, slot: { ...asset.slot, ...slot } } }, revision: state.revision + 1 }
   }),
   bump: () => set(state => ({ revision: state.revision + 1 })),
 }))

@@ -1,10 +1,14 @@
 import { AnimationClip, Group, Mesh, MeshStandardMaterial, Object3D, type BufferGeometry, type Material } from 'three'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
+import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js'
 import { OBJLoader } from 'three/addons/loaders/OBJLoader.js'
 import { STLLoader } from 'three/addons/loaders/STLLoader.js'
+import { ColladaLoader } from 'three/addons/loaders/ColladaLoader.js'
 import { FBXLoader } from 'three/addons/loaders/FBXLoader.js'
+import { TDSLoader } from 'three/addons/loaders/TDSLoader.js'
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js'
 import type { PbrSlot } from '../scene/types'
+import { patchAssetMeta, readFileBytes, readModelArtifact, writeModelArtifact } from './cache'
 import { type FileAsset, useAssetStore } from './library'
 
 export interface ModelTemplate {
@@ -28,6 +32,11 @@ export function getModelTemplate(assetId: string): ModelTemplate | undefined {
   return templates.get(assetId)
 }
 
+export function releaseModel(assetId: string) {
+  templates.delete(assetId)
+  pending.delete(assetId)
+}
+
 export function clipNamesFor(assetId: string | null): string[] {
   if (!assetId) return []
   return templates.get(assetId)?.clips.map(clip => clip.name) ?? []
@@ -38,7 +47,7 @@ export function loadModelTemplate(asset: FileAsset): Promise<ModelTemplate> {
   if (cached) return Promise.resolve(cached)
   const running = pending.get(asset.id)
   if (running) return running
-  const promise = loadByExtension(asset).then(template => {
+  const promise = loadCachedOrSource(asset).then(template => {
     templates.set(asset.id, template)
     pending.delete(asset.id)
     useAssetStore.getState().bump()
@@ -67,6 +76,109 @@ export function instantiateModel(assetId: string): { object: Object3D, clips: An
   return { object, clips: template.clips }
 }
 
+function loadCachedOrSource(asset: FileAsset): Promise<ModelTemplate> {
+  return loadArtifact(asset).then(template => {
+    if (template) return template
+    return ensureSourceUrl(asset).then(source => loadByExtension(source)).then(template => {
+      if (asset.hash) void storeModelArtifact(asset, template)
+      return template
+    })
+  })
+}
+
+async function loadArtifact(asset: FileAsset): Promise<ModelTemplate | null> {
+  if (!asset.hash) return null
+  try {
+    const glb = await readModelArtifact(asset.hash)
+    if (!glb) return null
+    return await parseArtifact(glb)
+  } catch (error) {
+    console.warn('[cache] 模型成品不可用，改为解析源文件', asset.name, error)
+    return null
+  }
+}
+
+async function ensureSourceUrl(asset: FileAsset): Promise<FileAsset> {
+  if (asset.url) return asset
+  const bytes = await readFileBytes(asset.id)
+  if (!bytes) throw new Error('缓存里没有源文件')
+  const url = URL.createObjectURL(new Blob([bytes]))
+  useAssetStore.getState().patch(asset.id, { url })
+  return { ...asset, url }
+}
+
+function parseArtifact(data: ArrayBuffer): Promise<ModelTemplate> {
+  const loader = new GLTFLoader()
+  loader.setMeshoptDecoder(MeshoptDecoder)
+  const payload = isGlb(data) ? data : new TextDecoder().decode(data)
+  return new Promise((resolve, reject) => {
+    loader.parse(payload, '', gltf => resolve(templateFromObject(gltf.scene, gltf.animations)), reject)
+  })
+}
+
+function isGlb(data: ArrayBuffer): boolean {
+  if (data.byteLength < 4) return false
+  return new TextDecoder().decode(new Uint8Array(data, 0, 4)) === 'glTF'
+}
+
+async function storeModelArtifact(asset: FileAsset, template: ModelTemplate) {
+  if (!asset.hash) return
+  try {
+    const ext = asset.fileName.split('.').pop()?.toLowerCase()
+    const bytes = ext === 'glb' || ext === 'gltf'
+      ? await sourceBytes(asset)
+      : await exportGlb(template).then(exported => exported ? compressMeshopt(exported) : null)
+    if (!bytes) return
+    await writeModelArtifact(asset.hash, bytes)
+    await patchAssetMeta(asset.id, { artifactReady: true })
+  } catch (error) {
+    console.warn('[cache] 模型成品写入失败', error)
+  }
+}
+
+async function sourceBytes(asset: FileAsset): Promise<ArrayBuffer | null> {
+  if (asset.url) return fetch(asset.url).then(response => response.arrayBuffer())
+  return readFileBytes(asset.id)
+}
+
+async function exportGlb(template: ModelTemplate): Promise<ArrayBuffer | null> {
+  const { GLTFExporter } = await import('three/addons/exporters/GLTFExporter.js')
+  const exporter = new GLTFExporter()
+  const data = await exporter.parseAsync(template.scene, {
+    binary: true,
+    animations: template.clips,
+    onlyVisible: false,
+  })
+  if (data instanceof ArrayBuffer) return data
+  if (ArrayBuffer.isView(data)) {
+    return data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength) as ArrayBuffer
+  }
+  return null
+}
+
+async function compressMeshopt(glb: ArrayBuffer): Promise<ArrayBuffer> {
+  try {
+    const [{ WebIO }, { meshopt }, { EXTMeshoptCompression, KHRMeshQuantization }, { MeshoptEncoder }] = await Promise.all([
+      import('@gltf-transform/core'),
+      import('@gltf-transform/functions'),
+      import('@gltf-transform/extensions'),
+      import('meshoptimizer'),
+    ])
+    await MeshoptEncoder.ready
+    const io = new WebIO()
+      .registerExtensions([EXTMeshoptCompression, KHRMeshQuantization])
+      .registerDependencies({ 'meshopt.encoder': MeshoptEncoder })
+    const document = await io.readBinary(new Uint8Array(glb))
+    await document.transform(meshopt({ encoder: MeshoptEncoder, level: 'medium' }))
+    const compressed = await io.writeBinary(document)
+    if (compressed.byteLength === 0 || compressed.byteLength >= glb.byteLength) return glb
+    return compressed.buffer.slice(compressed.byteOffset, compressed.byteOffset + compressed.byteLength)
+  } catch (error) {
+    console.warn('[cache] meshopt 压缩失败，改存未压缩成品', error)
+    return glb
+  }
+}
+
 function loadByExtension(asset: FileAsset): Promise<ModelTemplate> {
   const ext = asset.fileName.split('.').pop()?.toLowerCase()
   if (ext === 'obj') {
@@ -81,6 +193,13 @@ function loadByExtension(asset: FileAsset): Promise<ModelTemplate> {
   }
   if (ext === 'fbx') {
     return loadWith<Group>(new FBXLoader(), asset.url).then(object => templateFromObject(object, object.animations ?? []))
+  }
+  if (ext === 'dae') {
+    return loadWith<{ scene: Object3D, animations?: AnimationClip[] }>(new ColladaLoader(), asset.url)
+      .then(collada => templateFromObject(collada.scene, collada.animations ?? []))
+  }
+  if (ext === '3ds') {
+    return loadWith<Group>(new TDSLoader(), asset.url).then(object => templateFromObject(object, []))
   }
   return loadWith<{ scene: Group, animations: AnimationClip[] }>(new GLTFLoader(), asset.url).then(gltf => templateFromObject(gltf.scene, gltf.animations))
 }

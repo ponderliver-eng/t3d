@@ -1,4 +1,5 @@
-import { FilePlus, Grid3x3, History, Magnet, Move3d, Pause, Play, Redo2, RotateCcw, Save, Scaling, Square, Undo2 } from 'lucide-react'
+import { ArrowDownToLine, FilePlus, Grid3x3, History, Magnet, Move3d, Pause, Play, Redo2, RotateCcw, Save, Scaling, Square, Undo2 } from 'lucide-react'
+import { saveProjectNow } from '../assets/project'
 import { askNewScene, useEditorStore } from '../scene/store'
 import { selectTab } from './events'
 import './Toolbar.css'
@@ -7,6 +8,7 @@ export default function Toolbar() {
   const gizmoMode = useEditorStore(state => state.gizmoMode)
   const gizmoSpace = useEditorStore(state => state.gizmoSpace)
   const snap = useEditorStore(state => state.snap)
+  const origin = useEditorStore(state => state.gizmoOrigin)
   const grid = useEditorStore(state => state.gridVisible)
   const playState = useEditorStore(state => state.playState)
   const sidePanel = useEditorStore(state => state.sidePanel)
@@ -32,8 +34,8 @@ export default function Toolbar() {
         <button
           type="button"
           className="toolbar__btn"
-          title="保存（工程文件还没接入）"
-          onClick={() => useEditorStore.getState().notify('工程保存还没接入')}
+          title="保存到本地缓存"
+          onClick={() => { void saveProjectNow().then(() => useEditorStore.getState().notify('已保存到本地缓存')) }}
         >
           <Save size={14} />
         </button>
@@ -71,6 +73,17 @@ export default function Toolbar() {
         </button>
         <button type="button" className={`toolbar__btn ${grid ? 'toolbar__btn--active' : ''}`} title="显示网格" onClick={() => useEditorStore.getState().toggleGrid()}>
           <Grid3x3 size={14} />
+        </button>
+        <button type="button" className="toolbar__btn" title="贴地" disabled={playState !== 'stopped'} onClick={() => useEditorStore.getState().snapSelectionToGround()}>
+          <ArrowDownToLine size={14} />
+        </button>
+        <button
+          type="button"
+          className={`toolbar__btn ${origin === 'center' ? 'toolbar__btn--active' : ''}`}
+          title={origin === 'center' ? '手柄在包围盒中心' : '手柄在轴心'}
+          onClick={() => useEditorStore.getState().setGizmoOrigin(origin === 'pivot' ? 'center' : 'pivot')}
+        >
+          {origin === 'center' ? '中心' : '轴心'}
         </button>
       </div>
       <div className="toolbar__divider" />

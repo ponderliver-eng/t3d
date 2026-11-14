@@ -1,6 +1,7 @@
 import { Euler, Quaternion, Vector3 } from 'three'
 import { makeNode } from './kinds'
-import type { SceneNode } from './types'
+import type { SceneNode, ScenePicture } from './types'
+import { DEFAULT_PICTURE } from './types'
 
 function aimDownY(from: Vector3, to: Vector3): [number, number, number] {
   const direction = to.clone().sub(from).normalize()
@@ -50,4 +51,24 @@ export function createSeed(): SeedScene {
     }),
   }
   return { nodes, selectedId: 'seed-cube' }
+}
+
+export function createFreshScene(name: string): { id: string, name: string, nodes: Record<string, SceneNode>, picture: ScenePicture, selectedId: string } {
+  const seed = createSeed()
+  const map = new Map<string, string>()
+  for (const id of Object.keys(seed.nodes)) map.set(id, crypto.randomUUID())
+  const nodes: Record<string, SceneNode> = {}
+  for (const node of Object.values(seed.nodes)) {
+    const copy = structuredClone(node)
+    copy.id = map.get(node.id) ?? copy.id
+    copy.parentId = node.parentId ? map.get(node.parentId) ?? null : null
+    nodes[copy.id] = copy
+  }
+  return {
+    id: crypto.randomUUID(),
+    name,
+    nodes,
+    picture: structuredClone(DEFAULT_PICTURE),
+    selectedId: map.get(seed.selectedId) ?? Object.keys(nodes)[0],
+  }
 }

@@ -1,11 +1,11 @@
-import { useEffect, useMemo, useState, type MouseEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent } from 'react'
 import {
   Axis3d, Box, Boxes, Camera, ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, Circle, Cylinder, Eye, EyeOff,
   Flashlight, Lightbulb, Lock, Pill, Plus, Search, Square, Sun, Sunrise, Unlock, X,
 } from 'lucide-react'
 import { savePrefabFromSelection } from '../assets/import'
 import { childrenOf, isLight, isMesh, KIND_LABEL, LIGHT_KINDS, MESH_KINDS } from '../scene/kinds'
-import { useEditorStore } from '../scene/store'
+import { useEditorStore, primaryId } from '../scene/store'
 import { isUnder } from '../scene/transform'
 import type { NodeKind, SceneNode } from '../scene/types'
 import './HierarchyPanel.css'
@@ -26,6 +26,7 @@ const ICONS: Record<NodeKind, typeof Box> = {
 }
 
 let dragId: string | null = null
+const RENAME_DELAY_MS = 1000
 
 export default function HierarchyPanel() {
   const nodes = useEditorStore(state => state.nodes)
@@ -33,11 +34,15 @@ export default function HierarchyPanel() {
   const playing = useEditorStore(state => state.playState !== 'stopped')
   const [query, setQuery] = useState('')
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
-  const [anchor, setAnchor] = useState<string | null>(null)
   const [dropId, setDropId] = useState<string | null>(null)
   const [menu, setMenu] = useState<{ x: number; y: number; id: string } | null>(null)
   const [renameId, setRenameId] = useState<string | null>(null)
   const [createOpen, setCreateOpen] = useState(false)
+  const listRef = useRef<HTMLDivElement>(null)
+  const renameTimer = useRef<number | null>(null)
+  const dragged = useRef(false)
+  const primary = primaryId({ selection })
+  const pendingRenameId = useEditorStore(state => state.pendingRenameId)
 
   const q = query.trim().toLowerCase()
   const matches = useMemo(() => {
@@ -81,25 +86,106 @@ export default function HierarchyPanel() {
     return () => window.removeEventListener('pointerdown', close)
   }, [menu, createOpen])
 
+  useEffect(() => () => {
+    if (renameTimer.current != null) window.clearTimeout(renameTimer.current)
+  }, [])
+
+  useEffect(() => {
+    if (!primary) return
+    const current = useEditorStore.getState().nodes
+    setCollapsed(state => {
+      const next = { ...state }
+      let parent = current[primary]?.parentId ?? null
+      let changed = false
+      while (parent) {
+        if (next[parent]) {
+          delete next[parent]
+          changed = true
+        }
+        parent = current[parent]?.parentId ?? null
+      }
+      return changed ? next : state
+    })
+    const timer = window.setTimeout(() => {
+      listRef.current?.querySelector(`[data-node-id="${primary}"]`)?.scrollIntoView({ block: 'nearest' })
+    }, 0)
+    return () => window.clearTimeout(timer)
+  }, [primary])
+
+  useEffect(() => {
+    if (!pendingRenameId) return
+    startRename(pendingRenameId)
+    useEditorStore.setState({ pendingRenameId: null })
+  }, [pendingRenameId])
+
+  const clearRenameTimer = () => {
+    if (renameTimer.current != null) {
+      window.clearTimeout(renameTimer.current)
+      renameTimer.current = null
+    }
+  }
+
+  const startRename = (id: string) => {
+    clearRenameTimer()
+    if (!useEditorStore.getState().nodes[id]) return
+    setRenameId(id)
+  }
+
   const selectRow = (id: string, event: MouseEvent) => {
+    if (event.button !== 0) return
+    if (dragged.current) {
+      dragged.current = false
+      return
+    }
+    const store = useEditorStore.getState()
     const ids = visibleRows.map(row => row.node.id)
-    if (event.shiftKey && anchor) {
-      const start = ids.indexOf(anchor)
+    if (event.ctrlKey || event.metaKey) {
+      clearRenameTimer()
+      const next = selection.includes(id) ? selection.filter(item => item !== id) : [...selection, id]
+      store.setSelection(next)
+      return
+    }
+    if (event.shiftKey && primary) {
+      clearRenameTimer()
+      const start = ids.indexOf(primary)
       const end = ids.indexOf(id)
       if (start >= 0 && end >= 0) {
         const [from, to] = start < end ? [start, end] : [end, start]
         const range = ids.slice(from, to + 1).filter(item => item !== id)
-        useEditorStore.getState().setSelection([...range, id])
+        store.setSelection([...range, id])
         return
       }
     }
-    if (event.ctrlKey || event.metaKey) {
-      const next = selection.includes(id) ? selection.filter(item => item !== id) : [...selection, id]
-      useEditorStore.getState().setSelection(next)
+    const sole = selection.length === 1 && selection[0] === id && renameId !== id
+    if (sole) {
+      clearRenameTimer()
+      renameTimer.current = window.setTimeout(() => {
+        renameTimer.current = null
+        const now = useEditorStore.getState()
+        if (now.selection.length === 1 && now.selection[0] === id) setRenameId(id)
+      }, RENAME_DELAY_MS)
       return
     }
-    useEditorStore.getState().setSelection([id])
-    setAnchor(id)
+    clearRenameTimer()
+    store.setSelection([id])
+  }
+
+  const focusRow = (id: string, event: MouseEvent) => {
+    event.preventDefault()
+    clearRenameTimer()
+    if (event.ctrlKey || event.metaKey || event.shiftKey) return
+    const store = useEditorStore.getState()
+    store.setSelection([id])
+    store.requestFocus()
+  }
+
+  const onPanelKey = (event: KeyboardEvent) => {
+    const target = event.target as HTMLElement
+    if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT') return
+    if (event.key !== 'F2') return
+    event.preventDefault()
+    const id = primaryId(useEditorStore.getState())
+    if (id) startRename(id)
   }
 
   const create = (kind: NodeKind) => {
@@ -108,7 +194,7 @@ export default function HierarchyPanel() {
   }
 
   return (
-    <div className="scene-panel" onContextMenu={event => event.preventDefault()}>
+    <div className="scene-panel" tabIndex={0} onKeyDown={onPanelKey} onContextMenu={event => event.preventDefault()}>
       <div className="scene-panel__bar">
         <div className="scene-panel__search">
           <Search size={12} />
@@ -155,6 +241,7 @@ export default function HierarchyPanel() {
       </div>
       <div
         className="scene-panel__list"
+        ref={listRef}
         onDragOver={event => {
           if (playing || !dragId) return
           event.preventDefault()
@@ -179,15 +266,16 @@ export default function HierarchyPanel() {
               className={[
                 'scene-item',
                 selected ? 'scene-item--selected' : '',
+                primary === node.id ? 'scene-item--primary' : '',
                 dropId === node.id ? 'scene-item--drop' : '',
                 node.visible ? '' : 'scene-item--hidden',
                 ancestorHidden(nodes, node.id) ? 'scene-item--ancestor-hidden' : '',
               ].filter(Boolean).join(' ')}
               style={{ paddingLeft: 6 + depth * 14 }}
-              onMouseDown={event => {
-                if (event.button === 0) selectRow(node.id, event)
-              }}
-              onDoubleClick={() => setRenameId(node.id)}
+              data-node-id={node.id}
+              title="单击选择，再单击改名，双击聚焦"
+              onClick={event => selectRow(node.id, event)}
+              onDoubleClick={event => focusRow(node.id, event)}
               onContextMenu={event => {
                 event.preventDefault()
                 event.stopPropagation()
@@ -201,6 +289,7 @@ export default function HierarchyPanel() {
                 event.dataTransfer.setData('text/plain', node.id)
               }}
               onDragEnd={() => {
+                dragged.current = true
                 dragId = null
                 setDropId(null)
               }}
@@ -223,7 +312,10 @@ export default function HierarchyPanel() {
                 type="button"
                 className="scene-item__twist"
                 onMouseDown={event => event.stopPropagation()}
-                onClick={() => hasChildren && setCollapsed(state => ({ ...state, [node.id]: !state[node.id] }))}
+                onClick={event => {
+                  event.stopPropagation()
+                  if (hasChildren) setCollapsed(state => ({ ...state, [node.id]: !state[node.id] }))
+                }}
               >
                 {hasChildren ? (collapsed[node.id] && !q ? <ChevronRight size={12} /> : <ChevronDown size={12} />) : null}
               </button>
@@ -234,13 +326,18 @@ export default function HierarchyPanel() {
                   autoFocus
                   defaultValue={node.name}
                   onMouseDown={event => event.stopPropagation()}
-                  onFocus={() => useEditorStore.getState().beginGesture('重命名')}
+                  onClick={event => event.stopPropagation()}
+                  onDoubleClick={event => event.stopPropagation()}
+                  onFocus={event => event.currentTarget.select()}
                   onBlur={event => {
                     const cancel = event.currentTarget.dataset.cancel === '1'
                     const name = event.currentTarget.value.trim()
-                    if (!cancel && name) useEditorStore.getState().updateNode(node.id, { name })
-                    useEditorStore.getState().endGesture()
                     setRenameId(null)
+                    if (cancel || !name || name === node.name) return
+                    const store = useEditorStore.getState()
+                    store.beginGesture('重命名')
+                    store.updateNode(node.id, { name })
+                    store.endGesture()
                   }}
                   onKeyDown={event => {
                     if (event.key === 'Enter') event.currentTarget.blur()
@@ -259,16 +356,22 @@ export default function HierarchyPanel() {
                   className={node.visible ? '' : 'scene-item__off'}
                   title={node.visible ? '隐藏' : '显示'}
                   onMouseDown={event => event.stopPropagation()}
-                  onClick={() => useEditorStore.getState().toggleVisible(node.id)}
+                  onClick={event => {
+                    event.stopPropagation()
+                    useEditorStore.getState().toggleVisible(node.id)
+                  }}
                 >
                   {node.visible ? <Eye size={12} /> : <EyeOff size={12} />}
                 </button>
                 <button
                   type="button"
                   className={node.locked ? 'scene-item__locked' : ''}
-                  title={node.locked ? '解锁' : '锁定'}
+                  title={node.locked ? '已锁定：视口点选会穿透，手柄也不作用' : '锁定后视口点选穿透，手柄不作用'}
                   onMouseDown={event => event.stopPropagation()}
-                  onClick={() => useEditorStore.getState().toggleLocked(node.id)}
+                  onClick={event => {
+                    event.stopPropagation()
+                    useEditorStore.getState().toggleLocked(node.id)
+                  }}
                 >
                   {node.locked ? <Lock size={12} /> : <Unlock size={12} />}
                 </button>
@@ -280,8 +383,13 @@ export default function HierarchyPanel() {
       {menu && (
         <div className="scene-panel__context" style={{ left: menu.x, top: menu.y }} onPointerDown={event => event.stopPropagation()}>
           <button type="button" disabled={playing} onClick={() => { useEditorStore.getState().createNode('empty', menu.id); setMenu(null) }}>创建子物体</button>
+          <button type="button" onClick={() => { startRename(menu.id); setMenu(null) }}>重命名</button>
           <button type="button" onClick={() => { useEditorStore.getState().requestFocus(); setMenu(null) }}>聚焦</button>
-          <button type="button" disabled={playing} onClick={() => { useEditorStore.getState().duplicateSelection(); setMenu(null) }}>复制</button>
+          <button type="button" disabled={playing} onClick={() => { useEditorStore.getState().duplicateSelection(); setMenu(null) }}>就地复制</button>
+          <button type="button" disabled={playing} onClick={() => { useEditorStore.getState().copySelection(); setMenu(null) }}>拷贝</button>
+          <button type="button" disabled={playing || !useEditorStore.getState().canPaste} onClick={() => { useEditorStore.getState().pasteClipboard(menu.id); setMenu(null) }}>粘贴为子级</button>
+          <button type="button" disabled={playing} onClick={() => { useEditorStore.getState().groupSelection(); setMenu(null) }}>成组</button>
+          <button type="button" disabled={playing} onClick={() => { useEditorStore.getState().snapSelectionToGround(); setMenu(null) }}>贴地</button>
           <button type="button" disabled={playing} onClick={() => { savePrefabFromSelection(); setMenu(null) }}>存为预制体</button>
           <button type="button" disabled={playing} onClick={() => { useEditorStore.getState().deleteSelection(); setMenu(null) }}>删除</button>
           <button

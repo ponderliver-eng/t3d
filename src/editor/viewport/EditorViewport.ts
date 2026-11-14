@@ -52,6 +52,7 @@ import { useAssetStore } from '../assets/library'
 import { bindTextureRenderer, environmentFor } from '../assets/textures'
 import { isLight, isMesh } from '../scene/kinds'
 import { setSpawnProvider } from '../scene/spawn'
+import { setGroundSnapper } from '../scene/viewportBridge'
 import { useEditorStore } from '../scene/store'
 import type { SceneNode } from '../scene/types'
 import { EditorCameraRig } from './cameraControls'
@@ -117,6 +118,10 @@ export class EditorViewport {
   private readonly proxyScale = new Vector3(1, 1, 1)
   private readonly cubeQuat = new Quaternion()
   private press: Press | null = null
+  private rightPress: { x: number, y: number, moved: boolean } | null = null
+  private marquee: HTMLDivElement | null = null
+  private centerAttached = false
+  private contextHandler: ((x: number, y: number, id: string | null) => void) | null = null
   private width = 0
   private height = 0
   private last = 0
@@ -158,7 +163,10 @@ export class EditorViewport {
     this.transform.size = 0.85
     this.gizmo = this.transform.getHelper()
     root.add(this.gizmo)
-    markHelper(this.gizmo)
+    this.gizmo.traverse(child => {
+      child.castShadow = false
+      child.receiveShadow = false
+    })
     this.transform.addEventListener('mouseDown', this.onGizmoDown)
     this.transform.addEventListener('objectChange', this.onGizmoChange)
     this.transform.addEventListener('mouseUp', this.onGizmoUp)
@@ -179,6 +187,7 @@ export class EditorViewport {
       const point = this.rig.active.position.clone().addScaledVector(direction, 6)
       return [point.x, 0, point.z]
     })
+    setGroundSnapper(ids => this.measureSnap(ids))
 
     this.canvas.addEventListener('pointerdown', this.onPointerDown, true)
     this.canvas.addEventListener('pointermove', this.onPointerMove)
@@ -203,6 +212,8 @@ export class EditorViewport {
     this.unsubscribeAssets()
     this.resizeObserver.disconnect()
     setSpawnProvider(() => [0, 0, 0])
+    setGroundSnapper(null)
+    this.marquee?.remove()
     this.canvas.removeEventListener('pointerdown', this.onPointerDown, true)
     this.canvas.removeEventListener('pointermove', this.onPointerMove)
     this.canvas.removeEventListener('pointerup', this.onPointerUp)
@@ -295,6 +306,7 @@ export class EditorViewport {
       state.selection.map(id => `${id}:${state.nodes[id]?.locked ? 1 : 0}`).join(','),
       state.gizmoMode,
       state.gizmoSpace,
+      state.gizmoOrigin,
       state.playState,
     ].join('|')
     if (!this.driving && attachKey !== this.attachKey) {
@@ -448,16 +460,59 @@ export class EditorViewport {
     if (pickMesh?.material instanceof MeshBasicMaterial && !isMesh(node.kind)) pickMesh.material.color.set(node.color)
   }
 
+  setContextHandler(handler: ((x: number, y: number, id: string | null) => void) | null) {
+    this.contextHandler = handler
+  }
+
+  private measureSnap(ids: string[]) {
+    const down = new Vector3(0, -1, 0)
+    const moves: { id: string, position: [number, number, number] }[] = []
+    for (const id of ids) {
+      const object = this.objects.get(id)
+      const node = useEditorStore.getState().nodes[id]
+      if (!object || !node) continue
+      const source = dataOf(object).pick ?? object
+      const box = new Box3().setFromObject(source)
+      if (box.isEmpty()) continue
+      const origin = new Vector3(box.getCenter(new Vector3()).x, box.max.y + 0.05, box.getCenter(new Vector3()).z)
+      const ray = new Raycaster(origin, down, 0, 800)
+      ray.layers.enable(1)
+      let ground = 0
+      let found = false
+      for (const hit of ray.intersectObjects(this.pickables, true)) {
+        let current: Object3D | null = hit.object
+        let self = false
+        while (current) {
+          if (current.userData.nodeId === id) {
+            self = true
+            break
+          }
+          current = current.parent
+        }
+        if (self) continue
+        ground = hit.point.y
+        found = true
+        break
+      }
+      if (!found) ground = 0
+      const delta = ground - box.min.y
+      if (Math.abs(delta) < 0.0001) continue
+      moves.push({ id, position: [node.position[0], node.position[1] + delta, node.position[2]] })
+    }
+    return moves
+  }
+
   private attachToSelection() {
-    const { nodes, selection, playState } = useEditorStore.getState()
+    const { nodes, selection, playState, gizmoOrigin } = useEditorStore.getState()
     const ids = selection.filter(id => nodes[id] && !nodes[id].locked)
+    this.centerAttached = false
     if (playState !== 'stopped' || ids.length === 0) {
       this.transform.detach()
       this.proxyAttached = false
       this.singleId = null
       return
     }
-    if (ids.length === 1) {
+    if (ids.length === 1 && gizmoOrigin === 'pivot') {
       const object = this.objects.get(ids[0])
       if (!object) return
       this.proxyAttached = false
@@ -468,7 +523,20 @@ export class EditorViewport {
     const anchorId = [...selection].reverse().find(id => ids.includes(id)) ?? ids[0]
     const anchor = this.objects.get(anchorId)
     if (!anchor) return
-    anchor.getWorldPosition(this.proxy.position)
+    if (gizmoOrigin === 'center') {
+      const box = new Box3()
+      for (const id of ids) {
+        const object = this.objects.get(id)
+        if (!object) continue
+        const next = new Box3().setFromObject(dataOf(object).pick ?? object)
+        if (!next.isEmpty()) box.union(next)
+      }
+      if (!box.isEmpty()) box.getCenter(this.proxy.position)
+      else anchor.getWorldPosition(this.proxy.position)
+      this.centerAttached = true
+    } else {
+      anchor.getWorldPosition(this.proxy.position)
+    }
     anchor.getWorldQuaternion(this.proxy.quaternion)
     this.proxy.scale.set(1, 1, 1)
     this.proxy.updateMatrixWorld(true)
@@ -523,7 +591,6 @@ export class EditorViewport {
 
   private applyProxy() {
     const mode = this.transform.mode
-    const space = this.transform.space
     const delta = this.proxy.position.clone().sub(this.proxyStart)
     const qDelta = this.proxyQuat.clone().invert().multiply(this.proxy.quaternion)
     for (const base of this.baselines) {
@@ -534,26 +601,31 @@ export class EditorViewport {
         object.quaternion.copy(base.localQuat)
         object.scale.copy(base.localScale)
       } else if (mode === 'rotate') {
-        if (space === 'local') {
-          object.quaternion.copy(base.localQuat).multiply(qDelta)
-          object.position.copy(base.localPos)
-        } else {
-          const worldQuat = qDelta.clone().multiply(base.worldQuat)
-          const parentQuat = new Quaternion()
-          object.parent.getWorldQuaternion(parentQuat)
-          object.quaternion.copy(parentQuat.invert()).multiply(worldQuat)
-          object.position.copy(object.parent.worldToLocal(base.worldPos.clone()))
+        const worldQuat = qDelta.clone().multiply(base.worldQuat)
+        const parentQuat = new Quaternion()
+        object.parent.getWorldQuaternion(parentQuat)
+        object.quaternion.copy(parentQuat.invert()).multiply(worldQuat)
+        const worldPos = base.worldPos.clone()
+        if (this.centerAttached) {
+          worldPos.sub(this.proxyStart).applyQuaternion(qDelta).add(this.proxyStart)
         }
+        object.position.copy(object.parent.worldToLocal(worldPos))
         object.scale.copy(base.localScale)
       } else {
-        const factor = this.proxyScale.clone()
+        const startScale = this.proxyScale
         object.scale.set(
-          base.localScale.x * this.proxy.scale.x / (factor.x || 1),
-          base.localScale.y * this.proxy.scale.y / (factor.y || 1),
-          base.localScale.z * this.proxy.scale.z / (factor.z || 1),
+          base.localScale.x * this.proxy.scale.x / (startScale.x || 1),
+          base.localScale.y * this.proxy.scale.y / (startScale.y || 1),
+          base.localScale.z * this.proxy.scale.z / (startScale.z || 1),
         )
-        object.position.copy(base.localPos)
-        object.quaternion.copy(base.localQuat)
+        if (this.centerAttached) {
+          const offset = base.worldPos.clone().sub(this.proxyStart).multiply(this.proxy.scale)
+          object.position.copy(object.parent.worldToLocal(this.proxyStart.clone().add(offset)))
+          object.quaternion.copy(base.localQuat)
+        } else {
+          object.position.copy(base.localPos)
+          object.quaternion.copy(base.localQuat)
+        }
       }
       this.writeObject(base.id)
     }
@@ -651,14 +723,30 @@ export class EditorViewport {
         additive: event.ctrlKey || event.metaKey || event.shiftKey,
       }
     }
+    if (event.button === 2) this.rightPress = { x: event.clientX, y: event.clientY, moved: false }
   }
 
   private onPointerMove = (event: PointerEvent) => {
     this.rig.pointerMove(event)
+    if (this.rightPress && (event.buttons & 2)) {
+      const dx = event.clientX - this.rightPress.x
+      const dy = event.clientY - this.rightPress.y
+      if (dx * dx + dy * dy > 16) this.rightPress.moved = true
+    }
     if (!this.press) return
     const dx = event.clientX - this.press.x
     const dy = event.clientY - this.press.y
-    if (dx * dx + dy * dy > 16) this.press = null
+    if (dx * dx + dy * dy < 16) return
+    if (!this.canvas.hasPointerCapture(event.pointerId)) this.canvas.setPointerCapture(event.pointerId)
+    const box = this.ensureMarquee()
+    const stage = this.stage.getBoundingClientRect()
+    const left = Math.min(this.press.x, event.clientX) - stage.left
+    const top = Math.min(this.press.y, event.clientY) - stage.top
+    box.style.display = 'block'
+    box.style.left = `${left}px`
+    box.style.top = `${top}px`
+    box.style.width = `${Math.abs(dx)}px`
+    box.style.height = `${Math.abs(dy)}px`
   }
 
   private onPointerUp = (event: PointerEvent) => {
@@ -666,20 +754,64 @@ export class EditorViewport {
     this.press = null
     this.rig.pointerUp()
     if (this.canvas.hasPointerCapture(event.pointerId)) this.canvas.releasePointerCapture(event.pointerId)
-    if (press && event.button === 0) this.pick(press.x, press.y, press.additive)
+    const dragged = press && this.marquee?.style.display === 'block'
+    if (this.marquee) this.marquee.style.display = 'none'
+    if (!press || event.button !== 0) return
+    if (dragged) this.selectMarquee(press.x, press.y, event.clientX, event.clientY, press.additive)
+    else this.pick(press.x, press.y, press.additive)
   }
 
   private onWheel = (event: WheelEvent) => {
     this.rig.wheel(event)
   }
 
-  private onContext = (event: Event) => {
+  private onContext = (event: MouseEvent) => {
     event.preventDefault()
+    const moved = this.rightPress?.moved ?? false
+    this.rightPress = null
+    if (moved) return
+    const id = this.pickId(event.clientX, event.clientY)
+    if (id && !useEditorStore.getState().selection.includes(id)) useEditorStore.getState().setSelection([id])
+    this.contextHandler?.(event.clientX, event.clientY, id)
   }
 
-  private pick(clientX: number, clientY: number, additive: boolean) {
+  private ensureMarquee() {
+    if (this.marquee) return this.marquee
+    const box = document.createElement('div')
+    box.className = 'viewport-marquee'
+    this.stage.appendChild(box)
+    this.marquee = box
+    return box
+  }
+
+  private selectMarquee(x0: number, y0: number, x1: number, y1: number, additive: boolean) {
+    const left = Math.min(x0, x1)
+    const right = Math.max(x0, x1)
+    const top = Math.min(y0, y1)
+    const bottom = Math.max(y0, y1)
     const rect = this.canvas.getBoundingClientRect()
-    if (rect.width < 2 || rect.height < 2) return
+    const ids: string[] = []
+    const nodes = useEditorStore.getState().nodes
+    for (const [id, group] of this.objects) {
+      const node = nodes[id]
+      if (!node?.visible || node.locked) continue
+      const source = dataOf(group).pick ?? group
+      const box = new Box3().setFromObject(source)
+      const point = box.isEmpty() ? group.getWorldPosition(new Vector3()) : box.getCenter(new Vector3())
+      const ndc = point.project(this.rig.active)
+      if (ndc.z < -1 || ndc.z > 1) continue
+      const sx = (ndc.x * 0.5 + 0.5) * rect.width + rect.left
+      const sy = (-ndc.y * 0.5 + 0.5) * rect.height + rect.top
+      if (sx >= left && sx <= right && sy >= top && sy <= bottom) ids.push(id)
+    }
+    const store = useEditorStore.getState()
+    if (additive) store.setSelection([...new Set([...store.selection, ...ids])])
+    else store.setSelection(ids)
+  }
+
+  private pickId(clientX: number, clientY: number): string | null {
+    const rect = this.canvas.getBoundingClientRect()
+    if (rect.width < 2 || rect.height < 2) return null
     this.pointer.set(
       ((clientX - rect.left) / rect.width) * 2 - 1,
       -((clientY - rect.top) / rect.height) * 2 + 1,
@@ -691,12 +823,21 @@ export class EditorViewport {
       while (object && !object.userData.nodeId) object = object.parent
       if (!object || !isRendered(object)) continue
       const id = object.userData.nodeId as string
-      const { selection, setSelection } = useEditorStore.getState()
-      if (additive) setSelection(selection.includes(id) ? selection.filter(item => item !== id) : [...selection, id])
-      else setSelection([id])
+      if (useEditorStore.getState().nodes[id]?.locked) continue
+      return id
+    }
+    return null
+  }
+
+  private pick(clientX: number, clientY: number, additive: boolean) {
+    const id = this.pickId(clientX, clientY)
+    const { selection, setSelection } = useEditorStore.getState()
+    if (!id) {
+      if (!additive) setSelection([])
       return
     }
-    if (!additive) useEditorStore.getState().setSelection([])
+    if (additive) setSelection(selection.includes(id) ? selection.filter(item => item !== id) : [...selection, id])
+    else setSelection([id])
   }
 
   raycastDrop(clientX: number, clientY: number): { point: [number, number, number], nodeId: string | null } {

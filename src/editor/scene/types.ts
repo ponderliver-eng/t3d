@@ -75,6 +75,7 @@ export const DEFAULT_PICTURE: ScenePicture = {
 
 export type GizmoMode = 'translate' | 'rotate' | 'scale'
 export type GizmoSpace = 'world' | 'local'
+export type GizmoOrigin = 'pivot' | 'center'
 export type PlayState = 'stopped' | 'playing' | 'paused'
 export type LogLevel = 'info' | 'warn' | 'error'
 export type CameraView = 'persp' | 'top' | 'bottom' | 'front' | 'back' | 'left' | 'right'

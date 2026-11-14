@@ -1,3 +1,4 @@
+import { useAssetStore } from '../assets/library'
 import { primaryId, useEditorStore } from '../scene/store'
 import './StatusBar.css'
 
@@ -12,7 +13,14 @@ export default function StatusBar() {
   const gizmoMode = useEditorStore(state => state.gizmoMode)
   const gizmoSpace = useEditorStore(state => state.gizmoSpace)
   const snap = useEditorStore(state => state.snap)
+  const snapStep = useEditorStore(state => state.snapStep)
+  const origin = useEditorStore(state => state.gizmoOrigin)
   const notice = useEditorStore(state => state.notice)
+  const activeSceneId = useEditorStore(state => state.activeSceneId)
+  const sceneName = useAssetStore(state => {
+    const asset = state.assets[activeSceneId]
+    return asset?.kind === 'scene' ? asset.name : '未命名场景'
+  })
   const primary = primaryId({ selection })
   const selectedName = primary ? nodes[primary]?.name : null
 
@@ -20,7 +28,7 @@ export default function StatusBar() {
     <div className="statusbar">
       <span className="statusbar__item">T3D</span>
       <span className="statusbar__sep" />
-      <span className="statusbar__item statusbar__item--project">未命名场景</span>
+      <span className="statusbar__item statusbar__item--project">{sceneName}</span>
       <span className="statusbar__sep" />
       <span className="statusbar__item">{useEditorStore(state => state.renderBackend)}</span>
       <span className="statusbar__sep" />
@@ -42,9 +50,9 @@ export default function StatusBar() {
       <span className="statusbar__sep" />
       <span className="statusbar__item">{projection}</span>
       <span className="statusbar__sep" />
-      <span className="statusbar__item">{GIZMO_LABEL[gizmoMode]} · {gizmoSpace === 'world' ? '世界' : '局部'}</span>
+      <span className="statusbar__item">{GIZMO_LABEL[gizmoMode]} · {gizmoSpace === 'world' ? '世界' : '局部'} · {origin === 'center' ? '中心' : '轴心'}</span>
       <span className="statusbar__sep" />
-      <span className="statusbar__item">{snap ? '吸附 1' : '吸附关'}</span>
+      <span className="statusbar__item">{snap ? `吸附 ${snapStep}` : '吸附关'}</span>
     </div>
   )
 }

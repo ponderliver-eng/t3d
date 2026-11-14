@@ -127,7 +127,10 @@
   color: var(--text-secondary);
   font-size: var(--font-size-sm);
   cursor: pointer;
+  user-select: none;
 }
+
+.scene-panel:focus { outline: none; }
 
 .scene-item:hover { background: var(--bg-hover); color: var(--text-primary); }
 
@@ -135,6 +138,10 @@
 .scene-item--selected:hover {
   background: var(--bg-selected);
   color: var(--text-primary);
+}
+
+.scene-item--primary {
+  box-shadow: inset 2px 0 0 var(--accent);
 }
 
 .scene-item--drop {
