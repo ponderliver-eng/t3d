@@ -10,16 +10,24 @@ import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js'
 import type { PbrSlot } from '../scene/types'
 import { patchAssetMeta, readFileBytes, readModelArtifact, writeModelArtifact } from './cache'
 import { type FileAsset, useAssetStore } from './library'
+import { preserveHumanoidAvatarOverrides } from '../animation/humanoidAvatar'
+import { describeHumanoid, forgetHumanoidSkeletons, registerHumanoidSkeletons, type ModelHumanoid } from '../animation/humanoidRig'
 
 export interface ModelTemplate {
   scene: Group
   clips: AnimationClip[]
   slots: PbrSlot[]
+  humanoid: ModelHumanoid
 }
 
 const templates = new Map<string, ModelTemplate>()
 const pending = new Map<string, Promise<ModelTemplate>>()
+const revisions = new Map<string, number>()
 const listeners = new Set<() => void>()
+
+export function modelRevision(assetId: string): number {
+  return revisions.get(assetId) ?? 0
+}
 
 export function subscribeModels(listener: () => void) {
   listeners.add(listener)
@@ -35,6 +43,7 @@ export function getModelTemplate(assetId: string): ModelTemplate | undefined {
 export function releaseModel(assetId: string) {
   templates.delete(assetId)
   pending.delete(assetId)
+  forgetHumanoidSkeletons(assetId)
 }
 
 export function clipNamesFor(assetId: string | null): string[] {
@@ -42,14 +51,27 @@ export function clipNamesFor(assetId: string | null): string[] {
   return templates.get(assetId)?.clips.map(clip => clip.name) ?? []
 }
 
-export function loadModelTemplate(asset: FileAsset): Promise<ModelTemplate> {
+export function clipDuration(assetId: string | null, name: string): number {
+  if (!assetId || !name) return 0
+  return templates.get(assetId)?.clips.find(clip => clip.name === name)?.duration ?? 0
+}
+
+export function loadModelTemplate(asset: FileAsset, forceSource = false): Promise<ModelTemplate> {
+  if (forceSource) {
+    templates.delete(asset.id)
+    pending.delete(asset.id)
+  }
   const cached = templates.get(asset.id)
   if (cached) return Promise.resolve(cached)
   const running = pending.get(asset.id)
   if (running) return running
-  const promise = loadCachedOrSource(asset).then(template => {
+  const promise = (forceSource ? loadFromSource(asset) : loadCachedOrSource(asset)).then(template => {
     templates.set(asset.id, template)
+    revisions.set(asset.id, (revisions.get(asset.id) ?? 0) + 1)
     pending.delete(asset.id)
+    registerHumanoidSkeletons(asset.id, template.humanoid.skeletons)
+    rememberHumanoidAvatar(asset.id, template.humanoid.avatar)
+    rememberClipCatalog(asset.id, template.clips)
     useAssetStore.getState().bump()
     listeners.forEach(listener => listener())
     return template
@@ -77,12 +99,13 @@ export function instantiateModel(assetId: string): { object: Object3D, clips: An
 }
 
 function loadCachedOrSource(asset: FileAsset): Promise<ModelTemplate> {
-  return loadArtifact(asset).then(template => {
-    if (template) return template
-    return ensureSourceUrl(asset).then(source => loadByExtension(source)).then(template => {
-      if (asset.hash) void storeModelArtifact(asset, template)
-      return template
-    })
+  return loadArtifact(asset).then(template => template ?? loadFromSource(asset))
+}
+
+function loadFromSource(asset: FileAsset): Promise<ModelTemplate> {
+  return ensureSourceUrl(asset).then(source => loadByExtension(source)).then(template => {
+    if (asset.hash) void storeModelArtifact(asset, template)
+    return template
   })
 }
 
@@ -217,7 +240,26 @@ function templateFromObject(object: Object3D, clips: AnimationClip[]): ModelTemp
     scene = new Group()
     scene.add(object)
   }
-  return { scene, clips, slots: readSlots(scene) }
+  return { scene, clips, slots: readSlots(scene), humanoid: describeHumanoid(scene, clips) }
+}
+
+function rememberClipCatalog(assetId: string, clips: AnimationClip[]) {
+  const catalog = clips.filter(clip => clip.name).map(clip => ({ name: clip.name, duration: clip.duration }))
+  if (catalog.length === 0) return
+  const asset = useAssetStore.getState().assets[assetId]
+  if (!asset || !('fileName' in asset)) return
+  if (JSON.stringify(asset.clipCatalog ?? null) === JSON.stringify(catalog)) return
+  useAssetStore.getState().patch(assetId, { clipCatalog: catalog })
+  void patchAssetMeta(assetId, { clipCatalog: catalog })
+}
+
+function rememberHumanoidAvatar(assetId: string, built: ModelHumanoid['avatar']) {
+  const asset = useAssetStore.getState().assets[assetId]
+  if (!asset || !('fileName' in asset)) return
+  const next = preserveHumanoidAvatarOverrides(built, asset.humanoidAvatar ?? null) ?? built
+  if (!next || JSON.stringify(next) === JSON.stringify(asset.humanoidAvatar ?? null)) return
+  useAssetStore.getState().patch(assetId, { humanoidAvatar: next })
+  void patchAssetMeta(assetId, { humanoidAvatar: next })
 }
 
 function readSlots(root: Object3D): PbrSlot[] {

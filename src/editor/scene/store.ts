@@ -164,8 +164,9 @@ export interface EditorState {
   setSnapStep: (step: number) => void
   setViewportStats: (objects: number, triangles: number) => void
   spawnModel: (assetId: string, name: string, slots: PbrSlot[], point: Vec3) => void
-  spawnPrefab: (assetId: string, point: Vec3) => void
-  createPrefabFromSelection: () => void
+  spawnPrefab: (assetId: string, point: Vec3, parentId?: string | null) => void
+  createPrefabFromSelection: (name?: string, nodeId?: string, dir?: string) => void
+  rebindPrefab: (fromId: string, toId: string) => void
   openPrefab: (assetId: string) => void
   closePrefab: (save: boolean) => void
   applyPrefabInstance: (id: string) => void
@@ -842,7 +843,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     if (ok && created) get().log('info', translate('log.placed', { name: created }))
   },
 
-  spawnPrefab: (assetId, point) => {
+  spawnPrefab: (assetId, point, parentId = null) => {
     if (get().prefabSession) {
       get().log('warn', translate('prefab.exitFirst'))
       return
@@ -852,7 +853,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     if (!doc?.rootId) return
     let created = ''
     const ok = mutate(set, get, translate('prefab.place', { name: asset?.name ?? '' }), draft => {
-      const id = instantiatePrefab(draft.nodes, doc, assetId, null, point, lookupPrefab)
+      const id = instantiatePrefab(draft.nodes, doc, assetId, parentId, parentId ? null : point, lookupPrefab)
       if (!id) return
       created = draft.nodes[id]?.name ?? ''
       draft.selection = [id]
@@ -860,25 +861,29 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     if (ok && created) get().log('info', translate('log.placed', { name: created }))
   },
 
-  createPrefabFromSelection: () => {
+  createPrefabFromSelection: (name, nodeId, dir) => {
     if (get().playState !== 'stopped') return
     if (get().prefabSession) {
       get().log('warn', translate('prefab.exitFirst'))
       return
     }
-    const roots = selectionRoots(get().nodes, get().selection)
-    if (roots.length !== 1) {
+    const roots = nodeId ? [nodeId] : selectionRoots(get().nodes, get().selection)
+    if (roots.length !== 1 || !get().nodes[roots[0]]) {
       get().log('warn', translate('prefab.needOne'))
+      return
+    }
+    if (get().nodes[roots[0]].prefabInstanceId === roots[0]) {
+      get().log('warn', translate('prefab.alreadyInstance'))
       return
     }
     const source = get().nodes[roots[0]]
     const doc = captureTemplate(get().nodes, roots[0])
     if (!doc.rootId) return
     const id = crypto.randomUUID()
-    const name = uniqueAssetName(`${source.name}`)
-    useAssetStore.getState().add({ id, name, kind: 'prefab', rootId: doc.rootId, nodes: doc.nodes })
-    useAssetStore.getState().place(id)
-    const ok = mutate(set, get, translate('prefab.create', { name }), draft => {
+    const assetName = uniqueAssetName(name?.trim() || source.name)
+    useAssetStore.getState().add({ id, name: assetName, kind: 'prefab', rootId: doc.rootId, nodes: doc.nodes })
+    useAssetStore.getState().place(id, dir)
+    const ok = mutate(set, get, translate('prefab.create', { name: assetName }), draft => {
       const current = draft.nodes[roots[0]]
       if (!current) return
       const parentId = current.parentId
@@ -898,7 +903,26 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       instance.prefabOverrides = ['position', 'rotation', 'scale']
       draft.selection = [instance.id]
     })
-    if (ok) get().log('info', translate('log.savedPrefab', { name }))
+    if (ok) get().log('info', translate('log.savedPrefab', { name: assetName }))
+  },
+
+  rebindPrefab: (fromId, toId) => {
+    const doc = lookupPrefab(toId)
+    if (!doc?.rootId || fromId === toId) return
+    const ok = mutate(set, get, translate('prefab.rebind'), draft => {
+      const roots = Object.values(draft.nodes).filter(node => node.prefabAssetId === fromId && node.prefabInstanceId === node.id)
+      for (const root of roots) {
+        for (const node of Object.values(draft.nodes)) {
+          if (node.prefabInstanceId === root.id && node.id !== root.id) delete draft.nodes[node.id]
+        }
+        root.prefabAssetId = toId
+        root.prefabTemplateId = doc.rootId
+        root.prefabRemoved = []
+        root.prefabOverrides = ['position', 'rotation', 'scale']
+      }
+      reconcilePrefab(draft.nodes, toId, doc, lookupPrefab)
+    })
+    if (ok) get().log('info', translate('prefab.rebound'))
   },
 
   openPrefab: assetId => {

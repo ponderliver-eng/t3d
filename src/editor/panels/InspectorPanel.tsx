@@ -1,6 +1,10 @@
-import { useEffect, useRef, useState, type DragEvent, type ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } from 'react'
+import { createPortal } from 'react-dom'
 import { ChevronDown, ChevronRight, ExternalLink, FolderSearch, Image as ImageIcon, Search, Trash2, X } from 'lucide-react'
-import { clipNamesFor, subscribeModels } from '../assets/models'
+import { clipDuration, clipNamesFor, loadModelTemplate, subscribeModels } from '../assets/models'
+import { activeAnimatorState, emptyAnimator } from '../animation/animator'
+import { HumanoidCard } from './HumanoidCard'
+import { AnimatorCard } from './AnimatorCard'
 import { ASSET_MIME, saveMaterialFromNode, savePrefabFromSelection, openAsset } from '../assets/import'
 import { primaryId, useEditorStore } from '../scene/store'
 import { isLight, isMesh } from '../scene/kinds'
@@ -25,6 +29,10 @@ export default function InspectorPanel() {
   const nodes = useEditorStore(state => state.nodes)
   const playing = useEditorStore(state => state.playState !== 'stopped')
   const prefabSession = useEditorStore(state => state.prefabSession)
+  const [unpackId, setUnpackId] = useState<string | null>(null)
+  const [rebindId, setRebindId] = useState('')
+  const assets = useAssetStore(state => state.assets)
+  const prefabAssets = useMemo(() => Object.values(assets).filter(item => item.kind === 'prefab'), [assets])
   const asset = useAssetStore(state => inspectedAssetId ? state.assets[inspectedAssetId] : undefined)
   const { t } = useI18n()
   const id = primaryId({ selection })
@@ -88,14 +96,40 @@ export default function InspectorPanel() {
       {prefabRoot && isPrefabRoot(prefabRoot) && (
         <Card title={t('prefab.instance')} color="#c79bff">
           <div className="prefab-actions">
-            <span>{useAssetStore.getState().assets[prefabRoot.prefabAssetId ?? '']?.name ?? t('prefab.missing')}</span>
-            {instanceDirty(nodes, prefabRoot.id) && <em>{t('prefab.dirty')}</em>}
-            <button type="button" onClick={() => useEditorStore.getState().openPrefab(prefabRoot.prefabAssetId ?? '')}>{t('prefab.edit')}</button>
-            <button type="button" disabled={!instanceDirty(nodes, prefabRoot.id)} onClick={() => useEditorStore.getState().applyPrefabInstance(prefabRoot.id)}>{t('prefab.apply')}</button>
-            <button type="button" disabled={!instanceDirty(nodes, prefabRoot.id)} onClick={() => useEditorStore.getState().revertPrefabInstance(prefabRoot.id)}>{t('prefab.revert')}</button>
-            <button type="button" onClick={() => useEditorStore.getState().unpackPrefabInstance(prefabRoot.id)}>{t('prefab.unpack')}</button>
+            <span>{prefabAssets.find(item => item.id === prefabRoot.prefabAssetId)?.name ?? t('prefab.missing')}</span>
+            {instanceDirty(nodes, prefabRoot.id) && <em title={t('prefab.dirty')}>{t('prefab.dirty')}</em>}
+            {prefabAssets.some(item => item.id === prefabRoot.prefabAssetId) ? (
+              <>
+                <button type="button" onClick={() => useEditorStore.getState().openPrefab(prefabRoot.prefabAssetId ?? '')}>{t('prefab.edit')}</button>
+                <button type="button" onClick={() => revealPrefabAsset(prefabRoot.prefabAssetId ?? '')}>{t('prefab.reveal')}</button>
+                <button type="button" disabled={!instanceDirty(nodes, prefabRoot.id)} onClick={() => useEditorStore.getState().applyPrefabInstance(prefabRoot.id)}>{t('prefab.apply')}</button>
+                <button type="button" disabled={!instanceDirty(nodes, prefabRoot.id)} onClick={() => useEditorStore.getState().revertPrefabInstance(prefabRoot.id)}>{t('prefab.revert')}</button>
+                <button type="button" onClick={() => setUnpackId(prefabRoot.id)}>{t('prefab.unpack')}</button>
+              </>
+            ) : (
+              <>
+                <select value={rebindId} onChange={event => setRebindId(event.target.value)}>
+                  <option value="">{t('prefab.rebindPick')}</option>
+                  {prefabAssets.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
+                </select>
+                <button type="button" disabled={!rebindId} onClick={() => useEditorStore.getState().rebindPrefab(prefabRoot.prefabAssetId ?? '', rebindId)}>{t('prefab.rebind')}</button>
+              </>
+            )}
           </div>
         </Card>
+      )}
+      {unpackId && createPortal(
+        <div className="prefab-dialog__backdrop" onMouseDown={() => setUnpackId(null)}>
+          <div className="prefab-dialog" role="dialog" onMouseDown={event => event.stopPropagation()}>
+            <h2>{t('prefab.unpackTitle')}</h2>
+            <p>{t('prefab.unpackMessage')}</p>
+            <div>
+              <button type="button" onClick={() => setUnpackId(null)}>{t('prefab.cancel')}</button>
+              <button type="button" onClick={() => { useEditorStore.getState().unpackPrefabInstance(unpackId); setUnpackId(null) }}>{t('prefab.unpack')}</button>
+            </div>
+          </div>
+        </div>,
+        document.body,
       )}
 
       <Card title={t('inspector.transform')} color={kindColor(node.kind)}>
@@ -135,9 +169,29 @@ export default function InspectorPanel() {
 
       {node.kind === 'model' && (
         <Card title={t('inspector.model')} color={kindColor(node.kind)}>
-          <AnimationCard nodeId={node.id} assetId={node.assetId} clipAssetId={node.clipAssetId} clip={node.clip} clipTime={node.clipTime} clipPlaying={node.clipPlaying} />
-          <button type="button" className="inspector__action" onClick={savePrefabFromSelection}>{t('inspector.savePrefab')}</button>
-          {node.assetId && <button type="button" className="inspector__action" onClick={() => openAssetPreview('model', node.assetId!, node.name)}>{t('inspector.previewModel')}</button>}
+          <AnimModeSwitch nodeId={node.id} />
+          <AnimationCard
+            nodeId={node.id}
+            assetId={node.assetId}
+            clipAssetId={node.clipAssetId}
+            clip={node.clip}
+            clipTime={node.clipTime}
+            clipPlaying={node.clipPlaying}
+            driven={node.animator?.enabled === true}
+          />
+          <label className="field">
+            <span>{t('anim.end')}</span>
+            <select
+              value={node.clipEnd ?? 'hold'}
+              onChange={event => useEditorStore.getState().updateNode(node.id, { clipEnd: event.target.value as 'hold' | 'stop' | 'default' })}
+            >
+              <option value="hold">{t('anim.hold')}</option>
+              <option value="stop">{t('anim.stop')}</option>
+              <option value="default">{t('anim.backToDefault')}</option>
+            </select>
+          </label>
+          {node.animator?.enabled === true && <AnimatorCard nodeId={node.id} />}
+          {node.assetId && <HumanoidCard assetId={node.assetId} />}
         </Card>
       )}
 
@@ -361,6 +415,12 @@ function MeshRendererCard({ node }: { node: SceneNode }) {
     : entries
   return (
     <Card title={t('inspector.modelRenderer')} color={kindColor(node.kind)}>
+      {node.kind === 'model' && (
+        <>
+          <button type="button" className="inspector__action" onClick={savePrefabFromSelection}>{t('inspector.savePrefab')}</button>
+          {node.assetId && <button type="button" className="inspector__action" onClick={() => openAssetPreview('model', node.assetId!, node.name)}>{t('inspector.previewModel')}</button>}
+        </>
+      )}
       <label className="field">
         <span>{t('inspector.castShadow')}</span>
         <input type="checkbox" checked={node.castShadow} onChange={event => commitNode(node.id, t('gesture.shadow'), { castShadow: event.target.checked })} />
@@ -571,8 +631,35 @@ function MaterialEditor({ slot, onChange }: { slot: PbrSlot, onChange: (patch: P
   )
 }
 
+function AnimModeSwitch({ nodeId }: { nodeId: string }) {
+  const { t } = useI18n()
+  const node = useEditorStore(state => state.nodes[nodeId])
+  const enabled = node?.animator?.enabled === true
+  const embedded = node?.assetId ? clipNamesFor(node.assetId).length : 0
+  const choose = (machine: boolean) => {
+    const store = useEditorStore.getState()
+    const node = store.nodes[nodeId]
+    if (!node) return
+    const animator = node.animator ?? emptyAnimator()
+    const states = animator.states.map((state, index) => (
+      index === 0 && !state.clip && node.clip ? { ...state, clip: node.clip, clipAssetId: node.clipAssetId } : state
+    ))
+    store.updateNode(nodeId, {
+      animator: { ...animator, enabled: machine, states, stateId: animator.stateId || states[0]?.id || '', defaultStateId: animator.defaultStateId || states[0]?.id },
+    })
+  }
+  return (
+    <div className="anim-mode">
+      <button type="button" className={!enabled ? 'is-on' : ''} onClick={() => choose(false)}>{t('anim.simple')}</button>
+      <button type="button" className={enabled ? 'is-on' : ''} onClick={() => choose(true)}>{t('anim.machine')}</button>
+      <span>{t(enabled ? 'anim.machineHint' : 'anim.simpleHint')}</span>
+      {embedded > 0 && <em>{t('anim.embedded', { count: embedded })}</em>}
+    </div>
+  )
+}
+
 function AnimationCard({
-  nodeId, assetId, clipAssetId, clip, clipTime, clipPlaying,
+  nodeId, assetId, clipAssetId, clip, clipTime, clipPlaying, driven = false,
 }: {
   nodeId: string
   assetId: string | null
@@ -580,31 +667,153 @@ function AnimationCard({
   clip: string
   clipTime: number
   clipPlaying: boolean
+  driven?: boolean
 }) {
   const { t } = useI18n()
   const [version, setVersion] = useState(0)
   useEffect(() => subscribeModels(() => setVersion(value => value + 1)), [])
   void version
-  const names = [...new Set([...clipNamesFor(assetId), ...clipNamesFor(clipAssetId)])]
+  const playback = useEditorStore(state => state.nodes[nodeId])
+  const clipLoop = playback?.clipLoop !== false
+  const clipSpeed = playback?.clipSpeed ?? 1
+  const clipFade = playback?.clipFade ?? 0.15
+  const clipInPlace = playback?.clipInPlace === true
+  const clipMask = playback?.clipMask === 'upper' || playback?.clipMask === 'lower' ? playback.clipMask : 'full'
+  const modelClips = clipNamesFor(assetId)
+  const fileClips = clipNamesFor(clipAssetId)
+  const fromFile = !!clipAssetId && fileClips.includes(clip)
+  const sourceId = fromFile ? clipAssetId : assetId
+  const drivenState = driven && playback?.animator ? activeAnimatorState(playback.animator) : undefined
+  const playName = drivenState?.clip || clip
+  const playSource = drivenState ? (drivenState.clipAssetId || assetId) : sourceId
+  const duration = clipDuration(playSource, playName)
+  const shown = duration > 0 ? Math.min(clipTime, duration) : clipTime
+  const choose = (value: string) => {
+    const store = useEditorStore.getState()
+    if (!value) {
+      store.updateNode(nodeId, { clip: '', clipTime: 0, clipPlaying: false })
+      return
+    }
+    const [source, name] = value.split('\u001f')
+    if (source === 'file') store.updateNode(nodeId, { clip: name, clipTime: 0, clipPlaying: true })
+    else store.updateNode(nodeId, {
+      clip: name,
+      clipTime: 0,
+      clipPlaying: true,
+      ...(fileClips.includes(name) ? { clipAssetId: null } : {}),
+    })
+  }
   return (
     <>
-      <label className="field">
-        <span>{t('inspector.clip')}</span>
-        <select
-          value={clip}
-          onChange={event => useEditorStore.getState().updateNode(nodeId, { clip: event.target.value, clipTime: 0 })}
+      <div className="anim-transport">
+        <button
+          type="button"
+          title={clipPlaying ? t('inspector.pause') : t('inspector.play')}
+          onClick={() => {
+            const store = useEditorStore.getState()
+            if (driven) {
+              store.updateNode(nodeId, { clipPlaying: !clipPlaying })
+              return
+            }
+            if (!clip) {
+              const name = modelClips[0] ?? fileClips[0]
+              if (!name) return
+              store.updateNode(nodeId, {
+                clip: name,
+                clipTime: 0,
+                clipPlaying: true,
+                ...(modelClips[0] && fileClips.includes(modelClips[0]) ? { clipAssetId: null } : {}),
+              })
+              return
+            }
+            store.updateNode(nodeId, { clipPlaying: !clipPlaying })
+          }}
         >
+          {clipPlaying ? t('inspector.pause') : t('inspector.play')}
+        </button>
+        <input
+          type="range"
+          min={0}
+          max={duration || 1}
+          step={0.01}
+          value={Number.isFinite(shown) ? shown : 0}
+          disabled={!playName || duration <= 0}
+          onPointerDown={() => {
+            const store = useEditorStore.getState()
+            store.beginGesture(t('gesture.anim'))
+            store.updateNode(nodeId, { clipPlaying: false })
+          }}
+          onChange={event => useEditorStore.getState().updateNode(nodeId, { clipTime: Number(event.target.value), clipPlaying: false })}
+          onPointerUp={() => useEditorStore.getState().endGesture()}
+          onBlur={() => useEditorStore.getState().endGesture()}
+        />
+        <span>{formatClipTime(shown)} / {formatClipTime(duration)}</span>
+      </div>
+      {!driven && <label className="field">
+        <span>{t('inspector.clip')}</span>
+        <select value={clip ? `${fromFile ? 'file' : 'model'}\u001f${clip}` : ''} onChange={event => choose(event.target.value)}>
           <option value="">{t('material.none')}</option>
-          {names.map(name => <option key={name} value={name}>{name}</option>)}
+          {modelClips.length > 0 && (
+            <optgroup label={t('inspector.modelClips')}>
+              {modelClips.map(name => <option key={`model:${name}`} value={`model\u001f${name}`}>{name}</option>)}
+            </optgroup>
+          )}
+          {fileClips.length > 0 && (
+            <optgroup label={t('inspector.fileClips')}>
+              {fileClips.map(name => <option key={`file:${name}`} value={`file\u001f${name}`}>{name}</option>)}
+            </optgroup>
+          )}
         </select>
-      </label>
-      <label className="field">
-        <span>{t('inspector.play')}</span>
-        <input type="checkbox" checked={clipPlaying} onChange={event => useEditorStore.getState().updateNode(nodeId, { clipPlaying: event.target.checked })} />
-      </label>
-      <NumberRow label={t('inspector.time')} value={clipTime} step={0.01} gesture={t('gesture.anim')} onChange={time => useEditorStore.getState().updateNode(nodeId, { clipTime: time, clipPlaying: false })} />
+      </label>}
+      {!driven && <AssetRef
+        label={t('inspector.animFile')}
+        title={t('inspector.animFile')}
+        kinds={['animation']}
+        value={clipAssetId}
+        onChange={id => {
+          const store = useEditorStore.getState()
+          if (!id) {
+            store.updateNode(nodeId, { clipAssetId: null, clip: modelClips[0] ?? '', clipTime: 0, clipPlaying: false })
+            return
+          }
+          const file = useAssetStore.getState().assets[id]
+          if (!file || file.kind !== 'animation') return
+          void loadModelTemplate(file).then(() => {
+            const names = clipNamesFor(id)
+            useEditorStore.getState().updateNode(nodeId, {
+              clipAssetId: id,
+              clip: names[0] ?? '',
+              clipTime: 0,
+              clipPlaying: names.length > 0,
+            })
+          }).catch(() => undefined)
+        }}
+      />}
+      {!driven && <label className="field">
+        <span>{t('anim.loop')}</span>
+        <input type="checkbox" checked={clipLoop} onChange={event => useEditorStore.getState().updateNode(nodeId, { clipLoop: event.target.checked })} />
+      </label>}
+      {!driven && <NumberRow label={t('anim.speed')} value={clipSpeed} step={0.05} min={0.05} gesture={t('anim.speed')} onChange={speed => useEditorStore.getState().updateNode(nodeId, { clipSpeed: speed })} />}
+      <NumberRow label={t('anim.fade')} value={clipFade} step={0.05} min={0} gesture={t('anim.fade')} onChange={fade => useEditorStore.getState().updateNode(nodeId, { clipFade: fade })} />
+      {!driven && <label className="field">
+        <span>{t('anim.mask')}</span>
+        <select value={clipMask} onChange={event => useEditorStore.getState().updateNode(nodeId, { clipMask: event.target.value as 'full' | 'upper' | 'lower' })}>
+          <option value="full">{t('anim.maskFull')}</option>
+          <option value="upper">{t('anim.maskUpper')}</option>
+          <option value="lower">{t('anim.maskLower')}</option>
+        </select>
+      </label>}
+      {!driven && <label className="field">
+        <span>{t('anim.inPlace')}</span>
+        <input type="checkbox" checked={clipInPlace} onChange={event => useEditorStore.getState().updateNode(nodeId, { clipInPlace: event.target.checked })} />
+      </label>}
     </>
   )
+}
+
+function formatClipTime(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds <= 0) return '0.00s'
+  return `${seconds.toFixed(2)}s`
 }
 
 function MapField({ label, value, onChange }: { label: string; value: string | null; onChange: (id: string | null) => void }) {
@@ -740,6 +949,13 @@ function AssetRef({
       )}
     </label>
   )
+}
+
+function revealPrefabAsset(assetId: string) {
+  if (!assetId) return
+  const library = useAssetStore.getState()
+  library.setBrowseDir(assetDirectory(assetId, library.assetDirs))
+  useEditorStore.setState({ inspectedAssetId: assetId })
 }
 
 function commitNode(id: string, label: string, patch: Partial<SceneNode>) {

@@ -29,6 +29,7 @@ import {
   Vector2,
   Vector3,
   Fog,
+  LoopOnce,
   LoopRepeat,
   AnimationMixer,
   type AnimationAction,
@@ -40,9 +41,13 @@ import { WebGPURenderer } from 'three/webgpu'
 import { TransformControls } from 'three/addons/controls/TransformControls.js'
 import { translate } from '../i18n'
 import { applyModelMaterials, applyNodeMaterial } from '../assets/materials'
-import { getModelTemplate, instantiateModel } from '../assets/models'
+import { clipDuration, getModelTemplate, instantiateModel, modelRevision } from '../assets/models'
+import { clipsForSkeleton, humanoidBindingKey } from '../animation/humanoidPlayback'
+import { activeAnimatorState, stepAnimator } from '../animation/animator'
+import { lockClipInPlace, maskClip } from '../animation/playback'
 import { useAssetStore } from '../assets/library'
 import { bindTextureRenderer, environmentFor } from '../assets/textures'
+import { boundsOf, refreshObjectBounds } from '../scene/bounds'
 import { isLight, isMesh } from '../scene/kinds'
 import { setSpawnProvider } from '../scene/spawn'
 import { setGroundSnapper } from '../scene/viewportBridge'
@@ -70,6 +75,11 @@ interface ViewData {
   actions?: Map<string, AnimationAction>
   loadedClips?: Set<string>
   activeClip?: string
+  clipBinding?: string
+  boundSource?: string
+  animatorState?: string
+  animatorTime?: number
+  pendingFade?: number
 }
 
 interface Baseline {
@@ -121,6 +131,7 @@ export class EditorViewport {
   private height = 0
   private last = 0
   private clipWrite = 0
+  private applyingAnimator = false
   private statTick = 0
   private raf = 0
   private disposed = false
@@ -383,17 +394,20 @@ export class EditorViewport {
         mesh.receiveShadow = node.receiveShadow
       }
     }
-    if (node.kind === 'model' && data.modelRoot) {
-      data.modelRoot.traverse(child => {
-        const mesh = child as Mesh
-        if (!mesh.isMesh) return
-        mesh.castShadow = node.castShadow
-        mesh.receiveShadow = node.receiveShadow
-      })
-    }
     if (node.kind === 'model') {
       this.ensureModel(group, node)
-      if (data.modelRoot) applyModelMaterials(data.modelRoot, node.slots)
+      if (data.modelRoot) {
+        const file = node.assetId ? useAssetStore.getState().assets[node.assetId] : undefined
+        const importScale = file && 'importScale' in file && typeof file.importScale === 'number' && file.importScale > 0 ? file.importScale : 1
+        data.modelRoot.scale.setScalar(importScale)
+        applyModelMaterials(data.modelRoot, node.slots)
+        data.modelRoot.traverse(child => {
+          const mesh = child as Mesh
+          if (!mesh.isMesh) return
+          mesh.castShadow = node.castShadow
+          mesh.receiveShadow = node.receiveShadow
+        })
+      }
       this.syncClip(data, node)
     }
     if (data.light) {
@@ -452,7 +466,7 @@ export class EditorViewport {
       const node = useEditorStore.getState().nodes[id]
       if (!object || !node) continue
       const source = dataOf(object).pick ?? object
-      const box = new Box3().setFromObject(source)
+      const box = boundsOf(source)
       if (box.isEmpty()) continue
       const origin = new Vector3(box.getCenter(new Vector3()).x, box.max.y + 0.05, box.getCenter(new Vector3()).z)
       const ray = new Raycaster(origin, down, 0, 800)
@@ -513,7 +527,7 @@ export class EditorViewport {
       for (const id of ids) {
         const object = this.objects.get(id)
         if (!object) continue
-        const next = new Box3().setFromObject(dataOf(object).pick ?? object)
+        const next = boundsOf(dataOf(object).pick ?? object)
         if (!next.isEmpty()) box.union(next)
       }
       if (!box.isEmpty()) box.getCenter(this.proxy.position)
@@ -666,7 +680,7 @@ export class EditorViewport {
     for (const id of selection) {
       const pick = dataOf(this.objects.get(id) ?? new Group()).pick
       if (!pick) continue
-      const next = new Box3().setFromObject(pick)
+      const next = boundsOf(pick)
       if (next.isEmpty()) {
         const point = new Vector3()
         pick.getWorldPosition(point)
@@ -685,7 +699,7 @@ export class EditorViewport {
     const box = new Box3()
     for (const group of this.objects.values()) {
       const pick = dataOf(group).pick ?? group
-      const next = new Box3().setFromObject(pick)
+      const next = boundsOf(pick)
       if (!next.isEmpty()) box.union(next)
     }
     if (box.isEmpty()) return
@@ -784,7 +798,7 @@ export class EditorViewport {
       const node = nodes[id]
       if (!node?.visible || node.locked) continue
       const source = dataOf(group).pick ?? group
-      const box = new Box3().setFromObject(source)
+      const box = boundsOf(source)
       const point = box.isEmpty() ? group.getWorldPosition(new Vector3()) : box.getCenter(new Vector3())
       const ndc = point.project(this.rig.active)
       if (ndc.z < -1 || ndc.z > 1) continue
@@ -881,7 +895,11 @@ export class EditorViewport {
     this.last = time
     this.rig.update(dt)
     this.refreshGuides()
-    for (const helper of this.selectionHelpers) helper.update()
+    for (const helper of this.selectionHelpers) {
+      const target = (helper as { object?: Object3D }).object
+      if (target) refreshObjectBounds(target)
+      helper.update()
+    }
     this.flattenGizmo()
     this.paintViewCube()
     if (this.ready && this.picture && this.width > 1 && this.height > 1) {
@@ -958,7 +976,8 @@ export class EditorViewport {
 
   private ensureModel(group: Group, node: SceneNode) {
     const data = dataOf(group)
-    if (!node.assetId || data.modelKey === node.assetId) {
+    const key = node.assetId ? `${node.assetId}@${modelRevision(node.assetId)}` : ''
+    if (!node.assetId || data.modelKey === key) {
       this.attachExternalClips(data, node)
       return
     }
@@ -973,7 +992,7 @@ export class EditorViewport {
     for (const clip of instance.clips) actions.set(clipId(node.assetId, clip.name), mixer.clipAction(clip))
     data.modelRoot = instance.object
     data.pick = instance.object
-    data.modelKey = node.assetId
+    data.modelKey = key
     data.mixer = mixer
     data.actions = actions
     data.loadedClips = new Set([node.assetId])
@@ -982,37 +1001,147 @@ export class EditorViewport {
   }
 
   private attachExternalClips(data: ViewData, node: SceneNode) {
-    if (!node.clipAssetId || !data.mixer || !data.actions || data.loadedClips?.has(node.clipAssetId)) return
+    if (!data.mixer || !data.actions) return
+    if (!node.clipAssetId || !node.assetId) {
+      this.dropExternalClips(data)
+      return
+    }
+    const binding = humanoidBindingKey(node.clipAssetId, node.assetId)
+    if (data.clipBinding === binding) return
+    this.dropExternalClips(data)
     const extra = getModelTemplate(node.clipAssetId)
     if (!extra) return
-    for (const clip of extra.clips) {
+    for (const clip of clipsForSkeleton(node.clipAssetId, node.assetId)) {
       const key = clipId(node.clipAssetId, clip.name)
       if (!data.actions.has(key)) data.actions.set(key, data.mixer.clipAction(clip))
     }
-    data.loadedClips?.add(node.clipAssetId)
+    data.boundSource = node.clipAssetId
+    data.clipBinding = binding
+    data.activeClip = ''
+  }
+
+  private dropExternalClips(data: ViewData) {
+    const prefix = data.boundSource ? `${data.boundSource}:` : ''
+    if (data.actions && prefix) {
+      for (const [key, action] of data.actions) {
+        if (!key.startsWith(prefix)) continue
+        action.stop()
+        data.actions.delete(key)
+      }
+    }
+    if (prefix && data.activeClip?.startsWith(prefix)) data.activeClip = ''
+    data.boundSource = ''
+    data.clipBinding = ''
+  }
+
+  private playbackSource(node: SceneNode) {
+    const animator = node.animator?.enabled ? activeAnimatorState(node.animator) : undefined
+    if (animator) {
+      return {
+        sourceId: animator.clipAssetId || node.assetId || '',
+        clip: animator.clip,
+        loop: animator.loop,
+        speed: Number.isFinite(animator.speed) ? animator.speed : 1,
+        fade: node.clipFade ?? 0.15,
+        inPlace: animator.inPlace ?? node.clipInPlace === true,
+        mask: animator.mask && animator.mask !== 'full' ? animator.mask : 'full' as const,
+      }
+    }
+    return {
+      sourceId: node.clipAssetId || node.assetId || '',
+      clip: node.clip,
+      loop: node.clipLoop !== false,
+      speed: node.clipSpeed ?? 1,
+      fade: node.clipFade ?? 0.15,
+        inPlace: node.clipInPlace === true,
+        mask: node.clipMask === 'upper' || node.clipMask === 'lower' ? node.clipMask : 'full' as const,
+    }
+  }
+
+  private ensurePlaybackAction(
+    data: ViewData,
+    ownerId: string,
+    sourceId: string,
+    clipName: string,
+    mask: 'full' | 'upper' | 'lower',
+    inPlace: boolean,
+  ) {
+    if (!data.mixer || !data.actions || !sourceId || !clipName) return undefined
+    const key = `${sourceId}:${clipName}:${mask}:${inPlace ? 1 : 0}`
+    const existing = data.actions.get(key)
+    if (existing) return existing
+    const ownClips = getModelTemplate(ownerId)?.clips ?? []
+    const clips = sourceId === ownerId ? ownClips : clipsForSkeleton(sourceId, ownerId)
+    const found = clips.find(clip => clip.name === clipName) ?? (sourceId === ownerId ? undefined : ownClips.find(clip => clip.name === clipName))
+    if (!found) return undefined
+    let clip = found
+    if (mask === 'upper') clip = maskClip(clip, 'upperBody')
+    if (mask === 'lower') clip = maskClip(clip, 'lowerBody')
+    if (inPlace) clip = lockClipInPlace(clip)
+    const action = data.mixer.clipAction(clip)
+    data.actions.set(key, action)
+    return action
+  }
+
+  private configureAction(action: AnimationAction, loop: boolean, speed: number) {
+    action.setLoop(loop ? LoopRepeat : LoopOnce, loop ? Infinity : 1)
+    action.clampWhenFinished = !loop
+    action.timeScale = speed
   }
 
   private syncClip(data: ViewData, node: SceneNode) {
-    if (!data.mixer || !data.actions) return
-    const source = node.clipAssetId || node.assetId
-    const key = node.clip && source ? clipId(source, node.clip) : ''
+    if (!data.mixer || !data.actions || !node.assetId) return
+    this.applyAnimatorParameters(data, node)
+    node = useEditorStore.getState().nodes[node.id] ?? node
+    if (!node.assetId) return
+    const play = this.playbackSource(node)
+    const key = play.clip && play.sourceId ? `${play.sourceId}:${play.clip}:${play.mask}:${play.inPlace ? 1 : 0}` : ''
+    const action = key ? this.ensurePlaybackAction(data, node.assetId, play.sourceId, play.clip, play.mask, play.inPlace) : undefined
+    const fade = data.pendingFade ?? play.fade
+    data.pendingFade = undefined
     if (data.activeClip !== key) {
-      data.mixer.stopAllAction()
-      const action = key ? data.actions.get(key) : undefined
+      const previous = data.activeClip ? data.actions.get(data.activeClip) : undefined
       if (action) {
-        action.reset().setLoop(LoopRepeat, Infinity).play()
-        action.paused = !node.clipPlaying
-        action.time = node.clipTime
-      }
+        this.configureAction(action, play.loop, play.speed)
+        if (node.clipPlaying && previous && previous !== action && fade > 0) {
+          action.reset().play()
+          action.fadeIn(fade)
+          previous.fadeOut(fade)
+        } else {
+          previous?.stop()
+          action.reset().play()
+          action.paused = !node.clipPlaying
+          action.time = node.clipTime
+        }
+      } else previous?.stop()
       data.activeClip = key
     }
-    const action = data.actions.get(data.activeClip ?? '')
-    if (!action) return
-    action.paused = !node.clipPlaying
-    if (!node.clipPlaying && Math.abs(action.time - node.clipTime) > 0.001) {
-      action.time = node.clipTime
-      data.mixer.update(0)
+    if (action) {
+      this.configureAction(action, play.loop, play.speed)
+      action.paused = !node.clipPlaying
+      if (!node.clipPlaying && Math.abs(action.time - node.clipTime) > 0.001) {
+        action.time = node.clipTime
+        data.mixer.update(0)
+      }
     }
+  }
+
+  private applyAnimatorParameters(data: ViewData, node: SceneNode) {
+    if (!node.animator?.enabled || this.applyingAnimator) return
+    if (data.animatorState !== node.animator.stateId) {
+      data.animatorState = node.animator.stateId
+      data.animatorTime = 0
+    }
+    const state = activeAnimatorState(node.animator)
+    const duration = clipDuration(state?.clipAssetId || node.assetId, state?.clip ?? '')
+    const stepped = stepAnimator(node.animator, data.animatorTime ?? 0, duration)
+    if (!stepped.changed) return
+    this.applyingAnimator = true
+    data.animatorState = stepped.controller.stateId
+    data.animatorTime = 0
+    data.pendingFade = stepped.fade
+    useEditorStore.getState().updateNode(node.id, { animator: stepped.controller })
+    this.applyingAnimator = false
   }
 
   private updateMixers(dt: number) {
@@ -1025,9 +1154,47 @@ export class EditorViewport {
     for (const [id, group] of this.objects) {
       const node = nodes[id]
       const data = dataOf(group)
-      if (!node?.clipPlaying || !data.mixer) continue
+      if (!node || !data.mixer) continue
+      if (node.animator?.enabled && node.clipPlaying) {
+        if (data.animatorState !== node.animator.stateId) {
+          data.animatorState = node.animator.stateId
+          data.animatorTime = 0
+        }
+        const state = activeAnimatorState(node.animator)
+        const duration = clipDuration(state?.clipAssetId || node.assetId, state?.clip ?? '')
+        data.animatorTime = (data.animatorTime ?? 0) + dt * (state?.speed || 1)
+        const stepped = stepAnimator(node.animator, data.animatorTime, duration)
+        if (stepped.changed && !this.applyingAnimator) {
+          this.applyingAnimator = true
+          data.animatorState = stepped.controller.stateId
+          data.animatorTime = 0
+          data.pendingFade = stepped.fade
+          useEditorStore.getState().updateNode(id, { animator: stepped.controller })
+          this.applyingAnimator = false
+        }
+      }
+      if (!node.clipPlaying) continue
       data.mixer.update(dt)
       const action = data.actions?.get(data.activeClip ?? '')
+      if (action && action.loop === LoopOnce && !action.isRunning() && action.time > 0) {
+        const end = node.clipEnd ?? 'hold'
+        if (end === 'stop') {
+          useEditorStore.getState().updateNode(id, { clipPlaying: false, clipTime: action.time })
+        } else if (end === 'default' && node.animator?.enabled) {
+          const animator = node.animator
+          const target = animator.defaultStateId || animator.states[0]?.id
+          if (target && target !== animator.stateId) {
+            data.animatorState = target
+            data.animatorTime = 0
+            useEditorStore.getState().updateNode(id, { animator: { ...animator, stateId: target } })
+          } else if (!action.paused) action.paused = true
+        } else if (end === 'default') {
+          action.reset().play()
+          action.time = 0
+          useEditorStore.getState().updateNode(id, { clipTime: 0 })
+        } else if (!action.paused) action.paused = true
+        continue
+      }
       if (write && action) useEditorStore.getState().updateNode(id, { clipTime: action.time })
     }
   }

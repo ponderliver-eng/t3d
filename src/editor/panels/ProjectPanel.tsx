@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type MouseEvent } from 'react'
 import { Box, ChevronRight, Clapperboard, Component, Folder, FolderOpen, FolderPlus, Globe, Image, LayoutGrid, List, Minus, Music, Palette, Plus, Rows3, Search, Sun, Trash2, Upload, X } from 'lucide-react'
-import { ASSET_MIME, bindImportInput, createDefaultMaterial, deleteAsset, duplicateAsset, importFiles, openAsset, openImport, reportAssetUsers } from '../assets/import'
+import { CLIP_MIME } from '../animation/playback'
+import { ASSET_MIME, assignClip, bindImportInput, createDefaultMaterial, deleteAsset, duplicateAsset, importFiles, openAsset, openImport, reportAssetUsers } from '../assets/import'
 import { savePrefabFromSelection } from '../assets/import'
 import { readPrefab } from '../assets/prefab'
 import { ASSETS_ROOT, directoryTree, findDir, isWithin, parentDir, type DirNode } from '../assets/folders'
@@ -63,6 +64,7 @@ export default function ProjectPanel() {
   const [expanded, setExpanded] = useState<Record<string, boolean>>({ [ASSETS_ROOT]: true })
   const [over, setOver] = useState(false)
   const [dropPath, setDropPath] = useState<string | null>(null)
+  const [clipOpen, setClipOpen] = useState<Record<string, boolean>>({})
   const renameTimer = useRef<number | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const assets = useAssetStore(state => state.assets)
@@ -88,7 +90,7 @@ export default function ProjectPanel() {
     const byName = (a: ProjectAsset, b: ProjectAsset) => a.name.localeCompare(b.name, 'zh')
     if (q) {
       const dirs = flattenDirs(tree).filter(dir => dir.path !== ASSETS_ROOT && dir.name.toLowerCase().includes(q))
-      const found = Object.values(assets).filter(asset => asset.name.toLowerCase().includes(q) && matchesPill(asset)).sort(byName)
+      const found = Object.values(assets).filter(asset => (asset.name.toLowerCase().includes(q) || clipEntries(asset).some(clip => clip.name.toLowerCase().includes(q))) && matchesPill(asset)).sort(byName)
       return [...dirs.map(dirItem), ...found.map(assetItem)]
     }
     if (pill !== 'all') {
@@ -196,6 +198,7 @@ export default function ProjectPanel() {
         </div>
         <div
           className={`project-browse__assets ${view === 'grid' ? 'is-grid' : ''} ${view === 'details' ? 'is-details' : ''} ${over ? 'is-over' : ''}`}
+          data-asset-dir={browseDir}
           onDragOver={event => {
             const types = [...event.dataTransfer.types]
             if (!types.includes('Files') && !types.includes(ASSET_MIME)) return
@@ -300,6 +303,8 @@ export default function ProjectPanel() {
                 if (item.asset.kind === 'scene' && !window.confirm(t('project.deleteScene', { name: item.asset.name }))) return
                 deleteAsset(item.asset.id)
               }}
+              clipsOpen={clipOpen[item.asset.id] === true || (q.length > 0 && clipEntries(item.asset).some(clip => clip.name.toLowerCase().includes(q)))}
+              onToggleClips={() => setClipOpen(current => ({ ...current, [item.asset.id]: !current[item.asset.id] }))}
             />
           ))}
         </div>
@@ -376,8 +381,12 @@ function CreateMenu({ dir, onDone, onNewFolder }: { dir: string, onDone: () => v
   )
 }
 
+function clipEntries(asset: ProjectAsset) {
+  return 'clipCatalog' in asset && asset.clipCatalog ? asset.clipCatalog : []
+}
+
 function AssetRow({
-  asset, view, picked, used, renaming, onRenameDone, onClick, onDoubleClick, onMenu, onDelete,
+  asset, view, picked, used, renaming, onRenameDone, onClick, onDoubleClick, onMenu, onDelete, clipsOpen, onToggleClips,
 }: {
   asset: ProjectAsset
   view: BrowseView
@@ -389,9 +398,13 @@ function AssetRow({
   onDoubleClick: () => void
   onMenu: (event: MouseEvent) => void
   onDelete: (event: MouseEvent) => void
+  clipsOpen: boolean
+  onToggleClips: () => void
 }) {
   const Icon = KIND_ICON[asset.kind] ?? Folder
+  const clips = clipEntries(asset)
   return (
+    <div className="project-asset-block">
     <div
       className={`project-asset ${view === 'grid' ? 'project-asset--grid' : ''} ${view === 'details' ? 'project-asset--details' : ''} ${picked ? 'project-asset--picked' : ''}`}
       draggable={!renaming}
@@ -419,12 +432,38 @@ function AssetRow({
             }}
           />
         ) : <span>{asset.name}</span>}
+        {clips.length > 0 && (
+          <button type="button" className="project-clip-toggle" title={translate('project.clips')} onClick={event => { event.stopPropagation(); onToggleClips() }}>
+            <ChevronRight size={12} style={{ transform: clipsOpen ? 'rotate(90deg)' : undefined }} />
+          </button>
+        )}
       </div>
       {view === 'details' && <em>{kindLabel(asset.kind)}</em>}
       {view === 'details' && <em>{detailOf(asset, used)}</em>}
       {view !== 'grid' && (
         <button type="button" title={translate('project.delete')} onClick={onDelete}><Trash2 size={12} /></button>
       )}
+    </div>
+    {clipsOpen && clips.map(clip => (
+      <div
+        key={`${asset.id}:${clip.name}`}
+        className="project-clip"
+        draggable
+        onDragStart={event => {
+          event.stopPropagation()
+          event.dataTransfer.setData(CLIP_MIME, JSON.stringify({ assetId: asset.id, clip: clip.name }))
+          event.dataTransfer.effectAllowed = 'copy'
+        }}
+        onDoubleClick={event => {
+          event.stopPropagation()
+          const selected = useEditorStore.getState().selection.at(-1)
+          if (selected) assignClip(selected, asset.id, clip.name)
+        }}
+      >
+        <span>{clip.name}</span>
+        <em>{clip.duration.toFixed(2)}s</em>
+      </div>
+    ))}
     </div>
   )
 }
@@ -536,6 +575,7 @@ function DirNodeView({
     <>
       <div
         className={`project-browse__tree-item ${active ? 'is-active' : ''} ${dropPath === node.path ? 'is-drop' : ''}`}
+        data-asset-dir={node.path}
         style={{ paddingLeft: 6 + depth * 12 }}
         role="button"
         tabIndex={0}
@@ -626,6 +666,7 @@ function DirRow({
   return (
     <div
       className={`project-asset ${view === 'grid' ? 'project-asset--grid' : ''} ${view === 'details' ? 'project-asset--details' : ''} ${dropping ? 'is-drop' : ''}`}
+      data-asset-dir={path}
       title={translate('project.openFolder')}
       onClick={event => event.stopPropagation()}
       onDoubleClick={onOpen}

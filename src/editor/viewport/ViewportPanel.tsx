@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { ASSET_MIME, importFiles, placeAsset } from '../assets/import'
+import { CLIP_MIME, readClipDrag } from '../animation/playback'
+import { ASSET_MIME, assignClip, importFiles, placeAsset } from '../assets/import'
 import { savePrefabFromSelection } from '../assets/import'
 import { useI18n, type MessageKey } from '../i18n'
 import { LIGHT_KINDS, MESH_KINDS } from '../scene/kinds'
@@ -143,11 +144,17 @@ export default function ViewportPanel() {
         ref={stageRef}
         onDragOver={event => {
           const types = [...event.dataTransfer.types]
-          if (types.includes(ASSET_MIME) || types.includes('Files')) event.preventDefault()
+          if (types.includes(ASSET_MIME) || types.includes(CLIP_MIME) || types.includes('Files')) event.preventDefault()
         }}
         onDrop={event => {
-          const assetId = event.dataTransfer.getData(ASSET_MIME)
+          const clipDrag = readClipDrag(event.dataTransfer.getData(CLIP_MIME))
           const hit = viewportRef.current?.raycastDrop(event.clientX, event.clientY)
+          if (clipDrag && hit?.nodeId) {
+            event.preventDefault()
+            assignClip(hit.nodeId, clipDrag.assetId, clipDrag.clip)
+            return
+          }
+          const assetId = event.dataTransfer.getData(ASSET_MIME)
           const point = hit?.point ?? [0, 0, 0] as [number, number, number]
           if (assetId) {
             event.preventDefault()

@@ -36,7 +36,7 @@ function PreviewFrame({ item }: { item: PreviewWindow }) {
   }
   return (
     <section
-      className="preview-window"
+      className={`preview-window${item.kind === 'model' ? ' preview-window--model' : ''}`}
       style={{ left: item.x, top: item.y, zIndex: item.z }}
       onPointerDown={() => usePreviewStore.getState().bringToFront(item.id)}
     >

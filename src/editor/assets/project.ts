@@ -127,6 +127,11 @@ async function materialize(meta: AssetMeta): Promise<FileAsset> {
     hash: meta.hash,
     thumb: meta.thumb,
     url: '',
+    ...(meta.humanoidAvatar ? { humanoidAvatar: meta.humanoidAvatar } : {}),
+    ...(meta.humanoidRetarget ? { humanoidRetarget: meta.humanoidRetarget } : {}),
+    ...(meta.clipCatalog?.length ? { clipCatalog: meta.clipCatalog } : {}),
+    ...(typeof meta.importScale === 'number' ? { importScale: meta.importScale } : {}),
+    ...(meta.sockets?.length ? { sockets: meta.sockets } : {}),
   }
   if ((meta.kind === 'model' || meta.kind === 'animation') && meta.artifactReady) return asset
   const bytes = await readFileBytes(meta.id)

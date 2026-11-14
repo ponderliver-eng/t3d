@@ -4,9 +4,11 @@ import {
   Axis3d, Box, Boxes, Camera, ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, Circle, Cone, Cylinder, Eye, EyeOff,
   Flashlight, Lightbulb, Lock, Pill, Plus, Search, Square, Sun, Sunrise, Unlock, X,
 } from 'lucide-react'
-import { savePrefabFromSelection } from '../assets/import'
+import { readClipDrag } from '../animation/playback'
+import { assignClip } from '../assets/import'
+import { assetDirectory, useAssetStore } from '../assets/library'
 import { instanceDirty, isPrefabRoot } from '../assets/prefab'
-import { useI18n, type MessageKey } from '../i18n'
+import { translate, useI18n, type MessageKey } from '../i18n'
 import { childrenOf, isLight, isMesh, LIGHT_KINDS, MESH_KINDS } from '../scene/kinds'
 import { useEditorStore, primaryId } from '../scene/store'
 import { isUnder } from '../scene/transform'
@@ -43,6 +45,8 @@ export default function HierarchyPanel() {
   const [menu, setMenu] = useState<{ x: number; y: number; id: string | null } | null>(null)
   const [renameId, setRenameId] = useState<string | null>(null)
   const [createOpen, setCreateOpen] = useState(false)
+  const [savePrefab, setSavePrefab] = useState<{ id: string, name: string, dir?: string } | null>(null)
+  const [unpackId, setUnpackId] = useState<string | null>(null)
   const listRef = useRef<HTMLDivElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
   const renameTimer = useRef<number | null>(null)
@@ -221,6 +225,14 @@ export default function HierarchyPanel() {
         drag.active = true
         dragged.current = true
       }
+      document.querySelectorAll('.is-prefab-drop').forEach(element => element.classList.remove('is-prefab-drop'))
+      const folder = document.elementFromPoint(pointer.clientX, pointer.clientY)?.closest<HTMLElement>('[data-asset-dir]')
+      if (folder) {
+        folder.classList.add('is-prefab-drop')
+        dropLive.current = null
+        setDrop(null)
+        return
+      }
       const row = document.elementFromPoint(pointer.clientX, pointer.clientY)?.closest<HTMLElement>('[data-node-id]')
       const targetId = row?.dataset.nodeId ?? null
       if (!targetId || targetId === drag.id || isUnder(useEditorStore.getState().nodes, targetId, drag.id)) {
@@ -242,6 +254,18 @@ export default function HierarchyPanel() {
       const current = dropLive.current
       dropLive.current = null
       setDrop(null)
+      document.querySelectorAll('.is-prefab-drop').forEach(element => element.classList.remove('is-prefab-drop'))
+      const folder = document.elementFromPoint(pointer.clientX, pointer.clientY)?.closest<HTMLElement>('[data-asset-dir]')
+      if (drag?.active && folder) {
+        const node = useEditorStore.getState().nodes[drag.id]
+        if (!node) return
+        if (node.prefabInstanceId === node.id) {
+          useEditorStore.getState().log('warn', translate('prefab.alreadyInstance'))
+          return
+        }
+        setSavePrefab({ id: node.id, name: node.name, dir: folder.dataset.assetDir })
+        return
+      }
       if (!drag?.active) return
       const ids = dragIds(drag.id, useEditorStore.getState().selection)
       const target = document.elementFromPoint(pointer.clientX, pointer.clientY)?.closest<HTMLElement>('[data-node-id]')
@@ -344,6 +368,33 @@ export default function HierarchyPanel() {
               style={{ paddingLeft: 6 + depth * 14 }}
               data-node-id={node.id}
               title={t('hierarchy.hint')}
+              onDragOver={event => {
+                const types = [...event.dataTransfer.types]
+                if (!types.includes('application/x-t3d-asset') && !types.includes('application/x-t3d-clip')) return
+                event.preventDefault()
+                event.stopPropagation()
+              }}
+              onDrop={event => {
+                const clipDrag = readClipDrag(event.dataTransfer.getData('application/x-t3d-clip'))
+                if (clipDrag) {
+                  if (node.kind !== 'model') return
+                  event.preventDefault()
+                  event.stopPropagation()
+                  assignClip(node.id, clipDrag.assetId, clipDrag.clip)
+                  return
+                }
+                const assetId = event.dataTransfer.getData('application/x-t3d-asset')
+                const asset = useAssetStore.getState().assets[assetId]
+                if (asset?.kind !== 'prefab') return
+                event.preventDefault()
+                event.stopPropagation()
+                useEditorStore.getState().spawnPrefab(assetId, [0, 0, 0], node.id)
+                setCollapsed(state => {
+                  const next = { ...state }
+                  delete next[node.id]
+                  return next
+                })
+              }}
               onPointerDown={event => beginRowDrag(event, node.id)}
               onClick={event => selectRow(node.id, event)}
               onDoubleClick={event => focusRow(node.id, event)}
@@ -394,7 +445,28 @@ export default function HierarchyPanel() {
                   }}
                 />
               ) : (
-                <span className="scene-item__name">{node.name}{(isPrefabRoot(node) ? instanceDirty(nodes, node.id) : !!node.prefabOverrides?.length) ? ' *' : ''}</span>
+                <>
+                  <span className="scene-item__name" title={isPrefabRoot(node) && instanceDirty(nodes, node.id) ? t('prefab.dirty') : undefined}>
+                    {node.name}
+                    {(isPrefabRoot(node) ? instanceDirty(nodes, node.id) : !!node.prefabOverrides?.length) ? ' *' : ''}
+                  </span>
+                  {isPrefabRoot(node) && selected && (
+                    <button
+                      type="button"
+                      className={`scene-item__prefab ${useAssetStore.getState().assets[node.prefabAssetId ?? ''] ? '' : 'is-missing'}`}
+                      title={useAssetStore.getState().assets[node.prefabAssetId ?? ''] ? t('prefab.openHint') : t('prefab.missing')}
+                      onMouseDown={event => event.stopPropagation()}
+                      onClick={event => {
+                        event.stopPropagation()
+                        const assetId = node.prefabAssetId
+                        if (!assetId || !useAssetStore.getState().assets[assetId]) return
+                        useEditorStore.getState().openPrefab(assetId)
+                      }}
+                    >
+                      {useAssetStore.getState().assets[node.prefabAssetId ?? '']?.name ?? t('prefab.missing')}
+                    </button>
+                  )}
+                </>
               )}
               <span className="scene-item__actions">
                 <button
@@ -447,16 +519,19 @@ export default function HierarchyPanel() {
               <button type="button" disabled={playing || !useEditorStore.getState().canPaste} onClick={() => { useEditorStore.getState().pasteClipboard(menu.id); setMenu(null) }}>{t('hierarchy.pasteChild')}</button>
               <button type="button" disabled={playing} onClick={() => { useEditorStore.getState().groupSelection(); setMenu(null) }}>{t('menu.group')}</button>
               <button type="button" disabled={playing} onClick={() => { useEditorStore.getState().snapSelectionToGround(); setMenu(null) }}>{t('menu.ground')}</button>
-              <button type="button" disabled={playing} onClick={() => { savePrefabFromSelection(); setMenu(null) }}>{t('inspector.savePrefab')}</button>
+              {!isPrefabRoot(nodes[menu.id!]) && (
+                <button type="button" disabled={playing} onClick={() => { setSavePrefab({ id: menu.id!, name: nodes[menu.id!]?.name ?? '' }); setMenu(null) }}>{t('prefab.saveAs')}</button>
+              )}
               {nodes[menu.id!]?.nestedPrefabId && (
                 <button type="button" onClick={() => { useEditorStore.getState().openPrefab(nodes[menu.id!]?.nestedPrefabId ?? ''); setMenu(null) }}>{t('prefab.edit')}</button>
               )}
               {isPrefabRoot(nodes[menu.id!]) && (
                 <>
                   <button type="button" onClick={() => { useEditorStore.getState().openPrefab(nodes[menu.id!]?.prefabAssetId ?? ''); setMenu(null) }}>{t('prefab.edit')}</button>
+                  <button type="button" onClick={() => { revealPrefab(nodes[menu.id!]?.prefabAssetId ?? ''); setMenu(null) }}>{t('prefab.reveal')}</button>
                   <button type="button" disabled={playing || !instanceDirty(nodes, menu.id!)} onClick={() => { useEditorStore.getState().applyPrefabInstance(menu.id!); setMenu(null) }}>{t('prefab.apply')}</button>
                   <button type="button" disabled={playing || !instanceDirty(nodes, menu.id!)} onClick={() => { useEditorStore.getState().revertPrefabInstance(menu.id!); setMenu(null) }}>{t('prefab.revert')}</button>
-                  <button type="button" disabled={playing} onClick={() => { useEditorStore.getState().unpackPrefabInstance(menu.id!); setMenu(null) }}>{t('prefab.unpack')}</button>
+                  <button type="button" disabled={playing} onClick={() => { setUnpackId(menu.id); setMenu(null) }}>{t('prefab.unpack')}</button>
                 </>
               )}
               <button type="button" disabled={playing} onClick={() => { useEditorStore.getState().deleteSelection(); setMenu(null) }}>{t('menu.delete')}</button>
@@ -472,8 +547,52 @@ export default function HierarchyPanel() {
         </div>,
         document.body,
       )}
+      {savePrefab && createPortal(
+        <div className="prefab-dialog__backdrop" onMouseDown={() => setSavePrefab(null)}>
+          <div className="prefab-dialog" role="dialog" onMouseDown={event => event.stopPropagation()}>
+            <h2>{t('prefab.saveAs')}</h2>
+            <p>{t('prefab.saveHint', { name: savePrefab.name })}</p>
+            <input
+              autoFocus
+              value={savePrefab.name}
+              onChange={event => setSavePrefab({ ...savePrefab, name: event.target.value })}
+              onKeyDown={event => {
+                if (event.key === 'Enter') {
+                  useEditorStore.getState().createPrefabFromSelection(savePrefab.name, savePrefab.id, savePrefab.dir)
+                  setSavePrefab(null)
+                }
+              }}
+            />
+            <div>
+              <button type="button" onClick={() => setSavePrefab(null)}>{t('prefab.cancel')}</button>
+              <button type="button" onClick={() => { useEditorStore.getState().createPrefabFromSelection(savePrefab.name, savePrefab.id, savePrefab.dir); setSavePrefab(null) }}>{t('prefab.confirm')}</button>
+            </div>
+          </div>
+        </div>,
+        document.body,
+      )}
+      {unpackId && createPortal(
+        <div className="prefab-dialog__backdrop" onMouseDown={() => setUnpackId(null)}>
+          <div className="prefab-dialog" role="dialog" onMouseDown={event => event.stopPropagation()}>
+            <h2>{t('prefab.unpackTitle')}</h2>
+            <p>{t('prefab.unpackMessage')}</p>
+            <div>
+              <button type="button" onClick={() => setUnpackId(null)}>{t('prefab.cancel')}</button>
+              <button type="button" onClick={() => { useEditorStore.getState().unpackPrefabInstance(unpackId); setUnpackId(null) }}>{t('prefab.unpack')}</button>
+            </div>
+          </div>
+        </div>,
+        document.body,
+      )}
     </div>
   )
+}
+
+function revealPrefab(assetId: string) {
+  if (!assetId) return
+  const library = useAssetStore.getState()
+  library.setBrowseDir(assetDirectory(assetId, library.assetDirs))
+  useEditorStore.setState({ inspectedAssetId: assetId })
 }
 
 function dragIds(source: string, selection: string[]) {

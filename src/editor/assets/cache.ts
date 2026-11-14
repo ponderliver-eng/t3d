@@ -1,4 +1,7 @@
-import type { FileKind } from './library'
+import type { ClipCatalogEntry } from '../animation/playback'
+import type { ModelHumanoidAvatar } from '../animation/humanoidAvatar'
+import type { HumanoidRetargetAdjust } from '../animation/humanoidAdjust'
+import type { FileKind, ModelSocket } from './library'
 
 const DB_NAME = 't3d-asset-cache'
 const DB_VERSION = 2
@@ -29,6 +32,11 @@ export interface AssetMeta {
   thumb: string | null
   byteLength: number
   artifactReady: boolean
+  humanoidAvatar?: ModelHumanoidAvatar | null
+  humanoidRetarget?: HumanoidRetargetAdjust | null
+  clipCatalog?: ClipCatalogEntry[]
+  importScale?: number
+  sockets?: ModelSocket[]
 }
 
 export interface ModelArtifactRecord {

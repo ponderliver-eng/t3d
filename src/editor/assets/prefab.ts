@@ -242,7 +242,7 @@ export function retargetInstance(scene: Record<string, SceneNode>, oldRoot: stri
 
 export function markOverrides(node: SceneNode, patch: Partial<SceneNode>) {
   if (!node.prefabAssetId) return
-  const keys = Object.keys(patch).filter(key => !SKIP.has(key))
+  const keys = Object.keys(patch).filter(key => !SKIP.has(key) && key !== 'clipTime' && key !== 'clipPlaying')
   if (keys.length === 0) return
   node.prefabOverrides = [...new Set([...(node.prefabOverrides ?? []), ...keys])]
 }

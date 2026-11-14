@@ -114,6 +114,17 @@ export interface SceneNode {
   clipAssetId: string | null
   clipTime: number
   clipPlaying: boolean
+  /** 缺省为循环。false 时按 clipEnd 处理。 */
+  clipLoop?: boolean
+  /** 非循环播完后：停在最后一帧、停止，或回到状态机默认状态。 */
+  clipEnd?: 'hold' | 'stop' | 'default'
+  clipSpeed?: number
+  clipFade?: number
+  /** 钉住盆骨的水平位移，只留上下。 */
+  clipInPlace?: boolean
+  /** 这段直接播放作用到全身、上半身或下半身。 */
+  clipMask?: 'full' | 'upper' | 'lower'
+  animator?: import('../animation/animator').AnimatorController | null
   metalness: number
   roughness: number
   emissive: string

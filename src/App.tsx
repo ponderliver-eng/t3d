@@ -120,7 +120,10 @@ export default function App() {
       {prefabSession && (
         <div className="prefab-bar">
           <span>{translate('prefab.editing', { name: prefabName || '' })}</span>
-          <button type="button" onClick={() => useEditorStore.getState().closePrefab(true)}>{translate('prefab.saveBack')}</button>
+          <span>
+            <button type="button" onClick={() => useEditorStore.getState().closePrefab(false)}>{translate('prefab.discard')}</button>
+            <button type="button" onClick={() => useEditorStore.getState().closePrefab(true)}>{translate('prefab.saveBack')}</button>
+          </span>
         </div>
       )}
       <div className="app__workspace">

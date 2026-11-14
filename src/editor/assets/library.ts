@@ -1,4 +1,7 @@
 import { create } from 'zustand'
+import type { ClipCatalogEntry } from '../animation/playback'
+import type { ModelHumanoidAvatar } from '../animation/humanoidAvatar'
+import type { HumanoidRetargetAdjust } from '../animation/humanoidAdjust'
 import type { PbrSlot, SceneNode, ScenePicture } from '../scene/types'
 import { ASSETS_ROOT, directoryExists, joinDir, normalizeDir, parentDir, relocateDir, uniqueFolderName } from './folders'
 
@@ -12,6 +15,18 @@ export interface FileAsset {
   fileName: string
   hash: string
   thumb: string | null
+  humanoidAvatar?: ModelHumanoidAvatar | null
+  humanoidRetarget?: HumanoidRetargetAdjust | null
+  clipCatalog?: ClipCatalogEntry[]
+  /** 导入时乘在模型根上，不写进场景物体的缩放。 */
+  importScale?: number
+  sockets?: ModelSocket[]
+}
+
+export interface ModelSocket {
+  id: string
+  name: string
+  bone: string
 }
 
 export interface MaterialAsset {

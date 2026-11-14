@@ -3,7 +3,7 @@ import { useEditorStore } from '../scene/store'
 import { normalizeSlot, resolveModelSlot, slotFromNode } from './materials'
 import { clipNamesFor, getModelTemplate, loadModelTemplate, releaseModel } from './models'
 import { loadEnvironmentAsset, loadTextureAsset, releaseTexture } from './textures'
-import { forgetFile, rememberFile, sha256, updateCachedThumb } from './cache'
+import { forgetFile, patchAssetMeta, readFileBytes, rememberFile, sha256, updateCachedThumb } from './cache'
 import { imageThumb, labelThumb, renderModelThumb } from './thumbs'
 import { readPrefab } from './prefab'
 import { translate } from '../i18n'
@@ -116,6 +116,42 @@ export async function warmCachedAsset(asset: FileAsset): Promise<boolean> {
   }
 }
 
+export async function reimportModel(assetId: string) {
+  const editor = useEditorStore.getState()
+  const asset = useAssetStore.getState().assets[assetId]
+  if (!asset || asset.kind !== 'model' || !('fileName' in asset)) {
+    editor.log('warn', translate('preview.reimportUnavailable'))
+    return
+  }
+  const bytes = await readFileBytes(assetId)
+  if (!bytes) {
+    editor.log('error', translate('preview.reimportFailed'))
+    return
+  }
+  if (asset.url) URL.revokeObjectURL(asset.url)
+  const url = URL.createObjectURL(new Blob([bytes]))
+  releaseModel(assetId)
+  useAssetStore.getState().patch(assetId, { url })
+  try {
+    await loadModelTemplate({ ...asset, url }, true)
+    editor.log('info', translate('preview.reimportDone', { name: asset.name }))
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    editor.log('error', translate('preview.reimportFailedDetail', { message }))
+  }
+}
+
+export function setModelImportScale(assetId: string, scale: number) {
+  const clean = Math.max(0.001, Number(scale.toFixed(4)) || 1)
+  useAssetStore.getState().patch(assetId, { importScale: clean })
+  void patchAssetMeta(assetId, { importScale: clean })
+}
+
+export function setModelSockets(assetId: string, sockets: import('./library').ModelSocket[]) {
+  useAssetStore.getState().patch(assetId, { sockets })
+  void patchAssetMeta(assetId, { sockets })
+}
+
 async function attachThumb(id: string) {
   const asset = useAssetStore.getState().assets[id]
   if (!asset || !('url' in asset) || asset.thumb) return
@@ -195,11 +231,26 @@ export function placeAsset(assetId: string, point: Vec3, hitId: string | null) {
       editor.log('warn', translate('log.animOnModel'))
       return
     }
-    const clips = clipNamesFor(assetId)
-    editor.beginGesture('指定动画')
-    editor.updateNode(node.id, { clipAssetId: assetId, clip: clips[0] ?? '', clipTime: 0, clipPlaying: true })
-    editor.endGesture()
+    assignClip(node.id, assetId, clipNamesFor(assetId)[0] ?? '')
   }
+}
+
+export function assignClip(nodeId: string, assetId: string, clip: string) {
+  const editor = useEditorStore.getState()
+  const node = editor.nodes[nodeId]
+  if (!node || node.kind !== 'model') {
+    editor.log('warn', translate('log.animOnModel'))
+    return
+  }
+  const own = !assetId || node.assetId === assetId
+  editor.beginGesture('指定动画')
+  editor.updateNode(node.id, {
+    clipAssetId: own ? null : assetId,
+    clip,
+    clipTime: 0,
+    clipPlaying: Boolean(clip),
+  })
+  editor.endGesture()
 }
 
 export function saveMaterialFromSelection() {

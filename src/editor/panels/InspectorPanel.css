@@ -248,6 +248,103 @@
 
 .inspector__action:hover { background: var(--bg-hover); color: var(--text-primary); }
 
+.humanoid-card { margin-top: 8px; }
+.humanoid-card__summary,
+.humanoid-card__warn,
+.humanoid-card__ok,
+.humanoid-card__fold p {
+  margin: 0 0 6px;
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+.humanoid-card__warn { color: var(--text-secondary); }
+.humanoid-card__fold { margin-top: 6px; }
+.humanoid-card__fold summary { cursor: pointer; color: var(--text-secondary); font-size: 12px; }
+.humanoid-card__fold button { margin-bottom: 6px; }
+.humanoid-card__slider {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr) 42px;
+  gap: 6px;
+  align-items: center;
+  margin-bottom: 4px;
+  color: var(--text-secondary);
+  font-size: 11px;
+}
+.humanoid-card__slider em { font-style: normal; text-align: right; font-variant-numeric: tabular-nums; }
+
+.anim-state {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+  margin: 4px 0;
+}
+
+.anim-state input,
+.anim-state select {
+  min-width: 0;
+}
+
+.anim-state .field { flex: 1 1 100%; }
+
+.anim-mode {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.anim-mode button {
+  height: 22px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+}
+
+.anim-mode button.is-on {
+  color: var(--text-primary);
+  border-color: var(--accent, #4a9eff);
+}
+
+.anim-mode span,
+.anim-mode em {
+  color: var(--text-muted);
+  font-size: 11px;
+  font-style: normal;
+}
+
+.anim-state button.is-on { color: var(--text-primary); }
+
+.anim-transport {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 6px;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.anim-transport button {
+  height: 22px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+}
+
+.anim-transport button:hover { background: var(--bg-hover); color: var(--text-primary); }
+
+.anim-transport input[type='range'] { width: 100%; min-width: 0; }
+
+.anim-transport span {
+  color: var(--text-muted);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
 .prefab-actions {
   display: flex;
   flex-wrap: wrap;
