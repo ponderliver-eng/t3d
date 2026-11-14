@@ -126,16 +126,25 @@ export function ModelPreview({ assetId, standalone = false }: { assetId: string,
       if (!root) return
       const boundsBox = boundsOf(root)
       const center = boundsBox.getCenter(new Vector3())
-      const size = boundsBox.getSize(new Vector3())
-      const radius = Math.max(size.length() * 0.5, 0.5)
-      controls.target.copy(center)
+      const extent = boundsBox.getSize(new Vector3()).length()
+      if (boundsBox.isEmpty() || !Number.isFinite(center.x) || !Number.isFinite(extent) || extent <= 1e-8) {
+        controls.target.set(0, 0, 0)
+        camera.position.set(3, 2, 4)
+        camera.near = 0.01
+        camera.far = 500
+        camera.updateProjectionMatrix()
+        controls.update()
+        return
+      }
+      const radius = extent * 0.5
       const distance = radius / Math.tan((camera.fov * Math.PI) / 360) * 1.35
+      controls.target.copy(center)
       if (view === 'front') camera.position.set(center.x, center.y, center.z + distance)
-      else if (view === 'top') camera.position.set(center.x, center.y + distance, center.z + 0.01)
+      else if (view === 'top') camera.position.set(center.x, center.y + distance, center.z + distance * 0.001)
       else if (view === 'right') camera.position.set(center.x + distance, center.y, center.z)
       else camera.position.set(center.x + distance * 0.7, center.y + distance * 0.45, center.z + distance * 0.7)
-      camera.near = Math.max(distance / 200, 0.01)
-      camera.far = Math.max(distance * 20, 100)
+      camera.near = Math.max(distance * 0.01, 1e-5)
+      camera.far = Math.max(distance * 40, 50)
       camera.updateProjectionMatrix()
       controls.update()
     }
@@ -186,6 +195,10 @@ export function ModelPreview({ assetId, standalone = false }: { assetId: string,
       const currentScale = useAssetStore.getState().assets[assetId]
       const scale = currentScale && 'importScale' in currentScale && typeof currentScale.importScale === 'number' && currentScale.importScale > 0 ? currentScale.importScale : 1
       root.scale.setScalar(scale)
+      root.traverse(child => {
+        const mesh = child as SkinnedMesh
+        if (mesh.isSkinnedMesh) mesh.frustumCulled = false
+      })
       scene.add(root)
       refreshObjectBounds(root)
       box = new BoxHelper(root, 0x4a9eff)
@@ -247,7 +260,7 @@ export function ModelPreview({ assetId, standalone = false }: { assetId: string,
     }
     const resize = () => {
       const rect = canvas.parentElement?.getBoundingClientRect()
-      if (!rect || rect.width < 2) return
+      if (!rect || rect.width < 2 || rect.height < 2) return
       renderer.setSize(rect.width, rect.height, false)
       camera.aspect = rect.width / Math.max(rect.height, 1)
       camera.updateProjectionMatrix()
@@ -278,7 +291,7 @@ export function ModelPreview({ assetId, standalone = false }: { assetId: string,
         mixer.update(dt)
         setTime(action.time)
       }
-      if (root && box) {
+      if (root && box?.visible) {
         refreshObjectBounds(root)
         box.update()
       }
@@ -322,7 +335,7 @@ export function ModelPreview({ assetId, standalone = false }: { assetId: string,
       <div className="model-preview__stage">
         <canvas ref={canvasRef} />
         {!ready && <div className="preview-view__empty">{t('preview.pendingModel')}</div>}
-        {facts && <div className="model-preview__hud">{facts.size.map(value => (value * importScale).toFixed(2)).join(' × ')} m</div>}
+        {facts && <div className="model-preview__hud">{facts.size.map(value => formatMeters(value * importScale)).join(' × ')} m</div>}
         <div className="model-preview__toolbar">
           <div className="model-preview__pills">
             {(['lit', 'wire', 'unlit'] as const).map(mode => (
@@ -345,7 +358,7 @@ export function ModelPreview({ assetId, standalone = false }: { assetId: string,
         </div>
         {advice && (
           <div className="model-preview__notice">
-            <span>{t('preview.scaleHint', { height: advice.height.toFixed(2), scale: advice.scale })}</span>
+            <span>{t('preview.scaleHint', { height: formatMeters(advice.height), scale: advice.scale })}</span>
             <button type="button" onClick={() => setModelImportScale(assetId, advice.scale)}>{t('preview.useScale', { scale: advice.scale })}</button>
           </div>
         )}
@@ -447,7 +460,7 @@ export function ModelPreview({ assetId, standalone = false }: { assetId: string,
                   <button key={value} type="button" className={Math.abs(importScale - value) < 1e-4 ? 'is-on' : ''} onClick={() => setModelImportScale(assetId, value)}>{value}x</button>
                 ))}
               </div>
-              {facts && <p>{t('preview.scaleHint', { height: (facts.size[1] * importScale).toFixed(2), scale: advice?.scale ?? importScale })}</p>}
+              {facts && <p>{t('preview.scaleHint', { height: formatMeters(facts.size[1] * importScale), scale: advice?.scale ?? importScale })}</p>}
               <div className="model-preview__field"><label>{t('preview.source')}</label><span>{fileName}</span></div>
               <button type="button" className="model-preview__reimport" onClick={() => { void reimportModel(assetId).then(() => setReload(value => value + 1)) }}>{t('preview.reimport')}</button>
             </div>
@@ -530,6 +543,15 @@ function readFacts(root: Object3D, humanoid: boolean): ModelFacts {
     size: [size.x / scale, size.y / scale, size.z / scale],
     humanoid,
   }
+}
+
+function formatMeters(value: number) {
+  const abs = Math.abs(value)
+  if (!Number.isFinite(abs)) return '0'
+  if (abs >= 100) return value.toFixed(1)
+  if (abs >= 0.01) return value.toFixed(2)
+  if (abs === 0) return '0'
+  return value.toFixed(4)
 }
 
 function scaleAdvice(facts: ModelFacts, scale: number): { scale: number, height: number } | null {

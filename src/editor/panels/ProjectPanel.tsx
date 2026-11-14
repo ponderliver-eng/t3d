@@ -9,6 +9,7 @@ import { assetDirectory, useAssetStore, type ProjectAsset } from '../assets/libr
 import { useEditorStore } from '../scene/store'
 import { translate, useI18n, type MessageKey } from '../i18n'
 import { openAssetPreview, type PreviewKind } from '../preview/previewStore'
+import { openPackagePicker, usePackageImportStore } from '../assets/packageImportStore'
 import './ProjectPanel.css'
 
 const PILLS = [
@@ -179,11 +180,14 @@ export default function ProjectPanel() {
             type="file"
             multiple
             hidden
-            accept=".gltf,.glb,.obj,.fbx,.dae,.3ds,.stl,.png,.jpg,.jpeg,.webp,.svg,.ktx2,.hdr,.exr,.env,.mp3,.wav,.ogg"
+            accept=".gltf,.glb,.obj,.fbx,.dae,.3ds,.stl,.png,.jpg,.jpeg,.webp,.svg,.ktx2,.hdr,.exr,.env,.mp3,.wav,.ogg,.unitypackage"
             onChange={event => {
               const files = [...(event.target.files ?? [])]
               event.target.value = ''
-              if (files.length) void importFiles(files)
+              const packages = files.filter(file => file.name.toLowerCase().endsWith('.unitypackage'))
+              const rest = files.filter(file => !file.name.toLowerCase().endsWith('.unitypackage'))
+              if (packages[0]) usePackageImportStore.getState().open(packages[0])
+              if (rest.length) void importFiles(rest)
             }}
           />
         </div>
@@ -213,7 +217,12 @@ export default function ProjectPanel() {
             event.preventDefault()
             setOver(false)
             if (assetId) useAssetStore.getState().place(assetId, browseDir)
-            else void importFiles(files, browseDir)
+            else {
+              const packages = files.filter(file => file.name.toLowerCase().endsWith('.unitypackage'))
+              const rest = files.filter(file => !file.name.toLowerCase().endsWith('.unitypackage'))
+              if (packages[0]) usePackageImportStore.getState().open(packages[0])
+              if (rest.length) void importFiles(rest, browseDir)
+            }
           }}
           onClick={event => {
             if ((event.target as HTMLElement).closest('.project-asset')) return
@@ -354,6 +363,7 @@ export default function ProjectPanel() {
           <CreateMenu dir={menu.path} onDone={() => setMenu(null)} onNewFolder={path => setRenamePath(path)} />
           <div className="project-panel__sep" />
           <button type="button" onClick={() => { useAssetStore.getState().setBrowseDir(menu.path); setMenu(null) }}>{t('project.open')}</button>
+          <button type="button" onClick={() => { setMenu(null); openPackagePicker() }}>{t('menu.extractPackage')}</button>
           {menu.path !== ASSETS_ROOT && <button type="button" onClick={() => { setRenamePath(menu.path); setMenu(null) }}>{t('project.rename')}</button>}
           {menu.path !== ASSETS_ROOT && (
             <button type="button" onClick={() => {

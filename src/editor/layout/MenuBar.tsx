@@ -1,11 +1,14 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import { ChevronRight } from 'lucide-react'
+import { ChevronRight, Clock } from 'lucide-react'
 import { askNewScene, useEditorStore } from '../scene/store'
 import { LIGHT_KINDS, MESH_KINDS } from '../scene/kinds'
 import { useI18n, translate, type MessageKey } from '../i18n'
 import { usePrefsStore } from '../prefs/store'
 import { openImport } from '../assets/import'
-import { saveProjectNow } from '../assets/project'
+import { createDirectoryProject, notifyProjectSaved, openDirectoryProject, openRecentProject, saveProjectNow } from '../assets/project'
+import { RecentProjectService, type RecentProject } from '../project/recents'
+import { bindPackagePicker, openPackagePicker, usePackageImportStore } from '../assets/packageImportStore'
+import { PackageExtractDialog } from '../panels/PackageExtractDialog'
 import { resetLayout } from './events'
 import type { CameraView, NodeKind } from '../scene/types'
 import './MenuBar.css'
@@ -20,6 +23,14 @@ export default function MenuBar() {
   const canPaste = useEditorStore(state => state.canPaste)
 
   const { t } = useI18n()
+  const packageFile = usePackageImportStore(state => state.file)
+  const packageInputRef = useRef<HTMLInputElement>(null)
+  const [recentProjects, setRecentProjects] = useState<RecentProject[]>(() => RecentProjectService.getAll())
+  const [recentOpen, setRecentOpen] = useState(false)
+  useEffect(() => {
+    bindPackagePicker(() => packageInputRef.current?.click())
+    return () => bindPackagePicker(null)
+  }, [])
   const create = (kind: NodeKind) => useEditorStore.getState().createNode(kind)
   const view = (next: CameraView) => useEditorStore.getState().requestView(next)
   const kindName = (kind: NodeKind) => t(`kind.${kind}` as MessageKey)
@@ -28,10 +39,52 @@ export default function MenuBar() {
     <div className="menubar">
       <div className="menubar__logo">T3D</div>
       <div className="menubar__items">
-        <Dropdown label={t('menu.file')}>
+        <Dropdown
+          label={t('menu.file')}
+          onOpen={() => {
+            setRecentProjects(RecentProjectService.getAll())
+            setRecentOpen(false)
+          }}
+        >
+          <Item disabled={playing} onClick={() => { void createDirectoryProject() }}>{t('menu.newProject')}</Item>
+          <Item disabled={playing} onClick={() => { void openDirectoryProject() }}>{t('menu.openProject')}<span className="menubar__hint">Ctrl+O</span></Item>
+          {recentProjects.length > 0 && (
+            <div
+              className={`menubar__menu-item menubar__menu-item--submenu ${recentOpen ? 'menubar__menu-item--active' : ''}`}
+              onMouseEnter={() => setRecentOpen(true)}
+              onMouseLeave={() => setRecentOpen(false)}
+              onClick={event => event.stopPropagation()}
+            >
+              <Clock size={12} />
+              {t('menu.recentProjects')}
+              <ChevronRight size={12} className="menubar__submenu-arrow" />
+              {recentOpen && (
+                <div className="menubar__submenu">
+                  {recentProjects.map(item => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      className="menubar__menu-item"
+                      disabled={playing}
+                      title={item.path ?? item.name}
+                      onClick={event => {
+                        event.stopPropagation()
+                        void openRecentProject(item.id).finally(() => setRecentProjects(RecentProjectService.getAll()))
+                        event.currentTarget.closest('.menubar__menu')?.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+                      }}
+                    >
+                      {item.name}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+          <Sep />
           <Item onClick={askNewScene}>{t('menu.newScene')}<span className="menubar__hint">Ctrl+N</span></Item>
-          <Item onClick={() => { void saveProjectNow().then(() => useEditorStore.getState().notify(translate('menu.saved'))) }}>{t('menu.save')}<span className="menubar__hint">Ctrl+S</span></Item>
+          <Item onClick={() => { void saveProjectNow().then(() => notifyProjectSaved()).catch(error => useEditorStore.getState().log('error', translate('log.projectFailed', { message: error instanceof Error ? error.message : String(error) }))) }}>{t('menu.save')}<span className="menubar__hint">Ctrl+S</span></Item>
           <Item onClick={openImport}>{t('menu.import')}</Item>
+          <Item onClick={openPackagePicker}>{t('menu.extractPackage')}</Item>
         </Dropdown>
         <Dropdown label={t('menu.edit')}>
           <Item disabled={playing || !canUndo} onClick={() => useEditorStore.getState().undo()}>{t('menu.undo')}<span className="menubar__hint">Ctrl+Z</span></Item>
@@ -78,11 +131,23 @@ export default function MenuBar() {
           <Item onClick={resetLayout}>{t('menu.resetLayout')}</Item>
         </Dropdown>
       </div>
+      <input
+        ref={packageInputRef}
+        type="file"
+        hidden
+        accept=".unitypackage"
+        onChange={event => {
+          const file = event.target.files?.[0] ?? null
+          event.target.value = ''
+          if (file) usePackageImportStore.getState().open(file)
+        }}
+      />
+      <PackageExtractDialog file={packageFile} open={packageFile !== null} onClose={() => usePackageImportStore.getState().close()} />
     </div>
   )
 }
 
-function Dropdown({ label, children }: { label: string; children: ReactNode }) {
+function Dropdown({ label, children, onOpen }: { label: string; children: ReactNode; onOpen?: () => void }) {
   const [open, setOpen] = useState(false)
   const rootRef = useRef<HTMLDivElement>(null)
 
@@ -107,7 +172,11 @@ function Dropdown({ label, children }: { label: string; children: ReactNode }) {
       <button
         type="button"
         className={`menubar__item ${open ? 'menubar__item--open' : ''}`}
-        onClick={() => setOpen(value => !value)}
+        onClick={() => setOpen(value => {
+          const next = !value
+          if (next) onOpen?.()
+          return next
+        })}
       >
         {label}
       </button>

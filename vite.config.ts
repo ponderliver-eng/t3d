@@ -1,8 +1,55 @@
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import electron from 'vite-plugin-electron/simple'
 
-export default defineConfig({
-  plugins: [react()],
+const rootDir = path.dirname(fileURLToPath(import.meta.url))
+
+export default defineConfig(({ mode }) => ({
+  plugins: [
+    react(),
+    ...(mode === 'web'
+      ? []
+      : [
+          electron({
+            main: {
+              entry: 'electron/main.ts',
+              vite: {
+                build: {
+                  target: 'node20',
+                  outDir: 'dist-electron',
+                  rollupOptions: {
+                    external: ['electron', 'node:url', 'node:path', 'node:fs/promises'],
+                    output: {
+                      format: 'es',
+                      inlineDynamicImports: true,
+                      entryFileNames: 'main.mjs',
+                    },
+                  },
+                },
+              },
+            },
+            preload: {
+              input: path.join(rootDir, 'electron/preload.ts'),
+              vite: {
+                build: {
+                  ssr: 'electron/preload.ts',
+                  target: 'node20',
+                  outDir: 'dist-electron',
+                  rollupOptions: {
+                    external: ['electron'],
+                    output: {
+                      format: 'cjs',
+                      entryFileNames: 'preload.cjs',
+                    },
+                  },
+                },
+              },
+            },
+          }),
+        ]),
+  ],
   optimizeDeps: {
     include: [
       'three',
@@ -38,4 +85,4 @@ export default defineConfig({
   preview: {
     port: 5180,
   },
-})
+}))

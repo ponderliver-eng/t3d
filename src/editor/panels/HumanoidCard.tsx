@@ -50,10 +50,10 @@ export function HumanoidCard({ assetId }: { assetId: string }) {
   const bones = [...new Set((humanoid?.skeletons ?? []).flatMap(skeleton => skeleton.bones.map(bone => bone.name)).filter(Boolean))]
     .sort((a, b) => a.localeCompare(b, 'zh'))
   const avatar = (asset && 'fileName' in asset ? asset.humanoidAvatar : null) ?? humanoid?.avatar ?? null
-  if (!avatar && bones.length === 0) return null
   const adjust = normalizeHumanoidRetargetAdjust(asset && 'fileName' in asset ? asset.humanoidRetarget : null)
   const draft = useRef(adjust)
   draft.current = adjust
+  if (!avatar && bones.length === 0) return null
   const motion = !avatar
     ? t('humanoid.motionUnknown')
     : avatar.rootMotion === 'inPlace'

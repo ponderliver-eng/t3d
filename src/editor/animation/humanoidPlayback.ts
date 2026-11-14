@@ -76,15 +76,19 @@ export function clipsForSkeleton(sourceId: string, targetId: string): AnimationC
   const sourceAvatar = sourceAsset && 'fileName' in sourceAsset
     ? preserveHumanoidAvatarOverrides(source.humanoid?.avatar, sourceAsset.humanoidAvatar) ?? source.humanoid?.avatar ?? null
     : source.humanoid?.avatar ?? null
-  const clips = source.clips.map(clip => bindHumanoidClip({
-    clip,
-    sourceProfile: source.humanoid?.profile ?? null,
-    sourceSkeletons: source.humanoid?.skeletons ?? [],
-    sourceAvatar,
-    targetProfile,
-    targetSlots: slots,
-    adjust: adjust && !humanoidRetargetAdjustIsDefault(adjust) ? normalizeHumanoidRetargetAdjust(adjust) : null,
-  }) ?? clip)
+  const clips: AnimationClip[] = []
+  for (const clip of source.clips) {
+    const bound = bindHumanoidClip({
+      clip,
+      sourceProfile: source.humanoid?.profile ?? null,
+      sourceSkeletons: source.humanoid?.skeletons ?? [],
+      sourceAvatar,
+      targetProfile,
+      targetSlots: slots,
+      adjust: adjust && !humanoidRetargetAdjustIsDefault(adjust) ? normalizeHumanoidRetargetAdjust(adjust) : null,
+    })
+    if (bound) clips.push(bound)
+  }
   cache.set(key, clips)
   return clips
 }

@@ -68,6 +68,7 @@ interface AssetState {
   updateMaterial: (id: string, slot: Partial<PbrSlot>) => void
   bump: () => void
   loadCatalog: (folders: string[], assetDirs: Record<string, string>) => void
+  loadSession: (assets: Record<string, ProjectAsset>, folders: string[], assetDirs: Record<string, string>) => void
   setBrowseDir: (dir: string) => void
   place: (id: string, dir?: string) => void
   writePrefab: (id: string, rootId: string, nodes: Record<string, SceneNode>) => void
@@ -120,6 +121,13 @@ export const useAssetStore = create<AssetState>((set, get) => ({
     folders: [...new Set(folders.map(normalizeDir).filter(path => path !== ASSETS_ROOT))],
     assetDirs: Object.fromEntries(Object.entries(assetDirs).map(([id, dir]) => [id, normalizeDir(dir)])),
   }),
+  loadSession: (assets, folders, assetDirs) => set(state => ({
+    assets,
+    folders: [...new Set(folders.map(normalizeDir).filter(path => path !== ASSETS_ROOT))],
+    assetDirs: Object.fromEntries(Object.entries(assetDirs).map(([id, dir]) => [id, normalizeDir(dir)])),
+    browseDir: ASSETS_ROOT,
+    revision: state.revision + 1,
+  })),
   setBrowseDir: dir => set({ browseDir: normalizeDir(dir) }),
   writePrefab: (id, rootId, nodes) => set(state => {
     const asset = state.assets[id]

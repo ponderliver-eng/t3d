@@ -99,23 +99,45 @@
   color: var(--text-muted);
 }
 
+.menubar__menu-item--submenu {
+  position: relative;
+  justify-content: flex-start;
+  gap: 6px;
+  cursor: default;
+}
+
+.menubar__submenu-arrow {
+  margin-left: auto;
+  color: var(--text-muted);
+}
+
 .menubar__submenu {
   display: none;
   position: absolute;
   left: 100%;
   top: 0;
-  min-width: 160px;
+  min-width: 200px;
+  max-width: 300px;
   background: var(--bg-header);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
   padding: 4px 0;
   z-index: 1001;
+  overflow: hidden;
 }
 
 .menubar__menu-item--sub:hover > .menubar__submenu,
-.menubar__menu-item--sub:focus-within > .menubar__submenu {
+.menubar__menu-item--sub:focus-within > .menubar__submenu,
+.menubar__menu-item--submenu.menubar__menu-item--active > .menubar__submenu {
   display: block;
+}
+
+.menubar__submenu .menubar__menu-item {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 280px;
 }
 
 .menubar__arrow {

@@ -8,6 +8,7 @@ export default function SettingsDialog() {
   const open = usePrefsStore(state => state.settingsOpen)
   const language = usePrefsStore(state => state.language)
   const autoSave = usePrefsStore(state => state.autoSave)
+  const openLastProject = usePrefsStore(state => state.openLastProject)
   const uiScale = usePrefsStore(state => state.uiScale)
   const { t } = useI18n()
 
@@ -43,6 +44,11 @@ export default function SettingsDialog() {
             <input type="checkbox" checked={autoSave} onChange={event => usePrefsStore.getState().setAutoSave(event.target.checked)} />
           </label>
           <p className="settings-note">{t('settings.autoSaveNote')}</p>
+          <label className="settings-row">
+            <span>{t('settings.openLastProject')}</span>
+            <input type="checkbox" checked={openLastProject} onChange={event => usePrefsStore.getState().setOpenLastProject(event.target.checked)} />
+          </label>
+          <p className="settings-note">{t('settings.openLastProjectNote')}</p>
           <label className="settings-row">
             <span>{t('settings.uiScale')}</span>
             <select value={String(uiScale)} onChange={event => usePrefsStore.getState().setUiScale(Number(event.target.value) as UiScale)}>

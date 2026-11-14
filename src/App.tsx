@@ -5,7 +5,7 @@ import IDELayout from './editor/layout/IDELayout'
 import StatusBar from './editor/layout/StatusBar'
 import { askNewScene, useEditorStore } from './editor/scene/store'
 import { useAssetStore } from './editor/assets/library'
-import { bindProjectAutosave, saveProjectNow } from './editor/assets/project'
+import { bindProjectAutosave, notifyProjectSaved, openDirectoryProject, saveProjectNow } from './editor/assets/project'
 import { translate } from './editor/i18n'
 import SettingsDialog from './editor/prefs/SettingsDialog'
 import { usePrefsStore } from './editor/prefs/store'
@@ -40,9 +40,16 @@ export default function App() {
         usePrefsStore.getState().openSettings()
         return
       }
+      if (ctrl && event.code === 'KeyO') {
+        event.preventDefault()
+        if (store.playState === 'stopped') void openDirectoryProject()
+        return
+      }
       if (ctrl && event.code === 'KeyS') {
         event.preventDefault()
-        void saveProjectNow().then(() => store.notify(translate('menu.saved')))
+        void saveProjectNow().then(() => notifyProjectSaved()).catch(error => {
+          store.log('error', translate('log.projectFailed', { message: error instanceof Error ? error.message : String(error) }))
+        })
         return
       }
       if (ctrl && event.code === 'KeyZ' && !event.shiftKey) {

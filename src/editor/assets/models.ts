@@ -11,7 +11,8 @@ import type { PbrSlot } from '../scene/types'
 import { boundsOf } from '../scene/bounds'
 import { patchAssetMeta, readFileBytes, readModelArtifact, writeModelArtifact } from './cache'
 import { type FileAsset, useAssetStore } from './library'
-import { preserveHumanoidAvatarOverrides } from '../animation/humanoidAvatar'
+import { mergedHumanoidSlots, preserveHumanoidAvatarOverrides } from '../animation/humanoidAvatar'
+import { bindHumanoidClip } from '../animation/humanoidRetarget'
 import { describeHumanoid, forgetHumanoidSkeletons, registerHumanoidSkeletons, type ModelHumanoid } from '../animation/humanoidRig'
 import { convertFbxBytesToGlbWithUfbx } from './ufbx/ufbxToGlb'
 
@@ -86,6 +87,62 @@ export function loadModelTemplate(asset: FileAsset, forceSource = false): Promis
   return promise
 }
 
+/** 把已加载的动画资源按现有人形重定向写进模型自己的片段。 */
+export function retargetClipsOntoModel(bodyId: string, sourceId: string, preferredName?: string): number {
+  const body = templates.get(bodyId)
+  const source = templates.get(sourceId)
+  const target = body?.humanoid.profile
+  if (!body || !source || !target) return 0
+  const bodyAsset = useAssetStore.getState().assets[bodyId]
+  const sourceAsset = useAssetStore.getState().assets[sourceId]
+  const targetAvatar = bodyAsset && 'humanoidAvatar' in bodyAsset
+    ? preserveHumanoidAvatarOverrides(body.humanoid.avatar, bodyAsset.humanoidAvatar) ?? body.humanoid.avatar
+    : body.humanoid.avatar
+  const sourceAvatar = sourceAsset && 'humanoidAvatar' in sourceAsset
+    ? preserveHumanoidAvatarOverrides(source.humanoid.avatar, sourceAsset.humanoidAvatar) ?? source.humanoid.avatar
+    : source.humanoid.avatar
+  let added = 0
+  for (const clip of source.clips) {
+    const bound = bindHumanoidClip({
+      clip,
+      sourceProfile: source.humanoid.profile,
+      sourceSkeletons: source.humanoid.skeletons,
+      sourceAvatar,
+      targetProfile: target,
+      targetSlots: mergedHumanoidSlots(targetAvatar),
+      adjust: bodyAsset && 'humanoidRetarget' in bodyAsset ? bodyAsset.humanoidRetarget ?? null : null,
+    })
+    if (!bound) continue
+    const name = source.clips.length === 1 && preferredName ? preferredName : bound.name
+    bound.name = uniqueClipName(body.clips, name)
+    body.clips.push(bound)
+    added += 1
+  }
+  if (added > 0) {
+    rememberClipCatalog(bodyId, body.clips)
+    revisions.set(bodyId, (revisions.get(bodyId) ?? 0) + 1)
+    useAssetStore.getState().bump()
+    listeners.forEach(listener => listener())
+  }
+  return added
+}
+
+function uniqueClipName(clips: AnimationClip[], base: string): string {
+  const used = new Set(clips.map(clip => clip.name))
+  if (!used.has(base)) return base
+  let index = 2
+  while (used.has(`${base} ${index}`)) index += 1
+  return `${base} ${index}`
+}
+
+const extraExternalFiles = new Map<string, Array<{ name: string; data: Uint8Array }>>()
+
+export function withFbxCompanions<T>(assetId: string, files: ReadonlyArray<{ name: string; data: Uint8Array }>, run: () => Promise<T>): Promise<T> {
+  if (files.length === 0) return run()
+  extraExternalFiles.set(assetId, [...files])
+  return run().finally(() => extraExternalFiles.delete(assetId))
+}
+
 export function instantiateModel(assetId: string): { object: Object3D, clips: AnimationClip[] } | null {
   const template = templates.get(assetId)
   if (!template) return null
@@ -95,6 +152,7 @@ export function instantiateModel(assetId: string): { object: Object3D, clips: An
     if (!mesh.isMesh) return
     mesh.castShadow = true
     mesh.receiveShadow = true
+    if ((mesh as Mesh & { isSkinnedMesh?: boolean }).isSkinnedMesh) mesh.frustumCulled = false
     if (Array.isArray(mesh.material)) mesh.material = mesh.material.map(material => material.clone())
     else mesh.material = mesh.material.clone()
   })
@@ -269,7 +327,7 @@ async function loadFbxWithUfbx(asset: FileAsset): Promise<ModelTemplate> {
   if (!bytes) throw new Error('无法读取 FBX 字节')
   const glb = await convertFbxBytesToGlbWithUfbx(new Uint8Array(bytes), {
     logicalFileName: asset.fileName,
-    externalFiles,
+    externalFiles: [...externalFiles, ...(extraExternalFiles.get(asset.id) ?? [])],
   })
   const template = await parseArtifact(glb)
   if (asset.hash) {

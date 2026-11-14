@@ -1,7 +1,7 @@
 import { getSpawn } from '../scene/spawn'
 import { useEditorStore } from '../scene/store'
 import { normalizeSlot, resolveModelSlot, slotFromNode } from './materials'
-import { clipNamesFor, getModelTemplate, loadModelTemplate, releaseModel } from './models'
+import { clipNamesFor, getModelTemplate, loadModelTemplate, releaseModel, withFbxCompanions } from './models'
 import { loadEnvironmentAsset, loadTextureAsset, releaseTexture } from './textures'
 import { deleteModelArtifact, forgetFile, patchAssetMeta, readFileBytes, rememberFile, sha256, updateCachedThumb } from './cache'
 import { imageThumb, labelThumb, renderModelThumb } from './thumbs'
@@ -22,11 +22,54 @@ export function openImport() {
   input?.click()
 }
 
+export async function importExtractedBytes(
+  fileName: string,
+  bytes: Uint8Array,
+  dir: string,
+  companions: ReadonlyArray<{ name: string; data: Uint8Array }> = [],
+): Promise<string | null> {
+    const kind = fileKindFor(fileName)
+  if (!kind) return null
+  const copy = bytes.buffer instanceof ArrayBuffer && bytes.byteOffset === 0 && bytes.byteLength === bytes.buffer.byteLength
+    ? bytes.buffer
+    : bytes.slice().buffer
+  const hash = await sha256(copy)
+  const existing = findByHash(hash)
+  if (existing) {
+    useAssetStore.getState().place(existing.id, dir)
+    if (existing.kind === 'model' || existing.kind === 'animation') {
+      if (companions.length > 0) await withFbxCompanions(existing.id, companions, () => loadModelTemplate(existing, true))
+      else await loadModelTemplate(existing)
+    }
+    return existing.id
+  }
+  const asset: FileAsset = {
+    id: crypto.randomUUID(),
+    name: assetName(fileName),
+    kind,
+    url: URL.createObjectURL(new Blob([copy])),
+    fileName,
+    hash,
+    thumb: null,
+  }
+  if (kind === 'model') {
+    useAssetStore.getState().add(asset)
+    useAssetStore.getState().place(asset.id, dir)
+    await rememberFile({ ...asset, bytes: copy }).catch(error => {
+      console.warn('[cache] 写入失败', error)
+    })
+    const ok = await withFbxCompanions(asset.id, companions, () => ingestModelAfterRegister(asset))
+    return ok ? asset.id : null
+  }
+  const stored = await ingest(asset, copy, dir)
+  return stored ? asset.id : null
+}
+
 export async function importFiles(files: File[], dir = useAssetStore.getState().browseDir): Promise<string[]> {
   const created: string[] = []
   const modelsToLoad: FileAsset[] = []
   for (const file of files) {
-    const kind = kindFor(file.name)
+    const kind = fileKindFor(file.name)
     if (!kind) {
       useEditorStore.getState().log('warn', translate('log.unknownFile', { name: file.name }))
       continue
@@ -59,11 +102,8 @@ export async function importFiles(files: File[], dir = useAssetStore.getState().
         created.push(asset.id)
         continue
       }
-      const stored = await ingest(asset, bytes)
-      if (stored) {
-        useAssetStore.getState().place(asset.id, dir)
-        created.push(asset.id)
-      }
+      const stored = await ingest(asset, bytes, dir)
+      if (stored) created.push(asset.id)
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       useEditorStore.getState().log('error', translate('log.importFail', { name: file.name, message }))
@@ -102,9 +142,10 @@ async function ingestModelAfterRegister(asset: FileAsset): Promise<boolean> {
   }
 }
 
-async function ingest(asset: FileAsset, bytes: ArrayBuffer): Promise<boolean> {
+async function ingest(asset: FileAsset, bytes: ArrayBuffer, dir?: string): Promise<boolean> {
   try {
     useAssetStore.getState().add(asset)
+    if (dir) useAssetStore.getState().place(asset.id, dir)
     if (asset.kind === 'model') {
       const template = await loadModelTemplate(asset)
       if (!hasMesh(template.scene) && template.clips.length > 0) {
@@ -430,7 +471,7 @@ export function previewAudio(asset: ProjectAsset) {
   void new Audio(asset.url).play()
 }
 
-function kindFor(fileName: string): FileKind | null {
+export function fileKindFor(fileName: string): FileKind | null {
   const ext = fileName.toLowerCase().split('.').pop() ?? ''
   if (['glb', 'gltf', 'obj', 'fbx', 'dae', '3ds', 'stl'].includes(ext)) return 'model'
   if (['hdr', 'exr', 'env'].includes(ext)) return 'environment'

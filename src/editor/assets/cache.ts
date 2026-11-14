@@ -1,7 +1,22 @@
 import type { ClipCatalogEntry } from '../animation/playback'
 import type { ModelHumanoidAvatar } from '../animation/humanoidAvatar'
 import type { HumanoidRetargetAdjust } from '../animation/humanoidAdjust'
-import type { FileKind, ModelSocket } from './library'
+import type { ProjectDocument } from '../scene/document'
+import {
+  assetRecord,
+  assetRecords,
+  deleteArtifact,
+  flushDocument,
+  forgetAsset,
+  isDirectoryProject,
+  patchAsset,
+  readArtifact,
+  readAssetBytes,
+  sceneDocument,
+  writeArtifact,
+  writeSourceAsset,
+} from '../project/disk'
+import { assetDirectory, useAssetStore, type FileKind, type ModelSocket } from './library'
 
 const DB_NAME = 't3d-asset-cache'
 const DB_VERSION = 2
@@ -64,6 +79,11 @@ export async function sha256(bytes: ArrayBuffer): Promise<string> {
 }
 
 export async function rememberFile(record: CachedFile): Promise<void> {
+  if (isDirectoryProject()) {
+    const directory = assetDirectory(record.id, useAssetStore.getState().assetDirs)
+    await writeSourceAsset(liveMeta(record.id, metaFromFile(record, false)), record.bytes, directory)
+    return
+  }
   const meta = metaFromFile(record, false)
   const db = await database()
   await transaction(db, [FILES, META], 'readwrite', stores => {
@@ -73,6 +93,10 @@ export async function rememberFile(record: CachedFile): Promise<void> {
 }
 
 export async function updateCachedThumb(id: string, thumb: string): Promise<void> {
+  if (isDirectoryProject()) {
+    patchAsset(id, { thumb })
+    return
+  }
   const db = await database()
   const current = await request<AssetMeta | undefined>(db, META, 'readonly', store => store.get(id))
   if (!current) return
@@ -81,6 +105,10 @@ export async function updateCachedThumb(id: string, thumb: string): Promise<void
 }
 
 export async function patchAssetMeta(id: string, patch: Partial<AssetMeta>): Promise<void> {
+  if (isDirectoryProject()) {
+    patchAsset(id, patch)
+    return
+  }
   const db = await database()
   const current = await request<AssetMeta | undefined>(db, META, 'readonly', store => store.get(id))
   if (!current) return
@@ -88,6 +116,11 @@ export async function patchAssetMeta(id: string, patch: Partial<AssetMeta>): Pro
 }
 
 export async function forgetFile(id: string): Promise<void> {
+  if (isDirectoryProject()) {
+    const meta = assetRecord(id)
+    await forgetAsset(id, meta?.hash ? artifactKey(meta.hash) : null)
+    return
+  }
   const db = await database()
   const meta = await request<AssetMeta | undefined>(db, META, 'readonly', store => store.get(id))
   await transaction(db, [FILES, META, ARTIFACTS], 'readwrite', stores => {
@@ -97,17 +130,23 @@ export async function forgetFile(id: string): Promise<void> {
   })
 }
 
-export async function readCachedFiles(): Promise<CachedFile[]> {
+export async function readIdbFiles(): Promise<CachedFile[]> {
   const db = await database()
   return request<CachedFile[]>(db, FILES, 'readonly', store => store.getAll())
 }
 
+export async function readCachedFiles(): Promise<CachedFile[]> {
+  return readIdbFiles()
+}
+
 export async function readAssetMetas(): Promise<AssetMeta[]> {
+  if (isDirectoryProject()) return assetRecords()
   const db = await database()
   return request<AssetMeta[]>(db, META, 'readonly', store => store.getAll())
 }
 
 export async function readFileBytes(id: string): Promise<ArrayBuffer | null> {
+  if (isDirectoryProject()) return readAssetBytes(id)
   const db = await database()
   const row = await request<CachedFile | undefined>(db, FILES, 'readonly', store => store.get(id))
   return row?.bytes ?? null
@@ -115,18 +154,34 @@ export async function readFileBytes(id: string): Promise<ArrayBuffer | null> {
 
 export async function deleteModelArtifact(hash: string): Promise<void> {
   if (!hash) return
+  if (isDirectoryProject()) {
+    await deleteArtifact(artifactKey(hash))
+    return
+  }
   const db = await database()
   await request(db, ARTIFACTS, 'readwrite', store => store.delete(artifactKey(hash)))
 }
 
-export async function readModelArtifact(hash: string): Promise<ArrayBuffer | null> {
+export async function readIdbArtifact(hash: string): Promise<ArrayBuffer | null> {
+  if (!hash) return null
   const db = await database()
   const row = await request<ModelArtifactRecord | undefined>(db, ARTIFACTS, 'readonly', store => store.get(artifactKey(hash)))
   if (!row || row.importerVersion !== MODEL_IMPORTER_VERSION) return null
   return row.glb
 }
 
+export async function readModelArtifact(hash: string): Promise<ArrayBuffer | null> {
+  if (!hash) return null
+  if (isDirectoryProject()) return readArtifact(artifactKey(hash))
+  return readIdbArtifact(hash)
+}
+
 export async function writeModelArtifact(hash: string, glb: ArrayBuffer): Promise<void> {
+  if (!hash) return
+  if (isDirectoryProject()) {
+    await writeArtifact(artifactKey(hash), glb)
+    return
+  }
   const db = await database()
   const record: ModelArtifactRecord = {
     key: artifactKey(hash),
@@ -139,18 +194,24 @@ export async function writeModelArtifact(hash: string, glb: ArrayBuffer): Promis
 }
 
 export async function readSceneDocument<T>(): Promise<T | null> {
+  if (isDirectoryProject()) return sceneDocument<T>()
   const db = await database()
   const row = await request<SceneCacheRecord<T> | undefined>(db, SCENE, 'readonly', store => store.get(SCENE_KEY))
   return row?.document ?? null
 }
 
 export async function writeSceneDocument<T>(document: T): Promise<void> {
+  if (isDirectoryProject()) {
+    await flushDocument(document as ProjectDocument)
+    return
+  }
   const db = await database()
   const record: SceneCacheRecord<T> = { id: SCENE_KEY, document }
   await request(db, SCENE, 'readwrite', store => store.put(record))
 }
 
 export async function migrateLegacyFilesToMeta(): Promise<void> {
+  if (isDirectoryProject()) return
   const metas = await readAssetMetas()
   if (metas.length > 0) return
   const files = await readCachedFiles()
@@ -159,6 +220,24 @@ export async function migrateLegacyFilesToMeta(): Promise<void> {
   await transaction(db, [META], 'readwrite', stores => {
     for (const file of files) stores[META].put(metaFromFile(file, false))
   })
+}
+
+function liveMeta(id: string, base: AssetMeta): AssetMeta {
+  const asset = useAssetStore.getState().assets[id]
+  if (!asset || !('fileName' in asset)) return base
+  return {
+    ...base,
+    name: asset.name,
+    kind: asset.kind,
+    fileName: asset.fileName,
+    hash: asset.hash || base.hash,
+    thumb: asset.thumb,
+    ...(asset.humanoidAvatar !== undefined ? { humanoidAvatar: asset.humanoidAvatar } : {}),
+    ...(asset.humanoidRetarget !== undefined ? { humanoidRetarget: asset.humanoidRetarget } : {}),
+    ...(asset.clipCatalog !== undefined ? { clipCatalog: asset.clipCatalog } : {}),
+    ...(typeof asset.importScale === 'number' ? { importScale: asset.importScale } : {}),
+    ...(asset.sockets !== undefined ? { sockets: asset.sockets } : {}),
+  }
 }
 
 function metaFromFile(record: CachedFile, artifactReady: boolean): AssetMeta {

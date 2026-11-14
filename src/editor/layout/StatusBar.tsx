@@ -1,4 +1,5 @@
 import { useAssetStore } from '../assets/library'
+import { useProjectDirectory } from '../project/disk'
 import { useI18n, type MessageKey } from '../i18n'
 import { primaryId, useEditorStore } from '../scene/store'
 import './StatusBar.css'
@@ -19,6 +20,7 @@ export default function StatusBar() {
   const notice = useEditorStore(state => state.notice)
   const activeSceneId = useEditorStore(state => state.activeSceneId)
   const { t } = useI18n()
+  const projectName = useProjectDirectory(state => state.active ? state.name : '')
   const sceneAssetName = useAssetStore(state => {
     const asset = state.assets[activeSceneId]
     return asset?.kind === 'scene' ? asset.name : ''
@@ -30,6 +32,8 @@ export default function StatusBar() {
   return (
     <div className="statusbar">
       <span className="statusbar__item">T3D</span>
+      <span className="statusbar__sep" />
+      <span className="statusbar__item statusbar__item--project">{projectName || t('status.localProject')}</span>
       <span className="statusbar__sep" />
       <span className="statusbar__item statusbar__item--project">{sceneName}</span>
       <span className="statusbar__sep" />
