@@ -5,7 +5,7 @@ import { clipDuration, clipNamesFor, loadModelTemplate, subscribeModels } from '
 import { activeAnimatorState, emptyAnimator } from '../animation/animator'
 import { HumanoidCard } from './HumanoidCard'
 import { AnimatorCard } from './AnimatorCard'
-import { ASSET_MIME, saveMaterialFromNode, savePrefabFromSelection, openAsset } from '../assets/import'
+import { ASSET_MIME, reimportModel, saveMaterialFromNode, savePrefabFromSelection, openAsset } from '../assets/import'
 import { primaryId, useEditorStore } from '../scene/store'
 import { isLight, isMesh } from '../scene/kinds'
 import { resolveModelSlot, slotFromNode } from '../assets/materials'
@@ -311,6 +311,9 @@ function AssetSettings({ asset }: { asset: import('../assets/library').ProjectAs
         {preview && <button type="button" className="inspector__action" onClick={() => openAssetPreview(preview, asset.id, asset.name)}>{t('inspector.preview')}</button>}
         {(asset.kind === 'model' || asset.kind === 'prefab') && (
           <button type="button" className="inspector__action" onClick={() => void openAsset(asset.id)}>{t('inspector.place')}</button>
+        )}
+        {(asset.kind === 'model' || asset.kind === 'animation') && (
+          <button type="button" className="inspector__action" onClick={() => void reimportModel(asset.id)}>{t('preview.reimport')}</button>
         )}
       </div>
     </>

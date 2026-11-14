@@ -1,5 +1,5 @@
 import type { AnimationClip } from 'three'
-import { getModelTemplate } from '../assets/models'
+import { getModelTemplate, modelRevision } from '../assets/models'
 import { patchAssetMeta } from '../assets/cache'
 import { useAssetStore } from '../assets/library'
 import { humanoidAvatarCacheKey, mergedHumanoidSlots, preserveHumanoidAvatarOverrides, type ModelHumanoidAvatar } from './humanoidAvatar'
@@ -45,7 +45,14 @@ function fileAdjust(assetId: string): HumanoidRetargetAdjust | null {
 export function humanoidBindingKey(sourceId: string, targetId: string): string {
   const target = useAssetStore.getState().assets[targetId]
   const avatar = target && 'fileName' in target ? target.humanoidAvatar : null
-  return [sourceId, targetId, humanoidRetargetAdjustCacheKey(fileAdjust(targetId)), humanoidAvatarCacheKey(avatar)].join('|')
+  return [
+    sourceId,
+    modelRevision(sourceId),
+    targetId,
+    modelRevision(targetId),
+    humanoidRetargetAdjustCacheKey(fileAdjust(targetId)),
+    humanoidAvatarCacheKey(avatar),
+  ].join('|')
 }
 
 /** 把源片段绑到目标骨架。同名且腿长比不超过 5% 时原样返回。 */

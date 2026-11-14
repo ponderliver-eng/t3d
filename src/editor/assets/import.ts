@@ -3,7 +3,7 @@ import { useEditorStore } from '../scene/store'
 import { normalizeSlot, resolveModelSlot, slotFromNode } from './materials'
 import { clipNamesFor, getModelTemplate, loadModelTemplate, releaseModel } from './models'
 import { loadEnvironmentAsset, loadTextureAsset, releaseTexture } from './textures'
-import { forgetFile, patchAssetMeta, readFileBytes, rememberFile, sha256, updateCachedThumb } from './cache'
+import { deleteModelArtifact, forgetFile, patchAssetMeta, readFileBytes, rememberFile, sha256, updateCachedThumb } from './cache'
 import { imageThumb, labelThumb, renderModelThumb } from './thumbs'
 import { readPrefab } from './prefab'
 import { translate } from '../i18n'
@@ -24,6 +24,7 @@ export function openImport() {
 
 export async function importFiles(files: File[], dir = useAssetStore.getState().browseDir): Promise<string[]> {
   const created: string[] = []
+  const modelsToLoad: FileAsset[] = []
   for (const file of files) {
     const kind = kindFor(file.name)
     if (!kind) {
@@ -48,6 +49,16 @@ export async function importFiles(files: File[], dir = useAssetStore.getState().
         hash,
         thumb: null,
       }
+      if (kind === 'model') {
+        useAssetStore.getState().add(asset)
+        useAssetStore.getState().place(asset.id, dir)
+        await rememberFile({ ...asset, bytes }).catch(error => {
+          console.warn('[cache] 写入失败', error)
+        })
+        modelsToLoad.push(asset)
+        created.push(asset.id)
+        continue
+      }
       const stored = await ingest(asset, bytes)
       if (stored) {
         useAssetStore.getState().place(asset.id, dir)
@@ -58,7 +69,37 @@ export async function importFiles(files: File[], dir = useAssetStore.getState().
       useEditorStore.getState().log('error', translate('log.importFail', { name: file.name, message }))
     }
   }
+  for (const modelAsset of modelsToLoad) {
+    const ok = await ingestModelAfterRegister(modelAsset)
+    if (!ok) {
+      const idx = created.indexOf(modelAsset.id)
+      if (idx >= 0) created.splice(idx, 1)
+    }
+  }
   return created
+}
+
+async function ingestModelAfterRegister(asset: FileAsset): Promise<boolean> {
+  try {
+    const template = await loadModelTemplate(asset, true)
+    if (!hasMesh(template.scene) && template.clips.length > 0) {
+      useAssetStore.getState().patch(asset.id, { kind: 'animation' })
+      void patchAssetMeta(asset.id, { kind: 'animation' })
+      useEditorStore.getState().log('info', translate('log.importedAnim', { name: asset.name }))
+    } else {
+      useEditorStore.getState().log('info', translate('log.importedModel', { name: asset.name, count: template.clips.length }))
+    }
+    void attachThumb(asset.id, true)
+    return true
+  } catch (error) {
+    useAssetStore.getState().remove(asset.id)
+    URL.revokeObjectURL(asset.url)
+    releaseModel(asset.id)
+    void forgetFile(asset.id).catch(() => undefined)
+    const message = error instanceof Error ? error.message : String(error)
+    useEditorStore.getState().log('error', translate('log.importFail', { name: asset.fileName, message }))
+    return false
+  }
 }
 
 async function ingest(asset: FileAsset, bytes: ArrayBuffer): Promise<boolean> {
@@ -119,7 +160,7 @@ export async function warmCachedAsset(asset: FileAsset): Promise<boolean> {
 export async function reimportModel(assetId: string) {
   const editor = useEditorStore.getState()
   const asset = useAssetStore.getState().assets[assetId]
-  if (!asset || asset.kind !== 'model' || !('fileName' in asset)) {
+  if (!asset || (asset.kind !== 'model' && asset.kind !== 'animation') || !('fileName' in asset)) {
     editor.log('warn', translate('preview.reimportUnavailable'))
     return
   }
@@ -131,13 +172,54 @@ export async function reimportModel(assetId: string) {
   if (asset.url) URL.revokeObjectURL(asset.url)
   const url = URL.createObjectURL(new Blob([bytes]))
   releaseModel(assetId)
+  if (asset.hash) await deleteModelArtifact(asset.hash).catch(() => undefined)
+  await patchAssetMeta(assetId, { artifactReady: false }).catch(() => undefined)
   useAssetStore.getState().patch(assetId, { url })
   try {
-    await loadModelTemplate({ ...asset, url }, true)
+    const template = await loadModelTemplate({ ...asset, url }, true)
+    const nextKind: FileKind = !hasMesh(template.scene) && template.clips.length > 0 ? 'animation' : 'model'
+    if (nextKind !== asset.kind) {
+      useAssetStore.getState().patch(assetId, { kind: nextKind })
+      void patchAssetMeta(assetId, { kind: nextKind })
+    }
+    syncReimportedModelNodes(assetId, template.slots, template.clips.map(clip => clip.name))
+    void attachThumb(assetId, true)
     editor.log('info', translate('preview.reimportDone', { name: asset.name }))
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     editor.log('error', translate('preview.reimportFailedDetail', { message }))
+  }
+}
+
+function syncReimportedModelNodes(assetId: string, templateSlots: PbrSlot[], clipNames: string[]) {
+  const editor = useEditorStore.getState()
+  for (const node of Object.values(editor.nodes)) {
+    if (node.kind !== 'model') continue
+    const patch: Partial<SceneNode> = {}
+    if (node.assetId === assetId && templateSlots.length > 0) {
+      const existingByName = new Map(node.slots.map(slot => [slot.name, slot]))
+      patch.slots = templateSlots.map(fresh => {
+        const prev = existingByName.get(fresh.name)
+        if (!prev) return fresh
+        return {
+          ...fresh,
+          ...(prev.materialAssetId ? { materialAssetId: prev.materialAssetId } : {}),
+          mapAssetId: prev.mapAssetId ?? fresh.mapAssetId,
+          normalAssetId: prev.normalAssetId ?? fresh.normalAssetId,
+          roughnessAssetId: prev.roughnessAssetId ?? fresh.roughnessAssetId,
+          metalnessAssetId: prev.metalnessAssetId ?? fresh.metalnessAssetId,
+          emissiveAssetId: prev.emissiveAssetId ?? fresh.emissiveAssetId,
+          aoAssetId: prev.aoAssetId ?? fresh.aoAssetId,
+        }
+      })
+    }
+    const usesClips = (node.clipAssetId ? node.clipAssetId === assetId : node.assetId === assetId)
+    if (usesClips && clipNames.length > 0 && node.clip && !clipNames.includes(node.clip)) {
+      patch.clip = clipNames[0]
+    }
+    if (Object.keys(patch).length > 0) {
+      editor.updateNode(node.id, patch)
+    }
   }
 }
 
@@ -152,9 +234,9 @@ export function setModelSockets(assetId: string, sockets: import('./library').Mo
   void patchAssetMeta(assetId, { sockets })
 }
 
-async function attachThumb(id: string) {
+async function attachThumb(id: string, force = false) {
   const asset = useAssetStore.getState().assets[id]
-  if (!asset || !('url' in asset) || asset.thumb) return
+  if (!asset || !('url' in asset) || (asset.thumb && !force)) return
   let thumb: string | null = null
   if (asset.kind === 'texture' && !asset.fileName.toLowerCase().endsWith('.ktx2')) thumb = await imageThumb(asset.url)
   if (asset.kind === 'model') {

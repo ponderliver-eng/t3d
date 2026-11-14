@@ -12,6 +12,7 @@ import { patchAssetMeta, readFileBytes, readModelArtifact, writeModelArtifact } 
 import { type FileAsset, useAssetStore } from './library'
 import { preserveHumanoidAvatarOverrides } from '../animation/humanoidAvatar'
 import { describeHumanoid, forgetHumanoidSkeletons, registerHumanoidSkeletons, type ModelHumanoid } from '../animation/humanoidRig'
+import { convertFbxBytesToGlbWithUfbx } from './ufbx/ufbxToGlb'
 
 export interface ModelTemplate {
   scene: Group
@@ -104,7 +105,8 @@ function loadCachedOrSource(asset: FileAsset): Promise<ModelTemplate> {
 
 function loadFromSource(asset: FileAsset): Promise<ModelTemplate> {
   return ensureSourceUrl(asset).then(source => loadByExtension(source)).then(template => {
-    if (asset.hash) void storeModelArtifact(asset, template)
+    const ext = asset.fileName.split('.').pop()?.toLowerCase()
+    if (asset.hash && ext !== 'fbx') void storeModelArtifact(asset, template)
     return template
   })
 }
@@ -215,7 +217,10 @@ function loadByExtension(asset: FileAsset): Promise<ModelTemplate> {
     })
   }
   if (ext === 'fbx') {
-    return loadWith<Group>(new FBXLoader(), asset.url).then(object => templateFromObject(object, object.animations ?? []))
+    return loadFbxWithUfbx(asset).catch(error => {
+      console.warn('[fbx] ufbx 转换失败，回退 FBXLoader', asset.fileName, error)
+      return loadWith<Group>(new FBXLoader(), asset.url).then(object => templateFromObject(object, object.animations ?? []))
+    })
   }
   if (ext === 'dae') {
     return loadWith<{ scene: Object3D, animations?: AnimationClip[] }>(new ColladaLoader(), asset.url)
@@ -231,6 +236,49 @@ function loadWith<T>(loader: { load: (...args: never[]) => void }, url: string):
   return new Promise((resolve, reject) => {
     loader.load(url as never, resolve as never, undefined as never, reject as never)
   })
+}
+
+async function collectProjectTextureFiles(): Promise<Array<{ name: string; data: Uint8Array }>> {
+  const assets = Object.values(useAssetStore.getState().assets)
+  const textures = assets.filter((item): item is FileAsset => item.kind === 'texture' && 'fileName' in item)
+  const out: Array<{ name: string; data: Uint8Array }> = []
+  for (const tex of textures) {
+    try {
+      const bytes = await sourceBytes(tex)
+      if (!bytes || bytes.byteLength === 0) continue
+      const data = new Uint8Array(bytes)
+      out.push({ name: tex.fileName, data })
+      if (tex.name && tex.name !== tex.fileName) {
+        const ext = tex.fileName.split('.').pop() ?? 'png'
+        out.push({ name: `${tex.name}.${ext}`, data })
+      }
+    } catch {
+      // ignore unreadable texture
+    }
+  }
+  return out
+}
+
+async function loadFbxWithUfbx(asset: FileAsset): Promise<ModelTemplate> {
+  const [bytes, externalFiles] = await Promise.all([
+    sourceBytes(asset),
+    collectProjectTextureFiles(),
+  ])
+  if (!bytes) throw new Error('无法读取 FBX 字节')
+  const glb = await convertFbxBytesToGlbWithUfbx(new Uint8Array(bytes), {
+    logicalFileName: asset.fileName,
+    externalFiles,
+  })
+  const template = await parseArtifact(glb)
+  if (asset.hash) {
+    void compressMeshopt(glb).then(async compressed => {
+      await writeModelArtifact(asset.hash, compressed)
+      await patchAssetMeta(asset.id, { artifactReady: true })
+    }).catch(error => {
+      console.warn('[cache] FBX 成品写入失败', error)
+    })
+  }
+  return template
 }
 
 function templateFromObject(object: Object3D, clips: AnimationClip[]): ModelTemplate {
@@ -274,11 +322,25 @@ function readSlots(root: Object3D): PbrSlot[] {
   return slots
 }
 
+function matchProjectTexture(slotName: string): string | null {
+  const clean = slotName.split(':').pop()?.trim().toLowerCase().replace(/^mat[_-]?/i, '') ?? ''
+  if (!clean) return null
+  const textures = Object.values(useAssetStore.getState().assets).filter(
+    (item): item is FileAsset => item.kind === 'texture' && 'fileName' in item,
+  )
+  for (const tex of textures) {
+    const stem = tex.name.trim().toLowerCase()
+    if (stem === clean || stem === `masa_${clean}`) return tex.id
+  }
+  return null
+}
+
 function slotFromMaterial(material: Material, seen: Set<string>, index: number): PbrSlot[] {
   const name = material.name || `材质 ${index + 1}`
   if (seen.has(name)) return []
   seen.add(name)
   const standard = material as MeshStandardMaterial
+  const matchedMap = !standard.map ? matchProjectTexture(name) : null
   return [{
     name,
     color: standard.color ? `#${standard.color.getHexString()}` : '#d5dde6',
@@ -288,7 +350,7 @@ function slotFromMaterial(material: Material, seen: Set<string>, index: number):
     emissiveIntensity: standard.emissiveIntensity ?? 1,
     opacity: standard.opacity ?? 1,
     ao: standard.aoMapIntensity ?? 1,
-    mapAssetId: null,
+    mapAssetId: matchedMap,
     normalAssetId: null,
     roughnessAssetId: null,
     metalnessAssetId: null,

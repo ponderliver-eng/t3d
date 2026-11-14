@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type MouseEvent } from 'react'
 import { Box, ChevronRight, Clapperboard, Component, Folder, FolderOpen, FolderPlus, Globe, Image, LayoutGrid, List, Minus, Music, Palette, Plus, Rows3, Search, Sun, Trash2, Upload, X } from 'lucide-react'
 import { CLIP_MIME } from '../animation/playback'
-import { ASSET_MIME, assignClip, bindImportInput, createDefaultMaterial, deleteAsset, duplicateAsset, importFiles, openAsset, openImport, reportAssetUsers } from '../assets/import'
+import { ASSET_MIME, assignClip, bindImportInput, createDefaultMaterial, deleteAsset, duplicateAsset, importFiles, openAsset, openImport, reimportModel, reportAssetUsers } from '../assets/import'
 import { savePrefabFromSelection } from '../assets/import'
 import { readPrefab } from '../assets/prefab'
 import { ASSETS_ROOT, directoryTree, findDir, isWithin, parentDir, type DirNode } from '../assets/folders'
@@ -329,6 +329,9 @@ export default function ProjectPanel() {
           }}>{t('project.open')}</button>
           {(assetKind(menu.id) === 'model' || assetKind(menu.id) === 'prefab') && (
             <button type="button" onClick={() => { void openAsset(menu.id); setMenu(null) }}>{t('project.place')}</button>
+          )}
+          {(assetKind(menu.id) === 'model' || assetKind(menu.id) === 'animation') && (
+            <button type="button" onClick={() => { void reimportModel(menu.id); setMenu(null) }}>{t('preview.reimport')}</button>
           )}
           {(assetKind(menu.id) === 'material' || assetKind(menu.id) === 'scene' || assetKind(menu.id) === 'prefab') && (
             <button type="button" onClick={() => { duplicateAsset(menu.id); setMenu(null) }}>{t('project.duplicate')}</button>

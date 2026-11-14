@@ -1,6 +1,5 @@
 import {
   AmbientLight,
-  Box3,
   DirectionalLight,
   PerspectiveCamera,
   Scene,
@@ -8,6 +7,7 @@ import {
   WebGLRenderer,
   type Object3D,
 } from 'three'
+import { boundsOf } from '../scene/bounds'
 
 export async function imageThumb(url: string): Promise<string | null> {
   try {
@@ -61,7 +61,7 @@ export function renderModelThumb(root: Object3D): string | null {
     const sun = new DirectionalLight(0xffffff, 1.4)
     sun.position.set(2, 4, 3)
     scene.add(sun)
-    const box = new Box3().setFromObject(object)
+    const box = boundsOf(object)
     const center = box.isEmpty() ? new Vector3() : box.getCenter(new Vector3())
     const radius = Math.max(box.isEmpty() ? 1 : box.getSize(new Vector3()).length() * 0.5, 0.4)
     const camera = new PerspectiveCamera(35, 1, 0.01, radius * 20)

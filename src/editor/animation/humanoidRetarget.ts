@@ -235,11 +235,20 @@ function matrixFromPosition(position: Vector3): number[] {
 function profileForClip(clip: AnimationClip, existing: HumanoidRigProfile | null): HumanoidRigProfile | null {
   if (existing?.bySlot.has('Hips')) return existing
   const names = [...new Set(clip.tracks.map(track => splitTrack(track.name).bone).filter(Boolean))]
-  const registered = matchingRegisteredSkeletons(names)
-  if (registered) return buildRigProfile(registered, true)
-  const unreal = unrealMannequinSkeleton(names)
-  if (unreal) return buildRigProfile([unreal], true)
   const inputs = authoredTracks(clip)
+  const pelvisKey = inputs.find(track => track.targetProperty === 'position' && track.targetName && normHumanoidBoneName(track.targetName) === 'pelvis')?.keys[0]?.value
+  const pelvisLen = Array.isArray(pelvisKey) ? Math.hypot(Number(pelvisKey[0]) || 0, Number(pelvisKey[1]) || 0, Number(pelvisKey[2]) || 0) : 0
+  const registered = matchingRegisteredSkeletons(names)
+  if (registered) {
+    const built = buildRigProfile(registered, true)
+    if (built) {
+      const regPelvis = built.bySlot.get('Hips')?.position.length() ?? 0
+      if (pelvisLen <= 1e-3 || regPelvis <= 1e-3 || (pelvisLen / regPelvis > 0.2 && pelvisLen / regPelvis < 5)) return built
+    }
+  }
+  const unrealScale = pelvisLen > 10 ? 100 : 1
+  const unreal = unrealMannequinSkeleton(names, unrealScale)
+  if (unreal) return buildRigProfile([unreal], true)
   const bones = names.map((name, index) => {
     const key = inputs.find(track => track.targetName === name && track.targetProperty === 'position')?.keys[0]?.value
     const position = Array.isArray(key) ? new Vector3(Number(key[0]) || 0, Number(key[1]) || 0, Number(key[2]) || 0) : new Vector3()

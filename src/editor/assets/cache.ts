@@ -11,7 +11,7 @@ const ARTIFACTS = 'artifacts'
 const SCENE = 'scene'
 const SCENE_KEY = 'current'
 
-export const MODEL_IMPORTER_VERSION = 't3d-glb-artifact-1'
+export const MODEL_IMPORTER_VERSION = 't3d-glb-artifact-2-ufbx'
 
 export interface CachedFile {
   id: string
@@ -111,6 +111,12 @@ export async function readFileBytes(id: string): Promise<ArrayBuffer | null> {
   const db = await database()
   const row = await request<CachedFile | undefined>(db, FILES, 'readonly', store => store.get(id))
   return row?.bytes ?? null
+}
+
+export async function deleteModelArtifact(hash: string): Promise<void> {
+  if (!hash) return
+  const db = await database()
+  await request(db, ARTIFACTS, 'readwrite', store => store.delete(artifactKey(hash)))
 }
 
 export async function readModelArtifact(hash: string): Promise<ArrayBuffer | null> {

@@ -229,8 +229,13 @@ function sideFor(cull: CullMode): Side {
 function assignMap(material: MeshStandardMaterial | MeshBasicMaterial, key: 'map' | 'normalMap' | 'roughnessMap' | 'metalnessMap' | 'emissiveMap' | 'aoMap', assetId: string | null, colorMap: boolean) {
   if (!('map' in material) && key !== 'map') return
   const target = material as MeshStandardMaterial
+  const embedded = (material.userData as Record<string, unknown>)[`embedded_${key}`]
+  if (embedded === undefined) {
+    ;(material.userData as Record<string, unknown>)[`embedded_${key}`] = target[key] ?? null
+  }
   if (!assetId) {
-    if (target[key]) target[key] = null
+    const fallback = ((material.userData as Record<string, unknown>)[`embedded_${key}`] ?? null) as MeshStandardMaterial[typeof key]
+    if (target[key] !== fallback) target[key] = fallback
     return
   }
   const texture = textureFor(assetId, colorMap)

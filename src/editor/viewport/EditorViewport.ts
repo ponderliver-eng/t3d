@@ -1058,6 +1058,13 @@ export class EditorViewport {
     }
   }
 
+  private actionKey(ownerId: string, sourceId: string, clipName: string, mask: 'full' | 'upper' | 'lower', inPlace: boolean) {
+    const binding = sourceId === ownerId
+      ? `${ownerId}@${modelRevision(ownerId)}`
+      : humanoidBindingKey(sourceId, ownerId)
+    return `${binding}:${clipName}:${mask}:${inPlace ? 1 : 0}`
+  }
+
   private ensurePlaybackAction(
     data: ViewData,
     ownerId: string,
@@ -1067,12 +1074,14 @@ export class EditorViewport {
     inPlace: boolean,
   ) {
     if (!data.mixer || !data.actions || !sourceId || !clipName) return undefined
-    const key = `${sourceId}:${clipName}:${mask}:${inPlace ? 1 : 0}`
+    const key = this.actionKey(ownerId, sourceId, clipName, mask, inPlace)
     const existing = data.actions.get(key)
     if (existing) return existing
     const ownClips = getModelTemplate(ownerId)?.clips ?? []
     const clips = sourceId === ownerId ? ownClips : clipsForSkeleton(sourceId, ownerId)
-    const found = clips.find(clip => clip.name === clipName) ?? (sourceId === ownerId ? undefined : ownClips.find(clip => clip.name === clipName))
+    const found = clips.find(clip => clip.name === clipName)
+      ?? (sourceId !== ownerId && clips.length === 1 ? clips[0] : undefined)
+      ?? (sourceId === ownerId ? undefined : ownClips.find(clip => clip.name === clipName))
     if (!found) return undefined
     let clip = found
     if (mask === 'upper') clip = maskClip(clip, 'upperBody')
@@ -1095,7 +1104,7 @@ export class EditorViewport {
     node = useEditorStore.getState().nodes[node.id] ?? node
     if (!node.assetId) return
     const play = this.playbackSource(node)
-    const key = play.clip && play.sourceId ? `${play.sourceId}:${play.clip}:${play.mask}:${play.inPlace ? 1 : 0}` : ''
+    const key = play.clip && play.sourceId ? this.actionKey(node.assetId, play.sourceId, play.clip, play.mask, play.inPlace) : ''
     const action = key ? this.ensurePlaybackAction(data, node.assetId, play.sourceId, play.clip, play.mask, play.inPlace) : undefined
     const fade = data.pendingFade ?? play.fade
     data.pendingFade = undefined
