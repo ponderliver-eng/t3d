@@ -12,6 +12,7 @@ import {
   Vector2,
   WebGLRenderer,
 } from 'three'
+import { useI18n } from '../i18n'
 import { environmentFor, textureFor } from '../assets/textures'
 import { useAssetStore } from '../assets/library'
 import { popPreviewWindow } from './previewStore'
@@ -26,6 +27,7 @@ export function TexturePreview({ assetId, environment = false, standalone = fals
   const [channel, setChannel] = useState<Channel>('rgb')
   const [size, setSize] = useState('')
   channelRef.current = channel
+  const { t } = useI18n()
   const asset = useAssetStore(state => state.assets[assetId])
   const revision = useAssetStore(state => state.revision)
 
@@ -152,8 +154,8 @@ export function TexturePreview({ assetId, environment = false, standalone = fals
         {!environment && (['rgb', 'r', 'g', 'b', 'a'] as Channel[]).map(item => (
           <button key={item} type="button" className={channel === item ? 'is-on' : ''} onClick={() => setChannel(item)}>{item.toUpperCase()}</button>
         ))}
-        <span>{environment ? '拖动旋转，滚轮拉近' : '滚轮缩放，拖动平移'}</span>
-        {!standalone && <button type="button" onClick={() => popPreviewWindow(environment ? 'environment' : 'texture', assetId)}>独立窗口</button>}
+        <span>{environment ? t('preview.envHint') : t('preview.textureHint')}</span>
+        {!standalone && <button type="button" onClick={() => popPreviewWindow(environment ? 'environment' : 'texture', assetId)}>{t('preview.popout')}</button>}
       </div>
     </div>
   )

@@ -9,4 +9,6 @@ export interface ProjectDocument {
   selection: string[]
   picture: ScenePicture
   library: Array<MaterialAsset | PrefabAsset | SceneAsset>
+  folders?: string[]
+  assetDirs?: Record<string, string>
 }

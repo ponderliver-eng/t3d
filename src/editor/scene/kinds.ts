@@ -1,21 +1,6 @@
 import type { NodeKind, SceneNode, Vec3 } from './types'
 
-export const KIND_LABEL: Record<NodeKind, string> = {
-  empty: '空物体',
-  box: '方块',
-  sphere: '球体',
-  plane: '平面',
-  cylinder: '圆柱',
-  capsule: '胶囊',
-  model: '模型',
-  'directional-light': '方向光',
-  'point-light': '点光源',
-  'spot-light': '聚光灯',
-  'hemisphere-light': '半球光',
-  camera: '相机',
-}
-
-export const MESH_KINDS: NodeKind[] = ['box', 'sphere', 'plane', 'cylinder', 'capsule']
+export const MESH_KINDS: NodeKind[] = ['box', 'sphere', 'plane', 'capsule', 'cylinder', 'cone']
 export const LIGHT_KINDS: NodeKind[] = ['directional-light', 'point-light', 'spot-light', 'hemisphere-light']
 
 export function isMesh(kind: NodeKind): boolean {
@@ -54,6 +39,7 @@ export function restHeight(kind: NodeKind): number {
     case 'box':
     case 'sphere':
     case 'cylinder':
+    case 'cone':
       return 0.5
     case 'capsule':
       return 0.55
@@ -99,9 +85,17 @@ export function makeNode(partial: Pick<SceneNode, 'id' | 'name' | 'kind'> & Part
     metalnessAssetId: null,
     emissiveAssetId: null,
     aoAssetId: null,
+    materialAssetId: null,
+    shader: 'lit',
+    normalScale: 1,
+    alphaMode: 'opaque',
+    alphaCutoff: 0.5,
+    cull: 'back',
+    depthWrite: true,
+    wireframe: false,
     slots: [],
-    castShadow: kind === 'directional-light' || kind === 'spot-light' || kind === 'box' || kind === 'sphere' || kind === 'cylinder' || kind === 'capsule' || kind === 'model',
-    receiveShadow: kind === 'box' || kind === 'sphere' || kind === 'plane' || kind === 'cylinder' || kind === 'capsule' || kind === 'model',
+    castShadow: kind === 'directional-light' || kind === 'spot-light' || ((isMesh(kind) || kind === 'model') && kind !== 'plane'),
+    receiveShadow: isMesh(kind) || kind === 'model',
     shadowBias: kind === 'directional-light' ? -0.0002 : 0.0005,
     shadowNormalBias: 0.02,
     range: kind === 'spot-light' ? 40 : 12,

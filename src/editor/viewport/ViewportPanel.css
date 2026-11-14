@@ -184,6 +184,12 @@
 .viewport-context button:hover:not(:disabled) { background: var(--bg-hover); color: var(--text-primary); }
 .viewport-context button:disabled { opacity: 0.4; }
 .viewport-context__sep { height: 1px; margin: 4px 0; background: var(--border); }
+.viewport-context__label {
+  padding: 6px 8px 2px;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
 .viewport-context__sub { position: relative; }
 .viewport-context__sub > button::after { content: '›'; float: right; }
 .viewport-context__sub > div {

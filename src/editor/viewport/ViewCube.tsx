@@ -16,22 +16,24 @@ import {
   Vector2,
   WebGLRenderer,
 } from 'three'
+import { useI18n, type MessageKey } from '../i18n'
 import { useEditorStore } from '../scene/store'
 import type { CameraView } from '../scene/types'
 import { viewCubePose } from './viewCubeBridge'
 
-const FACES: { view: CameraView; label: string; position: [number, number, number]; rotation: [number, number, number] }[] = [
-  { view: 'front', label: '前', position: [0, 0, 0.5], rotation: [0, 0, 0] },
-  { view: 'back', label: '后', position: [0, 0, -0.5], rotation: [0, Math.PI, 0] },
-  { view: 'right', label: '右', position: [0.5, 0, 0], rotation: [0, Math.PI / 2, 0] },
-  { view: 'left', label: '左', position: [-0.5, 0, 0], rotation: [0, -Math.PI / 2, 0] },
-  { view: 'top', label: '上', position: [0, 0.5, 0], rotation: [-Math.PI / 2, 0, 0] },
-  { view: 'bottom', label: '下', position: [0, -0.5, 0], rotation: [Math.PI / 2, 0, 0] },
+const FACES: { view: CameraView; key: MessageKey; position: [number, number, number]; rotation: [number, number, number] }[] = [
+  { view: 'front', key: 'view.front', position: [0, 0, 0.5], rotation: [0, 0, 0] },
+  { view: 'back', key: 'view.back', position: [0, 0, -0.5], rotation: [0, Math.PI, 0] },
+  { view: 'right', key: 'view.right', position: [0.5, 0, 0], rotation: [0, Math.PI / 2, 0] },
+  { view: 'left', key: 'view.left', position: [-0.5, 0, 0], rotation: [0, -Math.PI / 2, 0] },
+  { view: 'top', key: 'view.up', position: [0, 0.5, 0], rotation: [-Math.PI / 2, 0, 0] },
+  { view: 'bottom', key: 'view.down', position: [0, -0.5, 0], rotation: [Math.PI / 2, 0, 0] },
 ]
 
 export default function ViewCube() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const pickRef = useRef<((x: number, y: number) => CameraView | null) | null>(null)
+  const { t, lang } = useI18n()
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -46,7 +48,7 @@ export default function ViewCube() {
     const group = new Group()
     const materials: MeshBasicMaterial[] = []
     for (const face of FACES) {
-      const material = new MeshBasicMaterial({ map: faceTexture(face.label) })
+      const material = new MeshBasicMaterial({ map: faceTexture(t(face.key)) })
       materials.push(material)
       const mesh = new Mesh(new PlaneGeometry(1, 1), material)
       mesh.position.set(...face.position)
@@ -92,7 +94,7 @@ export default function ViewCube() {
       ;(edges.material as LineBasicMaterial).dispose()
       renderer.dispose()
     }
-  }, [])
+  }, [lang, t])
 
   return (
     <div className="viewcube">
@@ -107,7 +109,7 @@ export default function ViewCube() {
         }}
       />
       <button type="button" className="viewcube__home" onClick={() => useEditorStore.getState().requestView('persp')}>
-        透视
+        {t('view.persp')}
       </button>
     </div>
   )

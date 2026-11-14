@@ -81,7 +81,7 @@
 
 .scene-panel__popover { top: 32px; right: 6px; }
 
-.scene-panel__context { position: fixed; }
+.scene-panel__context { position: fixed; z-index: 60; }
 
 .scene-panel__popover button,
 .scene-panel__context button {
@@ -140,15 +140,37 @@
   color: var(--text-primary);
 }
 
+.scene-item--prefab { color: #d7b4ff; }
+.scene-item--prefab-root .scene-item__name { font-weight: 600; }
+
 .scene-item--primary {
   box-shadow: inset 2px 0 0 var(--accent);
 }
 
-.scene-item--drop {
+.scene-item--into {
   outline: 1px solid var(--accent);
   outline-offset: -1px;
   background: rgba(74, 158, 255, 0.15);
 }
+
+.scene-item--before { box-shadow: inset 0 2px 0 var(--accent); }
+.scene-item--after { box-shadow: inset 0 -2px 0 var(--accent); }
+
+.scene-panel__submenu { position: relative; }
+.scene-panel__submenu-pop {
+  display: none;
+  position: absolute;
+  right: calc(100% - 4px);
+  left: auto;
+  top: 0;
+  min-width: 140px;
+  padding: 4px;
+  background: var(--bg-popup, #2a2d33);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+}
+.scene-panel__submenu:hover .scene-panel__submenu-pop,
+.scene-panel__submenu:focus-within .scene-panel__submenu-pop { display: block; }
 
 .scene-item--hidden { opacity: 0.45; }
 .scene-item--ancestor-hidden { opacity: 0.35; }

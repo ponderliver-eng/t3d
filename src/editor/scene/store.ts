@@ -1,8 +1,23 @@
-import { Matrix4, Vector3 } from 'three'
+import { Vector3 } from 'three'
 import { create } from 'zustand'
 import { getSpawn } from './spawn'
 import { createFreshScene, createSeed } from './seed'
 import { useAssetStore } from '../assets/library'
+import {
+  applyInstance,
+  captureTemplate,
+  detachIfReparented,
+  instantiatePrefab,
+  markOverrides,
+  readPrefab,
+  reconcilePrefab,
+  rememberRemoval,
+  retargetInstance,
+  revertInstance,
+  tagAddedChild,
+  unpackInstance,
+} from '../assets/prefab'
+import { translate, type MessageKey } from '../i18n'
 import {
   childrenOf,
   makeNode,
@@ -10,9 +25,8 @@ import {
   spawnPosition,
   subtreeIds,
   uniqueName,
-  KIND_LABEL,
 } from './kinds'
-import { isUnder, worldMatrix, writeLocalMatrix } from './transform'
+import { isUnder, localPoseFromWorld, worldPointToLocal, worldPose, writePose } from './transform'
 import { measureGroundSnap } from './viewportBridge'
 import type {
   CameraView,
@@ -92,6 +106,13 @@ export interface EditorState {
   snapStep: number
   viewportStats: { objects: number, triangles: number }
   playPicture: ScenePicture | null
+  prefabSession: {
+    assetId: string
+    sceneNodes: Record<string, SceneNode>
+    sceneSelection: string[]
+    scenePast: HistoryEntry[]
+    sceneFuture: HistoryEntry[]
+  } | null
 
   setSelection: (ids: string[]) => void
   inspectAsset: (id: string | null) => void
@@ -117,6 +138,7 @@ export interface EditorState {
   snapSelectionToGround: () => void
   canPaste: boolean
   reparent: (id: string, parentId: string | null) => void
+  placeNodes: (ids: string[], parentId: string | null, zone: 'before' | 'into' | 'after' | 'end', anchorId?: string | null) => void
   toggleVisible: (id: string) => void
   toggleLocked: (id: string) => void
   selectAll: () => void
@@ -142,9 +164,15 @@ export interface EditorState {
   setSnapStep: (step: number) => void
   setViewportStats: (objects: number, triangles: number) => void
   spawnModel: (assetId: string, name: string, slots: PbrSlot[], point: Vec3) => void
-  spawnPrefab: (name: string, source: SceneNode[], point: Vec3) => void
+  spawnPrefab: (assetId: string, point: Vec3) => void
+  createPrefabFromSelection: () => void
+  openPrefab: (assetId: string) => void
+  closePrefab: (save: boolean) => void
+  applyPrefabInstance: (id: string) => void
+  revertPrefabInstance: (id: string) => void
+  unpackPrefabInstance: (id: string) => void
   assignMap: (id: string, assetId: string) => void
-  assignMaterial: (id: string, slot: PbrSlot) => void
+  assignMaterial: (id: string, materialId: string) => void
 }
 
 function pushHistory(
@@ -196,6 +224,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   canPaste: false,
   viewportStats: { objects: 0, triangles: 0 },
   playPicture: null,
+  prefabSession: null,
 
   setSelection: ids => {
     const selection = ids.filter(id => get().nodes[id])
@@ -266,16 +295,20 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     if (!node) return
     const touchesTransform = patch.position !== undefined || patch.rotation !== undefined || patch.scale !== undefined
     if (node.locked && touchesTransform) return
+    if (get().prefabSession && !node.parentId && touchesTransform) return
     const next: SceneNode = { ...node, ...patch, id: node.id, kind: node.kind }
+    if (!get().prefabSession) markOverrides(next, patch)
     set(state => ({ nodes: { ...state.nodes, [id]: next } }))
   },
 
   createNode: (kind, parentId = null) => {
     let created = ''
-    const ok = mutate(set, get, `创建${KIND_LABEL[kind]}`, draft => {
-      const parent = parentId && draft.nodes[parentId] ? parentId : null
+    const label = translate(`kind.${kind}` as MessageKey)
+    const ok = mutate(set, get, translate('gesture.create', { name: label }), draft => {
+      let parent = parentId && draft.nodes[parentId] ? parentId : null
+      if (get().prefabSession && !parent) parent = Object.values(draft.nodes).find(node => !node.parentId)?.id ?? null
       const id = crypto.randomUUID()
-      const name = uniqueName(draft.nodes, KIND_LABEL[kind])
+      const name = uniqueName(draft.nodes, label)
       draft.nodes[id] = makeNode({
         id,
         name,
@@ -285,10 +318,11 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         position: spawnPosition(kind, parent, getSpawn()),
         rotation: kind === 'plane' ? [-90, 0, 0] : [0, 0, 0],
       })
+      tagAddedChild(draft.nodes, id)
       draft.selection = [id]
       created = name
     })
-    if (ok && created) get().log('info', `已创建 ${created}`)
+    if (ok && created) get().log('info', translate('log.created', { name: created }))
   },
 
   deleteSelection: () => {
@@ -309,13 +343,21 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       if (sub.some(childId => state.nodes[childId]?.locked)) blocked.push(state.nodes[id].name)
       else sub.forEach(childId => remove.add(childId))
     }
-    if (blocked.length) get().log('warn', `已跳过锁定的物体：${blocked.join('、')}`)
+    if (get().prefabSession) {
+      const root = Object.values(state.nodes).find(node => !node.parentId)
+      if (root && remove.has(root.id)) {
+        remove.delete(root.id)
+        get().log('warn', translate('prefab.keepRoot'))
+      }
+    }
+    if (blocked.length) get().log('warn', translate('log.skippedLocked', { names: blocked.join('、') }))
     if (remove.size === 0) return
     const ok = mutate(set, get, '删除', draft => {
+      for (const id of remove) rememberRemoval(draft.nodes, id)
       for (const id of remove) delete draft.nodes[id]
       draft.selection = []
     })
-    if (ok) get().log('info', `已删除 ${remove.size} 个物体`)
+    if (ok) get().log('info', translate('log.deleted', { count: remove.size }))
   },
 
   duplicateSelection: () => {
@@ -346,18 +388,22 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         for (const childId of childIds) cloneSubtree(childId, nextId, false)
         return nextId
       }
-      for (const id of roots) created.push(cloneSubtree(id, draft.nodes[id].parentId, true))
+      for (const id of roots) {
+        const createdId = cloneSubtree(id, draft.nodes[id].parentId, true)
+        if (draft.nodes[id]?.prefabInstanceId === id) retargetInstance(draft.nodes, id, createdId)
+        created.push(createdId)
+      }
       draft.selection = created
       count = created.length
     })
-    if (ok && count) get().log('info', `已复制 ${count} 个物体`)
+    if (ok && count) get().log('info', translate('log.duplicated', { count }))
   },
 
   copySelection: () => {
     const state = get()
     const roots = selectionRoots(state.nodes, state.selection)
     if (roots.length === 0) {
-      state.log('warn', '没有可拷贝的物体')
+      state.log('warn', translate('log.nothingCopy'))
       return
     }
     const nodes: SceneNode[] = []
@@ -371,12 +417,12 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     for (const id of roots) walk(id, null)
     clipboard = nodes
     set({ canPaste: true })
-    state.log('info', `已拷贝 ${roots.length} 个物体`)
+    state.log('info', translate('log.copied', { count: roots.length }))
   },
 
   pasteClipboard: (parentId = null) => {
     if (!clipboard || clipboard.length === 0) {
-      get().log('warn', '剪贴板是空的')
+      get().log('warn', translate('log.clipboardEmpty'))
       return
     }
     let count = 0
@@ -385,13 +431,13 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       draft.selection = created
       count = created.length
     })
-    if (ok && count) get().log('info', `已粘贴 ${count} 个物体`)
+    if (ok && count) get().log('info', translate('log.pasted', { count }))
   },
 
   groupSelection: () => {
     const roots = selectionRoots(get().nodes, get().selection)
     if (roots.length < 2) {
-      get().log('warn', '成组至少要选中两个物体')
+      get().log('warn', translate('log.groupNeedTwo'))
       return
     }
     const ok = mutate(set, get, '成组', draft => {
@@ -399,41 +445,44 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       if (live.length < 2) return
       const sharedParent = draft.nodes[live[0]].parentId
       const parentId = live.every(id => draft.nodes[id].parentId === sharedParent) ? sharedParent : null
+      const worlds = new Map(live.map(id => [id, worldPose(draft.nodes, id)]))
       const center = new Vector3()
-      for (const id of live) center.add(new Vector3().setFromMatrixPosition(worldMatrix(draft.nodes, id)))
+      for (const id of live) center.add(worlds.get(id)!.position)
       center.multiplyScalar(1 / live.length)
-      if (parentId) center.applyMatrix4(worldMatrix(draft.nodes, parentId).invert())
+      const parentPose = parentId ? worldPose(draft.nodes, parentId) : null
+      const localCenter = parentPose ? worldPointToLocal(parentPose, center) : center
       const group = makeNode({
         id: crypto.randomUUID(),
         name: uniqueName(draft.nodes, '组'),
         kind: 'empty',
         parentId,
         order: nextOrder(draft.nodes, parentId),
-        position: [center.x, center.y, center.z],
+        position: [localCenter.x, localCenter.y, localCenter.z],
       })
       draft.nodes[group.id] = group
+      const groupPose = worldPose(draft.nodes, group.id)
       for (const id of live) {
-        const world = worldMatrix(draft.nodes, id)
-        const local = new Matrix4().copy(worldMatrix(draft.nodes, group.id)).invert().multiply(world)
+        const world = worlds.get(id)
+        if (!world) continue
         draft.nodes[id].parentId = group.id
         draft.nodes[id].order = nextOrder(draft.nodes, group.id, id)
-        writeLocalMatrix(draft.nodes[id], local)
+        writePose(draft.nodes[id], localPoseFromWorld(groupPose, world))
       }
       draft.selection = [group.id]
     })
-    if (ok) get().log('info', '已成组')
+    if (ok) get().log('info', translate('log.grouped'))
   },
 
   snapSelectionToGround: () => {
     const state = get()
     const ids = selectionRoots(state.nodes, state.selection).filter(id => !state.nodes[id]?.locked)
     if (ids.length === 0) {
-      state.log('warn', '先选择要贴地的物体')
+      state.log('warn', translate('log.needGround'))
       return
     }
     const moves = measureGroundSnap(ids)
     if (moves.length === 0) {
-      state.log('info', '物体已经贴在地面上')
+      state.log('info', translate('log.alreadyGround'))
       return
     }
     const ok = mutate(set, get, '贴地', draft => {
@@ -442,29 +491,48 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         if (node) node.position = move.position
       }
     })
-    if (ok) get().log('info', `已贴地 ${moves.length} 个物体`)
+    if (ok) get().log('info', translate('log.grounded', { count: moves.length }))
   },
 
   reparent: (id, parentId) => {
-    const node = get().nodes[id]
-    if (!node) return
-    if (node.locked) {
-      get().log('warn', `${node.name} 已锁定`)
+    get().placeNodes([id], parentId, 'end')
+  },
+
+  placeNodes: (ids, parentId, zone, anchorId = null) => {
+    const nodes = get().nodes
+    const moving = selectionRoots(nodes, ids).filter(id => nodes[id] && !nodes[id].locked)
+    if (moving.length === 0) return
+    if (parentId && moving.some(id => id === parentId || isUnder(nodes, parentId, id))) {
+      get().log('warn', translate('log.cycle'))
       return
     }
-    if (parentId === id || (parentId && isUnder(get().nodes, parentId, id))) {
-      get().log('warn', '不能把物体拖成自己的子级')
+    const anchor = anchorId ? nodes[anchorId] : null
+    const nextParent = zone === 'into' || zone === 'end' ? parentId : anchor?.parentId ?? parentId
+    if (nextParent && moving.some(id => id === nextParent || isUnder(nodes, nextParent, id))) {
+      get().log('warn', translate('log.cycle'))
       return
     }
-    if (node.parentId === parentId) return
     mutate(set, get, '更改父子', draft => {
-      const current = draft.nodes[id]
-      const world = worldMatrix(draft.nodes, id)
-      const parentWorld = parentId ? worldMatrix(draft.nodes, parentId) : null
-      const local = parentWorld ? new Matrix4().copy(parentWorld).invert().multiply(world) : world
-      current.parentId = parentId
-      current.order = nextOrder(draft.nodes, parentId, id)
-      writeLocalMatrix(current, local)
+      const worlds = new Map(moving.map(id => [id, worldPose(draft.nodes, id)]))
+      const parentPose = nextParent ? worldPose(draft.nodes, nextParent) : null
+      for (const id of moving) {
+        const current = draft.nodes[id]
+        if (!current || current.parentId === nextParent) continue
+        const world = worlds.get(id)
+        if (!world) continue
+        current.parentId = nextParent
+        writePose(current, localPoseFromWorld(parentPose, world))
+        detachIfReparented(draft.nodes, id)
+      }
+      const siblings = childrenOf(draft.nodes, nextParent).filter(node => !moving.includes(node.id))
+      let index = siblings.length
+      if (anchor && (zone === 'before' || zone === 'after')) {
+        const at = siblings.findIndex(node => node.id === anchor.id)
+        index = at < 0 ? siblings.length : zone === 'before' ? at : at + 1
+      }
+      const ordered = [...siblings]
+      ordered.splice(index, 0, ...moving.map(id => draft.nodes[id]).filter(Boolean))
+      ordered.forEach((node, order) => { node.order = order })
     })
   },
 
@@ -488,7 +556,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
   undo: () => {
     if (get().playState !== 'stopped') {
-      get().log('warn', '试玩中不能撤销')
+      get().log('warn', translate('log.noUndoPlay'))
       return
     }
     if (get().gesture) get().endGesture()
@@ -506,7 +574,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
   redo: () => {
     if (get().playState !== 'stopped') {
-      get().log('warn', '试玩中不能重做')
+      get().log('warn', translate('log.noRedoPlay'))
       return
     }
     if (get().gesture) {
@@ -526,11 +594,15 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   },
 
   play: () => {
+    if (get().prefabSession) {
+      get().log('warn', translate('prefab.noPlay'))
+      return
+    }
     if (get().gesture) get().endGesture()
     const state = get().playState
     if (state === 'paused') {
       set({ playState: 'playing' })
-      get().log('info', '继续试玩')
+      get().log('info', translate('log.resumePlay'))
       return
     }
     if (state === 'playing') return
@@ -540,7 +612,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       playSelection: get().selection.slice(),
       playPicture: structuredClone(get().picture),
     })
-    get().log('info', '开始试玩。停止后场景会回到试玩前。')
+    get().log('info', translate('log.startPlay'))
   },
 
   pause: () => {
@@ -562,7 +634,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       picture: picture ? structuredClone(picture) : get().picture,
       playPicture: null,
     })
-    get().log('info', '已停止试玩，场景已恢复')
+    get().log('info', translate('log.stopPlay'))
   },
 
   newScene: () => {
@@ -571,7 +643,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
   createScene: () => {
     if (get().playState !== 'stopped') {
-      get().log('warn', '先停止试玩，再新建场景')
+      get().log('warn', translate('log.stopBeforeNew'))
       return
     }
     if (get().gesture) get().endGesture()
@@ -585,6 +657,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       nodes: fresh.nodes,
       picture: fresh.picture,
     })
+    useAssetStore.getState().place(fresh.id)
     set({
       activeSceneId: fresh.id,
       nodes: fresh.nodes,
@@ -596,16 +669,18 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       playPicture: null,
       picture: fresh.picture,
     })
-    get().log('info', `已新建并打开场景 ${fresh.name}`)
+    get().log('info', translate('log.createdScene', { name: fresh.name }))
   },
 
   openScene: id => {
     const asset = useAssetStore.getState().assets[id]
     if (!asset || asset.kind !== 'scene') return
     if (get().playState !== 'stopped') {
-      get().log('warn', '先停止试玩，再打开场景')
+      get().log('warn', translate('log.stopBeforeOpen'))
       return
     }
+    if (get().activeSceneId === id && !get().prefabSession) return
+    if (get().prefabSession) get().closePrefab(true)
     if (get().activeSceneId === id) return
     if (get().gesture) get().endGesture()
     get().flushActiveScene()
@@ -620,18 +695,18 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       playSnapshot: null,
       playPicture: null,
     })
-    get().log('info', `已打开场景 ${asset.name}`)
+    get().log('info', translate('log.openedScene', { name: asset.name }))
   },
 
   deleteScene: id => {
     const scenes = Object.values(useAssetStore.getState().assets).filter(asset => asset.kind === 'scene')
     if (!scenes.some(scene => scene.id === id)) return
     if (scenes.length <= 1) {
-      get().log('warn', '至少保留一个场景')
+      get().log('warn', translate('log.keepScene'))
       return
     }
     if (get().playState !== 'stopped') {
-      get().log('warn', '先停止试玩，再删除场景')
+      get().log('warn', translate('log.stopBeforeDelete'))
       return
     }
     if (get().activeSceneId === id) {
@@ -650,13 +725,26 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       })
     }
     useAssetStore.getState().remove(id)
-    get().log('info', '已删除场景')
+    get().log('info', translate('log.deletedScene'))
   },
 
   flushActiveScene: () => {
     const id = get().activeSceneId
     if (!id) return
-    useAssetStore.getState().writeScene(id, structuredClone(get().nodes), structuredClone(get().picture))
+    const session = get().prefabSession
+    if (session) {
+      const editing = structuredClone(get().nodes)
+      const root = Object.values(editing).find(node => !node.parentId)
+      if (root) {
+        root.position = [0, 0, 0]
+        root.rotation = [0, 0, 0]
+        root.scale = [1, 1, 1]
+      }
+      useAssetStore.getState().writePrefab(session.assetId, root?.id ?? '', editing)
+      reconcilePrefab(session.sceneNodes, session.assetId, readPrefab({ rootId: root?.id ?? '', nodes: editing }), lookupPrefab)
+    }
+    const nodes = session ? session.sceneNodes : get().nodes
+    useAssetStore.getState().writeScene(id, structuredClone(nodes), structuredClone(get().picture))
   },
 
   ensureSceneAsset: () => {
@@ -670,6 +758,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         nodes: structuredClone(get().nodes),
         picture: structuredClone(get().picture),
       })
+      useAssetStore.getState().place(id, 'Assets')
       set({ activeSceneId: id })
       return
     }
@@ -704,6 +793,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       playPicture: null,
       picture: { ...DEFAULT_PICTURE, ...document.picture },
       activeSceneId: document.activeSceneId,
+      prefabSession: null,
     })
   },
 
@@ -749,31 +839,151 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       })
       draft.selection = [id]
     })
-    if (ok && created) get().log('info', `已放入场景 ${created}`)
+    if (ok && created) get().log('info', translate('log.placed', { name: created }))
   },
 
-  spawnPrefab: (name, source, point) => {
-    const ok = mutate(set, get, `放置${name}`, draft => {
-      const map = new Map<string, string>()
-      for (const node of source) map.set(node.id, crypto.randomUUID())
-      const created: string[] = []
-      for (const node of source) {
-        const copy = structuredClone(node)
-        const nextId = map.get(node.id)
-        if (!nextId) continue
-        copy.id = nextId
-        copy.parentId = node.parentId && map.has(node.parentId) ? map.get(node.parentId) ?? null : null
-        copy.locked = false
-        if (!copy.parentId) {
-          copy.position = [point[0], copy.position[1], point[2]]
-          copy.name = uniqueName(draft.nodes, name)
-          created.push(copy.id)
-        }
-        draft.nodes[copy.id] = copy
-      }
-      draft.selection = created
+  spawnPrefab: (assetId, point) => {
+    if (get().prefabSession) {
+      get().log('warn', translate('prefab.exitFirst'))
+      return
+    }
+    const asset = useAssetStore.getState().assets[assetId]
+    const doc = asset?.kind === 'prefab' ? readPrefab(asset) : null
+    if (!doc?.rootId) return
+    let created = ''
+    const ok = mutate(set, get, translate('prefab.place', { name: asset?.name ?? '' }), draft => {
+      const id = instantiatePrefab(draft.nodes, doc, assetId, null, point, lookupPrefab)
+      if (!id) return
+      created = draft.nodes[id]?.name ?? ''
+      draft.selection = [id]
     })
-    if (ok) get().log('info', `已放入场景 ${name}`)
+    if (ok && created) get().log('info', translate('log.placed', { name: created }))
+  },
+
+  createPrefabFromSelection: () => {
+    if (get().playState !== 'stopped') return
+    if (get().prefabSession) {
+      get().log('warn', translate('prefab.exitFirst'))
+      return
+    }
+    const roots = selectionRoots(get().nodes, get().selection)
+    if (roots.length !== 1) {
+      get().log('warn', translate('prefab.needOne'))
+      return
+    }
+    const source = get().nodes[roots[0]]
+    const doc = captureTemplate(get().nodes, roots[0])
+    if (!doc.rootId) return
+    const id = crypto.randomUUID()
+    const name = uniqueAssetName(`${source.name}`)
+    useAssetStore.getState().add({ id, name, kind: 'prefab', rootId: doc.rootId, nodes: doc.nodes })
+    useAssetStore.getState().place(id)
+    const ok = mutate(set, get, translate('prefab.create', { name }), draft => {
+      const current = draft.nodes[roots[0]]
+      if (!current) return
+      const parentId = current.parentId
+      const position = current.position
+      const rotation = current.rotation
+      const scale = current.scale
+      const order = current.order
+      const name = current.name
+      deleteSubtree(draft.nodes, roots[0])
+      const instanceId = instantiatePrefab(draft.nodes, doc, id, parentId, position, lookupPrefab)
+      const instance = instanceId ? draft.nodes[instanceId] : undefined
+      if (!instance) return
+      instance.name = name
+      instance.rotation = rotation
+      instance.scale = scale
+      instance.order = order
+      instance.prefabOverrides = ['position', 'rotation', 'scale']
+      draft.selection = [instance.id]
+    })
+    if (ok) get().log('info', translate('log.savedPrefab', { name }))
+  },
+
+  openPrefab: assetId => {
+    if (get().playState !== 'stopped') {
+      get().log('warn', translate('prefab.noPlay'))
+      return
+    }
+    if (get().prefabSession?.assetId === assetId) return
+    if (get().prefabSession) get().closePrefab(true)
+    const asset = useAssetStore.getState().assets[assetId]
+    const doc = asset?.kind === 'prefab' ? readPrefab(asset) : null
+    if (!doc?.rootId) return
+    if (get().gesture) get().endGesture()
+    set({
+      prefabSession: {
+        assetId,
+        sceneNodes: structuredClone(get().nodes),
+        sceneSelection: get().selection.slice(),
+        scenePast: get().past,
+        sceneFuture: get().future,
+      },
+      nodes: structuredClone(doc.nodes),
+      selection: [doc.rootId],
+      past: [],
+      future: [],
+      inspectedAssetId: null,
+    })
+    get().log('info', translate('prefab.editing', { name: asset?.name ?? '' }))
+  },
+
+  closePrefab: save => {
+    const session = get().prefabSession
+    if (!session) return
+    if (get().gesture) get().endGesture()
+    const sceneNodes = session.sceneNodes
+    if (save) {
+      const nodes = structuredClone(get().nodes)
+      const root = Object.values(nodes).find(node => !node.parentId)
+      if (root) {
+        root.position = [0, 0, 0]
+        root.rotation = [0, 0, 0]
+        root.scale = [1, 1, 1]
+      }
+      useAssetStore.getState().writePrefab(session.assetId, root?.id ?? '', nodes)
+      const doc = readPrefab({ rootId: root?.id ?? '', nodes })
+      reconcilePrefab(sceneNodes, session.assetId, doc, lookupPrefab)
+    }
+    set({
+      prefabSession: null,
+      nodes: sceneNodes,
+      selection: session.sceneSelection.filter(id => sceneNodes[id]),
+      past: session.scenePast,
+      future: session.sceneFuture,
+    })
+    get().log('info', translate(save ? 'prefab.saved' : 'prefab.closed'))
+  },
+
+  applyPrefabInstance: id => {
+    const root = get().nodes[id]
+    const asset = root?.prefabAssetId ? useAssetStore.getState().assets[root.prefabAssetId] : undefined
+    if (!root || root.prefabInstanceId !== root.id || asset?.kind !== 'prefab') return
+    const ok = mutate(set, get, translate('prefab.apply'), draft => {
+      const doc = applyInstance(draft.nodes, id, readPrefab(asset))
+      useAssetStore.getState().writePrefab(asset.id, doc.rootId, doc.nodes)
+      reconcilePrefab(draft.nodes, asset.id, doc, lookupPrefab)
+    })
+    if (ok) get().log('info', translate('prefab.applied'))
+  },
+
+  revertPrefabInstance: id => {
+    const root = get().nodes[id]
+    const asset = root?.prefabAssetId ? useAssetStore.getState().assets[root.prefabAssetId] : undefined
+    if (!root || root.prefabInstanceId !== root.id || asset?.kind !== 'prefab') return
+    const ok = mutate(set, get, translate('prefab.revert'), draft => {
+      revertInstance(draft.nodes, id, readPrefab(asset), asset.id, lookupPrefab)
+    })
+    if (ok) get().log('info', translate('prefab.reverted'))
+  },
+
+  unpackPrefabInstance: id => {
+    if (!get().nodes[id] || get().nodes[id].prefabInstanceId !== id) return
+    const ok = mutate(set, get, translate('prefab.unpack'), draft => {
+      unpackInstance(draft.nodes, id)
+    })
+    if (ok) get().log('info', translate('prefab.unpacked'))
   },
 
   assignMap: (id, assetId) => {
@@ -781,41 +991,35 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     if (!node) return
     get().beginGesture('指定贴图')
     if (node.kind === 'model' && node.slots.length > 0) {
-      get().updateNode(id, {
-        slots: node.slots.map((slot, index) => index === 0 ? { ...slot, mapAssetId: assetId } : slot),
-      })
+      const linked = node.slots[0].materialAssetId
+      if (linked) useAssetStore.getState().updateMaterial(linked, { mapAssetId: assetId })
+      else {
+        get().updateNode(id, {
+          slots: node.slots.map((slot, index) => index === 0 ? { ...slot, mapAssetId: assetId } : slot),
+        })
+      }
+    } else if (node.materialAssetId) {
+      useAssetStore.getState().updateMaterial(node.materialAssetId, { mapAssetId: assetId })
     } else {
       get().updateNode(id, { mapAssetId: assetId })
     }
     get().endGesture()
   },
 
-  assignMaterial: (id, slot) => {
+  assignMaterial: (id, materialId) => {
+    const asset = useAssetStore.getState().assets[materialId]
     const node = get().nodes[id]
-    if (!node) return
+    if (!node || asset?.kind !== 'material') return
     get().beginGesture('指定材质')
     if (node.kind === 'model' && node.slots.length > 0) {
       get().updateNode(id, {
-        slots: node.slots.map(item => ({ ...slot, name: item.name })),
+        slots: node.slots.map(item => ({ ...item, materialAssetId: materialId })),
       })
     } else {
-      get().updateNode(id, {
-        color: slot.color,
-        metalness: slot.metalness,
-        roughness: slot.roughness,
-        emissive: slot.emissive,
-        emissiveIntensity: slot.emissiveIntensity,
-        opacity: slot.opacity,
-        ao: slot.ao,
-        mapAssetId: slot.mapAssetId,
-        normalAssetId: slot.normalAssetId,
-        roughnessAssetId: slot.roughnessAssetId,
-        metalnessAssetId: slot.metalnessAssetId,
-        emissiveAssetId: slot.emissiveAssetId,
-        aoAssetId: slot.aoAssetId,
-      })
+      get().updateNode(id, { materialAssetId: materialId })
     }
     get().endGesture()
+    get().log('info', translate('log.assignedMaterial', { name: asset.name }))
   },
 }))
 
@@ -864,7 +1068,7 @@ function mutate(
   fn: (draft: Draft) => void,
 ): boolean {
   if (get().playState !== 'stopped') {
-    get().log('warn', '试玩中不能改场景结构，停止后再编辑')
+    get().log('warn', translate('log.noStructure'))
     return false
   }
   if (get().gesture) get().endGesture()
@@ -886,6 +1090,24 @@ function mutate(
     afterPicture: picture,
   })
   return true
+}
+
+function lookupPrefab(assetId: string) {
+  const asset = useAssetStore.getState().assets[assetId]
+  return asset?.kind === 'prefab' ? readPrefab(asset) : null
+}
+
+function deleteSubtree(nodes: Record<string, SceneNode>, id: string) {
+  for (const child of childrenOf(nodes, id)) deleteSubtree(nodes, child.id)
+  delete nodes[id]
+}
+
+function uniqueAssetName(base: string): string {
+  const names = new Set(Object.values(useAssetStore.getState().assets).map(asset => asset.name))
+  if (!names.has(base)) return base
+  let index = 2
+  while (names.has(`${base} ${index}`)) index += 1
+  return `${base} ${index}`
 }
 
 export function askNewScene() {

@@ -1,10 +1,13 @@
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type PointerEvent as ReactPointerEvent } from 'react'
+import { createPortal } from 'react-dom'
 import {
-  Axis3d, Box, Boxes, Camera, ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, Circle, Cylinder, Eye, EyeOff,
+  Axis3d, Box, Boxes, Camera, ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, Circle, Cone, Cylinder, Eye, EyeOff,
   Flashlight, Lightbulb, Lock, Pill, Plus, Search, Square, Sun, Sunrise, Unlock, X,
 } from 'lucide-react'
 import { savePrefabFromSelection } from '../assets/import'
-import { childrenOf, isLight, isMesh, KIND_LABEL, LIGHT_KINDS, MESH_KINDS } from '../scene/kinds'
+import { instanceDirty, isPrefabRoot } from '../assets/prefab'
+import { useI18n, type MessageKey } from '../i18n'
+import { childrenOf, isLight, isMesh, LIGHT_KINDS, MESH_KINDS } from '../scene/kinds'
 import { useEditorStore, primaryId } from '../scene/store'
 import { isUnder } from '../scene/transform'
 import type { NodeKind, SceneNode } from '../scene/types'
@@ -17,6 +20,7 @@ const ICONS: Record<NodeKind, typeof Box> = {
   plane: Square,
   cylinder: Cylinder,
   capsule: Pill,
+  cone: Cone,
   model: Boxes,
   'directional-light': Sun,
   'point-light': Lightbulb,
@@ -25,22 +29,26 @@ const ICONS: Record<NodeKind, typeof Box> = {
   camera: Camera,
 }
 
-let dragId: string | null = null
 const RENAME_DELAY_MS = 1000
+type DropZone = 'before' | 'into' | 'after'
 
 export default function HierarchyPanel() {
   const nodes = useEditorStore(state => state.nodes)
   const selection = useEditorStore(state => state.selection)
   const playing = useEditorStore(state => state.playState !== 'stopped')
+  const { t } = useI18n()
   const [query, setQuery] = useState('')
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
-  const [dropId, setDropId] = useState<string | null>(null)
-  const [menu, setMenu] = useState<{ x: number; y: number; id: string } | null>(null)
+  const [drop, setDrop] = useState<{ id: string, zone: 'before' | 'into' | 'after' } | null>(null)
+  const [menu, setMenu] = useState<{ x: number; y: number; id: string | null } | null>(null)
   const [renameId, setRenameId] = useState<string | null>(null)
   const [createOpen, setCreateOpen] = useState(false)
   const listRef = useRef<HTMLDivElement>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
   const renameTimer = useRef<number | null>(null)
   const dragged = useRef(false)
+  const pointerDrag = useRef<{ id: string, x: number, y: number, active: boolean } | null>(null)
+  const dropLive = useRef<{ id: string, zone: DropZone } | null>(null)
   const primary = primaryId({ selection })
   const pendingRenameId = useEditorStore(state => state.pendingRenameId)
 
@@ -78,12 +86,17 @@ export default function HierarchyPanel() {
 
   useEffect(() => {
     if (!menu && !createOpen) return
-    const close = () => {
+    const close = (event: Event) => {
+      const target = event.target as Node | null
+      if (target && menuRef.current?.contains(target)) return
       setMenu(null)
       setCreateOpen(false)
     }
-    window.addEventListener('pointerdown', close)
-    return () => window.removeEventListener('pointerdown', close)
+    const timer = window.setTimeout(() => window.addEventListener('pointerdown', close), 0)
+    return () => {
+      window.clearTimeout(timer)
+      window.removeEventListener('pointerdown', close)
+    }
   }, [menu, createOpen])
 
   useEffect(() => () => {
@@ -188,9 +201,71 @@ export default function HierarchyPanel() {
     if (id) startRename(id)
   }
 
-  const create = (kind: NodeKind) => {
-    useEditorStore.getState().createNode(kind)
+  const create = (kind: NodeKind, parentId: string | null = null) => {
+    useEditorStore.getState().createNode(kind, parentId)
     setCreateOpen(false)
+    setMenu(null)
+  }
+
+  const beginRowDrag = (event: ReactPointerEvent, id: string) => {
+    if (playing || event.button !== 0) return
+    if ((event.target as HTMLElement).closest('button, input')) return
+    pointerDrag.current = { id, x: event.clientX, y: event.clientY, active: false }
+    const move = (pointer: globalThis.PointerEvent) => {
+      const drag = pointerDrag.current
+      if (!drag) return
+      if (!drag.active) {
+        const dx = pointer.clientX - drag.x
+        const dy = pointer.clientY - drag.y
+        if (dx * dx + dy * dy < 16) return
+        drag.active = true
+        dragged.current = true
+      }
+      const row = document.elementFromPoint(pointer.clientX, pointer.clientY)?.closest<HTMLElement>('[data-node-id]')
+      const targetId = row?.dataset.nodeId ?? null
+      if (!targetId || targetId === drag.id || isUnder(useEditorStore.getState().nodes, targetId, drag.id)) {
+        dropLive.current = null
+        setDrop(null)
+        return
+      }
+      const rect = row!.getBoundingClientRect()
+      const ratio = (pointer.clientY - rect.top) / Math.max(rect.height, 1)
+      const zone: DropZone = ratio < 0.25 ? 'before' : ratio > 0.75 ? 'after' : 'into'
+      dropLive.current = { id: targetId, zone }
+      setDrop(dropLive.current)
+    }
+    const up = (pointer: globalThis.PointerEvent) => {
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', up)
+      const drag = pointerDrag.current
+      pointerDrag.current = null
+      const current = dropLive.current
+      dropLive.current = null
+      setDrop(null)
+      if (!drag?.active) return
+      const ids = dragIds(drag.id, useEditorStore.getState().selection)
+      const target = document.elementFromPoint(pointer.clientX, pointer.clientY)?.closest<HTMLElement>('[data-node-id]')
+      const targetId = target?.dataset.nodeId ?? current?.id ?? null
+      if (!targetId) {
+        useEditorStore.getState().placeNodes(ids, null, 'end')
+        return
+      }
+      const zone = current?.id === targetId ? current.zone : 'into'
+      const targetNode = useEditorStore.getState().nodes[targetId]
+      if (!targetNode || ids.includes(targetId)) return
+      if (zone === 'into') {
+        useEditorStore.getState().placeNodes(ids, targetId, 'into')
+        setCollapsed(state => {
+          const next = { ...state }
+          delete next[targetId]
+          return next
+        })
+      } else {
+        useEditorStore.getState().placeNodes(ids, targetNode.parentId, zone, targetId)
+      }
+    }
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', up)
   }
 
   return (
@@ -198,21 +273,21 @@ export default function HierarchyPanel() {
       <div className="scene-panel__bar">
         <div className="scene-panel__search">
           <Search size={12} />
-          <input value={query} placeholder="搜索物体" onChange={event => setQuery(event.target.value)} />
+          <input value={query} placeholder={t('hierarchy.search')} onChange={event => setQuery(event.target.value)} />
           {query && (
-            <button type="button" onClick={() => setQuery('')} title="清除">
+            <button type="button" onClick={() => setQuery('')} title={t('project.clear')}>
               <X size={12} />
             </button>
           )}
         </div>
         <span className="scene-panel__count">{Object.keys(nodes).length}</span>
-        <button type="button" className="scene-panel__icon" title="全部展开" onClick={() => setCollapsed({})}>
+        <button type="button" className="scene-panel__icon" title={t('hierarchy.expand')} onClick={() => setCollapsed({})}>
           <ChevronsUpDown size={14} />
         </button>
         <button
           type="button"
           className="scene-panel__icon"
-          title="全部折叠"
+          title={t('hierarchy.collapse')}
           onClick={() => {
             const next: Record<string, boolean> = {}
             for (const node of Object.values(nodes)) {
@@ -226,7 +301,7 @@ export default function HierarchyPanel() {
         <button
           type="button"
           className="scene-panel__icon"
-          title="创建"
+          title={t('hierarchy.create')}
           disabled={playing}
           onPointerDown={event => event.stopPropagation()}
           onClick={() => setCreateOpen(value => !value)}
@@ -242,20 +317,13 @@ export default function HierarchyPanel() {
       <div
         className="scene-panel__list"
         ref={listRef}
-        onDragOver={event => {
-          if (playing || !dragId) return
+        onContextMenu={event => {
+          if ((event.target as HTMLElement).closest('.scene-item')) return
           event.preventDefault()
-          setDropId(null)
-        }}
-        onDrop={event => {
-          event.preventDefault()
-          const source = dragId
-          dragId = null
-          setDropId(null)
-          if (source && !playing) useEditorStore.getState().reparent(source, null)
+          setMenu({ x: event.clientX, y: event.clientY, id: null })
         }}
       >
-        {visibleRows.length === 0 && <div className="scene-panel__empty">场景是空的。用加号或「创建」菜单添加物体。</div>}
+        {visibleRows.length === 0 && <div className="scene-panel__empty">{t('hierarchy.empty')}</div>}
         {visibleRows.map(({ node, depth }) => {
           const Icon = ICONS[node.kind]
           const hasChildren = childrenOf(nodes, node.id).length > 0
@@ -267,13 +335,16 @@ export default function HierarchyPanel() {
                 'scene-item',
                 selected ? 'scene-item--selected' : '',
                 primary === node.id ? 'scene-item--primary' : '',
-                dropId === node.id ? 'scene-item--drop' : '',
+                drop?.id === node.id ? `scene-item--${drop.zone}` : '',
+                node.prefabAssetId || node.nestedPrefabId ? 'scene-item--prefab' : '',
+                isPrefabRoot(node) ? 'scene-item--prefab-root' : '',
                 node.visible ? '' : 'scene-item--hidden',
                 ancestorHidden(nodes, node.id) ? 'scene-item--ancestor-hidden' : '',
               ].filter(Boolean).join(' ')}
               style={{ paddingLeft: 6 + depth * 14 }}
               data-node-id={node.id}
-              title="单击选择，再单击改名，双击聚焦"
+              title={t('hierarchy.hint')}
+              onPointerDown={event => beginRowDrag(event, node.id)}
               onClick={event => selectRow(node.id, event)}
               onDoubleClick={event => focusRow(node.id, event)}
               onContextMenu={event => {
@@ -281,31 +352,6 @@ export default function HierarchyPanel() {
                 event.stopPropagation()
                 if (!selection.includes(node.id)) useEditorStore.getState().setSelection([node.id])
                 setMenu({ x: event.clientX, y: event.clientY, id: node.id })
-              }}
-              draggable={!playing && renameId !== node.id}
-              onDragStart={event => {
-                dragId = node.id
-                event.dataTransfer.effectAllowed = 'move'
-                event.dataTransfer.setData('text/plain', node.id)
-              }}
-              onDragEnd={() => {
-                dragged.current = true
-                dragId = null
-                setDropId(null)
-              }}
-              onDragOver={event => {
-                if (playing || !dragId || dragId === node.id || isUnder(nodes, node.id, dragId)) return
-                event.preventDefault()
-                event.stopPropagation()
-                setDropId(node.id)
-              }}
-              onDrop={event => {
-                event.preventDefault()
-                event.stopPropagation()
-                const source = dragId
-                dragId = null
-                setDropId(null)
-                if (source) useEditorStore.getState().reparent(source, node.id)
               }}
             >
               <button
@@ -335,7 +381,7 @@ export default function HierarchyPanel() {
                     setRenameId(null)
                     if (cancel || !name || name === node.name) return
                     const store = useEditorStore.getState()
-                    store.beginGesture('重命名')
+                    store.beginGesture(t('gesture.rename'))
                     store.updateNode(node.id, { name })
                     store.endGesture()
                   }}
@@ -348,13 +394,13 @@ export default function HierarchyPanel() {
                   }}
                 />
               ) : (
-                <span className="scene-item__name">{node.name}</span>
+                <span className="scene-item__name">{node.name}{(isPrefabRoot(node) ? instanceDirty(nodes, node.id) : !!node.prefabOverrides?.length) ? ' *' : ''}</span>
               )}
               <span className="scene-item__actions">
                 <button
                   type="button"
                   className={node.visible ? '' : 'scene-item__off'}
-                  title={node.visible ? '隐藏' : '显示'}
+                  title={node.visible ? t('hierarchy.hide') : t('hierarchy.show')}
                   onMouseDown={event => event.stopPropagation()}
                   onClick={event => {
                     event.stopPropagation()
@@ -366,7 +412,7 @@ export default function HierarchyPanel() {
                 <button
                   type="button"
                   className={node.locked ? 'scene-item__locked' : ''}
-                  title={node.locked ? '已锁定：视口点选会穿透，手柄也不作用' : '锁定后视口点选穿透，手柄不作用'}
+                  title={node.locked ? t('hierarchy.locked') : t('hierarchy.lock')}
                   onMouseDown={event => event.stopPropagation()}
                   onClick={event => {
                     event.stopPropagation()
@@ -380,40 +426,90 @@ export default function HierarchyPanel() {
           )
         })}
       </div>
-      {menu && (
-        <div className="scene-panel__context" style={{ left: menu.x, top: menu.y }} onPointerDown={event => event.stopPropagation()}>
-          <button type="button" disabled={playing} onClick={() => { useEditorStore.getState().createNode('empty', menu.id); setMenu(null) }}>创建子物体</button>
-          <button type="button" onClick={() => { startRename(menu.id); setMenu(null) }}>重命名</button>
-          <button type="button" onClick={() => { useEditorStore.getState().requestFocus(); setMenu(null) }}>聚焦</button>
-          <button type="button" disabled={playing} onClick={() => { useEditorStore.getState().duplicateSelection(); setMenu(null) }}>就地复制</button>
-          <button type="button" disabled={playing} onClick={() => { useEditorStore.getState().copySelection(); setMenu(null) }}>拷贝</button>
-          <button type="button" disabled={playing || !useEditorStore.getState().canPaste} onClick={() => { useEditorStore.getState().pasteClipboard(menu.id); setMenu(null) }}>粘贴为子级</button>
-          <button type="button" disabled={playing} onClick={() => { useEditorStore.getState().groupSelection(); setMenu(null) }}>成组</button>
-          <button type="button" disabled={playing} onClick={() => { useEditorStore.getState().snapSelectionToGround(); setMenu(null) }}>贴地</button>
-          <button type="button" disabled={playing} onClick={() => { savePrefabFromSelection(); setMenu(null) }}>存为预制体</button>
-          <button type="button" disabled={playing} onClick={() => { useEditorStore.getState().deleteSelection(); setMenu(null) }}>删除</button>
-          <button
-            type="button"
-            disabled={playing || !nodes[menu.id]?.parentId}
-            onClick={() => { useEditorStore.getState().reparent(menu.id, null); setMenu(null) }}
-          >
-            解除父子
-          </button>
-        </div>
+      {menu && createPortal(
+        <div ref={menuRef} className="scene-panel__context" style={{ left: menu.x, top: menu.y }} onPointerDown={event => event.stopPropagation()}>
+          <div className="scene-panel__submenu">
+            <button type="button" disabled={playing}>{menu.id ? t('hierarchy.createChild') : t('hierarchy.create')}</button>
+            {!playing && (
+              <div className="scene-panel__submenu-pop">
+                <CreateList onCreate={kind => create(kind, menu.id)} />
+              </div>
+            )}
+          </div>
+          {menu.id && (
+            <>
+              <button type="button" disabled={playing || !canShift(nodes, menu.id, 'before')} onClick={() => { shiftNode(menu.id!, 'before'); setMenu(null) }}>{t('hierarchy.moveUp')}</button>
+              <button type="button" disabled={playing || !canShift(nodes, menu.id, 'after')} onClick={() => { shiftNode(menu.id!, 'after'); setMenu(null) }}>{t('hierarchy.moveDown')}</button>
+              <button type="button" onClick={() => { startRename(menu.id!); setMenu(null) }}>{t('project.rename')}</button>
+              <button type="button" onClick={() => { useEditorStore.getState().setSelection([menu.id!]); useEditorStore.getState().requestFocus(); setMenu(null) }}>{t('menu.focus')}</button>
+              <button type="button" disabled={playing} onClick={() => { useEditorStore.getState().duplicateSelection(); setMenu(null) }}>{t('menu.duplicate')}</button>
+              <button type="button" disabled={playing} onClick={() => { useEditorStore.getState().copySelection(); setMenu(null) }}>{t('menu.copy')}</button>
+              <button type="button" disabled={playing || !useEditorStore.getState().canPaste} onClick={() => { useEditorStore.getState().pasteClipboard(menu.id); setMenu(null) }}>{t('hierarchy.pasteChild')}</button>
+              <button type="button" disabled={playing} onClick={() => { useEditorStore.getState().groupSelection(); setMenu(null) }}>{t('menu.group')}</button>
+              <button type="button" disabled={playing} onClick={() => { useEditorStore.getState().snapSelectionToGround(); setMenu(null) }}>{t('menu.ground')}</button>
+              <button type="button" disabled={playing} onClick={() => { savePrefabFromSelection(); setMenu(null) }}>{t('inspector.savePrefab')}</button>
+              {nodes[menu.id!]?.nestedPrefabId && (
+                <button type="button" onClick={() => { useEditorStore.getState().openPrefab(nodes[menu.id!]?.nestedPrefabId ?? ''); setMenu(null) }}>{t('prefab.edit')}</button>
+              )}
+              {isPrefabRoot(nodes[menu.id!]) && (
+                <>
+                  <button type="button" onClick={() => { useEditorStore.getState().openPrefab(nodes[menu.id!]?.prefabAssetId ?? ''); setMenu(null) }}>{t('prefab.edit')}</button>
+                  <button type="button" disabled={playing || !instanceDirty(nodes, menu.id!)} onClick={() => { useEditorStore.getState().applyPrefabInstance(menu.id!); setMenu(null) }}>{t('prefab.apply')}</button>
+                  <button type="button" disabled={playing || !instanceDirty(nodes, menu.id!)} onClick={() => { useEditorStore.getState().revertPrefabInstance(menu.id!); setMenu(null) }}>{t('prefab.revert')}</button>
+                  <button type="button" disabled={playing} onClick={() => { useEditorStore.getState().unpackPrefabInstance(menu.id!); setMenu(null) }}>{t('prefab.unpack')}</button>
+                </>
+              )}
+              <button type="button" disabled={playing} onClick={() => { useEditorStore.getState().deleteSelection(); setMenu(null) }}>{t('menu.delete')}</button>
+              <button
+                type="button"
+                disabled={playing || !nodes[menu.id]?.parentId}
+                onClick={() => { useEditorStore.getState().reparent(menu.id!, null); setMenu(null) }}
+              >
+                {t('hierarchy.unparent')}
+              </button>
+            </>
+          )}
+        </div>,
+        document.body,
       )}
     </div>
   )
 }
 
+function dragIds(source: string, selection: string[]) {
+  return selection.includes(source) ? selection : [source]
+}
+
+function canShift(nodes: Record<string, SceneNode>, id: string, zone: 'before' | 'after') {
+  const node = nodes[id]
+  if (!node) return false
+  const siblings = childrenOf(nodes, node.parentId)
+  const index = siblings.findIndex(item => item.id === id)
+  return zone === 'before' ? index > 0 : index >= 0 && index < siblings.length - 1
+}
+
+function shiftNode(id: string, zone: 'before' | 'after') {
+  const nodes = useEditorStore.getState().nodes
+  const node = nodes[id]
+  if (!node) return
+  const siblings = childrenOf(nodes, node.parentId)
+  const index = siblings.findIndex(item => item.id === id)
+  const anchor = zone === 'before' ? siblings[index - 1] : siblings[index + 1]
+  if (!anchor) return
+  useEditorStore.getState().placeNodes([id], node.parentId, zone, anchor.id)
+}
+
 function CreateList({ onCreate }: { onCreate: (kind: NodeKind) => void }) {
+  const { t } = useI18n()
+  const kindName = (kind: NodeKind) => t(`kind.${kind}` as MessageKey)
   return (
     <>
-      <button type="button" onClick={() => onCreate('empty')}>空物体</button>
-      <div className="scene-panel__popover-label">几何体</div>
-      {MESH_KINDS.map(kind => <button key={kind} type="button" onClick={() => onCreate(kind)}>{KIND_LABEL[kind]}</button>)}
-      <div className="scene-panel__popover-label">灯光</div>
-      {LIGHT_KINDS.map(kind => <button key={kind} type="button" onClick={() => onCreate(kind)}>{KIND_LABEL[kind]}</button>)}
-      <button type="button" onClick={() => onCreate('camera')}>相机</button>
+      <button type="button" onClick={() => onCreate('empty')}>{t('menu.empty')}</button>
+      <div className="scene-panel__popover-label">{t('menu.meshes')}</div>
+      {MESH_KINDS.map(kind => <button key={kind} type="button" onClick={() => onCreate(kind)}>{kindName(kind)}</button>)}
+      <div className="scene-panel__popover-label">{t('menu.lights')}</div>
+      {LIGHT_KINDS.map(kind => <button key={kind} type="button" onClick={() => onCreate(kind)}>{kindName(kind)}</button>)}
+      <button type="button" onClick={() => onCreate('camera')}>{t('menu.camera')}</button>
     </>
   )
 }

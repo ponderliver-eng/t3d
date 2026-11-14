@@ -4,19 +4,13 @@ import {
   Box3,
   BoxGeometry,
   BoxHelper,
-  CameraHelper,
-  CanvasTexture,
-  ClampToEdgeWrapping,
   CapsuleGeometry,
   Color,
   ConeGeometry,
   CylinderGeometry,
   DirectionalLight,
-  DirectionalLightHelper,
-  Euler,
   Group,
   HemisphereLight,
-  HemisphereLightHelper,
   Mesh,
   MeshBasicMaterial,
   MeshStandardMaterial,
@@ -26,13 +20,11 @@ import {
   PerspectiveCamera,
   PlaneGeometry,
   PointLight,
-  PointLightHelper,
   Quaternion,
   Raycaster,
   Scene,
   SphereGeometry,
   SpotLight,
-  SpotLightHelper,
   SRGBColorSpace,
   Vector2,
   Vector3,
@@ -46,6 +38,7 @@ import {
 } from 'three'
 import { WebGPURenderer } from 'three/webgpu'
 import { TransformControls } from 'three/addons/controls/TransformControls.js'
+import { translate } from '../i18n'
 import { applyModelMaterials, applyNodeMaterial } from '../assets/materials'
 import { getModelTemplate, instantiateModel } from '../assets/models'
 import { useAssetStore } from '../assets/library'
@@ -54,20 +47,22 @@ import { isLight, isMesh } from '../scene/kinds'
 import { setSpawnProvider } from '../scene/spawn'
 import { setGroundSnapper } from '../scene/viewportBridge'
 import { useEditorStore } from '../scene/store'
+import { localPoseFromWorld, poseComponents, worldPose } from '../scene/transform'
 import type { SceneNode } from '../scene/types'
 import { EditorCameraRig } from './cameraControls'
 import { viewCubePose } from './viewCubeBridge'
+import { createEditorGrid } from './editorGrid'
+import { createSceneGuide, type SceneGuide } from './lightCameraGizmo'
 import { ScenePicturePipeline } from './picture'
 
 const DEG = Math.PI / 180
-const RAD = 180 / Math.PI
 
 interface ViewData {
   nodeId: string
   pick?: Object3D
-  material?: MeshStandardMaterial
+  material?: Material
   light?: Light
-  helper?: Object3D & { update?: () => void }
+  guide?: SceneGuide
   sceneCamera?: PerspectiveCamera
   modelRoot?: Object3D
   modelKey?: string
@@ -153,7 +148,7 @@ export class EditorViewport {
     root.add(this.world)
     root.add(new AmbientLight(0xffffff, 0.28))
 
-    this.grid = makeGrid()
+    this.grid = createEditorGrid()
     root.add(this.grid)
 
     this.proxy.name = 'gizmo-proxy'
@@ -269,13 +264,13 @@ export class EditorViewport {
         group = this.createView(node)
         this.objects.set(id, group)
       }
-      const parent = node.parentId ? this.objects.get(node.parentId) ?? this.world : this.world
-      if (group.parent !== parent) parent.add(group)
+      if (group.parent !== this.world) this.world.add(group)
       const skipTransform = this.driving && (this.singleId === id || this.baselines.some(item => item.id === id))
       if (!skipTransform) {
-        group.position.set(node.position[0], node.position[1], node.position[2])
-        group.rotation.set(node.rotation[0] * DEG, node.rotation[1] * DEG, node.rotation[2] * DEG)
-        group.scale.set(node.scale[0], node.scale[1], node.scale[2])
+        const pose = worldPose(state.nodes, id)
+        group.position.copy(pose.position)
+        group.quaternion.copy(pose.quaternion)
+        group.scale.copy(pose.scale)
       }
       group.visible = node.visible
       this.updateView(group, node, state.playState === 'stopped')
@@ -351,35 +346,19 @@ export class EditorViewport {
         light.target.position.set(0, -1, 0)
         group.add(light.target)
       }
-      const helper = createLightHelper(light)
-      markHelper(helper, true)
-      group.add(helper)
-      const pick = new Mesh(new SphereGeometry(0.28, 12, 8), new MeshBasicMaterial({ color: node.color, wireframe: true }))
-      pick.userData.nodeId = node.id
-      markHelper(pick)
-      group.add(pick)
-      data.pick = pick
+      const guide = createSceneGuide(node.kind)
+      if (guide) mountGuide(group, guide, node.id)
       data.light = light
-      data.helper = helper
+      data.guide = guide ?? undefined
       return group
     }
 
     if (node.kind === 'camera') {
       const camera = new PerspectiveCamera(node.fov, 1, node.near, node.far)
       group.add(camera)
-      const helper = new CameraHelper(camera)
-      markHelper(helper, true)
-      group.add(helper)
-      const body = new Mesh(new BoxGeometry(0.28, 0.18, 0.36), new MeshBasicMaterial({ color: '#9ecbff' }))
-      const lens = new Mesh(new ConeGeometry(0.09, 0.16, 8), new MeshBasicMaterial({ color: '#4a9eff' }))
-      lens.rotation.x = -Math.PI / 2
-      lens.position.z = -0.24
-      body.add(lens)
-      body.userData.nodeId = node.id
-      markHelper(body)
-      group.add(body)
-      data.pick = body
-      data.helper = helper
+      const guide = createSceneGuide(node.kind)
+      if (guide) mountGuide(group, guide, node.id)
+      data.guide = guide ?? undefined
       data.sceneCamera = camera
       return group
     }
@@ -398,7 +377,8 @@ export class EditorViewport {
     if (isMesh(node.kind)) {
       const mesh = data.pick as Mesh | undefined
       if (mesh?.isMesh) {
-        applyNodeMaterial(mesh, node)
+        const material = applyNodeMaterial(mesh, node)
+        data.material = material
         mesh.castShadow = node.castShadow
         mesh.receiveShadow = node.receiveShadow
       }
@@ -448,14 +428,14 @@ export class EditorViewport {
       if (data.sceneCamera.fov !== node.fov) { data.sceneCamera.fov = node.fov; changed = true }
       if (data.sceneCamera.near !== node.near) { data.sceneCamera.near = node.near; changed = true }
       if (data.sceneCamera.far !== node.far) { data.sceneCamera.far = node.far; changed = true }
-      if (changed) {
-        data.sceneCamera.updateProjectionMatrix()
-        data.helper?.update?.()
-      }
+      if (changed) data.sceneCamera.updateProjectionMatrix()
     }
     const showHelpers = editing && useEditorStore.getState().helpersVisible
-    if (data.helper) data.helper.visible = showHelpers
-    if (data.pick && !isMesh(node.kind) && node.kind !== 'model') data.pick.visible = showHelpers
+    if (data.guide) {
+      const selected = useEditorStore.getState().selection.includes(node.id)
+      data.guide.refresh(node, group.scale, this.aspect(), showHelpers, selected)
+    }
+    if (data.pick && data.pick !== data.guide?.icon && !isMesh(node.kind) && node.kind !== 'model') data.pick.visible = showHelpers
     const pickMesh = data.pick as Mesh | undefined
     if (pickMesh?.material instanceof MeshBasicMaterial && !isMesh(node.kind)) pickMesh.material.color.set(node.color)
   }
@@ -497,7 +477,12 @@ export class EditorViewport {
       if (!found) ground = 0
       const delta = ground - box.min.y
       if (Math.abs(delta) < 0.0001) continue
-      moves.push({ id, position: [node.position[0], node.position[1] + delta, node.position[2]] })
+      const nodes = useEditorStore.getState().nodes
+      const world = worldPose(nodes, id)
+      world.position.y += delta
+      const parent = node.parentId ? worldPose(nodes, node.parentId) : null
+      const local = localPoseFromWorld(parent, world)
+      moves.push({ id, position: [local.position.x, local.position.y, local.position.z] })
     }
     return moves
   }
@@ -633,13 +618,16 @@ export class EditorViewport {
 
   private writeObject(id: string) {
     const object = this.objects.get(id)
-    if (!object) return
-    const euler = new Euler().setFromQuaternion(object.quaternion, 'XYZ')
-    useEditorStore.getState().updateNode(id, {
-      position: [object.position.x, object.position.y, object.position.z],
-      rotation: [euler.x * RAD, euler.y * RAD, euler.z * RAD],
-      scale: [object.scale.x, object.scale.y, object.scale.z],
-    })
+    const nodes = useEditorStore.getState().nodes
+    const node = nodes[id]
+    if (!object || !node) return
+    const world = {
+      position: object.position.clone(),
+      quaternion: object.quaternion.clone(),
+      scale: object.scale.clone(),
+    }
+    const parent = node.parentId ? worldPose(nodes, node.parentId) : null
+    useEditorStore.getState().updateNode(id, poseComponents(localPoseFromWorld(parent, world)))
   }
 
   private rebuildHelpers() {
@@ -875,15 +863,15 @@ export class EditorViewport {
       if (this.disposed) return
       bindTextureRenderer(this.renderer)
       const backend = this.renderer.backend as { isWebGPUBackend?: boolean }
-      const label = backend.isWebGPUBackend ? 'WebGPU' : 'WebGL2 回退'
+      const label = translate(backend.isWebGPUBackend ? 'log.webgpu' : 'log.webgl2')
       useEditorStore.getState().setRenderBackend(label)
-      useEditorStore.getState().log('info', `渲染后端：${label}`)
+      useEditorStore.getState().log('info', translate('log.backend', { label }))
       this.picture = new ScenePicturePipeline(this.renderer)
       this.ready = true
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       useEditorStore.getState().setRenderBackend('初始化失败')
-      useEditorStore.getState().log('error', `渲染器初始化失败：${message}`)
+      useEditorStore.getState().log('error', translate('log.rendererFail', { message }))
     }
   }
 
@@ -892,7 +880,7 @@ export class EditorViewport {
     const dt = Math.min(0.05, this.last ? (time - this.last) / 1000 : 0)
     this.last = time
     this.rig.update(dt)
-    for (const group of this.objects.values()) dataOf(group).helper?.update?.()
+    this.refreshGuides()
     for (const helper of this.selectionHelpers) helper.update()
     this.flattenGizmo()
     this.paintViewCube()
@@ -909,6 +897,22 @@ export class EditorViewport {
       }
     }
     this.raf = requestAnimationFrame(this.tick)
+  }
+
+  private aspect() {
+    return this.width / Math.max(this.height, 1)
+  }
+
+  private refreshGuides() {
+    const state = useEditorStore.getState()
+    const show = state.playState === 'stopped' && state.helpersVisible
+    const aspect = this.aspect()
+    for (const [id, group] of this.objects) {
+      const guide = dataOf(group).guide
+      const node = state.nodes[id]
+      if (!guide || !node) continue
+      guide.refresh(node, group.scale, aspect, show, state.selection.includes(id))
+    }
   }
 
   private applyPicture() {
@@ -1072,44 +1076,6 @@ function orderedIds(nodes: Record<string, SceneNode>): string[] {
   return out
 }
 
-function makeGrid(): Mesh {
-  const canvas = document.createElement('canvas')
-  canvas.width = 1024
-  canvas.height = 1024
-  const context = canvas.getContext('2d')
-  if (context) {
-    context.clearRect(0, 0, 1024, 1024)
-    const draw = (color: string, width: number, indices: number[]) => {
-      context.strokeStyle = color
-      context.lineWidth = width
-      context.beginPath()
-      for (const index of indices) {
-        const position = Math.round(index * (1024 / 40)) + 0.5
-        context.moveTo(position, 0)
-        context.lineTo(position, 1024)
-        context.moveTo(0, position)
-        context.lineTo(1024, position)
-      }
-      context.stroke()
-    }
-    draw('#5c5c5c', 2, Array.from({ length: 41 }, (_, index) => index))
-    draw('#9a9a9a', 4, [20])
-  }
-  const texture = new CanvasTexture(canvas)
-  texture.colorSpace = SRGBColorSpace
-  texture.wrapS = ClampToEdgeWrapping
-  texture.wrapT = ClampToEdgeWrapping
-  const material = new MeshBasicMaterial({ map: texture, transparent: true, depthWrite: false })
-  const mesh = new Mesh(new PlaneGeometry(40, 40), material)
-  mesh.rotation.x = -Math.PI / 2
-  mesh.position.y = 0.02
-  mesh.frustumCulled = false
-  mesh.raycast = () => {}
-  mesh.receiveShadow = false
-  mesh.castShadow = false
-  return mesh
-}
-
 function markHelper(object: Object3D, blockRaycast = false) {
   object.traverse(child => {
     child.layers.set(1)
@@ -1129,6 +1095,7 @@ function meshGeometry(kind: SceneNode['kind']): BufferGeometry {
     case 'plane': return new PlaneGeometry(1, 1)
     case 'cylinder': return new CylinderGeometry(0.5, 0.5, 1, 24)
     case 'capsule': return new CapsuleGeometry(0.3, 0.5, 6, 16)
+    case 'cone': return new ConeGeometry(0.5, 1, 24)
     default: return new BoxGeometry(1, 1, 1)
   }
 }
@@ -1165,11 +1132,13 @@ function createLight(node: SceneNode): Light {
   return new HemisphereLight(node.color, node.groundColor, node.intensity)
 }
 
-function createLightHelper(light: Light): Object3D & { update?: () => void } {
-  if (light instanceof DirectionalLight) return new DirectionalLightHelper(light, 0.7)
-  if (light instanceof PointLight) return new PointLightHelper(light, 0.35)
-  if (light instanceof SpotLight) return new SpotLightHelper(light)
-  return new HemisphereLightHelper(light as HemisphereLight, 0.45)
+function mountGuide(group: Group, guide: SceneGuide, nodeId: string) {
+  guide.icon.userData.nodeId = nodeId
+  markHelper(guide.icon)
+  markHelper(guide.lines, true)
+  group.add(guide.icon)
+  group.add(guide.lines)
+  dataOf(group).pick = guide.icon
 }
 
 function isRendered(object: Object3D): boolean {

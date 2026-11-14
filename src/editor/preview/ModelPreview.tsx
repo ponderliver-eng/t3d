@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { translate, useI18n } from '../i18n'
 import {
   AmbientLight,
   Box3,
@@ -32,6 +33,7 @@ export function ModelPreview({ assetId, standalone = false }: { assetId: string,
   const [bounds, setBounds] = useState(false)
   const [turntable, setTurntable] = useState(false)
   const [yaw, setYaw] = useState(35)
+  const { t } = useI18n()
   const [stats, setStats] = useState('')
   const [ready, setReady] = useState(false)
 
@@ -125,7 +127,7 @@ export function ModelPreview({ assetId, standalone = false }: { assetId: string,
         triangles += index ? index.count / 3 : (positions?.count ?? 0) / 3
       })
       const size = new Box3().setFromObject(root).getSize(new Vector3())
-      setStats(`${size.x.toFixed(2)} × ${size.y.toFixed(2)} × ${size.z.toFixed(2)} m · ${Math.round(triangles).toLocaleString()} 面`)
+      setStats(`${size.x.toFixed(2)} × ${size.y.toFixed(2)} × ${size.z.toFixed(2)} m · ${translate('preview.faces', { count: Math.round(triangles).toLocaleString() })}`)
       setReady(true)
       applyShading()
       fit('persp')
@@ -200,23 +202,23 @@ export function ModelPreview({ assetId, standalone = false }: { assetId: string,
       <div className="preview-view__stage">
         <canvas ref={canvasRef} />
         {stats && <div className="preview-view__chip">{stats}</div>}
-        {!ready && <div className="preview-view__empty">模型还在读取</div>}
+        {!ready && <div className="preview-view__empty">{t('preview.pendingModel')}</div>}
       </div>
       <div className="preview-view__bar">
         <select value={shading} onChange={event => setShading(event.target.value as Shading)}>
-          <option value="lit">光照</option>
-          <option value="wire">线框</option>
-          <option value="unlit">无光</option>
+          <option value="lit">{t('preview.lit')}</option>
+          <option value="wire">{t('preview.wire')}</option>
+          <option value="unlit">{t('preview.unlit')}</option>
         </select>
-        <button type="button" className={grid ? 'is-on' : ''} onClick={() => setGrid(value => !value)}>网格</button>
-        <button type="button" className={bounds ? 'is-on' : ''} onClick={() => setBounds(value => !value)}>包围盒</button>
-        <button type="button" className={turntable ? 'is-on' : ''} onClick={() => setTurntable(value => !value)}>旋转</button>
-        <button type="button" onClick={() => api.current?.view('front')}>前</button>
-        <button type="button" onClick={() => api.current?.view('top')}>顶</button>
-        <button type="button" onClick={() => api.current?.view('right')}>右</button>
-        <button type="button" onClick={() => api.current?.reset()}>复位</button>
-        <label>灯光 <input type="range" min={0} max={360} value={yaw} onChange={event => setYaw(Number(event.target.value))} /></label>
-        {!standalone && <button type="button" onClick={() => popPreviewWindow('model', assetId)}>独立窗口</button>}
+        <button type="button" className={grid ? 'is-on' : ''} onClick={() => setGrid(value => !value)}>{t('view.grid')}</button>
+        <button type="button" className={bounds ? 'is-on' : ''} onClick={() => setBounds(value => !value)}>{t('preview.bounds')}</button>
+        <button type="button" className={turntable ? 'is-on' : ''} onClick={() => setTurntable(value => !value)}>{t('preview.turn')}</button>
+        <button type="button" onClick={() => api.current?.view('front')}>{t('view.front')}</button>
+        <button type="button" onClick={() => api.current?.view('top')}>{t('view.top')}</button>
+        <button type="button" onClick={() => api.current?.view('right')}>{t('view.right')}</button>
+        <button type="button" onClick={() => api.current?.reset()}>{t('preview.reset')}</button>
+        <label>{t('preview.light')} <input type="range" min={0} max={360} value={yaw} onChange={event => setYaw(Number(event.target.value))} /></label>
+        {!standalone && <button type="button" onClick={() => popPreviewWindow('model', assetId)}>{t('preview.popout')}</button>}
       </div>
     </div>
   )

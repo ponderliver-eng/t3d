@@ -1,11 +1,13 @@
 import { getSpawn } from '../scene/spawn'
 import { useEditorStore } from '../scene/store'
-import { slotFromNode } from './materials'
+import { normalizeSlot, resolveModelSlot, slotFromNode } from './materials'
 import { clipNamesFor, getModelTemplate, loadModelTemplate, releaseModel } from './models'
 import { loadEnvironmentAsset, loadTextureAsset, releaseTexture } from './textures'
 import { forgetFile, rememberFile, sha256, updateCachedThumb } from './cache'
 import { imageThumb, labelThumb, renderModelThumb } from './thumbs'
-import { assetName, useAssetStore, type FileAsset, type FileKind, type ProjectAsset } from './library'
+import { readPrefab } from './prefab'
+import { translate } from '../i18n'
+import { assetDirectory, assetName, useAssetStore, type FileAsset, type FileKind, type ProjectAsset } from './library'
 import type { PbrSlot, SceneNode, Vec3 } from '../scene/types'
 
 export const ASSET_MIME = 'application/x-t3d-asset'
@@ -20,12 +22,12 @@ export function openImport() {
   input?.click()
 }
 
-export async function importFiles(files: File[]): Promise<string[]> {
+export async function importFiles(files: File[], dir = useAssetStore.getState().browseDir): Promise<string[]> {
   const created: string[] = []
   for (const file of files) {
     const kind = kindFor(file.name)
     if (!kind) {
-      useEditorStore.getState().log('warn', `不认识的文件：${file.name}`)
+      useEditorStore.getState().log('warn', translate('log.unknownFile', { name: file.name }))
       continue
     }
     try {
@@ -33,7 +35,7 @@ export async function importFiles(files: File[]): Promise<string[]> {
       const hash = await sha256(bytes)
       const existing = findByHash(hash)
       if (existing) {
-        useEditorStore.getState().log('info', `资源已在库中：${existing.name}`)
+        useEditorStore.getState().log('info', translate('log.already', { name: existing.name }))
         created.push(existing.id)
         continue
       }
@@ -47,10 +49,13 @@ export async function importFiles(files: File[]): Promise<string[]> {
         thumb: null,
       }
       const stored = await ingest(asset, bytes)
-      if (stored) created.push(asset.id)
+      if (stored) {
+        useAssetStore.getState().place(asset.id, dir)
+        created.push(asset.id)
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
-      useEditorStore.getState().log('error', `${file.name} 导入失败：${message}`)
+      useEditorStore.getState().log('error', translate('log.importFail', { name: file.name, message }))
     }
   }
   return created
@@ -65,18 +70,18 @@ async function ingest(asset: FileAsset, bytes: ArrayBuffer): Promise<boolean> {
         asset = { ...asset, kind: 'animation' }
         useAssetStore.getState().remove(asset.id)
         useAssetStore.getState().add(asset)
-        useEditorStore.getState().log('info', `已导入动画 ${asset.name}`)
+        useEditorStore.getState().log('info', translate('log.importedAnim', { name: asset.name }))
       } else {
-        useEditorStore.getState().log('info', `已导入模型 ${asset.name}，${template.clips.length} 个片段`)
+        useEditorStore.getState().log('info', translate('log.importedModel', { name: asset.name, count: template.clips.length }))
       }
     } else if (asset.kind === 'texture') {
       await loadTextureAsset(asset)
-      useEditorStore.getState().log('info', `已导入贴图 ${asset.name}`)
+      useEditorStore.getState().log('info', translate('log.importedTexture', { name: asset.name }))
     } else if (asset.kind === 'environment') {
       await loadEnvironmentAsset(asset)
-      useEditorStore.getState().log('info', `已导入环境贴图 ${asset.name}`)
+      useEditorStore.getState().log('info', translate('log.importedEnv', { name: asset.name }))
     } else {
-      useEditorStore.getState().log('info', `已导入音频 ${asset.name}`)
+      useEditorStore.getState().log('info', translate('log.importedAudio', { name: asset.name }))
     }
     await rememberFile({ ...asset, bytes }).catch(error => {
       console.warn('[cache] 写入失败', error)
@@ -89,7 +94,7 @@ async function ingest(asset: FileAsset, bytes: ArrayBuffer): Promise<boolean> {
     releaseModel(asset.id)
     releaseTexture(asset.id)
     const message = error instanceof Error ? error.message : String(error)
-    useEditorStore.getState().log('error', `${asset.fileName} 导入失败：${message}`)
+    useEditorStore.getState().log('error', translate('log.importFail', { name: asset.fileName, message }))
     return false
   }
 }
@@ -106,7 +111,7 @@ export async function warmCachedAsset(asset: FileAsset): Promise<boolean> {
     useAssetStore.getState().remove(asset.id)
     URL.revokeObjectURL(asset.url)
     const message = error instanceof Error ? error.message : String(error)
-    useEditorStore.getState().log('warn', `缓存资源 ${asset.name} 没能恢复：${message}`)
+    useEditorStore.getState().log('warn', translate('log.cacheFail', { name: asset.name, message }))
     return false
   }
 }
@@ -140,7 +145,7 @@ export function deleteAsset(id: string) {
   }
   const used = referencedBy(id)
   if (used.length > 0) {
-    useEditorStore.getState().log('warn', `还被这些物体引用：${used.join('、')}`)
+    useEditorStore.getState().log('warn', translate('log.referenced', { names: used.join('、') }))
     return
   }
   if (asset && 'url' in asset) URL.revokeObjectURL(asset.url)
@@ -153,25 +158,25 @@ export function deleteAsset(id: string) {
 export function placeAsset(assetId: string, point: Vec3, hitId: string | null) {
   const asset = useAssetStore.getState().assets[assetId]
   const editor = useEditorStore.getState()
-  if (!asset) return
+  if (!asset || asset.kind === 'scene') return
   if (asset.kind === 'model') {
     const template = getModelTemplate(assetId)
     if (!template) {
-      editor.log('warn', '模型还在读取')
+      editor.log('warn', translate('log.modelLoading'))
       return
     }
     editor.spawnModel(assetId, asset.name, template.slots, point)
     return
   }
   if (asset.kind === 'prefab') {
-    editor.spawnPrefab(asset.name, asset.nodes, point)
+    editor.spawnPrefab(asset.id, point)
     return
   }
   if (asset.kind === 'environment') {
     editor.beginGesture('设置环境')
     editor.setPicture({ envAssetId: asset.id })
     editor.endGesture()
-    editor.log('info', `已用 ${asset.name} 作为环境`)
+    editor.log('info', translate('log.envSet', { name: asset.name }))
     return
   }
   if (asset.kind === 'audio') {
@@ -180,14 +185,14 @@ export function placeAsset(assetId: string, point: Vec3, hitId: string | null) {
   }
   const node = hitId ? editor.nodes[hitId] : undefined
   if (!node) {
-    editor.log('warn', asset.kind === 'animation' ? '把动画拖到模型上' : '把资源拖到物体上')
+    editor.log('warn', asset.kind === 'animation' ? translate('log.dragAnim') : translate('log.dragAsset'))
     return
   }
   if (asset.kind === 'texture') editor.assignMap(node.id, assetId)
-  if (asset.kind === 'material') editor.assignMaterial(node.id, asset.slot)
+  if (asset.kind === 'material') editor.assignMaterial(node.id, asset.id)
   if (asset.kind === 'animation') {
     if (node.kind !== 'model') {
-      editor.log('warn', '动画要拖到模型上')
+      editor.log('warn', translate('log.animOnModel'))
       return
     }
     const clips = clipNamesFor(assetId)
@@ -202,26 +207,89 @@ export function saveMaterialFromSelection() {
   const id = editor.selection[editor.selection.length - 1]
   const node = id ? editor.nodes[id] : undefined
   if (!node || (node.kind !== 'model' && !isPaintable(node))) {
-    editor.log('warn', '先选中一个网格或模型')
+    editor.log('warn', translate('log.needMesh'))
     return
   }
-  const slot = node.slots[0] ? structuredClone(node.slots[0]) : slotFromNode(node)
-  const name = uniqueAssetName(`${node.name} 材质`)
-  useAssetStore.getState().add({ id: crypto.randomUUID(), name, kind: 'material', slot })
-  editor.log('info', `已保存材质 ${name}`)
+  saveMaterialFromNode(node.id, node.kind === 'model' && node.slots.length > 0 ? 0 : null)
+}
+
+export function saveMaterialFromNode(nodeId: string, slotIndex: number | null) {
+  const editor = useEditorStore.getState()
+  const node = editor.nodes[nodeId]
+  if (!node || (node.kind !== 'model' && !isPaintable(node))) {
+    editor.log('warn', translate('log.needMesh'))
+    return
+  }
+  const source = slotIndex != null && node.slots[slotIndex] ? resolveModelSlot(node.slots[slotIndex]) : slotFromNode(node)
+  const name = uniqueAssetName(`${source.name || node.name} 材质`)
+  const materialId = crypto.randomUUID()
+  useAssetStore.getState().add({ id: materialId, name, kind: 'material', slot: { ...source, materialAssetId: null } })
+  useAssetStore.getState().place(materialId)
+  if (slotIndex != null) {
+    editor.updateNode(node.id, {
+      slots: node.slots.map((item, index) => index === slotIndex ? { ...item, materialAssetId: materialId } : item),
+    })
+  } else {
+    editor.updateNode(node.id, { materialAssetId: materialId })
+  }
+  editor.log('info', translate('log.savedMaterial', { name }))
 }
 
 export function savePrefabFromSelection() {
   const editor = useEditorStore.getState()
   if (editor.selection.length === 0) {
-    editor.log('warn', '先选中要保存的物体')
+    editor.log('warn', translate('log.needSelection'))
     return
   }
-  const nodes = collectPrefabNodes(editor.nodes, editor.selection)
-  if (nodes.length === 0) return
-  const name = uniqueAssetName(`${nodes[0].name} 预制`)
-  useAssetStore.getState().add({ id: crypto.randomUUID(), name, kind: 'prefab', nodes })
-  editor.log('info', `已保存预制体 ${name}`)
+  editor.createPrefabFromSelection()
+}
+
+export function createDefaultMaterial(dir?: string) {
+  const name = uniqueAssetName(translate('project.newMaterialName'))
+  const id = crypto.randomUUID()
+  useAssetStore.getState().add({
+    id,
+    name,
+    kind: 'material',
+    slot: normalizeSlot({
+      name,
+      color: '#cccccc',
+      metalness: 0,
+      roughness: 0.5,
+      emissive: '#000000',
+      emissiveIntensity: 0,
+      opacity: 1,
+      ao: 1,
+      mapAssetId: null,
+      normalAssetId: null,
+      roughnessAssetId: null,
+      metalnessAssetId: null,
+      emissiveAssetId: null,
+      aoAssetId: null,
+    }),
+  })
+  useAssetStore.getState().place(id, dir)
+  useEditorStore.getState().inspectAsset(id)
+  useEditorStore.getState().log('info', translate('log.savedMaterial', { name }))
+}
+
+export function duplicateAsset(id: string) {
+  const asset = useAssetStore.getState().assets[id]
+  if (!asset || (asset.kind !== 'material' && asset.kind !== 'scene' && asset.kind !== 'prefab')) return
+  const copy = structuredClone(asset)
+  copy.id = crypto.randomUUID()
+  copy.name = uniqueAssetName(`${asset.name} ${translate('project.copySuffix')}`)
+  const dir = assetDirectory(id, useAssetStore.getState().assetDirs)
+  useAssetStore.getState().add(copy)
+  useAssetStore.getState().place(copy.id, dir)
+  useEditorStore.getState().inspectAsset(copy.id)
+}
+
+export function reportAssetUsers(id: string) {
+  const names = referencedBy(id)
+  const editor = useEditorStore.getState()
+  if (names.length === 0) editor.log('info', translate('project.noRefs'))
+  else editor.log('info', translate('project.refs', { names: names.join('、') }))
 }
 
 export function previewAudio(asset: ProjectAsset) {
@@ -247,7 +315,7 @@ function hasMesh(root: { traverse: (fn: (child: { type?: string }) => void) => v
 }
 
 function isPaintable(node: SceneNode): boolean {
-  return node.kind === 'box' || node.kind === 'sphere' || node.kind === 'plane' || node.kind === 'cylinder' || node.kind === 'capsule' || node.kind === 'model'
+  return node.kind === 'box' || node.kind === 'sphere' || node.kind === 'plane' || node.kind === 'cylinder' || node.kind === 'capsule' || node.kind === 'cone' || node.kind === 'model'
 }
 
 function referencedBy(assetId: string): string[] {
@@ -256,16 +324,24 @@ function referencedBy(assetId: string): string[] {
     if (usesAsset(node, assetId)) names.push(node.name)
   }
   for (const asset of Object.values(useAssetStore.getState().assets)) {
-    if (asset.kind === 'prefab' && asset.nodes.some(node => usesAsset(node, assetId))) names.push(asset.name)
+    if (asset.kind === 'prefab' && Object.values(readPrefab(asset).nodes).some(node => usesAsset(node, assetId) || node.nestedPrefabId === assetId)) names.push(asset.name)
+    if (asset.kind === 'scene') {
+      for (const node of Object.values(asset.nodes)) {
+        if (usesAsset(node, assetId)) {
+          names.push(asset.name)
+          break
+        }
+      }
+    }
     if (asset.kind === 'material' && slotUses(asset.slot, assetId)) names.push(asset.name)
   }
   return names
 }
 
 function usesAsset(node: SceneNode, assetId: string): boolean {
-  if (node.assetId === assetId || node.clipAssetId === assetId) return true
+  if (node.assetId === assetId || node.clipAssetId === assetId || node.materialAssetId === assetId) return true
   if (slotUses(slotFromNode(node), assetId)) return true
-  return node.slots.some(slot => slotUses(slot, assetId))
+  return node.slots.some(slot => slot.materialAssetId === assetId || slotUses(slot, assetId))
 }
 
 function slotUses(slot: PbrSlot, assetId: string): boolean {

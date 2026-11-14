@@ -7,12 +7,17 @@ export type NodeKind =
   | 'plane'
   | 'cylinder'
   | 'capsule'
+  | 'cone'
   | 'model'
   | 'directional-light'
   | 'point-light'
   | 'spot-light'
   | 'hemisphere-light'
   | 'camera'
+
+export type SurfaceShader = 'lit' | 'unlit-color' | 'unlit-texture'
+export type AlphaMode = 'opaque' | 'blend' | 'clip'
+export type CullMode = 'back' | 'front' | 'off'
 
 export interface PbrSlot {
   name: string
@@ -29,6 +34,14 @@ export interface PbrSlot {
   metalnessAssetId: string | null
   emissiveAssetId: string | null
   aoAssetId: string | null
+  materialAssetId?: string | null
+  shader?: SurfaceShader
+  normalScale?: number
+  alphaMode?: AlphaMode
+  alphaCutoff?: number
+  cull?: CullMode
+  depthWrite?: boolean
+  wireframe?: boolean
 }
 
 export interface ScenePicture {
@@ -113,6 +126,14 @@ export interface SceneNode {
   metalnessAssetId: string | null
   emissiveAssetId: string | null
   aoAssetId: string | null
+  materialAssetId: string | null
+  shader: SurfaceShader
+  normalScale: number
+  alphaMode: AlphaMode
+  alphaCutoff: number
+  cull: CullMode
+  depthWrite: boolean
+  wireframe: boolean
   slots: PbrSlot[]
   castShadow: boolean
   receiveShadow: boolean
@@ -124,6 +145,20 @@ export interface SceneNode {
   groundColor: string
   near: number
   far: number
+  /** 这个节点所属的预制体资源。实例根和从模板展开的子节点都有。 */
+  prefabAssetId?: string
+  /** 场景里这次放置的实例根 id。 */
+  prefabInstanceId?: string
+  /** 对应的模板节点 id。实例上新增的子物体没有这个字段。 */
+  prefabTemplateId?: string
+  /** 外层模板里代表这个嵌套预制体的节点 id。 */
+  prefabHostTemplateId?: string
+  /** 相对模板改过的属性名。 */
+  prefabOverrides?: string[]
+  /** 从这个实例里删掉的模板节点。 */
+  prefabRemoved?: string[]
+  /** 模板节点指向另一个预制体，展开时变成嵌套实例。 */
+  nestedPrefabId?: string
 }
 
 export interface LogEntry {

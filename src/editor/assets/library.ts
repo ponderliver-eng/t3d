@@ -1,5 +1,6 @@
 import { create } from 'zustand'
 import type { PbrSlot, SceneNode, ScenePicture } from '../scene/types'
+import { ASSETS_ROOT, directoryExists, joinDir, normalizeDir, parentDir, relocateDir, uniqueFolderName } from './folders'
 
 export type FileKind = 'model' | 'texture' | 'animation' | 'audio' | 'environment'
 
@@ -24,7 +25,8 @@ export interface PrefabAsset {
   id: string
   name: string
   kind: 'prefab'
-  nodes: SceneNode[]
+  rootId: string
+  nodes: Record<string, SceneNode>
 }
 
 export interface SceneAsset {
@@ -39,6 +41,9 @@ export type ProjectAsset = FileAsset | MaterialAsset | PrefabAsset | SceneAsset
 
 interface AssetState {
   assets: Record<string, ProjectAsset>
+  folders: string[]
+  assetDirs: Record<string, string>
+  browseDir: string
   revision: number
   add: (asset: ProjectAsset) => void
   remove: (id: string) => void
@@ -47,16 +52,32 @@ interface AssetState {
   writeScene: (id: string, nodes: Record<string, SceneNode>, picture: ScenePicture) => void
   updateMaterial: (id: string, slot: Partial<PbrSlot>) => void
   bump: () => void
+  loadCatalog: (folders: string[], assetDirs: Record<string, string>) => void
+  setBrowseDir: (dir: string) => void
+  place: (id: string, dir?: string) => void
+  writePrefab: (id: string, rootId: string, nodes: Record<string, SceneNode>) => void
+  createFolder: (parent?: string) => string
+  renameFolder: (path: string, name: string) => void
+  deleteFolder: (path: string) => void
 }
 
-export const useAssetStore = create<AssetState>(set => ({
+export function assetDirectory(id: string, assetDirs: Record<string, string>): string {
+  return normalizeDir(assetDirs[id] ?? ASSETS_ROOT)
+}
+
+export const useAssetStore = create<AssetState>((set, get) => ({
   assets: {},
+  folders: [],
+  assetDirs: {},
+  browseDir: ASSETS_ROOT,
   revision: 0,
   add: asset => set(state => ({ assets: { ...state.assets, [asset.id]: asset }, revision: state.revision + 1 })),
   remove: id => set(state => {
     const assets = { ...state.assets }
+    const assetDirs = { ...state.assetDirs }
     delete assets[id]
-    return { assets, revision: state.revision + 1 }
+    delete assetDirs[id]
+    return { assets, assetDirs, revision: state.revision + 1 }
   }),
   rename: (id, name) => set(state => {
     const asset = state.assets[id]
@@ -80,6 +101,60 @@ export const useAssetStore = create<AssetState>(set => ({
     return { assets: { ...state.assets, [id]: { ...asset, slot: { ...asset.slot, ...slot } } }, revision: state.revision + 1 }
   }),
   bump: () => set(state => ({ revision: state.revision + 1 })),
+  loadCatalog: (folders, assetDirs) => set({
+    folders: [...new Set(folders.map(normalizeDir).filter(path => path !== ASSETS_ROOT))],
+    assetDirs: Object.fromEntries(Object.entries(assetDirs).map(([id, dir]) => [id, normalizeDir(dir)])),
+  }),
+  setBrowseDir: dir => set({ browseDir: normalizeDir(dir) }),
+  writePrefab: (id, rootId, nodes) => set(state => {
+    const asset = state.assets[id]
+    if (!asset || asset.kind !== 'prefab') return {}
+    return {
+      assets: { ...state.assets, [id]: { ...asset, rootId, nodes } },
+      revision: state.revision + 1,
+    }
+  }),
+  place: (id, dir) => set(state => ({
+    assetDirs: { ...state.assetDirs, [id]: normalizeDir(dir ?? state.browseDir) },
+    revision: state.revision + 1,
+  })),
+  createFolder: parent => {
+    const state = get()
+    const base = normalizeDir(parent ?? state.browseDir)
+    const path = joinDir(base, uniqueFolderName(base, state.folders, state.assetDirs))
+    set({ folders: [...state.folders, path], browseDir: path, revision: state.revision + 1 })
+    return path
+  },
+  renameFolder: (path, name) => {
+    const clean = name.trim().replace(/[\\/]/g, '')
+    const source = normalizeDir(path)
+    const parent = parentDir(source)
+    if (!clean || !parent) return
+    const next = joinDir(parent, clean)
+    if (next === source) return
+    const state = get()
+    if (directoryExists(next, state.folders, state.assetDirs)) return
+    set({
+      folders: [...new Set(state.folders.map(folder => relocateDir(folder, source, next)).filter(folder => folder !== ASSETS_ROOT))],
+      assetDirs: Object.fromEntries(Object.entries(state.assetDirs).map(([id, dir]) => [id, relocateDir(dir, source, next)])),
+      browseDir: relocateDir(state.browseDir, source, next),
+      revision: state.revision + 1,
+    })
+  },
+  deleteFolder: path => {
+    const source = normalizeDir(path)
+    const parent = parentDir(source)
+    if (!parent) return
+    const state = get()
+    set({
+      folders: [...new Set(state.folders
+        .map(folder => relocateDir(folder, source, parent))
+        .filter(folder => folder !== ASSETS_ROOT && folder !== source))],
+      assetDirs: Object.fromEntries(Object.entries(state.assetDirs).map(([id, dir]) => [id, relocateDir(dir, source, parent)])),
+      browseDir: state.browseDir === source || state.browseDir.startsWith(`${source}/`) ? parent : state.browseDir,
+      revision: state.revision + 1,
+    })
+  },
 }))
 
 export function assetName(fileName: string): string {

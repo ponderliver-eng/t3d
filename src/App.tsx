@@ -4,7 +4,11 @@ import Toolbar from './editor/layout/Toolbar'
 import IDELayout from './editor/layout/IDELayout'
 import StatusBar from './editor/layout/StatusBar'
 import { askNewScene, useEditorStore } from './editor/scene/store'
+import { useAssetStore } from './editor/assets/library'
 import { bindProjectAutosave, saveProjectNow } from './editor/assets/project'
+import { translate } from './editor/i18n'
+import SettingsDialog from './editor/prefs/SettingsDialog'
+import { usePrefsStore } from './editor/prefs/store'
 import { PreviewHost } from './editor/preview/PreviewHost'
 import { isViewportNavigating } from './editor/viewport/cameraControls'
 import './App.css'
@@ -31,9 +35,14 @@ export default function App() {
         askNewScene()
         return
       }
+      if (ctrl && event.code === 'Comma') {
+        event.preventDefault()
+        usePrefsStore.getState().openSettings()
+        return
+      }
       if (ctrl && event.code === 'KeyS') {
         event.preventDefault()
-        void saveProjectNow().then(() => store.notify('已保存到本地缓存'))
+        void saveProjectNow().then(() => store.notify(translate('menu.saved')))
         return
       }
       if (ctrl && event.code === 'KeyZ' && !event.shiftKey) {
@@ -102,15 +111,24 @@ export default function App() {
     }
   }, [])
 
+  const prefabSession = useEditorStore(state => state.prefabSession)
+  const prefabName = useAssetStore(state => prefabSession ? state.assets[prefabSession.assetId]?.name : '')
   return (
     <div className="app">
       <MenuBar />
       <Toolbar />
+      {prefabSession && (
+        <div className="prefab-bar">
+          <span>{translate('prefab.editing', { name: prefabName || '' })}</span>
+          <button type="button" onClick={() => useEditorStore.getState().closePrefab(true)}>{translate('prefab.saveBack')}</button>
+        </div>
+      )}
       <div className="app__workspace">
         <IDELayout />
       </div>
       <StatusBar />
       <PreviewHost />
+      <SettingsDialog />
     </div>
   )
 }

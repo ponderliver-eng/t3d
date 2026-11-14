@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { ASSET_MIME, importFiles, placeAsset } from '../assets/import'
 import { savePrefabFromSelection } from '../assets/import'
-import { KIND_LABEL, LIGHT_KINDS, MESH_KINDS } from '../scene/kinds'
+import { useI18n, type MessageKey } from '../i18n'
+import { LIGHT_KINDS, MESH_KINDS } from '../scene/kinds'
 import type { CameraView, NodeKind } from '../scene/types'
 import { useAssetStore } from '../assets/library'
 import { ChevronDown, Focus, Grid3x3, Maximize, Move3d, RotateCcw, Scaling, ArrowDownToLine } from 'lucide-react'
@@ -10,15 +11,7 @@ import { EditorViewport } from './EditorViewport'
 import ViewCube from './ViewCube'
 import './ViewportPanel.css'
 
-const VIEWS: { id: CameraView; label: string }[] = [
-  { id: 'persp', label: '透视' },
-  { id: 'top', label: '顶' },
-  { id: 'bottom', label: '底' },
-  { id: 'front', label: '前' },
-  { id: 'back', label: '后' },
-  { id: 'left', label: '左' },
-  { id: 'right', label: '右' },
-]
+const VIEWS: CameraView[] = ['persp', 'top', 'bottom', 'front', 'back', 'left', 'right']
 
 export default function ViewportPanel() {
   const stageRef = useRef<HTMLDivElement>(null)
@@ -35,6 +28,8 @@ export default function ViewportPanel() {
   const origin = useEditorStore(state => state.gizmoOrigin)
   const [menu, setMenu] = useState<'view' | 'gizmo' | null>(null)
   const [contextMenu, setContextMenu] = useState<{ x: number, y: number, id: string | null } | null>(null)
+  const { t } = useI18n()
+  const viewName = (id: CameraView) => t(`view.${id}` as MessageKey)
 
   const viewportRef = useRef<EditorViewport | null>(null)
 
@@ -67,17 +62,17 @@ export default function ViewportPanel() {
   return (
     <div className={`viewport-panel ${modeClass}`}>
       <div className="viewport-tabs">
-        <div className="viewport-tab viewport-tab--active">3D 视口</div>
+        <div className="viewport-tab viewport-tab--active">{t('panel.viewport')}</div>
         <div className="viewport-tabs__spacer" />
         <div className="viewport-tabs__tools">
-          <button type="button" className={`viewport-tool-btn ${gizmoMode === 'translate' ? 'viewport-tool-btn--active' : ''}`} title="移动 (W)" onClick={() => editor.setGizmoMode('translate')}><Move3d size={12} /></button>
-          <button type="button" className={`viewport-tool-btn ${gizmoMode === 'rotate' ? 'viewport-tool-btn--active' : ''}`} title="旋转 (E)" onClick={() => editor.setGizmoMode('rotate')}><RotateCcw size={12} /></button>
-          <button type="button" className={`viewport-tool-btn ${gizmoMode === 'scale' ? 'viewport-tool-btn--active' : ''}`} title="缩放 (R)" onClick={() => editor.setGizmoMode('scale')}><Scaling size={12} /></button>
+          <button type="button" className={`viewport-tool-btn ${gizmoMode === 'translate' ? 'viewport-tool-btn--active' : ''}`} title={t('tool.move')} onClick={() => editor.setGizmoMode('translate')}><Move3d size={12} /></button>
+          <button type="button" className={`viewport-tool-btn ${gizmoMode === 'rotate' ? 'viewport-tool-btn--active' : ''}`} title={t('tool.rotate')} onClick={() => editor.setGizmoMode('rotate')}><RotateCcw size={12} /></button>
+          <button type="button" className={`viewport-tool-btn ${gizmoMode === 'scale' ? 'viewport-tool-btn--active' : ''}`} title={t('tool.scale')} onClick={() => editor.setGizmoMode('scale')}><Scaling size={12} /></button>
           <div className="viewport-tool-sep" />
           <button
             type="button"
             className={`viewport-tool-btn viewport-tool-btn--text ${gizmoSpace === 'world' ? 'viewport-tool-btn--active' : ''}`}
-            title={gizmoSpace === 'world' ? '世界坐标' : '局部坐标'}
+            title={gizmoSpace === 'world' ? t('view.world') : t('view.local')}
             onClick={() => editor.setGizmoSpace(gizmoSpace === 'world' ? 'local' : 'world')}
           >
             {gizmoSpace === 'world' ? 'W' : 'L'}
@@ -85,28 +80,28 @@ export default function ViewportPanel() {
           <div className="viewport-tool-sep" />
           <div className="viewport-menu">
             <button type="button" className="viewport-tool-btn viewport-tool-btn--text" onPointerDown={event => event.stopPropagation()} onClick={() => setMenu(menu === 'view' ? null : 'view')}>
-              {VIEWS.find(item => item.id === view)?.label ?? '透视'} <ChevronDown size={10} />
+              {viewName(view)} <ChevronDown size={10} />
             </button>
             {menu === 'view' && (
               <div className="viewport-menu__pop" onPointerDown={event => event.stopPropagation()}>
                 {VIEWS.map(item => (
-                  <button key={item.id} type="button" className={view === item.id ? 'is-active' : ''} onClick={() => { editor.requestView(item.id); setMenu(null) }}>{item.label}</button>
+                  <button key={item} type="button" className={view === item ? 'is-active' : ''} onClick={() => { editor.requestView(item); setMenu(null) }}>{viewName(item)}</button>
                 ))}
-                <button type="button" onClick={() => { editor.requestFocus(); setMenu(null) }}>聚焦选中</button>
-                <button type="button" onClick={() => { editor.requestFocusAll(); setMenu(null) }}>聚焦全部</button>
+                <button type="button" onClick={() => { editor.requestFocus(); setMenu(null) }}>{t('menu.focus')}</button>
+                <button type="button" onClick={() => { editor.requestFocusAll(); setMenu(null) }}>{t('menu.focusAll')}</button>
               </div>
             )}
           </div>
           <div className="viewport-menu">
-            <button type="button" className={`viewport-tool-btn ${grid || helpers ? 'viewport-tool-btn--active' : ''}`} title="辅助显示" onPointerDown={event => event.stopPropagation()} onClick={() => setMenu(menu === 'gizmo' ? null : 'gizmo')}><Grid3x3 size={12} /></button>
+            <button type="button" className={`viewport-tool-btn ${grid || helpers ? 'viewport-tool-btn--active' : ''}`} title={t('view.helpers')} onPointerDown={event => event.stopPropagation()} onClick={() => setMenu(menu === 'gizmo' ? null : 'gizmo')}><Grid3x3 size={12} /></button>
             {menu === 'gizmo' && (
               <div className="viewport-menu__pop" onPointerDown={event => event.stopPropagation()}>
-                <label><input type="checkbox" checked={grid} onChange={() => editor.toggleGrid()} /> 网格</label>
-                <label><input type="checkbox" checked={helpers} onChange={() => editor.setHelpersVisible(!helpers)} /> 灯光和相机</label>
-                <label><input type="checkbox" checked={origin === 'center'} onChange={() => editor.setGizmoOrigin(origin === 'center' ? 'pivot' : 'center')} /> 手柄在中心</label>
-                <label><input type="checkbox" checked={snap} onChange={() => editor.toggleSnap()} /> 吸附</label>
+                <label><input type="checkbox" checked={grid} onChange={() => editor.toggleGrid()} /> {t('view.grid')}</label>
+                <label><input type="checkbox" checked={helpers} onChange={() => editor.setHelpersVisible(!helpers)} /> {t('view.lights')}</label>
+                <label><input type="checkbox" checked={origin === 'center'} onChange={() => editor.setGizmoOrigin(origin === 'center' ? 'pivot' : 'center')} /> {t('view.gizmoCenter')}</label>
+                <label><input type="checkbox" checked={snap} onChange={() => editor.toggleSnap()} /> {t('view.snap')}</label>
                 <label className="viewport-menu__step">
-                  步长
+                  {t('view.step')}
                   <input
                     type="number"
                     min={0.01}
@@ -118,20 +113,20 @@ export default function ViewportPanel() {
               </div>
             )}
           </div>
-          <button type="button" className="viewport-tool-btn" title="聚焦选中 (F)" onClick={() => editor.requestFocus()}><Focus size={12} /></button>
-          <button type="button" className="viewport-tool-btn" title="贴地" onClick={() => editor.snapSelectionToGround()}><ArrowDownToLine size={12} /></button>
+          <button type="button" className="viewport-tool-btn" title={t('view.focus')} onClick={() => editor.requestFocus()}><Focus size={12} /></button>
+          <button type="button" className="viewport-tool-btn" title={t('tool.ground')} onClick={() => editor.snapSelectionToGround()}><ArrowDownToLine size={12} /></button>
           <button
             type="button"
             className={`viewport-tool-btn viewport-tool-btn--text ${origin === 'center' ? 'viewport-tool-btn--active' : ''}`}
-            title={origin === 'center' ? '手柄在包围盒中心' : '手柄在轴心'}
+            title={origin === 'center' ? t('tool.originCenter') : t('tool.originPivot')}
             onClick={() => editor.setGizmoOrigin(origin === 'pivot' ? 'center' : 'pivot')}
           >
-            {origin === 'center' ? '中心' : '轴心'}
+            {origin === 'center' ? t('tool.center') : t('tool.pivot')}
           </button>
           <button
             type="button"
             className="viewport-tool-btn"
-            title="视口全屏"
+            title={t('view.fullscreen')}
             onClick={() => {
               const stage = stageRef.current
               if (!stage) return
@@ -171,7 +166,7 @@ export default function ViewportPanel() {
         }}
       >
         <canvas ref={canvasRef} />
-        <div className="viewport-stats">{stats.objects} 物体 · {stats.triangles.toLocaleString()} 三角</div>
+        <div className="viewport-stats">{t('view.stats', { objects: stats.objects, triangles: stats.triangles.toLocaleString() })}</div>
       </div>
       <ViewCube />
       {contextMenu && (
@@ -197,6 +192,8 @@ function ViewportContextMenu({
   onClose: () => void
 }) {
   const canPaste = useEditorStore(state => state.canPaste)
+  const { t } = useI18n()
+  const kindName = (kind: NodeKind) => t(`kind.${kind}` as MessageKey)
   const parentId = useEditorStore(state => id ? state.nodes[id]?.parentId : null)
   const run = (action: () => void) => {
     action()
@@ -208,28 +205,30 @@ function ViewportContextMenu({
   return (
     <div className="viewport-context" style={{ left: x, top: y }} onPointerDown={event => event.stopPropagation()}>
       <div className="viewport-context__sub">
-        <button type="button" disabled={playing}>{id ? '创建子物体' : '创建'}</button>
+        <button type="button" disabled={playing}>{id ? t('view.createChild') : t('view.create')}</button>
         <div>
-          <button type="button" disabled={playing} onClick={() => run(() => create('empty', id))}>空物体</button>
-          {MESH_KINDS.map(kind => <button key={kind} type="button" disabled={playing} onClick={() => run(() => create(kind, id))}>{KIND_LABEL[kind]}</button>)}
-          {LIGHT_KINDS.map(kind => <button key={kind} type="button" disabled={playing} onClick={() => run(() => create(kind, id))}>{KIND_LABEL[kind]}</button>)}
-          <button type="button" disabled={playing} onClick={() => run(() => create('camera', id))}>相机</button>
+          <button type="button" disabled={playing} onClick={() => run(() => create('empty', id))}>{t('menu.empty')}</button>
+          <div className="viewport-context__label">{t('menu.meshes')}</div>
+          {MESH_KINDS.map(kind => <button key={kind} type="button" disabled={playing} onClick={() => run(() => create(kind, id))}>{kindName(kind)}</button>)}
+          <div className="viewport-context__label">{t('menu.lights')}</div>
+          {LIGHT_KINDS.map(kind => <button key={kind} type="button" disabled={playing} onClick={() => run(() => create(kind, id))}>{kindName(kind)}</button>)}
+          <button type="button" disabled={playing} onClick={() => run(() => create('camera', id))}>{t('menu.camera')}</button>
         </div>
       </div>
-      {id && <button type="button" onClick={() => run(() => useEditorStore.getState().requestRename(id))}>重命名</button>}
-      {id && <button type="button" onClick={() => run(() => useEditorStore.getState().requestFocus())}>聚焦</button>}
-      <button type="button" onClick={() => run(() => useEditorStore.getState().requestFocusAll())}>聚焦全部</button>
+      {id && <button type="button" onClick={() => run(() => useEditorStore.getState().requestRename(id))}>{t('project.rename')}</button>}
+      {id && <button type="button" onClick={() => run(() => useEditorStore.getState().requestFocus())}>{t('menu.focus')}</button>}
+      <button type="button" onClick={() => run(() => useEditorStore.getState().requestFocusAll())}>{t('menu.focusAll')}</button>
       <div className="viewport-context__sep" />
-      <button type="button" disabled={playing || !id} onClick={() => run(() => useEditorStore.getState().duplicateSelection())}>就地复制</button>
-      <button type="button" disabled={!id} onClick={() => run(() => useEditorStore.getState().copySelection())}>拷贝</button>
-      <button type="button" disabled={playing || !canPaste} onClick={() => run(() => useEditorStore.getState().pasteClipboard(null))}>粘贴</button>
-      <button type="button" disabled={playing || !canPaste || !id} onClick={() => run(() => useEditorStore.getState().pasteClipboard(id))}>粘贴为子级</button>
-      <button type="button" disabled={playing} onClick={() => run(() => useEditorStore.getState().groupSelection())}>成组</button>
-      <button type="button" disabled={playing || !id} onClick={() => run(() => useEditorStore.getState().snapSelectionToGround())}>贴地</button>
-      <button type="button" disabled={playing || !id} onClick={() => run(() => savePrefabFromSelection())}>存为预制体</button>
+      <button type="button" disabled={playing || !id} onClick={() => run(() => useEditorStore.getState().duplicateSelection())}>{t('menu.duplicate')}</button>
+      <button type="button" disabled={!id} onClick={() => run(() => useEditorStore.getState().copySelection())}>{t('menu.copy')}</button>
+      <button type="button" disabled={playing || !canPaste} onClick={() => run(() => useEditorStore.getState().pasteClipboard(null))}>{t('view.paste')}</button>
+      <button type="button" disabled={playing || !canPaste || !id} onClick={() => run(() => useEditorStore.getState().pasteClipboard(id))}>{t('hierarchy.pasteChild')}</button>
+      <button type="button" disabled={playing} onClick={() => run(() => useEditorStore.getState().groupSelection())}>{t('menu.group')}</button>
+      <button type="button" disabled={playing || !id} onClick={() => run(() => useEditorStore.getState().snapSelectionToGround())}>{t('menu.ground')}</button>
+      <button type="button" disabled={playing || !id} onClick={() => run(() => savePrefabFromSelection())}>{t('inspector.savePrefab')}</button>
       <div className="viewport-context__sep" />
-      <button type="button" disabled={playing || !parentId} onClick={() => run(() => { if (id) useEditorStore.getState().reparent(id, null) })}>解除父子</button>
-      <button type="button" disabled={playing || !id} onClick={() => run(() => useEditorStore.getState().deleteSelection())}>删除</button>
+      <button type="button" disabled={playing || !parentId} onClick={() => run(() => { if (id) useEditorStore.getState().reparent(id, null) })}>{t('hierarchy.unparent')}</button>
+      <button type="button" disabled={playing || !id} onClick={() => run(() => useEditorStore.getState().deleteSelection())}>{t('menu.delete')}</button>
     </div>
   )
 }

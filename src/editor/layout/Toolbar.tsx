@@ -1,5 +1,6 @@
 import { ArrowDownToLine, FilePlus, Grid3x3, History, Magnet, Move3d, Pause, Play, Redo2, RotateCcw, Save, Scaling, Square, Undo2 } from 'lucide-react'
 import { saveProjectNow } from '../assets/project'
+import { translate, useI18n } from '../i18n'
 import { askNewScene, useEditorStore } from '../scene/store'
 import { selectTab } from './events'
 import './Toolbar.css'
@@ -18,6 +19,7 @@ export default function Toolbar() {
   const redoLabel = useEditorStore(state => state.future[state.future.length - 1]?.label)
   const setGizmoMode = useEditorStore(state => state.setGizmoMode)
   const setGizmoSpace = useEditorStore(state => state.setGizmoSpace)
+  const { t } = useI18n()
 
   const showHistory = () => {
     const next = sidePanel === 'history' ? 'inspector' : 'history'
@@ -28,62 +30,62 @@ export default function Toolbar() {
   return (
     <div className="toolbar">
       <div className="toolbar__group">
-        <button type="button" className="toolbar__btn" title="新建场景" onClick={askNewScene}>
+        <button type="button" className="toolbar__btn" title={t('tool.newScene')} onClick={askNewScene}>
           <FilePlus size={14} />
         </button>
         <button
           type="button"
           className="toolbar__btn"
-          title="保存到本地缓存"
-          onClick={() => { void saveProjectNow().then(() => useEditorStore.getState().notify('已保存到本地缓存')) }}
+          title={t('tool.save')}
+          onClick={() => { void saveProjectNow().then(() => useEditorStore.getState().notify(translate('menu.saved'))) }}
         >
           <Save size={14} />
         </button>
       </div>
       <div className="toolbar__divider" />
       <div className="toolbar__group">
-        <button type="button" className="toolbar__btn" title={undoLabel ? `撤销 ${undoLabel}` : '撤销'} disabled={!canUndo} onClick={() => useEditorStore.getState().undo()}>
+        <button type="button" className="toolbar__btn" title={undoLabel ? `${t('tool.undo')} ${undoLabel}` : t('tool.undo')} disabled={!canUndo} onClick={() => useEditorStore.getState().undo()}>
           <Undo2 size={14} />
         </button>
-        <button type="button" className="toolbar__btn" title={redoLabel ? `重做 ${redoLabel}` : '重做'} disabled={!canRedo} onClick={() => useEditorStore.getState().redo()}>
+        <button type="button" className="toolbar__btn" title={redoLabel ? `${t('tool.redo')} ${redoLabel}` : t('tool.redo')} disabled={!canRedo} onClick={() => useEditorStore.getState().redo()}>
           <Redo2 size={14} />
         </button>
       </div>
       <div className="toolbar__divider" />
       <div className="toolbar__group">
-        <button type="button" className={`toolbar__btn ${gizmoMode === 'translate' ? 'toolbar__btn--active' : ''}`} title="移动 (W)" onClick={() => setGizmoMode('translate')}>
+        <button type="button" className={`toolbar__btn ${gizmoMode === 'translate' ? 'toolbar__btn--active' : ''}`} title={t('tool.move')} onClick={() => setGizmoMode('translate')}>
           <Move3d size={14} />
         </button>
-        <button type="button" className={`toolbar__btn ${gizmoMode === 'rotate' ? 'toolbar__btn--active' : ''}`} title="旋转 (E)" onClick={() => setGizmoMode('rotate')}>
+        <button type="button" className={`toolbar__btn ${gizmoMode === 'rotate' ? 'toolbar__btn--active' : ''}`} title={t('tool.rotate')} onClick={() => setGizmoMode('rotate')}>
           <RotateCcw size={14} />
         </button>
-        <button type="button" className={`toolbar__btn ${gizmoMode === 'scale' ? 'toolbar__btn--active' : ''}`} title="缩放 (R)" onClick={() => setGizmoMode('scale')}>
+        <button type="button" className={`toolbar__btn ${gizmoMode === 'scale' ? 'toolbar__btn--active' : ''}`} title={t('tool.scale')} onClick={() => setGizmoMode('scale')}>
           <Scaling size={14} />
         </button>
       </div>
       <div className="toolbar__divider" />
       <div className="toolbar__group toolbar__group--segmented">
-        <button type="button" className={`toolbar__btn toolbar__btn--segment ${gizmoSpace === 'world' ? 'toolbar__btn--active' : ''}`} onClick={() => setGizmoSpace('world')}>世界</button>
-        <button type="button" className={`toolbar__btn toolbar__btn--segment ${gizmoSpace === 'local' ? 'toolbar__btn--active' : ''}`} onClick={() => setGizmoSpace('local')}>局部</button>
+        <button type="button" className={`toolbar__btn toolbar__btn--segment ${gizmoSpace === 'world' ? 'toolbar__btn--active' : ''}`} onClick={() => setGizmoSpace('world')}>{t('tool.world')}</button>
+        <button type="button" className={`toolbar__btn toolbar__btn--segment ${gizmoSpace === 'local' ? 'toolbar__btn--active' : ''}`} onClick={() => setGizmoSpace('local')}>{t('tool.local')}</button>
       </div>
       <div className="toolbar__divider" />
       <div className="toolbar__group">
-        <button type="button" className={`toolbar__btn ${snap ? 'toolbar__btn--active' : ''}`} title="网格吸附" onClick={() => useEditorStore.getState().toggleSnap()}>
+        <button type="button" className={`toolbar__btn ${snap ? 'toolbar__btn--active' : ''}`} title={t('tool.snap')} onClick={() => useEditorStore.getState().toggleSnap()}>
           <Magnet size={14} />
         </button>
-        <button type="button" className={`toolbar__btn ${grid ? 'toolbar__btn--active' : ''}`} title="显示网格" onClick={() => useEditorStore.getState().toggleGrid()}>
+        <button type="button" className={`toolbar__btn ${grid ? 'toolbar__btn--active' : ''}`} title={t('tool.grid')} onClick={() => useEditorStore.getState().toggleGrid()}>
           <Grid3x3 size={14} />
         </button>
-        <button type="button" className="toolbar__btn" title="贴地" disabled={playState !== 'stopped'} onClick={() => useEditorStore.getState().snapSelectionToGround()}>
+        <button type="button" className="toolbar__btn" title={t('tool.ground')} disabled={playState !== 'stopped'} onClick={() => useEditorStore.getState().snapSelectionToGround()}>
           <ArrowDownToLine size={14} />
         </button>
         <button
           type="button"
           className={`toolbar__btn ${origin === 'center' ? 'toolbar__btn--active' : ''}`}
-          title={origin === 'center' ? '手柄在包围盒中心' : '手柄在轴心'}
+          title={origin === 'center' ? t('tool.originCenter') : t('tool.originPivot')}
           onClick={() => useEditorStore.getState().setGizmoOrigin(origin === 'pivot' ? 'center' : 'pivot')}
         >
-          {origin === 'center' ? '中心' : '轴心'}
+          {origin === 'center' ? t('tool.center') : t('tool.pivot')}
         </button>
       </div>
       <div className="toolbar__divider" />
@@ -91,7 +93,7 @@ export default function Toolbar() {
         <button
           type="button"
           className={`toolbar__btn toolbar__btn--play ${playState === 'playing' ? 'toolbar__btn--playing' : ''}`}
-          title={playState === 'playing' ? '暂停 (Ctrl+P)' : '试玩 (Ctrl+P)'}
+          title={playState === 'playing' ? t('tool.pause') : t('tool.play')}
           onClick={() => {
             const state = useEditorStore.getState()
             if (state.playState === 'playing') state.pause()
@@ -99,12 +101,12 @@ export default function Toolbar() {
           }}
         >
           {playState === 'playing' ? <Pause size={14} /> : <Play size={14} />}
-          <span>{playState === 'playing' ? '暂停' : '试玩'}</span>
+          <span>{playState === 'playing' ? t('tool.pauseLabel') : t('tool.playLabel')}</span>
         </button>
         <button
           type="button"
           className="toolbar__btn toolbar__btn--stop"
-          title="停止 (Ctrl+Shift+P)"
+          title={t('tool.stop')}
           disabled={playState === 'stopped'}
           onClick={() => useEditorStore.getState().stop()}
         >
@@ -115,7 +117,7 @@ export default function Toolbar() {
       <button
         type="button"
         className={`toolbar__btn ${sidePanel === 'history' ? 'toolbar__btn--active' : ''}`}
-        title="历史"
+        title={t('tool.history')}
         onClick={showHistory}
       >
         <History size={14} />

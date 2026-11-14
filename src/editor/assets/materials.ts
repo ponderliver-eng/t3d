@@ -1,10 +1,100 @@
-import { Mesh, MeshStandardMaterial, type BufferGeometry, type Material, type Object3D } from 'three'
+import {
+  BackSide,
+  DoubleSide,
+  FrontSide,
+  Mesh,
+  MeshBasicMaterial,
+  MeshStandardMaterial,
+  Vector2,
+  type BufferGeometry,
+  type Material,
+  type Object3D,
+  type Side,
+} from 'three'
+import { useAssetStore } from './library'
 import { textureFor } from './textures'
-import type { PbrSlot, SceneNode } from '../scene/types'
+import type { AlphaMode, CullMode, PbrSlot, SceneNode, SurfaceShader } from '../scene/types'
 
-export function slotFromNode(node: SceneNode): PbrSlot {
+export interface SurfaceSlot extends PbrSlot {
+  materialAssetId: string | null
+  shader: SurfaceShader
+  normalScale: number
+  alphaMode: AlphaMode
+  alphaCutoff: number
+  cull: CullMode
+  depthWrite: boolean
+  wireframe: boolean
+}
+
+const DEFAULTS = {
+  materialAssetId: null,
+  shader: 'lit' as const,
+  normalScale: 1,
+  alphaMode: 'opaque' as const,
+  alphaCutoff: 0.5,
+  cull: 'back' as const,
+  depthWrite: true,
+  wireframe: false,
+}
+
+export function normalizeSlot(slot: Partial<PbrSlot> & Pick<PbrSlot, 'name' | 'color'>): SurfaceSlot {
   return {
-    name: '默认',
+    name: slot.name,
+    color: slot.color,
+    metalness: slot.metalness ?? 0,
+    roughness: slot.roughness ?? 1,
+    emissive: slot.emissive ?? '#000000',
+    emissiveIntensity: slot.emissiveIntensity ?? 1,
+    opacity: slot.opacity ?? 1,
+    ao: slot.ao ?? 1,
+    mapAssetId: slot.mapAssetId ?? null,
+    normalAssetId: slot.normalAssetId ?? null,
+    roughnessAssetId: slot.roughnessAssetId ?? null,
+    metalnessAssetId: slot.metalnessAssetId ?? null,
+    emissiveAssetId: slot.emissiveAssetId ?? null,
+    aoAssetId: slot.aoAssetId ?? null,
+    materialAssetId: slot.materialAssetId ?? DEFAULTS.materialAssetId,
+    shader: slot.shader ?? DEFAULTS.shader,
+    normalScale: slot.normalScale ?? DEFAULTS.normalScale,
+    alphaMode: slot.alphaMode ?? DEFAULTS.alphaMode,
+    alphaCutoff: slot.alphaCutoff ?? DEFAULTS.alphaCutoff,
+    cull: slot.cull ?? DEFAULTS.cull,
+    depthWrite: slot.depthWrite ?? DEFAULTS.depthWrite,
+    wireframe: slot.wireframe ?? DEFAULTS.wireframe,
+  }
+}
+
+export function nodePatchFromSlot(slot: SurfaceSlot): Partial<SceneNode> {
+  return {
+    materialAssetId: null,
+    color: slot.color,
+    metalness: slot.metalness,
+    roughness: slot.roughness,
+    emissive: slot.emissive,
+    emissiveIntensity: slot.emissiveIntensity,
+    opacity: slot.opacity,
+    ao: slot.ao,
+    mapAssetId: slot.mapAssetId,
+    normalAssetId: slot.normalAssetId,
+    roughnessAssetId: slot.roughnessAssetId,
+    metalnessAssetId: slot.metalnessAssetId,
+    emissiveAssetId: slot.emissiveAssetId,
+    aoAssetId: slot.aoAssetId,
+    shader: slot.shader,
+    normalScale: slot.normalScale,
+    alphaMode: slot.alphaMode,
+    alphaCutoff: slot.alphaCutoff,
+    cull: slot.cull,
+    depthWrite: slot.depthWrite,
+    wireframe: slot.wireframe,
+  }
+}
+
+export function slotFromNode(node: SceneNode): SurfaceSlot {
+  const linked = materialSlot(node.materialAssetId)
+  if (linked) return { ...linked, name: node.name }
+  return normalizeSlot({
+    name: node.name,
     color: node.color,
     metalness: node.metalness,
     roughness: node.roughness,
@@ -18,55 +108,131 @@ export function slotFromNode(node: SceneNode): PbrSlot {
     metalnessAssetId: node.metalnessAssetId,
     emissiveAssetId: node.emissiveAssetId,
     aoAssetId: node.aoAssetId,
-  }
+    shader: node.shader,
+    normalScale: node.normalScale,
+    alphaMode: node.alphaMode,
+    alphaCutoff: node.alphaCutoff,
+    cull: node.cull,
+    depthWrite: node.depthWrite,
+    wireframe: node.wireframe,
+  })
 }
 
-export function applySlot(material: Material, slot: PbrSlot) {
-  const standard = material as MeshStandardMaterial
-  if (!standard.color || standard.metalness === undefined) return
-  standard.color.set(slot.color)
-  standard.metalness = slot.metalness
-  standard.roughness = slot.roughness
-  standard.emissive?.set(slot.emissive)
-  standard.emissiveIntensity = slot.emissiveIntensity
-  standard.opacity = slot.opacity
-  standard.transparent = slot.opacity < 0.999
-  standard.aoMapIntensity = slot.ao
-  assignMap(standard, 'map', slot.mapAssetId, true)
-  assignMap(standard, 'normalMap', slot.normalAssetId, false)
-  assignMap(standard, 'roughnessMap', slot.roughnessAssetId, false)
-  assignMap(standard, 'metalnessMap', slot.metalnessAssetId, false)
-  assignMap(standard, 'emissiveMap', slot.emissiveAssetId, true)
-  assignMap(standard, 'aoMap', slot.aoAssetId, false)
-  const meshMaterial = material as Material & { needsUpdate?: boolean }
-  meshMaterial.needsUpdate = true
+export function resolveModelSlot(slot: PbrSlot): SurfaceSlot {
+  const linked = materialSlot(slot.materialAssetId)
+  if (linked) return { ...linked, name: slot.name }
+  return normalizeSlot(slot)
 }
 
-function assignMap(material: MeshStandardMaterial, key: 'map' | 'normalMap' | 'roughnessMap' | 'metalnessMap' | 'emissiveMap' | 'aoMap', assetId: string | null, colorMap: boolean) {
-  if (!assetId) return
-  const texture = textureFor(assetId, colorMap)
-  if (texture && material[key] !== texture) material[key] = texture
+function materialSlot(id: string | null | undefined): SurfaceSlot | null {
+  if (!id) return null
+  const asset = useAssetStore.getState().assets[id]
+  if (!asset || asset.kind !== 'material') return null
+  return normalizeSlot({ ...asset.slot, materialAssetId: null })
 }
 
-export function applyNodeMaterial(root: Mesh, node: SceneNode) {
+export function applySlot(material: Material, slot: PbrSlot): Material {
+  const surface = normalizeSlot(slot)
+  const next = ensureClass(material, surface)
+  paint(next, surface)
+  return next
+}
+
+export function applyNodeMaterial(root: Mesh, node: SceneNode): Material {
   const geometry = root.geometry as BufferGeometry | undefined
   if (geometry?.attributes.uv && !geometry.attributes.uv2) geometry.setAttribute('uv2', geometry.attributes.uv)
-  const slot = slotFromNode(node)
-  const materials = Array.isArray(root.material) ? root.material : [root.material]
-  for (const material of materials) applySlot(material, slot)
+  const current = Array.isArray(root.material) ? root.material[0] : root.material
+  const next = applySlot(current, slotFromNode(node))
+  if (next !== current) root.material = next
+  return next
 }
 
 export function applyModelMaterials(root: Object3D, slots: PbrSlot[]) {
-  const byName = new Map(slots.map(slot => [slot.name, slot]))
+  const byName = new Map(slots.map(slot => [slot.name, resolveModelSlot(slot)]))
   root.traverse(child => {
     const mesh = child as Mesh
     if (!mesh.isMesh) return
     const geometry = mesh.geometry as BufferGeometry
     if (geometry?.attributes.uv && !geometry.attributes.uv2) geometry.setAttribute('uv2', geometry.attributes.uv)
     const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material]
-    for (const material of materials) {
-      const slot = byName.get(material.name) ?? (slots.length === 1 ? slots[0] : undefined)
-      if (slot) applySlot(material, slot)
-    }
+    const next = materials.map(material => {
+      const slot = byName.get(material.name) ?? (slots.length === 1 ? resolveModelSlot(slots[0]) : undefined)
+      if (!slot) return material
+      const painted = applySlot(material, slot)
+      painted.name = material.name
+      return painted
+    })
+    mesh.material = Array.isArray(mesh.material) ? next : next[0]
   })
+}
+
+function ensureClass(material: Material, slot: SurfaceSlot): Material {
+  const basic = slot.shader !== 'lit'
+  if (basic && (material as MeshBasicMaterial).isMeshBasicMaterial) return material
+  if (!basic && (material as MeshStandardMaterial).isMeshStandardMaterial) return material
+  const next = basic ? new MeshBasicMaterial() : new MeshStandardMaterial()
+  next.name = material.name
+  return next
+}
+
+function paint(material: Material, slot: SurfaceSlot) {
+  const basic = material as MeshBasicMaterial
+  const standard = material as MeshStandardMaterial
+  const transparency = transparencyOf(slot)
+  material.side = sideFor(slot.cull)
+  ;(material as MeshBasicMaterial).wireframe = slot.wireframe
+  material.depthWrite = transparency.depthWrite
+  material.transparent = transparency.transparent
+  material.opacity = transparency.opacity
+  material.alphaTest = transparency.alphaTest
+  basic.color?.set(slot.color)
+  if (slot.shader === 'unlit-color') {
+    basic.map = null
+    material.needsUpdate = true
+    return
+  }
+  if (slot.shader === 'lit') {
+    standard.metalness = slot.metalness
+    standard.roughness = slot.roughness
+    standard.emissive?.set(slot.emissive)
+    standard.emissiveIntensity = slot.emissiveIntensity
+    standard.aoMapIntensity = slot.ao
+    standard.normalScale = new Vector2(slot.normalScale, slot.normalScale)
+    assignMap(standard, 'map', slot.mapAssetId, true)
+    assignMap(standard, 'normalMap', slot.normalAssetId, false)
+    assignMap(standard, 'roughnessMap', slot.roughnessAssetId, false)
+    assignMap(standard, 'metalnessMap', slot.metalnessAssetId, false)
+    assignMap(standard, 'emissiveMap', slot.emissiveAssetId, true)
+    assignMap(standard, 'aoMap', slot.aoAssetId, false)
+  } else {
+    assignMap(basic, 'map', slot.mapAssetId, true)
+  }
+  material.needsUpdate = true
+}
+
+function transparencyOf(slot: SurfaceSlot) {
+  if (slot.alphaMode === 'blend') {
+    return { transparent: slot.opacity < 0.999, opacity: slot.opacity, alphaTest: 0, depthWrite: slot.depthWrite }
+  }
+  if (slot.alphaMode === 'clip') {
+    return { transparent: false, opacity: 1, alphaTest: slot.alphaCutoff, depthWrite: slot.depthWrite }
+  }
+  return { transparent: false, opacity: 1, alphaTest: 0, depthWrite: slot.depthWrite }
+}
+
+function sideFor(cull: CullMode): Side {
+  if (cull === 'front') return BackSide
+  if (cull === 'off') return DoubleSide
+  return FrontSide
+}
+
+function assignMap(material: MeshStandardMaterial | MeshBasicMaterial, key: 'map' | 'normalMap' | 'roughnessMap' | 'metalnessMap' | 'emissiveMap' | 'aoMap', assetId: string | null, colorMap: boolean) {
+  if (!('map' in material) && key !== 'map') return
+  const target = material as MeshStandardMaterial
+  if (!assetId) {
+    if (target[key]) target[key] = null
+    return
+  }
+  const texture = textureFor(assetId, colorMap)
+  if (texture && target[key] !== texture) target[key] = texture
 }

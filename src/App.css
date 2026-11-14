@@ -7,6 +7,28 @@
   background: var(--bg-base);
 }
 
+.prefab-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  height: 32px;
+  padding: 0 12px;
+  background: #3a2c4e;
+  color: #f3e8ff;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.prefab-bar button {
+  height: 22px;
+  padding: 0 10px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+  color: #fff;
+}
+
+.prefab-bar button:hover { background: rgba(255, 255, 255, 0.08); }
+
 .app__workspace {
   position: relative;
   flex: 1;

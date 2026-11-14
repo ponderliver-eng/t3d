@@ -19,6 +19,7 @@ import { useAssetStore } from '../assets/library'
 import { useEditorStore } from '../scene/store'
 import { slotFromNode } from '../assets/materials'
 import type { PbrSlot } from '../scene/types'
+import { useI18n } from '../i18n'
 import { popPreviewWindow, type PreviewKind } from './previewStore'
 
 type Shape = 'sphere' | 'box' | 'torus' | 'plane'
@@ -36,6 +37,7 @@ export function MaterialPreview({ assetId, kind, standalone = false }: { assetId
   const [shape, setShape] = useState<Shape>('sphere')
   const [preset, setPreset] = useState<LightPreset>('studio')
   const [turntable, setTurntable] = useState(false)
+  const { t } = useI18n()
   const shapeRef = useRef(shape)
   const presetRef = useRef(preset)
   const turnRef = useRef(turntable)
@@ -85,7 +87,10 @@ export function MaterialPreview({ assetId, kind, standalone = false }: { assetId
     resize()
     const tick = () => {
       const slot = slotRef.current
-      if (slot) applySlot(material, slot)
+      if (slot) {
+        const next = applySlot(mesh.material as MeshStandardMaterial, slot)
+        if (mesh.material !== next) mesh.material = next
+      }
       const nextShape = shapeRef.current
       if (mesh.userData.shape !== nextShape) {
         mesh.geometry.dispose()
@@ -108,7 +113,10 @@ export function MaterialPreview({ assetId, kind, standalone = false }: { assetId
       observer.disconnect()
       controls.dispose()
       mesh.geometry.dispose()
-      material.dispose()
+      const current = mesh.material
+      if (Array.isArray(current)) current.forEach(item => item.dispose())
+      else current.dispose()
+      if (current !== material) material.dispose()
       renderer.dispose()
     }
   }, [])
@@ -117,22 +125,22 @@ export function MaterialPreview({ assetId, kind, standalone = false }: { assetId
     <div className="preview-view">
       <div className="preview-view__stage">
         <canvas ref={canvasRef} />
-        {!slot && <div className="preview-view__empty">材质还没就绪</div>}
+        {!slot && <div className="preview-view__empty">{t('preview.pendingMaterial')}</div>}
       </div>
       <div className="preview-view__bar">
         <select value={shape} onChange={event => setShape(event.target.value as Shape)}>
-          <option value="sphere">球体</option>
-          <option value="box">立方体</option>
-          <option value="torus">圆环</option>
-          <option value="plane">平面</option>
+          <option value="sphere">{t('preview.sphere')}</option>
+          <option value="box">{t('preview.box')}</option>
+          <option value="torus">{t('preview.torus')}</option>
+          <option value="plane">{t('preview.plane')}</option>
         </select>
         <select value={preset} onChange={event => setPreset(event.target.value as LightPreset)}>
-          <option value="studio">摄影棚</option>
-          <option value="bright">明亮</option>
-          <option value="dark">暗调</option>
+          <option value="studio">{t('preview.studio')}</option>
+          <option value="bright">{t('preview.bright')}</option>
+          <option value="dark">{t('preview.dark')}</option>
         </select>
-        <button type="button" className={turntable ? 'is-on' : ''} onClick={() => setTurntable(value => !value)}>旋转</button>
-        {!standalone && <button type="button" onClick={() => popPreviewWindow(kind, assetId)}>独立窗口</button>}
+        <button type="button" className={turntable ? 'is-on' : ''} onClick={() => setTurntable(value => !value)}>{t('preview.turn')}</button>
+        {!standalone && <button type="button" onClick={() => popPreviewWindow(kind, assetId)}>{t('preview.popout')}</button>}
       </div>
     </div>
   )

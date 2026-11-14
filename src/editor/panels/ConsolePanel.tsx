@@ -1,16 +1,18 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { AlertCircle, AlertTriangle, Info, Search, Trash2, X } from 'lucide-react'
+import { useI18n, type MessageKey } from '../i18n'
 import { useEditorStore } from '../scene/store'
 import type { LogLevel } from '../scene/types'
 import './ConsolePanel.css'
 
-const FILTERS: { level: LogLevel; label: string; icon: typeof Info }[] = [
-  { level: 'info', label: '信息', icon: Info },
-  { level: 'warn', label: '警告', icon: AlertTriangle },
-  { level: 'error', label: '错误', icon: AlertCircle },
+const FILTERS: { level: LogLevel; key: MessageKey; icon: typeof Info }[] = [
+  { level: 'info', key: 'console.info', icon: Info },
+  { level: 'warn', key: 'console.warn', icon: AlertTriangle },
+  { level: 'error', key: 'console.error', icon: AlertCircle },
 ]
 
 export default function ConsolePanel() {
+  const { t } = useI18n()
   const logs = useEditorStore(state => state.logs)
   const [enabled, setEnabled] = useState<Record<LogLevel, boolean>>({ info: true, warn: true, error: true })
   const [query, setQuery] = useState('')
@@ -35,7 +37,7 @@ export default function ConsolePanel() {
       <div className="console-tabs">
         <div className="console-search">
           <Search size={12} />
-          <input value={query} placeholder="筛选" onChange={event => setQuery(event.target.value)} />
+          <input value={query} placeholder={t('console.filter')} onChange={event => setQuery(event.target.value)} />
           {query && <button type="button" onClick={() => setQuery('')}><X size={12} /></button>}
         </div>
         <div className="console-tabs__spacer" />
@@ -46,6 +48,7 @@ export default function ConsolePanel() {
               <button
                 key={filter.level}
                 type="button"
+                title={t(filter.key)}
                 className={`console-filter ${enabled[filter.level] ? 'console-filter--on' : ''}`}
                 onClick={() => setEnabled(state => ({ ...state, [filter.level]: !state[filter.level] }))}
               >
@@ -55,7 +58,7 @@ export default function ConsolePanel() {
             )
           })}
         </div>
-        <button type="button" className="console-clear" title="清空" onClick={() => useEditorStore.getState().clearLogs()}>
+        <button type="button" className="console-clear" title={t('console.clear')} onClick={() => useEditorStore.getState().clearLogs()}>
           <Trash2 size={12} />
         </button>
       </div>

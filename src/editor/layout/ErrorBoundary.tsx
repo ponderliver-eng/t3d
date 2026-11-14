@@ -1,4 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react'
+import { translate } from '../i18n'
 
 interface Props {
   name: string
@@ -22,7 +23,7 @@ export class ErrorBoundary extends Component<Props, State> {
 
   render() {
     if (this.state.message) {
-      return <div className="ide-panel-unknown">{this.props.name} 出错：{this.state.message}</div>
+      return <div className="ide-panel-unknown">{translate('error.panel', { name: this.props.name, message: this.state.message })}</div>
     }
     return this.props.children
   }

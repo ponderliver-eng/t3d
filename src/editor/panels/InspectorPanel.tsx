@@ -1,13 +1,16 @@
-import { useEffect, useState, type ReactNode } from 'react'
-import { ChevronDown, ChevronRight } from 'lucide-react'
+import { useEffect, useRef, useState, type DragEvent, type ReactNode } from 'react'
+import { ChevronDown, ChevronRight, ExternalLink, FolderSearch, Image as ImageIcon, Search, Trash2, X } from 'lucide-react'
 import { clipNamesFor, subscribeModels } from '../assets/models'
-import { saveMaterialFromSelection, savePrefabFromSelection, openAsset } from '../assets/import'
+import { ASSET_MIME, saveMaterialFromNode, savePrefabFromSelection, openAsset } from '../assets/import'
 import { primaryId, useEditorStore } from '../scene/store'
-import { isLight, isMesh, KIND_LABEL } from '../scene/kinds'
-import { slotFromNode } from '../assets/materials'
-import { useAssetStore } from '../assets/library'
+import { isLight, isMesh } from '../scene/kinds'
+import { resolveModelSlot, slotFromNode } from '../assets/materials'
+import { assetDirectory, useAssetStore, type FileAsset } from '../assets/library'
+import { instanceDirty, isPrefabRoot } from '../assets/prefab'
+import { translate, useI18n, type MessageKey } from '../i18n'
+import { AssetPicker } from './AssetPicker'
 import { openAssetPreview } from '../preview/previewStore'
-import type { NodeKind, PbrSlot, SceneNode, ScenePicture, Vec3 } from '../scene/types'
+import type { AlphaMode, CullMode, NodeKind, PbrSlot, SceneNode, ScenePicture, SurfaceShader, Vec3 } from '../scene/types'
 import './InspectorPanel.css'
 
 const AXES = [
@@ -21,9 +24,12 @@ export default function InspectorPanel() {
   const inspectedAssetId = useEditorStore(state => state.inspectedAssetId)
   const nodes = useEditorStore(state => state.nodes)
   const playing = useEditorStore(state => state.playState !== 'stopped')
+  const prefabSession = useEditorStore(state => state.prefabSession)
   const asset = useAssetStore(state => inspectedAssetId ? state.assets[inspectedAssetId] : undefined)
+  const { t } = useI18n()
   const id = primaryId({ selection })
   const node = id ? nodes[id] : undefined
+  const kindName = (kind: NodeKind) => t(`kind.${kind}` as MessageKey)
 
   if (asset && selection.length === 0) {
     return (
@@ -42,20 +48,22 @@ export default function InspectorPanel() {
   }
 
   const locked = node.locked
+  const templateRoot = !!prefabSession && !node.parentId
+  const prefabRoot = isPrefabRoot(node) ? node : (node.prefabInstanceId ? nodes[node.prefabInstanceId] : undefined)
 
   return (
     <div className="inspector">
-      {playing && <div className="inspector__banner inspector__banner--play">试玩中可以改参数。停止后会回到试玩前。</div>}
+      {playing && <div className="inspector__banner inspector__banner--play">{t('inspector.playBanner')}</div>}
       {selection.length > 1 && (
-        <div className="inspector__banner">已选择 {selection.length} 个物体。这里改的是主选中项，手柄会作用到全部未锁定物体。</div>
+        <div className="inspector__banner">{t('inspector.multi', { count: selection.length })}</div>
       )}
       <header className="inspector__header">
-        <div className="inspector__kind">{KIND_LABEL[node.kind]}{locked ? ' · 已锁定' : ''}</div>
+        <div className="inspector__kind">{kindName(node.kind)}{locked ? ` · ${t('inspector.locked')}` : ''}</div>
         <div className="inspector__header-row">
           {selection.length === 1 ? (
             <input
               value={node.name}
-              onFocus={() => useEditorStore.getState().beginGesture('重命名')}
+              onFocus={() => useEditorStore.getState().beginGesture(t('gesture.rename'))}
               onChange={event => useEditorStore.getState().updateNode(node.id, { name: event.target.value })}
               onBlur={event => {
                 const name = event.target.value.trim() || node.name
@@ -66,161 +74,147 @@ export default function InspectorPanel() {
           ) : (
             <div className="inspector__multi">{node.name}</div>
           )}
-          <label className="inspector__flag" title="显示">
+          <label className="inspector__flag" title={t('inspector.visible')}>
             <input type="checkbox" checked={node.visible} onChange={() => useEditorStore.getState().toggleVisible(node.id)} />
           </label>
-          <label className="inspector__flag" title={locked ? '解锁' : '锁定后视口点选穿透'}>
+          <label className="inspector__flag" title={locked ? t('inspector.unlock') : t('inspector.lockHint')}>
             <input type="checkbox" checked={node.locked} onChange={() => useEditorStore.getState().toggleLocked(node.id)} />
           </label>
         </div>
-        <button type="button" className="inspector__scene-link" onClick={() => useEditorStore.getState().setSelection([])}>场景设置</button>
+        <button type="button" className="inspector__scene-link" onClick={() => useEditorStore.getState().setSelection([])}>{t('inspector.sceneSettings')}</button>
       </header>
 
-      <Card title="变换" color={kindColor(node.kind)}>
+      {templateRoot && <div className="inspector__banner">{t('prefab.rootLocked')}</div>}
+      {prefabRoot && isPrefabRoot(prefabRoot) && (
+        <Card title={t('prefab.instance')} color="#c79bff">
+          <div className="prefab-actions">
+            <span>{useAssetStore.getState().assets[prefabRoot.prefabAssetId ?? '']?.name ?? t('prefab.missing')}</span>
+            {instanceDirty(nodes, prefabRoot.id) && <em>{t('prefab.dirty')}</em>}
+            <button type="button" onClick={() => useEditorStore.getState().openPrefab(prefabRoot.prefabAssetId ?? '')}>{t('prefab.edit')}</button>
+            <button type="button" disabled={!instanceDirty(nodes, prefabRoot.id)} onClick={() => useEditorStore.getState().applyPrefabInstance(prefabRoot.id)}>{t('prefab.apply')}</button>
+            <button type="button" disabled={!instanceDirty(nodes, prefabRoot.id)} onClick={() => useEditorStore.getState().revertPrefabInstance(prefabRoot.id)}>{t('prefab.revert')}</button>
+            <button type="button" onClick={() => useEditorStore.getState().unpackPrefabInstance(prefabRoot.id)}>{t('prefab.unpack')}</button>
+          </div>
+        </Card>
+      )}
+
+      <Card title={t('inspector.transform')} color={kindColor(node.kind)}>
         <Vec3Fields
-          label="位置"
+          label={t('inspector.position')}
           value={node.position}
           step={0.02}
-          disabled={locked}
-          gesture="修改位移"
+          disabled={locked || templateRoot}
+          gesture={t('gesture.move')}
           onChange={position => useEditorStore.getState().updateNode(node.id, { position })}
         />
         <Vec3Fields
-          label="旋转"
+          label={t('inspector.rotation')}
           value={node.rotation}
           step={0.4}
-          disabled={locked}
-          gesture="修改旋转"
+          disabled={locked || templateRoot}
+          gesture={t('gesture.rotate')}
           onChange={rotation => useEditorStore.getState().updateNode(node.id, { rotation })}
         />
         <Vec3Fields
-          label="缩放"
+          label={t('inspector.scale')}
           value={node.scale}
           step={0.01}
           reset={1}
-          disabled={locked}
-          gesture="修改缩放"
+          disabled={locked || templateRoot}
+          gesture={t('gesture.scale')}
           onChange={scale => useEditorStore.getState().updateNode(node.id, { scale })}
         />
         <div className="inspector__resets">
-          <button type="button" disabled={locked} onClick={() => resetTransform(node.id, { position: [0, 0, 0] })}>重置位置</button>
-          <button type="button" disabled={locked} onClick={() => resetTransform(node.id, { rotation: [0, 0, 0] })}>重置旋转</button>
-          <button type="button" disabled={locked} onClick={() => resetTransform(node.id, { scale: [1, 1, 1] })}>重置缩放</button>
+          <button type="button" disabled={locked || templateRoot} onClick={() => resetTransform(node.id, { position: [0, 0, 0] })}>{t('inspector.resetPosition')}</button>
+          <button type="button" disabled={locked || templateRoot} onClick={() => resetTransform(node.id, { rotation: [0, 0, 0] })}>{t('inspector.resetRotation')}</button>
+          <button type="button" disabled={locked || templateRoot} onClick={() => resetTransform(node.id, { scale: [1, 1, 1] })}>{t('inspector.resetScale')}</button>
         </div>
       </Card>
 
-      {(isMesh(node.kind) || node.kind === 'model') && (
-        <Card title="渲染" color={kindColor(node.kind)}>
-          <label className="field">
-            <span>投射</span>
-            <input type="checkbox" checked={node.castShadow} onChange={event => commitNode(node.id, '修改阴影', { castShadow: event.target.checked })} />
-          </label>
-          <label className="field">
-            <span>接收</span>
-            <input type="checkbox" checked={node.receiveShadow} onChange={event => commitNode(node.id, '修改阴影', { receiveShadow: event.target.checked })} />
-          </label>
-        </Card>
-      )}
-
-      {isMesh(node.kind) && (
-        <Card title="材质" color={kindColor(node.kind)}>
-          <PbrEditor
-            slot={slotFromNode(node)}
-            onChange={patch => useEditorStore.getState().updateNode(node.id, patch)}
-          />
-          <button type="button" className="inspector__action" onClick={saveMaterialFromSelection}>存为材质</button>
-          <button type="button" className="inspector__action" onClick={() => openAssetPreview('node-material', node.id, `${node.name} 材质`)}>预览材质</button>
-        </Card>
-      )}
+      {(isMesh(node.kind) || node.kind === 'model') && <MeshRendererCard node={node} />}
 
       {node.kind === 'model' && (
-        <Card title="模型" color={kindColor(node.kind)}>
+        <Card title={t('inspector.model')} color={kindColor(node.kind)}>
           <AnimationCard nodeId={node.id} assetId={node.assetId} clipAssetId={node.clipAssetId} clip={node.clip} clipTime={node.clipTime} clipPlaying={node.clipPlaying} />
-          <button type="button" className="inspector__action" onClick={savePrefabFromSelection}>存为预制体</button>
-          {node.assetId && <button type="button" className="inspector__action" onClick={() => openAssetPreview('model', node.assetId!, node.name)}>预览模型</button>}
+          <button type="button" className="inspector__action" onClick={savePrefabFromSelection}>{t('inspector.savePrefab')}</button>
+          {node.assetId && <button type="button" className="inspector__action" onClick={() => openAssetPreview('model', node.assetId!, node.name)}>{t('inspector.previewModel')}</button>}
         </Card>
       )}
 
-      {node.kind === 'model' && node.slots.map((slot, index) => (
-        <Card key={`${slot.name}-${index}`} title={slot.name} color="#ab47bc">
-          <PbrEditor
-            slot={slot}
-            onChange={patch => {
-              const slots = node.slots.map((item, itemIndex) => itemIndex === index ? { ...item, ...patch } : item)
-              useEditorStore.getState().updateNode(node.id, { slots })
-            }}
-          />
-        </Card>
-      ))}
-
       {isLight(node.kind) && (
-        <Card title="光源" color={kindColor(node.kind)}>
+        <Card title={t('inspector.light')} color={kindColor(node.kind)}>
           <ColorField
-            label="颜色"
+            label={t('inspector.color')}
             value={node.color}
-            gesture="修改光源"
+            gesture={t('gesture.light')}
             onChange={color => useEditorStore.getState().updateNode(node.id, { color })}
           />
           <NumberRow
-            label="强度"
+            label={t('inspector.intensity')}
             value={node.intensity}
+            min={0}
+            max={20}
             step={0.05}
-            gesture="修改光源"
+            gesture={t('gesture.light')}
             onChange={intensity => useEditorStore.getState().updateNode(node.id, { intensity })}
           />
           {node.kind === 'spot-light' && (
             <NumberRow
-              label="角度"
+              label={t('inspector.angle')}
               value={node.spotAngle}
+              min={1}
+              max={90}
               step={0.2}
-              gesture="修改光源"
+              gesture={t('gesture.light')}
               onChange={spotAngle => useEditorStore.getState().updateNode(node.id, { spotAngle })}
             />
           )}
           {node.kind === 'hemisphere-light' && (
             <ColorField
-              label="地面"
+              label={t('inspector.ground')}
               value={node.groundColor}
-              gesture="修改光源"
+              gesture={t('gesture.light')}
               onChange={groundColor => useEditorStore.getState().updateNode(node.id, { groundColor })}
             />
           )}
           {node.kind !== 'hemisphere-light' && node.kind !== 'directional-light' && (
             <>
-              <NumberRow label="范围" value={node.range} step={0.2} gesture="修改光源" onChange={range => useEditorStore.getState().updateNode(node.id, { range })} />
-              <NumberRow label="衰减" value={node.decay} step={0.05} gesture="修改光源" onChange={decay => useEditorStore.getState().updateNode(node.id, { decay })} />
+              <NumberRow label={t('inspector.range')} value={node.range} min={0} max={80} step={0.2} gesture={t('gesture.light')} onChange={range => useEditorStore.getState().updateNode(node.id, { range })} />
+              <NumberRow label={t('inspector.decay')} value={node.decay} min={0} max={4} step={0.05} gesture={t('gesture.light')} onChange={decay => useEditorStore.getState().updateNode(node.id, { decay })} />
             </>
           )}
           {node.kind === 'directional-light' && (
-            <NumberRow label="范围" value={node.range} step={0.5} gesture="修改光源" onChange={range => useEditorStore.getState().updateNode(node.id, { range })} />
+            <NumberRow label={t('inspector.range')} value={node.range} min={1} max={200} step={0.5} gesture={t('gesture.light')} onChange={range => useEditorStore.getState().updateNode(node.id, { range })} />
           )}
           {node.kind === 'spot-light' && (
-            <NumberRow label="半影" value={node.penumbra} step={0.01} gesture="修改光源" onChange={penumbra => useEditorStore.getState().updateNode(node.id, { penumbra })} />
+            <NumberRow label={t('inspector.penumbra')} value={node.penumbra} min={0} max={1} step={0.01} gesture={t('gesture.light')} onChange={penumbra => useEditorStore.getState().updateNode(node.id, { penumbra })} />
           )}
           {node.kind !== 'hemisphere-light' && (
             <>
               <label className="field">
-                <span>阴影</span>
-                <input type="checkbox" checked={node.castShadow} onChange={event => commitNode(node.id, '修改光源', { castShadow: event.target.checked })} />
+                <span>{t('inspector.shadow')}</span>
+                <input type="checkbox" checked={node.castShadow} onChange={event => commitNode(node.id, t('gesture.light'), { castShadow: event.target.checked })} />
               </label>
-              <NumberRow label="偏移" value={node.shadowBias} step={0.0001} gesture="修改光源" onChange={shadowBias => useEditorStore.getState().updateNode(node.id, { shadowBias })} />
-              <NumberRow label="法线偏移" value={node.shadowNormalBias} step={0.001} gesture="修改光源" onChange={shadowNormalBias => useEditorStore.getState().updateNode(node.id, { shadowNormalBias })} />
+              <NumberRow label={t('inspector.bias')} value={node.shadowBias} step={0.0001} gesture={t('gesture.light')} onChange={shadowBias => useEditorStore.getState().updateNode(node.id, { shadowBias })} />
+              <NumberRow label={t('inspector.normalBias')} value={node.shadowNormalBias} min={0} max={1} step={0.001} gesture={t('gesture.light')} onChange={shadowNormalBias => useEditorStore.getState().updateNode(node.id, { shadowNormalBias })} />
             </>
           )}
         </Card>
       )}
 
       {node.kind === 'camera' && (
-        <Card title="相机" color={kindColor(node.kind)}>
+        <Card title={t('inspector.camera')} color={kindColor(node.kind)}>
           <NumberRow
-            label="视野"
+            label={t('inspector.fov')}
             value={node.fov}
+            min={10}
+            max={120}
             step={0.2}
-            gesture="修改相机"
+            gesture={t('gesture.camera')}
             onChange={fov => useEditorStore.getState().updateNode(node.id, { fov })}
           />
-          <NumberRow label="近裁" value={node.near} step={0.01} gesture="修改相机" onChange={near => useEditorStore.getState().updateNode(node.id, { near })} />
-          <NumberRow label="远裁" value={node.far} step={1} gesture="修改相机" onChange={far => useEditorStore.getState().updateNode(node.id, { far })} />
+          <NumberRow label={t('inspector.near')} value={node.near} min={0.01} max={20} step={0.01} gesture={t('gesture.camera')} onChange={near => useEditorStore.getState().updateNode(node.id, { near })} />
+          <NumberRow label={t('inspector.far')} value={node.far} min={1} max={500} step={1} gesture={t('gesture.camera')} onChange={far => useEditorStore.getState().updateNode(node.id, { far })} />
         </Card>
       )}
     </div>
@@ -228,6 +222,7 @@ export default function InspectorPanel() {
 }
 
 function AssetSettings({ asset }: { asset: import('../assets/library').ProjectAsset }) {
+  const { t } = useI18n()
   const preview = asset.kind === 'model' || asset.kind === 'texture' || asset.kind === 'material' || asset.kind === 'environment'
     ? asset.kind
     : null
@@ -245,23 +240,23 @@ function AssetSettings({ asset }: { asset: import('../assets/library').ProjectAs
         />
       </header>
       {asset.kind === 'material' && (
-        <Card title="材质" color="#ab47bc">
-          <PbrEditor slot={asset.slot} onChange={patch => useAssetStore.getState().updateMaterial(asset.id, patch)} />
+        <Card title={t('inspector.material')} color="#ab47bc">
+          <MaterialEditor slot={asset.slot} onChange={patch => useAssetStore.getState().updateMaterial(asset.id, patch)} />
         </Card>
       )}
       {asset.kind !== 'material' && (
-        <Card title="资源" color="#4a9eff">
-          <label className="field"><span>类型</span><span>{assetKindLabel(asset.kind)}</span></label>
-          {'fileName' in asset && <label className="field"><span>文件</span><span>{asset.fileName}</span></label>}
-          {asset.kind === 'scene' && <label className="field"><span>物体</span><span>{Object.keys(asset.nodes).length}</span></label>}
-          {asset.kind === 'prefab' && <label className="field"><span>物体</span><span>{asset.nodes.length}</span></label>}
-          {asset.kind === 'model' && <label className="field"><span>片段</span><span>{clipNamesFor(asset.id).length}</span></label>}
+        <Card title={t('inspector.asset')} color="#4a9eff">
+          <label className="field"><span>{t('inspector.type')}</span><span>{assetKindLabel(asset.kind)}</span></label>
+          {'fileName' in asset && <label className="field"><span>{t('inspector.file')}</span><span>{asset.fileName}</span></label>}
+          {asset.kind === 'scene' && <label className="field"><span>{t('inspector.objects')}</span><span>{Object.keys(asset.nodes).length}</span></label>}
+          {asset.kind === 'prefab' && <label className="field"><span>{t('inspector.objects')}</span><span>{Object.keys(asset.nodes).length}</span></label>}
+          {asset.kind === 'model' && <label className="field"><span>{t('inspector.clips')}</span><span>{clipNamesFor(asset.id).length}</span></label>}
         </Card>
       )}
       <div className="inspector__header">
-        {preview && <button type="button" className="inspector__action" onClick={() => openAssetPreview(preview, asset.id, asset.name)}>预览</button>}
+        {preview && <button type="button" className="inspector__action" onClick={() => openAssetPreview(preview, asset.id, asset.name)}>{t('inspector.preview')}</button>}
         {(asset.kind === 'model' || asset.kind === 'prefab') && (
-          <button type="button" className="inspector__action" onClick={() => void openAsset(asset.id)}>放入场景</button>
+          <button type="button" className="inspector__action" onClick={() => void openAsset(asset.id)}>{t('inspector.place')}</button>
         )}
       </div>
     </>
@@ -269,99 +264,309 @@ function AssetSettings({ asset }: { asset: import('../assets/library').ProjectAs
 }
 
 function assetKindLabel(kind: string): string {
-  const labels: Record<string, string> = {
-    scene: '场景', model: '模型', texture: '贴图', environment: '环境',
-    material: '材质', animation: '动画', audio: '音频', prefab: '预制体',
-  }
-  return labels[kind] ?? kind
+  const key = `asset.${kind}` as MessageKey
+  const known = ['scene', 'model', 'texture', 'environment', 'material', 'animation', 'audio', 'prefab']
+  return known.includes(kind) ? translate(key) : kind
 }
 
 function SceneSettings() {
+  const { t } = useI18n()
   const picture = useEditorStore(state => state.picture)
   const activeSceneId = useEditorStore(state => state.activeSceneId)
   const scene = useAssetStore(state => state.assets[activeSceneId])
-  const name = scene?.kind === 'scene' ? scene.name : '未命名场景'
+  const name = scene?.kind === 'scene' ? scene.name : t('inspector.unnamedScene')
   const set = (patch: Partial<ScenePicture>) => useEditorStore.getState().setPicture(patch)
   return (
     <>
       <header className="inspector__header">
-        <div className="inspector__kind">场景</div>
+        <div className="inspector__kind">{t('inspector.scene')}</div>
         <input
           value={name}
           onChange={event => {
             if (scene?.kind === 'scene') useAssetStore.getState().rename(scene.id, event.target.value)
           }}
           onBlur={event => {
-            const next = event.target.value.trim() || '未命名场景'
+            const next = event.target.value.trim() || t('inspector.unnamedScene')
             if (scene?.kind === 'scene') useAssetStore.getState().rename(scene.id, next)
           }}
         />
       </header>
-      <Card title="天空" color="#4a9eff">
-        <ColorField label="背景" value={picture.background} gesture="修改画面" onChange={background => set({ background })} />
-        <NumberRow label="曝光" value={picture.exposure} step={0.01} gesture="修改画面" onChange={exposure => set({ exposure })} />
+      <Card title={t('inspector.sky')} color="#4a9eff">
+        <ColorField label={t('inspector.background')} value={picture.background} gesture={t('gesture.picture')} onChange={background => set({ background })} />
+        <NumberRow label={t('inspector.exposure')} value={picture.exposure} min={0} max={5} step={0.01} gesture={t('gesture.picture')} onChange={exposure => set({ exposure })} />
       </Card>
-      <Card title="雾" color="#90a4ae">
-        <label className="field"><span>启用</span><input type="checkbox" checked={picture.fog} onChange={event => set({ fog: event.target.checked })} /></label>
+      <Card title={t('inspector.fog')} color="#90a4ae">
+        <label className="field"><span>{t('inspector.enabled')}</span><input type="checkbox" checked={picture.fog} onChange={event => set({ fog: event.target.checked })} /></label>
         {picture.fog && (
           <>
-            <ColorField label="雾色" value={picture.fogColor} gesture="修改画面" onChange={fogColor => set({ fogColor })} />
-            <NumberRow label="起始" value={picture.fogNear} step={0.5} gesture="修改画面" onChange={fogNear => set({ fogNear })} />
-            <NumberRow label="结束" value={picture.fogFar} step={0.5} gesture="修改画面" onChange={fogFar => set({ fogFar })} />
+            <ColorField label={t('inspector.fogColor')} value={picture.fogColor} gesture={t('gesture.picture')} onChange={fogColor => set({ fogColor })} />
+            <NumberRow label={t('inspector.fogStart')} value={picture.fogNear} min={0} max={200} step={0.5} gesture={t('gesture.picture')} onChange={fogNear => set({ fogNear })} />
+            <NumberRow label={t('inspector.fogEnd')} value={picture.fogFar} min={0} max={400} step={0.5} gesture={t('gesture.picture')} onChange={fogFar => set({ fogFar })} />
           </>
         )}
       </Card>
-      <Card title="环境光照" color="#ffd36b">
+      <Card title={t('inspector.environment')} color="#ffd36b">
         <EnvField value={picture.envAssetId} onChange={envAssetId => set({ envAssetId })} />
       </Card>
-      <Card title="泛光" color="#ab47bc">
-        <label className="field"><span>启用</span><input type="checkbox" checked={picture.bloom} onChange={event => set({ bloom: event.target.checked })} /></label>
+      <Card title={t('inspector.bloom')} color="#ab47bc">
+        <label className="field"><span>{t('inspector.enabled')}</span><input type="checkbox" checked={picture.bloom} onChange={event => set({ bloom: event.target.checked })} /></label>
         {picture.bloom && (
           <>
-            <NumberRow label="强度" value={picture.bloomStrength} step={0.01} gesture="修改画面" onChange={bloomStrength => set({ bloomStrength })} />
-            <NumberRow label="半径" value={picture.bloomRadius} step={0.01} gesture="修改画面" onChange={bloomRadius => set({ bloomRadius })} />
-            <NumberRow label="阈值" value={picture.bloomThreshold} step={0.01} gesture="修改画面" onChange={bloomThreshold => set({ bloomThreshold })} />
+            <NumberRow label={t('inspector.intensity')} value={picture.bloomStrength} min={0} max={2} step={0.01} gesture={t('gesture.picture')} onChange={bloomStrength => set({ bloomStrength })} />
+            <NumberRow label={t('inspector.radius')} value={picture.bloomRadius} min={0} max={1} step={0.01} gesture={t('gesture.picture')} onChange={bloomRadius => set({ bloomRadius })} />
+            <NumberRow label={t('inspector.threshold')} value={picture.bloomThreshold} min={0} max={1} step={0.01} gesture={t('gesture.picture')} onChange={bloomThreshold => set({ bloomThreshold })} />
           </>
         )}
       </Card>
-      <Card title="景深" color="#26a69a">
-        <label className="field"><span>启用</span><input type="checkbox" checked={picture.dof} onChange={event => set({ dof: event.target.checked })} /></label>
+      <Card title={t('inspector.dof')} color="#26a69a">
+        <label className="field"><span>{t('inspector.enabled')}</span><input type="checkbox" checked={picture.dof} onChange={event => set({ dof: event.target.checked })} /></label>
         {picture.dof && (
           <>
-            <NumberRow label="对焦" value={picture.dofFocus} step={0.1} gesture="修改画面" onChange={dofFocus => set({ dofFocus })} />
-            <NumberRow label="焦段" value={picture.dofFocal} step={0.05} gesture="修改画面" onChange={dofFocal => set({ dofFocal })} />
-            <NumberRow label="散景" value={picture.dofBokeh} step={0.05} gesture="修改画面" onChange={dofBokeh => set({ dofBokeh })} />
+            <NumberRow label={t('inspector.focus')} value={picture.dofFocus} min={0} max={50} step={0.1} gesture={t('gesture.picture')} onChange={dofFocus => set({ dofFocus })} />
+            <NumberRow label={t('inspector.focal')} value={picture.dofFocal} min={0} max={20} step={0.05} gesture={t('gesture.picture')} onChange={dofFocal => set({ dofFocal })} />
+            <NumberRow label={t('inspector.bokeh')} value={picture.dofBokeh} min={0} max={10} step={0.05} gesture={t('gesture.picture')} onChange={dofBokeh => set({ dofBokeh })} />
           </>
         )}
       </Card>
-      <Card title="遮蔽" color="#78909c">
-        <label className="field"><span>启用</span><input type="checkbox" checked={picture.ao} onChange={event => set({ ao: event.target.checked })} /></label>
+      <Card title={t('inspector.occlusion')} color="#78909c">
+        <label className="field"><span>{t('inspector.enabled')}</span><input type="checkbox" checked={picture.ao} onChange={event => set({ ao: event.target.checked })} /></label>
       </Card>
-      <Card title="调色" color="#ef6c00">
-        <NumberRow label="色相" value={picture.hue} step={0.01} gesture="修改画面" onChange={hue => set({ hue })} />
-        <NumberRow label="饱和" value={picture.saturation} step={0.01} gesture="修改画面" onChange={saturation => set({ saturation })} />
+      <Card title={t('inspector.grade')} color="#ef6c00">
+        <NumberRow label={t('inspector.hue')} value={picture.hue} min={-1} max={1} step={0.01} gesture={t('gesture.picture')} onChange={hue => set({ hue })} />
+        <NumberRow label={t('inspector.saturation')} value={picture.saturation} min={0} max={2} step={0.01} gesture={t('gesture.picture')} onChange={saturation => set({ saturation })} />
       </Card>
     </>
   )
 }
 
-function PbrEditor({ slot, onChange }: { slot: PbrSlot, onChange: (patch: Partial<PbrSlot>) => void }) {
+function MeshRendererCard({ node }: { node: SceneNode }) {
+  const { t } = useI18n()
+  const assets = useAssetStore(state => state.assets)
+  const [listOpen, setListOpen] = useState(true)
+  const [openSlot, setOpenSlot] = useState<number | null>(0)
+  const [query, setQuery] = useState('')
+  const [dropSlot, setDropSlot] = useState<number | null>(null)
+  const [picking, setPicking] = useState<number | null>(null)
+  useEffect(() => {
+    setListOpen(true)
+    setOpenSlot(node.kind === 'model' && node.slots.length > 1 ? null : 0)
+    setQuery('')
+  }, [node.id, node.kind, node.slots.length])
+  const entries = node.kind === 'model'
+    ? node.slots.map((slot, index) => ({ index, name: slot.name, linked: linkedMaterialId(slot.materialAssetId, assets) }))
+    : [{ index: 0, name: node.name, linked: linkedMaterialId(node.materialAssetId, assets) }]
+  const q = query.trim().toLowerCase()
+  const visible = q
+    ? entries.filter(entry => String(entry.index).includes(q) || entry.name.toLowerCase().includes(q) || (entry.linked ? assets[entry.linked]?.name.toLowerCase().includes(q) : t('inspector.inline').toLowerCase().includes(q)))
+    : entries
+  return (
+    <Card title={t('inspector.modelRenderer')} color={kindColor(node.kind)}>
+      <label className="field">
+        <span>{t('inspector.castShadow')}</span>
+        <input type="checkbox" checked={node.castShadow} onChange={event => commitNode(node.id, t('gesture.shadow'), { castShadow: event.target.checked })} />
+      </label>
+      <label className="field">
+        <span>{t('inspector.receiveShadow')}</span>
+        <input type="checkbox" checked={node.receiveShadow} onChange={event => commitNode(node.id, t('gesture.shadow'), { receiveShadow: event.target.checked })} />
+      </label>
+      <button type="button" className="mesh-slots__head" aria-expanded={listOpen} onClick={() => setListOpen(value => !value)}>
+        {listOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+        <span>{t('inspector.materialSlots')}</span>
+        <em>{entries.length}</em>
+      </button>
+      {listOpen && entries.length >= 6 && (
+        <input className="mesh-slots__search" value={query} placeholder={t('inspector.searchSlots')} onChange={event => setQuery(event.target.value)} />
+      )}
+      {listOpen && visible.map(entry => {
+        const open = openSlot === entry.index
+        const source = node.kind === 'model' ? node.slots[entry.index] : null
+        const resolved = source ? resolveModelSlot(source) : slotFromNode(node)
+        const linked = entry.linked
+        return (
+          <div
+            key={entry.index}
+            className={`mesh-slot ${open ? 'is-open' : ''} ${dropSlot === entry.index ? 'is-drop' : ''}`}
+            onDragOver={event => onSlotDragOver(event, entry.index, setDropSlot)}
+            onDragLeave={() => setDropSlot(current => current === entry.index ? null : current)}
+            onDrop={event => {
+              const materialId = materialIdFromDrop(event)
+              setDropSlot(null)
+              if (materialId) setSlotLink(node.id, node.kind === 'model' ? entry.index : null, materialId)
+            }}
+          >
+            <div className="mesh-slot__row">
+              <button type="button" className="mesh-slot__twist" aria-label={open ? t('inspector.collapseSlot') : t('inspector.expandSlot')} onClick={() => setOpenSlot(open ? null : entry.index)}>
+                <ChevronRight size={12} />
+              </button>
+              <span className="mesh-slot__index">{t('inspector.slot', { index: entry.index })}</span>
+              <button
+                type="button"
+                className="mesh-slot__pick asset-ref"
+                title={entry.name}
+                onClick={event => { event.stopPropagation(); setPicking(entry.index) }}
+              >
+                <span>{linked ? (assets[linked]?.name ?? t('picker.none')) : `${entry.name} · ${t('inspector.inline')}`}</span>
+                <Search size={12} />
+              </button>
+              {picking === entry.index && (
+                <AssetPicker
+                  title={t('picker.material')}
+                  kinds={['material']}
+                  selectedId={linked}
+                  onSelect={id => {
+                    setSlotLink(node.id, node.kind === 'model' ? entry.index : null, id)
+                    setPicking(null)
+                  }}
+                  onClose={() => setPicking(null)}
+                />
+              )}
+              {!linked && (
+                <button type="button" title={t('inspector.extract')} onClick={() => saveMaterialFromNode(node.id, node.kind === 'model' ? entry.index : null)}>
+                  <ExternalLink size={12} />
+                </button>
+              )}
+              {linked && (
+                <button type="button" title={t('inspector.reveal')} onClick={() => useEditorStore.getState().inspectAsset(linked)}>
+                  <FolderSearch size={12} />
+                </button>
+              )}
+              {linked && (
+                <button type="button" title={t('inspector.clear')} onClick={() => setSlotLink(node.id, node.kind === 'model' ? entry.index : null, null)}>
+                  <Trash2 size={12} />
+                </button>
+              )}
+            </div>
+            {open && (
+              <div className="mesh-slot__body">
+                {linked && <div className="inspector__banner">{t('inspector.linkedNote')}</div>}
+                <MaterialEditor
+                  slot={resolved}
+                  onChange={patch => writeSlot(node.id, node.kind === 'model' ? entry.index : null, linked, patch)}
+                />
+              </div>
+            )}
+          </div>
+        )
+      })}
+    </Card>
+  )
+}
+
+function linkedMaterialId(id: string | null | undefined, assets: ReturnType<typeof useAssetStore.getState>['assets']): string | null {
+  if (!id) return null
+  return assets[id]?.kind === 'material' ? id : null
+}
+
+function setSlotLink(nodeId: string, slotIndex: number | null, materialId: string | null) {
+  const node = useEditorStore.getState().nodes[nodeId]
+  if (!node) return
+  if (node.kind === 'model' && slotIndex != null) {
+    useEditorStore.getState().updateNode(nodeId, {
+      slots: node.slots.map((item, index) => index === slotIndex ? { ...item, materialAssetId: materialId } : item),
+    })
+    return
+  }
+  useEditorStore.getState().updateNode(nodeId, { materialAssetId: materialId })
+}
+
+function writeSlot(nodeId: string, slotIndex: number | null, linked: string | null, patch: Partial<PbrSlot>) {
+  if (linked) {
+    useAssetStore.getState().updateMaterial(linked, patch)
+    return
+  }
+  const node = useEditorStore.getState().nodes[nodeId]
+  if (!node) return
+  if (node.kind === 'model' && slotIndex != null) {
+    useEditorStore.getState().updateNode(nodeId, {
+      slots: node.slots.map((item, index) => index === slotIndex ? { ...item, ...patch } : item),
+    })
+    return
+  }
+  useEditorStore.getState().updateNode(nodeId, patch)
+}
+
+function onSlotDragOver(event: DragEvent, index: number, setDropSlot: (index: number | null) => void) {
+  const types = [...event.dataTransfer.types]
+  if (!types.includes(ASSET_MIME)) return
+  event.preventDefault()
+  event.stopPropagation()
+  setDropSlot(index)
+}
+
+function materialIdFromDrop(event: DragEvent): string | null {
+  const id = event.dataTransfer.getData(ASSET_MIME)
+  event.preventDefault()
+  event.stopPropagation()
+  if (!id) return null
+  const asset = useAssetStore.getState().assets[id]
+  return asset?.kind === 'material' ? id : null
+}
+
+function MaterialEditor({ slot, onChange }: { slot: PbrSlot, onChange: (patch: Partial<PbrSlot>) => void }) {
+  const { t } = useI18n()
+  const lit = (slot.shader ?? 'lit') === 'lit'
+  const textured = slot.shader !== 'unlit-color'
   return (
     <>
-      <ColorField label="颜色" value={slot.color} gesture="修改材质" onChange={color => onChange({ color })} />
-      <NumberRow label="金属" value={slot.metalness} step={0.01} gesture="修改材质" onChange={metalness => onChange({ metalness })} />
-      <NumberRow label="粗糙" value={slot.roughness} step={0.01} gesture="修改材质" onChange={roughness => onChange({ roughness })} />
-      <ColorField label="发光" value={slot.emissive} gesture="修改材质" onChange={emissive => onChange({ emissive })} />
-      <NumberRow label="发光强度" value={slot.emissiveIntensity} step={0.05} gesture="修改材质" onChange={emissiveIntensity => onChange({ emissiveIntensity })} />
-      <NumberRow label="不透明度" value={slot.opacity} step={0.01} gesture="修改材质" onChange={opacity => onChange({ opacity })} />
-      <NumberRow label="遮挡" value={slot.ao} step={0.01} gesture="修改材质" onChange={ao => onChange({ ao })} />
-      <div className="field-section">贴图</div>
-      <MapField label="底色" value={slot.mapAssetId} onChange={mapAssetId => onChange({ mapAssetId })} />
-      <MapField label="法线" value={slot.normalAssetId} onChange={normalAssetId => onChange({ normalAssetId })} />
-      <MapField label="粗糙图" value={slot.roughnessAssetId} onChange={roughnessAssetId => onChange({ roughnessAssetId })} />
-      <MapField label="金属图" value={slot.metalnessAssetId} onChange={metalnessAssetId => onChange({ metalnessAssetId })} />
-      <MapField label="发光图" value={slot.emissiveAssetId} onChange={emissiveAssetId => onChange({ emissiveAssetId })} />
-      <MapField label="遮挡图" value={slot.aoAssetId} onChange={aoAssetId => onChange({ aoAssetId })} />
+      <label className="field">
+        <span>{t('material.shader')}</span>
+        <select value={slot.shader ?? 'lit'} onChange={event => onChange({ shader: event.target.value as SurfaceShader })}>
+          <option value="lit">{t('material.lit')}</option>
+          <option value="unlit-color">{t('material.unlitColor')}</option>
+          <option value="unlit-texture">{t('material.unlitTexture')}</option>
+        </select>
+      </label>
+      <div className="field-section">{t('material.surface')}</div>
+      <ColorField label={t('material.color')} value={slot.color} gesture={t('gesture.material')} onChange={color => onChange({ color })} />
+      {textured && <MapField label={t('material.baseMap')} value={slot.mapAssetId ?? null} onChange={mapAssetId => onChange({ mapAssetId })} />}
+      {lit && (
+        <>
+          <NumberRow label={t('material.metalness')} value={slot.metalness} min={0} max={1} step={0.01} gesture={t('gesture.material')} onChange={metalness => onChange({ metalness })} />
+          <NumberRow label={t('material.roughness')} value={slot.roughness} min={0} max={1} step={0.01} gesture={t('gesture.material')} onChange={roughness => onChange({ roughness })} />
+          <MapField label={t('material.roughnessMap')} value={slot.roughnessAssetId ?? null} onChange={roughnessAssetId => onChange({ roughnessAssetId })} />
+          <MapField label={t('material.metalnessMap')} value={slot.metalnessAssetId ?? null} onChange={metalnessAssetId => onChange({ metalnessAssetId })} />
+          <MapField label={t('material.normal')} value={slot.normalAssetId ?? null} onChange={normalAssetId => onChange({ normalAssetId })} />
+          <NumberRow label={t('material.normalScale')} value={slot.normalScale ?? 1} min={0} max={4} step={0.01} gesture={t('gesture.material')} onChange={normalScale => onChange({ normalScale })} />
+          <NumberRow label={t('material.ao')} value={slot.ao} min={0} max={1} step={0.01} gesture={t('gesture.material')} onChange={ao => onChange({ ao })} />
+          <MapField label={t('material.aoMap')} value={slot.aoAssetId ?? null} onChange={aoAssetId => onChange({ aoAssetId })} />
+          <div className="field-section">{t('material.emission')}</div>
+          <ColorField label={t('material.emissionColor')} value={slot.emissive} gesture={t('gesture.material')} onChange={emissive => onChange({ emissive })} />
+          <NumberRow label={t('material.emissionIntensity')} value={slot.emissiveIntensity} min={0} max={10} step={0.05} gesture={t('gesture.material')} onChange={emissiveIntensity => onChange({ emissiveIntensity })} />
+          <MapField label={t('material.emissionMap')} value={slot.emissiveAssetId ?? null} onChange={emissiveAssetId => onChange({ emissiveAssetId })} />
+        </>
+      )}
+      <div className="field-section">{t('material.transparency')}</div>
+      <label className="field">
+        <span>{t('material.mode')}</span>
+        <select value={slot.alphaMode ?? 'opaque'} onChange={event => onChange({ alphaMode: event.target.value as AlphaMode })}>
+          <option value="opaque">{t('material.opaque')}</option>
+          <option value="blend">{t('material.blend')}</option>
+          <option value="clip">{t('material.clip')}</option>
+        </select>
+      </label>
+      {(slot.alphaMode ?? 'opaque') === 'blend' && (
+        <NumberRow label={t('material.opacity')} value={slot.opacity} min={0} max={1} step={0.01} gesture={t('gesture.material')} onChange={opacity => onChange({ opacity })} />
+      )}
+      {(slot.alphaMode ?? 'opaque') === 'clip' && (
+        <NumberRow label={t('material.cutoff')} value={slot.alphaCutoff ?? 0.5} min={0} max={1} step={0.01} gesture={t('gesture.material')} onChange={alphaCutoff => onChange({ alphaCutoff })} />
+      )}
+      <div className="field-section">{t('material.render')}</div>
+      <label className="field">
+        <span>{t('material.cull')}</span>
+        <select value={slot.cull ?? 'back'} onChange={event => onChange({ cull: event.target.value as CullMode })}>
+          <option value="back">{t('material.cullBack')}</option>
+          <option value="front">{t('material.cullFront')}</option>
+          <option value="off">{t('material.cullOff')}</option>
+        </select>
+      </label>
+      <label className="field">
+        <span>{t('material.depthWrite')}</span>
+        <input type="checkbox" checked={slot.depthWrite ?? true} onChange={event => onChange({ depthWrite: event.target.checked })} />
+      </label>
+      <label className="field">
+        <span>{t('material.wireframe')}</span>
+        <input type="checkbox" checked={slot.wireframe ?? false} onChange={event => onChange({ wireframe: event.target.checked })} />
+      </label>
     </>
   )
 }
@@ -376,6 +581,7 @@ function AnimationCard({
   clipTime: number
   clipPlaying: boolean
 }) {
+  const { t } = useI18n()
   const [version, setVersion] = useState(0)
   useEffect(() => subscribeModels(() => setVersion(value => value + 1)), [])
   void version
@@ -383,48 +589,155 @@ function AnimationCard({
   return (
     <>
       <label className="field">
-        <span>片段</span>
+        <span>{t('inspector.clip')}</span>
         <select
           value={clip}
           onChange={event => useEditorStore.getState().updateNode(nodeId, { clip: event.target.value, clipTime: 0 })}
         >
-          <option value="">无</option>
+          <option value="">{t('material.none')}</option>
           {names.map(name => <option key={name} value={name}>{name}</option>)}
         </select>
       </label>
       <label className="field">
-        <span>播放</span>
+        <span>{t('inspector.play')}</span>
         <input type="checkbox" checked={clipPlaying} onChange={event => useEditorStore.getState().updateNode(nodeId, { clipPlaying: event.target.checked })} />
       </label>
-      <NumberRow label="时间" value={clipTime} step={0.01} gesture="预览动画" onChange={time => useEditorStore.getState().updateNode(nodeId, { clipTime: time, clipPlaying: false })} />
+      <NumberRow label={t('inspector.time')} value={clipTime} step={0.01} gesture={t('gesture.anim')} onChange={time => useEditorStore.getState().updateNode(nodeId, { clipTime: time, clipPlaying: false })} />
     </>
   )
 }
 
 function MapField({ label, value, onChange }: { label: string; value: string | null; onChange: (id: string | null) => void }) {
-  const assets = useAssetStore(state => state.assets)
-  const textures = Object.values(assets).filter(asset => asset.kind === 'texture')
+  const { t } = useI18n()
+  const [open, setOpen] = useState(false)
+  const clickTimer = useRef<number | null>(null)
+  const asset = useAssetStore(state => value ? state.assets[value] : undefined)
+  const texture = asset?.kind === 'texture' ? asset : undefined
+  const preview = texturePreview(texture)
+  useEffect(() => () => {
+    if (clickTimer.current != null) window.clearTimeout(clickTimer.current)
+  }, [])
+
+  const openPicker = () => setOpen(true)
+  const previewClick = () => {
+    if (clickTimer.current != null) window.clearTimeout(clickTimer.current)
+    clickTimer.current = window.setTimeout(() => {
+      clickTimer.current = null
+      openPicker()
+    }, 220)
+  }
+  const previewDoubleClick = () => {
+    if (clickTimer.current != null) {
+      window.clearTimeout(clickTimer.current)
+      clickTimer.current = null
+    }
+    if (texture) openAssetPreview('texture', texture.id, texture.name)
+  }
+  const reveal = () => {
+    if (!value) return
+    const library = useAssetStore.getState()
+    library.setBrowseDir(assetDirectory(value, library.assetDirs))
+    useEditorStore.setState({ inspectedAssetId: value })
+  }
+  const takeDrop = (event: DragEvent) => {
+    const id = event.dataTransfer.getData(ASSET_MIME)
+    const dropped = id ? useAssetStore.getState().assets[id] : undefined
+    if (dropped?.kind !== 'texture') return
+    event.preventDefault()
+    onChange(dropped.id)
+  }
+
   return (
-    <label className="field">
-      <span>{label}</span>
-      <select value={value ?? ''} onChange={event => onChange(event.target.value || null)}>
-        <option value="">无</option>
-        {textures.map(asset => <option key={asset.id} value={asset.id}>{asset.name}</option>)}
-      </select>
-    </label>
+    <div className="tex-slot">
+      <span className="tex-slot__label">{label}</span>
+      <div
+        className="tex-slot__control"
+        onDragOver={event => {
+          if (event.dataTransfer.types.includes(ASSET_MIME)) event.preventDefault()
+        }}
+        onDrop={takeDrop}
+      >
+        <button
+          type="button"
+          className="tex-slot__preview"
+          title={t('picker.textureHint')}
+          onClick={previewClick}
+          onDoubleClick={previewDoubleClick}
+        >
+          {preview ? <img src={preview} alt={texture?.name ?? ''} /> : <ImageIcon size={12} />}
+        </button>
+        <button
+          type="button"
+          className={`tex-slot__name ${texture ? '' : 'tex-slot__name--empty'}`}
+          title={texture?.fileName ?? texture?.name ?? t('picker.textureHint')}
+          onClick={openPicker}
+        >
+          {texture?.name ?? (value ? t('picker.missing') : t('picker.unset'))}
+        </button>
+        {value && (
+          <button type="button" className="tex-slot__icon" title={t('inspector.reveal')} onClick={reveal}>
+            <FolderSearch size={12} />
+          </button>
+        )}
+        {value && (
+          <button type="button" className="tex-slot__icon" title={t('picker.clear')} onClick={() => onChange(null)}>
+            <X size={12} />
+          </button>
+        )}
+      </div>
+      {open && (
+        <AssetPicker
+          title={t('picker.texture')}
+          kinds={['texture']}
+          selectedId={value}
+          onSelect={id => { onChange(id); setOpen(false) }}
+          onClose={() => setOpen(false)}
+        />
+      )}
+    </div>
   )
 }
 
+function texturePreview(asset: FileAsset | undefined): string | null {
+  if (!asset) return null
+  if (asset.thumb) return asset.thumb
+  if (asset.url && !asset.fileName.toLowerCase().endsWith('.ktx2')) return asset.url
+  return null
+}
+
 function EnvField({ value, onChange }: { value: string | null; onChange: (id: string | null) => void }) {
-  const assets = useAssetStore(state => state.assets)
-  const environments = Object.values(assets).filter(asset => asset.kind === 'environment')
+  const { t } = useI18n()
+  return <AssetRef label={t('inspector.env')} title={t('picker.environment')} kinds={['environment']} value={value} onChange={onChange} />
+}
+
+function AssetRef({
+  label, title, kinds, value, onChange,
+}: {
+  label: string
+  title: string
+  kinds: Array<import('../assets/library').ProjectAsset['kind']>
+  value: string | null
+  onChange: (id: string | null) => void
+}) {
+  const { t } = useI18n()
+  const [open, setOpen] = useState(false)
+  const asset = useAssetStore(state => value ? state.assets[value] : undefined)
   return (
     <label className="field">
-      <span>环境</span>
-      <select value={value ?? ''} onChange={event => onChange(event.target.value || null)}>
-        <option value="">无</option>
-        {environments.map(asset => <option key={asset.id} value={asset.id}>{asset.name}</option>)}
-      </select>
+      <span>{label}</span>
+      <button type="button" className="asset-ref" onClick={() => setOpen(true)}>
+        <span>{asset?.name ?? t('picker.none')}</span>
+        <Search size={12} />
+      </button>
+      {open && (
+        <AssetPicker
+          title={title}
+          kinds={kinds}
+          selectedId={value}
+          onSelect={id => { onChange(id); setOpen(false) }}
+          onClose={() => setOpen(false)}
+        />
+      )}
     </label>
   )
 }
@@ -437,7 +750,7 @@ function commitNode(id: string, label: string, patch: Partial<SceneNode>) {
 }
 
 function resetTransform(id: string, patch: Partial<SceneNode>) {
-  commitNode(id, '重置变换', patch)
+  commitNode(id, translate('gesture.reset'), patch)
 }
 
 function Card({ title, color, children }: { title: string; color: string; children: ReactNode }) {
@@ -536,25 +849,48 @@ function NumberRow({
   label,
   value,
   step,
+  min,
+  max,
   gesture,
   onChange,
 }: {
   label: string
   value: number
   step: number
+  min?: number
+  max?: number
   gesture: string
   onChange: (value: number) => void
 }) {
+  const ranged = min !== undefined && max !== undefined
+  const field = (
+    <NumberField
+      value={value}
+      step={step}
+      onBegin={() => useEditorStore.getState().beginGesture(gesture)}
+      onChange={onChange}
+      onEnd={() => useEditorStore.getState().endGesture()}
+    />
+  )
   return (
     <label className="field">
       <span>{label}</span>
-      <NumberField
-        value={value}
-        step={step}
-        onBegin={() => useEditorStore.getState().beginGesture(gesture)}
-        onChange={onChange}
-        onEnd={() => useEditorStore.getState().endGesture()}
-      />
+      {ranged ? (
+        <span className="field__range">
+          <input
+            type="range"
+            min={min}
+            max={max}
+            step={step}
+            value={Math.min(max, Math.max(min, value))}
+            onPointerDown={() => useEditorStore.getState().beginGesture(gesture)}
+            onChange={event => onChange(Number(event.target.value))}
+            onPointerUp={() => useEditorStore.getState().endGesture()}
+            onBlur={() => useEditorStore.getState().endGesture()}
+          />
+          {field}
+        </span>
+      ) : field}
     </label>
   )
 }
@@ -601,7 +937,7 @@ function NumberField({
 function ColorField({
   label,
   value,
-  gesture = '修改颜色',
+  gesture = translate('gesture.color'),
   onChange,
 }: {
   label: string

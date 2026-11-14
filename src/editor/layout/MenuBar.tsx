@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { ChevronRight } from 'lucide-react'
 import { askNewScene, useEditorStore } from '../scene/store'
-import { KIND_LABEL, LIGHT_KINDS, MESH_KINDS } from '../scene/kinds'
+import { LIGHT_KINDS, MESH_KINDS } from '../scene/kinds'
+import { useI18n, translate, type MessageKey } from '../i18n'
+import { usePrefsStore } from '../prefs/store'
 import { openImport } from '../assets/import'
 import { saveProjectNow } from '../assets/project'
 import { resetLayout } from './events'
@@ -17,60 +19,63 @@ export default function MenuBar() {
   const hasSelection = useEditorStore(state => state.selection.length > 0)
   const canPaste = useEditorStore(state => state.canPaste)
 
+  const { t } = useI18n()
   const create = (kind: NodeKind) => useEditorStore.getState().createNode(kind)
   const view = (next: CameraView) => useEditorStore.getState().requestView(next)
+  const kindName = (kind: NodeKind) => t(`kind.${kind}` as MessageKey)
 
   return (
     <div className="menubar">
       <div className="menubar__logo">T3D</div>
       <div className="menubar__items">
-        <Dropdown label="文件">
-          <Item onClick={askNewScene}>新建场景<span className="menubar__hint">Ctrl+N</span></Item>
-          <Item onClick={() => { void saveProjectNow().then(() => useEditorStore.getState().notify('已保存到本地缓存')) }}>保存<span className="menubar__hint">Ctrl+S</span></Item>
-          <Item onClick={openImport}>导入资源</Item>
+        <Dropdown label={t('menu.file')}>
+          <Item onClick={askNewScene}>{t('menu.newScene')}<span className="menubar__hint">Ctrl+N</span></Item>
+          <Item onClick={() => { void saveProjectNow().then(() => useEditorStore.getState().notify(translate('menu.saved'))) }}>{t('menu.save')}<span className="menubar__hint">Ctrl+S</span></Item>
+          <Item onClick={openImport}>{t('menu.import')}</Item>
         </Dropdown>
-        <Dropdown label="编辑">
-          <Item disabled={playing || !canUndo} onClick={() => useEditorStore.getState().undo()}>撤销<span className="menubar__hint">Ctrl+Z</span></Item>
-          <Item disabled={playing || !canRedo} onClick={() => useEditorStore.getState().redo()}>重做<span className="menubar__hint">Ctrl+Y</span></Item>
+        <Dropdown label={t('menu.edit')}>
+          <Item disabled={playing || !canUndo} onClick={() => useEditorStore.getState().undo()}>{t('menu.undo')}<span className="menubar__hint">Ctrl+Z</span></Item>
+          <Item disabled={playing || !canRedo} onClick={() => useEditorStore.getState().redo()}>{t('menu.redo')}<span className="menubar__hint">Ctrl+Y</span></Item>
           <Sep />
-          <Item disabled={playing || !hasSelection} onClick={() => useEditorStore.getState().duplicateSelection()}>就地复制<span className="menubar__hint">Ctrl+D</span></Item>
-          <Item disabled={playing || !hasSelection} onClick={() => useEditorStore.getState().copySelection()}>拷贝<span className="menubar__hint">Ctrl+C</span></Item>
-          <Item disabled={playing || !canPaste} onClick={() => useEditorStore.getState().pasteClipboard(null)}>粘贴<span className="menubar__hint">Ctrl+V</span></Item>
-          <Item disabled={playing || !hasSelection} onClick={() => useEditorStore.getState().groupSelection()}>成组<span className="menubar__hint">Ctrl+G</span></Item>
-          <Item disabled={playing || !hasSelection} onClick={() => useEditorStore.getState().snapSelectionToGround()}>贴地</Item>
-          <Item disabled={playing || !hasSelection} onClick={() => useEditorStore.getState().deleteSelection()}>删除<span className="menubar__hint">Del</span></Item>
-          <Item onClick={() => useEditorStore.getState().selectAll()}>全选<span className="menubar__hint">Ctrl+A</span></Item>
+          <Item disabled={playing || !hasSelection} onClick={() => useEditorStore.getState().duplicateSelection()}>{t('menu.duplicate')}<span className="menubar__hint">Ctrl+D</span></Item>
+          <Item disabled={playing || !hasSelection} onClick={() => useEditorStore.getState().copySelection()}>{t('menu.copy')}<span className="menubar__hint">Ctrl+C</span></Item>
+          <Item disabled={playing || !canPaste} onClick={() => useEditorStore.getState().pasteClipboard(null)}>{t('menu.paste')}<span className="menubar__hint">Ctrl+V</span></Item>
+          <Item disabled={playing || !hasSelection} onClick={() => useEditorStore.getState().groupSelection()}>{t('menu.group')}<span className="menubar__hint">Ctrl+G</span></Item>
+          <Item disabled={playing || !hasSelection} onClick={() => useEditorStore.getState().snapSelectionToGround()}>{t('menu.ground')}</Item>
+          <Item disabled={playing || !hasSelection} onClick={() => useEditorStore.getState().deleteSelection()}>{t('menu.delete')}<span className="menubar__hint">Del</span></Item>
+          <Item onClick={() => useEditorStore.getState().selectAll()}>{t('menu.selectAll')}<span className="menubar__hint">Ctrl+A</span></Item>
+          <Sep />
+          <Item onClick={() => usePrefsStore.getState().openSettings()}>{t('menu.settings')}<span className="menubar__hint">Ctrl+,</span></Item>
         </Dropdown>
-        <Dropdown label="创建">
-          <Item disabled={playing} onClick={() => create('empty')}>空物体</Item>
-          <Submenu label="几何体">
-            {MESH_KINDS.map(kind => (
-              <Item key={kind} disabled={playing} onClick={() => create(kind)}>{KIND_LABEL[kind]}</Item>
-            ))}
-          </Submenu>
-          <Submenu label="灯光">
+        <Dropdown label={t('menu.create')}>
+          <Item disabled={playing} onClick={() => create('empty')}>{t('menu.empty')}</Item>
+          <Section label={t('menu.meshes')} />
+          {MESH_KINDS.map(kind => (
+            <Item key={kind} disabled={playing} onClick={() => create(kind)}>{kindName(kind)}</Item>
+          ))}
+          <Submenu label={t('menu.lights')}>
             {LIGHT_KINDS.map(kind => (
-              <Item key={kind} disabled={playing} onClick={() => create(kind)}>{KIND_LABEL[kind]}</Item>
+              <Item key={kind} disabled={playing} onClick={() => create(kind)}>{kindName(kind)}</Item>
             ))}
           </Submenu>
-          <Item disabled={playing} onClick={() => create('camera')}>相机</Item>
+          <Item disabled={playing} onClick={() => create('camera')}>{t('menu.camera')}</Item>
         </Dropdown>
-        <Dropdown label="视图">
-          <Item disabled={!hasSelection} onClick={() => useEditorStore.getState().requestFocus()}>聚焦选中<span className="menubar__hint">F</span></Item>
+        <Dropdown label={t('menu.view')}>
+          <Item disabled={!hasSelection} onClick={() => useEditorStore.getState().requestFocus()}>{t('menu.focus')}<span className="menubar__hint">F</span></Item>
           <Sep />
-          <Item onClick={() => view('top')}>顶视图</Item>
-          <Item onClick={() => view('front')}>前视图</Item>
-          <Item onClick={() => view('right')}>侧视图</Item>
-          <Item onClick={() => view('persp')}>透视</Item>
-          <Item onClick={() => view('bottom')}>底视图</Item>
-          <Item onClick={() => view('back')}>后视图</Item>
-          <Item onClick={() => view('left')}>左视图</Item>
-          <Item onClick={() => useEditorStore.getState().requestFocusAll()}>聚焦全部</Item>
+          <Item onClick={() => view('top')}>{t('menu.viewTop')}</Item>
+          <Item onClick={() => view('front')}>{t('menu.viewFront')}</Item>
+          <Item onClick={() => view('right')}>{t('menu.viewRight')}</Item>
+          <Item onClick={() => view('persp')}>{t('menu.viewPersp')}</Item>
+          <Item onClick={() => view('bottom')}>{t('menu.viewBottom')}</Item>
+          <Item onClick={() => view('back')}>{t('menu.viewBack')}</Item>
+          <Item onClick={() => view('left')}>{t('menu.viewLeft')}</Item>
+          <Item onClick={() => useEditorStore.getState().requestFocusAll()}>{t('menu.focusAll')}</Item>
           <Sep />
-          <Item onClick={() => useEditorStore.getState().toggleGrid()}>{grid ? '✓ ' : ''}显示网格</Item>
-          <Item onClick={() => useEditorStore.getState().toggleSnap()}>{snap ? '✓ ' : ''}网格吸附</Item>
+          <Item onClick={() => useEditorStore.getState().toggleGrid()}>{grid ? '✓ ' : ''}{t('menu.grid')}</Item>
+          <Item onClick={() => useEditorStore.getState().toggleSnap()}>{snap ? '✓ ' : ''}{t('menu.snap')}</Item>
           <Sep />
-          <Item onClick={resetLayout}>重置布局</Item>
+          <Item onClick={resetLayout}>{t('menu.resetLayout')}</Item>
         </Dropdown>
       </div>
     </div>
@@ -149,6 +154,10 @@ function Submenu({ label, children }: { label: string; children: ReactNode }) {
       <div className="menubar__submenu">{children}</div>
     </div>
   )
+}
+
+function Section({ label }: { label: string }) {
+  return <div className="menubar__section">{label}</div>
 }
 
 function Sep() {

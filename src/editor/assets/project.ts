@@ -10,6 +10,9 @@ import {
 } from './cache'
 import { warmCachedAsset } from './import'
 import { useEditorStore } from '../scene/store'
+import { translate } from '../i18n'
+import { usePrefsStore } from '../prefs/store'
+import { readPrefab } from './prefab'
 import type { ProjectDocument } from '../scene/document'
 import { DEFAULT_PICTURE, type SceneNode } from '../scene/types'
 
@@ -23,7 +26,7 @@ export function openCachedProject(): Promise<void> {
   opening ??= openNow().catch(error => {
     opening = null
     console.warn('[cache] 打开项目失败', error)
-    useEditorStore.getState().log('warn', '本地项目缓存没能打开，使用空白场景')
+    useEditorStore.getState().log('warn', translate('log.cacheOpenFail'))
   })
   return opening
 }
@@ -46,6 +49,7 @@ export async function saveProjectNow() {
   const library = Object.values(useAssetStore.getState().assets).filter(
     (asset): asset is MaterialAsset | PrefabAsset | SceneAsset => asset.kind === 'material' || asset.kind === 'prefab' || asset.kind === 'scene',
   )
+  const catalog = useAssetStore.getState()
   const document: ProjectDocument = {
     schemaVersion: 2,
     savedAt: Date.now(),
@@ -54,11 +58,14 @@ export async function saveProjectNow() {
     selection: editor.selection,
     picture: editor.picture,
     library,
+    folders: catalog.folders,
+    assetDirs: catalog.assetDirs,
   }
   await writeSceneDocument(document)
 }
 
 function scheduleSave() {
+  if (!usePrefsStore.getState().autoSave) return
   const editor = useEditorStore.getState()
   if (editor.playState !== 'stopped' || editor.gesture) return
   window.clearTimeout(saveTimer)
@@ -71,6 +78,7 @@ async function openNow() {
   const [metas, stored] = await Promise.all([readAssetMetas(), readSceneDocument<ProjectDocument>()])
   const document = validDocument(stored)
   if (document) {
+    useAssetStore.getState().loadCatalog(document.folders ?? [], document.assetDirs ?? {})
     for (const record of document.library) {
       if (!useAssetStore.getState().assets[record.id]) useAssetStore.getState().add(record)
     }
@@ -79,7 +87,7 @@ async function openNow() {
   useEditorStore.getState().ensureSceneAsset()
   const sceneMs = performance.now() - started
   if (metas.length === 0) {
-    useEditorStore.getState().log('info', `项目已打开，场景 ${Math.round(sceneMs)}ms`)
+    useEditorStore.getState().log('info', translate('log.opened', { ms: Math.round(sceneMs) }))
     return
   }
   void warmAssets(metas, document, started, sceneMs)
@@ -106,7 +114,7 @@ async function warmAssets(metas: AssetMeta[], document: ProjectDocument | null, 
   const total = Math.round(performance.now() - started)
   useEditorStore.getState().log(
     'info',
-    `项目已打开 ${total}ms，场景 ${Math.round(sceneMs)}ms，成品命中 ${hits}，源文件解析 ${parsed}，失败 ${failed}`,
+    translate('log.openedDetail', { total, scene: Math.round(sceneMs), hits, parsed, failed }),
   )
 }
 
@@ -139,10 +147,16 @@ function referencedAssetIds(document: ProjectDocument | null): Set<string> {
   collectNodeAssets(document.nodes, ids)
   if (document.picture.envAssetId) ids.add(document.picture.envAssetId)
   for (const record of document.library) {
-    if (record.kind === 'prefab') collectNodeAssets(Object.fromEntries(record.nodes.map(node => [node.id, node])), ids)
+    if (record.kind === 'prefab') collectNodeAssets(readPrefab(record).nodes, ids)
     if (record.kind === 'scene') {
       collectNodeAssets(record.nodes, ids)
       if (record.picture.envAssetId) ids.add(record.picture.envAssetId)
+    }
+    if (record.kind === 'material') {
+      for (const key of MAP_KEYS) {
+        const value = record.slot[key]
+        if (value) ids.add(value)
+      }
     }
   }
   return ids
@@ -152,17 +166,28 @@ function collectNodeAssets(nodes: Record<string, SceneNode>, ids: Set<string>) {
   for (const node of Object.values(nodes)) {
     if (node.assetId) ids.add(node.assetId)
     if (node.clipAssetId) ids.add(node.clipAssetId)
+    if (node.materialAssetId) ids.add(node.materialAssetId)
     for (const key of MAP_KEYS) {
       const value = node[key]
       if (value) ids.add(value)
     }
     for (const slot of node.slots) {
+      if (slot.materialAssetId) ids.add(slot.materialAssetId)
       for (const key of MAP_KEYS) {
         const value = slot[key]
         if (value) ids.add(value)
       }
     }
   }
+}
+
+function cleanAssetDirs(value: ProjectDocument['assetDirs']): Record<string, string> {
+  if (!value) return {}
+  const dirs: Record<string, string> = {}
+  for (const [id, dir] of Object.entries(value)) {
+    if (typeof dir === 'string') dirs[id] = dir
+  }
+  return dirs
 }
 
 function validDocument(document: ProjectDocument | null): ProjectDocument | null {
@@ -180,6 +205,8 @@ function validDocument(document: ProjectDocument | null): ProjectDocument | null
     selection: Array.isArray(document.selection) ? document.selection : [],
     picture: { ...DEFAULT_PICTURE, ...document.picture },
     library,
+    folders: Array.isArray(document.folders) ? document.folders.filter(item => typeof item === 'string') : [],
+    assetDirs: cleanAssetDirs(document.assetDirs),
   }
 }
 

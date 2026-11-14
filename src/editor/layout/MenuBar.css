@@ -92,6 +92,13 @@
   margin: 3px 0;
 }
 
+.menubar__section {
+  padding: 6px 14px 2px;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+
 .menubar__submenu {
   display: none;
   position: absolute;

@@ -1,4 +1,5 @@
 import { useState, type PointerEvent } from 'react'
+import { useI18n } from '../i18n'
 import { useAssetStore } from '../assets/library'
 import { MaterialPreview } from './MaterialPreview'
 import { ModelPreview } from './ModelPreview'
@@ -16,7 +17,9 @@ export function PreviewHost() {
 }
 
 export function PreviewStandalone({ kind, assetId }: { kind: PreviewKind, assetId: string }) {
-  const title = useAssetStore(state => state.assets[assetId]?.name ?? '预览')
+  const { t } = useI18n()
+  const storedName = useAssetStore(state => state.assets[assetId]?.name ?? '')
+  const title = storedName || t('preview.title')
   return (
     <div className="preview-standalone">
       <header>{title}</header>

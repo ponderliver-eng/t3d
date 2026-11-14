@@ -1,69 +1,82 @@
 import { useEffect, useMemo, useRef, useState, type MouseEvent } from 'react'
-import { Box, ChevronDown, ChevronRight, Clapperboard, Component, Folder, Globe, Image, LayoutGrid, List, Music, Palette, Plus, Rows3, Search, Sun, Trash2, Upload, X } from 'lucide-react'
-import { ASSET_MIME, bindImportInput, deleteAsset, importFiles, openAsset, openImport } from '../assets/import'
-import { useAssetStore, type ProjectAsset } from '../assets/library'
+import { Box, ChevronRight, Clapperboard, Component, Folder, FolderOpen, FolderPlus, Globe, Image, LayoutGrid, List, Minus, Music, Palette, Plus, Rows3, Search, Sun, Trash2, Upload, X } from 'lucide-react'
+import { ASSET_MIME, bindImportInput, createDefaultMaterial, deleteAsset, duplicateAsset, importFiles, openAsset, openImport, reportAssetUsers } from '../assets/import'
+import { savePrefabFromSelection } from '../assets/import'
+import { readPrefab } from '../assets/prefab'
+import { ASSETS_ROOT, directoryTree, findDir, isWithin, parentDir, type DirNode } from '../assets/folders'
+import { assetDirectory, useAssetStore, type ProjectAsset } from '../assets/library'
 import { useEditorStore } from '../scene/store'
+import { translate, useI18n, type MessageKey } from '../i18n'
 import { openAssetPreview, type PreviewKind } from '../preview/previewStore'
 import './ProjectPanel.css'
 
-const FOLDERS = [
-  { id: 'scenes', name: '场景', kinds: ['scene'], icon: Globe, color: '#4a9eff' },
-  { id: 'models', name: '模型', kinds: ['model'], icon: Box, color: 'var(--color-model)' },
-  { id: 'textures', name: '贴图', kinds: ['texture'], icon: Image, color: 'var(--color-image)' },
-  { id: 'environments', name: '环境', kinds: ['environment'], icon: Sun, color: '#ffd36b' },
-  { id: 'materials', name: '材质', kinds: ['material'], icon: Palette, color: 'var(--color-material)' },
-  { id: 'animations', name: '动画', kinds: ['animation'], icon: Clapperboard, color: 'var(--text-accent)' },
-  { id: 'audio', name: '音频', kinds: ['audio'], icon: Music, color: 'var(--color-sound)' },
-  { id: 'prefabs', name: '预制体', kinds: ['prefab'], icon: Component, color: '#a966d3' },
-] as const
-
 const PILLS = [
-  { id: 'all', label: '全部' },
-  { id: 'model', label: '模型' },
-  { id: 'image', label: '材质/贴图' },
-  { id: 'audio', label: '音频' },
-  { id: 'scene', label: '场景' },
-  { id: 'used', label: '本场景' },
-  { id: 'unused', label: '未引用' },
+  { id: 'all' },
+  { id: 'model' },
+  { id: 'image' },
+  { id: 'audio' },
+  { id: 'scene' },
+  { id: 'used' },
+  { id: 'unused' },
 ] as const
 
-type FolderId = 'all' | (typeof FOLDERS)[number]['id']
 type PillId = (typeof PILLS)[number]['id']
 type BrowseView = 'list' | 'grid' | 'details'
+type BrowseMenu = { x: number; y: number; target: 'asset'; id: string } | { x: number; y: number; target: 'dir'; path: string }
 
-const KIND_LABEL: Record<string, string> = {
-  scene: '场景',
-  model: '模型',
-  texture: '贴图',
-  environment: '环境',
-  material: '材质',
-  animation: '动画',
-  audio: '音频',
-  prefab: '预制体',
+const KIND_ICON = {
+  scene: Globe,
+  model: Box,
+  texture: Image,
+  environment: Sun,
+  material: Palette,
+  animation: Clapperboard,
+  audio: Music,
+  prefab: Component,
+} as const
+
+const KIND_COLOR: Record<string, string> = {
+  scene: '#4a9eff',
+  model: 'var(--color-model)',
+  texture: 'var(--color-image)',
+  environment: '#ffd36b',
+  material: 'var(--color-material)',
+  animation: 'var(--text-accent)',
+  audio: 'var(--color-sound)',
+  prefab: '#a966d3',
+}
+
+function kindLabel(kind: string): string {
+  const key = `asset.${kind}` as MessageKey
+  const known = ['scene', 'model', 'texture', 'environment', 'material', 'animation', 'audio', 'prefab']
+  return known.includes(kind) ? translate(key) : kind
 }
 
 export default function ProjectPanel() {
-  const [folderId, setFolderId] = useState<FolderId>('all')
+  const { t } = useI18n()
   const [pill, setPill] = useState<PillId>('all')
   const [view, setView] = useState<BrowseView>('list')
-  const [treeOpen, setTreeOpen] = useState(true)
   const [query, setQuery] = useState('')
-  const [menu, setMenu] = useState<{ x: number; y: number; id: string } | null>(null)
+  const [menu, setMenu] = useState<BrowseMenu | null>(null)
   const [renameId, setRenameId] = useState<string | null>(null)
+  const [renamePath, setRenamePath] = useState<string | null>(null)
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({ [ASSETS_ROOT]: true })
   const [over, setOver] = useState(false)
+  const [dropPath, setDropPath] = useState<string | null>(null)
   const renameTimer = useRef<number | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const assets = useAssetStore(state => state.assets)
+  const folders = useAssetStore(state => state.folders)
+  const assetDirs = useAssetStore(state => state.assetDirs)
+  const browseDir = useAssetStore(state => state.browseDir)
   const activeSceneId = useEditorStore(state => state.activeSceneId)
   const inspectedAssetId = useEditorStore(state => state.inspectedAssetId)
   const nodes = useEditorStore(state => state.nodes)
   const q = query.trim().toLowerCase()
   const referenced = useMemo(() => referencedIds(nodes, assets), [nodes, assets])
+  const tree = useMemo(() => directoryTree(folders, assetDirs), [folders, assetDirs])
   const items = useMemo(() => {
-    const folder = FOLDERS.find(item => item.id === folderId)
-    return Object.values(assets).filter(asset => {
-      if (folder && !(folder.kinds as readonly string[]).includes(asset.kind)) return false
-      if (q && !asset.name.toLowerCase().includes(q)) return false
+    const matchesPill = (asset: ProjectAsset) => {
       if (pill === 'model' && asset.kind !== 'model' && asset.kind !== 'prefab') return false
       if (pill === 'image' && asset.kind !== 'texture' && asset.kind !== 'material' && asset.kind !== 'environment') return false
       if (pill === 'audio' && asset.kind !== 'audio' && asset.kind !== 'animation') return false
@@ -71,8 +84,39 @@ export default function ProjectPanel() {
       if (pill === 'used' && !referenced.has(asset.id)) return false
       if (pill === 'unused' && referenced.has(asset.id)) return false
       return true
+    }
+    const byName = (a: ProjectAsset, b: ProjectAsset) => a.name.localeCompare(b.name, 'zh')
+    if (q) {
+      const dirs = flattenDirs(tree).filter(dir => dir.path !== ASSETS_ROOT && dir.name.toLowerCase().includes(q))
+      const found = Object.values(assets).filter(asset => asset.name.toLowerCase().includes(q) && matchesPill(asset)).sort(byName)
+      return [...dirs.map(dirItem), ...found.map(assetItem)]
+    }
+    if (pill !== 'all') {
+      return Object.values(assets)
+        .filter(asset => isWithin(assetDirectory(asset.id, assetDirs), browseDir) && matchesPill(asset))
+        .sort(byName)
+        .map(assetItem)
+    }
+    const children = findDir(tree, browseDir)?.children ?? []
+    const here = Object.values(assets).filter(asset => assetDirectory(asset.id, assetDirs) === browseDir).sort(byName)
+    return [...children.map(dirItem), ...here.map(assetItem)]
+  }, [assets, assetDirs, browseDir, pill, q, referenced, tree])
+
+  useEffect(() => {
+    setExpanded(current => {
+      const next = { ...current }
+      let cursor: string | null = browseDir
+      let changed = false
+      while (cursor) {
+        if (!next[cursor]) {
+          next[cursor] = true
+          changed = true
+        }
+        cursor = parentDir(cursor)
+      }
+      return changed ? next : current
     })
-  }, [assets, folderId, pill, q, referenced])
+  }, [browseDir])
 
   useEffect(() => {
     bindImportInput(inputRef.current)
@@ -89,42 +133,45 @@ export default function ProjectPanel() {
   return (
     <div className="project-panel project-browse">
       <aside className="project-browse__tree">
-        <button type="button" className={`project-browse__tree-item ${folderId === 'all' ? 'is-active' : ''}`} onClick={() => setFolderId('all')}>
-          <span className="project-browse__twist" onClick={event => { event.stopPropagation(); setTreeOpen(value => !value) }}>
-            {treeOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-          </span>
-          <Folder size={13} />
-          <span>Assets</span>
-        </button>
-        {treeOpen && FOLDERS.map(item => {
-          const Icon = item.icon
-          const count = Object.values(assets).filter(asset => (item.kinds as readonly string[]).includes(asset.kind)).length
-          return (
-            <button
-              key={item.id}
-              type="button"
-              className={`project-browse__tree-item project-browse__tree-item--child ${folderId === item.id ? 'is-active' : ''}`}
-              onClick={() => setFolderId(item.id)}
-            >
-              <Icon size={13} color={item.color} />
-              <span>{item.name}</span>
-              {count > 0 && <em>{count}</em>}
-            </button>
-          )
-        })}
+        <div className="project-browse__tree-tools">
+          <button type="button" title={t('project.newFolder')} onClick={() => setRenamePath(useAssetStore.getState().createFolder(browseDir))}>
+            <FolderPlus size={12} />
+          </button>
+        </div>
+        <DirNodeView
+          node={tree}
+          depth={0}
+          browseDir={browseDir}
+          expanded={expanded}
+          renamePath={renamePath}
+          dropPath={dropPath}
+          onToggle={path => setExpanded(current => ({ ...current, [path]: !current[path] }))}
+          onOpen={path => {
+            useAssetStore.getState().setBrowseDir(path)
+            useEditorStore.getState().inspectAsset(null)
+          }}
+          onRenameDone={name => {
+            if (renamePath && name) useAssetStore.getState().renameFolder(renamePath, name)
+            setRenamePath(null)
+          }}
+          onMenu={(event, path) => {
+            event.preventDefault()
+            event.stopPropagation()
+            setMenu({ x: event.clientX, y: event.clientY, target: 'dir', path })
+          }}
+          onDropPath={setDropPath}
+        />
       </aside>
       <div className="project-browse__split" />
       <section className="project-browse__main">
         <div className="project-browse__toolbar">
           <div className="project-panel__search">
             <Search size={12} />
-            <input value={query} placeholder="搜索资源" onChange={event => setQuery(event.target.value)} />
-            {query && <button type="button" onClick={() => setQuery('')} title="清除"><X size={12} /></button>}
+            <input value={query} placeholder={t('project.search')} onChange={event => setQuery(event.target.value)} />
+            {query && <button type="button" onClick={() => setQuery('')} title={t('project.clear')}><X size={12} /></button>}
           </div>
-          <button type="button" onClick={openImport} title="导入"><Upload size={12} /></button>
-          {(folderId === 'all' || folderId === 'scenes') && (
-            <button type="button" title="新建场景" onClick={() => useEditorStore.getState().createScene()}><Plus size={12} /></button>
-          )}
+          <button type="button" onClick={openImport} title={t('project.import')}><Upload size={12} /></button>
+          <button type="button" title={t('project.newScene')} onClick={() => useEditorStore.getState().createScene()}><Plus size={12} /></button>
           <input
             ref={inputRef}
             type="file"
@@ -140,27 +187,30 @@ export default function ProjectPanel() {
         </div>
         <div className="project-browse__filters">
           {PILLS.map(item => (
-            <button key={item.id} type="button" className={pill === item.id ? 'is-on' : ''} onClick={() => setPill(item.id)}>{item.label}</button>
+            <button key={item.id} type="button" className={pill === item.id ? 'is-on' : ''} onClick={() => setPill(item.id)}>{t(`project.${item.id}` as MessageKey)}</button>
           ))}
-          <span>{items.length} 项</span>
-          <button type="button" className={view === 'list' ? 'is-on' : ''} title="列表" onClick={() => setView('list')}><List size={13} /></button>
-          <button type="button" className={view === 'details' ? 'is-on' : ''} title="详情" onClick={() => setView('details')}><Rows3 size={13} /></button>
-          <button type="button" className={view === 'grid' ? 'is-on' : ''} title="缩略图" onClick={() => setView('grid')}><LayoutGrid size={13} /></button>
+          <span>{t('project.count', { count: items.length })}</span>
+          <button type="button" className={view === 'list' ? 'is-on' : ''} title={t('project.list')} onClick={() => setView('list')}><List size={13} /></button>
+          <button type="button" className={view === 'details' ? 'is-on' : ''} title={t('project.details')} onClick={() => setView('details')}><Rows3 size={13} /></button>
+          <button type="button" className={view === 'grid' ? 'is-on' : ''} title={t('project.grid')} onClick={() => setView('grid')}><LayoutGrid size={13} /></button>
         </div>
         <div
           className={`project-browse__assets ${view === 'grid' ? 'is-grid' : ''} ${view === 'details' ? 'is-details' : ''} ${over ? 'is-over' : ''}`}
           onDragOver={event => {
-            if (![...event.dataTransfer.types].includes('Files')) return
+            const types = [...event.dataTransfer.types]
+            if (!types.includes('Files') && !types.includes(ASSET_MIME)) return
             event.preventDefault()
             setOver(true)
           }}
           onDragLeave={() => setOver(false)}
           onDrop={event => {
+            const assetId = event.dataTransfer.getData(ASSET_MIME)
             const files = [...event.dataTransfer.files]
-            if (!files.length) return
+            if (!assetId && !files.length) return
             event.preventDefault()
             setOver(false)
-            void importFiles(files)
+            if (assetId) useAssetStore.getState().place(assetId, browseDir)
+            else void importFiles(files, browseDir)
           }}
           onClick={event => {
             if ((event.target as HTMLElement).closest('.project-asset')) return
@@ -170,26 +220,48 @@ export default function ProjectPanel() {
             if ((event.target as HTMLElement).closest('.project-asset')) return
             event.preventDefault()
             useEditorStore.getState().inspectAsset(null)
+            setMenu({ x: event.clientX, y: event.clientY, target: 'dir', path: browseDir })
           }}
         >
           {view === 'details' && items.length > 0 && (
-            <div className="project-browse__detail-head"><span>名称</span><span>类型</span><span>说明</span></div>
+            <div className="project-browse__detail-head"><span>{t('project.name')}</span><span>{t('project.type')}</span><span>{t('project.detail')}</span></div>
           )}
-          {items.length === 0 && <p className="project-panel__hint-note">{over ? '松开即可导入' : '这个目录里还没有资源。'}</p>}
-          {items.map(asset => (
-            <AssetRow
-              key={asset.id}
-              asset={asset}
+          {items.length === 0 && <p className="project-panel__hint-note">{over ? t('project.drop') : t('project.empty')}</p>}
+          {items.map(item => item.kind === 'dir' ? (
+            <DirRow
+              key={item.path}
+              path={item.path}
+              name={item.name}
               view={view}
-              picked={inspectedAssetId === asset.id}
-              used={referenced.has(asset.id)}
-              renaming={renameId === asset.id}
+              renaming={renamePath === item.path}
+              dropping={dropPath === item.path}
+              onOpen={() => useAssetStore.getState().setBrowseDir(item.path)}
               onRenameDone={name => {
-                if (name) useAssetStore.getState().rename(asset.id, name)
+                if (name) useAssetStore.getState().renameFolder(item.path, name)
+                setRenamePath(null)
+              }}
+              onMenu={event => {
+                event.preventDefault()
+                event.stopPropagation()
+                setMenu({ x: event.clientX, y: event.clientY, target: 'dir', path: item.path })
+              }}
+              onDropPath={setDropPath}
+            />
+          ) : (
+            <AssetRow
+              key={item.asset.id}
+              asset={item.asset}
+              view={view}
+              picked={inspectedAssetId === item.asset.id}
+              used={referenced.has(item.asset.id)}
+              renaming={renameId === item.asset.id}
+              onRenameDone={name => {
+                if (name) useAssetStore.getState().rename(item.asset.id, name)
                 setRenameId(null)
               }}
               onClick={event => {
                 event.stopPropagation()
+                const asset = item.asset
                 const already = inspectedAssetId === asset.id
                 useEditorStore.getState().inspectAsset(asset.id)
                 if (asset.kind === 'scene') {
@@ -208,7 +280,12 @@ export default function ProjectPanel() {
               }}
               onDoubleClick={() => {
                 if (renameTimer.current != null) window.clearTimeout(renameTimer.current)
+                const asset = item.asset
                 if (asset.kind === 'scene') return
+                if (asset.kind === 'prefab') {
+                  useEditorStore.getState().openPrefab(asset.id)
+                  return
+                }
                 const preview = previewKind(asset.kind)
                 if (preview) openAssetPreview(preview, asset.id, asset.name)
                 else void openAsset(asset.id)
@@ -216,45 +293,85 @@ export default function ProjectPanel() {
               onMenu={event => {
                 event.preventDefault()
                 event.stopPropagation()
-                setMenu({ x: event.clientX, y: event.clientY, id: asset.id })
+                setMenu({ x: event.clientX, y: event.clientY, target: 'asset', id: item.asset.id })
               }}
               onDelete={event => {
                 event.stopPropagation()
-                if (asset.kind === 'scene' && !window.confirm(`删除场景「${asset.name}」？里面的物体也会去掉。`)) return
-                deleteAsset(asset.id)
+                if (item.asset.kind === 'scene' && !window.confirm(t('project.deleteScene', { name: item.asset.name }))) return
+                deleteAsset(item.asset.id)
               }}
             />
           ))}
         </div>
       </section>
-      {menu && (
+      {menu?.target === 'asset' && (
         <div className="project-panel__menu" style={{ left: menu.x, top: menu.y }} onPointerDown={event => event.stopPropagation()}>
+          <CreateMenu dir={assetDirectory(menu.id, useAssetStore.getState().assetDirs)} onDone={() => setMenu(null)} onNewFolder={path => setRenamePath(path)} />
+          <div className="project-panel__sep" />
           <button type="button" onClick={() => {
             const asset = useAssetStore.getState().assets[menu.id]
             const preview = asset ? previewKind(asset.kind) : null
             if (asset?.kind === 'scene') {
               useEditorStore.getState().inspectAsset(asset.id)
               useEditorStore.getState().openScene(asset.id)
+            } else if (asset?.kind === 'prefab') {
+              useEditorStore.getState().openPrefab(asset.id)
             } else if (asset) {
               useEditorStore.getState().inspectAsset(asset.id)
               if (preview) openAssetPreview(preview, asset.id, asset.name)
             } else void openAsset(menu.id)
             setMenu(null)
-          }}>打开</button>
+          }}>{t('project.open')}</button>
           {(assetKind(menu.id) === 'model' || assetKind(menu.id) === 'prefab') && (
-            <button type="button" onClick={() => { void openAsset(menu.id); setMenu(null) }}>放入场景</button>
+            <button type="button" onClick={() => { void openAsset(menu.id); setMenu(null) }}>{t('project.place')}</button>
           )}
-          <button type="button" onClick={() => { setRenameId(menu.id); setMenu(null) }}>重命名</button>
+          {(assetKind(menu.id) === 'material' || assetKind(menu.id) === 'scene' || assetKind(menu.id) === 'prefab') && (
+            <button type="button" onClick={() => { duplicateAsset(menu.id); setMenu(null) }}>{t('project.duplicate')}</button>
+          )}
+          <button type="button" onClick={() => { reportAssetUsers(menu.id); setMenu(null) }}>{t('project.findRefs')}</button>
+          <button type="button" onClick={() => { setRenameId(menu.id); setMenu(null) }}>{t('project.rename')}</button>
+          <div className="project-panel__sep" />
           <button type="button" onClick={() => {
             if (assetKind(menu.id) === 'scene') {
               const asset = useAssetStore.getState().assets[menu.id]
-              if (asset && !window.confirm(`删除场景「${asset.name}」？里面的物体也会去掉。`)) return
+              if (asset && !window.confirm(t('project.deleteScene', { name: asset.name }))) return
             }
             deleteAsset(menu.id)
             setMenu(null)
-          }}>删除</button>
+          }}>{t('project.delete')}</button>
         </div>
       )}
+      {menu?.target === 'dir' && (
+        <div className="project-panel__menu" style={{ left: menu.x, top: menu.y }} onPointerDown={event => event.stopPropagation()}>
+          <CreateMenu dir={menu.path} onDone={() => setMenu(null)} onNewFolder={path => setRenamePath(path)} />
+          <div className="project-panel__sep" />
+          <button type="button" onClick={() => { useAssetStore.getState().setBrowseDir(menu.path); setMenu(null) }}>{t('project.open')}</button>
+          {menu.path !== ASSETS_ROOT && <button type="button" onClick={() => { setRenamePath(menu.path); setMenu(null) }}>{t('project.rename')}</button>}
+          {menu.path !== ASSETS_ROOT && (
+            <button type="button" onClick={() => {
+              const name = menu.path.slice(menu.path.lastIndexOf('/') + 1)
+              if (window.confirm(t('project.deleteFolder', { name }))) useAssetStore.getState().deleteFolder(menu.path)
+              setMenu(null)
+            }}>{t('project.delete')}</button>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function CreateMenu({ dir, onDone, onNewFolder }: { dir: string, onDone: () => void, onNewFolder: (path: string) => void }) {
+  const { t } = useI18n()
+  const hasSelection = useEditorStore(state => state.selection.length > 0)
+  return (
+    <div className="project-panel__submenu">
+      <button type="button">{t('project.create')}<ChevronRight size={12} /></button>
+      <div className="project-panel__submenu-pop">
+        <button type="button" onClick={() => { onNewFolder(useAssetStore.getState().createFolder(dir)); onDone() }}>{t('project.newFolderMenu')}</button>
+        <button type="button" onClick={() => { useAssetStore.getState().setBrowseDir(dir); useEditorStore.getState().createScene(); onDone() }}>{t('project.createScene')}</button>
+        <button type="button" onClick={() => { createDefaultMaterial(dir); onDone() }}>{t('project.createMaterial')}</button>
+        <button type="button" disabled={!hasSelection} onClick={() => { useAssetStore.getState().setBrowseDir(dir); savePrefabFromSelection(); onDone() }}>{t('project.createPrefab')}</button>
+      </div>
     </div>
   )
 }
@@ -273,15 +390,13 @@ function AssetRow({
   onMenu: (event: MouseEvent) => void
   onDelete: (event: MouseEvent) => void
 }) {
-  const folder = FOLDERS.find(item => (item.kinds as readonly string[]).includes(asset.kind))
-  const Icon = folder?.icon ?? Folder
+  const Icon = KIND_ICON[asset.kind] ?? Folder
   return (
     <div
       className={`project-asset ${view === 'grid' ? 'project-asset--grid' : ''} ${view === 'details' ? 'project-asset--details' : ''} ${picked ? 'project-asset--picked' : ''}`}
-      draggable={asset.kind !== 'scene' && !renaming}
+      draggable={!renaming}
       title={assetTitle(asset)}
       onDragStart={event => {
-        if (asset.kind === 'scene') { event.preventDefault(); return }
         event.dataTransfer.setData(ASSET_MIME, asset.id)
         event.dataTransfer.effectAllowed = 'copy'
       }}
@@ -290,7 +405,7 @@ function AssetRow({
       onContextMenu={onMenu}
     >
       <div className="project-asset__lead">
-        <Thumb asset={asset} icon={Icon} color={folder?.color} large={view === 'grid'} />
+        <Thumb asset={asset} icon={Icon} color={KIND_COLOR[asset.kind]} large={view === 'grid'} />
         {renaming ? (
           <input
             className="project-asset__rename"
@@ -305,21 +420,21 @@ function AssetRow({
           />
         ) : <span>{asset.name}</span>}
       </div>
-      {view === 'details' && <em>{KIND_LABEL[asset.kind] ?? asset.kind}</em>}
+      {view === 'details' && <em>{kindLabel(asset.kind)}</em>}
       {view === 'details' && <em>{detailOf(asset, used)}</em>}
       {view !== 'grid' && (
-        <button type="button" title="删除" onClick={onDelete}><Trash2 size={12} /></button>
+        <button type="button" title={translate('project.delete')} onClick={onDelete}><Trash2 size={12} /></button>
       )}
     </div>
   )
 }
 
 function detailOf(asset: ProjectAsset, used: boolean): string {
-  if (asset.kind === 'scene') return `${Object.keys(asset.nodes).length} 个物体`
-  if (asset.kind === 'prefab') return `${asset.nodes.length} 个物体`
+  if (asset.kind === 'scene') return translate('project.objects', { count: Object.keys(asset.nodes).length })
+  if (asset.kind === 'prefab') return translate('project.objects', { count: Object.keys(readPrefab(asset).nodes).length })
   if (asset.kind === 'material') return asset.slot.color
   if ('fileName' in asset) return asset.fileName.split('.').pop()?.toUpperCase() ?? ''
-  return used ? '使用中' : ''
+  return used ? translate('project.inUse') : ''
 }
 
 function previewKind(kind: string): PreviewKind | null {
@@ -337,39 +452,222 @@ function Thumb({ asset, icon: Icon, color, large = false }: { asset: ProjectAsse
   if (asset.kind === 'texture' && !asset.fileName.toLowerCase().endsWith('.ktx2')) return <img className={className} src={asset.url} alt="" />
   if (asset.kind === 'material') return <i className={large ? 'project-asset__swatch project-asset__swatch--large' : 'project-asset__swatch'} style={{ background: asset.slot.color }} />
   return (
-    <span className={large ? 'project-asset__type project-asset__type--large' : 'project-asset__type'} style={{ color }} title={KIND_LABEL[asset.kind] ?? asset.kind}>
+    <span className={large ? 'project-asset__type project-asset__type--large' : 'project-asset__type'} style={{ color }} title={kindLabel(asset.kind)}>
       <Icon size={large ? 28 : 14} />
     </span>
   )
 }
 
 function assetTitle(asset: ProjectAsset): string {
-  if (asset.kind === 'scene') return '单击打开。再单击当前场景可改名'
-  if (asset.kind === 'model' || asset.kind === 'prefab') return '双击预览，拖进视口放入场景'
-  if (asset.kind === 'environment') return '双击预览环境贴图'
-  if (asset.kind === 'texture' || asset.kind === 'material') return '双击预览，也可以拖到物体上'
-  if (asset.kind === 'animation') return '拖到模型上播放'
-  return '双击试听'
+  if (asset.kind === 'scene') return translate('project.sceneHint')
+  if (asset.kind === 'model' || asset.kind === 'prefab') return translate('project.modelHint')
+  if (asset.kind === 'environment') return translate('project.envHint')
+  if (asset.kind === 'texture' || asset.kind === 'material') return translate('project.textureHint')
+  if (asset.kind === 'animation') return translate('project.animHint')
+  return translate('project.audioHint')
 }
 
-function referencedIds(nodes: Record<string, { assetId?: string | null, clipAssetId?: string | null, mapAssetId?: string | null, slots?: { mapAssetId: string | null }[] }>, assets: Record<string, ProjectAsset>): Set<string> {
+function referencedIds(nodes: Record<string, { assetId?: string | null, clipAssetId?: string | null, materialAssetId?: string | null, mapAssetId?: string | null, slots?: { materialAssetId?: string | null, mapAssetId: string | null }[] }>, assets: Record<string, ProjectAsset>): Set<string> {
   const ids = new Set<string>()
   const picture = useEditorStore.getState().picture
   if (picture.envAssetId) ids.add(picture.envAssetId)
   for (const node of Object.values(nodes)) collect(node, ids)
   for (const asset of Object.values(assets)) {
+    if (asset.kind === 'material') collect(asset.slot, ids)
     if (asset.kind === 'scene') {
       if (asset.picture.envAssetId) ids.add(asset.picture.envAssetId)
       for (const node of Object.values(asset.nodes)) collect(node, ids)
     }
-    if (asset.kind === 'prefab') for (const node of asset.nodes) collect(node, ids)
+    if (asset.kind === 'prefab') for (const node of Object.values(readPrefab(asset).nodes)) collect(node, ids)
   }
   return ids
 }
 
-function collect(node: { assetId?: string | null, clipAssetId?: string | null, mapAssetId?: string | null, slots?: { mapAssetId: string | null }[] }, ids: Set<string>) {
+function collect(node: { assetId?: string | null, clipAssetId?: string | null, materialAssetId?: string | null, mapAssetId?: string | null, normalAssetId?: string | null, roughnessAssetId?: string | null, metalnessAssetId?: string | null, emissiveAssetId?: string | null, aoAssetId?: string | null, prefabAssetId?: string | null, nestedPrefabId?: string | null, slots?: Array<{ materialAssetId?: string | null, mapAssetId?: string | null, normalAssetId?: string | null, roughnessAssetId?: string | null, metalnessAssetId?: string | null, emissiveAssetId?: string | null, aoAssetId?: string | null }> }, ids: Set<string>) {
   if (node.assetId) ids.add(node.assetId)
+  if (node.prefabAssetId) ids.add(node.prefabAssetId)
+  if (node.nestedPrefabId) ids.add(node.nestedPrefabId)
   if (node.clipAssetId) ids.add(node.clipAssetId)
-  if (node.mapAssetId) ids.add(node.mapAssetId)
-  for (const slot of node.slots ?? []) if (slot.mapAssetId) ids.add(slot.mapAssetId)
+  if (node.materialAssetId) ids.add(node.materialAssetId)
+  for (const id of [node.mapAssetId, node.normalAssetId, node.roughnessAssetId, node.metalnessAssetId, node.emissiveAssetId, node.aoAssetId]) {
+    if (id) ids.add(id)
+  }
+  for (const slot of node.slots ?? []) {
+    if (slot.materialAssetId) ids.add(slot.materialAssetId)
+    for (const id of [slot.mapAssetId, slot.normalAssetId, slot.roughnessAssetId, slot.metalnessAssetId, slot.emissiveAssetId, slot.aoAssetId]) {
+      if (id) ids.add(id)
+    }
+  }
+}
+
+type BrowseEntry = { kind: 'dir'; path: string; name: string } | { kind: 'asset'; asset: ProjectAsset }
+
+function dirItem(node: DirNode): BrowseEntry {
+  return { kind: 'dir', path: node.path, name: node.name }
+}
+
+function assetItem(asset: ProjectAsset): BrowseEntry {
+  return { kind: 'asset', asset }
+}
+
+function flattenDirs(node: DirNode): DirNode[] {
+  return [node, ...node.children.flatMap(flattenDirs)]
+}
+
+function DirNodeView({
+  node, depth, browseDir, expanded, renamePath, dropPath, onToggle, onOpen, onRenameDone, onMenu, onDropPath,
+}: {
+  node: DirNode
+  depth: number
+  browseDir: string
+  expanded: Record<string, boolean>
+  renamePath: string | null
+  dropPath: string | null
+  onToggle: (path: string) => void
+  onOpen: (path: string) => void
+  onRenameDone: (name: string) => void
+  onMenu: (event: MouseEvent, path: string) => void
+  onDropPath: (path: string | null) => void
+}) {
+  const open = expanded[node.path] ?? false
+  const active = browseDir === node.path
+  const Icon = active || open ? FolderOpen : Folder
+  return (
+    <>
+      <div
+        className={`project-browse__tree-item ${active ? 'is-active' : ''} ${dropPath === node.path ? 'is-drop' : ''}`}
+        style={{ paddingLeft: 6 + depth * 12 }}
+        role="button"
+        tabIndex={0}
+        onClick={() => onOpen(node.path)}
+        onContextMenu={event => onMenu(event, node.path)}
+        onKeyDown={event => {
+          if (event.key === 'Enter' || event.key === ' ') onOpen(node.path)
+        }}
+        onDragOver={event => {
+          const types = [...event.dataTransfer.types]
+          if (!types.includes(ASSET_MIME) && !types.includes('Files')) return
+          event.preventDefault()
+          event.stopPropagation()
+          onDropPath(node.path)
+        }}
+        onDragLeave={() => onDropPath(null)}
+        onDrop={event => {
+          const assetId = event.dataTransfer.getData(ASSET_MIME)
+          const files = [...event.dataTransfer.files]
+          event.preventDefault()
+          event.stopPropagation()
+          onDropPath(null)
+          if (assetId) useAssetStore.getState().place(assetId, node.path)
+          else if (files.length) void importFiles(files, node.path)
+          onOpen(node.path)
+        }}
+      >
+        <button
+          type="button"
+          className={`project-browse__tree-toggle ${node.children.length === 0 ? 'is-empty' : ''}`}
+          disabled={node.children.length === 0}
+          onClick={event => {
+            event.stopPropagation()
+            onToggle(node.path)
+          }}
+        >
+          {node.children.length > 0 && (open ? <Minus size={10} /> : <Plus size={10} />)}
+        </button>
+        <Icon size={13} />
+        {renamePath === node.path ? (
+          <input
+            className="project-asset__rename"
+            autoFocus
+            defaultValue={node.name}
+            onClick={event => event.stopPropagation()}
+            onBlur={event => onRenameDone(event.currentTarget.value.trim())}
+            onKeyDown={event => {
+              event.stopPropagation()
+              if (event.key === 'Enter') event.currentTarget.blur()
+              if (event.key === 'Escape') { event.currentTarget.value = node.name; event.currentTarget.blur() }
+            }}
+          />
+        ) : <span>{node.name}</span>}
+      </div>
+      {open && node.children.map(child => (
+        <DirNodeView
+          key={child.path}
+          node={child}
+          depth={depth + 1}
+          browseDir={browseDir}
+          expanded={expanded}
+          renamePath={renamePath}
+          dropPath={dropPath}
+          onToggle={onToggle}
+          onOpen={onOpen}
+          onRenameDone={onRenameDone}
+          onMenu={onMenu}
+          onDropPath={onDropPath}
+        />
+      ))}
+    </>
+  )
+}
+
+function DirRow({
+  path, name, view, renaming, dropping, onOpen, onRenameDone, onMenu, onDropPath,
+}: {
+  path: string
+  name: string
+  view: BrowseView
+  renaming: boolean
+  dropping: boolean
+  onOpen: () => void
+  onRenameDone: (name: string) => void
+  onMenu: (event: MouseEvent) => void
+  onDropPath: (path: string | null) => void
+}) {
+  return (
+    <div
+      className={`project-asset ${view === 'grid' ? 'project-asset--grid' : ''} ${view === 'details' ? 'project-asset--details' : ''} ${dropping ? 'is-drop' : ''}`}
+      title={translate('project.openFolder')}
+      onClick={event => event.stopPropagation()}
+      onDoubleClick={onOpen}
+      onContextMenu={onMenu}
+      onDragOver={event => {
+        const types = [...event.dataTransfer.types]
+        if (!types.includes(ASSET_MIME) && !types.includes('Files')) return
+        event.preventDefault()
+        event.stopPropagation()
+        onDropPath(path)
+      }}
+      onDragLeave={() => onDropPath(null)}
+      onDrop={event => {
+        const assetId = event.dataTransfer.getData(ASSET_MIME)
+        const files = [...event.dataTransfer.files]
+        event.preventDefault()
+        event.stopPropagation()
+        onDropPath(null)
+        if (assetId) useAssetStore.getState().place(assetId, path)
+        else if (files.length) void importFiles(files, path)
+      }}
+    >
+      <div className="project-asset__lead">
+        <span className={view === 'grid' ? 'project-asset__type project-asset__type--large' : 'project-asset__type'} title={translate('project.folder')}>
+          <Folder size={view === 'grid' ? 28 : 14} />
+        </span>
+        {renaming ? (
+          <input
+            className="project-asset__rename"
+            autoFocus
+            defaultValue={name}
+            onClick={event => event.stopPropagation()}
+            onBlur={event => onRenameDone(event.currentTarget.value.trim())}
+            onKeyDown={event => {
+              if (event.key === 'Enter') event.currentTarget.blur()
+              if (event.key === 'Escape') { event.currentTarget.value = name; event.currentTarget.blur() }
+            }}
+          />
+        ) : <span>{name}</span>}
+      </div>
+      {view === 'details' && <em>{translate('project.folder')}</em>}
+      {view === 'details' && <em>{path}</em>}
+    </div>
+  )
 }
