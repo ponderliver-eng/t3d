@@ -1,4 +1,4 @@
-import { AnimationClip, Group, Mesh, MeshStandardMaterial, Object3D, type BufferGeometry, type Material } from 'three'
+import { AnimationClip, Group, Mesh, MeshStandardMaterial, Object3D, Vector3, type BufferGeometry, type Material } from 'three'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js'
 import { OBJLoader } from 'three/addons/loaders/OBJLoader.js'
@@ -8,6 +8,7 @@ import { FBXLoader } from 'three/addons/loaders/FBXLoader.js'
 import { TDSLoader } from 'three/addons/loaders/TDSLoader.js'
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js'
 import type { PbrSlot } from '../scene/types'
+import { boundsOf } from '../scene/bounds'
 import { patchAssetMeta, readFileBytes, readModelArtifact, writeModelArtifact } from './cache'
 import { type FileAsset, useAssetStore } from './library'
 import { preserveHumanoidAvatarOverrides } from '../animation/humanoidAvatar'
@@ -72,6 +73,7 @@ export function loadModelTemplate(asset: FileAsset, forceSource = false): Promis
     pending.delete(asset.id)
     registerHumanoidSkeletons(asset.id, template.humanoid.skeletons)
     rememberHumanoidAvatar(asset.id, template.humanoid.avatar)
+    rememberHumanoidImportScale(asset.id, template, forceSource)
     rememberClipCatalog(asset.id, template.clips)
     useAssetStore.getState().bump()
     listeners.forEach(listener => listener())
@@ -299,6 +301,35 @@ function rememberClipCatalog(assetId: string, clips: AnimationClip[]) {
   if (JSON.stringify(asset.clipCatalog ?? null) === JSON.stringify(catalog)) return
   useAssetStore.getState().patch(assetId, { clipCatalog: catalog })
   void patchAssetMeta(assetId, { clipCatalog: catalog })
+}
+
+function inferHumanoidImportScale(template: ModelTemplate): number {
+  const slots = template.humanoid.avatar?.slots
+  if (!slots?.Hips) return 1
+  const box = boundsOf(template.scene)
+  if (box.isEmpty()) return 1
+  const size = box.getSize(new Vector3())
+  const height = Math.max(0, size.y)
+  if (height >= 0.008 && height < 0.04) return 100
+  if (height >= 0.04 && height < 0.45) return 10
+  if (height > 20 && height < 400) return 0.01
+  return 1
+}
+
+function rememberHumanoidImportScale(assetId: string, template: ModelTemplate, forceRecalc = false) {
+  const asset = useAssetStore.getState().assets[assetId]
+  if (!asset || !('fileName' in asset)) return
+  const existing = typeof asset.importScale === 'number' && asset.importScale > 0 ? asset.importScale : undefined
+  if (existing !== undefined && existing !== 1 && !forceRecalc) return
+  const recommended = inferHumanoidImportScale(template)
+  if (recommended === 1) return
+  if (existing !== undefined && existing !== 1) {
+    const rawHeight = Math.max(0, boundsOf(template.scene).getSize(new Vector3()).y)
+    const effective = rawHeight * existing
+    if (effective >= 0.45 && effective <= 20) return
+  }
+  useAssetStore.getState().patch(assetId, { importScale: recommended })
+  void patchAssetMeta(assetId, { importScale: recommended })
 }
 
 function rememberHumanoidAvatar(assetId: string, built: ModelHumanoid['avatar']) {
