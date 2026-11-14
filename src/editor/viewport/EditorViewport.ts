@@ -48,7 +48,11 @@ import { lockClipInPlace, maskClip } from '../animation/playback'
 import { useAssetStore } from '../assets/library'
 import { bindTextureRenderer, environmentFor } from '../assets/textures'
 import { EDITOR_HELPER_LAYER, layerBitIndex } from '../project/taxonomy'
+import { capabilityEnabled } from '../../capabilities/registry'
 import { tickPhysics } from '../../capabilities/physics/session'
+import { collectNavSurfaces } from '../../capabilities/navigation/collect'
+import { syncNavDebug } from '../../capabilities/navigation/debug'
+import { consumeNavBake, navDebugGeometry, tickNavigation } from '../../capabilities/navigation/session'
 import { physicsDebugActive, syncPhysicsDebug } from './physicsDebug'
 import { boundsOf, refreshObjectBounds } from '../scene/bounds'
 import { isLight, isMesh } from '../scene/kinds'
@@ -141,6 +145,7 @@ export class EditorViewport {
   private ready = false
   private picture: ScenePicturePipeline | null = null
   private readonly physicsDebug = new Group()
+  private readonly navDebug = new Group()
   private readonly unsubscribe: () => void
   private readonly unsubscribeAssets: () => void
   private readonly resizeObserver: ResizeObserver
@@ -162,6 +167,8 @@ export class EditorViewport {
     this.scene.add(root)
     this.physicsDebug.name = 'physics-debug'
     this.scene.add(this.physicsDebug)
+    this.navDebug.name = 'nav-debug'
+    this.scene.add(this.navDebug)
     root.add(this.world)
     const ambient = new AmbientLight(0xffffff, 0.28)
     ambient.layers.enableAll()
@@ -908,7 +915,21 @@ export class EditorViewport {
     this.last = time
     this.rig.update(dt)
     tickPhysics(dt)
+    tickNavigation()
+    const bake = consumeNavBake()
+    if (bake) {
+      const roots = bake.surfaceIds.flatMap(id => {
+        const group = this.objects.get(id)
+        return group ? [group] : []
+      })
+      bake.finish(collectNavSurfaces(roots))
+    }
     const editor = useEditorStore.getState()
+    syncNavDebug(
+      this.navDebug,
+      navDebugGeometry(),
+      capabilityEnabled(editor.capabilities, 'navigation') && (editor.helpersVisible || editor.playState !== 'stopped'),
+    )
     syncPhysicsDebug(
       this.scene,
       this.physicsDebug,

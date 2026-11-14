@@ -53,7 +53,9 @@ import type {
   Vec3,
 } from './types'
 import type { ProjectDocument } from './document'
-import { DEFAULT_PICTURE } from './types'
+import { DEFAULT_PICTURE, normalizePicture } from './types'
+import { forgetNavMesh } from '../../capabilities/navigation/archive'
+import { hydrateNavigation } from '../../capabilities/navigation/session'
 
 interface Gesture {
   label: string
@@ -715,7 +717,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     set({
       activeSceneId: id,
       nodes: structuredClone(asset.nodes),
-      picture: structuredClone(asset.picture),
+      picture: normalizePicture(asset.picture),
       selection: [],
       past: [],
       future: [],
@@ -743,7 +745,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       set({
         activeSceneId: next.id,
         nodes: structuredClone(next.nodes),
-        picture: structuredClone(next.picture),
+        picture: normalizePicture(next.picture),
         selection: [],
         past: [],
         future: [],
@@ -753,6 +755,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       })
     }
     useAssetStore.getState().remove(id)
+    forgetNavMesh(id)
     get().log('info', translate('log.deletedScene'))
   },
 
@@ -819,7 +822,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       playSnapshot: null,
       playSelection: [],
       playPicture: null,
-      picture: { ...DEFAULT_PICTURE, ...document.picture },
+      picture: normalizePicture(document.picture),
       capabilities: normalizeCapabilities(document.capabilities),
       tags: ensureTags(document.tags),
       layers: ensureLayers(document.layers),
@@ -829,6 +832,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       activeSceneId: document.activeSceneId,
       prefabSession: null,
     })
+    hydrateNavigation(document.navMeshes)
   },
 
   clearLogs: () => set({ logs: [] }),
@@ -846,7 +850,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     }, 2600)
   },
 
-  setPicture: patch => set({ picture: { ...get().picture, ...patch } }),
+  setPicture: patch => set({ picture: normalizePicture({ ...get().picture, ...patch }) }),
 
   setCapability: (id, enabled) => set(state => ({
     capabilities: { ...state.capabilities, [id]: enabled },

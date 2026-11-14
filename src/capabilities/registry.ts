@@ -6,6 +6,7 @@ export interface CapabilityManifest {
 /** 官方能力包清单。新增一项就在这里登记，并在 src/capabilities/<id>/ 下放数据和实现。 */
 export const CAPABILITIES = [
   { id: 'physics', defaultEnabled: true },
+  { id: 'navigation', defaultEnabled: true },
 ] as const satisfies readonly CapabilityManifest[]
 
 export type CapabilityId = (typeof CAPABILITIES)[number]['id']

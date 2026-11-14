@@ -11,6 +11,7 @@ import { isLight, isMesh } from '../scene/kinds'
 import { capabilityEnabled } from '../../capabilities/registry'
 import { openProjectSettings } from '../project/ProjectSettingsDialog'
 import { PhysicsCard } from '../../capabilities/physics/PhysicsCard'
+import { NavigationCard, SceneNavigationCard } from '../../capabilities/navigation/NavigationCards'
 import {
   InspectorFrame,
   useInspectorCardOpen,
@@ -169,6 +170,9 @@ export default function InspectorPanel() {
 
       {(isMesh(node.kind) || node.kind === 'model' || node.kind === 'empty') && (
         <PhysicsCard node={node} disabled={locked || playing} />
+      )}
+      {(isMesh(node.kind) || node.kind === 'model' || node.kind === 'empty') && (
+        <NavigationCard node={node} disabled={locked || playing} />
       )}
 
       {(isMesh(node.kind) || node.kind === 'model') && <MeshRendererCard node={node} />}
@@ -421,6 +425,7 @@ function SceneSettings() {
           <button type="button" onClick={openProjectSettings}>{t('menu.projectSettings')}</button>
         </Card>
       )}
+      <SceneNavigationCard />
       <Card id="sky" title={t('inspector.sky')} color="#4a9eff">
         <ColorField label={t('inspector.background')} value={picture.background} gesture={t('gesture.picture')} onChange={background => set({ background })} />
         <NumberRow label={t('inspector.exposure')} value={picture.exposure} min={0} max={5} step={0.01} gesture={t('gesture.picture')} onChange={exposure => set({ exposure })} />

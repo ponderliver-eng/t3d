@@ -21,7 +21,8 @@ import { readPrefab } from './prefab'
 import type { ProjectDocument } from '../scene/document'
 import { normalizeCapabilities } from '../../capabilities/registry'
 import { ALL_LAYERS_VISIBLE_MASK, ensureLayers, ensureTags } from '../project/taxonomy'
-import { DEFAULT_PICTURE, type SceneNode } from '../scene/types'
+import { normalizePicture, type SceneNode } from '../scene/types'
+import { serializeNavMeshes } from '../../capabilities/navigation/archive'
 import { releaseModel } from './models'
 import { releaseTexture } from './textures'
 import { ASSETS_ROOT, normalizeDir } from './folders'
@@ -176,6 +177,7 @@ export async function saveProjectNow() {
     editorCullingMask: editor.editorCullingMask,
     physicsCollisionMatrixEnabled: editor.physicsCollisionMatrixEnabled,
     physicsCollisionRowMasks: editor.physicsCollisionRowMasks,
+    navMeshes: serializeNavMeshes(),
   }
   await writeSceneDocument(document)
 }
@@ -732,7 +734,8 @@ function validDocument(document: ProjectDocument | null): ProjectDocument | null
     activeSceneId,
     nodes: document.nodes,
     selection: Array.isArray(document.selection) ? document.selection : [],
-    picture: { ...DEFAULT_PICTURE, ...document.picture },
+    picture: normalizePicture(document.picture),
+    navMeshes: document.navMeshes,
     library,
     folders: Array.isArray(document.folders) ? document.folders.filter(item => typeof item === 'string') : [],
     assetDirs: cleanAssetDirs(document.assetDirs),

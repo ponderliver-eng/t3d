@@ -14,11 +14,13 @@
     "@dimforge/rapier3d-compat": "^0.21.0",
     "@gltf-transform/core": "^4.5.1",
     "@gltf-transform/functions": "^4.5.1",
+    "@recast-navigation/three": "^0.44.0",
     "flexlayout-react": "^0.8.19",
     "lucide-react": "^1.8.0",
     "meshoptimizer": "^1.3.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
+    "recast-navigation": "^0.44.0",
     "three": "^0.187.0",
     "zustand": "^5.0.8"
   },

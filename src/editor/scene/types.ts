@@ -65,6 +65,40 @@ export interface PbrSlot {
   wireframe?: boolean
 }
 
+export interface NavSettings {
+  /** 水平格子，米。 */
+  cellSize: number
+  /** 高度格子，米。 */
+  cellHeight: number
+  /** 可走的最大坡度，度。 */
+  walkableSlopeAngle: number
+  /** 角色半径，米。 */
+  agentRadius: number
+  /** 角色高度，米。 */
+  agentHeight: number
+  /** 大于 0 时烘焙可被动态障碍挖开的网格，0 时只烘焙静态网格。 */
+  maxObstacles: number
+}
+
+export const DEFAULT_NAV: NavSettings = {
+  cellSize: 0.2,
+  cellHeight: 0.2,
+  walkableSlopeAngle: 45,
+  agentRadius: 0.35,
+  agentHeight: 1.8,
+  maxObstacles: 32,
+}
+
+export type NavRole = 'surface' | 'obstacle'
+
+export interface NodeNavigation {
+  role: NavRole
+  /** 障碍圆柱的半径，米。表面不使用。 */
+  radius: number
+  /** 障碍圆柱的高度，米。表面不使用。 */
+  height: number
+}
+
 export interface ScenePicture {
   background: string
   exposure: number
@@ -86,6 +120,8 @@ export interface ScenePicture {
   envAssetId: string | null
   /** 场景重力，米/秒²。物理能力包读取。 */
   gravity: Vec3
+  /** 导航烘焙参数。关掉能力包不会清掉它。 */
+  navigation: NavSettings
 }
 
 export const DEFAULT_PICTURE: ScenePicture = {
@@ -108,6 +144,17 @@ export const DEFAULT_PICTURE: ScenePicture = {
   saturation: 1,
   envAssetId: null,
   gravity: [0, -9.81, 0],
+  navigation: { ...DEFAULT_NAV },
+}
+
+export function normalizePicture(picture?: Partial<ScenePicture> | null): ScenePicture {
+  const gravity = picture?.gravity
+  return {
+    ...DEFAULT_PICTURE,
+    ...picture,
+    gravity: gravity?.length === 3 ? gravity : DEFAULT_PICTURE.gravity,
+    navigation: { ...DEFAULT_NAV, ...picture?.navigation },
+  }
 }
 
 export type GizmoMode = 'translate' | 'rotate' | 'scale'
@@ -172,6 +219,8 @@ export interface SceneNode {
   wireframe: boolean
   /** 空着表示这个节点不参与物理。关掉能力包不会清掉它。 */
   physics?: NodePhysics | null
+  /** 空着表示这个节点不参与导航。关掉能力包不会清掉它。 */
+  navigation?: NodeNavigation | null
   /** 主标签，对应工程标签表的 id。 */
   tagId?: string | null
   /** 额外层级标签，存标签 id。 */

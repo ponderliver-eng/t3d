@@ -77,7 +77,7 @@ export default defineConfig(({ mode }) => ({
       'three/addons/tsl/display/SSAONode.js',
       'three/addons/tsl/display/DepthOfFieldNode.js',
     ],
-    exclude: ['@dimforge/rapier3d-compat'],
+    exclude: ['@dimforge/rapier3d-compat', 'recast-navigation', '@recast-navigation/core', '@recast-navigation/wasm'],
   },
   server: {
     port: 5180,
