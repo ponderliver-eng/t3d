@@ -1,10 +1,16 @@
 import {
+  AdditiveBlending,
   BackSide,
+  CustomBlending,
   DoubleSide,
   FrontSide,
   Mesh,
   MeshBasicMaterial,
   MeshStandardMaterial,
+  MultiplyBlending,
+  NormalBlending,
+  OneFactor,
+  OneMinusSrcAlphaFactor,
   Vector2,
   type BufferGeometry,
   type Material,
@@ -13,7 +19,8 @@ import {
 } from 'three'
 import { useAssetStore } from './library'
 import { textureFor } from './textures'
-import type { AlphaMode, CullMode, PbrSlot, SceneNode, SurfaceShader } from '../scene/types'
+import type { ParticleMaterialDesc } from '../../capabilities/particles/runtime'
+import type { AlphaMode, CullMode, ParticleBlend, PbrSlot, SceneNode, SurfaceShader } from '../scene/types'
 
 export interface SurfaceSlot extends PbrSlot {
   materialAssetId: string | null
@@ -60,6 +67,7 @@ export function normalizeSlot(slot: Partial<PbrSlot> & Pick<PbrSlot, 'name' | 'c
     cull: slot.cull ?? DEFAULTS.cull,
     depthWrite: slot.depthWrite ?? DEFAULTS.depthWrite,
     wireframe: slot.wireframe ?? DEFAULTS.wireframe,
+    particleBlend: slot.particleBlend,
   }
 }
 
@@ -81,6 +89,7 @@ export function nodePatchFromSlot(slot: SurfaceSlot): Partial<SceneNode> {
     emissiveAssetId: slot.emissiveAssetId,
     aoAssetId: slot.aoAssetId,
     shader: slot.shader,
+    particleBlend: slot.particleBlend,
     normalScale: slot.normalScale,
     alphaMode: slot.alphaMode,
     alphaCutoff: slot.alphaCutoff,
@@ -110,6 +119,7 @@ export function slotFromNode(node: SceneNode): SurfaceSlot {
     emissiveAssetId: node.emissiveAssetId,
     aoAssetId: node.aoAssetId,
     shader: node.shader,
+    particleBlend: node.particleBlend,
     normalScale: node.normalScale,
     alphaMode: node.alphaMode,
     alphaCutoff: node.alphaCutoff,
@@ -187,6 +197,15 @@ function paint(material: Material, slot: SurfaceSlot) {
   material.opacity = transparency.opacity
   material.alphaTest = transparency.alphaTest
   basic.color?.set(slot.color)
+  if (slot.shader === 'particle-unlit') {
+    material.transparent = true
+    material.depthWrite = slot.depthWrite
+    material.opacity = slot.opacity
+    applyParticleBlend(material, slot.particleBlend ?? 'additive')
+    assignMap(basic, 'map', slot.mapAssetId, true)
+    material.needsUpdate = true
+    return
+  }
   if (slot.shader === 'unlit-color') {
     basic.map = null
     material.needsUpdate = true
@@ -219,6 +238,33 @@ function transparencyOf(slot: SurfaceSlot) {
     return { transparent: false, opacity: 1, alphaTest: slot.alphaCutoff, depthWrite: slot.depthWrite }
   }
   return { transparent: false, opacity: 1, alphaTest: 0, depthWrite: slot.depthWrite }
+}
+
+export function particleDescFor(materialAssetId: string | null): ParticleMaterialDesc | 'incompatible' | null {
+  if (!materialAssetId) return null
+  const asset = useAssetStore.getState().assets[materialAssetId]
+  if (!asset || asset.kind !== 'material') return null
+  const slot = normalizeSlot(asset.slot)
+  if (slot.shader !== 'particle-unlit') return 'incompatible'
+  return {
+    color: slot.color,
+    opacity: slot.opacity,
+    map: textureFor(slot.mapAssetId, true),
+    blend: slot.particleBlend ?? 'additive',
+    depthWrite: slot.depthWrite,
+    depthTest: true,
+    side: sideFor(slot.cull),
+  }
+}
+
+function applyParticleBlend(material: Material, blend: ParticleBlend) {
+  material.premultipliedAlpha = blend === 'premultiply'
+  material.blendSrc = OneFactor
+  material.blendDst = OneMinusSrcAlphaFactor
+  if (blend === 'alpha') material.blending = NormalBlending
+  else if (blend === 'multiply') material.blending = MultiplyBlending
+  else if (blend === 'premultiply') material.blending = CustomBlending
+  else material.blending = AdditiveBlending
 }
 
 function sideFor(cull: CullMode): Side {

@@ -1,3 +1,4 @@
+import { defaultNodeEffect } from '../../capabilities/particles/defaults'
 import type { NodeKind, SceneNode, Vec3 } from './types'
 
 export const MESH_KINDS: NodeKind[] = ['box', 'sphere', 'plane', 'capsule', 'cylinder', 'cone']
@@ -49,6 +50,8 @@ export function restHeight(kind: NodeKind): number {
     case 'plane':
     case 'empty':
       return 0
+    case 'effect':
+      return 1
     default:
       return 2
   }
@@ -99,6 +102,7 @@ export function makeNode(partial: Pick<SceneNode, 'id' | 'name' | 'kind'> & Part
     cull: 'back',
     depthWrite: true,
     wireframe: false,
+    effect: kind === 'effect' ? defaultNodeEffect() : null,
     slots: [],
     castShadow: kind === 'directional-light' || kind === 'spot-light' || ((isMesh(kind) || kind === 'model') && kind !== 'plane'),
     receiveShadow: isMesh(kind) || kind === 'model',

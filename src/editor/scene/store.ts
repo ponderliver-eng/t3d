@@ -36,6 +36,7 @@ import {
   ensureTags,
 } from '../project/taxonomy'
 import { isUnder, localPoseFromWorld, poseComponents, worldPointToLocal, worldPose, writePose } from './transform'
+import { placeViewportAt, readViewportPose } from './viewportBridge'
 import { measureGroundSnap } from './viewportBridge'
 import type {
   CameraView,
@@ -137,10 +138,13 @@ export interface EditorState {
   requestFocus: () => void
   requestFocusAll: () => void
   requestView: (view: CameraView) => void
+  alignCameraToView: () => void
+  alignViewToCamera: () => void
   beginGesture: (label: string) => void
   endGesture: () => void
   updateNode: (id: string, patch: Partial<SceneNode>) => void
   createNode: (kind: NodeKind, parentId?: string | null) => void
+  spawnEffect: (assetId: string, point: Vec3) => void
   deleteSelection: () => void
   duplicateSelection: () => void
   copySelection: () => void
@@ -289,6 +293,36 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     cameraView: view,
   })),
 
+  alignCameraToView: () => {
+    if (get().playState !== 'stopped') return
+    const id = selectedCameraId(get(), true)
+    const view = readViewportPose()
+    if (!id || !view) return
+    const nodes = get().nodes
+    const node = nodes[id]
+    const parent = node.parentId ? worldPose(nodes, node.parentId) : null
+    const current = worldPose(nodes, id)
+    const local = poseComponents(localPoseFromWorld(parent, {
+      position: new Vector3(view.position[0], view.position[1], view.position[2]),
+      quaternion: new Quaternion(view.quaternion[0], view.quaternion[1], view.quaternion[2], view.quaternion[3]),
+      scale: current.scale,
+    }))
+    get().beginGesture(translate('gesture.alignCamera'))
+    get().updateNode(id, { position: local.position, rotation: local.rotation })
+    get().endGesture()
+  },
+
+  alignViewToCamera: () => {
+    if (get().playState !== 'stopped') return
+    const id = selectedCameraId(get(), false)
+    if (!id) return
+    const pose = worldPose(get().nodes, id)
+    placeViewportAt(
+      [pose.position.x, pose.position.y, pose.position.z],
+      [pose.quaternion.x, pose.quaternion.y, pose.quaternion.z, pose.quaternion.w],
+    )
+  },
+
   beginGesture: label => {
     if (get().gesture) get().endGesture()
     set({
@@ -347,6 +381,35 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         order: nextOrder(draft.nodes, parent),
         position: spawnPosition(kind, parent, getSpawn()),
         rotation: kind === 'plane' ? [-90, 0, 0] : [0, 0, 0],
+      })
+      tagAddedChild(draft.nodes, id)
+      draft.selection = [id]
+      created = name
+    })
+    if (ok && created) get().log('info', translate('log.created', { name: created }))
+  },
+
+  spawnEffect: (assetId, point) => {
+    const asset = useAssetStore.getState().assets[assetId]
+    if (!asset || asset.kind !== 'effect') return
+    let created = ''
+    const ok = mutate(set, get, translate('gesture.create', { name: asset.name }), draft => {
+      const id = crypto.randomUUID()
+      const name = uniqueName(draft.nodes, asset.name)
+      draft.nodes[id] = makeNode({
+        id,
+        name,
+        kind: 'effect',
+        parentId: null,
+        order: nextOrder(draft.nodes, null),
+        position: point,
+        effect: {
+          assetId: asset.id,
+          quarksVersion: asset.quarksVersion,
+          simulation: null,
+          materialAssetId: null,
+          playing: true,
+        },
       })
       tagAddedChild(draft.nodes, id)
       draft.selection = [id]
@@ -1257,4 +1320,12 @@ function uniqueSceneName(names: string[]): string {
 
 export function primaryId(state: Pick<EditorState, 'selection'>): string | null {
   return state.selection[state.selection.length - 1] ?? null
+}
+
+function selectedCameraId(state: { nodes: Record<string, SceneNode>, selection: string[] }, editable: boolean): string | null {
+  const id = primaryId(state)
+  const node = id ? state.nodes[id] : undefined
+  if (!node || node.kind !== 'camera') return null
+  if (editable && node.locked) return null
+  return id
 }

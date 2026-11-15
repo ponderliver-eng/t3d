@@ -14,8 +14,10 @@ export type NodeKind =
   | 'spot-light'
   | 'hemisphere-light'
   | 'camera'
+  | 'effect'
 
-export type SurfaceShader = 'lit' | 'unlit-color' | 'unlit-texture'
+export type SurfaceShader = 'lit' | 'unlit-color' | 'unlit-texture' | 'particle-unlit'
+export type ParticleBlend = 'alpha' | 'premultiply' | 'additive' | 'multiply'
 export type AlphaMode = 'opaque' | 'blend' | 'clip'
 export type CullMode = 'back' | 'front' | 'off'
 
@@ -63,6 +65,8 @@ export interface PbrSlot {
   cull?: CullMode
   depthWrite?: boolean
   wireframe?: boolean
+  /** 粒子无光材质的混合。其它着色器忽略。 */
+  particleBlend?: ParticleBlend
 }
 
 export interface NavSettings {
@@ -90,6 +94,16 @@ export const DEFAULT_NAV: NavSettings = {
 }
 
 export type NavRole = 'surface' | 'obstacle'
+
+export interface NodeEffect {
+  /** 引用特效资源。空着表示模拟写在这个物体上。 */
+  assetId: string | null
+  quarksVersion: string
+  simulation: unknown | null
+  /** 空着则用资源上的材质。 */
+  materialAssetId: string | null
+  playing: boolean
+}
 
 export interface NodeNavigation {
   role: NavRole
@@ -211,6 +225,7 @@ export interface SceneNode {
   aoAssetId: string | null
   materialAssetId: string | null
   shader: SurfaceShader
+  particleBlend?: ParticleBlend
   normalScale: number
   alphaMode: AlphaMode
   alphaCutoff: number
@@ -221,6 +236,8 @@ export interface SceneNode {
   physics?: NodePhysics | null
   /** 空着表示这个节点不参与导航。关掉能力包不会清掉它。 */
   navigation?: NodeNavigation | null
+  /** 特效物体的播放数据。关掉能力包不会清掉它。 */
+  effect?: NodeEffect | null
   /** 主标签，对应工程标签表的 id。 */
   tagId?: string | null
   /** 额外层级标签，存标签 id。 */

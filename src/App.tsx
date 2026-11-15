@@ -105,6 +105,12 @@ export default function App() {
         store.setSelection([])
         return
       }
+      if (event.code === 'KeyF' && event.shiftKey && !event.altKey && !event.metaKey && !isViewportNavigating() && store.playState === 'stopped') {
+        event.preventDefault()
+        if (event.ctrlKey) store.alignCameraToView()
+        else store.alignViewToCamera()
+        return
+      }
       if (ctrl || event.altKey || event.metaKey || event.shiftKey) return
       if (isViewportNavigating()) return
       if (event.code === 'KeyW') store.setGizmoMode('translate')

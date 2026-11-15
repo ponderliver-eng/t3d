@@ -3,6 +3,7 @@ import {
   MathUtils,
   OrthographicCamera,
   PerspectiveCamera,
+  Quaternion,
   Vector3,
 } from 'three'
 import type { CameraView } from '../scene/types'
@@ -140,7 +141,23 @@ export class EditorCameraRig {
     this.pivot.add(move)
   }
 
-  focus(center: Vector3, radius: number) {
+  capture(): { position: [number, number, number], quaternion: [number, number, number, number] } {
+    const camera = this.view === 'persp' ? this.persp : this.ortho
+    return {
+      position: [camera.position.x, camera.position.y, camera.position.z],
+      quaternion: [camera.quaternion.x, camera.quaternion.y, camera.quaternion.z, camera.quaternion.w],
+    }
+  }
+
+  lookThrough(position: Vector3, quaternion: Quaternion) {
+    this.persp.position.copy(position)
+    this.persp.quaternion.copy(quaternion)
+    this.readYawPitch()
+    this.pivot.copy(this.persp.position).addScaledVector(this.forward(), Math.max(this.orbitDistance, 0.4))
+    this.use(this.persp, 'persp', VIEW_LABEL.persp)
+  }
+
+  focus(center: Vector3, radius: number, flat = false) {
     this.pivot.copy(center)
     if (this.view !== 'persp') {
       this.orthoSize = Math.max(radius, 0.8)
@@ -150,6 +167,10 @@ export class EditorCameraRig {
       this.ortho.lookAt(center)
       this.updateOrthoFrustum()
       return
+    }
+    if (flat && this.pitch > -0.55) {
+      this.pitch = -0.55
+      this.writeYawPitch()
     }
     this.orbitDistance = Math.max(radius * 2.4, 2)
     this.persp.position.copy(center).addScaledVector(this.forward(), -this.orbitDistance)

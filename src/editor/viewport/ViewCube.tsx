@@ -20,6 +20,7 @@ import { useI18n, type MessageKey } from '../i18n'
 import { useEditorStore } from '../scene/store'
 import type { CameraView } from '../scene/types'
 import { viewCubePose } from './viewCubeBridge'
+import { resolvePlayCamera } from './playCamera'
 
 const FACES: { view: CameraView; key: MessageKey; position: [number, number, number]; rotation: [number, number, number] }[] = [
   { view: 'front', key: 'view.front', position: [0, 0, 0.5], rotation: [0, 0, 0] },
@@ -104,11 +105,17 @@ export default function ViewCube() {
         width={84}
         height={84}
         onPointerDown={event => {
+          const editor = useEditorStore.getState()
+          if (editor.playState !== 'stopped' && resolvePlayCamera(editor.nodes, editor.tags).id) return
           const view = pickRef.current?.(event.clientX, event.clientY)
-          if (view) useEditorStore.getState().requestView(view)
+          if (view) editor.requestView(view)
         }}
       />
-      <button type="button" className="viewcube__home" onClick={() => useEditorStore.getState().requestView('persp')}>
+      <button type="button" className="viewcube__home" onClick={() => {
+        const editor = useEditorStore.getState()
+        if (editor.playState !== 'stopped' && resolvePlayCamera(editor.nodes, editor.tags).id) return
+        editor.requestView('persp')
+      }}>
         {t('view.persp')}
       </button>
     </div>

@@ -121,6 +121,67 @@
   padding: 8px 10px;
 }
 
+.particle-checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+}
+
+.particle-checks label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-secondary);
+}
+
+.particle-pair {
+  display: grid;
+  grid-template-columns: 56px 1fr 1fr;
+  gap: 8px;
+  align-items: center;
+  color: var(--text-secondary);
+}
+
+.particle-pair--head {
+  margin-bottom: -2px;
+  color: var(--text-muted);
+  font-size: 10px;
+}
+
+.particle-pair input {
+  width: 100%;
+  min-width: 0;
+  height: 22px;
+  padding: 0 4px;
+}
+
+.particle-note {
+  grid-column: 1 / -1;
+  color: var(--text-muted);
+  font-size: 10px;
+  font-style: normal;
+}
+
+.particle-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.particle-actions button {
+  height: 22px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-size: 10px;
+}
+
+.particle-actions button:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
 .mesh-slots__head {
   display: flex;
   align-items: center;

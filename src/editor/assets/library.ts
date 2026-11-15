@@ -36,6 +36,15 @@ export interface MaterialAsset {
   slot: PbrSlot
 }
 
+export interface EffectAsset {
+  id: string
+  name: string
+  kind: 'effect'
+  quarksVersion: string
+  simulation: unknown
+  materialAssetId: string | null
+}
+
 export interface PrefabAsset {
   id: string
   name: string
@@ -52,7 +61,7 @@ export interface SceneAsset {
   picture: ScenePicture
 }
 
-export type ProjectAsset = FileAsset | MaterialAsset | PrefabAsset | SceneAsset
+export type ProjectAsset = FileAsset | MaterialAsset | PrefabAsset | SceneAsset | EffectAsset
 
 interface AssetState {
   assets: Record<string, ProjectAsset>
@@ -66,6 +75,7 @@ interface AssetState {
   patch: (id: string, patch: Partial<FileAsset>) => void
   writeScene: (id: string, nodes: Record<string, SceneNode>, picture: ScenePicture) => void
   updateMaterial: (id: string, slot: Partial<PbrSlot>) => void
+  updateEffect: (id: string, patch: { simulation?: unknown, materialAssetId?: string | null }) => void
   bump: () => void
   loadCatalog: (folders: string[], assetDirs: Record<string, string>) => void
   loadSession: (assets: Record<string, ProjectAsset>, folders: string[], assetDirs: Record<string, string>) => void
@@ -115,6 +125,11 @@ export const useAssetStore = create<AssetState>((set, get) => ({
     const asset = state.assets[id]
     if (!asset || asset.kind !== 'material') return {}
     return { assets: { ...state.assets, [id]: { ...asset, slot: { ...asset.slot, ...slot } } }, revision: state.revision + 1 }
+  }),
+  updateEffect: (id, patch) => set(state => {
+    const asset = state.assets[id]
+    if (!asset || asset.kind !== 'effect') return {}
+    return { assets: { ...state.assets, [id]: { ...asset, ...patch } }, revision: state.revision + 1 }
   }),
   bump: () => set(state => ({ revision: state.revision + 1 })),
   loadCatalog: (folders, assetDirs) => set({

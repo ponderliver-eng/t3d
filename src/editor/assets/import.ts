@@ -7,6 +7,8 @@ import { deleteModelArtifact, forgetFile, patchAssetMeta, readFileBytes, remembe
 import { imageThumb, labelThumb, renderModelThumb } from './thumbs'
 import { readPrefab } from './prefab'
 import { translate } from '../i18n'
+import { QUARKS_VERSION } from '../../capabilities/particles/defaults'
+import { readQuarksDocument } from '../../capabilities/particles/readQuarks'
 import { assetDirectory, assetName, useAssetStore, type FileAsset, type FileKind, type ProjectAsset } from './library'
 import type { PbrSlot, SceneNode, Vec3 } from '../scene/types'
 
@@ -69,6 +71,11 @@ export async function importFiles(files: File[], dir = useAssetStore.getState().
   const created: string[] = []
   const modelsToLoad: FileAsset[] = []
   for (const file of files) {
+    if (file.name.toLowerCase().endsWith('.json')) {
+      const effectId = await importEffectJson(file, dir)
+      if (effectId) created.push(effectId)
+      continue
+    }
     const kind = fileKindFor(file.name)
     if (!kind) {
       useEditorStore.getState().log('warn', translate('log.unknownFile', { name: file.name }))
@@ -341,6 +348,10 @@ export function placeAsset(assetId: string, point: Vec3, hitId: string | null) {
     void new Audio(asset.url).play()
     return
   }
+  if (asset.kind === 'effect') {
+    editor.spawnEffect(asset.id, point)
+    return
+  }
   const node = hitId ? editor.nodes[hitId] : undefined
   if (!node) {
     editor.log('warn', asset.kind === 'animation' ? translate('log.dragAnim') : translate('log.dragAsset'))
@@ -447,7 +458,7 @@ export function createDefaultMaterial(dir?: string) {
 
 export function duplicateAsset(id: string) {
   const asset = useAssetStore.getState().assets[id]
-  if (!asset || (asset.kind !== 'material' && asset.kind !== 'scene' && asset.kind !== 'prefab')) return
+  if (!asset || (asset.kind !== 'material' && asset.kind !== 'scene' && asset.kind !== 'prefab' && asset.kind !== 'effect')) return
   const copy = structuredClone(asset)
   copy.id = crypto.randomUUID()
   copy.name = uniqueAssetName(`${asset.name} ${translate('project.copySuffix')}`)
@@ -467,6 +478,73 @@ export function reportAssetUsers(id: string) {
 export function previewAudio(asset: ProjectAsset) {
   if (asset.kind !== 'audio') return
   void new Audio(asset.url).play()
+}
+
+async function importEffectJson(file: File, dir: string): Promise<string | null> {
+  let json: unknown
+  try {
+    json = JSON.parse(await file.text())
+  } catch {
+    useEditorStore.getState().log('warn', translate('particles.notQuarks', { name: file.name }))
+    return null
+  }
+  const document = readQuarksDocument(json)
+  if (!document) {
+    useEditorStore.getState().log('warn', translate('particles.notQuarks', { name: file.name }))
+    return null
+  }
+  const base = file.name.replace(/\.json$/i, '')
+  let mapAssetId: string | null = null
+  if (document.appearance.image) {
+    try {
+      const response = await fetch(document.appearance.image)
+      const bytes = new Uint8Array(await response.arrayBuffer())
+      mapAssetId = await importExtractedBytes(`${base}.png`, bytes, dir)
+    } catch (error) {
+      console.warn('[particles] 贴图没有收进工程', error)
+    }
+  }
+  const materialId = crypto.randomUUID()
+  const materialName = uniqueAssetName(`${base} 材质`)
+  useAssetStore.getState().add({
+    id: materialId,
+    name: materialName,
+    kind: 'material',
+    slot: normalizeSlot({
+      name: materialName,
+      color: document.appearance.color,
+      metalness: 0,
+      roughness: 1,
+      emissive: '#000000',
+      emissiveIntensity: 1,
+      opacity: document.appearance.opacity,
+      ao: 1,
+      mapAssetId,
+      normalAssetId: null,
+      metallicRoughnessAssetId: null,
+      emissiveAssetId: null,
+      aoAssetId: null,
+      shader: 'particle-unlit',
+      particleBlend: document.appearance.blend,
+      alphaMode: 'blend',
+      depthWrite: document.appearance.depthWrite,
+      cull: 'off',
+    }),
+  })
+  useAssetStore.getState().place(materialId, dir)
+  const effectId = crypto.randomUUID()
+  const name = uniqueAssetName(base)
+  useAssetStore.getState().add({
+    id: effectId,
+    name,
+    kind: 'effect',
+    quarksVersion: QUARKS_VERSION,
+    simulation: document.simulation,
+    materialAssetId: materialId,
+  })
+  useAssetStore.getState().place(effectId, dir)
+  useEditorStore.getState().log('info', translate('particles.imported', { name }))
+  return effectId
 }
 
 export function fileKindFor(fileName: string): FileKind | null {
@@ -506,12 +584,14 @@ function referencedBy(assetId: string): string[] {
       }
     }
     if (asset.kind === 'material' && slotUses(asset.slot, assetId)) names.push(asset.name)
+    if (asset.kind === 'effect' && asset.materialAssetId === assetId) names.push(asset.name)
   }
   return names
 }
 
 function usesAsset(node: SceneNode, assetId: string): boolean {
   if (node.assetId === assetId || node.clipAssetId === assetId || node.materialAssetId === assetId) return true
+  if (node.effect?.assetId === assetId || node.effect?.materialAssetId === assetId) return true
   if (slotUses(slotFromNode(node), assetId)) return true
   return node.slots.some(slot => slot.materialAssetId === assetId || slotUses(slot, assetId))
 }
@@ -565,6 +645,6 @@ export async function openAsset(assetId: string) {
   if (asset.kind === 'texture') await loadTextureAsset(asset)
   const spawn = getSpawn()
   const hit = useEditorStore.getState().selection.at(-1) ?? null
-  if (asset.kind === 'model' || asset.kind === 'prefab' || asset.kind === 'environment') placeAsset(assetId, [spawn[0], 0, spawn[2]], null)
+  if (asset.kind === 'model' || asset.kind === 'prefab' || asset.kind === 'environment' || asset.kind === 'effect') placeAsset(assetId, [spawn[0], 0, spawn[2]], null)
   else placeAsset(assetId, [spawn[0], 0, spawn[2]], hit)
 }

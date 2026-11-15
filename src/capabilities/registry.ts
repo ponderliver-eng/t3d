@@ -7,6 +7,7 @@ export interface CapabilityManifest {
 export const CAPABILITIES = [
   { id: 'physics', defaultEnabled: true },
   { id: 'navigation', defaultEnabled: true },
+  { id: 'particles', defaultEnabled: false },
 ] as const satisfies readonly CapabilityManifest[]
 
 export type CapabilityId = (typeof CAPABILITIES)[number]['id']

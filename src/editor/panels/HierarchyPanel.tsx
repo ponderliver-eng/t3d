@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEve
 import { createPortal } from 'react-dom'
 import {
   Axis3d, Box, Boxes, Camera, ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, Circle, Cone, Cylinder, Eye, EyeOff,
-  Flashlight, Lightbulb, Lock, Pill, Plus, Search, Square, Sun, Sunrise, Unlock, X,
+  Flashlight, Lightbulb, Lock, Pill, Plus, Search, Sparkles, Square, Sun, Sunrise, Unlock, X,
 } from 'lucide-react'
 import { readClipDrag } from '../animation/playback'
 import { assignClip } from '../assets/import'
@@ -30,6 +30,7 @@ const ICONS: Record<NodeKind, typeof Box> = {
   'spot-light': Flashlight,
   'hemisphere-light': Sunrise,
   camera: Camera,
+  effect: Sparkles,
 }
 
 const RENAME_DELAY_MS = 1000
@@ -641,6 +642,7 @@ function CreateList({ onCreate }: { onCreate: (kind: NodeKind) => void }) {
       <div className="scene-panel__popover-label">{t('menu.lights')}</div>
       {LIGHT_KINDS.map(kind => <button key={kind} type="button" onClick={() => onCreate(kind)}>{kindName(kind)}</button>)}
       <button type="button" onClick={() => onCreate('camera')}>{t('menu.camera')}</button>
+      <button type="button" onClick={() => onCreate('effect')}>{t('menu.effect')}</button>
     </>
   )
 }
@@ -660,5 +662,6 @@ function iconColor(kind: NodeKind): string {
   if (isLight(kind)) return '#ffd36b'
   if (kind === 'camera') return '#4a9eff'
   if (isMesh(kind)) return '#f5a623'
+  if (kind === 'effect') return '#ffb25a'
   return '#999999'
 }

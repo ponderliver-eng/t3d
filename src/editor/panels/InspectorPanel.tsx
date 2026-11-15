@@ -9,8 +9,10 @@ import { ASSET_MIME, reimportModel, saveMaterialFromNode, savePrefabFromSelectio
 import { primaryId, useEditorStore } from '../scene/store'
 import { isLight, isMesh } from '../scene/kinds'
 import { capabilityEnabled } from '../../capabilities/registry'
+import { EffectModules } from '../../capabilities/particles/EffectModules'
 import { openProjectSettings } from '../project/ProjectSettingsDialog'
 import { PhysicsCard } from '../../capabilities/physics/PhysicsCard'
+import { EffectCard } from '../../capabilities/particles/EffectCard'
 import { NavigationCard, SceneNavigationCard } from '../../capabilities/navigation/NavigationCards'
 import {
   InspectorFrame,
@@ -24,7 +26,7 @@ import { instanceDirty, isPrefabRoot } from '../assets/prefab'
 import { translate, useI18n, type MessageKey } from '../i18n'
 import { AssetPicker } from './AssetPicker'
 import { openAssetPreview } from '../preview/previewStore'
-import type { AlphaMode, CullMode, NodeKind, PbrSlot, SceneNode, ScenePicture, SurfaceShader, Vec3 } from '../scene/types'
+import type { AlphaMode, CullMode, NodeKind, ParticleBlend, PbrSlot, SceneNode, ScenePicture, SurfaceShader, Vec3 } from '../scene/types'
 import './InspectorPanel.css'
 
 const AXES = [
@@ -171,6 +173,7 @@ export default function InspectorPanel() {
       {(isMesh(node.kind) || node.kind === 'model' || node.kind === 'empty') && (
         <PhysicsCard node={node} disabled={locked || playing} />
       )}
+      {node.kind === 'effect' && <EffectCard node={node} disabled={locked || playing} />}
       {(isMesh(node.kind) || node.kind === 'model' || node.kind === 'empty') && (
         <NavigationCard node={node} disabled={locked || playing} />
       )}
@@ -308,7 +311,14 @@ function AssetSettings({ asset }: { asset: import('../assets/library').ProjectAs
           <MaterialEditor slot={normalizeSlot(asset.slot)} onChange={patch => useAssetStore.getState().updateMaterial(asset.id, patch)} />
         </Card>
       )}
-      {asset.kind !== 'material' && (
+      {asset.kind === 'effect' && (
+        <EffectModules
+          simulation={asset.simulation}
+          disabled={false}
+          onChange={simulation => useAssetStore.getState().updateEffect(asset.id, { simulation })}
+        />
+      )}
+      {asset.kind !== 'material' && asset.kind !== 'effect' && (
         <Card id="asset" title={t('inspector.asset')} color="#4a9eff">
           <label className="field"><span>{t('inspector.type')}</span><span>{assetKindLabel(asset.kind)}</span></label>
           {'fileName' in asset && <label className="field"><span>{t('inspector.file')}</span><span>{asset.fileName}</span></label>}
@@ -380,7 +390,7 @@ function ObjectName({ node, disabled }: { node: SceneNode, disabled: boolean }) 
 
 function assetKindLabel(kind: string): string {
   const key = `asset.${kind}` as MessageKey
-  const known = ['scene', 'model', 'texture', 'environment', 'material', 'animation', 'audio', 'prefab']
+  const known = ['scene', 'model', 'texture', 'environment', 'material', 'animation', 'audio', 'prefab', 'effect']
   return known.includes(kind) ? translate(key) : kind
 }
 
@@ -649,15 +659,22 @@ function materialIdFromDrop(event: DragEvent): string | null {
 function MaterialEditor({ slot, onChange }: { slot: PbrSlot, onChange: (patch: Partial<PbrSlot>) => void }) {
   const { t } = useI18n()
   const lit = (slot.shader ?? 'lit') === 'lit'
+  const particle = (slot.shader ?? 'lit') === 'particle-unlit'
   const textured = slot.shader !== 'unlit-color'
   return (
     <>
       <label className="field">
         <span>{t('material.shader')}</span>
-        <select value={slot.shader ?? 'lit'} onChange={event => onChange({ shader: event.target.value as SurfaceShader })}>
+        <select value={slot.shader ?? 'lit'} onChange={event => {
+          const shader = event.target.value as SurfaceShader
+          onChange(shader === 'particle-unlit'
+            ? { shader, particleBlend: slot.particleBlend ?? 'additive', depthWrite: false, cull: 'off', alphaMode: 'blend' }
+            : { shader })
+        }}>
           <option value="lit">{t('material.lit')}</option>
           <option value="unlit-color">{t('material.unlitColor')}</option>
           <option value="unlit-texture">{t('material.unlitTexture')}</option>
+          <option value="particle-unlit">{t('material.particle')}</option>
         </select>
       </label>
       <div className="field-section">{t('material.surface')}</div>
@@ -678,16 +695,27 @@ function MaterialEditor({ slot, onChange }: { slot: PbrSlot, onChange: (patch: P
           <MapField label={t('material.emissionMap')} value={slot.emissiveAssetId ?? null} onChange={emissiveAssetId => onChange({ emissiveAssetId })} />
         </>
       )}
-      <div className="field-section">{t('material.transparency')}</div>
-      <label className="field">
+      {particle && (
+        <label className="field">
+          <span>{t('material.particleBlend')}</span>
+          <select value={slot.particleBlend ?? 'additive'} onChange={event => onChange({ particleBlend: event.target.value as ParticleBlend })}>
+            <option value="alpha">{t('material.blendAlpha')}</option>
+            <option value="premultiply">{t('material.blendPremultiply')}</option>
+            <option value="additive">{t('material.blendAdditive')}</option>
+            <option value="multiply">{t('material.blendMultiply')}</option>
+          </select>
+        </label>
+      )}
+      {!particle && <div className="field-section">{t('material.transparency')}</div>}
+      {!particle && <label className="field">
         <span>{t('material.mode')}</span>
         <select value={slot.alphaMode ?? 'opaque'} onChange={event => onChange({ alphaMode: event.target.value as AlphaMode })}>
           <option value="opaque">{t('material.opaque')}</option>
           <option value="blend">{t('material.blend')}</option>
           <option value="clip">{t('material.clip')}</option>
         </select>
-      </label>
-      {(slot.alphaMode ?? 'opaque') === 'blend' && (
+      </label>}
+      {!particle && (slot.alphaMode ?? 'opaque') === 'blend' && (
         <NumberRow label={t('material.opacity')} value={slot.opacity} min={0} max={1} step={0.01} gesture={t('gesture.material')} onChange={opacity => onChange({ opacity })} />
       )}
       {(slot.alphaMode ?? 'opaque') === 'clip' && (
@@ -706,10 +734,10 @@ function MaterialEditor({ slot, onChange }: { slot: PbrSlot, onChange: (patch: P
         <span>{t('material.depthWrite')}</span>
         <input type="checkbox" checked={slot.depthWrite ?? true} onChange={event => onChange({ depthWrite: event.target.checked })} />
       </label>
-      <label className="field">
+      {!particle && <label className="field">
         <span>{t('material.wireframe')}</span>
         <input type="checkbox" checked={slot.wireframe ?? false} onChange={event => onChange({ wireframe: event.target.checked })} />
-      </label>
+      </label>}
     </>
   )
 }

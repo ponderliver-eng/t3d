@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type MouseEvent } from 'react'
-import { Box, ChevronRight, Clapperboard, Component, Folder, FolderOpen, FolderPlus, Globe, Image, LayoutGrid, List, Minus, Music, Palette, Plus, Rows3, Search, Sun, Trash2, Upload, X } from 'lucide-react'
+import { Box, ChevronRight, Clapperboard, Component, Folder, FolderOpen, FolderPlus, Globe, Image, LayoutGrid, List, Minus, Music, Palette, Plus, Rows3, Search, Sparkles, Sun, Trash2, Upload, X } from 'lucide-react'
 import { CLIP_MIME } from '../animation/playback'
 import { ASSET_MIME, assignClip, bindImportInput, createDefaultMaterial, deleteAsset, duplicateAsset, importFiles, openAsset, openImport, reimportModel, reportAssetUsers } from '../assets/import'
 import { savePrefabFromSelection } from '../assets/import'
@@ -35,6 +35,7 @@ const KIND_ICON = {
   animation: Clapperboard,
   audio: Music,
   prefab: Component,
+  effect: Sparkles,
 } as const
 
 const KIND_COLOR: Record<string, string> = {
@@ -46,11 +47,12 @@ const KIND_COLOR: Record<string, string> = {
   animation: 'var(--text-accent)',
   audio: 'var(--color-sound)',
   prefab: '#a966d3',
+  effect: '#ffb25a',
 }
 
 function kindLabel(kind: string): string {
   const key = `asset.${kind}` as MessageKey
-  const known = ['scene', 'model', 'texture', 'environment', 'material', 'animation', 'audio', 'prefab']
+  const known = ['scene', 'model', 'texture', 'environment', 'material', 'animation', 'audio', 'prefab', 'effect']
   return known.includes(kind) ? translate(key) : kind
 }
 

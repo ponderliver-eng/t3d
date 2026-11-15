@@ -50,6 +50,7 @@ import { bindTextureRenderer, environmentFor } from '../assets/textures'
 import { EDITOR_HELPER_LAYER, layerBitIndex } from '../project/taxonomy'
 import { capabilityEnabled } from '../../capabilities/registry'
 import { tickPhysics } from '../../capabilities/physics/session'
+import { disposeParticles, mountParticles, tickParticles } from '../../capabilities/particles/session'
 import { collectNavSurfaces } from '../../capabilities/navigation/collect'
 import { syncNavDebug } from '../../capabilities/navigation/debug'
 import { consumeNavBake, navDebugGeometry, tickNavigation } from '../../capabilities/navigation/session'
@@ -57,13 +58,14 @@ import { physicsDebugActive, syncPhysicsDebug } from './physicsDebug'
 import { boundsOf, refreshObjectBounds } from '../scene/bounds'
 import { isLight, isMesh } from '../scene/kinds'
 import { setSpawnProvider } from '../scene/spawn'
-import { setGroundSnapper } from '../scene/viewportBridge'
+import { setGroundSnapper, setViewportAlign } from '../scene/viewportBridge'
 import { useEditorStore } from '../scene/store'
 import { localPoseFromWorld, poseComponents, worldPose } from '../scene/transform'
 import type { SceneNode } from '../scene/types'
 import { EditorCameraRig } from './cameraControls'
+import { resolvePlayCamera } from './playCamera'
 import { viewCubePose } from './viewCubeBridge'
-import { createEditorGrid } from './editorGrid'
+import { createEditorGrid, gridStepForDistance } from './editorGrid'
 import { createSceneGuide, type SceneGuide } from './lightCameraGizmo'
 import { ScenePicturePipeline } from './picture'
 
@@ -146,11 +148,14 @@ export class EditorViewport {
   private picture: ScenePicturePipeline | null = null
   private readonly physicsDebug = new Group()
   private readonly navDebug = new Group()
+  private frameCamera: EditorCameraRig['active'] | null = null
+  private playCameraWarned = ''
   private readonly unsubscribe: () => void
   private readonly unsubscribeAssets: () => void
   private readonly resizeObserver: ResizeObserver
 
   constructor(private readonly canvas: HTMLCanvasElement, private readonly stage: HTMLElement) {
+    this.frameCamera = this.rig.persp
     this.renderer = new WebGPURenderer({ canvas, antialias: true })
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2))
     this.renderer.outputColorSpace = SRGBColorSpace
@@ -170,6 +175,7 @@ export class EditorViewport {
     this.navDebug.name = 'nav-debug'
     this.scene.add(this.navDebug)
     root.add(this.world)
+    mountParticles(this.scene)
     const ambient = new AmbientLight(0xffffff, 0.28)
     ambient.layers.enableAll()
     root.add(ambient)
@@ -209,6 +215,15 @@ export class EditorViewport {
       return [point.x, 0, point.z]
     })
     setGroundSnapper(ids => this.measureSnap(ids))
+    setViewportAlign({
+      read: () => this.rig.capture(),
+      place: (position, quaternion) => {
+        this.rig.lookThrough(
+          new Vector3(position[0], position[1], position[2]),
+          new Quaternion(quaternion[0], quaternion[1], quaternion[2], quaternion[3]),
+        )
+      },
+    })
 
     this.canvas.addEventListener('pointerdown', this.onPointerDown, true)
     this.canvas.addEventListener('pointermove', this.onPointerMove)
@@ -234,12 +249,14 @@ export class EditorViewport {
     this.resizeObserver.disconnect()
     setSpawnProvider(() => [0, 0, 0])
     setGroundSnapper(null)
+    setViewportAlign(null)
     this.marquee?.remove()
     this.canvas.removeEventListener('pointerdown', this.onPointerDown, true)
     this.canvas.removeEventListener('pointermove', this.onPointerMove)
     this.canvas.removeEventListener('pointerup', this.onPointerUp)
     this.canvas.removeEventListener('wheel', this.onWheel)
     this.canvas.removeEventListener('contextmenu', this.onContext)
+    disposeParticles()
     this.picture?.dispose()
     this.transform.dispose()
     this.rig.dispose()
@@ -266,9 +283,12 @@ export class EditorViewport {
     const state = useEditorStore.getState()
     if (state.cameraNonce !== this.cameraNonce) {
       this.cameraNonce = state.cameraNonce
-      if (state.cameraAction === 'focus') this.focusSelection()
-      else if (state.cameraAction === 'focus-all') this.focusAll()
-      else this.rig.setView(state.cameraView)
+      const locked = state.playState !== 'stopped' && resolvePlayCamera(state.nodes, state.tags).id !== null
+      if (!locked) {
+        if (state.cameraAction === 'focus') this.focusSelection()
+        else if (state.cameraAction === 'focus-all') this.focusAll()
+        else this.rig.setView(state.cameraView)
+      }
     }
     this.sync()
   }
@@ -314,6 +334,7 @@ export class EditorViewport {
     applyCameraMask(this.rig.ortho, state.editorCullingMask)
     this.raycaster.layers.mask = this.rig.persp.layers.mask
     this.grid.visible = state.gridVisible && state.playState === 'stopped'
+    this.placeGrid()
     this.transform.mode = state.gizmoMode
     this.transform.space = state.gizmoSpace
     this.transform.translationSnap = state.snap ? state.snapStep : null
@@ -710,9 +731,11 @@ export class EditorViewport {
       }
     }
     if (box.isEmpty()) return
+    const size = box.getSize(new Vector3())
     const center = box.getCenter(new Vector3())
-    const radius = Math.max(box.getSize(new Vector3()).length() * 0.5, 0.6)
-    this.rig.focus(center, radius)
+    const radius = Math.max(size.length() * 0.5, 0.6)
+    const flat = size.y < Math.max(size.x, size.z) * 0.08 && Math.max(size.x, size.z) > 1
+    this.rig.focus(center, radius, flat)
   }
 
   private focusAll() {
@@ -734,6 +757,10 @@ export class EditorViewport {
     const gizmo = this.transform.axis !== null && event.button === 0 && !event.altKey
     this.press = null
     if (gizmo) return
+    if (this.playCameraLocked()) {
+      event.preventDefault()
+      return
+    }
     if (this.rig.pointerDown(event)) {
       this.canvas.setPointerCapture(event.pointerId)
       return
@@ -784,6 +811,10 @@ export class EditorViewport {
   }
 
   private onWheel = (event: WheelEvent) => {
+    if (this.playCameraLocked()) {
+      event.preventDefault()
+      return
+    }
     this.rig.wheel(event)
   }
 
@@ -820,7 +851,7 @@ export class EditorViewport {
       const source = dataOf(group).pick ?? group
       const box = boundsOf(source)
       const point = box.isEmpty() ? group.getWorldPosition(new Vector3()) : box.getCenter(new Vector3())
-      const ndc = point.project(this.rig.active)
+      const ndc = point.project(this.viewCamera())
       if (ndc.z < -1 || ndc.z > 1) continue
       const sx = (ndc.x * 0.5 + 0.5) * rect.width + rect.left
       const sy = (-ndc.y * 0.5 + 0.5) * rect.height + rect.top
@@ -838,7 +869,7 @@ export class EditorViewport {
       ((clientX - rect.left) / rect.width) * 2 - 1,
       -((clientY - rect.top) / rect.height) * 2 + 1,
     )
-    this.raycaster.setFromCamera(this.pointer, this.rig.active)
+    this.raycaster.setFromCamera(this.pointer, this.viewCamera())
     const hits = this.raycaster.intersectObjects(this.pickables, true)
     for (const hit of hits) {
       let object: Object3D | null = hit.object
@@ -869,7 +900,7 @@ export class EditorViewport {
       ((clientX - rect.left) / rect.width) * 2 - 1,
       -((clientY - rect.top) / rect.height) * 2 + 1,
     )
-    this.raycaster.setFromCamera(this.pointer, this.rig.active)
+    this.raycaster.setFromCamera(this.pointer, this.viewCamera())
     const hits = this.raycaster.intersectObjects(this.pickables, true)
     for (const hit of hits) {
       let object: Object3D | null = hit.object
@@ -889,6 +920,21 @@ export class EditorViewport {
       }
     }
     return { point: [0, 0, 0], nodeId: null }
+  }
+
+  private gridStep = 1
+
+  private placeGrid() {
+    const distance = Math.max(this.rig.orbitDistance, 1)
+    const next = gridStepForDistance(distance)
+    if (next > this.gridStep * 1.4 || next < this.gridStep / 1.4) this.gridStep = next
+    const setGridLevel = this.grid.userData.setGridLevel as ((cell: number, distance: number) => void) | undefined
+    const reach = Math.max(distance * 2.8, 48)
+    setGridLevel?.(this.gridStep, reach)
+    const camera = this.rig.active.position
+    this.grid.position.x = Math.round(camera.x / this.gridStep) * this.gridStep
+    this.grid.position.z = Math.round(camera.z / this.gridStep) * this.gridStep
+    this.grid.scale.set(reach / 2000, 1, reach / 2000)
   }
 
   private boot = async () => {
@@ -913,9 +959,12 @@ export class EditorViewport {
     if (this.disposed) return
     const dt = Math.min(0.05, this.last ? (time - this.last) / 1000 : 0)
     this.last = time
+    if (this.playCameraLocked()) this.rig.pointerUp()
     this.rig.update(dt)
+    this.placeGrid()
     tickPhysics(dt)
     tickNavigation()
+    tickParticles(dt, id => this.objects.get(id) ?? null)
     const bake = consumeNavBake()
     if (bake) {
       const roots = bake.surfaceIds.flatMap(id => {
@@ -943,12 +992,13 @@ export class EditorViewport {
       helper.update()
     }
     this.flattenGizmo()
+    this.frameCamera = this.activeCamera()
     this.paintViewCube()
     if (this.ready && this.picture && this.width > 1 && this.height > 1) {
     this.updateMixers(dt)
     this.applyPicture()
     this.sampleStats()
-      const camera = this.rig.active
+      const camera = this.viewCamera()
       const picture = useEditorStore.getState().picture
       if (!this.picture.usesEffects(picture)) {
         this.renderer.render(this.scene, camera)
@@ -1266,8 +1316,42 @@ export class EditorViewport {
     })
   }
 
+  private viewCamera() {
+    return this.frameCamera ?? this.rig.active
+  }
+
+  private playCameraLocked() {
+    const state = useEditorStore.getState()
+    return state.playState !== 'stopped' && resolvePlayCamera(state.nodes, state.tags).id !== null
+  }
+
+  private activeCamera() {
+    const state = useEditorStore.getState()
+    if (state.playState === 'stopped') {
+      this.playCameraWarned = ''
+      return this.rig.active
+    }
+    const chosen = resolvePlayCamera(state.nodes, state.tags)
+    const node = chosen.id ? state.nodes[chosen.id] : undefined
+    const camera = node ? dataOf(this.objects.get(node.id) ?? new Group()).sceneCamera : undefined
+    if (!node || !camera) return this.rig.active
+    camera.fov = node.fov
+    camera.near = Math.max(0.001, node.near)
+    camera.far = Math.max(camera.near + 0.01, node.far)
+    camera.aspect = this.aspect()
+    camera.updateProjectionMatrix()
+    applyCameraMask(camera, state.editorCullingMask)
+    this.raycaster.layers.mask = camera.layers.mask
+    camera.updateMatrixWorld(true)
+    if (chosen.multipleMain && this.playCameraWarned !== node.id) {
+      this.playCameraWarned = node.id
+      state.log('warn', translate('log.playCameraMany', { name: node.name }))
+    }
+    return camera
+  }
+
   private paintViewCube() {
-    this.cubeQuat.copy(this.rig.active.quaternion).invert()
+    this.viewCamera().getWorldQuaternion(this.cubeQuat).invert()
     viewCubePose.x = this.cubeQuat.x
     viewCubePose.y = this.cubeQuat.y
     viewCubePose.z = this.cubeQuat.z

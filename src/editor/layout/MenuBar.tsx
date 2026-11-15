@@ -22,6 +22,11 @@ export default function MenuBar() {
   const canUndo = useEditorStore(state => state.past.length > 0 || state.gesture !== null)
   const canRedo = useEditorStore(state => state.future.length > 0 && state.gesture === null)
   const hasSelection = useEditorStore(state => state.selection.length > 0)
+  const selectedCamera = useEditorStore(state => {
+    const id = state.selection[state.selection.length - 1]
+    const node = id ? state.nodes[id] : undefined
+    return node?.kind === 'camera' ? node : null
+  })
   const canPaste = useEditorStore(state => state.canPaste)
 
   const { t } = useI18n()
@@ -118,9 +123,12 @@ export default function MenuBar() {
             ))}
           </Submenu>
           <Item disabled={playing} onClick={() => create('camera')}>{t('menu.camera')}</Item>
+          <Item disabled={playing} onClick={() => create('effect')}>{t('menu.effect')}</Item>
         </Dropdown>
         <Dropdown label={t('menu.view')}>
           <Item disabled={!hasSelection} onClick={() => useEditorStore.getState().requestFocus()}>{t('menu.focus')}<span className="menubar__hint">F</span></Item>
+          <Item disabled={playing || !selectedCamera || selectedCamera.locked} onClick={() => useEditorStore.getState().alignCameraToView()}>{t('menu.alignCamera')}<span className="menubar__hint">Ctrl+Shift+F</span></Item>
+          <Item disabled={playing || !selectedCamera} onClick={() => useEditorStore.getState().alignViewToCamera()}>{t('menu.alignView')}<span className="menubar__hint">Shift+F</span></Item>
           <Sep />
           <Item onClick={() => view('top')}>{t('menu.viewTop')}</Item>
           <Item onClick={() => view('front')}>{t('menu.viewFront')}</Item>
