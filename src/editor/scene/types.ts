@@ -1,3 +1,6 @@
+import type { NodeScreen } from '../../runtime/ui/spec'
+
+export type { NodeScreen }
 export type Vec3 = [number, number, number]
 
 export type NodeKind =
@@ -238,6 +241,8 @@ export interface SceneNode {
   navigation?: NodeNavigation | null
   /** 特效物体的播放数据。关掉能力包不会清掉它。 */
   effect?: NodeEffect | null
+  /** 屏幕界面挂载。一份节点挂一份文档。 */
+  screen?: NodeScreen | null
   /** 主标签，对应工程标签表的 id。 */
   tagId?: string | null
   /** 额外层级标签，存标签 id。 */

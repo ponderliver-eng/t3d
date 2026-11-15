@@ -10,6 +10,7 @@ import { ChevronDown, Focus, Grid3x3, Maximize, Move3d, RotateCcw, Scaling, Arro
 import { useEditorStore } from '../scene/store'
 import { EditorViewport } from './EditorViewport'
 import ViewCube from './ViewCube'
+import { PlayUiOverlay } from '../ui/PlayUiOverlay'
 import './ViewportPanel.css'
 
 const VIEWS: CameraView[] = ['persp', 'top', 'bottom', 'front', 'back', 'left', 'right']
@@ -173,6 +174,7 @@ export default function ViewportPanel() {
         }}
       >
         <canvas ref={canvasRef} />
+        {playState !== 'stopped' && <PlayUiOverlay />}
         <div className="viewport-stats">{t('view.stats', { objects: stats.objects, triangles: stats.triangles.toLocaleString() })}</div>
       </div>
       <ViewCube />

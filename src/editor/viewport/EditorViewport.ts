@@ -964,7 +964,7 @@ export class EditorViewport {
     this.placeGrid()
     tickPhysics(dt)
     tickNavigation()
-    tickParticles(dt, id => this.objects.get(id) ?? null)
+    if (this.ready) tickParticles(dt, id => this.objects.get(id) ?? null)
     const bake = consumeNavBake()
     if (bake) {
       const roots = bake.surfaceIds.flatMap(id => {

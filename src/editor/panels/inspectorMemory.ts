@@ -48,8 +48,9 @@ export const useInspectorMemory = create<InspectorMemoryState>(set => ({
   entries: load(),
   setOpen: (subject, card, open) => set(state => {
     const prev = state.entries[subject] ?? { scroll: 0, open: {}, slot: null }
-    if (prev.open[card] === open) return state
-    const entries = { ...state.entries, [subject]: { ...prev, open: { ...prev.open, [card]: open } } }
+    const prevOpen = prev.open ?? {}
+    if (prevOpen[card] === open) return state
+    const entries = { ...state.entries, [subject]: { ...prev, open: { ...prevOpen, [card]: open } } }
     schedulePersist(entries)
     return { entries }
   }),
@@ -104,7 +105,7 @@ export function useInspectorSlot(): [number | null | undefined, (slot: number | 
 
 export function useInspectorCardOpen(card: string): [boolean, (open: boolean) => void] {
   const subject = useContext(InspectorSubject)
-  const open = useInspectorMemory(state => state.entries[subject]?.open[card] ?? true)
+  const open = useInspectorMemory(state => state.entries[subject]?.open?.[card] ?? true)
   const setOpen = (next: boolean) => useInspectorMemory.getState().setOpen(subject, card, next)
   return [open, setOpen]
 }

@@ -10,6 +10,9 @@ import { translate } from '../i18n'
 import { QUARKS_VERSION } from '../../capabilities/particles/defaults'
 import { readQuarksDocument } from '../../capabilities/particles/readQuarks'
 import { assetDirectory, assetName, useAssetStore, type FileAsset, type FileKind, type ProjectAsset } from './library'
+import { createScoreDocument } from '../../runtime/ui/spec'
+import { collectUiImageIds } from '../../runtime/ui/tree'
+import { openUiEditor } from '../ui/session'
 import type { PbrSlot, SceneNode, Vec3 } from '../scene/types'
 
 export const ASSET_MIME = 'application/x-t3d-asset'
@@ -352,6 +355,10 @@ export function placeAsset(assetId: string, point: Vec3, hitId: string | null) {
     editor.spawnEffect(asset.id, point)
     return
   }
+  if (asset.kind === 'ui') {
+    editor.mountScreen(asset.id, point, hitId)
+    return
+  }
   const node = hitId ? editor.nodes[hitId] : undefined
   if (!node) {
     editor.log('warn', asset.kind === 'animation' ? translate('log.dragAnim') : translate('log.dragAsset'))
@@ -428,6 +435,16 @@ export function savePrefabFromSelection() {
   editor.createPrefabFromSelection()
 }
 
+export function createDefaultUi(dir?: string) {
+  const name = uniqueAssetName(translate('project.newUiName'))
+  const id = crypto.randomUUID()
+  useAssetStore.getState().add({ id, name, kind: 'ui', document: createScoreDocument() })
+  useAssetStore.getState().place(id, dir)
+  useEditorStore.getState().inspectAsset(id)
+  useEditorStore.getState().log('info', translate('log.createdUi', { name }))
+  openUiEditor(id)
+}
+
 export function createDefaultMaterial(dir?: string) {
   const name = uniqueAssetName(translate('project.newMaterialName'))
   const id = crypto.randomUUID()
@@ -458,7 +475,7 @@ export function createDefaultMaterial(dir?: string) {
 
 export function duplicateAsset(id: string) {
   const asset = useAssetStore.getState().assets[id]
-  if (!asset || (asset.kind !== 'material' && asset.kind !== 'scene' && asset.kind !== 'prefab' && asset.kind !== 'effect')) return
+  if (!asset || (asset.kind !== 'material' && asset.kind !== 'scene' && asset.kind !== 'prefab' && asset.kind !== 'effect' && asset.kind !== 'ui')) return
   const copy = structuredClone(asset)
   copy.id = crypto.randomUUID()
   copy.name = uniqueAssetName(`${asset.name} ${translate('project.copySuffix')}`)
@@ -585,6 +602,11 @@ function referencedBy(assetId: string): string[] {
     }
     if (asset.kind === 'material' && slotUses(asset.slot, assetId)) names.push(asset.name)
     if (asset.kind === 'effect' && asset.materialAssetId === assetId) names.push(asset.name)
+    if (asset.kind === 'ui') {
+      const images = new Set<string>()
+      collectUiImageIds(asset.document.root, images)
+      if (images.has(assetId)) names.push(asset.name)
+    }
   }
   return names
 }
@@ -592,6 +614,7 @@ function referencedBy(assetId: string): string[] {
 function usesAsset(node: SceneNode, assetId: string): boolean {
   if (node.assetId === assetId || node.clipAssetId === assetId || node.materialAssetId === assetId) return true
   if (node.effect?.assetId === assetId || node.effect?.materialAssetId === assetId) return true
+  if (node.screen?.documentId === assetId) return true
   if (slotUses(slotFromNode(node), assetId)) return true
   return node.slots.some(slot => slot.materialAssetId === assetId || slotUses(slot, assetId))
 }
@@ -636,6 +659,10 @@ export function collectPrefabNodes(nodes: Record<string, SceneNode>, selection: 
 export async function openAsset(assetId: string) {
   const asset = useAssetStore.getState().assets[assetId]
   if (!asset) return
+  if (asset.kind === 'ui') {
+    openUiEditor(asset.id)
+    return
+  }
   if (asset.kind === 'audio') {
     previewAudio(asset)
     return

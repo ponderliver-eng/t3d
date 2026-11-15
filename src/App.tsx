@@ -12,6 +12,8 @@ import ProjectSettingsDialog from './editor/project/ProjectSettingsDialog'
 import TaxonomyDialogs from './editor/project/TaxonomyDialogs'
 import { usePrefsStore } from './editor/prefs/store'
 import { PreviewHost } from './editor/preview/PreviewHost'
+import { UiEditor } from './editor/ui/UiEditor'
+import { isUiEditorOpen, redoActive, undoActive, useUiEditor } from './editor/ui/session'
 import { isViewportNavigating } from './editor/viewport/cameraControls'
 import './App.css'
 
@@ -52,6 +54,27 @@ export default function App() {
         void saveProjectNow().then(() => notifyProjectSaved()).catch(error => {
           store.log('error', translate('log.projectFailed', { message: error instanceof Error ? error.message : String(error) }))
         })
+        return
+      }
+      if (isUiEditorOpen()) {
+        if (ctrl && event.code === 'KeyZ' && !event.shiftKey) {
+          event.preventDefault()
+          undoActive()
+          return
+        }
+        if (ctrl && (event.code === 'KeyY' || (event.code === 'KeyZ' && event.shiftKey))) {
+          event.preventDefault()
+          redoActive()
+          return
+        }
+        if (event.code === 'Escape') {
+          event.preventDefault()
+          useUiEditor.getState().close()
+        }
+        if (event.code === 'Delete' || event.code === 'Backspace') {
+          event.preventDefault()
+          useUiEditor.getState().removeSelected()
+        }
         return
       }
       if (ctrl && event.code === 'KeyZ' && !event.shiftKey) {
@@ -143,6 +166,7 @@ export default function App() {
       )}
       <div className="app__workspace">
         <IDELayout />
+        <UiEditor />
       </div>
       <StatusBar />
       <PreviewHost />

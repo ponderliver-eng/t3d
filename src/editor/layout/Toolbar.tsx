@@ -2,6 +2,7 @@ import { ArrowDownToLine, FilePlus, Grid3x3, History, Magnet, Move3d, Pause, Pla
 import { saveProjectNow } from '../assets/project'
 import { translate, useI18n } from '../i18n'
 import { askNewScene, useEditorStore } from '../scene/store'
+import { redoActive, undoActive, useUiEditor } from '../ui/session'
 import { selectTab } from './events'
 import './Toolbar.css'
 
@@ -13,8 +14,13 @@ export default function Toolbar() {
   const grid = useEditorStore(state => state.gridVisible)
   const playState = useEditorStore(state => state.playState)
   const sidePanel = useEditorStore(state => state.sidePanel)
-  const canUndo = useEditorStore(state => (state.past.length > 0 || state.gesture !== null) && state.playState === 'stopped')
-  const canRedo = useEditorStore(state => state.future.length > 0 && state.gesture === null && state.playState === 'stopped')
+  const sceneUndo = useEditorStore(state => (state.past.length > 0 || state.gesture !== null) && state.playState === 'stopped')
+  const sceneRedo = useEditorStore(state => state.future.length > 0 && state.gesture === null && state.playState === 'stopped')
+  const uiUndo = useUiEditor(state => state.assetId !== null && state.past.length > 0)
+  const uiRedo = useUiEditor(state => state.assetId !== null && state.future.length > 0)
+  const uiOpen = useUiEditor(state => state.assetId !== null)
+  const canUndo = uiOpen ? uiUndo : sceneUndo
+  const canRedo = uiOpen ? uiRedo : sceneRedo
   const undoLabel = useEditorStore(state => state.past[state.past.length - 1]?.label)
   const redoLabel = useEditorStore(state => state.future[state.future.length - 1]?.label)
   const setGizmoMode = useEditorStore(state => state.setGizmoMode)
@@ -44,10 +50,10 @@ export default function Toolbar() {
       </div>
       <div className="toolbar__divider" />
       <div className="toolbar__group">
-        <button type="button" className="toolbar__btn" title={undoLabel ? `${t('tool.undo')} ${undoLabel}` : t('tool.undo')} disabled={!canUndo} onClick={() => useEditorStore.getState().undo()}>
+        <button type="button" className="toolbar__btn" title={undoLabel ? `${t('tool.undo')} ${undoLabel}` : t('tool.undo')} disabled={!canUndo} onClick={undoActive}>
           <Undo2 size={14} />
         </button>
-        <button type="button" className="toolbar__btn" title={redoLabel ? `${t('tool.redo')} ${redoLabel}` : t('tool.redo')} disabled={!canRedo} onClick={() => useEditorStore.getState().redo()}>
+        <button type="button" className="toolbar__btn" title={redoLabel ? `${t('tool.redo')} ${redoLabel}` : t('tool.redo')} disabled={!canRedo} onClick={redoActive}>
           <Redo2 size={14} />
         </button>
       </div>

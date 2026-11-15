@@ -20,6 +20,8 @@ import {
   useInspectorSlot,
 } from './inspectorMemory'
 import { TagLayerStrip } from './TagLayerCards'
+import { ScreenCard } from '../ui/ScreenCard'
+import { openUiEditor } from '../ui/session'
 import { normalizeSlot, resolveModelSlot, slotFromNode } from '../assets/materials'
 import { assetDirectory, useAssetStore, type FileAsset } from '../assets/library'
 import { instanceDirty, isPrefabRoot } from '../assets/prefab'
@@ -177,6 +179,7 @@ export default function InspectorPanel() {
       {(isMesh(node.kind) || node.kind === 'model' || node.kind === 'empty') && (
         <NavigationCard node={node} disabled={locked || playing} />
       )}
+      <ScreenCard node={node} locked={locked || playing} playing={playing} />
 
       {(isMesh(node.kind) || node.kind === 'model') && <MeshRendererCard node={node} />}
 
@@ -324,6 +327,7 @@ function AssetSettings({ asset }: { asset: import('../assets/library').ProjectAs
           {'fileName' in asset && <label className="field"><span>{t('inspector.file')}</span><span>{asset.fileName}</span></label>}
           {asset.kind === 'scene' && <label className="field"><span>{t('inspector.objects')}</span><span>{Object.keys(asset.nodes).length}</span></label>}
           {asset.kind === 'prefab' && <label className="field"><span>{t('inspector.objects')}</span><span>{Object.keys(asset.nodes).length}</span></label>}
+          {asset.kind === 'ui' && <button type="button" onClick={() => openUiEditor(asset.id)}>{t('ui.open')}</button>}
           {asset.kind === 'model' && <label className="field"><span>{t('inspector.clips')}</span><span>{clipNamesFor(asset.id).length}</span></label>}
         </Card>
       )}
@@ -390,7 +394,7 @@ function ObjectName({ node, disabled }: { node: SceneNode, disabled: boolean }) 
 
 function assetKindLabel(kind: string): string {
   const key = `asset.${kind}` as MessageKey
-  const known = ['scene', 'model', 'texture', 'environment', 'material', 'animation', 'audio', 'prefab', 'effect']
+  const known = ['scene', 'model', 'texture', 'environment', 'material', 'animation', 'audio', 'prefab', 'effect', 'ui']
   return known.includes(kind) ? translate(key) : kind
 }
 

@@ -27,6 +27,7 @@ import {
   uniqueName,
 } from './kinds'
 import { defaultCapabilities, normalizeCapabilities } from '../../capabilities/registry'
+import { resetUiValues } from '../../runtime/ui/values'
 import {
   ALL_LAYERS_VISIBLE_MASK,
   LAYER_ID_DEFAULT,
@@ -145,6 +146,7 @@ export interface EditorState {
   updateNode: (id: string, patch: Partial<SceneNode>) => void
   createNode: (kind: NodeKind, parentId?: string | null) => void
   spawnEffect: (assetId: string, point: Vec3) => void
+  mountScreen: (assetId: string, point: Vec3, hitId: string | null) => void
   deleteSelection: () => void
   duplicateSelection: () => void
   copySelection: () => void
@@ -410,6 +412,37 @@ export const useEditorStore = create<EditorState>((set, get) => ({
           materialAssetId: null,
           playing: true,
         },
+      })
+      tagAddedChild(draft.nodes, id)
+      draft.selection = [id]
+      created = name
+    })
+    if (ok && created) get().log('info', translate('log.created', { name: created }))
+  },
+
+  mountScreen: (assetId, point, hitId) => {
+    const asset = useAssetStore.getState().assets[assetId]
+    if (!asset || asset.kind !== 'ui') return
+    const screen = { documentId: asset.id, layer: 'hud' as const, visibleOnPlay: true }
+    if (hitId && get().nodes[hitId]) {
+      const ok = mutate(set, get, translate('ui.mount'), draft => {
+        draft.nodes[hitId].screen = screen
+      })
+      if (ok) get().log('info', translate('log.mountedUi', { name: asset.name }))
+      return
+    }
+    let created = ''
+    const ok = mutate(set, get, translate('gesture.create', { name: asset.name }), draft => {
+      const id = crypto.randomUUID()
+      const name = uniqueName(draft.nodes, asset.name)
+      draft.nodes[id] = makeNode({
+        id,
+        name,
+        kind: 'empty',
+        parentId: null,
+        order: nextOrder(draft.nodes, null),
+        position: point,
+        screen,
       })
       tagAddedChild(draft.nodes, id)
       draft.selection = [id]
@@ -699,6 +732,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       return
     }
     if (state === 'playing') return
+    resetUiValues()
     set({
       playState: 'playing',
       playSnapshot: cloneNodes(get().nodes),
@@ -727,6 +761,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       picture: picture ? structuredClone(picture) : get().picture,
       playPicture: null,
     })
+    resetUiValues()
     get().log('info', translate('log.stopPlay'))
   },
 

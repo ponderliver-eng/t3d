@@ -29,7 +29,7 @@ export function tickParticles(dt: number, parentOf: (id: string) => Object3D | n
   for (const node of Object.values(state.nodes)) {
     if (node.kind !== 'effect' || !node.effect) continue
     const parent = parentOf(node.id)
-    if (!parent) continue
+    if (!parent || !rootedInScene(parent)) continue
     const resolved = resolveInstance(node.id, node.effect, node.visible, parent)
     if (resolved) instances.push(resolved)
   }
@@ -62,6 +62,12 @@ function ensureRuntime() {
   })
 }
 
+function rootedInScene(object: Object3D): boolean {
+  let current: Object3D = object
+  while (current.parent) current = current.parent
+  return current.type === 'Scene'
+}
+
 function resolveInstance(id: string, effect: NonNullable<import('../../editor/scene/types').SceneNode['effect']>, visible: boolean, parent: Object3D): ParticleInstanceDesc | null {
   const assets = useAssetStore.getState().assets
   let simulation = effect.simulation
@@ -81,7 +87,7 @@ function resolveInstance(id: string, effect: NonNullable<import('../../editor/sc
     parent,
     simulation: stored,
     material,
-    playing: effect.playing,
+    playing: effect.playing !== false,
     visible,
   }
 }

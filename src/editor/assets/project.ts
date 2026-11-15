@@ -1,4 +1,4 @@
-import type { EffectAsset, MaterialAsset, PrefabAsset, SceneAsset } from './library'
+import type { EffectAsset, MaterialAsset, PrefabAsset, SceneAsset, UiAsset } from './library'
 import { assetDirectory, assetName, useAssetStore, type FileAsset } from './library'
 import {
   artifactKey,
@@ -23,6 +23,7 @@ import { normalizeCapabilities } from '../../capabilities/registry'
 import { ALL_LAYERS_VISIBLE_MASK, ensureLayers, ensureTags } from '../project/taxonomy'
 import { normalizePicture, type SceneNode } from '../scene/types'
 import { serializeNavMeshes } from '../../capabilities/navigation/archive'
+import { collectUiImageIds } from '../../runtime/ui/tree'
 import { releaseModel } from './models'
 import { releaseTexture } from './textures'
 import { ASSETS_ROOT, normalizeDir } from './folders'
@@ -158,7 +159,7 @@ export async function saveProjectNow() {
   if (editor.playState !== 'stopped' || editor.gesture) return
   editor.flushActiveScene()
   const library = Object.values(useAssetStore.getState().assets).filter(
-    (asset): asset is MaterialAsset | PrefabAsset | SceneAsset | EffectAsset => asset.kind === 'material' || asset.kind === 'prefab' || asset.kind === 'scene' || asset.kind === 'effect',
+    (asset): asset is MaterialAsset | PrefabAsset | SceneAsset | EffectAsset | UiAsset => asset.kind === 'material' || asset.kind === 'prefab' || asset.kind === 'scene' || asset.kind === 'effect' || asset.kind === 'ui',
   )
   const catalog = useAssetStore.getState()
   const document: ProjectDocument = {
@@ -439,6 +440,7 @@ function referencedAssetIds(document: ProjectDocument | null): Set<string> {
       }
     }
     if (record.kind === 'effect' && record.materialAssetId) ids.add(record.materialAssetId)
+    if (record.kind === 'ui') collectUiImageIds(record.document.root, ids)
   }
   return ids
 }
@@ -450,6 +452,7 @@ function collectNodeAssets(nodes: Record<string, SceneNode>, ids: Set<string>) {
     if (node.materialAssetId) ids.add(node.materialAssetId)
     if (node.effect?.assetId) ids.add(node.effect.assetId)
     if (node.effect?.materialAssetId) ids.add(node.effect.materialAssetId)
+    if (node.screen?.documentId) ids.add(node.screen.documentId)
     for (const key of MAP_KEYS) {
       const value = node[key]
       if (value) ids.add(value)
@@ -533,7 +536,7 @@ function replaceSession(document: ProjectDocument) {
   for (const asset of Object.values(useAssetStore.getState().assets)) {
     releaseRuntimeAsset(asset.id, 'url' in asset ? asset.url : '')
   }
-  const assets: Record<string, MaterialAsset | PrefabAsset | SceneAsset | EffectAsset> = {}
+  const assets: Record<string, MaterialAsset | PrefabAsset | SceneAsset | EffectAsset | UiAsset> = {}
   for (const record of document.library) assets[record.id] = record
   useAssetStore.getState().loadSession(assets, document.folders ?? [], document.assetDirs ?? {})
   useEditorStore.getState().loadDocument(document)

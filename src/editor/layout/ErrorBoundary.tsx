@@ -21,6 +21,12 @@ export class ErrorBoundary extends Component<Props, State> {
     console.error(`[${this.props.name}]`, error, info)
   }
 
+  componentDidUpdate(prevProps: Props) {
+    if (this.state.message && prevProps.children !== this.props.children) {
+      this.setState({ message: null })
+    }
+  }
+
   render() {
     if (this.state.message) {
       return <div className="ide-panel-unknown">{translate('error.panel', { name: this.props.name, message: this.state.message })}</div>

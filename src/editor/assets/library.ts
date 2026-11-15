@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import type { ClipCatalogEntry } from '../animation/playback'
 import type { ModelHumanoidAvatar } from '../animation/humanoidAvatar'
 import type { HumanoidRetargetAdjust } from '../animation/humanoidAdjust'
+import type { UiDocument } from '../../runtime/ui/spec'
 import type { PbrSlot, SceneNode, ScenePicture } from '../scene/types'
 import { ASSETS_ROOT, directoryExists, joinDir, normalizeDir, parentDir, relocateDir, uniqueFolderName } from './folders'
 
@@ -45,6 +46,13 @@ export interface EffectAsset {
   materialAssetId: string | null
 }
 
+export interface UiAsset {
+  id: string
+  name: string
+  kind: 'ui'
+  document: UiDocument
+}
+
 export interface PrefabAsset {
   id: string
   name: string
@@ -61,7 +69,7 @@ export interface SceneAsset {
   picture: ScenePicture
 }
 
-export type ProjectAsset = FileAsset | MaterialAsset | PrefabAsset | SceneAsset | EffectAsset
+export type ProjectAsset = FileAsset | MaterialAsset | PrefabAsset | SceneAsset | EffectAsset | UiAsset
 
 interface AssetState {
   assets: Record<string, ProjectAsset>
@@ -76,6 +84,7 @@ interface AssetState {
   writeScene: (id: string, nodes: Record<string, SceneNode>, picture: ScenePicture) => void
   updateMaterial: (id: string, slot: Partial<PbrSlot>) => void
   updateEffect: (id: string, patch: { simulation?: unknown, materialAssetId?: string | null }) => void
+  updateUi: (id: string, document: UiDocument) => void
   bump: () => void
   loadCatalog: (folders: string[], assetDirs: Record<string, string>) => void
   loadSession: (assets: Record<string, ProjectAsset>, folders: string[], assetDirs: Record<string, string>) => void
@@ -130,6 +139,11 @@ export const useAssetStore = create<AssetState>((set, get) => ({
     const asset = state.assets[id]
     if (!asset || asset.kind !== 'effect') return {}
     return { assets: { ...state.assets, [id]: { ...asset, ...patch } }, revision: state.revision + 1 }
+  }),
+  updateUi: (id, document) => set(state => {
+    const asset = state.assets[id]
+    if (!asset || asset.kind !== 'ui') return {}
+    return { assets: { ...state.assets, [id]: { ...asset, document } }, revision: state.revision + 1 }
   }),
   bump: () => set(state => ({ revision: state.revision + 1 })),
   loadCatalog: (folders, assetDirs) => set({

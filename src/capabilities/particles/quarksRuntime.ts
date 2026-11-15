@@ -46,7 +46,19 @@ export function createQuarksRuntime(scene: Object3D): ParticleRuntime {
           issues.delete(instance.id)
         }
         if (live.root.parent !== instance.parent) instance.parent.add(live.root)
+        instance.parent.updateWorldMatrix(true, false)
         setEmitterVisible(live.root, instance.visible)
+        if (!rendererOf(live)) {
+          detach(live)
+          lives.delete(instance.id)
+          const spawned = spawn(instance, batch, issues)
+          if (!spawned) continue
+          live = spawned
+          lives.set(instance.id, live)
+          if (live.root.parent !== instance.parent) instance.parent.add(live.root)
+          instance.parent.updateWorldMatrix(true, false)
+          setEmitterVisible(live.root, instance.visible)
+        }
         if (live.playing !== instance.playing) {
           if (instance.playing) QuarksUtil.play(live.root)
           else QuarksUtil.pause(live.root)
@@ -133,6 +145,14 @@ function makeMaterial(desc: ParticleMaterialDesc | null) {
   if (blend.blendSrc) material.blendSrc = blend.blendSrc
   if (blend.blendDst) material.blendDst = blend.blendDst
   return material
+}
+
+function rendererOf(live: LiveEffect): boolean {
+  let attached = false
+  QuarksUtil.runOnAllParticleEmitters(live.root, emitter => {
+    if ((emitter.system as ParticleSystem)._renderer) attached = true
+  })
+  return attached
 }
 
 function detach(live: LiveEffect | undefined) {

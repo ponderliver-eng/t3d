@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { ChevronRight, Clock } from 'lucide-react'
 import { askNewScene, useEditorStore } from '../scene/store'
+import { redoActive, undoActive, useUiEditor } from '../ui/session'
 import { LIGHT_KINDS, MESH_KINDS } from '../scene/kinds'
 import { useI18n, translate, type MessageKey } from '../i18n'
 import { usePrefsStore } from '../prefs/store'
@@ -19,8 +20,13 @@ export default function MenuBar() {
   const playing = useEditorStore(state => state.playState !== 'stopped')
   const grid = useEditorStore(state => state.gridVisible)
   const snap = useEditorStore(state => state.snap)
-  const canUndo = useEditorStore(state => state.past.length > 0 || state.gesture !== null)
-  const canRedo = useEditorStore(state => state.future.length > 0 && state.gesture === null)
+  const sceneUndo = useEditorStore(state => state.past.length > 0 || state.gesture !== null)
+  const sceneRedo = useEditorStore(state => state.future.length > 0 && state.gesture === null)
+  const uiOpen = useUiEditor(state => state.assetId !== null)
+  const uiUndo = useUiEditor(state => state.past.length > 0)
+  const uiRedo = useUiEditor(state => state.future.length > 0)
+  const canUndo = uiOpen ? uiUndo : sceneUndo
+  const canRedo = uiOpen ? uiRedo : sceneRedo
   const hasSelection = useEditorStore(state => state.selection.length > 0)
   const selectedCamera = useEditorStore(state => {
     const id = state.selection[state.selection.length - 1]
@@ -98,8 +104,8 @@ export default function MenuBar() {
           <Item onClick={openPackagePicker}>{t('menu.extractPackage')}</Item>
         </Dropdown>
         <Dropdown label={t('menu.edit')}>
-          <Item disabled={playing || !canUndo} onClick={() => useEditorStore.getState().undo()}>{t('menu.undo')}<span className="menubar__hint">Ctrl+Z</span></Item>
-          <Item disabled={playing || !canRedo} onClick={() => useEditorStore.getState().redo()}>{t('menu.redo')}<span className="menubar__hint">Ctrl+Y</span></Item>
+          <Item disabled={(playing && !uiOpen) || !canUndo} onClick={undoActive}>{t('menu.undo')}<span className="menubar__hint">Ctrl+Z</span></Item>
+          <Item disabled={(playing && !uiOpen) || !canRedo} onClick={redoActive}>{t('menu.redo')}<span className="menubar__hint">Ctrl+Y</span></Item>
           <Sep />
           <Item disabled={playing || !hasSelection} onClick={() => useEditorStore.getState().duplicateSelection()}>{t('menu.duplicate')}<span className="menubar__hint">Ctrl+D</span></Item>
           <Item disabled={playing || !hasSelection} onClick={() => useEditorStore.getState().copySelection()}>{t('menu.copy')}<span className="menubar__hint">Ctrl+C</span></Item>

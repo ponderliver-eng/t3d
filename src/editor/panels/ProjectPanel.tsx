@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type MouseEvent } from 'react'
-import { Box, ChevronRight, Clapperboard, Component, Folder, FolderOpen, FolderPlus, Globe, Image, LayoutGrid, List, Minus, Music, Palette, Plus, Rows3, Search, Sparkles, Sun, Trash2, Upload, X } from 'lucide-react'
+import { Box, ChevronRight, Clapperboard, Component, Folder, FolderOpen, FolderPlus, Globe, Image, LayoutGrid, List, Minus, Music, Palette, PanelsTopLeft, Plus, Rows3, Search, Sparkles, Sun, Trash2, Upload, X } from 'lucide-react'
 import { CLIP_MIME } from '../animation/playback'
-import { ASSET_MIME, assignClip, bindImportInput, createDefaultMaterial, deleteAsset, duplicateAsset, importFiles, openAsset, openImport, reimportModel, reportAssetUsers } from '../assets/import'
+import { ASSET_MIME, assignClip, bindImportInput, createDefaultMaterial, createDefaultUi, deleteAsset, duplicateAsset, importFiles, openAsset, openImport, reimportModel, reportAssetUsers } from '../assets/import'
 import { savePrefabFromSelection } from '../assets/import'
 import { readPrefab } from '../assets/prefab'
 import { ASSETS_ROOT, directoryTree, findDir, isWithin, parentDir, type DirNode } from '../assets/folders'
@@ -36,6 +36,7 @@ const KIND_ICON = {
   audio: Music,
   prefab: Component,
   effect: Sparkles,
+  ui: PanelsTopLeft,
 } as const
 
 const KIND_COLOR: Record<string, string> = {
@@ -48,11 +49,12 @@ const KIND_COLOR: Record<string, string> = {
   audio: 'var(--color-sound)',
   prefab: '#a966d3',
   effect: '#ffb25a',
+  ui: '#4a9eff',
 }
 
 function kindLabel(kind: string): string {
   const key = `asset.${kind}` as MessageKey
-  const known = ['scene', 'model', 'texture', 'environment', 'material', 'animation', 'audio', 'prefab', 'effect']
+  const known = ['scene', 'model', 'texture', 'environment', 'material', 'animation', 'audio', 'prefab', 'effect', 'ui']
   return known.includes(kind) ? translate(key) : kind
 }
 
@@ -390,6 +392,7 @@ function CreateMenu({ dir, onDone, onNewFolder }: { dir: string, onDone: () => v
         <button type="button" onClick={() => { onNewFolder(useAssetStore.getState().createFolder(dir)); onDone() }}>{t('project.newFolderMenu')}</button>
         <button type="button" onClick={() => { useAssetStore.getState().setBrowseDir(dir); useEditorStore.getState().createScene(); onDone() }}>{t('project.createScene')}</button>
         <button type="button" onClick={() => { createDefaultMaterial(dir); onDone() }}>{t('project.createMaterial')}</button>
+        <button type="button" onClick={() => { createDefaultUi(dir); onDone() }}>{t('project.createUi')}</button>
         <button type="button" disabled={!hasSelection} onClick={() => { useAssetStore.getState().setBrowseDir(dir); savePrefabFromSelection(); onDone() }}>{t('project.createPrefab')}</button>
       </div>
     </div>
