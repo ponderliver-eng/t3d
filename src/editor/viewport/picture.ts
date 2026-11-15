@@ -6,6 +6,7 @@ import { bloom } from 'three/addons/tsl/display/BloomNode.js'
 import { ssao } from 'three/addons/tsl/display/SSAONode.js'
 import { dof } from 'three/addons/tsl/display/DepthOfFieldNode.js'
 import { ssr } from 'three/addons/tsl/display/SSRNode.js'
+import { ssgi } from 'three/addons/tsl/display/SSGINode.js'
 import { smaa } from 'three/addons/tsl/display/SMAANode.js'
 import type { ScenePicture } from '../scene/types'
 
@@ -22,21 +23,32 @@ interface SsrUniforms {
   intensity: { value: number }
 }
 
+interface SsgiUniforms {
+  sliceCount: { value: number }
+  stepCount: { value: number }
+  radius: { value: number }
+  giIntensity: { value: number }
+  aoIntensity: { value: number }
+  getAONode: () => { r: unknown }
+  getGINode: () => { rgb: unknown }
+}
+
 export class ScenePicturePipeline {
   private pipeline: RenderPipeline | null = null
   private bloomNode: BloomUniforms | null = null
   private ssrNode: SsrUniforms | null = null
+  private ssgiNode: SsgiUniforms | null = null
   private key = ''
   private failed = false
 
   constructor(private readonly renderer: WebGPURenderer) {}
 
   usesEffects(picture: ScenePicture): boolean {
-    return picture.bloom || picture.ssr || picture.aa !== false || picture.ao || picture.dof || picture.hue !== 0 || picture.saturation !== 1
+    return picture.bloom || picture.ssr || picture.ssgi || picture.aa !== false || picture.ao || picture.dof || picture.hue !== 0 || picture.saturation !== 1
   }
 
   render(scene: Scene, camera: Camera, picture: ScenePicture, width: number, height: number) {
-    const key = [camera.uuid, picture.bloom, picture.ssr, picture.aa !== false, picture.ao, picture.dof, picture.hue !== 0 || picture.saturation !== 1, width, height].join('|')
+    const key = [camera.uuid, picture.toneMapping, picture.bloom, picture.ssr, picture.ssgi, picture.aa !== false, picture.ao, picture.dof, picture.hue !== 0 || picture.saturation !== 1, width, height].join('|')
     if (this.failed && this.key === key) {
       this.renderer.render(scene, camera)
       return
@@ -56,13 +68,20 @@ export class ScenePicturePipeline {
       this.ssrNode.thickness.value = picture.ssrThickness
       this.ssrNode.intensity.value = picture.ssrIntensity
     }
+    if (this.ssgiNode) {
+      this.ssgiNode.sliceCount.value = Math.max(1, Math.round(picture.ssgiSlices))
+      this.ssgiNode.stepCount.value = Math.max(1, Math.round(picture.ssgiSteps))
+      this.ssgiNode.radius.value = picture.ssgiRadius
+      this.ssgiNode.giIntensity.value = picture.ssgiIntensity
+      this.ssgiNode.aoIntensity.value = picture.ssgiOcclusion
+    }
     try {
       this.pipeline?.render()
     } catch (error) {
       this.failed = true
       const message = error instanceof Error ? error.message : String(error)
       console.error(error)
-      useEditorStore.getState().log('error', `屏幕反射失败：${message}`)
+      useEditorStore.getState().log('error', `画面效果失败：${message}`)
       this.renderer.render(scene, camera)
     }
   }
@@ -76,7 +95,7 @@ export class ScenePicturePipeline {
     this.pipeline?.dispose()
     // 画布开了 4 倍采样。这张离屏图若跟着多重采样，深度不能再被反射读取，射线没有落点。抗锯齿由后面的 SMAA 负责。
     const scenePass = pass(scene, camera, { samples: 0 })
-    const needsBuffers = picture.ao || picture.ssr
+    const needsBuffers = picture.ao || picture.ssr || picture.ssgi
     if (needsBuffers) {
       // 编辑器网格等半透明辅助物没有金属度和粗糙度，默认不混合会把整张地面覆写成 0。
       const mrtNode = mrt({
@@ -93,10 +112,18 @@ export class ScenePicturePipeline {
     let current: { rgb: unknown, a: unknown, add: (node: unknown) => unknown, mul: (node: unknown) => unknown } = beauty as never
     this.bloomNode = null
     this.ssrNode = null
+    this.ssgiNode = null
     const normalNode = needsBuffers ? sceneNormal(scenePass, picture.ssr) : null
     if (picture.ao && normalNode) {
       const aoPass = ssao(scenePass.getTextureNode('depth'), normalNode as never, camera) as { r: unknown }
       current = current.mul(aoPass.r) as typeof current
+    }
+    if (picture.ssgi && normalNode) {
+      const ssgiPass = ssgi(beauty as never, scenePass.getTextureNode('depth'), normalNode as never, camera as never)
+      ssgiPass.resolutionScale = 1
+      this.ssgiNode = ssgiPass
+      const darkened = current.mul(ssgiPass.getAONode().r) as typeof current
+      current = darkened.add(ssgiPass.getGINode().rgb) as typeof current
     }
     if (picture.ssr && normalNode) {
       const metalRough = scenePass.getTextureNode('metalrough')

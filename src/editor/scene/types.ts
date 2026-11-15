@@ -117,9 +117,19 @@ export interface NodeNavigation {
   height: number
 }
 
+export type ToneMap = 'none' | 'linear' | 'reinhard' | 'cineon' | 'aces' | 'agx' | 'neutral'
+
+const TONE_MAPS: readonly ToneMap[] = ['none', 'linear', 'reinhard', 'cineon', 'aces', 'agx', 'neutral']
+
+export function toneMapOf(value: unknown): ToneMap {
+  return typeof value === 'string' && TONE_MAPS.includes(value as ToneMap) ? value as ToneMap : 'aces'
+}
+
 export interface ScenePicture {
   background: string
   exposure: number
+  /** 输出到屏幕前的色调映射。曝光仍单独调节。 */
+  toneMapping: ToneMap
   fog: boolean
   fogColor: string
   fogNear: number
@@ -134,6 +144,20 @@ export interface ScenePicture {
   ssrDistance: number
   ssrThickness: number
   ssrIntensity: number
+  /** 屏幕空间全局光照。默认关。间接光和一份遮蔽都来自当前画面。 */
+  ssgi: boolean
+  ssgiSlices: number
+  ssgiSteps: number
+  ssgiRadius: number
+  ssgiIntensity: number
+  ssgiOcclusion: number
+  /** 体积光。默认关。只对有距离的点光、聚光和矩形光散射，方向光不参与。 */
+  volume: boolean
+  volumeDensity: number
+  volumeSteps: number
+  volumeSize: number
+  volumeHeight: number
+  volumeColor: string
   /** 后期抗锯齿（SMAA）。默认开。 */
   aa: boolean
   ao: boolean
@@ -153,6 +177,7 @@ export interface ScenePicture {
 export const DEFAULT_PICTURE: ScenePicture = {
   background: '#141414',
   exposure: 1.05,
+  toneMapping: 'aces',
   fog: false,
   fogColor: '#141414',
   fogNear: 12,
@@ -166,6 +191,18 @@ export const DEFAULT_PICTURE: ScenePicture = {
   ssrDistance: 5,
   ssrThickness: 0.05,
   ssrIntensity: 1,
+  ssgi: false,
+  ssgiSlices: 2,
+  ssgiSteps: 8,
+  ssgiRadius: 8,
+  ssgiIntensity: 4,
+  ssgiOcclusion: 1,
+  volume: false,
+  volumeDensity: 0.25,
+  volumeSteps: 24,
+  volumeSize: 40,
+  volumeHeight: 16,
+  volumeColor: '#d7e6ff',
   aa: true,
   ao: false,
   dof: false,
@@ -184,6 +221,7 @@ export function normalizePicture(picture?: Partial<ScenePicture> | null): SceneP
   return {
     ...DEFAULT_PICTURE,
     ...picture,
+    toneMapping: toneMapOf(picture?.toneMapping),
     gravity: gravity?.length === 3 ? gravity : DEFAULT_PICTURE.gravity,
     navigation: { ...DEFAULT_NAV, ...picture?.navigation },
   }

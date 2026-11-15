@@ -1,5 +1,11 @@
 import {
   ACESFilmicToneMapping,
+  AgXToneMapping,
+  CineonToneMapping,
+  LinearToneMapping,
+  NeutralToneMapping,
+  NoToneMapping,
+  ReinhardToneMapping,
   AmbientLight,
   Box3,
   BoxGeometry,
@@ -60,13 +66,14 @@ import { setSpawnProvider } from '../scene/spawn'
 import { setEditorViewBridge, setGroundSnapper, setViewportAlign } from '../scene/viewportBridge'
 import { useEditorStore } from '../scene/store'
 import { localPoseFromWorld, poseComponents, worldPose } from '../scene/transform'
-import type { SceneNode } from '../scene/types'
+import type { SceneNode, ToneMap } from '../scene/types'
 import { EditorCameraRig } from './cameraControls'
 import { resolvePlayCamera } from './playCamera'
 import { viewCubePose } from './viewCubeBridge'
 import { createEditorGrid, gridStepForDistance } from './editorGrid'
 import { createSceneGuide, type SceneGuide } from './lightCameraGizmo'
 import { ScenePicturePipeline } from './picture'
+import { createVolumeLight } from './volumeLight'
 
 const DEG = Math.PI / 180
 
@@ -145,6 +152,8 @@ export class EditorViewport {
   private disposed = false
   private ready = false
   private picture: ScenePicturePipeline | null = null
+  private readonly volume = createVolumeLight()
+  private volumeMuted = false
   private readonly navDebug = new Group()
   private frameCamera: EditorCameraRig['active'] | null = null
   private playCameraWarned = ''
@@ -169,6 +178,7 @@ export class EditorViewport {
 
     const root = new Group()
     this.scene.add(root)
+    this.scene.add(this.volume.mesh)
     this.navDebug.name = 'nav-debug'
     this.scene.add(this.navDebug)
     root.add(this.world)
@@ -259,6 +269,7 @@ export class EditorViewport {
     this.canvas.removeEventListener('wheel', this.onWheel)
     this.canvas.removeEventListener('contextmenu', this.onContext)
     disposeParticles()
+    this.volume.dispose()
     this.picture?.dispose()
     this.transform.dispose()
     this.rig.dispose()
@@ -961,6 +972,7 @@ export class EditorViewport {
 
   private tick = (time: number) => {
     if (this.disposed) return
+    this.raf = requestAnimationFrame(this.tick)
     const dt = Math.min(0.05, this.last ? (time - this.last) / 1000 : 0)
     this.last = time
     if (this.playCameraLocked()) this.rig.pointerUp()
@@ -994,18 +1006,29 @@ export class EditorViewport {
     this.frameCamera = this.activeCamera()
     this.paintViewCube()
     if (this.ready && this.picture && this.width > 1 && this.height > 1) {
-    this.updateMixers(dt)
-    this.applyPicture()
-    this.sampleStats()
+      this.updateMixers(dt)
       const camera = this.viewCamera()
       const picture = useEditorStore.getState().picture
-      if (!this.picture.usesEffects(picture)) {
-        this.renderer.render(this.scene, camera)
-      } else {
-        this.picture.render(this.scene, camera, picture, this.width, this.height)
+      if (!picture.volume) this.volumeMuted = false
+      try {
+        this.applyPicture()
+        if (this.volumeMuted) this.volume.mesh.visible = false
+        this.sampleStats()
+        if (!this.picture.usesEffects(picture)) {
+          this.renderer.render(this.scene, camera)
+        } else {
+          this.picture.render(this.scene, camera, picture, this.width, this.height)
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        console.error(error)
+        if (picture.volume && !this.volumeMuted) {
+          this.volumeMuted = true
+          this.volume.mesh.visible = false
+          useEditorStore.getState().log('error', `体积光绘制失败：${message}`)
+        }
       }
     }
-    this.raf = requestAnimationFrame(this.tick)
   }
 
   private aspect() {
@@ -1024,6 +1047,16 @@ export class EditorViewport {
     }
   }
 
+  private toneMappingOf(mode: ToneMap) {
+    if (mode === 'none') return NoToneMapping
+    if (mode === 'linear') return LinearToneMapping
+    if (mode === 'reinhard') return ReinhardToneMapping
+    if (mode === 'cineon') return CineonToneMapping
+    if (mode === 'agx') return AgXToneMapping
+    if (mode === 'neutral') return NeutralToneMapping
+    return ACESFilmicToneMapping
+  }
+
   private applyPicture() {
     const picture = useEditorStore.getState().picture
     const env = environmentFor(picture.envAssetId)
@@ -1037,7 +1070,9 @@ export class EditorViewport {
         this.scene.background = new Color(picture.background)
       }
     }
+    this.renderer.toneMapping = this.toneMappingOf(picture.toneMapping)
     this.renderer.toneMappingExposure = picture.exposure
+    this.volume.sync(picture)
     if (picture.fog) {
       const fog = this.scene.fog instanceof Fog ? this.scene.fog : new Fog(picture.fogColor, picture.fogNear, picture.fogFar)
       fog.color.set(picture.fogColor)

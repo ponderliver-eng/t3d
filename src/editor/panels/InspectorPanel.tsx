@@ -443,6 +443,18 @@ function SceneSettings() {
       <Card id="sky" title={t('inspector.sky')} color="#4a9eff">
         <ColorField label={t('inspector.background')} value={picture.background} gesture={t('gesture.picture')} onChange={background => set({ background })} />
         <NumberRow label={t('inspector.exposure')} value={picture.exposure} min={0} max={5} step={0.01} gesture={t('gesture.picture')} onChange={exposure => set({ exposure })} />
+        <label className="field">
+          <span>{t('inspector.toneMapping')}</span>
+          <select value={picture.toneMapping} onChange={event => set({ toneMapping: event.target.value as typeof picture.toneMapping })}>
+            <option value="aces">{t('tone.aces')}</option>
+            <option value="agx">{t('tone.agx')}</option>
+            <option value="neutral">{t('tone.neutral')}</option>
+            <option value="cineon">{t('tone.cineon')}</option>
+            <option value="reinhard">{t('tone.reinhard')}</option>
+            <option value="linear">{t('tone.linear')}</option>
+            <option value="none">{t('tone.none')}</option>
+          </select>
+        </label>
       </Card>
       <Card id="fog" title={t('inspector.fog')} color="#90a4ae">
         <label className="field"><span>{t('inspector.enabled')}</span><input type="checkbox" checked={picture.fog} onChange={event => set({ fog: event.target.checked })} /></label>
@@ -467,6 +479,30 @@ function SceneSettings() {
             <NumberRow label={t('inspector.intensity')} value={picture.bloomStrength} min={0} max={2} step={0.01} gesture={t('gesture.picture')} onChange={bloomStrength => set({ bloomStrength })} />
             <NumberRow label={t('inspector.radius')} value={picture.bloomRadius} min={0} max={1} step={0.01} gesture={t('gesture.picture')} onChange={bloomRadius => set({ bloomRadius })} />
             <NumberRow label={t('inspector.threshold')} value={picture.bloomThreshold} min={0} max={1} step={0.01} gesture={t('gesture.picture')} onChange={bloomThreshold => set({ bloomThreshold })} />
+          </>
+        )}
+      </Card>
+      <Card id="volume" title={t('inspector.volume')} color="#80deea">
+        <label className="field"><span>{t('inspector.enabled')}</span><input type="checkbox" checked={picture.volume} onChange={event => set({ volume: event.target.checked })} /></label>
+        {picture.volume && (
+          <>
+            <ColorField label={t('inspector.color')} value={picture.volumeColor} gesture={t('gesture.picture')} onChange={volumeColor => set({ volumeColor })} />
+            <NumberRow label={t('inspector.volumeDensity')} value={picture.volumeDensity} min={0} max={2} step={0.01} gesture={t('gesture.picture')} onChange={volumeDensity => set({ volumeDensity })} />
+            <NumberRow label={t('inspector.volumeSteps')} value={picture.volumeSteps} min={4} max={64} step={1} gesture={t('gesture.picture')} onChange={volumeSteps => set({ volumeSteps })} />
+            <NumberRow label={t('inspector.volumeSize')} value={picture.volumeSize} min={1} max={200} step={1} gesture={t('gesture.picture')} onChange={volumeSize => set({ volumeSize })} />
+            <NumberRow label={t('inspector.volumeHeight')} value={picture.volumeHeight} min={0.5} max={80} step={0.5} gesture={t('gesture.picture')} onChange={volumeHeight => set({ volumeHeight })} />
+          </>
+        )}
+      </Card>
+      <Card id="ssgi" title={t('inspector.ssgi')} color="#7e57c2">
+        <label className="field"><span>{t('inspector.enabled')}</span><input type="checkbox" checked={picture.ssgi} onChange={event => set({ ssgi: event.target.checked })} /></label>
+        {picture.ssgi && (
+          <>
+            <NumberRow label={t('inspector.ssgiIndirect')} value={picture.ssgiIntensity} min={0} max={40} step={0.5} gesture={t('gesture.picture')} onChange={ssgiIntensity => set({ ssgiIntensity })} />
+            <NumberRow label={t('inspector.ssgiOcclusion')} value={picture.ssgiOcclusion} min={0} max={4} step={0.05} gesture={t('gesture.picture')} onChange={ssgiOcclusion => set({ ssgiOcclusion })} />
+            <NumberRow label={t('inspector.ssgiRadius')} value={picture.ssgiRadius} min={1} max={25} step={0.5} gesture={t('gesture.picture')} onChange={ssgiRadius => set({ ssgiRadius })} />
+            <NumberRow label={t('inspector.ssgiSlices')} value={picture.ssgiSlices} min={1} max={4} step={1} gesture={t('gesture.picture')} onChange={ssgiSlices => set({ ssgiSlices })} />
+            <NumberRow label={t('inspector.ssgiSteps')} value={picture.ssgiSteps} min={1} max={32} step={1} gesture={t('gesture.picture')} onChange={ssgiSteps => set({ ssgiSteps })} />
           </>
         )}
       </Card>
