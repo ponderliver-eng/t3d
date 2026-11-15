@@ -717,6 +717,7 @@ export class EditorViewport {
       const pick = dataOf(this.objects.get(id) ?? new Group()).pick
       const source = pick ?? this.objects.get(id)
       if (!source) continue
+      refreshObjectBounds(source)
       const helper = new BoxHelper(source, 0x4a9eff)
       helper.raycast = () => {}
       const material = helper.material as Material & { depthTest?: boolean; transparent?: boolean }
@@ -943,6 +944,7 @@ export class EditorViewport {
     try {
       await this.renderer.init()
       if (this.disposed) return
+      this.renderer.info.autoReset = false
       bindTextureRenderer(this.renderer)
       const backend = this.renderer.backend as { isWebGPUBackend?: boolean }
       const label = translate(backend.isWebGPUBackend ? 'log.webgpu' : 'log.webgl2')
@@ -968,7 +970,7 @@ export class EditorViewport {
     const elapsed = this.last ? (time - this.last) / 1000 : 0
     const dt = Math.min(0.05, elapsed)
     this.last = time
-    if (elapsed > 0) {
+    if (elapsed > 0 && elapsed < 1) {
       this.fpsFrames += 1
       this.fpsAccum += elapsed
     }
@@ -1010,6 +1012,7 @@ export class EditorViewport {
       try {
         this.applyPicture()
         if (this.volumeMuted) this.volume.mesh.visible = false
+        this.renderer.info.reset()
         if (!this.picture.usesEffects(picture)) {
           this.renderer.render(this.scene, camera)
         } else {
@@ -1388,7 +1391,8 @@ export class EditorViewport {
   }
 
   private updateMixers(dt: number) {
-    const nodes = useEditorStore.getState().nodes
+    const state = useEditorStore.getState()
+    const nodes = state.nodes
     let write = false
     if (performance.now() - this.clipWrite > 120) {
       this.clipWrite = performance.now()
@@ -1398,6 +1402,7 @@ export class EditorViewport {
       const node = nodes[id]
       const data = dataOf(group)
       if (!node || !data.mixer) continue
+      const selected = state.selection.includes(id)
       if (node.animator?.enabled && node.clipPlaying) {
         if (data.animatorState !== node.animator.stateId) {
           data.animatorState = node.animator.stateId
@@ -1426,7 +1431,7 @@ export class EditorViewport {
       const overlay = data.actions?.get(data.activeOverlay ?? '')
       if (overlay && node.overlayPlaying && overlay.loop === LoopOnce && !overlay.isRunning() && overlay.time > 0) {
         useEditorStore.getState().updateNode(id, { overlayPlaying: false, overlayTime: overlay.time })
-      } else if (write && overlay && node.overlayClip) {
+      } else if (write && selected && overlay && node.overlayClip) {
         useEditorStore.getState().updateNode(id, { overlayTime: overlay.time })
       }
       if (action && node.clipPlaying && action.loop === LoopOnce && !action.isRunning() && action.time > 0) {
@@ -1448,7 +1453,7 @@ export class EditorViewport {
         } else if (!action.paused) action.paused = true
         continue
       }
-      if (write && action) useEditorStore.getState().updateNode(id, { clipTime: action.time })
+      if (write && selected && action) useEditorStore.getState().updateNode(id, { clipTime: action.time })
     }
   }
 
