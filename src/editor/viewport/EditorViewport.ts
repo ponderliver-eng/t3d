@@ -147,10 +147,8 @@ export class EditorViewport {
   private readonly proxyScale = new Vector3(1, 1, 1)
   private readonly cubeQuat = new Quaternion()
   private press: Press | null = null
-  private rightPress: { x: number, y: number, moved: boolean } | null = null
   private marquee: HTMLDivElement | null = null
   private centerAttached = false
-  private contextHandler: ((x: number, y: number, id: string | null) => void) | null = null
   private width = 0
   private height = 0
   private last = 0
@@ -525,10 +523,6 @@ export class EditorViewport {
     if (pickMesh?.material instanceof MeshBasicMaterial && !isMesh(node.kind)) pickMesh.material.color.set(node.color)
   }
 
-  setContextHandler(handler: ((x: number, y: number, id: string | null) => void) | null) {
-    this.contextHandler = handler
-  }
-
   private measureSnap(ids: string[]) {
     const down = new Vector3(0, -1, 0)
     const moves: { id: string, position: [number, number, number] }[] = []
@@ -802,16 +796,10 @@ export class EditorViewport {
         additive: event.ctrlKey || event.metaKey || event.shiftKey,
       }
     }
-    if (event.button === 2) this.rightPress = { x: event.clientX, y: event.clientY, moved: false }
   }
 
   private onPointerMove = (event: PointerEvent) => {
     this.rig.pointerMove(event)
-    if (this.rightPress && (event.buttons & 2)) {
-      const dx = event.clientX - this.rightPress.x
-      const dy = event.clientY - this.rightPress.y
-      if (dx * dx + dy * dy > 16) this.rightPress.moved = true
-    }
     if (!this.press) return
     const dx = event.clientX - this.press.x
     const dy = event.clientY - this.press.y
@@ -852,12 +840,6 @@ export class EditorViewport {
 
   private onContext = (event: MouseEvent) => {
     event.preventDefault()
-    const moved = this.rightPress?.moved ?? false
-    this.rightPress = null
-    if (moved) return
-    const id = this.pickId(event.clientX, event.clientY)
-    if (id && !useEditorStore.getState().selection.includes(id)) useEditorStore.getState().setSelection([id])
-    this.contextHandler?.(event.clientX, event.clientY, id)
   }
 
   private ensureMarquee() {

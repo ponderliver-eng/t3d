@@ -1,10 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { CLIP_MIME, readClipDrag } from '../animation/playback'
 import { ASSET_MIME, assignClip, importFiles, placeAsset } from '../assets/import'
-import { savePrefabFromSelection } from '../assets/import'
 import { useI18n, type MessageKey } from '../i18n'
-import { LIGHT_KINDS, MESH_KINDS } from '../scene/kinds'
-import type { CameraView, NodeKind } from '../scene/types'
+import type { CameraView } from '../scene/types'
 import { useAssetStore } from '../assets/library'
 import { BarChart3, ChevronDown, Focus, Grid3x3, Maximize, Move3d, RotateCcw, Scaling, ArrowDownToLine } from 'lucide-react'
 import { useEditorStore } from '../scene/store'
@@ -31,7 +29,6 @@ export default function ViewportPanel() {
   const origin = useEditorStore(state => state.gizmoOrigin)
   const [menu, setMenu] = useState<'view' | 'gizmo' | null>(null)
   const [statsOpen, setStatsOpen] = useState(false)
-  const [contextMenu, setContextMenu] = useState<{ x: number, y: number, id: string | null } | null>(null)
   const { t } = useI18n()
   const viewName = (id: CameraView) => t(`view.${id}` as MessageKey)
 
@@ -42,7 +39,6 @@ export default function ViewportPanel() {
     const stage = stageRef.current
     if (!canvas || !stage) return
     const viewport = new EditorViewport(canvas, stage)
-    viewport.setContextHandler((x, y, id) => setContextMenu({ x, y, id }))
     viewportRef.current = viewport
     return () => {
       viewportRef.current = null
@@ -51,14 +47,11 @@ export default function ViewportPanel() {
   }, [])
 
   useEffect(() => {
-    if (!menu && !contextMenu) return
-    const close = () => {
-      setMenu(null)
-      setContextMenu(null)
-    }
+    if (!menu) return
+    const close = () => setMenu(null)
     window.addEventListener('pointerdown', close)
     return () => window.removeEventListener('pointerdown', close)
-  }, [menu, contextMenu])
+  }, [menu])
 
   const modeClass = playState === 'playing' ? 'viewport-panel--playing' : playState === 'paused' ? 'viewport-panel--paused' : ''
   const editor = useEditorStore.getState()
@@ -190,68 +183,6 @@ export default function ViewportPanel() {
         {statsOpen && <ViewportStatsDrawer onClose={() => setStatsOpen(false)} />}
       </div>
       <ViewCube />
-      {contextMenu && (
-        <ViewportContextMenu
-          x={contextMenu.x}
-          y={contextMenu.y}
-          id={contextMenu.id}
-          playing={playState !== 'stopped'}
-          onClose={() => setContextMenu(null)}
-        />
-      )}
-    </div>
-  )
-}
-
-function ViewportContextMenu({
-  x, y, id, playing, onClose,
-}: {
-  x: number
-  y: number
-  id: string | null
-  playing: boolean
-  onClose: () => void
-}) {
-  const canPaste = useEditorStore(state => state.canPaste)
-  const { t } = useI18n()
-  const kindName = (kind: NodeKind) => t(`kind.${kind}` as MessageKey)
-  const parentId = useEditorStore(state => id ? state.nodes[id]?.parentId : null)
-  const run = (action: () => void) => {
-    action()
-    onClose()
-  }
-  const create = (kind: NodeKind, parent: string | null) => {
-    useEditorStore.getState().createNode(kind, parent)
-  }
-  return (
-    <div className="viewport-context" style={{ left: x, top: y }} onPointerDown={event => event.stopPropagation()}>
-      <div className="viewport-context__sub">
-        <button type="button" disabled={playing}>{id ? t('view.createChild') : t('view.create')}</button>
-        <div>
-          <button type="button" disabled={playing} onClick={() => run(() => create('empty', id))}>{t('menu.empty')}</button>
-          <div className="viewport-context__label">{t('menu.meshes')}</div>
-          {MESH_KINDS.map(kind => <button key={kind} type="button" disabled={playing} onClick={() => run(() => create(kind, id))}>{kindName(kind)}</button>)}
-          <div className="viewport-context__label">{t('menu.lights')}</div>
-          {LIGHT_KINDS.map(kind => <button key={kind} type="button" disabled={playing} onClick={() => run(() => create(kind, id))}>{kindName(kind)}</button>)}
-          <button type="button" disabled={playing} onClick={() => run(() => create('camera', id))}>{t('menu.camera')}</button>
-          <button type="button" disabled={playing} onClick={() => run(() => create('effect', id))}>{t('menu.effect')}</button>
-          <button type="button" disabled={playing} onClick={() => run(() => create('screen', id))}>{t('menu.screen')}</button>
-        </div>
-      </div>
-      {id && <button type="button" onClick={() => run(() => useEditorStore.getState().requestRename(id))}>{t('project.rename')}</button>}
-      {id && <button type="button" onClick={() => run(() => useEditorStore.getState().requestFocus())}>{t('menu.focus')}</button>}
-      <button type="button" onClick={() => run(() => useEditorStore.getState().requestFocusAll())}>{t('menu.focusAll')}</button>
-      <div className="viewport-context__sep" />
-      <button type="button" disabled={playing || !id} onClick={() => run(() => useEditorStore.getState().duplicateSelection())}>{t('menu.duplicate')}</button>
-      <button type="button" disabled={!id} onClick={() => run(() => useEditorStore.getState().copySelection())}>{t('menu.copy')}</button>
-      <button type="button" disabled={playing || !canPaste} onClick={() => run(() => useEditorStore.getState().pasteClipboard(null))}>{t('view.paste')}</button>
-      <button type="button" disabled={playing || !canPaste || !id} onClick={() => run(() => useEditorStore.getState().pasteClipboard(id))}>{t('hierarchy.pasteChild')}</button>
-      <button type="button" disabled={playing} onClick={() => run(() => useEditorStore.getState().groupSelection())}>{t('menu.group')}</button>
-      <button type="button" disabled={playing || !id} onClick={() => run(() => useEditorStore.getState().snapSelectionToGround())}>{t('menu.ground')}</button>
-      <button type="button" disabled={playing || !id} onClick={() => run(() => savePrefabFromSelection())}>{t('inspector.savePrefab')}</button>
-      <div className="viewport-context__sep" />
-      <button type="button" disabled={playing || !parentId} onClick={() => run(() => { if (id) useEditorStore.getState().reparent(id, null) })}>{t('hierarchy.unparent')}</button>
-      <button type="button" disabled={playing || !id} onClick={() => run(() => useEditorStore.getState().deleteSelection())}>{t('menu.delete')}</button>
     </div>
   )
 }
