@@ -74,5 +74,7 @@
    - **导航（`navigation`）**：仅 `src/capabilities/navigation/recastNav.ts` 与 `bake.worker.ts` 允许 import `recast-navigation`。
    - **粒子（`particles`）**：默认关闭；仅 `src/capabilities/particles/quarksRuntime.ts` 与 `tslBatch.ts` 允许 import `three.quarks`；保持 CPU 模拟 + TSL 实例化绘制，不安装 `quarks.nodes`。
 3. **核心玩法包与领域包（Gameplay Packs）**
-   - **核心包（Core Pack）**常驻开启，提供成品级组件（角色移动、玩家相机、互动点、触发器、移动机关、复活点、计分、标签与同一种“当……就……”律令表）。
-   - **领域包（Domain Packs：属性、战斗、感知、背包、对话）**按需开启，只向同一套律令与配置表追加触发词、动作词与数据表；关闭领域包时不清除节点上已填写的配置数据。
+   - **统一运行时调度（`src/runtime/sceneRuntime.ts`）**：物理、导航、粒子、骨骼动画以及核心包/领域包系统的每帧步进统一由 `stepSceneRuntime(dt, host)` 调度，`EditorViewport` 只作为宿主提供渲染与对象查询，确保编辑器试玩与未来独立导出运行 100% 共用同一循环。
+   - **统一节点玩法挂载槽（`node.gameplay`）**：核心包与领域包数据统一挂在 `SceneNode.gameplay`（`NodeGameplay`）下，禁止继续向 `SceneNode` 顶层散落玩法字段。
+   - **核心包（Core Pack）**常驻开启，提供成品级组件（角色移动 `character`、跟随相机 `cameraFollow`、触发器 `trigger`、互动点、移动机关、复活点、计分、标签与同一种“当……就……”律令表 `rules`）。
+   - **领域包（Domain Packs：属性、战斗、感知、背包、对话）**按需开启，数据存放在 `node.gameplay.packs[packId]`，只向同一套律令与配置表追加触发词、动作词与数据表；关闭领域包时不清除节点上已填写的配置数据。

@@ -55,11 +55,11 @@ import { useAssetStore } from '../assets/library'
 import { bindTextureRenderer, environmentFor } from '../assets/textures'
 import { EDITOR_HELPER_LAYER, layerBitIndex } from '../project/taxonomy'
 import { capabilityEnabled } from '../../capabilities/registry'
-import { tickPhysics } from '../../capabilities/physics/session'
-import { disposeParticles, mountParticles, tickParticles } from '../../capabilities/particles/session'
+import { disposeParticles, mountParticles } from '../../capabilities/particles/session'
 import { collectNavSurfaces } from '../../capabilities/navigation/collect'
 import { syncNavDebug } from '../../capabilities/navigation/debug'
-import { consumeNavBake, navDebugGeometry, tickNavigation } from '../../capabilities/navigation/session'
+import { consumeNavBake, navDebugGeometry } from '../../capabilities/navigation/session'
+import { stepSceneRuntime } from '../../runtime/sceneRuntime'
 import { boundsOf, refreshObjectBounds } from '../scene/bounds'
 import { isLight, isMesh } from '../scene/kinds'
 import { setSpawnProvider } from '../scene/spawn'
@@ -1004,9 +1004,6 @@ export class EditorViewport {
     this.rig.update(dt)
     this.commitView()
     this.placeGrid()
-    tickPhysics(dt, id => this.objects.get(id) ?? null)
-    tickNavigation()
-    if (this.ready) tickParticles(dt, id => this.objects.get(id) ?? null)
     const bake = consumeNavBake()
     if (bake) {
       const roots = bake.surfaceIds.flatMap(id => {
@@ -1015,6 +1012,11 @@ export class EditorViewport {
       })
       bake.finish(collectNavSurfaces(roots))
     }
+    stepSceneRuntime(dt, {
+      ready: this.ready && Boolean(this.picture) && this.width > 1 && this.height > 1,
+      resolveObject: id => this.objects.get(id) ?? null,
+      updateAnimations: stepDt => this.updateMixers(stepDt),
+    })
     const editor = useEditorStore.getState()
     syncNavDebug(
       this.navDebug,
@@ -1031,7 +1033,6 @@ export class EditorViewport {
     this.frameCamera = this.activeCamera()
     this.paintViewCube()
     if (this.ready && this.picture && this.width > 1 && this.height > 1) {
-      this.updateMixers(dt)
       const camera = this.viewCamera()
       const picture = useEditorStore.getState().picture
       if (!picture.volume) this.volumeMuted = false

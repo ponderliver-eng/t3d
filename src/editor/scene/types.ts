@@ -1,6 +1,7 @@
 import type { NodeScreen } from '../../runtime/ui/spec'
+import type { NodeGameplay } from '../../runtime/sceneRuntime'
 
-export type { NodeScreen }
+export type { NodeScreen, NodeGameplay }
 export type Vec3 = [number, number, number]
 
 export type NodeKind =
@@ -330,6 +331,8 @@ export interface SceneNode {
   effect?: NodeEffect | null
   /** 屏幕界面挂载。一份节点挂一份文档。 */
   screen?: NodeScreen | null
+  /** 核心玩法包（角色、跟随相机、触发器、律令）与领域包统一挂载槽。 */
+  gameplay?: NodeGameplay | null
   /** 主标签，对应工程标签表的 id。 */
   tagId?: string | null
   /** 额外层级标签，存标签 id。 */

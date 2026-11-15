@@ -79,10 +79,23 @@ function cloneNodes(nodes: Record<string, SceneNode>): Record<string, SceneNode>
 }
 
 function sameNodes(a: Record<string, SceneNode>, b: Record<string, SceneNode>): boolean {
-  return JSON.stringify(a) === JSON.stringify(b)
+  if (a === b) return true
+  const keysA = Object.keys(a)
+  const keysB = Object.keys(b)
+  if (keysA.length !== keysB.length) return false
+  for (let i = 0; i < keysA.length; i += 1) {
+    const key = keysA[i]
+    const nodeA = a[key]
+    const nodeB = b[key]
+    if (!nodeB) return false
+    if (nodeA === nodeB) continue
+    if (JSON.stringify(nodeA) !== JSON.stringify(nodeB)) return false
+  }
+  return true
 }
 
 function sameJson(a: unknown, b: unknown): boolean {
+  if (a === b) return true
   return JSON.stringify(a) === JSON.stringify(b)
 }
 
