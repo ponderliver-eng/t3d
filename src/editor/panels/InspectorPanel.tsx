@@ -179,7 +179,7 @@ export default function InspectorPanel() {
       {(isMesh(node.kind) || node.kind === 'model' || node.kind === 'empty') && (
         <NavigationCard node={node} disabled={locked || playing} />
       )}
-      <ScreenCard node={node} locked={locked || playing} playing={playing} />
+      {node.kind === 'screen' && <ScreenCard node={node} locked={locked || playing} playing={playing} />}
 
       {(isMesh(node.kind) || node.kind === 'model') && <MeshRendererCard node={node} />}
 
@@ -457,6 +457,9 @@ function SceneSettings() {
       <Card id="environment" title={t('inspector.environment')} color="#ffd36b">
         <EnvField value={picture.envAssetId} onChange={envAssetId => set({ envAssetId })} />
       </Card>
+      <Card id="aa" title={t('inspector.aa')} color="#26c6da">
+        <label className="field"><span>{t('inspector.enabled')}</span><input type="checkbox" checked={picture.aa !== false} onChange={event => set({ aa: event.target.checked })} /></label>
+      </Card>
       <Card id="bloom" title={t('inspector.bloom')} color="#ab47bc">
         <label className="field"><span>{t('inspector.enabled')}</span><input type="checkbox" checked={picture.bloom} onChange={event => set({ bloom: event.target.checked })} /></label>
         {picture.bloom && (
@@ -464,6 +467,17 @@ function SceneSettings() {
             <NumberRow label={t('inspector.intensity')} value={picture.bloomStrength} min={0} max={2} step={0.01} gesture={t('gesture.picture')} onChange={bloomStrength => set({ bloomStrength })} />
             <NumberRow label={t('inspector.radius')} value={picture.bloomRadius} min={0} max={1} step={0.01} gesture={t('gesture.picture')} onChange={bloomRadius => set({ bloomRadius })} />
             <NumberRow label={t('inspector.threshold')} value={picture.bloomThreshold} min={0} max={1} step={0.01} gesture={t('gesture.picture')} onChange={bloomThreshold => set({ bloomThreshold })} />
+          </>
+        )}
+      </Card>
+      <Card id="ssr" title={t('inspector.ssr')} color="#5c6bc0">
+        <label className="field"><span>{t('inspector.enabled')}</span><input type="checkbox" checked={picture.ssr} onChange={event => set({ ssr: event.target.checked })} /></label>
+        {picture.ssr && (
+          <>
+            <NumberRow label={t('inspector.ssrQuality')} value={picture.ssrQuality} min={0} max={1} step={0.05} gesture={t('gesture.picture')} onChange={ssrQuality => set({ ssrQuality })} />
+            <NumberRow label={t('inspector.ssrDistance')} value={picture.ssrDistance} min={0.2} max={30} step={0.1} gesture={t('gesture.picture')} onChange={ssrDistance => set({ ssrDistance })} />
+            <NumberRow label={t('inspector.ssrThickness')} value={picture.ssrThickness} min={0.001} max={0.2} step={0.001} gesture={t('gesture.picture')} onChange={ssrThickness => set({ ssrThickness })} />
+            <NumberRow label={t('inspector.intensity')} value={picture.ssrIntensity} min={0} max={2} step={0.05} gesture={t('gesture.picture')} onChange={ssrIntensity => set({ ssrIntensity })} />
           </>
         )}
       </Card>
@@ -1304,7 +1318,7 @@ function toColorInput(value: string): string {
 
 function kindColor(kind: NodeKind): string {
   if (isLight(kind)) return '#ffd36b'
-  if (kind === 'camera') return '#4a9eff'
+  if (kind === 'camera' || kind === 'screen') return '#4a9eff'
   if (isMesh(kind)) return '#f5a623'
   return '#999999'
 }

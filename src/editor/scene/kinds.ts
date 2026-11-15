@@ -1,4 +1,5 @@
 import { defaultNodeEffect } from '../../capabilities/particles/defaults'
+import { defaultNodeScreen } from '../../runtime/ui/spec'
 import type { NodeKind, SceneNode, Vec3 } from './types'
 
 export const MESH_KINDS: NodeKind[] = ['box', 'sphere', 'plane', 'capsule', 'cylinder', 'cone']
@@ -21,6 +22,7 @@ export function defaultColor(kind: NodeKind): string {
     case 'hemisphere-light': return '#d7e4f5'
     case 'camera': return '#9ecbff'
     case 'empty': return '#b0b0b0'
+    case 'screen': return '#4a9eff'
     default: return '#d5dde6'
   }
 }
@@ -51,6 +53,7 @@ export function restHeight(kind: NodeKind): number {
     case 'empty':
       return 0
     case 'effect':
+    case 'screen':
       return 1
     default:
       return 2
@@ -103,6 +106,7 @@ export function makeNode(partial: Pick<SceneNode, 'id' | 'name' | 'kind'> & Part
     depthWrite: true,
     wireframe: false,
     effect: kind === 'effect' ? defaultNodeEffect() : null,
+    screen: kind === 'screen' ? defaultNodeScreen() : null,
     slots: [],
     castShadow: kind === 'directional-light' || kind === 'spot-light' || ((isMesh(kind) || kind === 'model') && kind !== 'plane'),
     receiveShadow: isMesh(kind) || kind === 'model',

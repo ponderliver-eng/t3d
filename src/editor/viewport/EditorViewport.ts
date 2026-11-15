@@ -58,7 +58,7 @@ import { physicsDebugActive, syncPhysicsDebug } from './physicsDebug'
 import { boundsOf, refreshObjectBounds } from '../scene/bounds'
 import { isLight, isMesh } from '../scene/kinds'
 import { setSpawnProvider } from '../scene/spawn'
-import { setGroundSnapper, setViewportAlign } from '../scene/viewportBridge'
+import { setEditorViewBridge, setGroundSnapper, setViewportAlign } from '../scene/viewportBridge'
 import { useEditorStore } from '../scene/store'
 import { localPoseFromWorld, poseComponents, worldPose } from '../scene/transform'
 import type { SceneNode } from '../scene/types'
@@ -150,6 +150,7 @@ export class EditorViewport {
   private readonly navDebug = new Group()
   private frameCamera: EditorCameraRig['active'] | null = null
   private playCameraWarned = ''
+  private appliedViewNonce = 0
   private readonly unsubscribe: () => void
   private readonly unsubscribeAssets: () => void
   private readonly resizeObserver: ResizeObserver
@@ -224,6 +225,10 @@ export class EditorViewport {
         )
       },
     })
+    setEditorViewBridge({
+      read: () => this.rig.snapshot(),
+      apply: view => this.rig.restore(view),
+    })
 
     this.canvas.addEventListener('pointerdown', this.onPointerDown, true)
     this.canvas.addEventListener('pointermove', this.onPointerMove)
@@ -250,6 +255,7 @@ export class EditorViewport {
     setSpawnProvider(() => [0, 0, 0])
     setGroundSnapper(null)
     setViewportAlign(null)
+    setEditorViewBridge(null)
     this.marquee?.remove()
     this.canvas.removeEventListener('pointerdown', this.onPointerDown, true)
     this.canvas.removeEventListener('pointermove', this.onPointerMove)
@@ -281,6 +287,10 @@ export class EditorViewport {
 
   private onStore = () => {
     const state = useEditorStore.getState()
+    if (state.editorViewNonce !== this.appliedViewNonce) {
+      this.appliedViewNonce = state.editorViewNonce
+      if (state.editorView) this.rig.restore(state.editorView)
+    }
     if (state.cameraNonce !== this.cameraNonce) {
       this.cameraNonce = state.cameraNonce
       const locked = state.playState !== 'stopped' && resolvePlayCamera(state.nodes, state.tags).id !== null
@@ -415,7 +425,10 @@ export class EditorViewport {
       return group
     }
 
-    const marker = new Mesh(new OctahedronGeometry(0.16, 0), new MeshBasicMaterial({ color: '#b0b0b0', wireframe: true }))
+    const marker = new Mesh(
+      new OctahedronGeometry(0.16, 0),
+      new MeshBasicMaterial({ color: node.kind === 'screen' ? '#4a9eff' : '#b0b0b0', wireframe: true }),
+    )
     marker.userData.nodeId = node.id
     markHelper(marker)
     group.add(marker)
@@ -802,6 +815,7 @@ export class EditorViewport {
     const press = this.press
     this.press = null
     this.rig.pointerUp()
+    this.commitView()
     if (this.canvas.hasPointerCapture(event.pointerId)) this.canvas.releasePointerCapture(event.pointerId)
     const dragged = press && this.marquee?.style.display === 'block'
     if (this.marquee) this.marquee.style.display = 'none'
@@ -816,6 +830,7 @@ export class EditorViewport {
       return
     }
     this.rig.wheel(event)
+    this.commitView()
   }
 
   private onContext = (event: MouseEvent) => {
@@ -943,12 +958,18 @@ export class EditorViewport {
     }
   }
 
+  private commitView() {
+    if (this.rig.dragging) return
+    useEditorStore.getState().rememberEditorView(this.rig.snapshot())
+  }
+
   private tick = (time: number) => {
     if (this.disposed) return
     const dt = Math.min(0.05, this.last ? (time - this.last) / 1000 : 0)
     this.last = time
     if (this.playCameraLocked()) this.rig.pointerUp()
     this.rig.update(dt)
+    this.commitView()
     this.placeGrid()
     tickPhysics(dt)
     tickNavigation()

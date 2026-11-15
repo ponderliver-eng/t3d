@@ -92,6 +92,10 @@ export interface NodeScreen {
   visibleOnPlay: boolean
 }
 
+export function defaultNodeScreen(): NodeScreen {
+  return { documentId: null, layer: 'hud', visibleOnPlay: true }
+}
+
 export function createUiNode(type: UiNodeType, id = crypto.randomUUID()): UiNode {
   switch (type) {
     case 'text':

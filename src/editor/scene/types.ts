@@ -18,6 +18,7 @@ export type NodeKind =
   | 'hemisphere-light'
   | 'camera'
   | 'effect'
+  | 'screen'
 
 export type SurfaceShader = 'lit' | 'unlit-color' | 'unlit-texture' | 'particle-unlit'
 export type ParticleBlend = 'alpha' | 'premultiply' | 'additive' | 'multiply'
@@ -127,6 +128,14 @@ export interface ScenePicture {
   bloomStrength: number
   bloomRadius: number
   bloomThreshold: number
+  /** 屏幕空间反射。默认关。只反射当前画面里看得见的表面。 */
+  ssr: boolean
+  ssrQuality: number
+  ssrDistance: number
+  ssrThickness: number
+  ssrIntensity: number
+  /** 后期抗锯齿（SMAA）。默认开。 */
+  aa: boolean
   ao: boolean
   dof: boolean
   dofFocus: number
@@ -152,6 +161,12 @@ export const DEFAULT_PICTURE: ScenePicture = {
   bloomStrength: 0.35,
   bloomRadius: 0.4,
   bloomThreshold: 0.85,
+  ssr: false,
+  ssrQuality: 0.5,
+  ssrDistance: 5,
+  ssrThickness: 0.05,
+  ssrIntensity: 1,
+  aa: true,
   ao: false,
   dof: false,
   dofFocus: 8,
@@ -180,6 +195,34 @@ export type GizmoOrigin = 'pivot' | 'center'
 export type PlayState = 'stopped' | 'playing' | 'paused'
 export type LogLevel = 'info' | 'warn' | 'error'
 export type CameraView = 'persp' | 'top' | 'bottom' | 'front' | 'back' | 'left' | 'right'
+
+/** 编辑器视口相机，按场景保存，不是场景里的相机物体。 */
+export interface EditorView {
+  view: CameraView
+  pivot: Vec3
+  orbitDistance: number
+  yaw: number
+  pitch: number
+  orthoSize: number
+}
+
+const EDITOR_VIEWS: readonly CameraView[] = ['persp', 'top', 'bottom', 'front', 'back', 'left', 'right']
+
+export function normalizeEditorView(value: unknown): EditorView | null {
+  if (!value || typeof value !== 'object') return null
+  const view = value as Partial<EditorView>
+  if (!view.view || !EDITOR_VIEWS.includes(view.view)) return null
+  if (!view.pivot || view.pivot.length !== 3) return null
+  if (typeof view.orbitDistance !== 'number' || typeof view.yaw !== 'number' || typeof view.pitch !== 'number' || typeof view.orthoSize !== 'number') return null
+  return {
+    view: view.view,
+    pivot: [view.pivot[0], view.pivot[1], view.pivot[2]],
+    orbitDistance: view.orbitDistance,
+    yaw: view.yaw,
+    pitch: view.pitch,
+    orthoSize: view.orthoSize,
+  }
+}
 export type SidePanel = 'inspector' | 'history'
 
 export interface SceneNode {

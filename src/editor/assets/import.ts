@@ -356,7 +356,7 @@ export function placeAsset(assetId: string, point: Vec3, hitId: string | null) {
     return
   }
   if (asset.kind === 'ui') {
-    editor.mountScreen(asset.id, point, hitId)
+    editor.mountScreen(asset.id, point)
     return
   }
   const node = hitId ? editor.nodes[hitId] : undefined

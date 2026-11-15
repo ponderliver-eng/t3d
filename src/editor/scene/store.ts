@@ -37,7 +37,7 @@ import {
   ensureTags,
 } from '../project/taxonomy'
 import { isUnder, localPoseFromWorld, poseComponents, worldPointToLocal, worldPose, writePose } from './transform'
-import { placeViewportAt, readViewportPose } from './viewportBridge'
+import { placeViewportAt, readEditorViewPose, readViewportPose } from './viewportBridge'
 import { measureGroundSnap } from './viewportBridge'
 import type {
   CameraView,
@@ -51,11 +51,12 @@ import type {
   PlayState,
   SceneNode,
   ScenePicture,
+  EditorView,
   SidePanel,
   Vec3,
 } from './types'
 import type { ProjectDocument } from './document'
-import { DEFAULT_PICTURE, normalizePicture } from './types'
+import { DEFAULT_PICTURE, normalizeEditorView, normalizePicture } from './types'
 import { forgetNavMesh } from '../../capabilities/navigation/archive'
 import { hydrateNavigation } from '../../capabilities/navigation/session'
 
@@ -111,6 +112,8 @@ export interface EditorState {
   cameraAction: 'focus' | 'focus-all' | 'view'
   cameraView: CameraView
   picture: ScenePicture
+  editorView: EditorView | null
+  editorViewNonce: number
   activeSceneId: string
   inspectedAssetId: string | null
   pendingRenameId: string | null
@@ -125,6 +128,7 @@ export interface EditorState {
     sceneSelection: string[]
     scenePast: HistoryEntry[]
     sceneFuture: HistoryEntry[]
+    sceneView: EditorView | null
   } | null
 
   setSelection: (ids: string[]) => void
@@ -146,7 +150,7 @@ export interface EditorState {
   updateNode: (id: string, patch: Partial<SceneNode>) => void
   createNode: (kind: NodeKind, parentId?: string | null) => void
   spawnEffect: (assetId: string, point: Vec3) => void
-  mountScreen: (assetId: string, point: Vec3, hitId: string | null) => void
+  mountScreen: (assetId: string, point: Vec3) => void
   deleteSelection: () => void
   duplicateSelection: () => void
   copySelection: () => void
@@ -176,6 +180,7 @@ export interface EditorState {
   log: (level: LogLevel, message: string) => void
   notify: (message: string) => void
   setPicture: (patch: Partial<ScenePicture>) => void
+  rememberEditorView: (view: EditorView) => void
   setRenderBackend: (label: string) => void
   setHelpersVisible: (visible: boolean) => void
   setSnapStep: (step: number) => void
@@ -245,6 +250,8 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   cameraAction: 'focus',
   cameraView: 'persp',
   picture: structuredClone(DEFAULT_PICTURE),
+  editorView: null,
+  editorViewNonce: 0,
   capabilities: defaultCapabilities(),
   tags: defaultTags(),
   layers: defaultLayers(),
@@ -420,17 +427,9 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     if (ok && created) get().log('info', translate('log.created', { name: created }))
   },
 
-  mountScreen: (assetId, point, hitId) => {
+  mountScreen: (assetId, point) => {
     const asset = useAssetStore.getState().assets[assetId]
     if (!asset || asset.kind !== 'ui') return
-    const screen = { documentId: asset.id, layer: 'hud' as const, visibleOnPlay: true }
-    if (hitId && get().nodes[hitId]) {
-      const ok = mutate(set, get, translate('ui.mount'), draft => {
-        draft.nodes[hitId].screen = screen
-      })
-      if (ok) get().log('info', translate('log.mountedUi', { name: asset.name }))
-      return
-    }
     let created = ''
     const ok = mutate(set, get, translate('gesture.create', { name: asset.name }), draft => {
       const id = crypto.randomUUID()
@@ -438,11 +437,11 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       draft.nodes[id] = makeNode({
         id,
         name,
-        kind: 'empty',
+        kind: 'screen',
         parentId: null,
         order: nextOrder(draft.nodes, null),
         position: point,
-        screen,
+        screen: { documentId: asset.id, layer: 'hud', visibleOnPlay: true },
       })
       tagAddedChild(draft.nodes, id)
       draft.selection = [id]
@@ -816,6 +815,8 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       activeSceneId: id,
       nodes: structuredClone(asset.nodes),
       picture: normalizePicture(asset.picture),
+      editorView: normalizeEditorView(asset.editorView),
+      editorViewNonce: get().editorViewNonce + 1,
       selection: [],
       past: [],
       future: [],
@@ -844,6 +845,8 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         activeSceneId: next.id,
         nodes: structuredClone(next.nodes),
         picture: normalizePicture(next.picture),
+        editorView: normalizeEditorView(next.editorView),
+        editorViewNonce: get().editorViewNonce + 1,
         selection: [],
         past: [],
         future: [],
@@ -873,7 +876,8 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       reconcilePrefab(session.sceneNodes, session.assetId, readPrefab({ rootId: root?.id ?? '', nodes: editing }), lookupPrefab)
     }
     const nodes = session ? session.sceneNodes : get().nodes
-    useAssetStore.getState().writeScene(id, structuredClone(nodes), structuredClone(get().picture))
+    const liveView = get().prefabSession ? get().editorView : readEditorViewPose()
+    useAssetStore.getState().writeScene(id, structuredClone(nodes), structuredClone(get().picture), liveView ?? undefined)
   },
 
   ensureSceneAsset: () => {
@@ -921,6 +925,8 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       playSelection: [],
       playPicture: null,
       picture: normalizePicture(document.picture),
+      editorView: savedEditorView(document),
+      editorViewNonce: get().editorViewNonce + 1,
       capabilities: normalizeCapabilities(document.capabilities),
       tags: ensureTags(document.tags),
       layers: ensureLayers(document.layers),
@@ -949,6 +955,12 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   },
 
   setPicture: patch => set({ picture: normalizePicture({ ...get().picture, ...patch }) }),
+
+  rememberEditorView: view => {
+    if (get().prefabSession || get().playState !== 'stopped') return
+    if (JSON.stringify(get().editorView) === JSON.stringify(view)) return
+    set({ editorView: view })
+  },
 
   setCapability: (id, enabled) => set(state => ({
     capabilities: { ...state.capabilities, [id]: enabled },
@@ -1151,6 +1163,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         sceneSelection: get().selection.slice(),
         scenePast: get().past,
         sceneFuture: get().future,
+        sceneView: readEditorViewPose() ?? get().editorView,
       },
       nodes: structuredClone(doc.nodes),
       selection: [doc.rootId],
@@ -1184,6 +1197,8 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       selection: session.sceneSelection.filter(id => sceneNodes[id]),
       past: session.scenePast,
       future: session.sceneFuture,
+      editorView: session.sceneView,
+      editorViewNonce: session.sceneView ? get().editorViewNonce + 1 : get().editorViewNonce,
     })
     get().log('info', translate(save ? 'prefab.saved' : 'prefab.closed'))
   },
@@ -1254,6 +1269,11 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     get().log('info', translate('log.assignedMaterial', { name: asset.name }))
   },
 }))
+
+function savedEditorView(document: { activeSceneId: string, library: Array<{ kind: string, id: string, editorView?: unknown }> }) {
+  const scene = document.library.find(item => item.kind === 'scene' && item.id === document.activeSceneId)
+  return normalizeEditorView(scene?.editorView)
+}
 
 function selectionRoots(nodes: Record<string, SceneNode>, selection: string[]): string[] {
   const selected = new Set(selection)

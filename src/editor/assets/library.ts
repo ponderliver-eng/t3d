@@ -3,7 +3,7 @@ import type { ClipCatalogEntry } from '../animation/playback'
 import type { ModelHumanoidAvatar } from '../animation/humanoidAvatar'
 import type { HumanoidRetargetAdjust } from '../animation/humanoidAdjust'
 import type { UiDocument } from '../../runtime/ui/spec'
-import type { PbrSlot, SceneNode, ScenePicture } from '../scene/types'
+import type { PbrSlot, SceneNode, ScenePicture, EditorView } from '../scene/types'
 import { ASSETS_ROOT, directoryExists, joinDir, normalizeDir, parentDir, relocateDir, uniqueFolderName } from './folders'
 
 export type FileKind = 'model' | 'texture' | 'animation' | 'audio' | 'environment'
@@ -67,6 +67,8 @@ export interface SceneAsset {
   kind: 'scene'
   nodes: Record<string, SceneNode>
   picture: ScenePicture
+  /** 编辑器视口相机。缺省表示还没记过。 */
+  editorView?: EditorView | null
 }
 
 export type ProjectAsset = FileAsset | MaterialAsset | PrefabAsset | SceneAsset | EffectAsset | UiAsset
@@ -81,7 +83,7 @@ interface AssetState {
   remove: (id: string) => void
   rename: (id: string, name: string) => void
   patch: (id: string, patch: Partial<FileAsset>) => void
-  writeScene: (id: string, nodes: Record<string, SceneNode>, picture: ScenePicture) => void
+  writeScene: (id: string, nodes: Record<string, SceneNode>, picture: ScenePicture, editorView?: EditorView | null) => void
   updateMaterial: (id: string, slot: Partial<PbrSlot>) => void
   updateEffect: (id: string, patch: { simulation?: unknown, materialAssetId?: string | null }) => void
   updateUi: (id: string, document: UiDocument) => void
@@ -124,11 +126,16 @@ export const useAssetStore = create<AssetState>((set, get) => ({
     if (!asset || !('url' in asset)) return {}
     return { assets: { ...state.assets, [id]: { ...asset, ...patch } }, revision: state.revision + 1 }
   }),
-  writeScene: (id, nodes, picture) => set(state => {
+  writeScene: (id, nodes, picture, editorView) => set(state => {
     const asset = state.assets[id]
     if (!asset || asset.kind !== 'scene') return {}
-    if (JSON.stringify(asset.nodes) === JSON.stringify(nodes) && JSON.stringify(asset.picture) === JSON.stringify(picture)) return {}
-    return { assets: { ...state.assets, [id]: { ...asset, nodes, picture } }, revision: state.revision + 1 }
+    const view = editorView === undefined ? asset.editorView ?? null : editorView
+    if (
+      JSON.stringify(asset.nodes) === JSON.stringify(nodes)
+      && JSON.stringify(asset.picture) === JSON.stringify(picture)
+      && JSON.stringify(asset.editorView ?? null) === JSON.stringify(view)
+    ) return {}
+    return { assets: { ...state.assets, [id]: { ...asset, nodes, picture, editorView: view } }, revision: state.revision + 1 }
   }),
   updateMaterial: (id, slot) => set(state => {
     const asset = state.assets[id]

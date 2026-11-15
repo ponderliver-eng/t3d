@@ -223,6 +223,7 @@ function ViewportContextMenu({
           {LIGHT_KINDS.map(kind => <button key={kind} type="button" disabled={playing} onClick={() => run(() => create(kind, id))}>{kindName(kind)}</button>)}
           <button type="button" disabled={playing} onClick={() => run(() => create('camera', id))}>{t('menu.camera')}</button>
           <button type="button" disabled={playing} onClick={() => run(() => create('effect', id))}>{t('menu.effect')}</button>
+          <button type="button" disabled={playing} onClick={() => run(() => create('screen', id))}>{t('menu.screen')}</button>
         </div>
       </div>
       {id && <button type="button" onClick={() => run(() => useEditorStore.getState().requestRename(id))}>{t('project.rename')}</button>}

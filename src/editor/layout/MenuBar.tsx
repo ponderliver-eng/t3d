@@ -130,6 +130,7 @@ export default function MenuBar() {
           </Submenu>
           <Item disabled={playing} onClick={() => create('camera')}>{t('menu.camera')}</Item>
           <Item disabled={playing} onClick={() => create('effect')}>{t('menu.effect')}</Item>
+          <Item disabled={playing} onClick={() => create('screen')}>{t('menu.screen')}</Item>
         </Dropdown>
         <Dropdown label={t('menu.view')}>
           <Item disabled={!hasSelection} onClick={() => useEditorStore.getState().requestFocus()}>{t('menu.focus')}<span className="menubar__hint">F</span></Item>

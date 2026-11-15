@@ -6,7 +6,7 @@ import {
   Quaternion,
   Vector3,
 } from 'three'
-import type { CameraView } from '../scene/types'
+import type { CameraView, EditorView } from '../scene/types'
 
 const LOOK_SPEED = 0.0055
 
@@ -139,6 +139,34 @@ export class EditorCameraRig {
     move.normalize().multiplyScalar(speed)
     this.persp.position.add(move)
     this.pivot.add(move)
+  }
+
+  restore(view: EditorView) {
+    this.pivot.set(view.pivot[0], view.pivot[1], view.pivot[2])
+    this.orbitDistance = MathUtils.clamp(view.orbitDistance, 0.4, 400)
+    this.yaw = view.yaw
+    this.pitch = MathUtils.clamp(view.pitch, -1.45, 1.45)
+    this.orthoSize = MathUtils.clamp(view.orthoSize, 0.35, 200)
+    if (view.view === 'persp') {
+      this.writeYawPitch()
+      this.persp.position.copy(this.pivot).addScaledVector(this.forward(), -this.orbitDistance)
+      this.use(this.persp, 'persp', VIEW_LABEL.persp)
+      return
+    }
+    this.setView(view.view)
+    this.orthoSize = MathUtils.clamp(view.orthoSize, 0.35, 200)
+    this.updateOrthoFrustum()
+  }
+
+  snapshot(): EditorView {
+    return {
+      view: this.view,
+      pivot: [this.pivot.x, this.pivot.y, this.pivot.z],
+      orbitDistance: this.orbitDistance,
+      yaw: this.yaw,
+      pitch: this.pitch,
+      orthoSize: this.orthoSize,
+    }
   }
 
   capture(): { position: [number, number, number], quaternion: [number, number, number, number] } {
