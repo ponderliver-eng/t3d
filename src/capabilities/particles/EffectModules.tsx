@@ -68,7 +68,7 @@ export function EffectModules({
           </>
         )}
         {view.renderMode === 3 && (
-          <Num label={t('particles.trailLength')} value={view.trailLength} step={0.1} min={0.01} disabled={disabled} onChange={trailLength => edit({ trailLength })} />
+          <Num label={t('particles.trailLength')} value={view.trailLength} step={1} min={2} disabled={disabled} onChange={trailLength => edit({ trailLength })} />
         )}
       </Card>
       <Card id="particle-emission" title={t('particles.emission')}>

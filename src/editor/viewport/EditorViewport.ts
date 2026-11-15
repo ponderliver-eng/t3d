@@ -863,13 +863,7 @@ export class EditorViewport {
   }
 
   private pickId(clientX: number, clientY: number): string | null {
-    const rect = this.canvas.getBoundingClientRect()
-    if (rect.width < 2 || rect.height < 2) return null
-    this.pointer.set(
-      ((clientX - rect.left) / rect.width) * 2 - 1,
-      -((clientY - rect.top) / rect.height) * 2 + 1,
-    )
-    this.raycaster.setFromCamera(this.pointer, this.viewCamera())
+    if (!this.aimPointer(clientX, clientY)) return null
     const hits = this.raycaster.intersectObjects(this.pickables, true)
     for (const hit of hits) {
       let object: Object3D | null = hit.object
@@ -894,13 +888,7 @@ export class EditorViewport {
   }
 
   raycastDrop(clientX: number, clientY: number): { point: [number, number, number], nodeId: string | null } {
-    const rect = this.canvas.getBoundingClientRect()
-    if (rect.width < 2 || rect.height < 2) return { point: [0, 0, 0], nodeId: null }
-    this.pointer.set(
-      ((clientX - rect.left) / rect.width) * 2 - 1,
-      -((clientY - rect.top) / rect.height) * 2 + 1,
-    )
-    this.raycaster.setFromCamera(this.pointer, this.viewCamera())
+    if (!this.aimPointer(clientX, clientY)) return { point: [0, 0, 0], nodeId: null }
     const hits = this.raycaster.intersectObjects(this.pickables, true)
     for (const hit of hits) {
       let object: Object3D | null = hit.object
@@ -1318,6 +1306,21 @@ export class EditorViewport {
 
   private viewCamera() {
     return this.frameCamera ?? this.rig.active
+  }
+
+  /** 用正在看的那台相机发出射线，并沿用它的近远裁剪。相机图标若和视口重合，交点在镜头上，距离是 0，不该挡住后面的物体。 */
+  private aimPointer(clientX: number, clientY: number): boolean {
+    const rect = this.canvas.getBoundingClientRect()
+    if (rect.width < 2 || rect.height < 2) return false
+    this.pointer.set(
+      ((clientX - rect.left) / rect.width) * 2 - 1,
+      -((clientY - rect.top) / rect.height) * 2 + 1,
+    )
+    const camera = this.viewCamera()
+    this.raycaster.near = camera.near
+    this.raycaster.far = camera.far
+    this.raycaster.setFromCamera(this.pointer, camera)
+    return true
   }
 
   private playCameraLocked() {

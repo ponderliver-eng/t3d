@@ -10,6 +10,7 @@ import {
   QuarksUtil,
 } from 'three.quarks'
 import type { ParticleInstanceDesc, ParticleMaterialDesc, ParticleRuntime, StoredSimulation } from './runtime'
+import { systemBodyForPlayback } from './simulationForm'
 import { surfaceBlending, TslBatchedRenderer } from './tslBatch'
 
 interface LiveEffect {
@@ -102,7 +103,7 @@ function spawn(instance: ParticleInstanceDesc, batch: TslBatchedRenderer, issues
 }
 
 function spawnSystem(instance: ParticleInstanceDesc, batch: TslBatchedRenderer) {
-  const body = instance.simulation.body as Parameters<typeof ParticleSystem.fromJSON>[0]
+  const body = systemBodyForPlayback(instance.simulation.body) as Parameters<typeof ParticleSystem.fromJSON>[0]
   const system = ParticleSystem.fromJSON(body, { geometries: {}, materials: {}, textures: {}, images: {} } as never, {})
   system.material = makeMaterial(instance.material)
   system.emitter.position.set(0, 0, 0)

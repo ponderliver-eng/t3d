@@ -81,7 +81,7 @@ export function readSystem(simulation: unknown, path: Array<string | number>): S
   const color = readColor(record.startColor)
   const shape = record.shape && typeof record.shape === 'object' ? record.shape as Record<string, unknown> : {}
   const bursts = Array.isArray(record.emissionBursts) ? record.emissionBursts : []
-  const behaviors = Array.isArray(record.behaviors) ? record.behaviors as Record<string, unknown>[] : []
+  const behaviors = behaviorList(record.behaviors)
   return {
     looping: record.looping !== false,
     prewarm: record.prewarm === true,
@@ -120,7 +120,7 @@ export function readSystem(simulation: unknown, path: Array<string | number>): S
     gravityLocked: readGravity(behaviors).locked,
     speedFactor: num(settingsOf(record).speedFactor, 0.1),
     lengthFactor: num(settingsOf(record).lengthFactor, 0),
-    trailLength: readRange(settingsOf(record).startLength).min || 1,
+    trailLength: trailSamples(settingsOf(record)),
     modules: behaviors.map(item => typeof item.type === 'string' ? item.type : '').filter(type => type && type !== 'ApplyForce'),
   }
 }
@@ -284,6 +284,38 @@ function verticalForce(force: Record<string, unknown>): boolean {
   return x === 0 && z === 0 && typeof y === 'number' && y !== 0
 }
 
+/** quarks 的 startLength 是拖尾保留的历史点数，不是米。少于 2 个点画不出带子。早期检查器把缺省写成了 1。 */
+const TRAIL_SAMPLES = 30
+
+export function trailSamples(settings: Record<string, unknown>): number {
+  const length = readRange(settings.startLength)
+  if (length.curve || length.min < 2) return TRAIL_SAMPLES
+  return Math.round(length.min)
+}
+
+/** 播放前修正读出来仍然画不出的拖尾。不改检查器里的原件，只给这次生成用。 */
+export function systemBodyForPlayback(body: unknown): unknown {
+  if (!body || typeof body !== 'object') return body
+  const record = body as Record<string, unknown>
+  if (record.renderMode !== 3) return body
+  const settings = settingsOf(record)
+  const stored = readRange(settings.startLength)
+  if (stored.curve || stored.min >= 2) return body
+  return {
+    ...record,
+    rendererEmitterSettings: {
+      ...settings,
+      startLength: { type: 'ConstantValue', value: TRAIL_SAMPLES },
+      followLocalOrigin: settings.followLocalOrigin === true,
+    },
+  }
+}
+
+function behaviorList(value: unknown): Record<string, unknown>[] {
+  if (!Array.isArray(value)) return []
+  return value.filter((item): item is Record<string, unknown> => !!item && typeof item === 'object')
+}
+
 function settingsOf(record: Record<string, unknown>): Record<string, unknown> {
   return record.rendererEmitterSettings && typeof record.rendererEmitterSettings === 'object'
     ? record.rendererEmitterSettings as Record<string, unknown>
@@ -298,7 +330,7 @@ function rendererSettings(view: SystemView, current: unknown): Record<string, un
   if (view.renderMode === 3) {
     return {
       ...previous,
-      startLength: { type: 'ConstantValue', value: Math.max(0.01, view.trailLength) },
+      startLength: { type: 'ConstantValue', value: Math.max(2, Math.round(view.trailLength)) },
       followLocalOrigin: previous.followLocalOrigin === true,
     }
   }

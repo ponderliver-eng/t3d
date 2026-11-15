@@ -41,7 +41,7 @@ export function EffectCard({ node, disabled }: { node: SceneNode, disabled: bool
         <div className="iv2-card__body">
           {missingAsset && <p className="settings-note">{t('particles.missingAsset')}</p>}
           {version !== QUARKS_VERSION && <p className="settings-note">{t('particles.version', { version, current: QUARKS_VERSION })}</p>}
-          {loadError && <p className="settings-note">{t('particles.loadFail')}</p>}
+          {loadError && <p className="settings-note">{t('particles.loadFail', { message: loadError })}</p>}
           {effect.assetId && asset?.kind === 'effect' && <p className="settings-note">{t('particles.shared', { name: asset.name })}</p>}
           <label className="field">
             <span>{t('particles.playing')}</span>
