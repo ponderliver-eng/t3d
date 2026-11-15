@@ -120,7 +120,18 @@ export interface EditorState {
   renderBackend: string
   helpersVisible: boolean
   snapStep: number
-  viewportStats: { objects: number, triangles: number }
+  viewportStats: {
+    objects: number
+    triangles: number
+    vertices: number
+    materials: number
+    textures: number
+    calls: number
+    fps: number
+    frameMs: number
+    camera: [number, number, number]
+    orbit: number
+  }
   playPicture: ScenePicture | null
   prefabSession: {
     assetId: string
@@ -184,7 +195,7 @@ export interface EditorState {
   setRenderBackend: (label: string) => void
   setHelpersVisible: (visible: boolean) => void
   setSnapStep: (step: number) => void
-  setViewportStats: (objects: number, triangles: number) => void
+  setViewportStats: (stats: EditorState['viewportStats']) => void
   spawnModel: (assetId: string, name: string, slots: PbrSlot[], point: Vec3) => void
   spawnPrefab: (assetId: string, point: Vec3, parentId?: string | null) => void
   createPrefabFromSelection: (name?: string, nodeId?: string, dir?: string) => void
@@ -265,7 +276,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   helpersVisible: true,
   snapStep: 1,
   canPaste: false,
-  viewportStats: { objects: 0, triangles: 0 },
+  viewportStats: { objects: 0, triangles: 0, vertices: 0, materials: 0, textures: 0, calls: 0, fps: 0, frameMs: 0, camera: [0, 0, 0], orbit: 0 },
   playPicture: null,
   prefabSession: null,
 
@@ -1039,10 +1050,8 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   },
   setHelpersVisible: visible => set({ helpersVisible: visible }),
   setSnapStep: step => set({ snapStep: Math.max(0.01, step) }),
-  setViewportStats: (objects, triangles) => {
-    const current = get().viewportStats
-    if (current.objects === objects && current.triangles === triangles) return
-    set({ viewportStats: { objects, triangles } })
+  setViewportStats: stats => {
+    set({ viewportStats: stats })
   },
 
   spawnModel: (assetId, name, slots, point) => {

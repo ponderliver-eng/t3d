@@ -6,10 +6,11 @@ import { useI18n, type MessageKey } from '../i18n'
 import { LIGHT_KINDS, MESH_KINDS } from '../scene/kinds'
 import type { CameraView, NodeKind } from '../scene/types'
 import { useAssetStore } from '../assets/library'
-import { ChevronDown, Focus, Grid3x3, Maximize, Move3d, RotateCcw, Scaling, ArrowDownToLine } from 'lucide-react'
+import { BarChart3, ChevronDown, Focus, Grid3x3, Maximize, Move3d, RotateCcw, Scaling, ArrowDownToLine } from 'lucide-react'
 import { useEditorStore } from '../scene/store'
 import { EditorViewport } from './EditorViewport'
 import ViewCube from './ViewCube'
+import { ViewportStatsDrawer } from './ViewportStatsDrawer'
 import { PlayUiOverlay } from '../ui/PlayUiOverlay'
 import './ViewportPanel.css'
 
@@ -29,6 +30,7 @@ export default function ViewportPanel() {
   const view = useEditorStore(state => state.cameraView)
   const origin = useEditorStore(state => state.gizmoOrigin)
   const [menu, setMenu] = useState<'view' | 'gizmo' | null>(null)
+  const [statsOpen, setStatsOpen] = useState(false)
   const [contextMenu, setContextMenu] = useState<{ x: number, y: number, id: string | null } | null>(null)
   const { t } = useI18n()
   const viewName = (id: CameraView) => t(`view.${id}` as MessageKey)
@@ -115,6 +117,15 @@ export default function ViewportPanel() {
               </div>
             )}
           </div>
+          <button
+            type="button"
+            className={`viewport-tool-btn ${statsOpen ? 'viewport-tool-btn--active' : ''}`}
+            title={t('view.statsOpen')}
+            aria-pressed={statsOpen}
+            onClick={() => setStatsOpen(open => !open)}
+          >
+            <BarChart3 size={12} />
+          </button>
           <button type="button" className="viewport-tool-btn" title={t('view.focus')} onClick={() => editor.requestFocus()}><Focus size={12} /></button>
           <button type="button" className="viewport-tool-btn" title={t('tool.ground')} onClick={() => editor.snapSelectionToGround()}><ArrowDownToLine size={12} /></button>
           <button
@@ -176,6 +187,7 @@ export default function ViewportPanel() {
         <canvas ref={canvasRef} />
         {playState !== 'stopped' && <PlayUiOverlay />}
         <div className="viewport-stats">{t('view.stats', { objects: stats.objects, triangles: stats.triangles.toLocaleString() })}</div>
+        {statsOpen && <ViewportStatsDrawer onClose={() => setStatsOpen(false)} />}
       </div>
       <ViewCube />
       {contextMenu && (

@@ -147,7 +147,8 @@ export class EditorViewport {
   private last = 0
   private clipWrite = 0
   private applyingAnimator = false
-  private statTick = 0
+  private fpsFrames = 0
+  private fpsAccum = 0
   private raf = 0
   private disposed = false
   private ready = false
@@ -973,8 +974,13 @@ export class EditorViewport {
   private tick = (time: number) => {
     if (this.disposed) return
     this.raf = requestAnimationFrame(this.tick)
-    const dt = Math.min(0.05, this.last ? (time - this.last) / 1000 : 0)
+    const elapsed = this.last ? (time - this.last) / 1000 : 0
+    const dt = Math.min(0.05, elapsed)
     this.last = time
+    if (elapsed > 0) {
+      this.fpsFrames += 1
+      this.fpsAccum += elapsed
+    }
     if (this.playCameraLocked()) this.rig.pointerUp()
     this.rig.update(dt)
     this.commitView()
@@ -1013,7 +1019,6 @@ export class EditorViewport {
       try {
         this.applyPicture()
         if (this.volumeMuted) this.volume.mesh.visible = false
-        this.sampleStats()
         if (!this.picture.usesEffects(picture)) {
           this.renderer.render(this.scene, camera)
         } else {
@@ -1029,6 +1034,7 @@ export class EditorViewport {
         }
       }
     }
+    this.publishStats()
   }
 
   private aspect() {
@@ -1084,20 +1090,45 @@ export class EditorViewport {
     }
   }
 
-  private sampleStats() {
-    this.statTick = (this.statTick + 1) % 20
-    if (this.statTick !== 0) return
+  private publishStats() {
+    if (this.fpsFrames < 1 || this.fpsAccum < 0.5) return
+    const fps = this.fpsFrames / this.fpsAccum
+    const frameMs = (this.fpsAccum / this.fpsFrames) * 1000
+    this.fpsFrames = 0
+    this.fpsAccum = 0
     let objects = 0
-    let triangles = 0
+    let vertices = 0
+    const materials = new Set<string>()
+    const textures = new Set<string>()
     this.scene.traverse(child => {
       const mesh = child as Mesh
       if (!mesh.isMesh || !mesh.visible) return
       objects += 1
-      const index = mesh.geometry.index
-      const positions = mesh.geometry.getAttribute('position')
-      triangles += index ? index.count / 3 : (positions?.count ?? 0) / 3
+      vertices += mesh.geometry.getAttribute('position')?.count ?? 0
+      const list = Array.isArray(mesh.material) ? mesh.material : [mesh.material]
+      for (const material of list) {
+        if (!material) continue
+        materials.add(material.uuid)
+        for (const value of Object.values(material)) {
+          const texture = value as { isTexture?: boolean, uuid?: string }
+          if (texture?.isTexture && texture.uuid) textures.add(texture.uuid)
+        }
+      }
     })
-    useEditorStore.getState().setViewportStats(objects, Math.round(triangles))
+    const info = this.renderer.info.render
+    const camera = this.rig.active.position
+    useEditorStore.getState().setViewportStats({
+      objects,
+      triangles: info.triangles,
+      vertices,
+      materials: materials.size,
+      textures: textures.size,
+      calls: info.drawCalls,
+      fps: Math.round(fps * 10) / 10,
+      frameMs: Math.round(frameMs * 10) / 10,
+      camera: [camera.x, camera.y, camera.z],
+      orbit: this.rig.orbitDistance,
+    })
   }
 
   private ensureModel(group: Group, node: SceneNode) {
