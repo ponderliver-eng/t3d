@@ -13,6 +13,7 @@ import { patchAssetMeta, readFileBytes, readModelArtifact, writeModelArtifact } 
 import { type FileAsset, useAssetStore } from './library'
 import { mergedHumanoidSlots, preserveHumanoidAvatarOverrides } from '../animation/humanoidAvatar'
 import { bindHumanoidClip } from '../animation/humanoidRetarget'
+import { releaseHumanoidPlayback } from '../animation/humanoidPlayback'
 import { describeHumanoid, forgetHumanoidSkeletons, registerHumanoidSkeletons, type ModelHumanoid } from '../animation/humanoidRig'
 import { convertFbxBytesToGlbWithUfbx } from './ufbx/ufbxToGlb'
 
@@ -40,23 +41,45 @@ export function subscribeModels(listener: () => void) {
 }
 
 export function getModelTemplate(assetId: string): ModelTemplate | undefined {
-  return templates.get(assetId)
+  const existing = templates.get(assetId)
+  if (existing) return existing
+  const asset = useAssetStore.getState().assets[assetId]
+  if (asset && (asset.kind === 'model' || asset.kind === 'animation')) {
+    void loadModelTemplate(asset).catch(() => undefined)
+  }
+  return undefined
 }
 
 export function releaseModel(assetId: string) {
   templates.delete(assetId)
   pending.delete(assetId)
   forgetHumanoidSkeletons(assetId)
+  releaseHumanoidPlayback(assetId)
 }
 
 export function clipNamesFor(assetId: string | null): string[] {
   if (!assetId) return []
-  return templates.get(assetId)?.clips.map(clip => clip.name) ?? []
+  const template = templates.get(assetId)
+  if (template) return template.clips.map(clip => clip.name)
+  const asset = useAssetStore.getState().assets[assetId]
+  if (asset && 'clipCatalog' in asset && asset.clipCatalog?.length) {
+    return asset.clipCatalog.map(entry => entry.name)
+  }
+  if (asset && (asset.kind === 'model' || asset.kind === 'animation')) {
+    void loadModelTemplate(asset).catch(() => undefined)
+  }
+  return []
 }
 
 export function clipDuration(assetId: string | null, name: string): number {
   if (!assetId || !name) return 0
-  return templates.get(assetId)?.clips.find(clip => clip.name === name)?.duration ?? 0
+  const template = templates.get(assetId)
+  if (template) return template.clips.find(clip => clip.name === name)?.duration ?? 0
+  const asset = useAssetStore.getState().assets[assetId]
+  if (asset && 'clipCatalog' in asset && asset.clipCatalog?.length) {
+    return asset.clipCatalog.find(entry => entry.name === name)?.duration ?? 0
+  }
+  return 0
 }
 
 export function loadModelTemplate(asset: FileAsset, forceSource = false): Promise<ModelTemplate> {
@@ -144,7 +167,7 @@ export function withFbxCompanions<T>(assetId: string, files: ReadonlyArray<{ nam
 }
 
 export function instantiateModel(assetId: string): { object: Object3D, clips: AnimationClip[] } | null {
-  const template = templates.get(assetId)
+  const template = getModelTemplate(assetId)
   if (!template) return null
   const object = cloneSkinned(template.scene)
   object.traverse(child => {

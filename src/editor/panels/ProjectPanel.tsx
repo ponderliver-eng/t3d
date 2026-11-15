@@ -505,8 +505,8 @@ function assetKind(id: string) {
 
 function Thumb({ asset, icon: Icon, color, large = false }: { asset: ProjectAsset, icon: typeof Folder, color?: string, large?: boolean }) {
   const className = large ? 'project-asset__thumb project-asset__thumb--large' : 'project-asset__thumb'
-  if ('thumb' in asset && asset.thumb) return <img className={className} src={asset.thumb} alt="" />
-  if (asset.kind === 'texture' && !asset.fileName.toLowerCase().endsWith('.ktx2')) return <img className={className} src={asset.url} alt="" />
+  if ((asset.kind === 'model' || asset.kind === 'texture') && 'thumb' in asset && asset.thumb) return <img className={className} src={asset.thumb} alt="" />
+  if (asset.kind === 'texture' && asset.url && !asset.fileName.toLowerCase().endsWith('.ktx2')) return <img className={className} src={asset.url} alt="" />
   if (asset.kind === 'material') return <i className={large ? 'project-asset__swatch project-asset__swatch--large' : 'project-asset__swatch'} style={{ background: asset.slot.color }} />
   return (
     <span className={large ? 'project-asset__type project-asset__type--large' : 'project-asset__type'} style={{ color }} title={kindLabel(asset.kind)}>
@@ -540,11 +540,15 @@ function referencedIds(nodes: Record<string, { assetId?: string | null, clipAsse
   return ids
 }
 
-function collect(node: { assetId?: string | null, clipAssetId?: string | null, materialAssetId?: string | null, mapAssetId?: string | null, normalAssetId?: string | null, metallicRoughnessAssetId?: string | null, roughnessAssetId?: string | null, metalnessAssetId?: string | null, emissiveAssetId?: string | null, aoAssetId?: string | null, prefabAssetId?: string | null, nestedPrefabId?: string | null, slots?: Array<{ materialAssetId?: string | null, mapAssetId?: string | null, normalAssetId?: string | null, metallicRoughnessAssetId?: string | null, roughnessAssetId?: string | null, metalnessAssetId?: string | null, emissiveAssetId?: string | null, aoAssetId?: string | null }> }, ids: Set<string>) {
+function collect(node: { assetId?: string | null, clipAssetId?: string | null, overlayAssetId?: string | null, animator?: { states: Array<{ clipAssetId?: string | null }> } | null, materialAssetId?: string | null, mapAssetId?: string | null, normalAssetId?: string | null, metallicRoughnessAssetId?: string | null, roughnessAssetId?: string | null, metalnessAssetId?: string | null, emissiveAssetId?: string | null, aoAssetId?: string | null, prefabAssetId?: string | null, nestedPrefabId?: string | null, slots?: Array<{ materialAssetId?: string | null, mapAssetId?: string | null, normalAssetId?: string | null, metallicRoughnessAssetId?: string | null, roughnessAssetId?: string | null, metalnessAssetId?: string | null, emissiveAssetId?: string | null, aoAssetId?: string | null }> }, ids: Set<string>) {
   if (node.assetId) ids.add(node.assetId)
   if (node.prefabAssetId) ids.add(node.prefabAssetId)
   if (node.nestedPrefabId) ids.add(node.nestedPrefabId)
   if (node.clipAssetId) ids.add(node.clipAssetId)
+  if (node.overlayAssetId) ids.add(node.overlayAssetId)
+  for (const state of node.animator?.states ?? []) {
+    if (state.clipAssetId) ids.add(state.clipAssetId)
+  }
   if (node.materialAssetId) ids.add(node.materialAssetId)
   for (const id of [node.mapAssetId, node.normalAssetId, node.metallicRoughnessAssetId, node.roughnessAssetId, node.metalnessAssetId, node.emissiveAssetId, node.aoAssetId]) {
     if (id) ids.add(id)

@@ -3,6 +3,7 @@ import { assetDirectory, assetName, useAssetStore, type FileAsset } from './libr
 import {
   artifactKey,
   migrateLegacyFilesToMeta,
+  patchAssetMeta,
   readAssetMetas,
   readFileBytes,
   readIdbArtifact,
@@ -42,6 +43,7 @@ import {
   moveAssetFile,
   parentProjectPath,
   pickDirectory,
+  pruneArtifacts,
   readArtifact,
   readProjectPath,
   readProjectText,
@@ -370,8 +372,14 @@ async function warmAssets(token: number, metas: AssetMeta[], document: ProjectDo
   await runPool(ordered, 3, async meta => {
     if (!warmCurrent(token)) return
     try {
-      const asset = await materialize(meta)
+      const cleanMeta = stripRedundantThumb(meta)
+      const needed = referenced.has(cleanMeta.id) || needsMetadataDiscovery(cleanMeta)
+      const asset = await materialize(cleanMeta, needed)
       if (!warmCurrent(token)) return
+      if (!needed) {
+        useAssetStore.getState().add(asset)
+        return
+      }
       const ok = await warmCachedAsset(asset)
       if (!warmCurrent(token)) {
         releaseRuntimeAsset(asset.id, asset.url)
@@ -379,7 +387,7 @@ async function warmAssets(token: number, metas: AssetMeta[], document: ProjectDo
         return
       }
       if (!ok) failed += 1
-      else if ((meta.kind === 'model' || meta.kind === 'animation') && meta.artifactReady) hits += 1
+      else if ((cleanMeta.kind === 'model' || cleanMeta.kind === 'animation') && cleanMeta.artifactReady) hits += 1
       else parsed += 1
     } catch (error) {
       failed += 1
@@ -387,6 +395,15 @@ async function warmAssets(token: number, metas: AssetMeta[], document: ProjectDo
     }
   })
   if (!warmCurrent(token)) return
+  if (isDirectoryProject()) {
+    const validKeys = new Set<string>()
+    for (const meta of metas) {
+      if ((meta.kind === 'model' || meta.kind === 'animation') && meta.hash) {
+        validKeys.add(artifactKey(meta.hash))
+      }
+    }
+    void pruneArtifacts(validKeys).catch(() => undefined)
+  }
   const total = Math.round(performance.now() - started)
   useEditorStore.getState().log(
     'info',
@@ -394,7 +411,22 @@ async function warmAssets(token: number, metas: AssetMeta[], document: ProjectDo
   )
 }
 
-async function materialize(meta: AssetMeta): Promise<FileAsset> {
+function stripRedundantThumb(meta: AssetMeta): AssetMeta {
+  if ((meta.kind === 'animation' || meta.kind === 'audio' || meta.kind === 'environment') && meta.thumb) {
+    void patchAssetMeta(meta.id, { thumb: null }).catch(() => undefined)
+    return { ...meta, thumb: null }
+  }
+  return meta
+}
+
+function needsMetadataDiscovery(meta: AssetMeta): boolean {
+  if (meta.kind === 'model') return !meta.artifactReady || !meta.thumb
+  if (meta.kind === 'animation') return !meta.artifactReady || !meta.clipCatalog?.length
+  if (meta.kind === 'texture') return !meta.thumb && !meta.fileName.toLowerCase().endsWith('.ktx2')
+  return false
+}
+
+async function materialize(meta: AssetMeta, readBytesNow = true): Promise<FileAsset> {
   const asset: FileAsset = {
     id: meta.id,
     name: meta.name,
@@ -409,6 +441,7 @@ async function materialize(meta: AssetMeta): Promise<FileAsset> {
     ...(typeof meta.importScale === 'number' ? { importScale: meta.importScale } : {}),
     ...(meta.sockets?.length ? { sockets: meta.sockets } : {}),
   }
+  if (!readBytesNow) return asset
   if ((meta.kind === 'model' || meta.kind === 'animation') && meta.artifactReady) return asset
   const bytes = await readFileBytes(meta.id)
   if (!bytes) throw new Error('缓存里没有源文件')
@@ -449,6 +482,12 @@ function collectNodeAssets(nodes: Record<string, SceneNode>, ids: Set<string>) {
   for (const node of Object.values(nodes)) {
     if (node.assetId) ids.add(node.assetId)
     if (node.clipAssetId) ids.add(node.clipAssetId)
+    if (node.overlayAssetId) ids.add(node.overlayAssetId)
+    if (node.animator) {
+      for (const state of node.animator.states) {
+        if (state.clipAssetId) ids.add(state.clipAssetId)
+      }
+    }
     if (node.materialAssetId) ids.add(node.materialAssetId)
     if (node.effect?.assetId) ids.add(node.effect.assetId)
     if (node.effect?.materialAssetId) ids.add(node.effect.materialAssetId)

@@ -2,9 +2,9 @@ import { getSpawn } from '../scene/spawn'
 import { useEditorStore } from '../scene/store'
 import { normalizeSlot, resolveModelSlot, slotFromNode } from './materials'
 import { clipNamesFor, getModelTemplate, loadModelTemplate, releaseModel, withFbxCompanions } from './models'
-import { loadEnvironmentAsset, loadTextureAsset, releaseTexture } from './textures'
+import { loadEnvironmentAsset, loadTextureAsset, releaseTexture, ensureAssetUrl } from './textures'
 import { deleteModelArtifact, forgetFile, patchAssetMeta, readFileBytes, rememberFile, sha256, updateCachedThumb } from './cache'
-import { imageThumb, labelThumb, renderModelThumb } from './thumbs'
+import { imageThumb, renderModelThumb } from './thumbs'
 import { readPrefab } from './prefab'
 import { translate } from '../i18n'
 import { QUARKS_VERSION } from '../../capabilities/particles/defaults'
@@ -288,14 +288,14 @@ async function attachThumb(id: string, force = false) {
   const asset = useAssetStore.getState().assets[id]
   if (!asset || !('url' in asset) || (asset.thumb && !force)) return
   let thumb: string | null = null
-  if (asset.kind === 'texture' && !asset.fileName.toLowerCase().endsWith('.ktx2')) thumb = await imageThumb(asset.url)
+  if (asset.kind === 'texture' && !asset.fileName.toLowerCase().endsWith('.ktx2')) {
+    const url = asset.url || await ensureAssetUrl(id).catch(() => '')
+    if (url) thumb = await imageThumb(url)
+  }
   if (asset.kind === 'model') {
     const template = getModelTemplate(id)
     if (template) thumb = renderModelThumb(template.scene)
   }
-  if (asset.kind === 'environment') thumb = labelThumb('HDR')
-  if (asset.kind === 'audio') thumb = labelThumb('音频')
-  if (asset.kind === 'animation') thumb = labelThumb('动画')
   if (!thumb) return
   useAssetStore.getState().patch(id, { thumb })
   await updateCachedThumb(id, thumb).catch(() => undefined)
@@ -330,7 +330,9 @@ export function placeAsset(assetId: string, point: Vec3, hitId: string | null) {
   if (asset.kind === 'model') {
     const template = getModelTemplate(assetId)
     if (!template) {
-      editor.log('warn', translate('log.modelLoading'))
+      void loadModelTemplate(asset).then(loaded => {
+        useEditorStore.getState().spawnModel(assetId, asset.name, loaded.slots, point)
+      }).catch(() => undefined)
       return
     }
     editor.spawnModel(assetId, asset.name, template.slots, point)
@@ -348,7 +350,7 @@ export function placeAsset(assetId: string, point: Vec3, hitId: string | null) {
     return
   }
   if (asset.kind === 'audio') {
-    void new Audio(asset.url).play()
+    void ensureAssetUrl(asset.id).then(url => new Audio(url).play()).catch(() => undefined)
     return
   }
   if (asset.kind === 'effect') {
@@ -371,7 +373,14 @@ export function placeAsset(assetId: string, point: Vec3, hitId: string | null) {
       editor.log('warn', translate('log.animOnModel'))
       return
     }
-    assignClip(node.id, assetId, clipNamesFor(assetId)[0] ?? '')
+    const existingClips = clipNamesFor(assetId)
+    if (existingClips.length > 0) {
+      assignClip(node.id, assetId, existingClips[0] ?? '')
+    } else {
+      void loadModelTemplate(asset).then(loaded => {
+        assignClip(node.id, assetId, loaded.clips[0]?.name ?? '')
+      }).catch(() => undefined)
+    }
   }
 }
 
@@ -494,7 +503,7 @@ export function reportAssetUsers(id: string) {
 
 export function previewAudio(asset: ProjectAsset) {
   if (asset.kind !== 'audio') return
-  void new Audio(asset.url).play()
+  void ensureAssetUrl(asset.id).then(url => new Audio(url).play()).catch(() => undefined)
 }
 
 async function importEffectJson(file: File, dir: string): Promise<string | null> {
@@ -612,7 +621,8 @@ function referencedBy(assetId: string): string[] {
 }
 
 function usesAsset(node: SceneNode, assetId: string): boolean {
-  if (node.assetId === assetId || node.clipAssetId === assetId || node.materialAssetId === assetId) return true
+  if (node.assetId === assetId || node.clipAssetId === assetId || node.overlayAssetId === assetId || node.materialAssetId === assetId) return true
+  if (node.animator?.states.some(state => state.clipAssetId === assetId)) return true
   if (node.effect?.assetId === assetId || node.effect?.materialAssetId === assetId) return true
   if (node.screen?.documentId === assetId) return true
   if (slotUses(slotFromNode(node), assetId)) return true

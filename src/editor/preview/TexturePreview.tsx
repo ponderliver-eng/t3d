@@ -41,7 +41,7 @@ export function TexturePreview({ assetId, environment = false, standalone = fals
     camera.position.z = environment ? 2.6 : 2.2
     let map: Texture | null = environment ? environmentFor(assetId) : textureFor(assetId, true)
     let owned = false
-    if (!map && !environment) {
+    if (!map && !environment && asset.url) {
       map = new TextureLoader().load(asset.url)
       owned = true
     }

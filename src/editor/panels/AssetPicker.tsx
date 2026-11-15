@@ -73,7 +73,7 @@ function AssetMark({ asset }: { asset: ProjectAsset }) {
   if (asset.kind === 'texture' && asset.url && !asset.fileName.toLowerCase().endsWith('.ktx2')) {
     return <img src={asset.url} alt="" />
   }
-  if ('thumb' in asset && asset.thumb) return <img src={asset.thumb} alt="" />
+  if ((asset.kind === 'model' || asset.kind === 'texture') && 'thumb' in asset && asset.thumb) return <img src={asset.thumb} alt="" />
   if (asset.kind === 'material') return <i style={{ background: asset.slot.color }} />
   return <i />
 }

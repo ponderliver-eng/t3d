@@ -6,8 +6,9 @@ import type { PhysicsWorld } from './world'
 
 let world: PhysicsWorld | null = null
 let booting = false
+let lastInspectorSync = 0
 
-export function tickPhysics(dt: number) {
+export function tickPhysics(dt: number, resolveObject?: (id: string) => { position: { set: (x: number, y: number, z: number) => void }, quaternion: { set: (x: number, y: number, z: number, w: number) => void } } | null) {
   const state = useEditorStore.getState()
   const enabled = capabilityEnabled(state.capabilities, 'physics')
   if (!enabled || state.playState === 'stopped') {
@@ -22,7 +23,24 @@ export function tickPhysics(dt: number) {
   world.setGravity(state.picture.gravity ?? [0, -9.81, 0])
   world.sync(collectBodies())
   world.step(dt)
-  state.applySimulation(world.dynamicPoses())
+  const poses = world.dynamicPoses()
+  if (resolveObject) {
+    for (const pose of poses) {
+      const obj = resolveObject(pose.id)
+      if (!obj) continue
+      obj.position.set(pose.position[0], pose.position[1], pose.position[2])
+      obj.quaternion.set(pose.rotation[0], pose.rotation[1], pose.rotation[2], pose.rotation[3])
+    }
+    const now = performance.now()
+    if (now - lastInspectorSync >= 120) {
+      lastInspectorSync = now
+      const selected = new Set(state.selection)
+      const selectedPoses = poses.filter(pose => selected.has(pose.id))
+      if (selectedPoses.length > 0) state.applySimulation(selectedPoses)
+    }
+    return
+  }
+  state.applySimulation(poses)
 }
 
 function boot() {

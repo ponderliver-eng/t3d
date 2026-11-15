@@ -55,6 +55,13 @@ export function humanoidBindingKey(sourceId: string, targetId: string): string {
   ].join('|')
 }
 
+export function releaseHumanoidPlayback(assetId: string) {
+  for (const key of cache.keys()) {
+    const parts = key.split('|')
+    if (parts[0] === assetId || parts[2] === assetId) cache.delete(key)
+  }
+}
+
 /** 把源片段绑到目标骨架。同名且腿长比不超过 5% 时原样返回。 */
 export function clipsForSkeleton(sourceId: string, targetId: string): AnimationClip[] {
   const source = getModelTemplate(sourceId)

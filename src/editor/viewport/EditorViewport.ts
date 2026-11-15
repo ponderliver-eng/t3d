@@ -95,6 +95,11 @@ interface ViewData {
   pendingFade?: number
   bodyBlend?: ActionBlend
   overlayBlend?: ActionBlend
+  syncedNode?: SceneNode
+  syncedAssetRevision?: number
+  syncedEditing?: boolean
+  syncedHelpers?: boolean
+  syncedLayerBit?: number
 }
 
 interface ActionBlend {
@@ -320,6 +325,9 @@ export class EditorViewport {
 
   private sync() {
     const state = useEditorStore.getState()
+    const assetRevision = useAssetStore.getState().revision
+    const editing = state.playState === 'stopped'
+    const helpers = state.helpersVisible
     for (const [id, group] of this.objects) {
       if (!state.nodes[id]) {
         group.parent?.remove(group)
@@ -328,6 +336,7 @@ export class EditorViewport {
       }
     }
 
+    const changed = new Set<string>()
     for (const id of orderedIds(state.nodes)) {
       const node = state.nodes[id]
       let group = this.objects.get(id)
@@ -336,8 +345,12 @@ export class EditorViewport {
         this.objects.set(id, group)
       }
       if (group.parent !== this.world) this.world.add(group)
+      const data = dataOf(group)
+      const ancestorChanged = Boolean(node.parentId && changed.has(node.parentId))
+      const nodeChanged = data.syncedNode !== node
+      if (nodeChanged || ancestorChanged) changed.add(id)
       const skipTransform = this.driving && (this.singleId === id || this.baselines.some(item => item.id === id))
-      if (!skipTransform) {
+      if (!skipTransform && (nodeChanged || ancestorChanged)) {
         const pose = worldPose(state.nodes, id)
         group.position.copy(pose.position)
         group.quaternion.copy(pose.quaternion)
@@ -345,8 +358,21 @@ export class EditorViewport {
       }
       const layerBit = layerBitIndex(node.renderLayerId, state.layers)
       group.visible = node.visible && (state.editorCullingMask & (1 << layerBit)) !== 0
-      this.updateView(group, node, state.playState === 'stopped')
-      applyNodeLayers(group, layerBit)
+      const viewDirty = nodeChanged
+        || data.syncedAssetRevision !== assetRevision
+        || data.syncedEditing !== editing
+        || data.syncedHelpers !== helpers
+      if (viewDirty) {
+        this.updateView(group, node, editing)
+        data.syncedNode = node
+        data.syncedAssetRevision = assetRevision
+        data.syncedEditing = editing
+        data.syncedHelpers = helpers
+      }
+      if (viewDirty || data.syncedLayerBit !== layerBit) {
+        applyNodeLayers(group, layerBit)
+        data.syncedLayerBit = layerBit
+      }
     }
 
     this.pickables.length = 0
@@ -978,7 +1004,7 @@ export class EditorViewport {
     this.rig.update(dt)
     this.commitView()
     this.placeGrid()
-    tickPhysics(dt)
+    tickPhysics(dt, id => this.objects.get(id) ?? null)
     tickNavigation()
     if (this.ready) tickParticles(dt, id => this.objects.get(id) ?? null)
     const bake = consumeNavBake()

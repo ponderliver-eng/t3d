@@ -368,6 +368,19 @@ export async function deleteArtifact(key: string): Promise<void> {
   await writeIndex()
 }
 
+export async function pruneArtifacts(validKeys: ReadonlySet<string>): Promise<number> {
+  if (!root) return 0
+  let removed = 0
+  for (const key of Object.keys(cacheIndex.artifacts)) {
+    if (validKeys.has(key)) continue
+    await removeFile(requireRoot(), artifactFilePath(key)).catch(() => undefined)
+    delete cacheIndex.artifacts[key]
+    removed += 1
+  }
+  if (removed > 0) await writeIndex()
+  return removed
+}
+
 export async function flushDocument(document: ProjectDocument): Promise<void> {
   const handle = requireRoot()
   storedDocument = document
