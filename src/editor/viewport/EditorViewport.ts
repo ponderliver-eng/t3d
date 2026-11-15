@@ -88,13 +88,22 @@ interface ViewData {
   modelKey?: string
   mixer?: AnimationMixer
   actions?: Map<string, AnimationAction>
-  loadedClips?: Set<string>
   activeClip?: string
-  clipBinding?: string
-  boundSource?: string
+  activeOverlay?: string
   animatorState?: string
   animatorTime?: number
   pendingFade?: number
+  bodyBlend?: ActionBlend
+  overlayBlend?: ActionBlend
+}
+
+interface ActionBlend {
+  from?: AnimationAction
+  to: AnimationAction
+  start: number
+  duration: number
+  loop: boolean
+  speed: number
 }
 
 interface Baseline {
@@ -1134,10 +1143,7 @@ export class EditorViewport {
   private ensureModel(group: Group, node: SceneNode) {
     const data = dataOf(group)
     const key = node.assetId ? `${node.assetId}@${modelRevision(node.assetId)}` : ''
-    if (!node.assetId || data.modelKey === key) {
-      this.attachExternalClips(data, node)
-      return
-    }
+    if (!node.assetId || data.modelKey === key) return
     const instance = instantiateModel(node.assetId)
     if (!instance) return
     if (data.modelRoot) group.remove(data.modelRoot)
@@ -1145,55 +1151,22 @@ export class EditorViewport {
     instance.object.traverse(child => { child.userData.nodeId = node.id })
     group.add(instance.object)
     const mixer = new AnimationMixer(instance.object)
-    const actions = new Map<string, AnimationAction>()
-    for (const clip of instance.clips) actions.set(clipId(node.assetId, clip.name), mixer.clipAction(clip))
     data.modelRoot = instance.object
     data.pick = instance.object
     data.modelKey = key
     data.mixer = mixer
-    data.actions = actions
-    data.loadedClips = new Set([node.assetId])
+    data.actions = new Map<string, AnimationAction>()
     data.activeClip = ''
-    this.attachExternalClips(data, node)
-  }
-
-  private attachExternalClips(data: ViewData, node: SceneNode) {
-    if (!data.mixer || !data.actions) return
-    if (!node.clipAssetId || !node.assetId) {
-      this.dropExternalClips(data)
-      return
-    }
-    const binding = humanoidBindingKey(node.clipAssetId, node.assetId)
-    if (data.clipBinding === binding) return
-    this.dropExternalClips(data)
-    const extra = getModelTemplate(node.clipAssetId)
-    if (!extra) return
-    for (const clip of clipsForSkeleton(node.clipAssetId, node.assetId)) {
-      const key = clipId(node.clipAssetId, clip.name)
-      if (!data.actions.has(key)) data.actions.set(key, data.mixer.clipAction(clip))
-    }
-    data.boundSource = node.clipAssetId
-    data.clipBinding = binding
-    data.activeClip = ''
-  }
-
-  private dropExternalClips(data: ViewData) {
-    const prefix = data.boundSource ? `${data.boundSource}:` : ''
-    if (data.actions && prefix) {
-      for (const [key, action] of data.actions) {
-        if (!key.startsWith(prefix)) continue
-        action.stop()
-        data.actions.delete(key)
-      }
-    }
-    if (prefix && data.activeClip?.startsWith(prefix)) data.activeClip = ''
-    data.boundSource = ''
-    data.clipBinding = ''
+    data.activeOverlay = ''
+    data.bodyBlend = undefined
+    data.overlayBlend = undefined
   }
 
   private playbackSource(node: SceneNode) {
     const animator = node.animator?.enabled ? activeAnimatorState(node.animator) : undefined
+    const overlayOn = Boolean(node.overlayClip && node.overlayPlaying)
     if (animator) {
+      const mask = animator.mask && animator.mask !== 'full' ? animator.mask : 'full' as const
       return {
         sourceId: animator.clipAssetId || node.assetId || '',
         clip: animator.clip,
@@ -1201,17 +1174,37 @@ export class EditorViewport {
         speed: Number.isFinite(animator.speed) ? animator.speed : 1,
         fade: node.clipFade ?? 0.15,
         inPlace: animator.inPlace ?? node.clipInPlace === true,
-        mask: animator.mask && animator.mask !== 'full' ? animator.mask : 'full' as const,
+        mask: overlayOn && mask === 'full' ? 'lower' as const : mask,
+        playing: node.clipPlaying,
+        time: node.clipTime,
       }
     }
+    const mask = node.clipMask === 'upper' || node.clipMask === 'lower' ? node.clipMask : 'full' as const
     return {
       sourceId: node.clipAssetId || node.assetId || '',
       clip: node.clip,
       loop: node.clipLoop !== false,
       speed: node.clipSpeed ?? 1,
       fade: node.clipFade ?? 0.15,
-        inPlace: node.clipInPlace === true,
-        mask: node.clipMask === 'upper' || node.clipMask === 'lower' ? node.clipMask : 'full' as const,
+      inPlace: node.clipInPlace === true,
+      mask: overlayOn && mask === 'full' ? 'lower' as const : mask,
+      playing: node.clipPlaying,
+      time: node.clipTime,
+    }
+  }
+
+  private overlaySource(node: SceneNode) {
+    if (!node.overlayClip) return null
+    return {
+      sourceId: node.overlayAssetId || node.assetId || '',
+      clip: node.overlayClip,
+      loop: node.overlayLoop === true,
+      speed: 1,
+      fade: node.clipFade ?? 0.15,
+      inPlace: true,
+      mask: 'upper' as const,
+      playing: node.overlayPlaying === true,
+      time: node.overlayTime ?? 0,
     }
   }
 
@@ -1255,39 +1248,141 @@ export class EditorViewport {
     action.timeScale = speed
   }
 
+  private beginBlend(
+    data: ViewData,
+    previous: AnimationAction | undefined,
+    next: AnimationAction,
+    loop: boolean,
+    speed: number,
+    fade: number,
+    keep?: AnimationAction,
+  ) {
+    const duration = Math.max(0, fade)
+    const previousDuration = previous?.getClip().duration || 1
+    const nextDuration = next.getClip().duration || 1
+    const phase = previous ? ((previous.time % previousDuration) + previousDuration) % previousDuration / previousDuration : 0
+    if (data.actions) {
+      for (const item of data.actions.values()) {
+        if (item === previous || item === next || item === keep) continue
+        item.stop()
+      }
+    }
+    this.configureAction(next, loop, speed)
+    next.stopFading()
+    next.enabled = true
+    next.paused = false
+    next.weight = duration > 0 && previous && previous !== next ? 0 : 1
+    next.time = phase * nextDuration
+    next.play()
+    if (previous && previous !== next) {
+      previous.stopFading()
+      previous.enabled = true
+      previous.paused = false
+      previous.weight = 1
+      previous.play()
+    }
+    const blend = { from: previous, to: next, start: data.mixer?.time ?? 0, duration, loop, speed }
+    return duration > 0 && previous && previous !== next ? blend : this.finishBlend(data, blend, keep)
+  }
+
+  /** 淡出结束后把目标动作卸掉再绑上，清掉全身轨残留的混合权重。 */
+  private finishBlend(data: ViewData, blend: ActionBlend, keep?: AnimationAction) {
+    const time = blend.to.time
+    if (data.actions) {
+      for (const item of data.actions.values()) {
+        if (item === keep) continue
+        item.stop()
+      }
+    } else if (blend.from && blend.from !== blend.to && blend.from !== keep) {
+      blend.from.stop()
+    }
+    this.configureAction(blend.to, blend.loop, blend.speed)
+    blend.to.stopFading()
+    blend.to.enabled = true
+    blend.to.paused = false
+    blend.to.weight = 1
+    blend.to.time = time
+    blend.to.play()
+    return undefined
+  }
+
+  private stepBlend(data: ViewData, blend: ActionBlend | undefined, keep?: AnimationAction) {
+    if (!blend || !data.mixer) return blend
+    const elapsed = data.mixer.time - blend.start
+    const t = blend.duration <= 0 ? 1 : Math.min(1, elapsed / blend.duration)
+    const from = blend.from
+    if (t < 1 && from && from !== blend.to) {
+      from.enabled = true
+      from.paused = false
+      from.weight = 1 - t
+      blend.to.enabled = true
+      blend.to.paused = false
+      blend.to.weight = t
+      return blend
+    }
+    return this.finishBlend(data, blend, keep)
+  }
+
   private syncClip(data: ViewData, node: SceneNode) {
     if (!data.mixer || !data.actions || !node.assetId) return
     this.applyAnimatorParameters(data, node)
     node = useEditorStore.getState().nodes[node.id] ?? node
     if (!node.assetId) return
-    const play = this.playbackSource(node)
-    const key = play.clip && play.sourceId ? this.actionKey(node.assetId, play.sourceId, play.clip, play.mask, play.inPlace) : ''
-    const action = key ? this.ensurePlaybackAction(data, node.assetId, play.sourceId, play.clip, play.mask, play.inPlace) : undefined
-    const fade = data.pendingFade ?? play.fade
-    data.pendingFade = undefined
-    if (data.activeClip !== key) {
-      const previous = data.activeClip ? data.actions.get(data.activeClip) : undefined
-      if (action) {
+    this.syncLayer(data, node, 'body')
+    this.syncLayer(data, node, 'overlay')
+  }
+
+  private syncLayer(data: ViewData, node: SceneNode, layer: 'body' | 'overlay') {
+    if (!data.mixer || !data.actions || !node.assetId) return
+    const play = layer === 'body' ? this.playbackSource(node) : this.overlaySource(node)
+    const currentKey = layer === 'body' ? data.activeClip : data.activeOverlay
+    const key = play?.clip && play.sourceId ? this.actionKey(node.assetId, play.sourceId, play.clip, play.mask, play.inPlace) : ''
+    const action = key && play ? this.ensurePlaybackAction(data, node.assetId, play.sourceId, play.clip, play.mask, play.inPlace) : undefined
+    const fade = layer === 'body' ? (data.pendingFade ?? play?.fade ?? node.clipFade ?? 0) : (node.clipFade ?? 0)
+    if (layer === 'body') data.pendingFade = undefined
+    if (currentKey !== key) {
+      const previous = currentKey ? data.actions.get(currentKey) : undefined
+      if (action && play) {
         this.configureAction(action, play.loop, play.speed)
-        if (node.clipPlaying && previous && previous !== action && fade > 0) {
-          action.reset().play()
-          action.fadeIn(fade)
-          previous.fadeOut(fade)
+        const currentBlend = layer === 'body' ? data.bodyBlend : data.overlayBlend
+        if (currentBlend?.to === action) {
+          action.paused = !play.playing
+        } else if (play.playing && previous && previous !== action && fade > 0) {
+          const keep = layer === 'body'
+            ? (node.overlayPlaying ? data.actions.get(data.activeOverlay ?? '') : undefined)
+            : data.actions.get(data.activeClip ?? '')
+          const blend = this.beginBlend(data, previous, action, play.loop, play.speed, fade, keep)
+          if (layer === 'body') data.bodyBlend = blend
+          else data.overlayBlend = blend
         } else {
-          previous?.stop()
+          const keep = layer === 'body'
+            ? (node.overlayPlaying ? data.actions.get(data.activeOverlay ?? '') : undefined)
+            : data.actions.get(data.activeClip ?? '')
+          for (const item of data.actions.values()) {
+            if (item === action || item === keep) continue
+            item.stop()
+          }
+          if (layer === 'body') data.bodyBlend = undefined
+          else data.overlayBlend = undefined
           action.reset().play()
-          action.paused = !node.clipPlaying
-          action.time = node.clipTime
+          action.weight = 1
+          action.paused = !play.playing
+          action.time = play.time
         }
-      } else previous?.stop()
-      data.activeClip = key
+      } else if (previous) {
+        if (fade > 0) previous.fadeOut(fade)
+        else previous.stop()
+        if (layer === 'body') data.bodyBlend = undefined
+        else data.overlayBlend = undefined
+      }
+      if (layer === 'body') data.activeClip = key
+      else data.activeOverlay = key
     }
-    if (action) {
+    if (action && play) {
       this.configureAction(action, play.loop, play.speed)
-      action.paused = !node.clipPlaying
-      if (!node.clipPlaying && Math.abs(action.time - node.clipTime) > 0.001) {
-        action.time = node.clipTime
-        data.mixer.update(0)
+      action.paused = !play.playing
+      if (!play.playing && Math.abs(action.time - play.time) > 0.001) {
+        action.time = play.time
       }
     }
   }
@@ -1339,10 +1434,20 @@ export class EditorViewport {
           this.applyingAnimator = false
         }
       }
-      if (!node.clipPlaying) continue
+      if (!(node.clipPlaying || node.overlayPlaying)) continue
+      const overlayKeep = node.overlayPlaying ? data.actions?.get(data.activeOverlay ?? '') : undefined
+      const bodyKeep = node.clipPlaying ? data.actions?.get(data.activeClip ?? '') : undefined
+      data.bodyBlend = this.stepBlend(data, data.bodyBlend, overlayKeep)
+      data.overlayBlend = this.stepBlend(data, data.overlayBlend, bodyKeep)
       data.mixer.update(dt)
       const action = data.actions?.get(data.activeClip ?? '')
-      if (action && action.loop === LoopOnce && !action.isRunning() && action.time > 0) {
+      const overlay = data.actions?.get(data.activeOverlay ?? '')
+      if (overlay && node.overlayPlaying && overlay.loop === LoopOnce && !overlay.isRunning() && overlay.time > 0) {
+        useEditorStore.getState().updateNode(id, { overlayPlaying: false, overlayTime: overlay.time })
+      } else if (write && overlay && node.overlayClip) {
+        useEditorStore.getState().updateNode(id, { overlayTime: overlay.time })
+      }
+      if (action && node.clipPlaying && action.loop === LoopOnce && !action.isRunning() && action.time > 0) {
         const end = node.clipEnd ?? 'hold'
         if (end === 'stop') {
           useEditorStore.getState().updateNode(id, { clipPlaying: false, clipTime: action.time })
@@ -1484,10 +1589,6 @@ function markHelper(object: Object3D, blockRaycast = false) {
     child.receiveShadow = false
     if (blockRaycast) child.raycast = () => {}
   })
-}
-
-function clipId(assetId: string | null, name: string): string {
-  return `${assetId ?? ''}:${name}`
 }
 
 function meshGeometry(kind: SceneNode['kind']): BufferGeometry {

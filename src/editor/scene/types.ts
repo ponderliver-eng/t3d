@@ -291,8 +291,14 @@ export interface SceneNode {
   clipFade?: number
   /** 钉住盆骨的水平位移，只留上下。 */
   clipInPlace?: boolean
-  /** 这段直接播放作用到全身、上半身或下半身。 */
+  /** 这段直接播放作用到全身、上半身或下半身。有上半身覆盖时，全身会改成只播下半身。 */
   clipMask?: 'full' | 'upper' | 'lower'
+  /** 叠在身体层上的上半身片段。空着表示没有覆盖。 */
+  overlayClip?: string
+  overlayAssetId?: string | null
+  overlayTime?: number
+  overlayPlaying?: boolean
+  overlayLoop?: boolean
   animator?: import('../animation/animator').AnimatorController | null
   metalness: number
   roughness: number

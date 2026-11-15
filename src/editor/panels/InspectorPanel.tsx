@@ -969,6 +969,31 @@ function AnimationCard({
         </select>
       </label>}
       {!driven && <label className="field">
+        <span>{t('anim.overlay')}</span>
+        <select
+          value={playback?.overlayClip ? `${playback.overlayAssetId ? 'file' : 'model'}\u001f${playback.overlayClip}` : ''}
+          onChange={event => {
+            const store = useEditorStore.getState()
+            if (!event.target.value) {
+              store.updateNode(nodeId, { overlayClip: '', overlayPlaying: false, overlayTime: 0 })
+              return
+            }
+            const [source, name] = event.target.value.split('\u001f')
+            store.updateNode(nodeId, {
+              overlayClip: name,
+              overlayAssetId: source === 'file' ? clipAssetId : null,
+              overlayTime: 0,
+              overlayPlaying: true,
+              overlayLoop: false,
+            })
+          }}
+        >
+          <option value="">{t('anim.overlayStop')}</option>
+          {modelClips.map(name => <option key={`overlay-model:${name}`} value={`model\u001f${name}`}>{name}</option>)}
+          {fileClips.map(name => <option key={`overlay-file:${name}`} value={`file\u001f${name}`}>{name}</option>)}
+        </select>
+      </label>}
+      {!driven && <label className="field">
         <span>{t('anim.inPlace')}</span>
         <input type="checkbox" checked={clipInPlace} onChange={event => useEditorStore.getState().updateNode(nodeId, { clipInPlace: event.target.checked })} />
       </label>}
