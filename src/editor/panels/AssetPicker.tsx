@@ -9,12 +9,14 @@ export function AssetPicker({
   title,
   kinds,
   selectedId,
+  include,
   onSelect,
   onClose,
 }: {
   title: string
   kinds: Array<ProjectAsset['kind']>
   selectedId: string | null
+  include?: (asset: ProjectAsset) => boolean
   onSelect: (id: string | null) => void
   onClose: () => void
 }) {
@@ -24,8 +26,9 @@ export function AssetPicker({
   const q = query.trim().toLowerCase()
   const items = useMemo(() => Object.values(assets).filter(asset => {
     if (!kinds.includes(asset.kind)) return false
+    if (include && !include(asset)) return false
     return !q || asset.name.toLowerCase().includes(q)
-  }).sort((a, b) => a.name.localeCompare(b.name, 'zh')), [assets, kinds, q])
+  }).sort((a, b) => a.name.localeCompare(b.name, 'zh')), [assets, kinds, include, q])
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {

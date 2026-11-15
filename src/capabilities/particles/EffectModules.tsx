@@ -1,7 +1,8 @@
 import { useState, type ReactNode } from 'react'
-import { ChevronDown, ChevronRight } from 'lucide-react'
+import { ChevronDown, ChevronRight, Search } from 'lucide-react'
 import { ASSET_MIME } from '../../editor/assets/import'
 import { useAssetStore } from '../../editor/assets/library'
+import { AssetPicker } from '../../editor/panels/AssetPicker'
 import { normalizeSlot } from '../../editor/assets/materials'
 import { useEditorStore } from '../../editor/scene/store'
 import { useI18n, type MessageKey } from '../../editor/i18n'
@@ -294,12 +295,13 @@ export function MaterialDrop({
   onDepthWrite: (depthWrite: boolean) => void
 }) {
   const { t } = useI18n()
+  const [picking, setPicking] = useState(false)
   const asset = useAssetStore(state => materialId ? state.assets[materialId] : undefined)
   const slot = asset?.kind === 'material' ? asset.slot : null
   const particle = (slot?.shader ?? 'lit') === 'particle-unlit'
   return (
     <>
-      <label
+      <div
         className="field"
         onDragOver={event => {
           if ([...event.dataTransfer.types].includes(ASSET_MIME)) event.preventDefault()
@@ -314,8 +316,24 @@ export function MaterialDrop({
         }}
       >
         <span>{t('particles.material')}</span>
-        <span>{asset?.kind === 'material' ? asset.name : t('particles.materialEmpty')}</span>
-      </label>
+        <button type="button" className="asset-ref" disabled={disabled} title={t('picker.material')} onClick={() => setPicking(true)}>
+          <span>{asset?.kind === 'material' ? asset.name : t('particles.materialEmpty')}</span>
+          <Search size={12} />
+        </button>
+      </div>
+      {picking && (
+        <AssetPicker
+          title={t('picker.material')}
+          kinds={['material']}
+          selectedId={materialId}
+          include={item => item.kind === 'material' && item.slot.shader === 'particle-unlit'}
+          onSelect={id => {
+            onMaterial(id)
+            setPicking(false)
+          }}
+          onClose={() => setPicking(false)}
+        />
+      )}
       {slot && !particle && <p className="settings-note">{t('particles.badMaterial')}</p>}
       {slot && particle && (
         <>

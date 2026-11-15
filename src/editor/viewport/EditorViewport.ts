@@ -54,7 +54,6 @@ import { disposeParticles, mountParticles, tickParticles } from '../../capabilit
 import { collectNavSurfaces } from '../../capabilities/navigation/collect'
 import { syncNavDebug } from '../../capabilities/navigation/debug'
 import { consumeNavBake, navDebugGeometry, tickNavigation } from '../../capabilities/navigation/session'
-import { physicsDebugActive, syncPhysicsDebug } from './physicsDebug'
 import { boundsOf, refreshObjectBounds } from '../scene/bounds'
 import { isLight, isMesh } from '../scene/kinds'
 import { setSpawnProvider } from '../scene/spawn'
@@ -146,7 +145,6 @@ export class EditorViewport {
   private disposed = false
   private ready = false
   private picture: ScenePicturePipeline | null = null
-  private readonly physicsDebug = new Group()
   private readonly navDebug = new Group()
   private frameCamera: EditorCameraRig['active'] | null = null
   private playCameraWarned = ''
@@ -171,8 +169,6 @@ export class EditorViewport {
 
     const root = new Group()
     this.scene.add(root)
-    this.physicsDebug.name = 'physics-debug'
-    this.scene.add(this.physicsDebug)
     this.navDebug.name = 'nav-debug'
     this.scene.add(this.navDebug)
     root.add(this.world)
@@ -987,12 +983,6 @@ export class EditorViewport {
       this.navDebug,
       navDebugGeometry(),
       capabilityEnabled(editor.capabilities, 'navigation') && (editor.helpersVisible || editor.playState !== 'stopped'),
-    )
-    syncPhysicsDebug(
-      this.scene,
-      this.physicsDebug,
-      editor.nodes,
-      physicsDebugActive(editor.capabilities, editor.playState !== 'stopped'),
     )
     this.refreshGuides()
     for (const helper of this.selectionHelpers) {

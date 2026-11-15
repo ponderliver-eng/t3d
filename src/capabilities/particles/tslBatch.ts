@@ -103,7 +103,15 @@ export class TslBatchedRenderer extends BatchedRenderer {
   }
 }
 
+function sameColor(a: Material, b: Material) {
+  const left = (a as { color?: { r: number, g: number, b: number } }).color
+  const right = (b as { color?: { r: number, g: number, b: number } }).color
+  if (!left || !right) return left === right
+  return left.r === right.r && left.g === right.g && left.b === right.b
+}
+
 function sameBatch(a: VFXBatchSettings, b: VFXBatchSettings) {
+  // 颜色、不透明度和深度写入在创建绘制材质时烤进节点，不能只按混合方式复用旧批次。
   return a.material.side === b.material.side
     && a.material.blending === b.material.blending
     && a.material.blendSrc === b.material.blendSrc
@@ -112,6 +120,9 @@ function sameBatch(a: VFXBatchSettings, b: VFXBatchSettings) {
     && a.material.premultipliedAlpha === b.material.premultipliedAlpha
     && a.material.transparent === b.material.transparent
     && a.material.depthTest === b.material.depthTest
+    && a.material.depthWrite === b.material.depthWrite
+    && a.material.opacity === b.material.opacity
+    && sameColor(a.material, b.material)
     && a.material.type === b.material.type
     && a.material.alphaTest === b.material.alphaTest
     && (a.material as { map?: Texture | null }).map === (b.material as { map?: Texture | null }).map
