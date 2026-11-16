@@ -10,12 +10,18 @@ import { translate } from '../i18n'
 import { QUARKS_VERSION } from '../../capabilities/particles/defaults'
 import { readQuarksDocument } from '../../capabilities/particles/readQuarks'
 import { assetDirectory, assetName, useAssetStore, type FileAsset, type FileKind, type ProjectAsset } from './library'
+import { selectTab } from '../layout/events'
 import { createScoreDocument } from '../../runtime/ui/spec'
 import { collectUiImageIds } from '../../runtime/ui/tree'
 import { openUiEditor } from '../ui/session'
 import type { PbrSlot, SceneNode, Vec3 } from '../scene/types'
 
 export const ASSET_MIME = 'application/x-t3d-asset'
+export const NODE_MIME = 'application/x-t3d-node'
+
+export function isNodeDrag(data: DataTransfer): boolean {
+  return [...data.types].includes(NODE_MIME)
+}
 
 let input: HTMLInputElement | null = null
 
@@ -126,7 +132,16 @@ export async function importFiles(files: File[], dir = useAssetStore.getState().
       if (idx >= 0) created.splice(idx, 1)
     }
   }
+  const id = created.at(-1)
+  if (id) revealImported(id)
   return created
+}
+
+function revealImported(id: string) {
+  const library = useAssetStore.getState()
+  library.setBrowseDir(assetDirectory(id, library.assetDirs))
+  useEditorStore.getState().inspectAsset(id)
+  selectTab('tab-project')
 }
 
 async function ingestModelAfterRegister(asset: FileAsset): Promise<boolean> {

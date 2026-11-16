@@ -310,8 +310,8 @@
   top: calc(100% + 4px);
   right: 0;
   z-index: 20;
-  min-width: 132px;
-  padding: 4px;
+  min-width: 176px;
+  padding: 4px 0;
   background: var(--bg-popup, #2a2d33);
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
@@ -322,18 +322,43 @@
 .viewport-menu__pop label {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   width: 100%;
-  height: 24px;
-  padding: 0 8px;
+  height: 26px;
+  padding: 0 10px;
   text-align: left;
   color: var(--text-secondary);
   font-size: var(--font-size-sm);
 }
 
+.viewport-menu__pop button span,
+.viewport-menu__pop label span {
+  flex: 1;
+  min-width: 0;
+}
+
+.viewport-menu__pop svg,
+.viewport-menu__pad {
+  flex: 0 0 14px;
+  color: var(--text-muted);
+}
+
 .viewport-menu__pop button:hover,
 .viewport-menu__pop label:hover { background: var(--bg-hover); color: var(--text-primary); }
-.viewport-menu__pop button.is-active { color: var(--accent); }
+.viewport-menu__pop button:hover svg,
+.viewport-menu__pop label:hover svg,
+.viewport-menu__pop button.is-active,
+.viewport-menu__pop button.is-active svg { color: var(--accent); }
+
+.viewport-menu__sep {
+  height: 1px;
+  margin: 4px 0;
+  background: var(--border);
+}
+
+.viewport-menu__pop input[type="checkbox"] {
+  margin-left: auto;
+}
 
 .viewport-context {
   position: fixed;
@@ -391,7 +416,7 @@
 }
 
 .viewport-menu__step input {
-  width: 64px;
+  width: 56px;
   height: 18px;
   margin-left: auto;
   background: rgba(0, 0, 0, 0.25);

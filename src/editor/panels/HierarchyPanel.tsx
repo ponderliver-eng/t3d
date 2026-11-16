@@ -1,14 +1,14 @@
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type PointerEvent as ReactPointerEvent } from 'react'
+import { useEffect, useMemo, useRef, useState, type DragEvent, type KeyboardEvent, type MouseEvent } from 'react'
 import { createPortal } from 'react-dom'
 import {
   ArrowDown, ArrowDownToLine, ArrowUp, Axis3d, Box, Boxes, Camera, ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, Circle, ClipboardPaste, Component, Cone, Copy, CopyPlus, Cylinder, ExternalLink, Eye, EyeOff,
   Flashlight, Focus, Group, Lightbulb, Lock, MapPin, Package, PanelsTopLeft, Pencil, Pill, Plus, Search, Sparkles, Square, Sun, Sunrise, Trash2, Undo2, Ungroup, Unlink, Unlock, Upload, X,
 } from 'lucide-react'
 import { readClipDrag } from '../animation/playback'
-import { assignClip } from '../assets/import'
+import { assignClip, isNodeDrag, NODE_MIME } from '../assets/import'
 import { assetDirectory, useAssetStore } from '../assets/library'
 import { instanceDirty, isPrefabRoot } from '../assets/prefab'
-import { translate, useI18n, type MessageKey } from '../i18n'
+import { useI18n, type MessageKey } from '../i18n'
 import { TAG_FILTER_UNTAGGED, sortedTags } from '../project/taxonomy'
 import { childrenOf, isLight, isMesh, LIGHT_KINDS, MESH_KINDS } from '../scene/kinds'
 import { useEditorStore, primaryId, type DeviceKind } from '../scene/store'
@@ -56,8 +56,10 @@ export default function HierarchyPanel() {
   const menuRef = useRef<HTMLDivElement>(null)
   const renameTimer = useRef<number | null>(null)
   const dragged = useRef(false)
-  const pointerDrag = useRef<{ id: string, x: number, y: number, active: boolean } | null>(null)
+  const dragChip = useRef<HTMLDivElement | null>(null)
+  const draggingRef = useRef<string | null>(null)
   const dropLive = useRef<{ id: string, zone: DropZone } | null>(null)
+  const [draggingId, setDraggingId] = useState<string | null>(null)
   const primary = primaryId({ selection })
   const pendingRenameId = useEditorStore(state => state.pendingRenameId)
 
@@ -226,85 +228,79 @@ export default function HierarchyPanel() {
     setMenu(null)
   }
 
-  const beginRowDrag = (event: ReactPointerEvent, id: string) => {
-    if (playing || event.button !== 0) return
-    if ((event.target as HTMLElement).closest('button, input')) return
-    pointerDrag.current = { id, x: event.clientX, y: event.clientY, active: false }
-    const move = (pointer: globalThis.PointerEvent) => {
-      const drag = pointerDrag.current
-      if (!drag) return
-      if (!drag.active) {
-        const dx = pointer.clientX - drag.x
-        const dy = pointer.clientY - drag.y
-        if (dx * dx + dy * dy < 16) return
-        drag.active = true
-        dragged.current = true
-      }
-      document.querySelectorAll('.is-prefab-drop').forEach(element => element.classList.remove('is-prefab-drop'))
-      const folder = document.elementFromPoint(pointer.clientX, pointer.clientY)?.closest<HTMLElement>('[data-asset-dir]')
-      if (folder) {
-        folder.classList.add('is-prefab-drop')
-        dropLive.current = null
-        setDrop(null)
-        return
-      }
-      const row = document.elementFromPoint(pointer.clientX, pointer.clientY)?.closest<HTMLElement>('[data-node-id]')
-      const targetId = row?.dataset.nodeId ?? null
-      if (!targetId || targetId === drag.id || isUnder(useEditorStore.getState().nodes, targetId, drag.id)) {
-        dropLive.current = null
-        setDrop(null)
-        return
-      }
-      const rect = row!.getBoundingClientRect()
-      const ratio = (pointer.clientY - rect.top) / Math.max(rect.height, 1)
-      const zone: DropZone = ratio < 0.25 ? 'before' : ratio > 0.75 ? 'after' : 'into'
-      dropLive.current = { id: targetId, zone }
-      setDrop(dropLive.current)
+  const startNodeDrag = (event: DragEvent, id: string) => {
+    if (playing || (event.target as HTMLElement).closest('button, input')) {
+      event.preventDefault()
+      return
     }
-    const up = (pointer: globalThis.PointerEvent) => {
-      window.removeEventListener('pointermove', move)
-      window.removeEventListener('pointerup', up)
-      const drag = pointerDrag.current
-      pointerDrag.current = null
-      const current = dropLive.current
+    const node = nodes[id]
+    if (!node) {
+      event.preventDefault()
+      return
+    }
+    event.dataTransfer.setData(NODE_MIME, id)
+    event.dataTransfer.effectAllowed = 'copyMove'
+    dragChip.current?.remove()
+    const chip = document.createElement('div')
+    chip.className = 'scene-drag-chip'
+    chip.textContent = node.name
+    document.body.appendChild(chip)
+    event.dataTransfer.setDragImage(chip, 16, 16)
+    dragChip.current = chip
+    dragged.current = true
+    draggingRef.current = id
+    setDraggingId(id)
+  }
+
+  const finishNodeDrag = () => {
+    dragChip.current?.remove()
+    dragChip.current = null
+    draggingRef.current = null
+    dropLive.current = null
+    setDraggingId(null)
+    setDrop(null)
+  }
+
+  const hoverNode = (event: DragEvent, id: string) => {
+    if (!isNodeDrag(event.dataTransfer)) return
+    event.preventDefault()
+    event.stopPropagation()
+    event.dataTransfer.dropEffect = 'move'
+    const sourceId = draggingRef.current
+    if (!sourceId || id === sourceId || isUnder(nodes, id, sourceId)) {
       dropLive.current = null
       setDrop(null)
-      document.querySelectorAll('.is-prefab-drop').forEach(element => element.classList.remove('is-prefab-drop'))
-      const folder = document.elementFromPoint(pointer.clientX, pointer.clientY)?.closest<HTMLElement>('[data-asset-dir]')
-      if (drag?.active && folder) {
-        const node = useEditorStore.getState().nodes[drag.id]
-        if (!node) return
-        if (node.prefabInstanceId === node.id) {
-          useEditorStore.getState().log('warn', translate('prefab.alreadyInstance'))
-          return
-        }
-        setSavePrefab({ id: node.id, name: node.name, dir: folder.dataset.assetDir })
-        return
-      }
-      if (!drag?.active) return
-      const ids = dragIds(drag.id, useEditorStore.getState().selection)
-      const target = document.elementFromPoint(pointer.clientX, pointer.clientY)?.closest<HTMLElement>('[data-node-id]')
-      const targetId = target?.dataset.nodeId ?? current?.id ?? null
-      if (!targetId) {
-        useEditorStore.getState().placeNodes(ids, null, 'end')
-        return
-      }
-      const zone = current?.id === targetId ? current.zone : 'into'
-      const targetNode = useEditorStore.getState().nodes[targetId]
-      if (!targetNode || ids.includes(targetId)) return
-      if (zone === 'into') {
-        useEditorStore.getState().placeNodes(ids, targetId, 'into')
-        setCollapsed(state => {
-          const next = { ...state }
-          delete next[targetId]
-          return next
-        })
-      } else {
-        useEditorStore.getState().placeNodes(ids, targetNode.parentId, zone, targetId)
-      }
+      return
     }
-    window.addEventListener('pointermove', move)
-    window.addEventListener('pointerup', up)
+    const rect = event.currentTarget.getBoundingClientRect()
+    const ratio = (event.clientY - rect.top) / Math.max(rect.height, 1)
+    const zone: DropZone = ratio < 0.25 ? 'before' : ratio > 0.75 ? 'after' : 'into'
+    dropLive.current = { id, zone }
+    setDrop(dropLive.current)
+  }
+
+  const dropNode = (event: DragEvent, id: string) => {
+    if (!isNodeDrag(event.dataTransfer)) return
+    event.preventDefault()
+    event.stopPropagation()
+    const sourceId = event.dataTransfer.getData(NODE_MIME)
+    const current = dropLive.current
+    finishNodeDrag()
+    if (!sourceId) return
+    const zone = current?.id === id ? current.zone : 'into'
+    const ids = dragIds(sourceId, useEditorStore.getState().selection)
+    const target = useEditorStore.getState().nodes[id]
+    if (!target || ids.includes(id) || isUnder(useEditorStore.getState().nodes, id, sourceId)) return
+    if (zone === 'into') {
+      useEditorStore.getState().placeNodes(ids, id, 'into')
+      setCollapsed(state => {
+        const next = { ...state }
+        delete next[id]
+        return next
+      })
+    } else {
+      useEditorStore.getState().placeNodes(ids, target.parentId, zone, id)
+    }
   }
 
   return (
@@ -384,17 +380,29 @@ export default function HierarchyPanel() {
                 isPrefabRoot(node) ? 'scene-item--prefab-root' : '',
                 node.visible ? '' : 'scene-item--hidden',
                 ancestorHidden(nodes, node.id) ? 'scene-item--ancestor-hidden' : '',
+                draggingId === node.id ? 'scene-item--dragging' : '',
               ].filter(Boolean).join(' ')}
               style={{ paddingLeft: 6 + depth * 14 }}
               data-node-id={node.id}
               title={t('hierarchy.hint')}
+              draggable={!playing && renameId !== node.id}
+              onDragStart={event => startNodeDrag(event, node.id)}
+              onDragEnd={finishNodeDrag}
               onDragOver={event => {
+                if (isNodeDrag(event.dataTransfer)) {
+                  hoverNode(event, node.id)
+                  return
+                }
                 const types = [...event.dataTransfer.types]
                 if (!types.includes('application/x-t3d-asset') && !types.includes('application/x-t3d-clip')) return
                 event.preventDefault()
                 event.stopPropagation()
               }}
               onDrop={event => {
+                if (isNodeDrag(event.dataTransfer)) {
+                  dropNode(event, node.id)
+                  return
+                }
                 const clipDrag = readClipDrag(event.dataTransfer.getData('application/x-t3d-clip'))
                 if (clipDrag) {
                   if (node.kind !== 'model') return
@@ -415,7 +423,6 @@ export default function HierarchyPanel() {
                   return next
                 })
               }}
-              onPointerDown={event => beginRowDrag(event, node.id)}
               onClick={event => selectRow(node.id, event)}
               onDoubleClick={event => focusRow(node.id, event)}
               onContextMenu={event => {

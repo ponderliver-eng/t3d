@@ -1,8 +1,11 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { scanPackageAssets, type PackageAssetScannerDirectory, type PackageAssetScannerEntry, type PackageAssetScannerResult } from '../assets/package/packageAssetScanner'
+import { Box, Clapperboard, Image, Minus, Palette, Plus, X } from 'lucide-react'
+import { scanPackageAssets, type PackageAssetScannerDirectory, type PackageAssetScannerEntry, type PackageAssetScannerResult, type PackageExtractableAssetKind } from '../assets/package/packageAssetScanner'
 import { extractPackageEntries, withReferencedTextures, type PackageExtractionProgress } from '../assets/package/extractPackage'
 import type { PackageModelAssetRole } from '../assets/package/packageAssetRoleGuess'
 import { normalizeDir } from '../assets/folders'
+import { useAssetStore } from '../assets/library'
+import { selectTab } from '../layout/events'
 import { useEditorStore } from '../scene/store'
 import { useI18n, type MessageKey } from '../i18n'
 import './PackageExtractDialog.css'
@@ -84,7 +87,12 @@ export function PackageExtractDialog({ file, open, onClose }: { file: File | nul
         onProgress: setProgress,
       })
       const editor = useEditorStore.getState()
-      if (done.imported.length) editor.log('info', t('pkg.extractSuccess', { count: done.imported.length }))
+      if (done.imported.length) {
+        editor.log('info', t('pkg.extractSuccess', { count: done.imported.length }))
+        useAssetStore.getState().setBrowseDir(normalizeDir(targetDirectory))
+        editor.inspectAsset(null)
+        selectTab('tab-project')
+      }
       if (done.failed.length) editor.log('error', t('pkg.extractFailed', { count: done.failed.length }))
       if (done.failed.length === 0) onClose()
     } finally {
@@ -102,13 +110,13 @@ export function PackageExtractDialog({ file, open, onClose }: { file: File | nul
             <h2>{t('pkg.title')}</h2>
             <p>{file?.name ?? t('pkg.noFile')}</p>
           </div>
-          <button type="button" className="pkg-extract__close" onClick={onClose} disabled={extracting}>{t('pkg.close')}</button>
+          <button type="button" className="pkg-extract__close" title={t('pkg.close')} aria-label={t('pkg.close')} onClick={onClose} disabled={extracting}><X size={16} /></button>
         </header>
         <section className="pkg-extract__summary">
-          <Summary label={t('pkg.models')} value={totals.model} />
-          <Summary label={t('pkg.textures')} value={totals.texture} />
-          <Summary label={t('pkg.animations')} value={totals.animation} />
-          <Summary label={t('pkg.materials')} value={totals.material} />
+          <Summary label={t('pkg.models')} value={totals.model} icon={Box} color="#9fc5ff" />
+          <Summary label={t('pkg.textures')} value={totals.texture} icon={Image} color="#a9e7b0" />
+          <Summary label={t('pkg.animations')} value={totals.animation} icon={Clapperboard} color="#f2cf7f" />
+          <Summary label={t('pkg.materials')} value={totals.material} icon={Palette} color="#d4b8ff" />
           <Summary label={t('pkg.hidden')} value={result?.stats.hidden ?? 0} />
           <Summary label={t('pkg.unsupported')} value={result?.stats.unsupported ?? 0} />
         </section>
@@ -233,8 +241,31 @@ export function PackageExtractDialog({ file, open, onClose }: { file: File | nul
   )
 }
 
-function Summary({ label, value }: { label: string; value: number }) {
-  return <div className="pkg-extract__summary-item"><span>{label}</span><strong>{value}</strong></div>
+const KIND_MARK: Record<PackageExtractableAssetKind, typeof Box> = {
+  model: Box,
+  texture: Image,
+  animation: Clapperboard,
+  material: Palette,
+}
+
+function KindMark({ kind }: { kind: PackageExtractableAssetKind }) {
+  const { t } = useI18n()
+  const Icon = KIND_MARK[kind]
+  const label = t(`pkg.kind.${kind}` as MessageKey)
+  return (
+    <span className={`pkg-extract__kind pkg-extract__kind--${kind}`} title={label} aria-label={label}>
+      <Icon size={15} />
+    </span>
+  )
+}
+
+function Summary({ label, value, icon: Icon, color }: { label: string; value: number; icon?: typeof Box; color?: string }) {
+  return (
+    <div className="pkg-extract__summary-item">
+      <span>{Icon && <Icon size={13} color={color} />}{label}</span>
+      <strong>{value}</strong>
+    </div>
+  )
 }
 
 function DirectoryTree(props: {
@@ -262,7 +293,7 @@ function DirectoryTree(props: {
         return (
           <div key={entry.id} className="pkg-extract__entry">
             <input type="checkbox" checked={props.selectedIds.has(entry.id)} onChange={() => props.onToggleEntry(entry.id)} aria-label={entry.fileName} />
-            <span className={`pkg-extract__kind pkg-extract__kind--${entry.kind}`}>{t(`pkg.kind.${entry.kind}` as MessageKey)}</span>
+            <KindMark kind={entry.kind} />
             <div className="pkg-extract__entry-main">
               <strong>{entry.fileName}</strong>
               <span>{entry.originalPath}</span>
@@ -302,6 +333,10 @@ function DirectoryTree(props: {
   return (
     <details className="pkg-extract__dir" open>
       <summary>
+        <span className="pkg-extract__dir-twist">
+          <Plus size={11} strokeWidth={2.75} className="pkg-extract__dir-plus" />
+          <Minus size={11} strokeWidth={2.75} className="pkg-extract__dir-minus" />
+        </span>
         <DirectoryCheck state={state} onToggle={() => props.onToggleDirectory(ids, state !== 'checked')} />
         <span className="pkg-extract__dir-name">{props.directory.name}</span>
       </summary>

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type MouseEvent } from 'react'
 import { Box, ChevronRight, Clapperboard, Component, CopyPlus, Folder, FolderOpen, FolderPlus, Globe, Image, Layers, LayoutGrid, List, ListTree, MapPin, Minus, Music, PackageOpen, Palette, PanelsTopLeft, Pencil, Plus, RefreshCw, Rows3, Search, Sparkles, Sun, Trash2, Unlink, Upload, X } from 'lucide-react'
 import { CLIP_MIME } from '../animation/playback'
-import { ASSET_MIME, assignClip, bindImportInput, createDefaultMaterial, createDefaultUi, deleteAsset, duplicateAsset, importFiles, openAsset, openImport, reimportModel, reportAssetUsers } from '../assets/import'
+import { ASSET_MIME, assignClip, bindImportInput, createDefaultMaterial, createDefaultUi, deleteAsset, duplicateAsset, importFiles, isNodeDrag, NODE_MIME, openAsset, openImport, reimportModel, reportAssetUsers } from '../assets/import'
 import { savePrefabFromSelection } from '../assets/import'
 import { readPrefab } from '../assets/prefab'
 import { ASSETS_ROOT, directoryTree, findDir, isWithin, parentDir, type DirNode } from '../assets/folders'
@@ -137,8 +137,55 @@ export default function ProjectPanel() {
     return () => window.removeEventListener('pointerdown', close)
   }, [menu])
 
+  useEffect(() => {
+    document.querySelector('.project-browse__tree-item.is-active')?.scrollIntoView({ block: 'nearest' })
+  }, [browseDir])
+
+  useEffect(() => {
+    if (!inspectedAssetId || !assets[inspectedAssetId]) return
+    const shown = items.some(item => item.kind === 'asset' && item.asset.id === inspectedAssetId)
+    if (!shown) {
+      if (pill !== 'all') setPill('all')
+      if (q) setQuery('')
+      return
+    }
+    document.querySelector(`[data-asset-id="${CSS.escape(inspectedAssetId)}"]`)?.scrollIntoView({ block: 'nearest' })
+  }, [assets, inspectedAssetId, items, pill, q])
+
   return (
-    <div className="project-panel project-browse">
+    <div
+      className="project-panel project-browse"
+      data-asset-dir={browseDir}
+      onDragOver={event => {
+        if (!isNodeDrag(event.dataTransfer)) return
+        event.preventDefault()
+        event.dataTransfer.dropEffect = 'copy'
+        const folder = (event.target as HTMLElement).closest<HTMLElement>('[data-asset-dir]')
+        document.querySelectorAll('.is-prefab-drop').forEach(element => {
+          if (element !== folder) element.classList.remove('is-prefab-drop')
+        })
+        folder?.classList.add('is-prefab-drop')
+      }}
+      onDragLeave={event => {
+        if (event.currentTarget.contains(event.relatedTarget as Node)) return
+        document.querySelectorAll('.is-prefab-drop').forEach(element => element.classList.remove('is-prefab-drop'))
+      }}
+      onDrop={event => {
+        if (!isNodeDrag(event.dataTransfer)) return
+        event.preventDefault()
+        event.stopPropagation()
+        document.querySelectorAll('.is-prefab-drop').forEach(element => element.classList.remove('is-prefab-drop'))
+        const id = event.dataTransfer.getData(NODE_MIME)
+        const node = useEditorStore.getState().nodes[id]
+        if (!node || useEditorStore.getState().playState !== 'stopped') return
+        if (node.prefabInstanceId === node.id) {
+          useEditorStore.getState().log('warn', translate('prefab.alreadyInstance'))
+          return
+        }
+        const dir = (event.target as HTMLElement).closest<HTMLElement>('[data-asset-dir]')?.dataset.assetDir || browseDir
+        useEditorStore.getState().createPrefabFromSelection(node.name, node.id, dir)
+      }}
+    >
       <aside className="project-browse__tree">
         <div className="project-browse__tree-tools">
           <button type="button" title={t('project.newFolder')} onClick={() => setRenamePath(useAssetStore.getState().createFolder(browseDir))}>
@@ -440,6 +487,7 @@ function AssetRow({
     <div className="project-asset-block">
     <div
       className={`project-asset ${view === 'grid' ? 'project-asset--grid' : ''} ${view === 'details' ? 'project-asset--details' : ''} ${picked ? 'project-asset--picked' : ''}`}
+      data-asset-id={asset.id}
       draggable={!renaming}
       title={assetTitle(asset)}
       onDragStart={event => {
@@ -631,6 +679,7 @@ function DirNodeView({
         }}
         onDragLeave={() => onDropPath(null)}
         onDrop={event => {
+          if (isNodeDrag(event.dataTransfer)) return
           const assetId = event.dataTransfer.getData(ASSET_MIME)
           const files = [...event.dataTransfer.files]
           event.preventDefault()
@@ -718,6 +767,7 @@ function DirRow({
       }}
       onDragLeave={() => onDropPath(null)}
       onDrop={event => {
+        if (isNodeDrag(event.dataTransfer)) return
         const assetId = event.dataTransfer.getData(ASSET_MIME)
         const files = [...event.dataTransfer.files]
         event.preventDefault()

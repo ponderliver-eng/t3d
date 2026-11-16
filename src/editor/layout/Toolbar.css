@@ -53,8 +53,8 @@
 
 .toolbar__btn--segment {
   border-radius: 0;
-  padding: 3px 8px;
-  min-width: 40px;
+  padding: 4px 6px;
+  min-width: 28px;
   justify-content: center;
 }
 

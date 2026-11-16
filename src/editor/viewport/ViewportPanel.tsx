@@ -4,7 +4,7 @@ import { ASSET_MIME, assignClip, importFiles, placeAsset } from '../assets/impor
 import { useI18n, type MessageKey } from '../i18n'
 import type { CameraView } from '../scene/types'
 import { useAssetStore } from '../assets/library'
-import { BarChart3, ChevronDown, Focus, Grid3x3, Maximize, Move3d, RotateCcw, Scaling, ArrowDownToLine } from 'lucide-react'
+import { ArrowDown, ArrowDownToLine, ArrowLeft, ArrowRight, ArrowUp, Axis3d, BarChart3, Box, BoxSelect, ChevronDown, Crosshair, Focus, Globe, Grid3x3, Lightbulb, Magnet, Maximize, Move3d, Route, RotateCcw, Scaling, Scan, Square } from 'lucide-react'
 import { useEditorStore } from '../scene/store'
 import { EditorViewport } from './EditorViewport'
 import ViewCube from './ViewCube'
@@ -12,7 +12,19 @@ import { ViewportStatsDrawer } from './ViewportStatsDrawer'
 import { PlayUiOverlay } from '../ui/PlayUiOverlay'
 import './ViewportPanel.css'
 
-const VIEWS: CameraView[] = ['persp', 'top', 'bottom', 'front', 'back', 'left', 'right']
+const VIEW_ROWS: { id: CameraView, icon: typeof Box }[][] = [
+  [{ id: 'persp', icon: Box }],
+  [
+    { id: 'top', icon: ArrowUp },
+    { id: 'front', icon: Square },
+    { id: 'right', icon: ArrowRight },
+  ],
+  [
+    { id: 'bottom', icon: ArrowDown },
+    { id: 'back', icon: Square },
+    { id: 'left', icon: ArrowLeft },
+  ],
+]
 
 export default function ViewportPanel() {
   const stageRef = useRef<HTMLDivElement>(null)
@@ -69,11 +81,12 @@ export default function ViewportPanel() {
           <div className="viewport-tool-sep" />
           <button
             type="button"
-            className={`viewport-tool-btn viewport-tool-btn--text ${gizmoSpace === 'world' ? 'viewport-tool-btn--active' : ''}`}
+            className={`viewport-tool-btn ${gizmoSpace === 'world' ? 'viewport-tool-btn--active' : ''}`}
             title={gizmoSpace === 'world' ? t('view.world') : t('view.local')}
+            aria-label={gizmoSpace === 'world' ? t('view.world') : t('view.local')}
             onClick={() => editor.setGizmoSpace(gizmoSpace === 'world' ? 'local' : 'world')}
           >
-            {gizmoSpace === 'world' ? 'W' : 'L'}
+            {gizmoSpace === 'world' ? <Globe size={12} /> : <Axis3d size={12} />}
           </button>
           <div className="viewport-tool-sep" />
           <div className="viewport-menu">
@@ -82,11 +95,23 @@ export default function ViewportPanel() {
             </button>
             {menu === 'view' && (
               <div className="viewport-menu__pop" onPointerDown={event => event.stopPropagation()}>
-                {VIEWS.map(item => (
-                  <button key={item} type="button" className={view === item ? 'is-active' : ''} onClick={() => { editor.requestView(item); setMenu(null) }}>{viewName(item)}</button>
+                {VIEW_ROWS.map((group, index) => (
+                  <div key={group[0].id}>
+                    {index > 0 && <div className="viewport-menu__sep" />}
+                    {group.map(item => {
+                      const Icon = item.icon
+                      return (
+                        <button key={item.id} type="button" className={view === item.id ? 'is-active' : ''} onClick={() => { editor.requestView(item.id); setMenu(null) }}>
+                          <Icon size={13} />
+                          <span>{viewName(item.id)}</span>
+                        </button>
+                      )
+                    })}
+                  </div>
                 ))}
-                <button type="button" onClick={() => { editor.requestFocus(); setMenu(null) }}>{t('menu.focus')}</button>
-                <button type="button" onClick={() => { editor.requestFocusAll(); setMenu(null) }}>{t('menu.focusAll')}</button>
+                <div className="viewport-menu__sep" />
+                <button type="button" onClick={() => { editor.requestFocus(); setMenu(null) }}><Focus size={13} /><span>{t('menu.focus')}</span></button>
+                <button type="button" onClick={() => { editor.requestFocusAll(); setMenu(null) }}><Scan size={13} /><span>{t('menu.focusAll')}</span></button>
               </div>
             )}
           </div>
@@ -94,13 +119,16 @@ export default function ViewportPanel() {
             <button type="button" className={`viewport-tool-btn ${grid || helpers ? 'viewport-tool-btn--active' : ''}`} title={t('view.helpers')} onPointerDown={event => event.stopPropagation()} onClick={() => setMenu(menu === 'gizmo' ? null : 'gizmo')}><Grid3x3 size={12} /></button>
             {menu === 'gizmo' && (
               <div className="viewport-menu__pop" onPointerDown={event => event.stopPropagation()}>
-                <label><input type="checkbox" checked={grid} onChange={() => editor.toggleGrid()} /> {t('view.grid')}</label>
-                <label><input type="checkbox" checked={helpers} onChange={() => editor.setHelpersVisible(!helpers)} /> {t('view.lights')}</label>
-                <label><input type="checkbox" checked={navMesh} onChange={() => editor.setNavMeshVisible(!navMesh)} /> {t('navigation.show')}</label>
-                <label><input type="checkbox" checked={origin === 'center'} onChange={() => editor.setGizmoOrigin(origin === 'center' ? 'pivot' : 'center')} /> {t('view.gizmoCenter')}</label>
-                <label><input type="checkbox" checked={snap} onChange={() => editor.toggleSnap()} /> {t('view.snap')}</label>
+                <label><Grid3x3 size={13} /><span>{t('view.grid')}</span><input type="checkbox" checked={grid} onChange={() => editor.toggleGrid()} /></label>
+                <label><Lightbulb size={13} /><span>{t('view.lights')}</span><input type="checkbox" checked={helpers} onChange={() => editor.setHelpersVisible(!helpers)} /></label>
+                <label><Route size={13} /><span>{t('navigation.show')}</span><input type="checkbox" checked={navMesh} onChange={() => editor.setNavMeshVisible(!navMesh)} /></label>
+                <div className="viewport-menu__sep" />
+                <label><Crosshair size={13} /><span>{t('view.gizmoCenter')}</span><input type="checkbox" checked={origin === 'center'} onChange={() => editor.setGizmoOrigin(origin === 'center' ? 'pivot' : 'center')} /></label>
+                <div className="viewport-menu__sep" />
+                <label><Magnet size={13} /><span>{t('view.snap')}</span><input type="checkbox" checked={snap} onChange={() => editor.toggleSnap()} /></label>
                 <label className="viewport-menu__step">
-                  {t('view.step')}
+                  <span className="viewport-menu__pad" />
+                  <span>{t('view.step')}</span>
                   <input
                     type="number"
                     min={0.01}
@@ -125,11 +153,12 @@ export default function ViewportPanel() {
           <button type="button" className="viewport-tool-btn" title={t('tool.ground')} onClick={() => editor.snapSelectionToGround()}><ArrowDownToLine size={12} /></button>
           <button
             type="button"
-            className={`viewport-tool-btn viewport-tool-btn--text ${origin === 'center' ? 'viewport-tool-btn--active' : ''}`}
+            className={`viewport-tool-btn ${origin === 'center' ? 'viewport-tool-btn--active' : ''}`}
             title={origin === 'center' ? t('tool.originCenter') : t('tool.originPivot')}
+            aria-label={origin === 'center' ? t('tool.center') : t('tool.pivot')}
             onClick={() => editor.setGizmoOrigin(origin === 'pivot' ? 'center' : 'pivot')}
           >
-            {origin === 'center' ? t('tool.center') : t('tool.pivot')}
+            {origin === 'center' ? <BoxSelect size={12} /> : <Crosshair size={12} />}
           </button>
           <button
             type="button"

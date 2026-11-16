@@ -1,4 +1,4 @@
-import { ArrowDownToLine, FilePlus, Grid3x3, History, Magnet, Move3d, Pause, Play, Redo2, RotateCcw, Save, Scaling, Square, Undo2 } from 'lucide-react'
+import { ArrowDownToLine, Axis3d, BoxSelect, Crosshair, FilePlus, Globe, Grid3x3, History, Magnet, Move3d, Pause, Play, Redo2, RotateCcw, Save, Scaling, Square, Undo2 } from 'lucide-react'
 import { saveProjectNow } from '../assets/project'
 import { translate, useI18n } from '../i18n'
 import { askNewScene, useEditorStore } from '../scene/store'
@@ -71,8 +71,8 @@ export default function Toolbar() {
       </div>
       <div className="toolbar__divider" />
       <div className="toolbar__group toolbar__group--segmented">
-        <button type="button" className={`toolbar__btn toolbar__btn--segment ${gizmoSpace === 'world' ? 'toolbar__btn--active' : ''}`} onClick={() => setGizmoSpace('world')}>{t('tool.world')}</button>
-        <button type="button" className={`toolbar__btn toolbar__btn--segment ${gizmoSpace === 'local' ? 'toolbar__btn--active' : ''}`} onClick={() => setGizmoSpace('local')}>{t('tool.local')}</button>
+        <button type="button" className={`toolbar__btn toolbar__btn--segment ${gizmoSpace === 'world' ? 'toolbar__btn--active' : ''}`} title={t('tool.world')} aria-label={t('tool.world')} onClick={() => setGizmoSpace('world')}><Globe size={14} /></button>
+        <button type="button" className={`toolbar__btn toolbar__btn--segment ${gizmoSpace === 'local' ? 'toolbar__btn--active' : ''}`} title={t('tool.local')} aria-label={t('tool.local')} onClick={() => setGizmoSpace('local')}><Axis3d size={14} /></button>
       </div>
       <div className="toolbar__divider" />
       <div className="toolbar__group">
@@ -89,9 +89,10 @@ export default function Toolbar() {
           type="button"
           className={`toolbar__btn ${origin === 'center' ? 'toolbar__btn--active' : ''}`}
           title={origin === 'center' ? t('tool.originCenter') : t('tool.originPivot')}
+          aria-label={origin === 'center' ? t('tool.center') : t('tool.pivot')}
           onClick={() => useEditorStore.getState().setGizmoOrigin(origin === 'pivot' ? 'center' : 'pivot')}
         >
-          {origin === 'center' ? t('tool.center') : t('tool.pivot')}
+          {origin === 'center' ? <BoxSelect size={14} /> : <Crosshair size={14} />}
         </button>
       </div>
       <div className="toolbar__divider" />

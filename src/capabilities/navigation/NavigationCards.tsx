@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronRight, Trash2 } from 'lucide-react'
+import { ChevronDown, ChevronRight, Eraser, RefreshCw, Trash2, Waypoints, X } from 'lucide-react'
 import { useInspectorCardOpen } from '../../editor/panels/inspectorMemory'
 import { capabilityEnabled } from '../registry'
 import { openProjectSettings } from '../../editor/project/ProjectSettingsDialog'
@@ -107,11 +107,14 @@ export function SceneNavigationCard() {
                 <input type="checkbox" checked={navMeshVisible} onChange={event => useEditorStore.getState().setNavMeshVisible(event.target.checked)} />
               </label>
               <div className="inspector__resets">
-                <button type="button" disabled={playing || ui.phase === 'baking'} onClick={requestNavBake}>{bakedHere ? t('navigation.rebake') : t('navigation.bake')}</button>
+                <button type="button" disabled={playing || ui.phase === 'baking'} onClick={requestNavBake}>
+                  {bakedHere ? <RefreshCw size={12} /> : <Waypoints size={12} />}
+                  {bakedHere ? t('navigation.rebake') : t('navigation.bake')}
+                </button>
                 {ui.phase === 'baking' ? (
-                  <button type="button" onClick={cancelNavBake}>{t('navigation.cancel')}</button>
+                  <button type="button" onClick={cancelNavBake}><X size={12} />{t('navigation.cancel')}</button>
                 ) : (
-                  <button type="button" disabled={playing || !bakedHere} onClick={clearNavMesh}>{t('navigation.clear')}</button>
+                  <button type="button" disabled={playing || !bakedHere} onClick={clearNavMesh}><Eraser size={12} />{t('navigation.clear')}</button>
                 )}
               </div>
               {ui.sceneId === activeSceneId && ui.text && (
