@@ -49,7 +49,9 @@ import type {
   GizmoOrigin,
   GizmoSpace,
   HistoryEntry,
+  LogEntry,
   LogLevel,
+  LogPart,
   NodeKind,
   PbrSlot,
   PlayState,
@@ -122,7 +124,7 @@ export interface EditorState {
   past: HistoryEntry[]
   future: HistoryEntry[]
   gesture: Gesture | null
-  logs: { id: string; level: LogLevel; message: string; time: number }[]
+  logs: LogEntry[]
   notice: string | null
   projectionLabel: string
   sidePanel: SidePanel
@@ -209,7 +211,7 @@ export interface EditorState {
   requestRename: (id: string) => void
   loadDocument: (document: ProjectDocument) => void
   clearLogs: () => void
-  log: (level: LogLevel, message: string) => void
+  log: (level: LogLevel, message: string, parts?: LogPart[]) => void
   notify: (message: string) => void
   setPicture: (patch: Partial<ScenePicture>) => void
   rememberEditorView: (view: EditorView) => void
@@ -1091,8 +1093,8 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
   clearLogs: () => set({ logs: [] }),
 
-  log: (level, message) => {
-    const entry = { id: crypto.randomUUID(), level, message, time: Date.now() }
+  log: (level, message, parts) => {
+    const entry: LogEntry = { id: crypto.randomUUID(), level, message, time: Date.now(), parts }
     set(state => ({ logs: [...state.logs, entry].slice(-300) }))
     if (level !== 'info') get().notify(message)
   },

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type MouseEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { Box, ChevronRight, Clapperboard, Component, CopyPlus, Folder, FolderOpen, FolderPlus, Globe, Image, Layers, LayoutGrid, List, ListTree, MapPin, Minus, Music, PackageOpen, Palette, PanelsTopLeft, Pencil, Plus, RefreshCw, Rows3, Search, Sparkles, Sun, Trash2, Unlink, Upload, X } from 'lucide-react'
 import { CLIP_MIME } from '../animation/playback'
-import { ASSET_MIME, assignClip, bindImportInput, createDefaultMaterial, createDefaultUi, deleteAsset, duplicateAsset, importFiles, isNodeDrag, NODE_MIME, openAsset, openImport, reimportModel, reportAssetUsers } from '../assets/import'
+import { ASSET_MIME, assignClip, bindImportInput, createDefaultMaterial, createDefaultUi, deleteAsset, duplicateAsset, importFiles, isNodeDrag, logNamed, NODE_MIME, openAsset, openImport, reimportModel, reportAssetUsers } from '../assets/import'
 import { savePrefabFromSelection } from '../assets/import'
 import { readPrefab } from '../assets/prefab'
 import { ASSETS_ROOT, directoryTree, findDir, isWithin, parentDir, type DirNode } from '../assets/folders'
@@ -481,7 +481,17 @@ export default function ProjectPanel() {
               <button type="button" onClick={() => setPending(null)}>{t('project.cancel')}</button>
               <button type="button" onClick={() => {
                 if (pending.kind === 'asset') deleteAsset(pending.id)
-                else useAssetStore.getState().deleteFolder(pending.path)
+                else {
+                  const store = useAssetStore.getState()
+                  const ids = Object.keys(store.assets).filter(id => isWithin(assetDirectory(id, store.assetDirs), pending.path))
+                  for (const id of ids) deleteAsset(id)
+                  const left = ids.flatMap(id => {
+                    const asset = useAssetStore.getState().assets[id]
+                    return asset ? [{ name: asset.name, assetId: asset.id }] : []
+                  })
+                  useAssetStore.getState().deleteFolder(pending.path)
+                  if (left.length > 0) logNamed('warn', translate('log.folderKept'), left)
+                }
                 setPending(null)
               }}>{t('project.delete')}</button>
             </div>

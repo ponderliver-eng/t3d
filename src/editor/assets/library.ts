@@ -4,7 +4,7 @@ import type { ModelHumanoidAvatar } from '../animation/humanoidAvatar'
 import type { HumanoidRetargetAdjust } from '../animation/humanoidAdjust'
 import type { UiDocument } from '../../runtime/ui/spec'
 import type { PbrSlot, SceneNode, ScenePicture, EditorView } from '../scene/types'
-import { ASSETS_ROOT, directoryExists, joinDir, normalizeDir, parentDir, relocateDir, uniqueFolderName } from './folders'
+import { ASSETS_ROOT, directoryExists, isWithin, joinDir, normalizeDir, parentDir, relocateDir, uniqueFolderName } from './folders'
 
 export type FileKind = 'model' | 'texture' | 'animation' | 'audio' | 'environment'
 
@@ -205,12 +205,14 @@ export const useAssetStore = create<AssetState>((set, get) => ({
     const parent = parentDir(source)
     if (!parent) return
     const state = get()
+    const remains = Object.keys(state.assets).some(id => isWithin(assetDirectory(id, state.assetDirs), source))
+    if (remains) return
     set({
-      folders: [...new Set(state.folders
-        .map(folder => relocateDir(folder, source, parent))
-        .filter(folder => folder !== ASSETS_ROOT && folder !== source))],
-      assetDirs: Object.fromEntries(Object.entries(state.assetDirs).map(([id, dir]) => [id, relocateDir(dir, source, parent)])),
-      browseDir: state.browseDir === source || state.browseDir.startsWith(`${source}/`) ? parent : state.browseDir,
+      folders: state.folders.filter(folder => {
+        const dir = normalizeDir(folder)
+        return dir !== source && !dir.startsWith(`${source}/`)
+      }),
+      browseDir: isWithin(state.browseDir, source) ? parent : state.browseDir,
       revision: state.revision + 1,
     })
   },

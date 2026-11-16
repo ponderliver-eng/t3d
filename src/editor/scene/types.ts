@@ -370,11 +370,18 @@ export interface SceneNode {
   nestedPrefabId?: string
 }
 
+export interface LogPart {
+  text: string
+  /** 有资源编号时，这段文字是可点击的下划线，用来在资源窗口选中它。 */
+  assetId?: string
+}
+
 export interface LogEntry {
   id: string
   level: LogLevel
   message: string
   time: number
+  parts?: LogPart[]
 }
 
 export interface HistoryEntry {

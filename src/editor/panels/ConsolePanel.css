@@ -71,6 +71,19 @@
 }
 
 .console-row span:first-child { color: var(--text-muted); }
+.console-link {
+  padding: 0;
+  border: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.console-link:hover { color: var(--text-primary); }
+
 .console-row--warn { color: #ffb454; }
 .console-row--error { color: #f44336; }
 .console-row:hover { background: rgba(255, 255, 255, 0.03); }

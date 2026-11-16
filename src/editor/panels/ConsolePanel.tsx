@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { AlertCircle, AlertTriangle, Info, Search, Trash2, X } from 'lucide-react'
 import { useI18n, type MessageKey } from '../i18n'
+import { assetDirectory, useAssetStore } from '../assets/library'
 import { useEditorStore } from '../scene/store'
-import type { LogLevel } from '../scene/types'
+import type { LogEntry, LogLevel } from '../scene/types'
 import './ConsolePanel.css'
 
 const FILTERS: { level: LogLevel; key: MessageKey; icon: typeof Info }[] = [
@@ -66,13 +67,32 @@ export default function ConsolePanel() {
         {visible.map(entry => (
           <div key={entry.id} className={`console-row console-row--${entry.level}`}>
             <span>{formatTime(entry.time)}</span>
-            <span>{entry.message}</span>
+            <span>{entry.parts?.length ? <LogLine parts={entry.parts} /> : entry.message}</span>
           </div>
         ))}
         <div ref={bottomRef} />
       </div>
     </div>
   )
+}
+
+function LogLine({ parts }: { parts: NonNullable<LogEntry['parts']> }) {
+  return (
+    <>
+      {parts.map((part, index) => part.assetId ? (
+        <button key={index} type="button" className="console-link" onClick={() => revealAsset(part.assetId!)}>{part.text}</button>
+      ) : (
+        <span key={index}>{part.text}</span>
+      ))}
+    </>
+  )
+}
+
+function revealAsset(id: string) {
+  const library = useAssetStore.getState()
+  if (!library.assets[id]) return
+  library.setBrowseDir(assetDirectory(id, library.assetDirs))
+  useEditorStore.getState().inspectAsset(id)
 }
 
 function formatTime(time: number): string {

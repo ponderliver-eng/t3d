@@ -328,7 +328,7 @@ export function deleteAsset(id: string) {
   }
   const used = referencedBy(id)
   if (used.length > 0) {
-    useEditorStore.getState().log('warn', translate('log.referenced', { names: used.join('、') }))
+    logNamed('warn', translate('log.referenced'), used)
     return
   }
   if (asset && 'url' in asset) URL.revokeObjectURL(asset.url)
@@ -510,7 +510,7 @@ export function duplicateAsset(id: string) {
 }
 
 export function reportAssetUsers(id: string) {
-  const names = referencedBy(id)
+  const names = referencedBy(id).map(item => item.name)
   const editor = useEditorStore.getState()
   if (names.length === 0) editor.log('info', translate('project.noRefs'))
   else editor.log('info', translate('project.refs', { names: names.join('、') }))
@@ -609,30 +609,41 @@ function isPaintable(node: SceneNode): boolean {
   return node.kind === 'box' || node.kind === 'sphere' || node.kind === 'plane' || node.kind === 'cylinder' || node.kind === 'capsule' || node.kind === 'cone' || node.kind === 'model'
 }
 
-function referencedBy(assetId: string): string[] {
-  const names: string[] = []
+function referencedBy(assetId: string): { name: string, assetId?: string }[] {
+  const users: { name: string, assetId?: string }[] = []
   for (const node of Object.values(useEditorStore.getState().nodes)) {
-    if (usesAsset(node, assetId)) names.push(node.name)
+    if (usesAsset(node, assetId)) users.push({ name: node.name })
   }
   for (const asset of Object.values(useAssetStore.getState().assets)) {
-    if (asset.kind === 'prefab' && Object.values(readPrefab(asset).nodes).some(node => usesAsset(node, assetId) || node.nestedPrefabId === assetId)) names.push(asset.name)
+    if (asset.kind === 'prefab' && Object.values(readPrefab(asset).nodes).some(node => usesAsset(node, assetId) || node.nestedPrefabId === assetId)) users.push({ name: asset.name, assetId: asset.id })
     if (asset.kind === 'scene') {
       for (const node of Object.values(asset.nodes)) {
         if (usesAsset(node, assetId)) {
-          names.push(asset.name)
+          users.push({ name: asset.name, assetId: asset.id })
           break
         }
       }
     }
-    if (asset.kind === 'material' && slotUses(asset.slot, assetId)) names.push(asset.name)
-    if (asset.kind === 'effect' && asset.materialAssetId === assetId) names.push(asset.name)
+    if (asset.kind === 'material' && slotUses(asset.slot, assetId)) users.push({ name: asset.name, assetId: asset.id })
+    if (asset.kind === 'effect' && asset.materialAssetId === assetId) users.push({ name: asset.name, assetId: asset.id })
     if (asset.kind === 'ui') {
       const images = new Set<string>()
       collectUiImageIds(asset.document.root, images)
-      if (images.has(assetId)) names.push(asset.name)
+      if (images.has(assetId)) users.push({ name: asset.name, assetId: asset.id })
     }
   }
-  return names
+  return users
+}
+
+export function logNamed(level: 'info' | 'warn' | 'error', prefix: string, items: { name: string, assetId?: string }[]) {
+  const shown = items.slice(0, 10)
+  const parts: { text: string, assetId?: string }[] = [{ text: prefix }]
+  shown.forEach((item, index) => {
+    if (index > 0) parts.push({ text: '、' })
+    parts.push(item.assetId ? { text: item.name, assetId: item.assetId } : { text: item.name })
+  })
+  if (items.length > 10) parts.push({ text: '…' })
+  useEditorStore.getState().log(level, parts.map(part => part.text).join(''), parts)
 }
 
 function usesAsset(node: SceneNode, assetId: string): boolean {
