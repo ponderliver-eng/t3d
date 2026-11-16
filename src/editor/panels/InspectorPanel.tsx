@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { ChevronDown, ChevronRight, ExternalLink, FolderSearch, Image as ImageIcon, Plus, Search, Trash2, X } from 'lucide-react'
+import { ChevronDown, ChevronRight, Component, ExternalLink, Eye, FolderOpen, FolderSearch, Image as ImageIcon, MapPin, Package, Pause, Play, Plus, Search, Square, SunMedium, Trash2, Undo2, Unlink, Upload, X } from 'lucide-react'
 import { clipDuration, clipNamesFor, loadModelTemplate, subscribeModels } from '../assets/models'
 import { activeAnimatorState, emptyAnimator } from '../animation/animator'
 import { HumanoidCard } from './HumanoidCard'
@@ -119,15 +119,18 @@ export default function InspectorPanel() {
       {prefabRoot && isPrefabRoot(prefabRoot) && (
         <Card id="prefab" title={t('prefab.instance')} color="#c79bff">
           <div className="prefab-actions">
-            <span>{prefabAssets.find(item => item.id === prefabRoot.prefabAssetId)?.name ?? t('prefab.missing')}</span>
-            {instanceDirty(nodes, prefabRoot.id) && <em title={t('prefab.dirty')}>{t('prefab.dirty')}</em>}
+            <div className="prefab-actions__name">
+              <Component size={13} />
+              <span>{prefabAssets.find(item => item.id === prefabRoot.prefabAssetId)?.name ?? t('prefab.missing')}</span>
+              {instanceDirty(nodes, prefabRoot.id) && <em title={t('prefab.dirty')}>*</em>}
+            </div>
             {prefabAssets.some(item => item.id === prefabRoot.prefabAssetId) ? (
               <>
-                <button type="button" onClick={() => useEditorStore.getState().openPrefab(prefabRoot.prefabAssetId ?? '')}>{t('prefab.edit')}</button>
-                <button type="button" onClick={() => revealPrefabAsset(prefabRoot.prefabAssetId ?? '')}>{t('prefab.reveal')}</button>
-                <button type="button" disabled={!instanceDirty(nodes, prefabRoot.id)} onClick={() => useEditorStore.getState().applyPrefabInstance(prefabRoot.id)}>{t('prefab.apply')}</button>
-                <button type="button" disabled={!instanceDirty(nodes, prefabRoot.id)} onClick={() => useEditorStore.getState().revertPrefabInstance(prefabRoot.id)}>{t('prefab.revert')}</button>
-                <button type="button" onClick={() => setUnpackId(prefabRoot.id)}>{t('prefab.unpack')}</button>
+                <button type="button" title={t('prefab.edit')} aria-label={t('prefab.edit')} onClick={() => useEditorStore.getState().openPrefab(prefabRoot.prefabAssetId ?? '')}><FolderOpen size={14} /></button>
+                <button type="button" title={t('prefab.reveal')} aria-label={t('prefab.reveal')} onClick={() => revealPrefabAsset(prefabRoot.prefabAssetId ?? '')}><MapPin size={14} /></button>
+                <button type="button" title={t('prefab.apply')} aria-label={t('prefab.apply')} disabled={!instanceDirty(nodes, prefabRoot.id)} onClick={() => useEditorStore.getState().applyPrefabInstance(prefabRoot.id)}><Upload size={14} /></button>
+                <button type="button" title={t('prefab.revert')} aria-label={t('prefab.revert')} disabled={!instanceDirty(nodes, prefabRoot.id)} onClick={() => useEditorStore.getState().revertPrefabInstance(prefabRoot.id)}><Undo2 size={14} /></button>
+                <button type="button" title={t('prefab.unpack')} aria-label={t('prefab.unpack')} onClick={() => setUnpackId(prefabRoot.id)}><Unlink size={14} /></button>
               </>
             ) : (
               <>
@@ -188,6 +191,8 @@ export default function InspectorPanel() {
         </div>
       </Card>
 
+      {(isMesh(node.kind) || node.kind === 'model') && <MeshRendererCard node={node} />}
+
       {node.kind === 'model' && (
         <Card id="model" title={t('inspector.model')} color={kindColor(node.kind)}>
           <AnimModeSwitch nodeId={node.id} />
@@ -215,8 +220,6 @@ export default function InspectorPanel() {
           {node.assetId && <HumanoidCard assetId={node.assetId} />}
         </Card>
       )}
-
-      {(isMesh(node.kind) || node.kind === 'model') && <MeshRendererCard node={node} />}
 
       {isLight(node.kind) && (
         <Card id="light" title={t('inspector.light')} color={kindColor(node.kind)}>
@@ -609,18 +612,24 @@ function MeshRendererCard({ node }: { node: SceneNode }) {
     <Card id="model-renderer" title={t('inspector.modelRenderer')} color={kindColor(node.kind)}>
       {node.kind === 'model' && (
         <>
-          <button type="button" className="inspector__action" onClick={savePrefabFromSelection}>{t('inspector.savePrefab')}</button>
-          {node.assetId && <button type="button" className="inspector__action" onClick={() => openAssetPreview('model', node.assetId!, node.name)}>{t('inspector.previewModel')}</button>}
+          <div className="inspector__chips">
+            <button type="button" title={t('inspector.savePrefab')} aria-label={t('inspector.savePrefab')} onClick={savePrefabFromSelection}><Package size={14} /></button>
+            {node.assetId && <button type="button" title={t('inspector.previewModel')} aria-label={t('inspector.previewModel')} onClick={() => openAssetPreview('model', node.assetId!, node.name)}><Eye size={14} /></button>}
+          </div>
         </>
       )}
-      <label className="field">
-        <span>{t('inspector.castShadow')}</span>
-        <input type="checkbox" checked={node.castShadow} onChange={event => commitNode(node.id, t('gesture.shadow'), { castShadow: event.target.checked })} />
-      </label>
-      <label className="field">
-        <span>{t('inspector.receiveShadow')}</span>
-        <input type="checkbox" checked={node.receiveShadow} onChange={event => commitNode(node.id, t('gesture.shadow'), { receiveShadow: event.target.checked })} />
-      </label>
+      <div className="shadow-flags">
+        <label>
+          <SunMedium size={13} />
+          <span>{t('inspector.castShadow')}</span>
+          <input type="checkbox" checked={node.castShadow} onChange={event => commitNode(node.id, t('gesture.shadow'), { castShadow: event.target.checked })} />
+        </label>
+        <label>
+          <Square size={13} />
+          <span>{t('inspector.receiveShadow')}</span>
+          <input type="checkbox" checked={node.receiveShadow} onChange={event => commitNode(node.id, t('gesture.shadow'), { receiveShadow: event.target.checked })} />
+        </label>
+      </div>
       <button type="button" className="mesh-slots__head" aria-expanded={listOpen} onClick={() => setListOpen(!listOpen)}>
         {listOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
         <span>{t('inspector.materialSlots')}</span>
@@ -861,9 +870,11 @@ function AnimModeSwitch({ nodeId }: { nodeId: string }) {
   }
   return (
     <div className="anim-mode">
-      <button type="button" className={!enabled ? 'is-on' : ''} onClick={() => choose(false)}>{t('anim.simple')}</button>
-      <button type="button" className={enabled ? 'is-on' : ''} onClick={() => choose(true)}>{t('anim.machine')}</button>
-      <span>{t(enabled ? 'anim.machineHint' : 'anim.simpleHint')}</span>
+      <div className="anim-mode__tabs">
+        <button type="button" className={!enabled ? 'is-on' : ''} onClick={() => choose(false)}>{t('anim.simple')}</button>
+        <button type="button" className={enabled ? 'is-on' : ''} onClick={() => choose(true)}>{t('anim.machine')}</button>
+      </div>
+      <p>{t(enabled ? 'anim.machineHint' : 'anim.simpleHint')}</p>
       {embedded > 0 && <em>{t('anim.embedded', { count: embedded })}</em>}
     </div>
   )
@@ -915,11 +926,12 @@ function AnimationCard({
     })
   }
   return (
-    <>
+    <div className="anim-fields">
       <div className="anim-transport">
         <button
           type="button"
           title={clipPlaying ? t('inspector.pause') : t('inspector.play')}
+          aria-label={clipPlaying ? t('inspector.pause') : t('inspector.play')}
           onClick={() => {
             const store = useEditorStore.getState()
             if (driven) {
@@ -940,7 +952,7 @@ function AnimationCard({
             store.updateNode(nodeId, { clipPlaying: !clipPlaying })
           }}
         >
-          {clipPlaying ? t('inspector.pause') : t('inspector.play')}
+          {clipPlaying ? <Pause size={13} /> : <Play size={13} />}
         </button>
         <input
           type="range"
@@ -1000,10 +1012,18 @@ function AnimationCard({
           }).catch(() => undefined)
         }}
       />}
-      {!driven && <label className="field">
-        <span>{t('anim.loop')}</span>
-        <input type="checkbox" checked={clipLoop} onChange={event => useEditorStore.getState().updateNode(nodeId, { clipLoop: event.target.checked })} />
-      </label>}
+      {!driven && (
+        <div className="anim-checks">
+          <label className="field">
+            <span>{t('anim.loop')}</span>
+            <input type="checkbox" checked={clipLoop} onChange={event => useEditorStore.getState().updateNode(nodeId, { clipLoop: event.target.checked })} />
+          </label>
+          <label className="field">
+            <span>{t('anim.inPlace')}</span>
+            <input type="checkbox" checked={clipInPlace} onChange={event => useEditorStore.getState().updateNode(nodeId, { clipInPlace: event.target.checked })} />
+          </label>
+        </div>
+      )}
       {!driven && <NumberRow label={t('anim.speed')} value={clipSpeed} step={0.05} min={0.05} gesture={t('anim.speed')} onChange={speed => useEditorStore.getState().updateNode(nodeId, { clipSpeed: speed })} />}
       <NumberRow label={t('anim.fade')} value={clipFade} step={0.05} min={0} gesture={t('anim.fade')} onChange={fade => useEditorStore.getState().updateNode(nodeId, { clipFade: fade })} />
       {!driven && <label className="field">
@@ -1039,11 +1059,7 @@ function AnimationCard({
           {fileClips.map(name => <option key={`overlay-file:${name}`} value={`file\u001f${name}`}>{name}</option>)}
         </select>
       </label>}
-      {!driven && <label className="field">
-        <span>{t('anim.inPlace')}</span>
-        <input type="checkbox" checked={clipInPlace} onChange={event => useEditorStore.getState().updateNode(nodeId, { clipInPlace: event.target.checked })} />
-      </label>}
-    </>
+    </div>
   )
 }
 

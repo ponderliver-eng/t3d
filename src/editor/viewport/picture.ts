@@ -1,6 +1,6 @@
 import { UnsignedByteType, type Camera, type Object3D, type Scene, type WebGPURenderer } from 'three/webgpu'
 import { RenderPipeline } from 'three/webgpu'
-import { diffuseColor, hue, metalness, mix, mrt, normalView, output, packNormalToRGB, pass, roughness, sample, saturation, unpackRGBToNormal, vec4 } from 'three/tsl'
+import { diffuseColor, hue, metalness, mix, mrt, normalView, output, packNormalToRGB, pass, roughness, sample, saturation, uniform, unpackRGBToNormal, vec4 } from 'three/tsl'
 import { useEditorStore } from '../scene/store'
 import { bloom } from 'three/addons/tsl/display/BloomNode.js'
 import { ssao } from 'three/addons/tsl/display/SSAONode.js'
@@ -24,6 +24,12 @@ interface SsrUniforms {
   intensity: { value: number }
 }
 
+interface DofUniforms {
+  focus: { value: number }
+  focal: { value: number }
+  bokeh: { value: number }
+}
+
 interface SsgiUniforms {
   sliceCount: { value: number }
   stepCount: { value: number }
@@ -37,6 +43,7 @@ interface SsgiUniforms {
 export class ScenePicturePipeline {
   private pipeline: RenderPipeline | null = null
   private bloomNode: BloomUniforms | null = null
+  private dofNode: DofUniforms | null = null
   private ssrNode: SsrUniforms | null = null
   private ssgiNode: SsgiUniforms | null = null
   private outlineNode: SelectionOutlineNode | null = null
@@ -68,6 +75,11 @@ export class ScenePicturePipeline {
       this.bloomNode.strength.value = picture.bloomStrength
       this.bloomNode.radius.value = picture.bloomRadius
       this.bloomNode.threshold.value = picture.bloomThreshold
+    }
+    if (this.dofNode) {
+      this.dofNode.focus.value = picture.dofFocus
+      this.dofNode.focal.value = picture.dofFocal
+      this.dofNode.bokeh.value = picture.dofBokeh
     }
     if (this.ssrNode) {
       this.ssrNode.quality.value = picture.ssrQuality
@@ -155,7 +167,13 @@ export class ScenePicturePipeline {
       current = current.add(bloomPass) as typeof current
     }
     if (picture.dof) {
-      current = dof(current as never, scenePass.getViewZNode(), picture.dofFocus, picture.dofFocal, picture.dofBokeh) as unknown as typeof current
+      const focus = uniform(picture.dofFocus)
+      const focal = uniform(picture.dofFocal)
+      const bokeh = uniform(picture.dofBokeh)
+      this.dofNode = { focus, focal, bokeh }
+      current = dof(current as never, scenePass.getViewZNode(), focus, focal, bokeh) as unknown as typeof current
+    } else {
+      this.dofNode = null
     }
     const graded = picture.hue !== 0 || picture.saturation !== 1
       ? vec4(saturation(hue(current.rgb as never, picture.hue), picture.saturation), current.a as never)
