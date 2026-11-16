@@ -1,7 +1,6 @@
-import { ChevronDown, ChevronRight } from 'lucide-react'
+import { ChevronDown, ChevronRight, Trash2 } from 'lucide-react'
 import { useInspectorCardOpen } from '../../editor/panels/inspectorMemory'
 import { capabilityEnabled } from '../registry'
-import { defaultNodePhysics } from './defaults'
 import { useEditorStore } from '../../editor/scene/store'
 import { useI18n } from '../../editor/i18n'
 import type { ColliderShape, NodePhysics, PhysicsBodyKind, SceneNode, Vec3 } from '../../editor/scene/types'
@@ -10,11 +9,15 @@ export function PhysicsCard({ node, disabled }: { node: SceneNode, disabled: boo
   const { t } = useI18n()
   const enabled = useEditorStore(state => capabilityEnabled(state.capabilities, 'physics'))
   const [open, setOpen] = useInspectorCardOpen('physics')
-  if (!enabled) return null
   const physics = node.physics
-  const patch = (next: NodePhysics | null) => useEditorStore.getState().updateNode(node.id, { physics: next })
+  if (!enabled || !physics) return null
+  const patch = (next: NodePhysics | null) => {
+    const store = useEditorStore.getState()
+    store.beginGesture(t('physics.title'))
+    store.updateNode(node.id, { physics: next })
+    store.endGesture()
+  }
   const edit = (partial: Partial<NodePhysics>) => {
-    if (!physics) return
     patch({ ...physics, ...partial })
   }
   return (
@@ -22,20 +25,20 @@ export function PhysicsCard({ node, disabled }: { node: SceneNode, disabled: boo
       <header className="iv2-card__header" onClick={() => setOpen(!open)}>
         <span className="iv2-card__dot" style={{ background: '#8bc34a' }} />
         <span>{t('physics.title')}</span>
+        <span className="iv2-card__actions" onClick={event => event.stopPropagation()}>
+          <button
+            type="button"
+            className="iv2-card__remove"
+            title={t('component.remove')}
+            disabled={disabled}
+            onClick={() => patch(null)}
+          >
+            <Trash2 size={12} />
+          </button>
+        </span>
         {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
       </header>
       {open && <div className="iv2-card__body">
-      <label className="field">
-        <span>{t('physics.participate')}</span>
-        <input
-          type="checkbox"
-          disabled={disabled}
-          checked={!!physics}
-          onChange={event => patch(event.target.checked ? defaultNodePhysics(node.kind) : null)}
-        />
-      </label>
-      {physics && (
-        <>
           <label className="field">
             <span>{t('physics.body')}</span>
             <select disabled={disabled} value={physics.body} onChange={event => edit({ body: event.target.value as PhysicsBodyKind })}>
@@ -76,8 +79,6 @@ export function PhysicsCard({ node, disabled }: { node: SceneNode, disabled: boo
           )}
           <NumberInput label={t('physics.friction')} disabled={disabled} value={physics.friction} step={0.01} min={0} onChange={friction => edit({ friction })} />
           <NumberInput label={t('physics.restitution')} disabled={disabled} value={physics.restitution} step={0.01} min={0} max={1} onChange={restitution => edit({ restitution })} />
-        </>
-      )}
       </div>}
     </section>
   )

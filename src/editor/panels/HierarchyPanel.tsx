@@ -11,7 +11,7 @@ import { instanceDirty, isPrefabRoot } from '../assets/prefab'
 import { translate, useI18n, type MessageKey } from '../i18n'
 import { TAG_FILTER_UNTAGGED, sortedTags } from '../project/taxonomy'
 import { childrenOf, isLight, isMesh, LIGHT_KINDS, MESH_KINDS } from '../scene/kinds'
-import { useEditorStore, primaryId } from '../scene/store'
+import { useEditorStore, primaryId, type DeviceKind } from '../scene/store'
 import { isUnder } from '../scene/transform'
 import type { NodeKind, SceneNode } from '../scene/types'
 import './HierarchyPanel.css'
@@ -220,6 +220,12 @@ export default function HierarchyPanel() {
     setMenu(null)
   }
 
+  const createDevice = (device: DeviceKind, parentId: string | null = null) => {
+    useEditorStore.getState().createDevice(device, parentId)
+    setCreateOpen(false)
+    setMenu(null)
+  }
+
   const beginRowDrag = (event: ReactPointerEvent, id: string) => {
     if (playing || event.button !== 0) return
     if ((event.target as HTMLElement).closest('button, input')) return
@@ -348,7 +354,7 @@ export default function HierarchyPanel() {
         </button>
         {createOpen && (
           <div className="scene-panel__popover" onPointerDown={event => event.stopPropagation()}>
-            <CreateList onCreate={create} />
+            <CreateList onCreate={create} onCreateDevice={createDevice} />
           </div>
         )}
       </div>
@@ -518,7 +524,7 @@ export default function HierarchyPanel() {
             <button type="button" disabled={playing}><span><Plus size={12} />{menu.id ? t('hierarchy.createChild') : t('hierarchy.create')}</span><ChevronRight size={12} /></button>
             {!playing && (
               <div className="scene-panel__submenu-pop">
-                <CreateList onCreate={kind => create(kind, menu.id)} />
+                <CreateList onCreate={kind => create(kind, menu.id)} onCreateDevice={device => createDevice(device, menu.id)} />
               </div>
             )}
           </div>
@@ -642,7 +648,7 @@ function shiftNode(id: string, zone: 'before' | 'after') {
   useEditorStore.getState().placeNodes([id], node.parentId, zone, anchor.id)
 }
 
-function CreateList({ onCreate }: { onCreate: (kind: NodeKind) => void }) {
+function CreateList({ onCreate, onCreateDevice }: { onCreate: (kind: NodeKind) => void, onCreateDevice: (device: DeviceKind) => void }) {
   const { t } = useI18n()
   const kindName = (kind: NodeKind) => t(`kind.${kind}` as MessageKey)
   return (
@@ -665,6 +671,16 @@ function CreateList({ onCreate }: { onCreate: (kind: NodeKind) => void }) {
             const Icon = ICONS[kind]
             return <button key={kind} type="button" onClick={() => onCreate(kind)}><Icon size={12} />{kindName(kind)}</button>
           })}
+        </div>
+      </div>
+      <div className="scene-panel__submenu">
+        <button type="button"><span><Package size={12} />{t('menu.devices')}</span><ChevronRight size={12} /></button>
+        <div className="scene-panel__submenu-pop">
+          <button type="button" onClick={() => onCreateDevice('interact')}><Circle size={12} />{t('interact.title')}</button>
+          <button type="button" onClick={() => onCreateDevice('trigger')}><Box size={12} />{t('trigger.title')}</button>
+          <button type="button" onClick={() => onCreateDevice('mover')}><Boxes size={12} />{t('mover.title')}</button>
+          <button type="button" onClick={() => onCreateDevice('checkpoint')}><MapPin size={12} />{t('checkpoint.title')}</button>
+          <button type="button" onClick={() => onCreateDevice('score')}><Sparkles size={12} />{t('score.title')}</button>
         </div>
       </div>
       <div className="scene-panel__sep" />

@@ -27,7 +27,11 @@ import {
   uniqueName,
 } from './kinds'
 import { defaultCapabilities, normalizeCapabilities } from '../../capabilities/registry'
+import { defaultNodePhysics } from '../../capabilities/physics/defaults'
+import { defaultCheckpoint, defaultInteract, defaultMover, defaultScore, defaultTrigger, type NodeGameplay } from '../../runtime/sceneRuntime'
 import { resetUiValues } from '../../runtime/ui/values'
+
+export type DeviceKind = 'interact' | 'trigger' | 'mover' | 'checkpoint' | 'score'
 import {
   ALL_LAYERS_VISIBLE_MASK,
   LAYER_ID_DEFAULT,
@@ -173,6 +177,7 @@ export interface EditorState {
   endGesture: () => void
   updateNode: (id: string, patch: Partial<SceneNode>) => void
   createNode: (kind: NodeKind, parentId?: string | null) => void
+  createDevice: (device: DeviceKind, parentId?: string | null) => void
   spawnEffect: (assetId: string, point: Vec3) => void
   mountScreen: (assetId: string, point: Vec3) => void
   deleteSelection: () => void
@@ -414,6 +419,47 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         order: nextOrder(draft.nodes, parent),
         position: spawnPosition(kind, parent, getSpawn()),
         rotation: kind === 'plane' ? [-90, 0, 0] : [0, 0, 0],
+      })
+      tagAddedChild(draft.nodes, id)
+      draft.selection = [id]
+      created = name
+    })
+    if (ok && created) get().log('info', translate('log.created', { name: created }))
+  },
+
+  createDevice: (device, parentId = null) => {
+    let created = ''
+    const labelKey: Record<DeviceKind, MessageKey> = {
+      interact: 'interact.title',
+      trigger: 'trigger.title',
+      mover: 'mover.title',
+      checkpoint: 'checkpoint.title',
+      score: 'score.title',
+    }
+    const label = translate(labelKey[device])
+    const ok = mutate(set, get, translate('gesture.create', { name: label }), draft => {
+      let parent = parentId && draft.nodes[parentId] ? parentId : null
+      if (get().prefabSession && !parent) parent = Object.values(draft.nodes).find(node => !node.parentId)?.id ?? null
+      const id = crypto.randomUUID()
+      const name = uniqueName(draft.nodes, label)
+      const isMover = device === 'mover'
+      const kind: NodeKind = isMover ? 'box' : 'empty'
+      const gameplay: NodeGameplay = {}
+      if (device === 'interact') gameplay.interact = defaultInteract()
+      else if (device === 'trigger') gameplay.trigger = defaultTrigger()
+      else if (device === 'mover') gameplay.mover = defaultMover()
+      else if (device === 'checkpoint') gameplay.checkpoint = defaultCheckpoint()
+      else if (device === 'score') gameplay.score = defaultScore()
+      draft.nodes[id] = makeNode({
+        id,
+        name,
+        kind,
+        parentId: parent,
+        order: nextOrder(draft.nodes, parent),
+        position: spawnPosition(kind, parent, getSpawn()),
+        scale: isMover ? [2.4, 0.3, 2.4] : [1, 1, 1],
+        gameplay,
+        ...(isMover ? { physics: { ...defaultNodePhysics('box'), body: 'kinematic' } } : {}),
       })
       tagAddedChild(draft.nodes, id)
       draft.selection = [id]

@@ -1,6 +1,9 @@
-import { Box3, Vector3, type Object3D, type SkinnedMesh } from 'three'
+import { Box3, Sphere, Vector3, type Object3D, type SkinnedMesh } from 'three'
 
-type SkinnedBounds = Omit<SkinnedMesh, 'boundingBox'> & { boundingBox: Box3 | null }
+type SkinnedBounds = Omit<SkinnedMesh, 'boundingBox' | 'boundingSphere'> & {
+  boundingBox: Box3 | null
+  boundingSphere: Sphere | null
+}
 
 const vertex = new Vector3()
 
@@ -23,6 +26,9 @@ export function refreshObjectBounds(root: Object3D) {
       box.expandByPoint(vertex)
     }
     skinned.boundingBox = box
+    if (!skinned.boundingSphere) {
+      skinned.boundingSphere = box.getBoundingSphere(new Sphere())
+    }
   })
 }
 

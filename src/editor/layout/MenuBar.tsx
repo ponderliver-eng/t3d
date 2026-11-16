@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import {
-  ArrowDown, ArrowDownToLine, ArrowLeft, ArrowRight, ArrowUp, Axis3d, Box, Boxes, Camera, ChevronRight, Circle, ClipboardPaste, Clock, Cone, Copy, CopyPlus, Cylinder, Eye, FilePlus, Flashlight, Focus, Folder, FolderCog, FolderOpen, FolderPlus, Grid3x3, Group, Layers, LayoutDashboard, Lightbulb, Magnet, PackageOpen, PanelsTopLeft, Pill, Redo2, Save, SaveAll, Scan, Settings, SlidersHorizontal, Sparkles, Square, Sun, Sunrise, Tag, Trash2, Undo2, Upload,
+  ArrowDown, ArrowDownToLine, ArrowLeft, ArrowRight, ArrowUp, Axis3d, Box, Boxes, Camera, ChevronRight, Circle, ClipboardPaste, Clock, Cone, Copy, CopyPlus, Cylinder, Eye, FilePlus, Flashlight, Focus, Folder, FolderCog, FolderOpen, FolderPlus, Grid3x3, Group, Layers, LayoutDashboard, Lightbulb, Magnet, Package, PackageOpen, PanelsTopLeft, Pill, Redo2, Save, SaveAll, Scan, Settings, SlidersHorizontal, Sparkles, Square, Sun, Sunrise, Tag, Trash2, Undo2, Upload,
 } from 'lucide-react'
-import { askNewScene, useEditorStore } from '../scene/store'
+import { askNewScene, useEditorStore, type DeviceKind } from '../scene/store'
 import { redoActive, undoActive, useUiEditor } from '../ui/session'
 import { LIGHT_KINDS, MESH_KINDS } from '../scene/kinds'
 import { useI18n, translate, type MessageKey } from '../i18n'
@@ -49,6 +49,7 @@ export default function MenuBar() {
     return () => bindPackagePicker(null)
   }, [])
   const create = (kind: NodeKind) => useEditorStore.getState().createNode(kind)
+  const createDevice = (device: DeviceKind) => useEditorStore.getState().createDevice(device)
   const view = (next: CameraView) => useEditorStore.getState().requestView(next)
   const kindName = (kind: NodeKind) => t(`kind.${kind}` as MessageKey)
 
@@ -145,6 +146,13 @@ export default function MenuBar() {
               const Icon = KIND_ICON[kind]
               return <Item key={kind} icon={<Icon size={13} />} disabled={playing} onClick={() => create(kind)}>{kindName(kind)}</Item>
             })}
+          </Submenu>
+          <Submenu icon={<Package size={13} />} label={t('menu.devices')}>
+            <Item icon={<Circle size={13} />} disabled={playing} onClick={() => createDevice('interact')}>{t('interact.title')}</Item>
+            <Item icon={<Scan size={13} />} disabled={playing} onClick={() => createDevice('trigger')}>{t('trigger.title')}</Item>
+            <Item icon={<Box size={13} />} disabled={playing} onClick={() => createDevice('mover')}>{t('mover.title')}</Item>
+            <Item icon={<SlidersHorizontal size={13} />} disabled={playing} onClick={() => createDevice('checkpoint')}>{t('checkpoint.title')}</Item>
+            <Item icon={<Sparkles size={13} />} disabled={playing} onClick={() => createDevice('score')}>{t('score.title')}</Item>
           </Submenu>
           <Sep />
           <Item icon={<Camera size={13} />} disabled={playing} onClick={() => create('camera')}>{t('menu.camera')}</Item>

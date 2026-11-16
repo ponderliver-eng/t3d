@@ -1186,19 +1186,31 @@ export class EditorViewport {
     const dir = new Vector3(direction[0], direction[1], direction[2])
     if (dir.lengthSq() < 1e-8) return null
     dir.normalize()
+    const camera = this.viewCamera()
+    this.raycaster.camera = camera
     this.raycaster.set(new Vector3(origin[0], origin[1], origin[2]), dir)
     this.raycaster.near = 0.02
     this.raycaster.far = max
+    const previousMask = this.raycaster.layers.mask
+    this.raycaster.layers.mask = camera.layers.mask & ~(1 << EDITOR_HELPER_LAYER)
     const targets: Object3D[] = []
     for (const pick of this.pickables) {
       if (belongsToNode(pick, ignoreId)) continue
-      targets.push(pick)
+      pick.traverse(child => {
+        const mesh = child as Mesh & { isSkinnedMesh?: boolean }
+        if (!mesh.isMesh || mesh.isSkinnedMesh) return
+        targets.push(mesh)
+      })
     }
-    for (const hit of this.raycaster.intersectObjects(targets, true)) {
-      let object: Object3D | null = hit.object
-      while (object && !object.userData.nodeId) object = object.parent
-      if (!object || object.userData.nodeId === ignoreId || !isRendered(object)) continue
-      return hit.distance
+    try {
+      for (const hit of this.raycaster.intersectObjects(targets, false)) {
+        let object: Object3D | null = hit.object
+        while (object && !object.userData.nodeId) object = object.parent
+        if (!object || object.userData.nodeId === ignoreId || !isRendered(object)) continue
+        return hit.distance
+      }
+    } finally {
+      this.raycaster.layers.mask = previousMask
     }
     return null
   }

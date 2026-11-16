@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { ChevronDown, ChevronRight, ExternalLink, FolderSearch, Image as ImageIcon, Search, Trash2, X } from 'lucide-react'
+import { ChevronDown, ChevronRight, ExternalLink, FolderSearch, Image as ImageIcon, Plus, Search, Trash2, X } from 'lucide-react'
 import { clipDuration, clipNamesFor, loadModelTemplate, subscribeModels } from '../assets/models'
 import { activeAnimatorState, emptyAnimator } from '../animation/animator'
 import { HumanoidCard } from './HumanoidCard'
@@ -9,12 +9,24 @@ import { ASSET_MIME, reimportModel, saveMaterialFromNode, savePrefabFromSelectio
 import { primaryId, useEditorStore } from '../scene/store'
 import { isLight, isMesh } from '../scene/kinds'
 import { capabilityEnabled } from '../../capabilities/registry'
+import { defaultNodePhysics } from '../../capabilities/physics/defaults'
+import { defaultNodeNavigation } from '../../capabilities/navigation/defaults'
 import { EffectModules } from '../../capabilities/particles/EffectModules'
 import { openProjectSettings } from '../project/ProjectSettingsDialog'
 import { PhysicsCard } from '../../capabilities/physics/PhysicsCard'
 import { CharacterCard } from '../../runtime/CharacterCard'
 import { CameraCard } from '../../runtime/CameraCard'
 import { InteractCard, TriggerCard, MoverCard, CheckpointCard, ScoreCard } from '../../runtime/DeviceCards'
+import {
+  cameraPresetForMode,
+  defaultCameraFollow,
+  defaultCharacter,
+  defaultCheckpoint,
+  defaultInteract,
+  defaultMover,
+  defaultScore,
+  defaultTrigger,
+} from '../../runtime/sceneRuntime'
 import { EffectCard } from '../../capabilities/particles/EffectCard'
 import { NavigationCard, SceneNavigationCard } from '../../capabilities/navigation/NavigationCards'
 import {
@@ -176,38 +188,6 @@ export default function InspectorPanel() {
         </div>
       </Card>
 
-      {(node.kind === 'model' || node.kind === 'empty') && (
-        <CharacterCard node={node} disabled={locked || playing} />
-      )}
-      {(node.kind === 'model' || node.kind === 'empty' || node.kind === 'camera') && (
-        <CameraCard node={node} disabled={locked || playing} />
-      )}
-      {(isMesh(node.kind) || node.kind === 'model' || node.kind === 'empty') && (
-        <InteractCard node={node} disabled={locked || playing} />
-      )}
-      {(isMesh(node.kind) || node.kind === 'model' || node.kind === 'empty') && (
-        <TriggerCard node={node} disabled={locked || playing} />
-      )}
-      {(isMesh(node.kind) || node.kind === 'model' || node.kind === 'empty') && (
-        <MoverCard node={node} disabled={locked || playing} />
-      )}
-      {(isMesh(node.kind) || node.kind === 'model' || node.kind === 'empty') && (
-        <CheckpointCard node={node} disabled={locked || playing} />
-      )}
-      {(isMesh(node.kind) || node.kind === 'model' || node.kind === 'empty') && (
-        <ScoreCard node={node} disabled={locked || playing} />
-      )}
-      {(isMesh(node.kind) || node.kind === 'model' || node.kind === 'empty') && (
-        <PhysicsCard node={node} disabled={locked || playing} />
-      )}
-      {node.kind === 'effect' && <EffectCard node={node} disabled={locked || playing} />}
-      {(isMesh(node.kind) || node.kind === 'model' || node.kind === 'empty') && (
-        <NavigationCard node={node} disabled={locked || playing} />
-      )}
-      {node.kind === 'screen' && <ScreenCard node={node} locked={locked || playing} playing={playing} />}
-
-      {(isMesh(node.kind) || node.kind === 'model') && <MeshRendererCard node={node} />}
-
       {node.kind === 'model' && (
         <Card id="model" title={t('inspector.model')} color={kindColor(node.kind)}>
           <AnimModeSwitch nodeId={node.id} />
@@ -235,6 +215,8 @@ export default function InspectorPanel() {
           {node.assetId && <HumanoidCard assetId={node.assetId} />}
         </Card>
       )}
+
+      {(isMesh(node.kind) || node.kind === 'model') && <MeshRendererCard node={node} />}
 
       {isLight(node.kind) && (
         <Card id="light" title={t('inspector.light')} color={kindColor(node.kind)}>
@@ -312,6 +294,21 @@ export default function InspectorPanel() {
           <NumberRow label={t('inspector.far')} value={node.far} min={1} max={500} step={1} gesture={t('gesture.camera')} onChange={far => useEditorStore.getState().updateNode(node.id, { far })} />
         </Card>
       )}
+
+      {node.kind === 'effect' && <EffectCard node={node} disabled={locked || playing} />}
+      {node.kind === 'screen' && <ScreenCard node={node} locked={locked || playing} playing={playing} />}
+
+      <CharacterCard node={node} disabled={locked || playing} />
+      <CameraCard node={node} disabled={locked || playing} />
+      <InteractCard node={node} disabled={locked || playing} />
+      <TriggerCard node={node} disabled={locked || playing} />
+      <MoverCard node={node} disabled={locked || playing} />
+      <CheckpointCard node={node} disabled={locked || playing} />
+      <ScoreCard node={node} disabled={locked || playing} />
+      <PhysicsCard node={node} disabled={locked || playing} />
+      <NavigationCard node={node} disabled={locked || playing} />
+
+      <AddComponentPicker node={node} disabled={locked || playing} />
     </InspectorFrame>
   )
 }
@@ -1431,4 +1428,266 @@ function kindColor(kind: NodeKind): string {
   if (kind === 'camera' || kind === 'screen') return '#4a9eff'
   if (isMesh(kind)) return '#f5a623'
   return '#999999'
+}
+
+type ComponentId = 'character' | 'cameraFollow' | 'interact' | 'trigger' | 'mover' | 'checkpoint' | 'score' | 'physics' | 'navigation'
+
+interface ComponentOption {
+  id: ComponentId
+  cardId: string
+  group: 'character' | 'devices' | 'world'
+  label: string
+  color: string
+  added: boolean
+  apply: () => void
+}
+
+function AddComponentPicker({ node, disabled }: { node: SceneNode, disabled: boolean }) {
+  const { t } = useI18n()
+  const capabilities = useEditorStore(state => state.capabilities)
+  const [open, setOpen] = useState(false)
+  const [query, setQuery] = useState('')
+  const rootRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    setOpen(false)
+    setQuery('')
+  }, [node.id])
+
+  useEffect(() => {
+    if (!open) return
+    const onPointerDown = (event: PointerEvent) => {
+      if (!rootRef.current?.contains(event.target as Node)) setOpen(false)
+    }
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOpen(false)
+    }
+    window.addEventListener('pointerdown', onPointerDown)
+    window.addEventListener('keydown', onKeyDown)
+    return () => {
+      window.removeEventListener('pointerdown', onPointerDown)
+      window.removeEventListener('keydown', onKeyDown)
+    }
+  }, [open])
+
+  const canGameplay = isMesh(node.kind) || node.kind === 'model' || node.kind === 'empty'
+  const canCameraFollow = canGameplay || node.kind === 'camera'
+  const physicsEnabled = capabilityEnabled(capabilities, 'physics')
+  const navEnabled = capabilityEnabled(capabilities, 'navigation')
+
+  const options: ComponentOption[] = []
+  if (canGameplay) {
+    options.push({
+      id: 'character',
+      cardId: 'character',
+      group: 'character',
+      label: t('character.title'),
+      color: '#6fbf73',
+      added: Boolean(node.gameplay?.character),
+      apply: () => {
+        const nextChar = defaultCharacter()
+        const gameplay = { ...node.gameplay, character: nextChar }
+        if (!gameplay.cameraFollow) {
+          gameplay.cameraFollow = { ...defaultCameraFollow(), ...cameraPresetForMode(nextChar.mode), enabled: true }
+        }
+        commitNode(node.id, t('character.title'), { gameplay })
+        useInspectorMemory.getState().setOpen(`node:${node.id}`, 'character', true)
+      },
+    })
+  }
+  if (canCameraFollow) {
+    options.push({
+      id: 'cameraFollow',
+      cardId: 'follow-camera',
+      group: 'character',
+      label: t('camera.title'),
+      color: '#7aa2ff',
+      added: Boolean(node.gameplay?.cameraFollow),
+      apply: () => {
+        commitNode(node.id, t('camera.title'), {
+          gameplay: { ...node.gameplay, cameraFollow: defaultCameraFollow() },
+        })
+        useInspectorMemory.getState().setOpen(`node:${node.id}`, 'follow-camera', true)
+      },
+    })
+  }
+  if (canGameplay) {
+    options.push(
+      {
+        id: 'interact',
+        cardId: 'interact',
+        group: 'devices',
+        label: t('interact.title'),
+        color: '#e0a15a',
+        added: Boolean(node.gameplay?.interact),
+        apply: () => {
+          commitNode(node.id, t('interact.title'), {
+            gameplay: { ...node.gameplay, interact: defaultInteract() },
+          })
+          useInspectorMemory.getState().setOpen(`node:${node.id}`, 'interact', true)
+        },
+      },
+      {
+        id: 'trigger',
+        cardId: 'trigger',
+        group: 'devices',
+        label: t('trigger.title'),
+        color: '#d27ba0',
+        added: Boolean(node.gameplay?.trigger),
+        apply: () => {
+          commitNode(node.id, t('trigger.title'), {
+            gameplay: { ...node.gameplay, trigger: defaultTrigger() },
+          })
+          useInspectorMemory.getState().setOpen(`node:${node.id}`, 'trigger', true)
+        },
+      },
+      {
+        id: 'mover',
+        cardId: 'mover',
+        group: 'devices',
+        label: t('mover.title'),
+        color: '#6ec4c4',
+        added: Boolean(node.gameplay?.mover),
+        apply: () => {
+          commitNode(node.id, t('mover.title'), {
+            gameplay: { ...node.gameplay, mover: defaultMover() },
+          })
+          useInspectorMemory.getState().setOpen(`node:${node.id}`, 'mover', true)
+        },
+      },
+      {
+        id: 'checkpoint',
+        cardId: 'checkpoint',
+        group: 'devices',
+        label: t('checkpoint.title'),
+        color: '#d4c15a',
+        added: Boolean(node.gameplay?.checkpoint),
+        apply: () => {
+          commitNode(node.id, t('checkpoint.title'), {
+            gameplay: { ...node.gameplay, checkpoint: defaultCheckpoint() },
+          })
+          useInspectorMemory.getState().setOpen(`node:${node.id}`, 'checkpoint', true)
+        },
+      },
+      {
+        id: 'score',
+        cardId: 'score',
+        group: 'devices',
+        label: t('score.title'),
+        color: '#c48bdc',
+        added: Boolean(node.gameplay?.score),
+        apply: () => {
+          commitNode(node.id, t('score.title'), {
+            gameplay: { ...node.gameplay, score: defaultScore() },
+          })
+          useInspectorMemory.getState().setOpen(`node:${node.id}`, 'score', true)
+        },
+      },
+    )
+    if (physicsEnabled) {
+      options.push({
+        id: 'physics',
+        cardId: 'physics',
+        group: 'world',
+        label: t('physics.title'),
+        color: '#8bc34a',
+        added: Boolean(node.physics),
+        apply: () => {
+          commitNode(node.id, t('physics.title'), {
+            physics: defaultNodePhysics(node.kind),
+          })
+          useInspectorMemory.getState().setOpen(`node:${node.id}`, 'physics', true)
+        },
+      })
+    }
+    if (navEnabled) {
+      options.push({
+        id: 'navigation',
+        cardId: 'navigation',
+        group: 'world',
+        label: t('navigation.title'),
+        color: '#4fc3f7',
+        added: Boolean(node.navigation),
+        apply: () => {
+          commitNode(node.id, t('navigation.title'), {
+            navigation: defaultNodeNavigation(node.kind),
+          })
+          useInspectorMemory.getState().setOpen(`node:${node.id}`, 'navigation', true)
+        },
+      })
+    }
+  }
+
+  if (options.length === 0) return null
+
+  const q = query.trim().toLowerCase()
+  const filtered = q ? options.filter(item => item.label.toLowerCase().includes(q)) : options
+  const groups: Array<{ key: ComponentOption['group'], title: string, items: ComponentOption[] }> = (
+    [
+      { key: 'character' as const, title: t('component.group.character') },
+      { key: 'devices' as const, title: t('component.group.devices') },
+      { key: 'world' as const, title: t('component.group.world') },
+    ]
+  )
+    .map(group => ({ ...group, items: filtered.filter(item => item.group === group.key) }))
+    .filter(group => group.items.length > 0)
+
+  return (
+    <div className="add-component" ref={rootRef}>
+      <button
+        type="button"
+        className="add-component__btn"
+        disabled={disabled}
+        onClick={() => setOpen(value => !value)}
+      >
+        <Plus size={13} />
+        <span>{t('component.add')}</span>
+      </button>
+      {open && (
+        <div className="add-component__menu">
+          <div className="add-component__search">
+            <Search size={12} />
+            <input
+              autoFocus
+              value={query}
+              placeholder={t('component.search')}
+              onChange={event => setQuery(event.target.value)}
+            />
+            {query && (
+              <button type="button" onClick={() => setQuery('')}>
+                <X size={11} />
+              </button>
+            )}
+          </div>
+          <div className="add-component__list">
+            {groups.length === 0 && (
+              <div className="add-component__empty">{t('component.empty')}</div>
+            )}
+            {groups.map(group => (
+              <div key={group.key} className="add-component__group">
+                <div className="add-component__group-title">{group.title}</div>
+                {group.items.map(item => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    className="add-component__item"
+                    disabled={item.added}
+                    onClick={() => {
+                      item.apply()
+                      setOpen(false)
+                      setQuery('')
+                    }}
+                  >
+                    <span className="iv2-card__dot" style={{ background: item.color }} />
+                    <span>{item.label}</span>
+                    {item.added && <em>{t('component.added')}</em>}
+                  </button>
+                ))}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
 }

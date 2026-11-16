@@ -1,22 +1,26 @@
-import { ChevronDown, ChevronRight } from 'lucide-react'
+import { ChevronDown, ChevronRight, Trash2 } from 'lucide-react'
 import { useInspectorCardOpen } from '../../editor/panels/inspectorMemory'
 import { capabilityEnabled } from '../registry'
 import { openProjectSettings } from '../../editor/project/ProjectSettingsDialog'
 import { useEditorStore } from '../../editor/scene/store'
 import { useI18n } from '../../editor/i18n'
 import type { NavRole, NavSettings, NodeNavigation, SceneNode } from '../../editor/scene/types'
-import { defaultNodeNavigation, navSettingsOf, navSignature } from './defaults'
+import { navSettingsOf, navSignature } from './defaults'
 import { cancelNavBake, requestNavBake, useNavUi } from './session'
 
 export function NavigationCard({ node, disabled }: { node: SceneNode, disabled: boolean }) {
   const { t } = useI18n()
   const enabled = useEditorStore(state => capabilityEnabled(state.capabilities, 'navigation'))
   const [open, setOpen] = useInspectorCardOpen('navigation')
-  if (!enabled) return null
   const navigation = node.navigation
-  const patch = (next: NodeNavigation | null) => useEditorStore.getState().updateNode(node.id, { navigation: next })
+  if (!enabled || !navigation) return null
+  const patch = (next: NodeNavigation | null) => {
+    const store = useEditorStore.getState()
+    store.beginGesture(t('navigation.title'))
+    store.updateNode(node.id, { navigation: next })
+    store.endGesture()
+  }
   const edit = (partial: Partial<NodeNavigation>) => {
-    if (!navigation) return
     patch({ ...navigation, ...partial })
   }
   return (
@@ -24,34 +28,32 @@ export function NavigationCard({ node, disabled }: { node: SceneNode, disabled: 
       <header className="iv2-card__header" onClick={() => setOpen(!open)}>
         <span className="iv2-card__dot" style={{ background: '#4fc3f7' }} />
         <span>{t('navigation.title')}</span>
+        <span className="iv2-card__actions" onClick={event => event.stopPropagation()}>
+          <button
+            type="button"
+            className="iv2-card__remove"
+            title={t('component.remove')}
+            disabled={disabled}
+            onClick={() => patch(null)}
+          >
+            <Trash2 size={12} />
+          </button>
+        </span>
         {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
       </header>
       {open && (
         <div className="iv2-card__body">
           <label className="field">
-            <span>{t('navigation.participate')}</span>
-            <input
-              type="checkbox"
-              disabled={disabled}
-              checked={!!navigation}
-              onChange={event => patch(event.target.checked ? defaultNodeNavigation(node.kind) : null)}
-            />
+            <span>{t('navigation.role')}</span>
+            <select disabled={disabled} value={navigation.role} onChange={event => edit({ role: event.target.value as NavRole })}>
+              <option value="surface">{t('navigation.surface')}</option>
+              <option value="obstacle">{t('navigation.obstacle')}</option>
+            </select>
           </label>
-          {navigation && (
+          {navigation.role === 'obstacle' && (
             <>
-              <label className="field">
-                <span>{t('navigation.role')}</span>
-                <select disabled={disabled} value={navigation.role} onChange={event => edit({ role: event.target.value as NavRole })}>
-                  <option value="surface">{t('navigation.surface')}</option>
-                  <option value="obstacle">{t('navigation.obstacle')}</option>
-                </select>
-              </label>
-              {navigation.role === 'obstacle' && (
-                <>
-                  <NumberInput label={t('navigation.radius')} disabled={disabled} value={navigation.radius} step={0.05} min={0.05} onChange={radius => edit({ radius })} />
-                  <NumberInput label={t('navigation.height')} disabled={disabled} value={navigation.height} step={0.05} min={0.05} onChange={height => edit({ height })} />
-                </>
-              )}
+              <NumberInput label={t('navigation.radius')} disabled={disabled} value={navigation.radius} step={0.05} min={0.05} onChange={radius => edit({ radius })} />
+              <NumberInput label={t('navigation.height')} disabled={disabled} value={navigation.height} step={0.05} min={0.05} onChange={height => edit({ height })} />
             </>
           )}
         </div>
