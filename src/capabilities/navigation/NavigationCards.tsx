@@ -1,11 +1,12 @@
 import { ChevronDown, ChevronRight, Eraser, RefreshCw, Trash2, Waypoints, X } from 'lucide-react'
+import { CardReset } from '../../editor/panels/CardReset'
 import { useInspectorCardOpen } from '../../editor/panels/inspectorMemory'
 import { capabilityEnabled } from '../registry'
 import { openProjectSettings } from '../../editor/project/ProjectSettingsDialog'
 import { useEditorStore } from '../../editor/scene/store'
 import { useI18n } from '../../editor/i18n'
-import type { NavRole, NavSettings, NodeNavigation, SceneNode } from '../../editor/scene/types'
-import { navSettingsOf, navSignature } from './defaults'
+import { DEFAULT_NAV, type NavRole, type NavSettings, type NodeNavigation, type SceneNode } from '../../editor/scene/types'
+import { defaultNodeNavigation, navSettingsOf, navSignature } from './defaults'
 import { cancelNavBake, clearNavMesh, requestNavBake, useNavUi } from './session'
 
 export function NavigationCard({ node, disabled }: { node: SceneNode, disabled: boolean }) {
@@ -29,6 +30,7 @@ export function NavigationCard({ node, disabled }: { node: SceneNode, disabled: 
         <span className="iv2-card__dot" style={{ background: '#4fc3f7' }} />
         <span>{t('navigation.title')}</span>
         <span className="iv2-card__actions" onClick={event => event.stopPropagation()}>
+          <CardReset disabled={disabled} onReset={() => patch(defaultNodeNavigation(node.kind))} />
           <button
             type="button"
             className="iv2-card__remove"
@@ -86,6 +88,9 @@ export function SceneNavigationCard() {
       <header className="iv2-card__header" onClick={() => setOpen(!open)}>
         <span className="iv2-card__dot" style={{ background: '#4fc3f7' }} />
         <span>{t('navigation.title')}</span>
+        <span className="iv2-card__actions" onClick={event => event.stopPropagation()}>
+          <CardReset disabled={playing} onReset={() => useEditorStore.getState().setPicture({ navigation: { ...DEFAULT_NAV } })} />
+        </span>
         {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
       </header>
       {open && (

@@ -489,3 +489,51 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+.project-panel:focus {
+  outline: none;
+}
+
+.project-confirm__backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.45);
+}
+
+.project-confirm {
+  width: min(360px, calc(100vw - 32px));
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #2a2a2a;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.4);
+}
+
+.project-confirm h2 {
+  margin: 0 0 8px;
+  font-size: 14px;
+}
+
+.project-confirm p {
+  margin: 0 0 14px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.project-confirm div {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.project-confirm button {
+  height: 28px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}

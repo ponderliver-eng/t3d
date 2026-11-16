@@ -1,4 +1,5 @@
 import { ChevronDown, ChevronRight, Trash2 } from 'lucide-react'
+import { CardReset } from '../editor/panels/CardReset'
 import { useInspectorCardOpen } from '../editor/panels/inspectorMemory'
 import { useEditorStore } from '../editor/scene/store'
 import { useI18n } from '../editor/i18n'
@@ -38,6 +39,7 @@ export function InteractCard({ node, disabled }: { node: SceneNode, disabled: bo
             checked={spec.enabled !== false}
             onChange={event => write({ enabled: event.target.checked })}
           />
+          <CardReset disabled={disabled} onReset={() => write(defaultInteract())} />
           <button
             type="button"
             className="iv2-card__remove"
@@ -105,6 +107,7 @@ export function TriggerCard({ node, disabled }: { node: SceneNode, disabled: boo
             checked={spec.enabled !== false}
             onChange={event => write({ enabled: event.target.checked })}
           />
+          <CardReset disabled={disabled} onReset={() => write(defaultTrigger())} />
           <button
             type="button"
             className="iv2-card__remove"
@@ -170,6 +173,7 @@ export function MoverCard({ node, disabled }: { node: SceneNode, disabled: boole
             checked={spec.enabled !== false}
             onChange={event => write({ enabled: event.target.checked })}
           />
+          <CardReset disabled={disabled} onReset={() => write(defaultMover())} />
           <button
             type="button"
             className="iv2-card__remove"
@@ -237,6 +241,7 @@ export function CheckpointCard({ node, disabled }: { node: SceneNode, disabled: 
             checked={spec.enabled !== false}
             onChange={event => write({ enabled: event.target.checked })}
           />
+          <CardReset disabled={disabled} onReset={() => write(defaultCheckpoint())} />
           <button
             type="button"
             className="iv2-card__remove"
@@ -302,6 +307,7 @@ export function ScoreCard({ node, disabled }: { node: SceneNode, disabled: boole
             checked={spec.enabled !== false}
             onChange={event => write({ enabled: event.target.checked })}
           />
+          <CardReset disabled={disabled} onReset={() => write(defaultScore())} />
           <button
             type="button"
             className="iv2-card__remove"

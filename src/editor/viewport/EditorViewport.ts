@@ -188,6 +188,7 @@ export class EditorViewport {
   private playCameraWarned = ''
   private clickPoints: { left: [number, number, number] | null, right: [number, number, number] | null } = { left: null, right: null }
   private pointerDelta = { x: 0, y: 0 }
+  private wheelDelta = 0
   private rightButton = false
   private appliedViewNonce = 0
   private readonly unsubscribe: () => void
@@ -923,6 +924,11 @@ export class EditorViewport {
   }
 
   private onWheel = (event: WheelEvent) => {
+    if (useEditorStore.getState().playState === 'playing') {
+      event.preventDefault()
+      this.wheelDelta += event.deltaY
+      return
+    }
     if (this.playCameraLocked()) {
       event.preventDefault()
       return
@@ -1142,6 +1148,11 @@ export class EditorViewport {
         return delta
       },
       rightHeld: () => this.rightButton,
+      wheel: () => {
+        const delta = this.wheelDelta
+        this.wheelDelta = 0
+        return delta
+      },
       probe: (origin, direction, max, ignoreId) => this.probeScene(origin, direction, max, ignoreId),
       consumeClick: button => {
         const point = this.clickPoints[button]
@@ -1624,6 +1635,7 @@ export class EditorViewport {
           action.weight = 1
           action.paused = !play.playing
           action.time = play.time
+          if (!play.playing) data.mixer.update(0)
         }
       } else if (previous) {
         if (fade > 0) previous.fadeOut(fade)
@@ -1638,7 +1650,13 @@ export class EditorViewport {
       this.configureAction(action, play.loop, play.speed)
       action.paused = !play.playing
       if (!play.playing && Math.abs(action.time - play.time) > 0.001) {
+        if (layer === 'body') data.bodyBlend = undefined
+        else data.overlayBlend = undefined
+        action.enabled = true
+        action.weight = 1
+        if (!action.isRunning()) action.play()
         action.time = play.time
+        data.mixer.update(0)
       }
     }
   }

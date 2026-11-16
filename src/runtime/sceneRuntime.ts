@@ -99,6 +99,11 @@ export interface CameraFollowSpec {
   damping: number
   lookAtTarget: boolean
   fov: number
+  /** 滚轮沿镜头臂拉近拉远。 */
+  zoom: boolean
+  zoomSpeed: number
+  minDistance: number
+  maxDistance: number
 }
 
 export function defaultCameraFollow(): CameraFollowSpec {
@@ -118,6 +123,10 @@ export function defaultCameraFollow(): CameraFollowSpec {
     damping: 8,
     lookAtTarget: true,
     fov: 60,
+    zoom: true,
+    zoomSpeed: 0.18,
+    minDistance: 0.8,
+    maxDistance: 18,
   }
 }
 
@@ -127,7 +136,7 @@ export function cameraPresetForMode(mode: CharacterMode): Partial<CameraFollowSp
   if (mode === 'pointAndClick') return { offset: [0, 10.5, -7.2], pivot: [0, 0.8, 0], orbit: 'none', localOffset: false, lookAtTarget: true, fov: 48, collision: false }
   if (mode === 'topDown') return { offset: [0, 9.5, -6.5], pivot: [0, 0.8, 0], orbit: 'none', localOffset: false, lookAtTarget: true, fov: 50, collision: false }
   if (mode === 'side25d') return { offset: [0, 1.6, -7.5], pivot: [0, 1.2, 0], orbit: 'none', localOffset: false, lookAtTarget: true, fov: 45, collision: false }
-  if (mode === 'firstPerson') return { offset: [0, 1.65, 0.15], pivot: [0, 1.65, 0], orbit: 'mouse', localOffset: false, lookAtTarget: true, fov: 72, collision: false }
+  if (mode === 'firstPerson') return { offset: [0, 1.65, 0.15], pivot: [0, 1.65, 0], orbit: 'mouse', localOffset: false, lookAtTarget: true, fov: 72, collision: false, zoom: false }
   return { offset: [0, 1.8, -4.2], pivot: [0, 1.4, 0], orbit: 'rightDrag', localOffset: false, lookAtTarget: true, fov: 60, collision: true }
 }
 
@@ -489,6 +498,8 @@ export interface SceneRuntimeHost {
   poseCamera?: (position: Vec3, lookAt: Vec3, fov: number) => void
   pointerDelta?: () => { x: number, y: number }
   rightHeld?: () => boolean
+  /** 自上次读取后积累的滚轮像素。读一次即清零。正值是向下滚。 */
+  wheel?: () => number
   /** 从起点沿方向探测场景，返回最近交点距离。忽略 ignoreId。 */
   probe?: (origin: Vec3, direction: Vec3, max: number, ignoreId: string) => number | null
   /** 取走一次地面点击。没有则返回 null。 */

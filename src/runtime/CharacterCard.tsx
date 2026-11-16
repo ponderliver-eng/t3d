@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { ChevronDown, ChevronRight, Search, Trash2, X } from 'lucide-react'
+import { CardReset } from '../editor/panels/CardReset'
 import { clipNamesFor } from '../editor/assets/models'
 import { useInspectorCardOpen } from '../editor/panels/inspectorMemory'
 import { useEditorStore } from '../editor/scene/store'
@@ -81,6 +82,7 @@ export function CharacterCard({ node, disabled }: { node: SceneNode, disabled: b
             checked={spec.enabled !== false}
             onChange={event => write({ enabled: event.target.checked })}
           />
+          <CardReset disabled={disabled} onReset={() => write(defaultCharacter())} />
           <button
             type="button"
             className="iv2-card__remove"
@@ -191,6 +193,14 @@ export function CharacterCard({ node, disabled }: { node: SceneNode, disabled: b
                 )}
                 {fixedCam && <Num label={t('camera.fov')} value={cam.fov} disabled={disabled} step={1} min={20} onChange={fov => writeCam({ fov })} />}
                 <Num label={t('camera.damping')} value={cam.damping} disabled={disabled} step={0.5} min={0} onChange={damping => writeCam({ damping })} />
+                <Check label={t('camera.zoom')} disabled={disabled} checked={cam.zoom !== false} onChange={zoom => writeCam({ zoom })} />
+                {cam.zoom !== false && (
+                  <div className="iv2-pair">
+                    <Num label={t('camera.zoomSpeed')} value={cam.zoomSpeed} disabled={disabled} step={0.02} min={0.02} onChange={zoomSpeed => writeCam({ zoomSpeed })} />
+                    <Num label={t('camera.minDistance')} value={cam.minDistance} disabled={disabled} step={0.1} min={0.2} onChange={minDistance => writeCam({ minDistance })} />
+                    <Num label={t('camera.maxDistance')} value={cam.maxDistance} disabled={disabled} step={0.1} min={0.2} onChange={maxDistance => writeCam({ maxDistance })} />
+                  </div>
+                )}
                 {!fixedCam && !firstPerson && (
                   <div className="iv2-pair">
                     <Check label={t('camera.collision')} disabled={disabled} checked={cam.collision} onChange={collision => writeCam({ collision })} />

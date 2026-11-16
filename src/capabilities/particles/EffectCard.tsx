@@ -1,8 +1,9 @@
 import { ChevronDown, ChevronRight } from 'lucide-react'
+import { CardReset } from '../../editor/panels/CardReset'
 import { useInspectorCardOpen } from '../../editor/panels/inspectorMemory'
 import { useAssetStore } from '../../editor/assets/library'
 import { capabilityEnabled } from '../registry'
-import { QUARKS_VERSION } from './defaults'
+import { DEFAULT_SIMULATION, QUARKS_VERSION } from './defaults'
 import { effectVersion, particleIssue } from './session'
 import { saveEffectFromNode } from './effectAsset'
 import { EffectModules, MaterialDrop, commitSimulation, createParticleMaterial } from './EffectModules'
@@ -35,6 +36,16 @@ export function EffectCard({ node, disabled }: { node: SceneNode, disabled: bool
       <header className="iv2-card__header" onClick={() => setOpen(!open)}>
         <span className="iv2-card__dot" style={{ background: '#ffb25a' }} />
         <span>{t('particles.title')}</span>
+        <span className="iv2-card__actions" onClick={event => event.stopPropagation()}>
+          <CardReset
+            disabled={disabled}
+            onReset={() => patch({
+              playing: true,
+              materialAssetId: null,
+              simulation: effect.assetId ? null : structuredClone(DEFAULT_SIMULATION),
+            })}
+          />
+        </span>
         {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
       </header>
       {open && (

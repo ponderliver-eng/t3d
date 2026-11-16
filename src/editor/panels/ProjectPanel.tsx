@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type MouseEvent } from 'react'
+import { createPortal } from 'react-dom'
 import { Box, ChevronRight, Clapperboard, Component, CopyPlus, Folder, FolderOpen, FolderPlus, Globe, Image, Layers, LayoutGrid, List, ListTree, MapPin, Minus, Music, PackageOpen, Palette, PanelsTopLeft, Pencil, Plus, RefreshCw, Rows3, Search, Sparkles, Sun, Trash2, Unlink, Upload, X } from 'lucide-react'
 import { CLIP_MIME } from '../animation/playback'
 import { ASSET_MIME, assignClip, bindImportInput, createDefaultMaterial, createDefaultUi, deleteAsset, duplicateAsset, importFiles, isNodeDrag, NODE_MIME, openAsset, openImport, reimportModel, reportAssetUsers } from '../assets/import'
@@ -70,8 +71,10 @@ export default function ProjectPanel() {
   const [over, setOver] = useState(false)
   const [dropPath, setDropPath] = useState<string | null>(null)
   const [clipOpen, setClipOpen] = useState<Record<string, boolean>>({})
+  const [pending, setPending] = useState<{ kind: 'asset', id: string } | { kind: 'folder', path: string } | null>(null)
   const renameTimer = useRef<number | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
+  const panelRef = useRef<HTMLDivElement>(null)
   const assets = useAssetStore(state => state.assets)
   const folders = useAssetStore(state => state.folders)
   const assetDirs = useAssetStore(state => state.assetDirs)
@@ -152,10 +155,51 @@ export default function ProjectPanel() {
     document.querySelector(`[data-asset-id="${CSS.escape(inspectedAssetId)}"]`)?.scrollIntoView({ block: 'nearest' })
   }, [assets, inspectedAssetId, items, pill, q])
 
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (event.code !== 'Delete') return
+      const root = panelRef.current
+      const target = event.target as HTMLElement | null
+      if (!root || !target || !root.contains(target)) return
+      const tag = target.tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable) return
+      if (!inspectedAssetId || !useAssetStore.getState().assets[inspectedAssetId]) return
+      event.preventDefault()
+      event.stopPropagation()
+      setPending({ kind: 'asset', id: inspectedAssetId })
+    }
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
+  }, [inspectedAssetId])
+
+  useEffect(() => {
+    if (!pending) return
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape') return
+      event.preventDefault()
+      event.stopPropagation()
+      setPending(null)
+    }
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
+  }, [pending])
+
+  const askAsset = (id: string) => {
+    if (!useAssetStore.getState().assets[id]) return
+    setPending({ kind: 'asset', id })
+  }
+
   return (
     <div
+      ref={panelRef}
       className="project-panel project-browse"
       data-asset-dir={browseDir}
+      tabIndex={-1}
+      onMouseDown={event => {
+        const tag = (event.target as HTMLElement).tagName
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
+        panelRef.current?.focus({ preventScroll: true })
+      }}
       onDragOver={event => {
         if (!isNodeDrag(event.dataTransfer)) return
         event.preventDefault()
@@ -366,8 +410,7 @@ export default function ProjectPanel() {
               }}
               onDelete={event => {
                 event.stopPropagation()
-                if (item.asset.kind === 'scene' && !window.confirm(t('project.deleteScene', { name: item.asset.name }))) return
-                deleteAsset(item.asset.id)
+                askAsset(item.asset.id)
               }}
               clipsOpen={clipOpen[item.asset.id] === true || (q.length > 0 && clipEntries(item.asset).some(clip => clip.name.toLowerCase().includes(q)))}
               onToggleClips={() => setClipOpen(current => ({ ...current, [item.asset.id]: !current[item.asset.id] }))}
@@ -407,11 +450,7 @@ export default function ProjectPanel() {
           <button type="button" onClick={() => { setRenameId(menu.id); setMenu(null) }}><Pencil size={12} />{t('project.rename')}</button>
           <div className="project-panel__sep" />
           <button type="button" onClick={() => {
-            if (assetKind(menu.id) === 'scene') {
-              const asset = useAssetStore.getState().assets[menu.id]
-              if (asset && !window.confirm(t('project.deleteScene', { name: asset.name }))) return
-            }
-            deleteAsset(menu.id)
+            askAsset(menu.id)
             setMenu(null)
           }}><Trash2 size={12} />{t('project.delete')}</button>
         </div>
@@ -427,15 +466,46 @@ export default function ProjectPanel() {
           {menu.path !== ASSETS_ROOT && <div className="project-panel__sep" />}
           {menu.path !== ASSETS_ROOT && (
             <button type="button" onClick={() => {
-              const name = menu.path.slice(menu.path.lastIndexOf('/') + 1)
-              if (window.confirm(t('project.deleteFolder', { name }))) useAssetStore.getState().deleteFolder(menu.path)
+              setPending({ kind: 'folder', path: menu.path })
               setMenu(null)
             }}><Trash2 size={12} />{t('project.delete')}</button>
           )}
         </div>
       )}
+      {pending && createPortal(
+        <div className="project-confirm__backdrop" onMouseDown={() => setPending(null)}>
+          <div className="project-confirm" role="dialog" aria-modal="true" onMouseDown={event => event.stopPropagation()}>
+            <h2>{t('project.delete')}</h2>
+            <p>{pendingMessage(pending, assets, t)}</p>
+            <div>
+              <button type="button" onClick={() => setPending(null)}>{t('project.cancel')}</button>
+              <button type="button" onClick={() => {
+                if (pending.kind === 'asset') deleteAsset(pending.id)
+                else useAssetStore.getState().deleteFolder(pending.path)
+                setPending(null)
+              }}>{t('project.delete')}</button>
+            </div>
+          </div>
+        </div>,
+        document.body,
+      )}
     </div>
   )
+}
+
+function pendingMessage(
+  pending: { kind: 'asset', id: string } | { kind: 'folder', path: string },
+  assets: Record<string, ProjectAsset>,
+  t: (key: MessageKey, vars?: Record<string, string | number>) => string,
+) {
+  if (pending.kind === 'folder') {
+    const name = pending.path.slice(pending.path.lastIndexOf('/') + 1)
+    return t('project.deleteFolder', { name })
+  }
+  const asset = assets[pending.id]
+  if (!asset) return ''
+  if (asset.kind === 'scene') return t('project.deleteScene', { name: asset.name })
+  return t('project.deleteAsset', { name: asset.name })
 }
 
 function CreateMenu({ dir, onDone, onNewFolder }: { dir: string, onDone: () => void, onNewFolder: (path: string) => void }) {

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { ChevronDown, ChevronRight, Search, Trash2, X } from 'lucide-react'
+import { CardReset } from '../editor/panels/CardReset'
 import { useInspectorCardOpen } from '../editor/panels/inspectorMemory'
 import { useEditorStore } from '../editor/scene/store'
 import { useI18n, type MessageKey } from '../editor/i18n'
@@ -33,7 +34,7 @@ export function CameraCard({ node, disabled }: { node: SceneNode, disabled: bool
       store.endGesture()
       return
     }
-    const manual = ['offset', 'pivot', 'orbit', 'fov', 'collision', 'localOffset', 'sensitivity', 'minPitch', 'maxPitch', 'damping', 'lookAtTarget', 'collisionRadius']
+    const manual = ['offset', 'pivot', 'orbit', 'fov', 'collision', 'localOffset', 'sensitivity', 'minPitch', 'maxPitch', 'damping', 'lookAtTarget', 'collisionRadius', 'zoom', 'zoomSpeed', 'minDistance', 'maxDistance']
     const next = !('preset' in patch) && manual.some(key => key in patch) ? { ...patch, preset: '' as const } : patch
     store.updateNode(node.id, { gameplay: { ...node.gameplay, cameraFollow: { ...view, ...next } } })
     store.endGesture()
@@ -51,6 +52,7 @@ export function CameraCard({ node, disabled }: { node: SceneNode, disabled: bool
             checked={spec.enabled !== false}
             onChange={event => write({ enabled: event.target.checked })}
           />
+          <CardReset disabled={disabled} onReset={() => write(defaultCameraFollow())} />
           <button
             type="button"
             className="iv2-card__remove"
@@ -125,6 +127,17 @@ export function CameraCard({ node, disabled }: { node: SceneNode, disabled: bool
           <Num label={t('camera.fov')} value={view.fov} disabled={disabled} step={1} min={20} onChange={fov => write({ fov })} />
           <Num label={t('camera.damping')} value={view.damping} disabled={disabled} step={0.5} min={0} onChange={damping => write({ damping })} />
           </div>
+          <label className="field">
+            <span>{t('camera.zoom')}</span>
+            <input type="checkbox" disabled={disabled} checked={view.zoom !== false} onChange={event => write({ zoom: event.target.checked })} />
+          </label>
+          {view.zoom !== false && (
+            <div className="iv2-pair">
+              <Num label={t('camera.zoomSpeed')} value={view.zoomSpeed} disabled={disabled} step={0.02} min={0.02} onChange={zoomSpeed => write({ zoomSpeed })} />
+              <Num label={t('camera.minDistance')} value={view.minDistance} disabled={disabled} step={0.1} min={0.2} onChange={minDistance => write({ minDistance })} />
+              <Num label={t('camera.maxDistance')} value={view.maxDistance} disabled={disabled} step={0.1} min={0.2} onChange={maxDistance => write({ maxDistance })} />
+            </div>
+          )}
           <label className="field">
             <span>{t('camera.collision')}</span>
             <input type="checkbox" disabled={disabled} checked={view.collision} onChange={event => write({ collision: event.target.checked })} />

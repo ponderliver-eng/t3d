@@ -1,4 +1,6 @@
 import { ChevronDown, ChevronRight, Trash2 } from 'lucide-react'
+import { CardReset } from '../../editor/panels/CardReset'
+import { defaultNodePhysics } from './defaults'
 import { useInspectorCardOpen } from '../../editor/panels/inspectorMemory'
 import { capabilityEnabled } from '../registry'
 import { useEditorStore } from '../../editor/scene/store'
@@ -26,6 +28,7 @@ export function PhysicsCard({ node, disabled }: { node: SceneNode, disabled: boo
         <span className="iv2-card__dot" style={{ background: '#8bc34a' }} />
         <span>{t('physics.title')}</span>
         <span className="iv2-card__actions" onClick={event => event.stopPropagation()}>
+          <CardReset disabled={disabled} onReset={() => patch(defaultNodePhysics(node.kind))} />
           <button
             type="button"
             className="iv2-card__remove"

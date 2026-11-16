@@ -166,6 +166,25 @@
   cursor: pointer;
 }
 
+.iv2-card__reset {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.iv2-card__reset:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-primary);
+}
+
 .iv2-card__remove:hover:not(:disabled) {
   background: rgba(248, 113, 113, 0.14);
   color: #f87171;

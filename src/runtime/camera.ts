@@ -5,6 +5,8 @@ import { defaultCameraFollow, defaultCharacter, registerRuntimeSystem, resolveCh
 interface Arm {
   yaw: number
   pitch: number
+  /** 相对偏移长度的倍率。1 是组件上写的距离。 */
+  zoom: number
   position: Vec3 | null
   local: boolean
 }
@@ -17,6 +19,7 @@ function stepCameras(dt: number, host: SceneRuntimeHost) {
     arms.clear()
     return
   }
+  const wheel = host.wheel?.() ?? 0
   const active = Object.values(state.nodes).find(node => node.gameplay?.character?.enabled && node.gameplay.cameraFollow?.enabled !== false)
     ?? Object.values(state.nodes).find(node => node.gameplay?.cameraFollow?.enabled)
   if (!active) return
@@ -43,6 +46,7 @@ function stepCameras(dt: number, host: SceneRuntimeHost) {
   const arm = arms.get(active.id) ?? {
     yaw: spec.localOffset ? 0 : (host.yaw?.() ?? 0),
     pitch: clampPitch(host.pitch?.() ?? 0, spec),
+    zoom: 1,
     position: null,
     local: spec.localOffset,
   }
@@ -57,10 +61,11 @@ function stepCameras(dt: number, host: SceneRuntimeHost) {
     : Math.atan2(2 * (q.w * q.y + q.x * q.z), 1 - 2 * (q.y * q.y + q.z * q.z))
   steer(spec, arm, host)
   arm.pitch = clampPitch(arm.pitch, spec)
+  const scale = dolly(spec, arm, wheel)
   const yaw = lockObject
     ? targetYaw + Math.PI
     : (spec.orbit === 'none' ? targetYaw : (spec.localOffset ? targetYaw + arm.yaw : arm.yaw))
-  const offset = orbitOffset(spec, yaw, arm.pitch)
+  const offset = orbitOffset(spec, yaw, arm.pitch, scale)
   let desired: Vec3 = [focus[0] + offset[0], focus[1] + offset[1], focus[2] + offset[2]]
   if (spec.collision) desired = spring(host, focus, desired, target.id, spec.collisionRadius)
   const alpha = spec.damping > 0 && dt > 0 ? 1 - Math.exp(-spec.damping * dt) : 1
@@ -99,10 +104,27 @@ function steer(spec: CameraFollowSpec, arm: Arm, host: SceneRuntimeHost) {
   arm.pitch = clampPitch(arm.pitch - delta.y * sens, spec)
 }
 
-function orbitOffset(spec: CameraFollowSpec, yaw: number, pitch: number): Vec3 {
-  if (spec.orbit === 'none' && !spec.localOffset) return spec.offset
+function dolly(spec: CameraFollowSpec, arm: Arm, wheel: number): number {
+  if (!spec.zoom) {
+    arm.zoom = 1
+    return 1
+  }
+  const base = Math.max(0.05, Math.hypot(spec.offset[0], spec.offset[1], spec.offset[2]))
+  const minScale = Math.max(0.05, spec.minDistance) / base
+  const maxScale = Math.max(minScale, spec.maxDistance) / base
+  if (wheel) {
+    const steps = Math.sign(wheel) * Math.min(Math.abs(wheel), 400) / 100
+    arm.zoom *= Math.exp(steps * Math.max(0.01, spec.zoomSpeed))
+  }
+  arm.zoom = Math.min(maxScale, Math.max(minScale, arm.zoom))
+  return arm.zoom
+}
+
+function orbitOffset(spec: CameraFollowSpec, yaw: number, pitch: number, scale = 1): Vec3 {
+  const scaled: Vec3 = [spec.offset[0] * scale, spec.offset[1] * scale, spec.offset[2] * scale]
+  if (spec.orbit === 'none' && !spec.localOffset) return scaled
   const pitchNow = spec.orbit === 'none' ? 0 : pitch
-  const [x, y, z] = spec.offset
+  const [x, y, z] = scaled
   const behind = -z
   const cp = Math.cos(pitchNow)
   const sp = Math.sin(pitchNow)

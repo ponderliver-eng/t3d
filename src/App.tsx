@@ -125,9 +125,7 @@ export default function App() {
       }
       if (ctrl && event.code === 'KeyP') {
         event.preventDefault()
-        if (event.shiftKey) store.stop()
-        else if (store.playState === 'playing') store.pause()
-        else store.play()
+        store.play()
         return
       }
       if (event.code === 'Delete') {

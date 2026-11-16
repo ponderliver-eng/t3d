@@ -95,7 +95,7 @@ export default function InspectorPanel() {
 
   return (
     <InspectorFrame subject={`node:${node.id}`}>
-      {playing && (
+      {playing && playDirty && (
         <div className="inspector__banner inspector__banner--play">
           <span>{t('inspector.playBanner')}</span>
           <button
@@ -478,7 +478,7 @@ function SceneSettings() {
   const set = (patch: Partial<ScenePicture>) => useEditorStore.getState().setPicture(patch)
   return (
     <>
-      {playing && (
+      {playing && playDirty && (
         <div className="inspector__banner inspector__banner--play">
           <span>{t('inspector.playBanner')}</span>
           <button

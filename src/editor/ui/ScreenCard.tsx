@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
+import { CardReset } from '../panels/CardReset'
 import { useAssetStore, type UiAsset } from '../assets/library'
 import { translate, useI18n } from '../i18n'
 import { useInspectorCardOpen } from '../panels/inspectorMemory'
@@ -29,6 +30,9 @@ export function ScreenCard({ node, locked, playing }: { node: SceneNode; locked:
       <header className="iv2-card__header" onClick={() => setOpen(!open)}>
         <span className="iv2-card__dot" style={{ background: '#4a9eff' }} />
         <span>{t('ui.document')}</span>
+        <span className="iv2-card__actions" onClick={event => event.stopPropagation()}>
+          <CardReset disabled={locked} onReset={() => commitScreen(node.id, { ...defaultNodeScreen(), documentId: screen.documentId })} />
+        </span>
         {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
       </header>
       {open && (
