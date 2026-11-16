@@ -60,10 +60,11 @@
   min-width: 0;
 }
 
-.project-panel__search svg:first-child {
+.project-panel__search > svg {
   position: absolute;
   left: 6px;
   color: var(--text-muted);
+  pointer-events: none;
 }
 
 .project-panel__search input {
@@ -73,11 +74,15 @@
   background: rgba(255, 255, 255, 0.05);
 }
 
-.project-panel__search button {
+.project-panel__search > button {
   position: absolute;
-  right: 2px;
-  color: var(--text-muted);
+  right: 3px;
+  width: 16px;
+  height: 16px;
   display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
 }
 
 .project-panel__toolbar > button {
@@ -399,14 +404,37 @@
   align-content: start;
 }
 
+.project-browse__assets.is-grid > .project-asset-block {
+  min-width: 0;
+}
+
 .project-asset--grid {
   height: auto;
+  min-width: 0;
   flex-direction: column;
   align-items: flex-start;
   gap: 4px;
   padding: 6px;
   border: 1px solid transparent;
   border-radius: 6px;
+}
+
+.project-browse__assets.is-grid .project-clip {
+  min-width: 0;
+  margin-left: 0;
+  padding: 0 2px;
+}
+
+.project-browse__assets.is-grid .project-clip span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.project-browse__assets.is-grid .project-clip em {
+  flex: none;
 }
 
 .project-asset--grid .project-asset__lead {

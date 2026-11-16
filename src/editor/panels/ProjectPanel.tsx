@@ -481,6 +481,7 @@ function AssetRow({
       <div
         key={`${asset.id}:${clip.name}`}
         className="project-clip"
+        title={`${clip.name}  ${clip.duration.toFixed(2)}s`}
         draggable
         onDragStart={event => {
           event.stopPropagation()

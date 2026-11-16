@@ -22,6 +22,7 @@ export default function ViewportPanel() {
   const gizmoSpace = useEditorStore(state => state.gizmoSpace)
   const grid = useEditorStore(state => state.gridVisible)
   const helpers = useEditorStore(state => state.helpersVisible)
+  const navMesh = useEditorStore(state => state.navMeshVisible)
   const snap = useEditorStore(state => state.snap)
   const snapStep = useEditorStore(state => state.snapStep)
   const stats = useEditorStore(state => state.viewportStats)
@@ -95,6 +96,7 @@ export default function ViewportPanel() {
               <div className="viewport-menu__pop" onPointerDown={event => event.stopPropagation()}>
                 <label><input type="checkbox" checked={grid} onChange={() => editor.toggleGrid()} /> {t('view.grid')}</label>
                 <label><input type="checkbox" checked={helpers} onChange={() => editor.setHelpersVisible(!helpers)} /> {t('view.lights')}</label>
+                <label><input type="checkbox" checked={navMesh} onChange={() => editor.setNavMeshVisible(!navMesh)} /> {t('navigation.show')}</label>
                 <label><input type="checkbox" checked={origin === 'center'} onChange={() => editor.setGizmoOrigin(origin === 'center' ? 'pivot' : 'center')} /> {t('view.gizmoCenter')}</label>
                 <label><input type="checkbox" checked={snap} onChange={() => editor.toggleSnap()} /> {t('view.snap')}</label>
                 <label className="viewport-menu__step">

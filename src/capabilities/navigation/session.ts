@@ -10,6 +10,7 @@ import {
   hydrateNavMeshes,
   navEpoch,
   navRecord,
+  forgetNavMesh,
   rememberNavMesh,
 } from './archive'
 import { navSettingsOf, navSignature, recastBakeConfig } from './defaults'
@@ -77,6 +78,23 @@ export function cancelNavBake() {
   if (useNavUi.getState().phase === 'baking') {
     useNavUi.setState({ phase: 'idle', text: '' })
   }
+}
+
+export function clearNavMesh() {
+  const state = useEditorStore.getState()
+  if (!capabilityEnabled(state.capabilities, 'navigation') || state.playState !== 'stopped') return
+  const sceneId = state.activeSceneId
+  controller?.abort()
+  controller = null
+  pending = null
+  forgetNavMesh(sceneId)
+  instance?.clear()
+  debugMesh = null
+  obstacleKey = ''
+  loadedScene = sceneId
+  seenEpoch = navEpoch()
+  useNavUi.setState({ phase: 'idle', text: '', sceneId, signature: '', triangles: 0 })
+  state.log('info', translate('navigation.cleared'))
 }
 
 export function consumeNavBake(): NavBakeJob | null {

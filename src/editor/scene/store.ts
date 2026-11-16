@@ -136,6 +136,7 @@ export interface EditorState {
   pendingRenameId: string | null
   renderBackend: string
   helpersVisible: boolean
+  navMeshVisible: boolean
   snapStep: number
   viewportStats: {
     objects: number
@@ -212,6 +213,7 @@ export interface EditorState {
   rememberEditorView: (view: EditorView) => void
   setRenderBackend: (label: string) => void
   setHelpersVisible: (visible: boolean) => void
+  setNavMeshVisible: (visible: boolean) => void
   setSnapStep: (step: number) => void
   setViewportStats: (stats: EditorState['viewportStats']) => void
   spawnModel: (assetId: string, name: string, slots: PbrSlot[], point: Vec3) => void
@@ -292,6 +294,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   pendingRenameId: null,
   renderBackend: '正在初始化',
   helpersVisible: true,
+  navMeshVisible: true,
   snapStep: 1,
   canPaste: false,
   viewportStats: { objects: 0, triangles: 0, vertices: 0, materials: 0, textures: 0, calls: 0, fps: 0, frameMs: 0, camera: [0, 0, 0], orbit: 0 },
@@ -1108,6 +1111,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     if (get().renderBackend !== label) set({ renderBackend: label })
   },
   setHelpersVisible: visible => set({ helpersVisible: visible }),
+  setNavMeshVisible: visible => set({ navMeshVisible: visible }),
   setSnapStep: step => set({ snapStep: Math.max(0.01, step) }),
   setViewportStats: stats => {
     set({ viewportStats: stats })

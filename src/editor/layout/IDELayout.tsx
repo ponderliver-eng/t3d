@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ReactElement } from 'react'
-import { Actions, Layout, Model, type TabNode } from 'flexlayout-react'
+import { Actions, Layout, Model, type ITabRenderValues, type TabNode } from 'flexlayout-react'
+import { Settings } from 'lucide-react'
 import 'flexlayout-react/style/dark.css'
 import ProjectPanel from '../panels/ProjectPanel'
 import HierarchyPanel from '../panels/HierarchyPanel'
@@ -11,7 +12,7 @@ import { ErrorBoundary } from './ErrorBoundary'
 import { useEditorStore } from '../scene/store'
 import { useI18n, type MessageKey } from '../i18n'
 import { DEFAULT_LAYOUT, LAYOUT_KEY, PANEL, loadLayout, type PanelId } from './layoutConfig'
-import { T3D_LAYOUT_RESET, T3D_SELECT_TAB } from './events'
+import { selectTab, T3D_LAYOUT_RESET, T3D_SELECT_TAB } from './events'
 import './IDELayout.css'
 
 const PANELS: Record<PanelId, () => ReactElement> = {
@@ -79,6 +80,29 @@ export default function IDELayout() {
     localStorage.setItem(LAYOUT_KEY, JSON.stringify(updated.toJson()))
   }, [])
 
+  const onRenderTab = useCallback((node: TabNode, renderValues: ITabRenderValues) => {
+    if (node.getId() !== 'tab-scene') return
+    renderValues.buttons.push(
+      <button
+        key="scene-settings"
+        type="button"
+        className="scene-tab__settings"
+        title={t('inspector.sceneSettings')}
+        aria-label={t('inspector.sceneSettings')}
+        onPointerDown={event => event.stopPropagation()}
+        onClick={event => {
+          event.stopPropagation()
+          const store = useEditorStore.getState()
+          store.setSelection([])
+          store.inspectAsset(null)
+          selectTab('tab-inspector')
+        }}
+      >
+        <Settings size={13} strokeWidth={2} />
+      </button>,
+    )
+  }, [t])
+
   const factory = useCallback((node: TabNode) => {
     const component = node.getComponent() as PanelId | undefined
     const Panel = component ? PANELS[component] : undefined
@@ -92,7 +116,7 @@ export default function IDELayout() {
 
   return (
     <div className="ide-layout">
-      <Layout model={model} factory={factory} onModelChange={onModelChange} />
+      <Layout model={model} factory={factory} onModelChange={onModelChange} onRenderTab={onRenderTab} />
     </div>
   )
 }

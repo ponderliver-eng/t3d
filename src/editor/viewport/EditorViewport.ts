@@ -1137,7 +1137,7 @@ export class EditorViewport {
     syncNavDebug(
       this.navDebug,
       navDebugGeometry(),
-      capabilityEnabled(editor.capabilities, 'navigation') && (editor.helpersVisible || editor.playState !== 'stopped'),
+      capabilityEnabled(editor.capabilities, 'navigation') && editor.navMeshVisible,
     )
     this.refreshGuides()
     if (this.partFlashTarget && !this.partFlashTarget.parent) {

@@ -58,6 +58,26 @@
   color: var(--text-primary) !important;
 }
 
+.scene-tab__settings {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.scene-tab__settings:hover {
+  color: var(--text-primary);
+  background: var(--bg-hover);
+}
+
 .flexlayout__tab {
   overflow: hidden;
   background: var(--bg-panel) !important;

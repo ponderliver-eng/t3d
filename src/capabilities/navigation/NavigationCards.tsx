@@ -6,7 +6,7 @@ import { useEditorStore } from '../../editor/scene/store'
 import { useI18n } from '../../editor/i18n'
 import type { NavRole, NavSettings, NodeNavigation, SceneNode } from '../../editor/scene/types'
 import { navSettingsOf, navSignature } from './defaults'
-import { cancelNavBake, requestNavBake, useNavUi } from './session'
+import { cancelNavBake, clearNavMesh, requestNavBake, useNavUi } from './session'
 
 export function NavigationCard({ node, disabled }: { node: SceneNode, disabled: boolean }) {
   const { t } = useI18n()
@@ -67,6 +67,7 @@ export function SceneNavigationCard() {
   const enabled = useEditorStore(state => capabilityEnabled(state.capabilities, 'navigation'))
   const picture = useEditorStore(state => state.picture)
   const playing = useEditorStore(state => state.playState !== 'stopped')
+  const navMeshVisible = useEditorStore(state => state.navMeshVisible)
   const activeSceneId = useEditorStore(state => state.activeSceneId)
   const ui = useNavUi()
   const [open, setOpen] = useInspectorCardOpen('scene-navigation')
@@ -101,9 +102,17 @@ export function SceneNavigationCard() {
               <NumberInput label={t('navigation.agentHeight')} value={settings.agentHeight} step={0.05} min={0.2} gesture onChange={agentHeight => setNav({ agentHeight })} />
               <NumberInput label={t('navigation.maxObstacles')} value={settings.maxObstacles} step={1} min={0} max={128} gesture onChange={maxObstacles => setNav({ maxObstacles: Math.round(maxObstacles) })} />
               <p className="settings-note">{t('navigation.obstacleHint')}</p>
+              <label className="field">
+                <span>{t('navigation.show')}</span>
+                <input type="checkbox" checked={navMeshVisible} onChange={event => useEditorStore.getState().setNavMeshVisible(event.target.checked)} />
+              </label>
               <div className="inspector__resets">
-                <button type="button" disabled={playing || ui.phase === 'baking'} onClick={requestNavBake}>{t('navigation.bake')}</button>
-                <button type="button" disabled={ui.phase !== 'baking'} onClick={cancelNavBake}>{t('navigation.cancel')}</button>
+                <button type="button" disabled={playing || ui.phase === 'baking'} onClick={requestNavBake}>{bakedHere ? t('navigation.rebake') : t('navigation.bake')}</button>
+                {ui.phase === 'baking' ? (
+                  <button type="button" onClick={cancelNavBake}>{t('navigation.cancel')}</button>
+                ) : (
+                  <button type="button" disabled={playing || !bakedHere} onClick={clearNavMesh}>{t('navigation.clear')}</button>
+                )}
               </div>
               {ui.sceneId === activeSceneId && ui.text && (
                 <p className="settings-note">
