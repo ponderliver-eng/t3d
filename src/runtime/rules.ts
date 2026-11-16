@@ -115,7 +115,7 @@ function stepRules(dt: number, host: SceneRuntimeHost) {
   }
   for (const node of Object.values(state.nodes)) {
     for (const rule of readRules(node.gameplay?.rules)) {
-      if (rule.trigger === 'key' && rule.key && tappedKeys.has(rule.key)) arm(node, rule)
+      if (rule.trigger === 'key' && keyHit(rule.key, tappedKeys)) arm(node, rule)
     }
   }
   tappedKeys.clear()
@@ -123,6 +123,20 @@ function stepRules(dt: number, host: SceneRuntimeHost) {
   for (let i = jobs.length - 1; i >= 0; i -= 1) {
     if (advance(jobs[i], dt, host, now)) jobs.splice(i, 1)
   }
+}
+
+function keyHit(expected: string, codes: Set<string>): boolean {
+  const want = expected.trim()
+  if (!want || codes.size === 0) return false
+  if (codes.has(want)) return true
+  const upper = want.toUpperCase()
+  if (want.length === 1 && upper >= 'A' && upper <= 'Z' && codes.has(`Key${upper}`)) return true
+  if (want.length === 1 && want >= '0' && want <= '9' && codes.has(`Digit${want}`)) return true
+  const lower = want.toLowerCase()
+  for (const code of codes) {
+    if (code.toLowerCase() === lower) return true
+  }
+  return false
 }
 
 function fire(node: SceneNode, trigger: RuleEntry['trigger'], message: string) {

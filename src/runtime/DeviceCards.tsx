@@ -1,5 +1,6 @@
 import { ChevronDown, ChevronRight, Trash2 } from 'lucide-react'
 import { CardReset } from '../editor/panels/CardReset'
+import { KeyField } from '../editor/ui/KeyField'
 import { useInspectorCardOpen } from '../editor/panels/inspectorMemory'
 import { useEditorStore } from '../editor/scene/store'
 import { useI18n } from '../editor/i18n'
@@ -58,7 +59,7 @@ export function InteractCard({ node, disabled }: { node: SceneNode, disabled: bo
             <div className="iv2-section__title" style={{ color: '#e0a15a' }}><i /><span>{t('interact.prompt')}</span></div>
             <div className="iv2-pair">
               <Text label={t('interact.prompt')} value={view.prompt} disabled={disabled} onChange={prompt => write({ prompt })} />
-              <Text label={t('interact.key')} value={view.key} disabled={disabled} onChange={key => write({ key })} />
+              <KeyField label={t('interact.key')} value={view.key} disabled={disabled} onChange={key => write({ key })} />
             </div>
             <Check label={t('interact.once')} disabled={disabled} checked={view.once} onChange={once => write({ once })} />
           </section>

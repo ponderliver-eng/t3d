@@ -6,6 +6,7 @@ import { useI18n, type MessageKey } from '../editor/i18n'
 import type { SceneNode } from '../editor/scene/types'
 import { emptyRule, emptyStep, readRuleStates, readRules, type RuleEntry, type RuleStateNode, type RuleTriggerKind } from './sceneRuntime'
 import { ruleTrace } from './rules'
+import { KeyField } from '../editor/ui/KeyField'
 import { ConditionEditor, StepList, TRIGGERS, addCondition, flattenStates } from './RulesSteps'
 import { RulesStateTree } from './RulesStateTree'
 import './RulesWorkbench.css'
@@ -127,7 +128,7 @@ export function RulesWorkbench({
                       {active.trigger === 'key' && (
                         <label className="rules-field">
                           <span>{t('rule.key')}</span>
-                          <input disabled={disabled} value={active.key} placeholder="KeyE" onChange={event => update(active.id, { key: event.target.value })} />
+                          <KeyField value={active.key} disabled={disabled} onChange={key => update(active.id, { key })} />
                         </label>
                       )}
                       {active.trigger === 'message' && (

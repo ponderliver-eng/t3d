@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { ChevronDown, ChevronRight, Search, Trash2, X } from 'lucide-react'
 import { CardReset } from '../editor/panels/CardReset'
+import { KeyField } from '../editor/ui/KeyField'
 import { clipNamesFor } from '../editor/assets/models'
 import { useInspectorCardOpen } from '../editor/panels/inspectorMemory'
 import { useEditorStore } from '../editor/scene/store'
@@ -148,7 +149,7 @@ export function CharacterCard({ node, disabled }: { node: SceneNode, disabled: b
           <Check label={t('character.dash')} disabled={disabled} checked={view.dash} onChange={dash => write({ dash })} />
           {view.dash && (
             <div className="iv2-pair">
-              <Text label={t('character.dashKey')} value={view.dashKey} disabled={disabled} onChange={dashKey => write({ dashKey })} />
+              <KeyField label={t('character.dashKey')} value={view.dashKey} disabled={disabled} onChange={dashKey => write({ dashKey })} />
               <Num label={t('character.dashDistance')} value={view.dashDistance} disabled={disabled} step={0.1} min={0.2} onChange={dashDistance => write({ dashDistance })} />
               <Num label={t('character.dashDuration')} value={view.dashDuration} disabled={disabled} step={0.02} min={0.05} onChange={dashDuration => write({ dashDuration })} />
               <Num label={t('character.dashCooldown')} value={view.dashCooldown} disabled={disabled} step={0.05} min={0} onChange={dashCooldown => write({ dashCooldown })} />
