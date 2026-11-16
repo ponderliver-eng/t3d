@@ -528,6 +528,7 @@ function SceneSettings() {
             <NumberRow label={t('inspector.ssgiRadius')} value={picture.ssgiRadius} min={1} max={25} step={0.5} gesture={t('gesture.picture')} onChange={ssgiRadius => set({ ssgiRadius })} />
             <NumberRow label={t('inspector.ssgiSlices')} value={picture.ssgiSlices} min={1} max={4} step={1} gesture={t('gesture.picture')} onChange={ssgiSlices => set({ ssgiSlices })} />
             <NumberRow label={t('inspector.ssgiSteps')} value={picture.ssgiSteps} min={1} max={32} step={1} gesture={t('gesture.picture')} onChange={ssgiSteps => set({ ssgiSteps })} />
+            <label className="field"><span>{t('inspector.ssgiDenoise')}</span><input type="checkbox" checked={picture.ssgiDenoise} onChange={event => set({ ssgiDenoise: event.target.checked })} /></label>
           </>
         )}
       </Card>

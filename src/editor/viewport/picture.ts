@@ -7,6 +7,7 @@ import { ssao } from 'three/addons/tsl/display/SSAONode.js'
 import { dof } from 'three/addons/tsl/display/DepthOfFieldNode.js'
 import { ssr } from 'three/addons/tsl/display/SSRNode.js'
 import { ssgi } from 'three/addons/tsl/display/SSGINode.js'
+import { denoise } from 'three/addons/tsl/display/DenoiseNode.js'
 import { smaa } from 'three/addons/tsl/display/SMAANode.js'
 import type { ScenePicture } from '../scene/types'
 import { SelectionOutlineNode } from './selectionOutline'
@@ -46,6 +47,7 @@ export class ScenePicturePipeline {
   private dofNode: DofUniforms | null = null
   private ssrNode: SsrUniforms | null = null
   private ssgiNode: SsgiUniforms | null = null
+  private denoiseNodes: Array<{ dispose: () => void }> = []
   private outlineNode: SelectionOutlineNode | null = null
   private key = ''
   private failed = false
@@ -57,7 +59,7 @@ export class ScenePicturePipeline {
   }
 
   render(scene: Scene, camera: Camera, picture: ScenePicture, width: number, height: number, outlineTargets: readonly Object3D[] = [], flashTarget: Object3D | null = null) {
-    const key = [camera.uuid, picture.toneMapping, picture.bloom, picture.ssr, picture.ssgi, picture.aa !== false, picture.ao, picture.dof, picture.hue !== 0 || picture.saturation !== 1, width, height].join('|')
+    const key = [camera.uuid, picture.toneMapping, picture.bloom, picture.ssr, picture.ssgi, picture.ssgi && picture.ssgiDenoise, picture.aa !== false, picture.ao, picture.dof, picture.hue !== 0 || picture.saturation !== 1, width, height].join('|')
     if (this.failed && this.key === key) {
       this.renderer.render(scene, camera)
       return
@@ -108,6 +110,7 @@ export class ScenePicturePipeline {
   dispose() {
     this.outlineNode?.dispose()
     this.outlineNode = null
+    this.clearDenoise()
     this.pipeline?.dispose()
     this.pipeline = null
   }
@@ -115,6 +118,7 @@ export class ScenePicturePipeline {
   private rebuild(scene: Scene, camera: Camera, picture: ScenePicture, key: string) {
     this.outlineNode?.dispose()
     this.outlineNode = null
+    this.clearDenoise()
     this.pipeline?.dispose()
     // 画布开了 4 倍采样。这张离屏图若跟着多重采样，深度不能再被反射读取，射线没有落点。抗锯齿由后面的 SMAA 负责。
     const scenePass = pass(scene, camera, { samples: 0 })
@@ -142,11 +146,23 @@ export class ScenePicturePipeline {
       current = current.mul(aoPass.r) as typeof current
     }
     if (picture.ssgi && normalNode) {
-      const ssgiPass = ssgi(beauty as never, scenePass.getTextureNode('depth'), normalNode as never, camera as never)
+      const depth = scenePass.getTextureNode('depth')
+      const ssgiPass = ssgi(beauty as never, depth, normalNode as never, camera as never)
       ssgiPass.resolutionScale = 1
       this.ssgiNode = ssgiPass
-      const darkened = current.mul(ssgiPass.getAONode().r) as typeof current
-      current = darkened.add(ssgiPass.getGINode().rgb) as typeof current
+      let ao: { r: unknown } = ssgiPass.getAONode()
+      let gi: { rgb: unknown } = ssgiPass.getGINode()
+      if (picture.ssgiDenoise) {
+        // 采样方向固定，空间降噪才压得住颗粒。关掉时不进这个分支，节点不会被创建。
+        ssgiPass.useTemporalFiltering = false
+        const aoDenoised = denoise(ao as never, depth as never, normalNode as never, camera as never)
+        const giDenoised = denoise(gi as never, depth as never, normalNode as never, camera as never)
+        this.denoiseNodes.push(aoDenoised, giDenoised)
+        ao = aoDenoised as unknown as { r: unknown }
+        gi = giDenoised as unknown as { rgb: unknown }
+      }
+      const darkened = current.mul(ao.r) as typeof current
+      current = darkened.add(gi.rgb) as typeof current
     }
     if (picture.ssr && normalNode) {
       const metalRough = scenePass.getTextureNode('metalrough')
@@ -190,6 +206,11 @@ export class ScenePicturePipeline {
     pipeline.outputColorTransform = true
     this.pipeline = pipeline
     this.key = key
+  }
+
+  private clearDenoise() {
+    for (const node of this.denoiseNodes) node.dispose()
+    this.denoiseNodes = []
   }
 }
 

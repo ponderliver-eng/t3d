@@ -152,6 +152,8 @@ export interface ScenePicture {
   ssgiRadius: number
   ssgiIntensity: number
   ssgiOcclusion: number
+  /** 空间降噪。默认关。关掉时不创建降噪节点。 */
+  ssgiDenoise: boolean
   /** 体积光。默认关。只对有距离的点光、聚光和矩形光散射，方向光不参与。 */
   volume: boolean
   volumeDensity: number
@@ -198,6 +200,7 @@ export const DEFAULT_PICTURE: ScenePicture = {
   ssgiRadius: 8,
   ssgiIntensity: 4,
   ssgiOcclusion: 1,
+  ssgiDenoise: false,
   volume: false,
   volumeDensity: 0.25,
   volumeSteps: 24,
@@ -223,6 +226,7 @@ export function normalizePicture(picture?: Partial<ScenePicture> | null): SceneP
     ...DEFAULT_PICTURE,
     ...picture,
     toneMapping: toneMapOf(picture?.toneMapping),
+    ssgiDenoise: picture?.ssgiDenoise === true,
     gravity: gravity?.length === 3 ? gravity : DEFAULT_PICTURE.gravity,
     navigation: { ...DEFAULT_NAV, ...picture?.navigation },
   }
