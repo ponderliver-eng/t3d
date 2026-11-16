@@ -31,7 +31,7 @@ export function EffectCard({ node, disabled }: { node: SceneNode, disabled: bool
   }
   return (
     <>
-    <section className="iv2-card">
+    <section className="iv2-card iv2-card--wide">
       <header className="iv2-card__header" onClick={() => setOpen(!open)}>
         <span className="iv2-card__dot" style={{ background: '#ffb25a' }} />
         <span>{t('particles.title')}</span>
@@ -39,6 +39,8 @@ export function EffectCard({ node, disabled }: { node: SceneNode, disabled: bool
       </header>
       {open && (
         <div className="iv2-card__body">
+          <section className="iv2-section">
+            <div className="iv2-section__title" style={{ color: '#ffb25a' }}><i /><span>{t('particles.playing')}</span></div>
           {missingAsset && <p className="settings-note">{t('particles.missingAsset')}</p>}
           {version !== QUARKS_VERSION && <p className="settings-note">{t('particles.version', { version, current: QUARKS_VERSION })}</p>}
           {loadError && <p className="settings-note">{t('particles.loadFail', { message: loadError })}</p>}
@@ -47,6 +49,9 @@ export function EffectCard({ node, disabled }: { node: SceneNode, disabled: bool
             <span>{t('particles.playing')}</span>
             <input type="checkbox" disabled={disabled} checked={effect.playing} onChange={event => patch({ playing: event.target.checked })} />
           </label>
+          </section>
+          <section className="iv2-section">
+            <div className="iv2-section__title" style={{ color: '#ffd09a' }}><i /><span>{t('particles.material')}</span></div>
           <MaterialDrop
             materialId={materialId}
             disabled={disabled}
@@ -77,6 +82,7 @@ export function EffectCard({ node, disabled }: { node: SceneNode, disabled: bool
               <button type="button" disabled={disabled} onClick={() => saveEffectFromNode(node.id)}>{t('particles.saveAsset')}</button>
             )}
           </div>
+          </section>
         </div>
       )}
     </section>

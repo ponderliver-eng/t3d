@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { ChevronDown, ChevronRight, Component, ExternalLink, Eye, FolderOpen, FolderSearch, Image as ImageIcon, MapPin, Package, Pause, Play, Plus, Search, Square, SunMedium, Trash2, Undo2, Unlink, Upload, X } from 'lucide-react'
+import { ChevronDown, ChevronRight, Component, ExternalLink, Eye, FolderOpen, FolderSearch, Image as ImageIcon, MapPin, Move, Package, Pause, Play, Plus, Rotate3d, Scaling, Search, Square, SunMedium, Trash2, Undo2, Unlink, Upload, X } from 'lucide-react'
 import { clipDuration, clipNamesFor, loadModelTemplate, subscribeModels } from '../assets/models'
 import { activeAnimatorState, emptyAnimator } from '../animation/animator'
 import { HumanoidCard } from './HumanoidCard'
@@ -15,6 +15,8 @@ import { EffectModules } from '../../capabilities/particles/EffectModules'
 import { openProjectSettings } from '../project/ProjectSettingsDialog'
 import { PhysicsCard } from '../../capabilities/physics/PhysicsCard'
 import { CharacterCard } from '../../runtime/CharacterCard'
+import { RulesCard } from '../../runtime/RulesCard'
+import { emptyRule } from '../../runtime/sceneRuntime'
 import { CameraCard } from '../../runtime/CameraCard'
 import { InteractCard, TriggerCard, MoverCard, CheckpointCard, ScoreCard } from '../../runtime/DeviceCards'
 import {
@@ -58,6 +60,7 @@ export default function InspectorPanel() {
   const inspectedAssetId = useEditorStore(state => state.inspectedAssetId)
   const nodes = useEditorStore(state => state.nodes)
   const playing = useEditorStore(state => state.playState !== 'stopped')
+  const playDirty = useEditorStore(state => state.playDirty)
   const activeSceneId = useEditorStore(state => state.activeSceneId)
   const prefabSession = useEditorStore(state => state.prefabSession)
   const [unpackId, setUnpackId] = useState<string | null>(null)
@@ -92,7 +95,20 @@ export default function InspectorPanel() {
 
   return (
     <InspectorFrame subject={`node:${node.id}`}>
-      {playing && <div className="inspector__banner inspector__banner--play">{t('inspector.playBanner')}</div>}
+      {playing && (
+        <div className="inspector__banner inspector__banner--play">
+          <span>{t('inspector.playBanner')}</span>
+          <button
+            type="button"
+            className="inspector__banner-btn"
+            disabled={!playDirty}
+            title={t('tool.keepPlayChanges')}
+            onClick={() => useEditorStore.getState().keepPlayChanges()}
+          >
+            {t('inspector.keepPlayChanges')}
+          </button>
+        </div>
+      )}
       {selection.length > 1 && (
         <div className="inspector__banner">{t('inspector.multi', { count: selection.length })}</div>
       )}
@@ -123,6 +139,9 @@ export default function InspectorPanel() {
               <Component size={13} />
               <span>{prefabAssets.find(item => item.id === prefabRoot.prefabAssetId)?.name ?? t('prefab.missing')}</span>
               {instanceDirty(nodes, prefabRoot.id) && <em title={t('prefab.dirty')}>*</em>}
+              {!prefabAssets.some(item => item.id === prefabRoot.prefabAssetId) && (
+                <button type="button" className="prefab-actions__unpack" title={t('prefab.unpack')} onClick={() => setUnpackId(prefabRoot.id)}>{t('prefab.shortUnpack')}</button>
+              )}
             </div>
             {prefabAssets.some(item => item.id === prefabRoot.prefabAssetId) ? (
               <>
@@ -133,13 +152,13 @@ export default function InspectorPanel() {
                 <button type="button" title={t('prefab.unpack')} aria-label={t('prefab.unpack')} onClick={() => setUnpackId(prefabRoot.id)}><Unlink size={14} /></button>
               </>
             ) : (
-              <>
+              <div className="prefab-actions__rebind">
                 <select value={rebindId} onChange={event => setRebindId(event.target.value)}>
                   <option value="">{t('prefab.rebindPick')}</option>
                   {prefabAssets.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}
                 </select>
                 <button type="button" disabled={!rebindId} onClick={() => useEditorStore.getState().rebindPrefab(prefabRoot.prefabAssetId ?? '', rebindId)}>{t('prefab.rebind')}</button>
-              </>
+              </div>
             )}
           </div>
         </Card>
@@ -185,9 +204,9 @@ export default function InspectorPanel() {
           onChange={scale => useEditorStore.getState().updateNode(node.id, { scale })}
         />
         <div className="inspector__resets">
-          <button type="button" disabled={locked || templateRoot} onClick={() => resetTransform(node.id, { position: [0, 0, 0] })}>{t('inspector.resetPosition')}</button>
-          <button type="button" disabled={locked || templateRoot} onClick={() => resetTransform(node.id, { rotation: [0, 0, 0] })}>{t('inspector.resetRotation')}</button>
-          <button type="button" disabled={locked || templateRoot} onClick={() => resetTransform(node.id, { scale: [1, 1, 1] })}>{t('inspector.resetScale')}</button>
+          <button type="button" title={t('inspector.resetPosition')} aria-label={t('inspector.resetPosition')} disabled={locked || templateRoot} onClick={() => resetTransform(node.id, { position: [0, 0, 0] })}><Move size={14} /></button>
+          <button type="button" title={t('inspector.resetRotation')} aria-label={t('inspector.resetRotation')} disabled={locked || templateRoot} onClick={() => resetTransform(node.id, { rotation: [0, 0, 0] })}><Rotate3d size={14} /></button>
+          <button type="button" title={t('inspector.resetScale')} aria-label={t('inspector.resetScale')} disabled={locked || templateRoot} onClick={() => resetTransform(node.id, { scale: [1, 1, 1] })}><Scaling size={14} /></button>
         </div>
       </Card>
 
@@ -195,27 +214,31 @@ export default function InspectorPanel() {
 
       {node.kind === 'model' && (
         <Card id="model" title={t('inspector.model')} color={kindColor(node.kind)}>
-          <AnimModeSwitch nodeId={node.id} />
-          <AnimationCard
-            nodeId={node.id}
-            assetId={node.assetId}
-            clipAssetId={node.clipAssetId}
-            clip={node.clip}
-            clipTime={node.clipTime}
-            clipPlaying={node.clipPlaying}
-            driven={node.animator?.enabled === true}
-          />
-          <label className="field">
-            <span>{t('anim.end')}</span>
-            <select
-              value={node.clipEnd ?? 'hold'}
-              onChange={event => useEditorStore.getState().updateNode(node.id, { clipEnd: event.target.value as 'hold' | 'stop' | 'default' })}
-            >
-              <option value="hold">{t('anim.hold')}</option>
-              <option value="stop">{t('anim.stop')}</option>
-              <option value="default">{t('anim.backToDefault')}</option>
-            </select>
-          </label>
+          <Section title={node.animator?.enabled === true ? t('anim.machine') : t('anim.simple')} color="#f2cf7f">
+            <AnimModeSwitch nodeId={node.id} />
+            <AnimationCard
+              nodeId={node.id}
+              assetId={node.assetId}
+              clipAssetId={node.clipAssetId}
+              clip={node.clip}
+              clipTime={node.clipTime}
+              clipPlaying={node.clipPlaying}
+              driven={node.animator?.enabled === true}
+            />
+          </Section>
+          <Section title={t('anim.end')} color="#e7c56a">
+            <label className="field">
+              <span>{t('anim.end')}</span>
+              <select
+                value={node.clipEnd ?? 'hold'}
+                onChange={event => useEditorStore.getState().updateNode(node.id, { clipEnd: event.target.value as 'hold' | 'stop' | 'default' })}
+              >
+                <option value="hold">{t('anim.hold')}</option>
+                <option value="stop">{t('anim.stop')}</option>
+                <option value="default">{t('anim.backToDefault')}</option>
+              </select>
+            </label>
+          </Section>
           {node.animator?.enabled === true && <AnimatorCard nodeId={node.id} />}
           {node.assetId && <HumanoidCard assetId={node.assetId} />}
         </Card>
@@ -223,95 +246,112 @@ export default function InspectorPanel() {
 
       {isLight(node.kind) && (
         <Card id="light" title={t('inspector.light')} color={kindColor(node.kind)}>
-          <ColorField
-            label={t('inspector.color')}
-            value={node.color}
-            gesture={t('gesture.light')}
-            onChange={color => useEditorStore.getState().updateNode(node.id, { color })}
-          />
-          <NumberRow
-            label={t('inspector.intensity')}
-            value={node.intensity}
-            min={0}
-            max={20}
-            step={0.05}
-            gesture={t('gesture.light')}
-            onChange={intensity => useEditorStore.getState().updateNode(node.id, { intensity })}
-          />
-          {node.kind === 'spot-light' && (
-            <NumberRow
-              label={t('inspector.angle')}
-              value={node.spotAngle}
-              min={1}
-              max={90}
-              step={0.2}
-              gesture={t('gesture.light')}
-              onChange={spotAngle => useEditorStore.getState().updateNode(node.id, { spotAngle })}
-            />
-          )}
-          {node.kind === 'hemisphere-light' && (
+          <Section title={t('inspector.color')} color="#ffd36b">
             <ColorField
-              label={t('inspector.ground')}
-              value={node.groundColor}
+              label={t('inspector.color')}
+              value={node.color}
               gesture={t('gesture.light')}
-              onChange={groundColor => useEditorStore.getState().updateNode(node.id, { groundColor })}
+              onChange={color => useEditorStore.getState().updateNode(node.id, { color })}
             />
-          )}
-          {node.kind !== 'hemisphere-light' && node.kind !== 'directional-light' && (
-            <>
-              <NumberRow label={t('inspector.range')} value={node.range} min={0} max={80} step={0.2} gesture={t('gesture.light')} onChange={range => useEditorStore.getState().updateNode(node.id, { range })} />
-              <NumberRow label={t('inspector.decay')} value={node.decay} min={0} max={4} step={0.05} gesture={t('gesture.light')} onChange={decay => useEditorStore.getState().updateNode(node.id, { decay })} />
-            </>
-          )}
-          {node.kind === 'directional-light' && (
-            <NumberRow label={t('inspector.range')} value={node.range} min={1} max={200} step={0.5} gesture={t('gesture.light')} onChange={range => useEditorStore.getState().updateNode(node.id, { range })} />
-          )}
-          {node.kind === 'spot-light' && (
-            <NumberRow label={t('inspector.penumbra')} value={node.penumbra} min={0} max={1} step={0.01} gesture={t('gesture.light')} onChange={penumbra => useEditorStore.getState().updateNode(node.id, { penumbra })} />
+            <div className="iv2-pair">
+              <NumberRow
+                label={t('inspector.intensity')}
+                value={node.intensity}
+                min={0}
+                max={20}
+                step={0.05}
+                gesture={t('gesture.light')}
+                onChange={intensity => useEditorStore.getState().updateNode(node.id, { intensity })}
+              />
+              {node.kind === 'spot-light' && (
+                <NumberRow
+                  label={t('inspector.angle')}
+                  value={node.spotAngle}
+                  min={1}
+                  max={90}
+                  step={0.2}
+                  gesture={t('gesture.light')}
+                  onChange={spotAngle => useEditorStore.getState().updateNode(node.id, { spotAngle })}
+                />
+              )}
+            </div>
+            {node.kind === 'hemisphere-light' && (
+              <ColorField
+                label={t('inspector.ground')}
+                value={node.groundColor}
+                gesture={t('gesture.light')}
+                onChange={groundColor => useEditorStore.getState().updateNode(node.id, { groundColor })}
+              />
+            )}
+          </Section>
+          {node.kind !== 'hemisphere-light' && (
+            <Section title={t('inspector.range')} color="#ffe08a">
+              <div className="iv2-pair">
+                {node.kind !== 'directional-light' && (
+                  <>
+                    <NumberRow label={t('inspector.range')} value={node.range} min={0} max={80} step={0.2} gesture={t('gesture.light')} onChange={range => useEditorStore.getState().updateNode(node.id, { range })} />
+                    <NumberRow label={t('inspector.decay')} value={node.decay} min={0} max={4} step={0.05} gesture={t('gesture.light')} onChange={decay => useEditorStore.getState().updateNode(node.id, { decay })} />
+                  </>
+                )}
+                {node.kind === 'directional-light' && (
+                  <NumberRow label={t('inspector.range')} value={node.range} min={1} max={200} step={0.5} gesture={t('gesture.light')} onChange={range => useEditorStore.getState().updateNode(node.id, { range })} />
+                )}
+                {node.kind === 'spot-light' && (
+                  <NumberRow label={t('inspector.penumbra')} value={node.penumbra} min={0} max={1} step={0.01} gesture={t('gesture.light')} onChange={penumbra => useEditorStore.getState().updateNode(node.id, { penumbra })} />
+                )}
+              </div>
+            </Section>
           )}
           {node.kind !== 'hemisphere-light' && (
-            <>
+            <Section title={t('inspector.shadow')} color="#fff1c2">
               <label className="field">
                 <span>{t('inspector.shadow')}</span>
                 <input type="checkbox" checked={node.castShadow} onChange={event => commitNode(node.id, t('gesture.light'), { castShadow: event.target.checked })} />
               </label>
-              <NumberRow label={t('inspector.bias')} value={node.shadowBias} step={0.0001} gesture={t('gesture.light')} onChange={shadowBias => useEditorStore.getState().updateNode(node.id, { shadowBias })} />
-              <NumberRow label={t('inspector.normalBias')} value={node.shadowNormalBias} min={0} max={1} step={0.001} gesture={t('gesture.light')} onChange={shadowNormalBias => useEditorStore.getState().updateNode(node.id, { shadowNormalBias })} />
-            </>
+              <div className="iv2-pair">
+                <NumberRow label={t('inspector.bias')} value={node.shadowBias} step={0.0001} gesture={t('gesture.light')} onChange={shadowBias => useEditorStore.getState().updateNode(node.id, { shadowBias })} />
+                <NumberRow label={t('inspector.normalBias')} value={node.shadowNormalBias} min={0} max={1} step={0.001} gesture={t('gesture.light')} onChange={shadowNormalBias => useEditorStore.getState().updateNode(node.id, { shadowNormalBias })} />
+              </div>
+            </Section>
           )}
         </Card>
       )}
 
       {node.kind === 'camera' && (
         <Card id="camera" title={t('inspector.camera')} color={kindColor(node.kind)}>
-          <NumberRow
-            label={t('inspector.fov')}
-            value={node.fov}
-            min={10}
-            max={120}
-            step={0.2}
-            gesture={t('gesture.camera')}
-            onChange={fov => useEditorStore.getState().updateNode(node.id, { fov })}
-          />
-          <NumberRow label={t('inspector.near')} value={node.near} min={0.01} max={20} step={0.01} gesture={t('gesture.camera')} onChange={near => useEditorStore.getState().updateNode(node.id, { near })} />
-          <NumberRow label={t('inspector.far')} value={node.far} min={1} max={500} step={1} gesture={t('gesture.camera')} onChange={far => useEditorStore.getState().updateNode(node.id, { far })} />
+          <Section title={t('inspector.fov')} color="#7aa2ff">
+            <NumberRow
+              label={t('inspector.fov')}
+              value={node.fov}
+              min={10}
+              max={120}
+              step={0.2}
+              gesture={t('gesture.camera')}
+              onChange={fov => useEditorStore.getState().updateNode(node.id, { fov })}
+            />
+            <div className="iv2-pair">
+              <NumberRow label={t('inspector.near')} value={node.near} min={0.01} max={20} step={0.01} gesture={t('gesture.camera')} onChange={near => useEditorStore.getState().updateNode(node.id, { near })} />
+              <NumberRow label={t('inspector.far')} value={node.far} min={1} max={500} step={1} gesture={t('gesture.camera')} onChange={far => useEditorStore.getState().updateNode(node.id, { far })} />
+            </div>
+          </Section>
         </Card>
       )}
 
-      {node.kind === 'effect' && <EffectCard node={node} disabled={locked || playing} />}
-      {node.kind === 'screen' && <ScreenCard node={node} locked={locked || playing} playing={playing} />}
+      {node.kind === 'effect' && <EffectCard node={node} disabled={locked} />}
+      {node.kind === 'screen' && <ScreenCard node={node} locked={locked} playing={playing} />}
 
-      <CharacterCard node={node} disabled={locked || playing} />
-      <CameraCard node={node} disabled={locked || playing} />
-      <InteractCard node={node} disabled={locked || playing} />
-      <TriggerCard node={node} disabled={locked || playing} />
-      <MoverCard node={node} disabled={locked || playing} />
-      <CheckpointCard node={node} disabled={locked || playing} />
-      <ScoreCard node={node} disabled={locked || playing} />
-      <PhysicsCard node={node} disabled={locked || playing} />
-      <NavigationCard node={node} disabled={locked || playing} />
+      <CharacterCard node={node} disabled={locked} />
+      <CameraCard node={node} disabled={locked} />
+      <InteractCard node={node} disabled={locked} />
+      <TriggerCard node={node} disabled={locked} />
+      <MoverCard node={node} disabled={locked} />
+      <CheckpointCard node={node} disabled={locked} />
+      <ScoreCard node={node} disabled={locked} />
+      <RulesCard node={node} disabled={locked} />
+      <PhysicsCard node={node} disabled={locked} />
+      <NavigationCard node={node} disabled={locked} />
 
-      <AddComponentPicker node={node} disabled={locked || playing} />
+      <AddComponentPicker node={node} disabled={locked} />
     </InspectorFrame>
   )
 }
@@ -348,12 +388,14 @@ function AssetSettings({ asset }: { asset: import('../assets/library').ProjectAs
       )}
       {asset.kind !== 'material' && asset.kind !== 'effect' && (
         <Card id="asset" title={t('inspector.asset')} color="#4a9eff">
+          <Section title={t('inspector.type')} color="#4a9eff">
           <label className="field"><span>{t('inspector.type')}</span><span>{assetKindLabel(asset.kind)}</span></label>
           {'fileName' in asset && <label className="field"><span>{t('inspector.file')}</span><span>{asset.fileName}</span></label>}
           {asset.kind === 'scene' && <label className="field"><span>{t('inspector.objects')}</span><span>{Object.keys(asset.nodes).length}</span></label>}
           {asset.kind === 'prefab' && <label className="field"><span>{t('inspector.objects')}</span><span>{Object.keys(asset.nodes).length}</span></label>}
           {asset.kind === 'ui' && <button type="button" onClick={() => openUiEditor(asset.id)}>{t('ui.open')}</button>}
           {asset.kind === 'model' && <label className="field"><span>{t('inspector.clips')}</span><span>{clipNamesFor(asset.id).length}</span></label>}
+          </Section>
         </Card>
       )}
       <div className="inspector__header">
@@ -426,6 +468,8 @@ function assetKindLabel(kind: string): string {
 function SceneSettings() {
   const { t } = useI18n()
   const picture = useEditorStore(state => state.picture)
+  const playing = useEditorStore(state => state.playState !== 'stopped')
+  const playDirty = useEditorStore(state => state.playDirty)
   const capabilities = useEditorStore(state => state.capabilities)
   const physicsOn = capabilityEnabled(capabilities, 'physics')
   const activeSceneId = useEditorStore(state => state.activeSceneId)
@@ -434,6 +478,20 @@ function SceneSettings() {
   const set = (patch: Partial<ScenePicture>) => useEditorStore.getState().setPicture(patch)
   return (
     <>
+      {playing && (
+        <div className="inspector__banner inspector__banner--play">
+          <span>{t('inspector.playBanner')}</span>
+          <button
+            type="button"
+            className="inspector__banner-btn"
+            disabled={!playDirty}
+            title={t('tool.keepPlayChanges')}
+            onClick={() => useEditorStore.getState().keepPlayChanges()}
+          >
+            {t('inspector.keepPlayChanges')}
+          </button>
+        </div>
+      )}
       <header className="inspector__header">
         <div className="inspector__kind">{t('inspector.scene')}</div>
         <input
@@ -449,13 +507,15 @@ function SceneSettings() {
       </header>
       {physicsOn && (
         <Card id="scene-physics" title={t('physics.title')} color="#8bc34a">
-          <Vec3Fields
-            label={t('physics.gravity')}
-            value={picture.gravity ?? [0, -9.81, 0]}
-            step={0.1}
-            gesture={t('gesture.picture')}
-            onChange={gravity => set({ gravity })}
-          />
+          <Section title={t('physics.gravity')} color="#8bc34a">
+            <Vec3Fields
+              label={t('physics.gravity')}
+              value={picture.gravity ?? [0, -9.81, 0]}
+              step={0.1}
+              gesture={t('gesture.picture')}
+              onChange={gravity => set({ gravity })}
+            />
+          </Section>
         </Card>
       )}
       {!physicsOn && (
@@ -466,99 +526,131 @@ function SceneSettings() {
       )}
       <SceneNavigationCard />
       <Card id="sky" title={t('inspector.sky')} color="#4a9eff">
-        <ColorField label={t('inspector.background')} value={picture.background} gesture={t('gesture.picture')} onChange={background => set({ background })} />
-        <NumberRow label={t('inspector.exposure')} value={picture.exposure} min={0} max={5} step={0.01} gesture={t('gesture.picture')} onChange={exposure => set({ exposure })} />
-        <label className="field">
-          <span>{t('inspector.toneMapping')}</span>
-          <select value={picture.toneMapping} onChange={event => set({ toneMapping: event.target.value as typeof picture.toneMapping })}>
-            <option value="aces">{t('tone.aces')}</option>
-            <option value="agx">{t('tone.agx')}</option>
-            <option value="neutral">{t('tone.neutral')}</option>
-            <option value="cineon">{t('tone.cineon')}</option>
-            <option value="reinhard">{t('tone.reinhard')}</option>
-            <option value="linear">{t('tone.linear')}</option>
-            <option value="none">{t('tone.none')}</option>
-          </select>
-        </label>
+        <Section title={t('inspector.background')} color="#4a9eff">
+          <ColorField label={t('inspector.background')} value={picture.background} gesture={t('gesture.picture')} onChange={background => set({ background })} />
+          <NumberRow label={t('inspector.exposure')} value={picture.exposure} min={0} max={5} step={0.01} gesture={t('gesture.picture')} onChange={exposure => set({ exposure })} />
+        </Section>
+        <Section title={t('inspector.toneMapping')} color="#8ec5ff">
+          <label className="field">
+            <span>{t('inspector.toneMapping')}</span>
+            <select value={picture.toneMapping} onChange={event => set({ toneMapping: event.target.value as typeof picture.toneMapping })}>
+              <option value="aces">{t('tone.aces')}</option>
+              <option value="agx">{t('tone.agx')}</option>
+              <option value="neutral">{t('tone.neutral')}</option>
+              <option value="cineon">{t('tone.cineon')}</option>
+              <option value="reinhard">{t('tone.reinhard')}</option>
+              <option value="linear">{t('tone.linear')}</option>
+              <option value="none">{t('tone.none')}</option>
+            </select>
+          </label>
+        </Section>
       </Card>
       <Card id="fog" title={t('inspector.fog')} color="#90a4ae">
-        <label className="field"><span>{t('inspector.enabled')}</span><input type="checkbox" checked={picture.fog} onChange={event => set({ fog: event.target.checked })} /></label>
-        {picture.fog && (
-          <>
-            <ColorField label={t('inspector.fogColor')} value={picture.fogColor} gesture={t('gesture.picture')} onChange={fogColor => set({ fogColor })} />
-            <NumberRow label={t('inspector.fogStart')} value={picture.fogNear} min={0} max={200} step={0.5} gesture={t('gesture.picture')} onChange={fogNear => set({ fogNear })} />
-            <NumberRow label={t('inspector.fogEnd')} value={picture.fogFar} min={0} max={400} step={0.5} gesture={t('gesture.picture')} onChange={fogFar => set({ fogFar })} />
-          </>
-        )}
+        <Section title={t('inspector.fog')} color="#90a4ae">
+          <label className="field"><span>{t('inspector.enabled')}</span><input type="checkbox" checked={picture.fog} onChange={event => set({ fog: event.target.checked })} /></label>
+          {picture.fog && (
+            <>
+              <ColorField label={t('inspector.fogColor')} value={picture.fogColor} gesture={t('gesture.picture')} onChange={fogColor => set({ fogColor })} />
+              <div className="iv2-pair">
+                <NumberRow label={t('inspector.fogStart')} value={picture.fogNear} min={0} max={200} step={0.5} gesture={t('gesture.picture')} onChange={fogNear => set({ fogNear })} />
+                <NumberRow label={t('inspector.fogEnd')} value={picture.fogFar} min={0} max={400} step={0.5} gesture={t('gesture.picture')} onChange={fogFar => set({ fogFar })} />
+              </div>
+            </>
+          )}
+        </Section>
       </Card>
       <Card id="environment" title={t('inspector.environment')} color="#ffd36b">
-        <EnvField value={picture.envAssetId} onChange={envAssetId => set({ envAssetId })} />
+        <Section title={t('inspector.environment')} color="#ffd36b">
+          <EnvField value={picture.envAssetId} onChange={envAssetId => set({ envAssetId })} />
+        </Section>
       </Card>
       <Card id="aa" title={t('inspector.aa')} color="#26c6da">
-        <label className="field"><span>{t('inspector.enabled')}</span><input type="checkbox" checked={picture.aa !== false} onChange={event => set({ aa: event.target.checked })} /></label>
+        <Section title={t('inspector.enabled')} color="#26c6da">
+          <label className="field"><span>{t('inspector.enabled')}</span><input type="checkbox" checked={picture.aa !== false} onChange={event => set({ aa: event.target.checked })} /></label>
+        </Section>
       </Card>
       <Card id="bloom" title={t('inspector.bloom')} color="#ab47bc">
-        <label className="field"><span>{t('inspector.enabled')}</span><input type="checkbox" checked={picture.bloom} onChange={event => set({ bloom: event.target.checked })} /></label>
-        {picture.bloom && (
-          <>
-            <NumberRow label={t('inspector.intensity')} value={picture.bloomStrength} min={0} max={2} step={0.01} gesture={t('gesture.picture')} onChange={bloomStrength => set({ bloomStrength })} />
-            <NumberRow label={t('inspector.radius')} value={picture.bloomRadius} min={0} max={1} step={0.01} gesture={t('gesture.picture')} onChange={bloomRadius => set({ bloomRadius })} />
-            <NumberRow label={t('inspector.threshold')} value={picture.bloomThreshold} min={0} max={1} step={0.01} gesture={t('gesture.picture')} onChange={bloomThreshold => set({ bloomThreshold })} />
-          </>
-        )}
+        <Section title={t('inspector.bloom')} color="#ab47bc">
+          <label className="field"><span>{t('inspector.enabled')}</span><input type="checkbox" checked={picture.bloom} onChange={event => set({ bloom: event.target.checked })} /></label>
+          {picture.bloom && (
+            <div className="iv2-pair">
+              <NumberRow label={t('inspector.intensity')} value={picture.bloomStrength} min={0} max={2} step={0.01} gesture={t('gesture.picture')} onChange={bloomStrength => set({ bloomStrength })} />
+              <NumberRow label={t('inspector.radius')} value={picture.bloomRadius} min={0} max={1} step={0.01} gesture={t('gesture.picture')} onChange={bloomRadius => set({ bloomRadius })} />
+              <NumberRow label={t('inspector.threshold')} value={picture.bloomThreshold} min={0} max={1} step={0.01} gesture={t('gesture.picture')} onChange={bloomThreshold => set({ bloomThreshold })} />
+            </div>
+          )}
+        </Section>
       </Card>
       <Card id="volume" title={t('inspector.volume')} color="#80deea">
-        <label className="field"><span>{t('inspector.enabled')}</span><input type="checkbox" checked={picture.volume} onChange={event => set({ volume: event.target.checked })} /></label>
-        {picture.volume && (
-          <>
-            <ColorField label={t('inspector.color')} value={picture.volumeColor} gesture={t('gesture.picture')} onChange={volumeColor => set({ volumeColor })} />
-            <NumberRow label={t('inspector.volumeDensity')} value={picture.volumeDensity} min={0} max={2} step={0.01} gesture={t('gesture.picture')} onChange={volumeDensity => set({ volumeDensity })} />
-            <NumberRow label={t('inspector.volumeSteps')} value={picture.volumeSteps} min={4} max={64} step={1} gesture={t('gesture.picture')} onChange={volumeSteps => set({ volumeSteps })} />
-            <NumberRow label={t('inspector.volumeSize')} value={picture.volumeSize} min={1} max={200} step={1} gesture={t('gesture.picture')} onChange={volumeSize => set({ volumeSize })} />
-            <NumberRow label={t('inspector.volumeHeight')} value={picture.volumeHeight} min={0.5} max={80} step={0.5} gesture={t('gesture.picture')} onChange={volumeHeight => set({ volumeHeight })} />
-          </>
-        )}
+        <Section title={t('inspector.volume')} color="#80deea">
+          <label className="field"><span>{t('inspector.enabled')}</span><input type="checkbox" checked={picture.volume} onChange={event => set({ volume: event.target.checked })} /></label>
+          {picture.volume && (
+            <>
+              <ColorField label={t('inspector.color')} value={picture.volumeColor} gesture={t('gesture.picture')} onChange={volumeColor => set({ volumeColor })} />
+              <div className="iv2-pair">
+                <NumberRow label={t('inspector.volumeDensity')} value={picture.volumeDensity} min={0} max={2} step={0.01} gesture={t('gesture.picture')} onChange={volumeDensity => set({ volumeDensity })} />
+                <NumberRow label={t('inspector.volumeSteps')} value={picture.volumeSteps} min={4} max={64} step={1} gesture={t('gesture.picture')} onChange={volumeSteps => set({ volumeSteps })} />
+                <NumberRow label={t('inspector.volumeSize')} value={picture.volumeSize} min={1} max={200} step={1} gesture={t('gesture.picture')} onChange={volumeSize => set({ volumeSize })} />
+                <NumberRow label={t('inspector.volumeHeight')} value={picture.volumeHeight} min={0.5} max={80} step={0.5} gesture={t('gesture.picture')} onChange={volumeHeight => set({ volumeHeight })} />
+              </div>
+            </>
+          )}
+        </Section>
       </Card>
       <Card id="ssgi" title={t('inspector.ssgi')} color="#7e57c2">
-        <label className="field"><span>{t('inspector.enabled')}</span><input type="checkbox" checked={picture.ssgi} onChange={event => set({ ssgi: event.target.checked })} /></label>
-        {picture.ssgi && (
-          <>
-            <NumberRow label={t('inspector.ssgiIndirect')} value={picture.ssgiIntensity} min={0} max={40} step={0.5} gesture={t('gesture.picture')} onChange={ssgiIntensity => set({ ssgiIntensity })} />
-            <NumberRow label={t('inspector.ssgiOcclusion')} value={picture.ssgiOcclusion} min={0} max={4} step={0.05} gesture={t('gesture.picture')} onChange={ssgiOcclusion => set({ ssgiOcclusion })} />
-            <NumberRow label={t('inspector.ssgiRadius')} value={picture.ssgiRadius} min={1} max={25} step={0.5} gesture={t('gesture.picture')} onChange={ssgiRadius => set({ ssgiRadius })} />
-            <NumberRow label={t('inspector.ssgiSlices')} value={picture.ssgiSlices} min={1} max={4} step={1} gesture={t('gesture.picture')} onChange={ssgiSlices => set({ ssgiSlices })} />
-            <NumberRow label={t('inspector.ssgiSteps')} value={picture.ssgiSteps} min={1} max={32} step={1} gesture={t('gesture.picture')} onChange={ssgiSteps => set({ ssgiSteps })} />
-            <label className="field"><span>{t('inspector.ssgiDenoise')}</span><input type="checkbox" checked={picture.ssgiDenoise} onChange={event => set({ ssgiDenoise: event.target.checked })} /></label>
-          </>
-        )}
+        <Section title={t('inspector.ssgi')} color="#7e57c2">
+          <label className="field"><span>{t('inspector.enabled')}</span><input type="checkbox" checked={picture.ssgi} onChange={event => set({ ssgi: event.target.checked })} /></label>
+          {picture.ssgi && (
+            <>
+              <div className="iv2-pair">
+                <NumberRow label={t('inspector.ssgiIndirect')} value={picture.ssgiIntensity} min={0} max={40} step={0.5} gesture={t('gesture.picture')} onChange={ssgiIntensity => set({ ssgiIntensity })} />
+                <NumberRow label={t('inspector.ssgiOcclusion')} value={picture.ssgiOcclusion} min={0} max={4} step={0.05} gesture={t('gesture.picture')} onChange={ssgiOcclusion => set({ ssgiOcclusion })} />
+                <NumberRow label={t('inspector.ssgiRadius')} value={picture.ssgiRadius} min={1} max={25} step={0.5} gesture={t('gesture.picture')} onChange={ssgiRadius => set({ ssgiRadius })} />
+                <NumberRow label={t('inspector.ssgiSlices')} value={picture.ssgiSlices} min={1} max={4} step={1} gesture={t('gesture.picture')} onChange={ssgiSlices => set({ ssgiSlices })} />
+                <NumberRow label={t('inspector.ssgiSteps')} value={picture.ssgiSteps} min={1} max={32} step={1} gesture={t('gesture.picture')} onChange={ssgiSteps => set({ ssgiSteps })} />
+              </div>
+              <label className="field"><span>{t('inspector.ssgiDenoise')}</span><input type="checkbox" checked={picture.ssgiDenoise} onChange={event => set({ ssgiDenoise: event.target.checked })} /></label>
+            </>
+          )}
+        </Section>
       </Card>
       <Card id="ssr" title={t('inspector.ssr')} color="#5c6bc0">
-        <label className="field"><span>{t('inspector.enabled')}</span><input type="checkbox" checked={picture.ssr} onChange={event => set({ ssr: event.target.checked })} /></label>
-        {picture.ssr && (
-          <>
-            <NumberRow label={t('inspector.ssrQuality')} value={picture.ssrQuality} min={0} max={1} step={0.05} gesture={t('gesture.picture')} onChange={ssrQuality => set({ ssrQuality })} />
-            <NumberRow label={t('inspector.ssrDistance')} value={picture.ssrDistance} min={0.2} max={30} step={0.1} gesture={t('gesture.picture')} onChange={ssrDistance => set({ ssrDistance })} />
-            <NumberRow label={t('inspector.ssrThickness')} value={picture.ssrThickness} min={0.001} max={0.2} step={0.001} gesture={t('gesture.picture')} onChange={ssrThickness => set({ ssrThickness })} />
-            <NumberRow label={t('inspector.intensity')} value={picture.ssrIntensity} min={0} max={2} step={0.05} gesture={t('gesture.picture')} onChange={ssrIntensity => set({ ssrIntensity })} />
-          </>
-        )}
+        <Section title={t('inspector.ssr')} color="#5c6bc0">
+          <label className="field"><span>{t('inspector.enabled')}</span><input type="checkbox" checked={picture.ssr} onChange={event => set({ ssr: event.target.checked })} /></label>
+          {picture.ssr && (
+            <div className="iv2-pair">
+              <NumberRow label={t('inspector.ssrQuality')} value={picture.ssrQuality} min={0} max={1} step={0.05} gesture={t('gesture.picture')} onChange={ssrQuality => set({ ssrQuality })} />
+              <NumberRow label={t('inspector.ssrDistance')} value={picture.ssrDistance} min={0.2} max={30} step={0.1} gesture={t('gesture.picture')} onChange={ssrDistance => set({ ssrDistance })} />
+              <NumberRow label={t('inspector.ssrThickness')} value={picture.ssrThickness} min={0.001} max={0.2} step={0.001} gesture={t('gesture.picture')} onChange={ssrThickness => set({ ssrThickness })} />
+              <NumberRow label={t('inspector.intensity')} value={picture.ssrIntensity} min={0} max={2} step={0.05} gesture={t('gesture.picture')} onChange={ssrIntensity => set({ ssrIntensity })} />
+            </div>
+          )}
+        </Section>
       </Card>
       <Card id="dof" title={t('inspector.dof')} color="#26a69a">
-        <label className="field"><span>{t('inspector.enabled')}</span><input type="checkbox" checked={picture.dof} onChange={event => set({ dof: event.target.checked })} /></label>
-        {picture.dof && (
-          <>
-            <NumberRow label={t('inspector.focus')} value={picture.dofFocus} min={0} max={50} step={0.1} gesture={t('gesture.picture')} onChange={dofFocus => set({ dofFocus })} />
-            <NumberRow label={t('inspector.focal')} value={picture.dofFocal} min={0} max={20} step={0.05} gesture={t('gesture.picture')} onChange={dofFocal => set({ dofFocal })} />
-            <NumberRow label={t('inspector.bokeh')} value={picture.dofBokeh} min={0} max={10} step={0.05} gesture={t('gesture.picture')} onChange={dofBokeh => set({ dofBokeh })} />
-          </>
-        )}
+        <Section title={t('inspector.dof')} color="#26a69a">
+          <label className="field"><span>{t('inspector.enabled')}</span><input type="checkbox" checked={picture.dof} onChange={event => set({ dof: event.target.checked })} /></label>
+          {picture.dof && (
+            <div className="iv2-pair">
+              <NumberRow label={t('inspector.focus')} value={picture.dofFocus} min={0} max={50} step={0.1} gesture={t('gesture.picture')} onChange={dofFocus => set({ dofFocus })} />
+              <NumberRow label={t('inspector.focal')} value={picture.dofFocal} min={0} max={20} step={0.05} gesture={t('gesture.picture')} onChange={dofFocal => set({ dofFocal })} />
+              <NumberRow label={t('inspector.bokeh')} value={picture.dofBokeh} min={0} max={10} step={0.05} gesture={t('gesture.picture')} onChange={dofBokeh => set({ dofBokeh })} />
+            </div>
+          )}
+        </Section>
       </Card>
       <Card id="occlusion" title={t('inspector.occlusion')} color="#78909c">
-        <label className="field"><span>{t('inspector.enabled')}</span><input type="checkbox" checked={picture.ao} onChange={event => set({ ao: event.target.checked })} /></label>
+        <Section title={t('inspector.enabled')} color="#78909c">
+          <label className="field"><span>{t('inspector.enabled')}</span><input type="checkbox" checked={picture.ao} onChange={event => set({ ao: event.target.checked })} /></label>
+        </Section>
       </Card>
       <Card id="grade" title={t('inspector.grade')} color="#ef6c00">
-        <NumberRow label={t('inspector.hue')} value={picture.hue} min={-1} max={1} step={0.01} gesture={t('gesture.picture')} onChange={hue => set({ hue })} />
-        <NumberRow label={t('inspector.saturation')} value={picture.saturation} min={0} max={2} step={0.01} gesture={t('gesture.picture')} onChange={saturation => set({ saturation })} />
+        <Section title={t('inspector.grade')} color="#ef6c00">
+          <div className="iv2-pair">
+            <NumberRow label={t('inspector.hue')} value={picture.hue} min={-1} max={1} step={0.01} gesture={t('gesture.picture')} onChange={hue => set({ hue })} />
+            <NumberRow label={t('inspector.saturation')} value={picture.saturation} min={0} max={2} step={0.01} gesture={t('gesture.picture')} onChange={saturation => set({ saturation })} />
+          </div>
+        </Section>
       </Card>
     </>
   )
@@ -612,25 +704,26 @@ function MeshRendererCard({ node }: { node: SceneNode }) {
   return (
     <Card id="model-renderer" title={t('inspector.modelRenderer')} color={kindColor(node.kind)}>
       {node.kind === 'model' && (
-        <>
-          <div className="inspector__chips">
-            <button type="button" title={t('inspector.savePrefab')} aria-label={t('inspector.savePrefab')} onClick={savePrefabFromSelection}><Package size={14} /></button>
-            {node.assetId && <button type="button" title={t('inspector.previewModel')} aria-label={t('inspector.previewModel')} onClick={() => openAssetPreview('model', node.assetId!, node.name)}><Eye size={14} /></button>}
-          </div>
-        </>
+        <div className="inspector__chips">
+          <button type="button" title={t('inspector.savePrefab')} aria-label={t('inspector.savePrefab')} onClick={savePrefabFromSelection}><Package size={14} /></button>
+          {node.assetId && <button type="button" title={t('inspector.previewModel')} aria-label={t('inspector.previewModel')} onClick={() => openAssetPreview('model', node.assetId!, node.name)}><Eye size={14} /></button>}
+        </div>
       )}
-      <div className="shadow-flags">
-        <label>
-          <SunMedium size={13} />
-          <span>{t('inspector.castShadow')}</span>
-          <input type="checkbox" checked={node.castShadow} onChange={event => commitNode(node.id, t('gesture.shadow'), { castShadow: event.target.checked })} />
-        </label>
-        <label>
-          <Square size={13} />
-          <span>{t('inspector.receiveShadow')}</span>
-          <input type="checkbox" checked={node.receiveShadow} onChange={event => commitNode(node.id, t('gesture.shadow'), { receiveShadow: event.target.checked })} />
-        </label>
-      </div>
+      <Section title={t('inspector.shadow')} color="#ffd36b">
+        <div className="shadow-flags">
+          <label>
+            <SunMedium size={13} />
+            <span>{t('inspector.castShadow')}</span>
+            <input type="checkbox" checked={node.castShadow} onChange={event => commitNode(node.id, t('gesture.shadow'), { castShadow: event.target.checked })} />
+          </label>
+          <label>
+            <Square size={13} />
+            <span>{t('inspector.receiveShadow')}</span>
+            <input type="checkbox" checked={node.receiveShadow} onChange={event => commitNode(node.id, t('gesture.shadow'), { receiveShadow: event.target.checked })} />
+          </label>
+        </div>
+      </Section>
+      <Section title={t('inspector.materialSlots')} color="#d4b8ff">
       <button type="button" className="mesh-slots__head" aria-expanded={listOpen} onClick={() => setListOpen(!listOpen)}>
         {listOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
         <span>{t('inspector.materialSlots')}</span>
@@ -712,6 +805,7 @@ function MeshRendererCard({ node }: { node: SceneNode }) {
           </div>
         )
       })}
+      </Section>
     </Card>
   )
 }
@@ -773,81 +867,97 @@ function MaterialEditor({ slot, onChange }: { slot: PbrSlot, onChange: (patch: P
   const textured = slot.shader !== 'unlit-color'
   return (
     <>
-      <label className="field">
-        <span>{t('material.shader')}</span>
-        <select value={slot.shader ?? 'lit'} onChange={event => {
-          const shader = event.target.value as SurfaceShader
-          onChange(shader === 'particle-unlit'
-            ? { shader, particleBlend: slot.particleBlend ?? 'additive', depthWrite: false, cull: 'off', alphaMode: 'blend' }
-            : { shader })
-        }}>
-          <option value="lit">{t('material.lit')}</option>
-          <option value="unlit-color">{t('material.unlitColor')}</option>
-          <option value="unlit-texture">{t('material.unlitTexture')}</option>
-          <option value="particle-unlit">{t('material.particle')}</option>
-        </select>
-      </label>
-      <div className="field-section">{t('material.surface')}</div>
-      <ColorField label={t('material.color')} value={slot.color} gesture={t('gesture.material')} onChange={color => onChange({ color })} />
-      {textured && <MapField label={t('material.baseMap')} value={slot.mapAssetId ?? null} onChange={mapAssetId => onChange({ mapAssetId })} />}
+      <Section title={t('material.shader')} color="#d4b8ff">
+        <label className="field">
+          <span>{t('material.shader')}</span>
+          <select value={slot.shader ?? 'lit'} onChange={event => {
+            const shader = event.target.value as SurfaceShader
+            onChange(shader === 'particle-unlit'
+              ? { shader, particleBlend: slot.particleBlend ?? 'additive', depthWrite: false, cull: 'off', alphaMode: 'blend' }
+              : { shader })
+          }}>
+            <option value="lit">{t('material.lit')}</option>
+            <option value="unlit-color">{t('material.unlitColor')}</option>
+            <option value="unlit-texture">{t('material.unlitTexture')}</option>
+            <option value="particle-unlit">{t('material.particle')}</option>
+          </select>
+        </label>
+      </Section>
+      <Section title={t('material.surface')} color="#c9a6ff">
+        <ColorField label={t('material.color')} value={slot.color} gesture={t('gesture.material')} onChange={color => onChange({ color })} />
+        {textured && <MapField label={t('material.baseMap')} value={slot.mapAssetId ?? null} onChange={mapAssetId => onChange({ mapAssetId })} />}
+        {lit && (
+          <>
+            <div className="iv2-pair">
+              <NumberRow label={t('material.metalness')} value={slot.metalness} min={0} max={1} step={0.01} gesture={t('gesture.material')} onChange={metalness => onChange({ metalness })} />
+              <NumberRow label={t('material.roughness')} value={slot.roughness} min={0} max={1} step={0.01} gesture={t('gesture.material')} onChange={roughness => onChange({ roughness })} />
+            </div>
+            <MapField label={t('material.metallicRoughness')} title={t('material.metallicRoughnessHint')} value={slot.metallicRoughnessAssetId ?? null} onChange={metallicRoughnessAssetId => onChange({ metallicRoughnessAssetId, roughnessAssetId: metallicRoughnessAssetId, metalnessAssetId: metallicRoughnessAssetId })} />
+            <MapField label={t('material.normal')} value={slot.normalAssetId ?? null} onChange={normalAssetId => onChange({ normalAssetId })} />
+            <div className="iv2-pair">
+              <NumberRow label={t('material.normalScale')} value={slot.normalScale ?? 1} min={0} max={4} step={0.01} gesture={t('gesture.material')} onChange={normalScale => onChange({ normalScale })} />
+              <NumberRow label={t('material.ao')} value={slot.ao} min={0} max={1} step={0.01} gesture={t('gesture.material')} onChange={ao => onChange({ ao })} />
+            </div>
+            <MapField label={t('material.aoMap')} title={t('material.aoMapHint')} value={slot.aoAssetId ?? null} onChange={aoAssetId => onChange({ aoAssetId })} />
+          </>
+        )}
+      </Section>
       {lit && (
-        <>
-          <NumberRow label={t('material.metalness')} value={slot.metalness} min={0} max={1} step={0.01} gesture={t('gesture.material')} onChange={metalness => onChange({ metalness })} />
-          <NumberRow label={t('material.roughness')} value={slot.roughness} min={0} max={1} step={0.01} gesture={t('gesture.material')} onChange={roughness => onChange({ roughness })} />
-          <MapField label={t('material.metallicRoughness')} title={t('material.metallicRoughnessHint')} value={slot.metallicRoughnessAssetId ?? null} onChange={metallicRoughnessAssetId => onChange({ metallicRoughnessAssetId, roughnessAssetId: metallicRoughnessAssetId, metalnessAssetId: metallicRoughnessAssetId })} />
-          <MapField label={t('material.normal')} value={slot.normalAssetId ?? null} onChange={normalAssetId => onChange({ normalAssetId })} />
-          <NumberRow label={t('material.normalScale')} value={slot.normalScale ?? 1} min={0} max={4} step={0.01} gesture={t('gesture.material')} onChange={normalScale => onChange({ normalScale })} />
-          <NumberRow label={t('material.ao')} value={slot.ao} min={0} max={1} step={0.01} gesture={t('gesture.material')} onChange={ao => onChange({ ao })} />
-          <MapField label={t('material.aoMap')} title={t('material.aoMapHint')} value={slot.aoAssetId ?? null} onChange={aoAssetId => onChange({ aoAssetId })} />
-          <div className="field-section">{t('material.emission')}</div>
+        <Section title={t('material.emission')} color="#f2cf7f">
           <ColorField label={t('material.emissionColor')} value={slot.emissive} gesture={t('gesture.material')} onChange={emissive => onChange({ emissive })} />
           <NumberRow label={t('material.emissionIntensity')} value={slot.emissiveIntensity} min={0} max={10} step={0.05} gesture={t('gesture.material')} onChange={emissiveIntensity => onChange({ emissiveIntensity })} />
           <MapField label={t('material.emissionMap')} value={slot.emissiveAssetId ?? null} onChange={emissiveAssetId => onChange({ emissiveAssetId })} />
-        </>
+        </Section>
       )}
       {particle && (
+        <Section title={t('material.particleBlend')} color="#ffb25a">
+          <label className="field">
+            <span>{t('material.particleBlend')}</span>
+            <select value={slot.particleBlend ?? 'additive'} onChange={event => onChange({ particleBlend: event.target.value as ParticleBlend })}>
+              <option value="alpha">{t('material.blendAlpha')}</option>
+              <option value="premultiply">{t('material.blendPremultiply')}</option>
+              <option value="additive">{t('material.blendAdditive')}</option>
+              <option value="multiply">{t('material.blendMultiply')}</option>
+            </select>
+          </label>
+        </Section>
+      )}
+      {!particle && <Section title={t('material.transparency')} color="#9fd6ff">
+        {!particle && <label className="field">
+          <span>{t('material.mode')}</span>
+          <select value={slot.alphaMode ?? 'opaque'} onChange={event => onChange({ alphaMode: event.target.value as AlphaMode })}>
+            <option value="opaque">{t('material.opaque')}</option>
+            <option value="blend">{t('material.blend')}</option>
+            <option value="clip">{t('material.clip')}</option>
+          </select>
+        </label>}
+        {!particle && (slot.alphaMode ?? 'opaque') === 'blend' && (
+          <NumberRow label={t('material.opacity')} value={slot.opacity} min={0} max={1} step={0.01} gesture={t('gesture.material')} onChange={opacity => onChange({ opacity })} />
+        )}
+        {(slot.alphaMode ?? 'opaque') === 'clip' && (
+          <NumberRow label={t('material.cutoff')} value={slot.alphaCutoff ?? 0.5} min={0} max={1} step={0.01} gesture={t('gesture.material')} onChange={alphaCutoff => onChange({ alphaCutoff })} />
+        )}
+      </Section>}
+      <Section title={t('material.render')} color="#8ec5ff">
         <label className="field">
-          <span>{t('material.particleBlend')}</span>
-          <select value={slot.particleBlend ?? 'additive'} onChange={event => onChange({ particleBlend: event.target.value as ParticleBlend })}>
-            <option value="alpha">{t('material.blendAlpha')}</option>
-            <option value="premultiply">{t('material.blendPremultiply')}</option>
-            <option value="additive">{t('material.blendAdditive')}</option>
-            <option value="multiply">{t('material.blendMultiply')}</option>
+          <span>{t('material.cull')}</span>
+          <select value={slot.cull ?? 'back'} onChange={event => onChange({ cull: event.target.value as CullMode })}>
+            <option value="back">{t('material.cullBack')}</option>
+            <option value="front">{t('material.cullFront')}</option>
+            <option value="off">{t('material.cullOff')}</option>
           </select>
         </label>
-      )}
-      {!particle && <div className="field-section">{t('material.transparency')}</div>}
-      {!particle && <label className="field">
-        <span>{t('material.mode')}</span>
-        <select value={slot.alphaMode ?? 'opaque'} onChange={event => onChange({ alphaMode: event.target.value as AlphaMode })}>
-          <option value="opaque">{t('material.opaque')}</option>
-          <option value="blend">{t('material.blend')}</option>
-          <option value="clip">{t('material.clip')}</option>
-        </select>
-      </label>}
-      {!particle && (slot.alphaMode ?? 'opaque') === 'blend' && (
-        <NumberRow label={t('material.opacity')} value={slot.opacity} min={0} max={1} step={0.01} gesture={t('gesture.material')} onChange={opacity => onChange({ opacity })} />
-      )}
-      {(slot.alphaMode ?? 'opaque') === 'clip' && (
-        <NumberRow label={t('material.cutoff')} value={slot.alphaCutoff ?? 0.5} min={0} max={1} step={0.01} gesture={t('gesture.material')} onChange={alphaCutoff => onChange({ alphaCutoff })} />
-      )}
-      <div className="field-section">{t('material.render')}</div>
-      <label className="field">
-        <span>{t('material.cull')}</span>
-        <select value={slot.cull ?? 'back'} onChange={event => onChange({ cull: event.target.value as CullMode })}>
-          <option value="back">{t('material.cullBack')}</option>
-          <option value="front">{t('material.cullFront')}</option>
-          <option value="off">{t('material.cullOff')}</option>
-        </select>
-      </label>
-      <label className="field">
-        <span>{t('material.depthWrite')}</span>
-        <input type="checkbox" checked={slot.depthWrite ?? true} onChange={event => onChange({ depthWrite: event.target.checked })} />
-      </label>
-      {!particle && <label className="field">
-        <span>{t('material.wireframe')}</span>
-        <input type="checkbox" checked={slot.wireframe ?? false} onChange={event => onChange({ wireframe: event.target.checked })} />
-      </label>}
+        <div className="iv2-pair">
+          <label className="field">
+            <span>{t('material.depthWrite')}</span>
+            <input type="checkbox" checked={slot.depthWrite ?? true} onChange={event => onChange({ depthWrite: event.target.checked })} />
+          </label>
+          {!particle && <label className="field">
+            <span>{t('material.wireframe')}</span>
+            <input type="checkbox" checked={slot.wireframe ?? false} onChange={event => onChange({ wireframe: event.target.checked })} />
+          </label>}
+        </div>
+      </Section>
     </>
   )
 }
@@ -865,8 +975,11 @@ function AnimModeSwitch({ nodeId }: { nodeId: string }) {
     const states = animator.states.map((state, index) => (
       index === 0 && !state.clip && node.clip ? { ...state, clip: node.clip, clipAssetId: node.clipAssetId } : state
     ))
+    const stateId = animator.stateId || states[0]?.id || ''
+    const active = states.find(state => state.id === stateId) ?? states[0]
     store.updateNode(nodeId, {
-      animator: { ...animator, enabled: machine, states, stateId: animator.stateId || states[0]?.id || '', defaultStateId: animator.defaultStateId || states[0]?.id },
+      animator: { ...animator, enabled: machine, states, stateId, defaultStateId: animator.defaultStateId || states[0]?.id },
+      ...(machine && active?.clip ? { clipPlaying: true, clipTime: 0 } : {}),
     })
   }
   return (
@@ -997,7 +1110,7 @@ function AnimationCard({
         onChange={id => {
           const store = useEditorStore.getState()
           if (!id) {
-            store.updateNode(nodeId, { clipAssetId: null, clip: modelClips[0] ?? '', clipTime: 0, clipPlaying: false })
+            store.updateNode(nodeId, { clipAssetId: null, clip: modelClips[0] ?? '', clipTime: 0, clipPlaying: Boolean(modelClips[0]) })
             return
           }
           const file = useAssetStore.getState().assets[id]
@@ -1025,17 +1138,22 @@ function AnimationCard({
           </label>
         </div>
       )}
-      {!driven && <NumberRow label={t('anim.speed')} value={clipSpeed} step={0.05} min={0.05} gesture={t('anim.speed')} onChange={speed => useEditorStore.getState().updateNode(nodeId, { clipSpeed: speed })} />}
-      <NumberRow label={t('anim.fade')} value={clipFade} step={0.05} min={0} gesture={t('anim.fade')} onChange={fade => useEditorStore.getState().updateNode(nodeId, { clipFade: fade })} />
-      {!driven && <label className="field">
+      <Section title={t('anim.speed')} color="#e7c56a">
+        <div className="iv2-pair">
+          {!driven && <NumberRow label={t('anim.speed')} value={clipSpeed} step={0.05} min={0.05} gesture={t('anim.speed')} onChange={speed => useEditorStore.getState().updateNode(nodeId, { clipSpeed: speed })} />}
+          <NumberRow label={t('anim.fade')} value={clipFade} step={0.05} min={0} gesture={t('anim.fade')} onChange={fade => useEditorStore.getState().updateNode(nodeId, { clipFade: fade })} />
+        </div>
+      </Section>
+      {!driven && <Section title={t('anim.mask')} color="#f2cf7f">
+      <label className="field">
         <span>{t('anim.mask')}</span>
         <select value={clipMask} onChange={event => useEditorStore.getState().updateNode(nodeId, { clipMask: event.target.value as 'full' | 'upper' | 'lower' })}>
           <option value="full">{t('anim.maskFull')}</option>
           <option value="upper">{t('anim.maskUpper')}</option>
           <option value="lower">{t('anim.maskLower')}</option>
         </select>
-      </label>}
-      {!driven && <label className="field">
+      </label>
+      <label className="field">
         <span>{t('anim.overlay')}</span>
         <select
           value={playback?.overlayClip ? `${playback.overlayAssetId ? 'file' : 'model'}\u001f${playback.overlayClip}` : ''}
@@ -1059,7 +1177,8 @@ function AnimationCard({
           {modelClips.map(name => <option key={`overlay-model:${name}`} value={`model\u001f${name}`}>{name}</option>)}
           {fileClips.map(name => <option key={`overlay-file:${name}`} value={`file\u001f${name}`}>{name}</option>)}
         </select>
-      </label>}
+      </label>
+      </Section>}
     </div>
   )
 }
@@ -1222,12 +1341,21 @@ function resetTransform(id: string, patch: Partial<SceneNode>) {
   commitNode(id, translate('gesture.reset'), patch)
 }
 
+function Section({ title, color, children }: { title: string; color: string; children: ReactNode }) {
+  return (
+    <section className="iv2-section">
+      <div className="iv2-section__title" style={{ color }}><i /><span>{title}</span></div>
+      {children}
+    </section>
+  )
+}
+
 function Card({ id, title, color, children }: { id: string; title: string; color: string; children: ReactNode }) {
   const [stored, setStored] = useInspectorCardOpen(id)
   const open = stored
   const setOpen = (value: boolean) => setStored(value)
   return (
-    <section className="iv2-card">
+    <section className="iv2-card iv2-card--wide">
       <header className="iv2-card__header" onClick={() => setOpen(!open)}>
         <span className="iv2-card__dot" style={{ background: color }} />
         <span>{title}</span>
@@ -1447,7 +1575,7 @@ function kindColor(kind: NodeKind): string {
   return '#999999'
 }
 
-type ComponentId = 'character' | 'cameraFollow' | 'interact' | 'trigger' | 'mover' | 'checkpoint' | 'score' | 'physics' | 'navigation'
+type ComponentId = 'character' | 'cameraFollow' | 'interact' | 'trigger' | 'mover' | 'checkpoint' | 'score' | 'rules' | 'physics' | 'navigation'
 
 interface ComponentOption {
   id: ComponentId
@@ -1488,7 +1616,7 @@ function AddComponentPicker({ node, disabled }: { node: SceneNode, disabled: boo
   }, [open])
 
   const canGameplay = isMesh(node.kind) || node.kind === 'model' || node.kind === 'empty'
-  const canCameraFollow = canGameplay || node.kind === 'camera'
+  const canCameraFollow = canGameplay
   const physicsEnabled = capabilityEnabled(capabilities, 'physics')
   const navEnabled = capabilityEnabled(capabilities, 'navigation')
 
@@ -1512,7 +1640,7 @@ function AddComponentPicker({ node, disabled }: { node: SceneNode, disabled: boo
       },
     })
   }
-  if (canCameraFollow) {
+  if (!node.gameplay?.character && canCameraFollow) {
     options.push({
       id: 'cameraFollow',
       cardId: 'follow-camera',
@@ -1598,6 +1726,20 @@ function AddComponentPicker({ node, disabled }: { node: SceneNode, disabled: boo
             gameplay: { ...node.gameplay, score: defaultScore() },
           })
           useInspectorMemory.getState().setOpen(`node:${node.id}`, 'score', true)
+        },
+      },
+      {
+        id: 'rules',
+        cardId: 'rules',
+        group: 'devices',
+        label: t('rule.title'),
+        color: '#f0c674',
+        added: Array.isArray(node.gameplay?.rules),
+        apply: () => {
+          commitNode(node.id, t('rule.title'), {
+            gameplay: { ...node.gameplay, rules: node.gameplay?.rules ?? [emptyRule()] },
+          })
+          useInspectorMemory.getState().setOpen(`node:${node.id}`, 'rules', true)
         },
       },
     )

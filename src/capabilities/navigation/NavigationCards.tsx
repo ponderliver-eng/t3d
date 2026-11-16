@@ -24,7 +24,7 @@ export function NavigationCard({ node, disabled }: { node: SceneNode, disabled: 
     patch({ ...navigation, ...partial })
   }
   return (
-    <section className="iv2-card">
+    <section className="iv2-card iv2-card--wide">
       <header className="iv2-card__header" onClick={() => setOpen(!open)}>
         <span className="iv2-card__dot" style={{ background: '#4fc3f7' }} />
         <span>{t('navigation.title')}</span>
@@ -43,6 +43,8 @@ export function NavigationCard({ node, disabled }: { node: SceneNode, disabled: 
       </header>
       {open && (
         <div className="iv2-card__body">
+          <section className="iv2-section">
+            <div className="iv2-section__title" style={{ color: '#4fc3f7' }}><i /><span>{t('navigation.role')}</span></div>
           <label className="field">
             <span>{t('navigation.role')}</span>
             <select disabled={disabled} value={navigation.role} onChange={event => edit({ role: event.target.value as NavRole })}>
@@ -51,11 +53,12 @@ export function NavigationCard({ node, disabled }: { node: SceneNode, disabled: 
             </select>
           </label>
           {navigation.role === 'obstacle' && (
-            <>
+            <div className="iv2-pair">
               <NumberInput label={t('navigation.radius')} disabled={disabled} value={navigation.radius} step={0.05} min={0.05} onChange={radius => edit({ radius })} />
               <NumberInput label={t('navigation.height')} disabled={disabled} value={navigation.height} step={0.05} min={0.05} onChange={height => edit({ height })} />
-            </>
+            </div>
           )}
+          </section>
         </div>
       )}
     </section>
@@ -79,7 +82,7 @@ export function SceneNavigationCard() {
     store.setPicture({ navigation: { ...navSettingsOf(store.picture.navigation), ...patch } })
   }
   return (
-    <section className="iv2-card">
+    <section className="iv2-card iv2-card--wide">
       <header className="iv2-card__header" onClick={() => setOpen(!open)}>
         <span className="iv2-card__dot" style={{ background: '#4fc3f7' }} />
         <span>{t('navigation.title')}</span>
@@ -95,13 +98,25 @@ export function SceneNavigationCard() {
           )}
           {enabled && (
             <>
+              <section className="iv2-section">
+                <div className="iv2-section__title" style={{ color: '#4fc3f7' }}><i /><span>{t('navigation.cellSize')}</span></div>
+                <div className="iv2-pair">
               <NumberInput label={t('navigation.cellSize')} value={settings.cellSize} step={0.05} min={0.05} gesture onChange={cellSize => setNav({ cellSize })} />
               <NumberInput label={t('navigation.cellHeight')} value={settings.cellHeight} step={0.05} min={0.05} gesture onChange={cellHeight => setNav({ cellHeight })} />
               <NumberInput label={t('navigation.slope')} value={settings.walkableSlopeAngle} step={1} min={0} max={89} gesture onChange={walkableSlopeAngle => setNav({ walkableSlopeAngle })} />
+                </div>
+              </section>
+              <section className="iv2-section">
+                <div className="iv2-section__title" style={{ color: '#81d4fa' }}><i /><span>{t('navigation.agentRadius')}</span></div>
+                <div className="iv2-pair">
               <NumberInput label={t('navigation.agentRadius')} value={settings.agentRadius} step={0.05} min={0.05} gesture onChange={agentRadius => setNav({ agentRadius })} />
               <NumberInput label={t('navigation.agentHeight')} value={settings.agentHeight} step={0.05} min={0.2} gesture onChange={agentHeight => setNav({ agentHeight })} />
               <NumberInput label={t('navigation.maxObstacles')} value={settings.maxObstacles} step={1} min={0} max={128} gesture onChange={maxObstacles => setNav({ maxObstacles: Math.round(maxObstacles) })} />
-              <p className="settings-note">{t('navigation.obstacleHint')}</p>
+                </div>
+                <p className="settings-note">{t('navigation.obstacleHint')}</p>
+              </section>
+              <section className="iv2-section">
+                <div className="iv2-section__title" style={{ color: '#b3e5fc' }}><i /><span>{t('navigation.bake')}</span></div>
               <label className="field">
                 <span>{t('navigation.show')}</span>
                 <input type="checkbox" checked={navMeshVisible} onChange={event => useEditorStore.getState().setNavMeshVisible(event.target.checked)} />
@@ -123,6 +138,7 @@ export function SceneNavigationCard() {
                 </p>
               )}
               {stale && <p className="settings-note">{t('navigation.stale')}</p>}
+              </section>
             </>
           )}
         </div>

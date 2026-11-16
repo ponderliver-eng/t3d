@@ -31,9 +31,20 @@ export default function App() {
     const onKey = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null
       const tag = target?.tagName
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target?.isContentEditable) return
       const store = useEditorStore.getState()
       const ctrl = event.ctrlKey || event.metaKey
+      if (store.playState !== 'stopped') {
+        if (ctrl && event.code === 'KeyP') {
+          event.preventDefault()
+          if (event.shiftKey) store.stop()
+          else if (store.playState === 'playing') store.pause()
+          else store.play()
+        } else if (!ctrl && !event.altKey && !event.metaKey) {
+          event.preventDefault()
+        }
+        return
+      }
       if (ctrl && event.code === 'KeyN') {
         event.preventDefault()
         askNewScene()

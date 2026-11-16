@@ -33,6 +33,8 @@ export function ScreenCard({ node, locked, playing }: { node: SceneNode; locked:
       </header>
       {open && (
         <div className="iv2-card__body">
+          <section className="iv2-section">
+            <div className="iv2-section__title" style={{ color: '#4a9eff' }}><i /><span>{t('ui.document')}</span></div>
           <label className="field">
             <span>{t('ui.document')}</span>
             <select disabled={locked} value={screen.documentId ?? ''} onChange={event => commitScreen(node.id, { ...screen, documentId: event.target.value || null })}>
@@ -52,7 +54,11 @@ export function ScreenCard({ node, locked, playing }: { node: SceneNode; locked:
             <input type="checkbox" disabled={locked} checked={screen.visibleOnPlay} onChange={event => commitScreen(node.id, { ...screen, visibleOnPlay: event.target.checked })} />
           </label>
           <button type="button" disabled={!screen.documentId} onClick={() => screen.documentId && openUiEditor(screen.documentId)}>{t('ui.open')}</button>
-          {playing && bindings.map(item => {
+          </section>
+          {playing && bindings.length > 0 && (
+            <section className="iv2-section">
+              <div className="iv2-section__title" style={{ color: '#8ec5ff' }}><i /><span>{t('ui.visibleOnPlay')}</span></div>
+          {bindings.map(item => {
             const source = item.binding.source
             const current = source.kind === 'variable'
               ? values.variables[source.varId]
@@ -75,6 +81,8 @@ export function ScreenCard({ node, locked, playing }: { node: SceneNode; locked:
               </label>
             )
           })}
+            </section>
+          )}
         </div>
       )}
     </section>

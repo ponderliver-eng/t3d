@@ -18,6 +18,8 @@ export interface CharacterSpec {
   clickButton: 'left' | 'right'
   clickStop: number
   moveSpeed: number
+  /** 朝移动方向转身的角速度，度/秒。越肩、锁定和第一人称会再快一截。 */
+  turnSpeed: number
   sprintMultiplier: number
   jumpSpeed: number
   maxJumps: number
@@ -33,6 +35,7 @@ export interface CharacterSpec {
   dashInvincible: number
   dashCooldown: number
   footstepDistance: number
+  lockTargetId?: string
   lockTargetName: string
   idleClip: string
   walkClip: string
@@ -49,6 +52,7 @@ export function defaultCharacter(): CharacterSpec {
     clickButton: 'right',
     clickStop: 0.35,
     moveSpeed: 4.5,
+    turnSpeed: 540,
     sprintMultiplier: 1.6,
     jumpSpeed: 6.5,
     maxJumps: 2,
@@ -64,6 +68,7 @@ export function defaultCharacter(): CharacterSpec {
     dashInvincible: 0.35,
     dashCooldown: 0.8,
     footstepDistance: 1.6,
+    lockTargetId: '',
     lockTargetName: '',
     idleClip: '',
     walkClip: '',
@@ -77,7 +82,10 @@ export type CameraOrbit = 'none' | 'rightDrag' | 'mouse'
 
 export interface CameraFollowSpec {
   enabled: boolean
-  /** 跟随的物体名。空着表示跟自己。 */
+  /** 最近套用的机位。手改参数后清空。 */
+  preset?: CharacterMode | ''
+  /** 跟随的物体。空着表示跟自己。旧场景里的名字只作兼容。 */
+  targetId?: string
   targetName: string
   offset: Vec3
   pivot: Vec3
@@ -96,6 +104,7 @@ export interface CameraFollowSpec {
 export function defaultCameraFollow(): CameraFollowSpec {
   return {
     enabled: true,
+    targetId: '',
     targetName: '',
     offset: [0, 1.8, -4.2],
     pivot: [0, 1.4, 0],
@@ -113,13 +122,45 @@ export function defaultCameraFollow(): CameraFollowSpec {
 }
 
 export function cameraPresetForMode(mode: CharacterMode): Partial<CameraFollowSpec> {
-  if (mode === 'strafe') return { offset: [0.65, 0.45, -2.2], pivot: [0, 1.5, 0], orbit: 'mouse', localOffset: true, fov: 55, collision: true }
-  if (mode === 'lockOn') return { offset: [0.35, 2.2, -4.8], pivot: [0, 1.35, 0], orbit: 'rightDrag', fov: 58, collision: true }
-  if (mode === 'pointAndClick') return { offset: [0, 10.5, -7.2], pivot: [0, 0.8, 0], orbit: 'none', fov: 48, collision: false }
-  if (mode === 'topDown') return { offset: [0, 9.5, -6.5], pivot: [0, 0.8, 0], orbit: 'none', fov: 50, collision: false }
-  if (mode === 'side25d') return { offset: [0, 1.6, -7.5], pivot: [0, 1.2, 0], orbit: 'none', fov: 45, collision: false }
-  if (mode === 'firstPerson') return { offset: [0, 1.65, 0.15], pivot: [0, 1.65, 0], orbit: 'mouse', localOffset: true, fov: 72, collision: false }
-  return { offset: [0, 1.8, -4.2], pivot: [0, 1.4, 0], orbit: 'rightDrag', fov: 60, collision: true, localOffset: false }
+  if (mode === 'strafe') return { offset: [0.65, 0.45, -2.2], pivot: [0, 1.5, 0], orbit: 'mouse', localOffset: true, lookAtTarget: true, fov: 55, collision: true }
+  if (mode === 'lockOn') return { offset: [0.35, 2.2, -4.8], pivot: [0, 1.35, 0], orbit: 'rightDrag', localOffset: false, lookAtTarget: true, fov: 58, collision: true }
+  if (mode === 'pointAndClick') return { offset: [0, 10.5, -7.2], pivot: [0, 0.8, 0], orbit: 'none', localOffset: false, lookAtTarget: true, fov: 48, collision: false }
+  if (mode === 'topDown') return { offset: [0, 9.5, -6.5], pivot: [0, 0.8, 0], orbit: 'none', localOffset: false, lookAtTarget: true, fov: 50, collision: false }
+  if (mode === 'side25d') return { offset: [0, 1.6, -7.5], pivot: [0, 1.2, 0], orbit: 'none', localOffset: false, lookAtTarget: true, fov: 45, collision: false }
+  if (mode === 'firstPerson') return { offset: [0, 1.65, 0.15], pivot: [0, 1.65, 0], orbit: 'mouse', localOffset: false, lookAtTarget: true, fov: 72, collision: false }
+  return { offset: [0, 1.8, -4.2], pivot: [0, 1.4, 0], orbit: 'rightDrag', localOffset: false, lookAtTarget: true, fov: 60, collision: true }
+}
+
+export function resolveCharacterCamera(character: CharacterSpec, raw?: Partial<CameraFollowSpec> | null): CameraFollowSpec {
+  const mode = character.mode
+  const preset = cameraPresetForMode(mode)
+  const base = { ...defaultCameraFollow(), ...preset, ...raw, preset: mode }
+  base.targetId = ''
+  base.targetName = ''
+  base.lookAtTarget = true
+  if (mode === 'pointAndClick' || mode === 'topDown' || mode === 'side25d') {
+    base.orbit = 'none'
+    base.localOffset = false
+    base.collision = false
+    return base
+  }
+  if (mode === 'firstPerson') {
+    base.orbit = 'mouse'
+    base.localOffset = false
+    base.collision = false
+    return base
+  }
+  if (mode === 'strafe') {
+    base.orbit = 'mouse'
+    base.localOffset = true
+    return base
+  }
+  base.localOffset = false
+  if (base.orbit === 'none') base.orbit = 'rightDrag'
+  if (character.driver !== 'capsule' && character.clickButton === 'right' && base.orbit === 'rightDrag') {
+    base.orbit = 'mouse'
+  }
+  return base
 }
 
 export interface InteractSpec {
@@ -230,15 +271,198 @@ export function defaultScore(): ScoreSpec {
   }
 }
 
+export type RuleTriggerKind = 'playStart' | 'interact' | 'key' | 'message' | 'enter' | 'exit' | 'hit'
+export type RuleCondKind = 'always' | 'hasTag' | 'missingTag' | 'compare'
+export type RuleStepKind = 'message' | 'setVar' | 'addTag' | 'removeTag' | 'wait' | 'playClip' | 'if' | 'switchState' | 'log'
+
+export interface RuleCondition {
+  id: string
+  kind: RuleCondKind
+  tag: string
+  left: string
+  op: string
+  right: string
+}
+
+export interface RuleStep {
+  id: string
+  do: RuleStepKind
+  message: string
+  name: string
+  value: string
+  tag: string
+  seconds: number
+  clip: string
+  stateId: string
+  level: 'info' | 'warn' | 'error'
+  conditions: RuleCondition[]
+  steps: RuleStep[]
+}
+
+export interface RuleJump {
+  id: string
+  targetId: string
+  conditions: RuleCondition[]
+}
+
+export interface RuleStateNode {
+  id: string
+  name: string
+  children: RuleStateNode[]
+  onEnter: RuleStep[]
+  onTick: RuleStep[]
+  onExit: RuleStep[]
+  transitions: RuleJump[]
+  /** 作为子状态时的进入条件。空表示可以进入。 */
+  enter: RuleCondition[]
+}
+
 export interface RuleEntry {
   id: string
-  when: string
-  params?: Record<string, unknown>
-  actions: Array<{
-    do: string
-    targetNodeId?: string | null
-    params?: Record<string, unknown>
-  }>
+  name: string
+  enabled: boolean
+  trigger: RuleTriggerKind
+  message: string
+  key: string
+  conditions: RuleCondition[]
+  steps: RuleStep[]
+}
+
+const TRIGGERS: RuleTriggerKind[] = ['playStart', 'interact', 'key', 'message', 'enter', 'exit', 'hit']
+const CONDS: RuleCondKind[] = ['always', 'hasTag', 'missingTag', 'compare']
+const STEPS: RuleStepKind[] = ['message', 'setVar', 'addTag', 'removeTag', 'wait', 'playClip', 'if', 'switchState', 'log']
+
+export function emptyCondition(kind: RuleCondKind = 'hasTag'): RuleCondition {
+  return { id: crypto.randomUUID(), kind, tag: '', left: '', op: '==', right: '' }
+}
+
+export function emptyStep(kind: RuleStepKind = 'message'): RuleStep {
+  return {
+    id: crypto.randomUUID(),
+    do: kind,
+    message: '',
+    name: '',
+    value: '0',
+    tag: '',
+    seconds: kind === 'wait' ? 0.5 : 0,
+    clip: '',
+    stateId: '',
+    level: 'info',
+    conditions: kind === 'if' ? [emptyCondition('hasTag')] : [],
+    steps: [],
+  }
+}
+
+export function emptyRule(): RuleEntry {
+  return {
+    id: crypto.randomUUID(),
+    name: '',
+    enabled: true,
+    trigger: 'playStart',
+    message: '',
+    key: 'KeyE',
+    conditions: [],
+    steps: [],
+  }
+}
+
+export function emptyRuleState(name = ''): RuleStateNode {
+  return {
+    id: crypto.randomUUID(),
+    name,
+    children: [],
+    onEnter: [],
+    onTick: [],
+    onExit: [],
+    transitions: [],
+    enter: [],
+  }
+}
+
+export function readRules(raw: unknown): RuleEntry[] {
+  if (!Array.isArray(raw)) return []
+  return raw.map(normalizeRule).filter((rule): rule is RuleEntry => !!rule)
+}
+
+export function readRuleStates(raw: unknown): RuleStateNode[] {
+  if (!Array.isArray(raw)) return []
+  return raw.map(normalizeState).filter((node): node is RuleStateNode => !!node)
+}
+
+function normalizeRule(raw: unknown): RuleEntry | null {
+  if (!raw || typeof raw !== 'object') return null
+  const item = raw as Partial<RuleEntry> & { cond?: RuleCondKind, tag?: string, left?: string, op?: string, right?: string }
+  const legacy = item.cond && item.cond !== 'always'
+    ? [emptyCondition(item.cond)]
+    : []
+  if (legacy[0] && item.cond) {
+    legacy[0].tag = item.tag ?? ''
+    legacy[0].left = item.left ?? ''
+    legacy[0].op = item.op || '=='
+    legacy[0].right = item.right ?? ''
+  }
+  return {
+    id: item.id || crypto.randomUUID(),
+    name: item.name ?? '',
+    enabled: item.enabled !== false,
+    trigger: TRIGGERS.includes(item.trigger as RuleTriggerKind) ? item.trigger as RuleTriggerKind : 'playStart',
+    message: item.message ?? '',
+    key: item.key || 'KeyE',
+    conditions: Array.isArray(item.conditions) && item.conditions.length > 0 ? item.conditions.map(normalizeCondition) : legacy,
+    steps: Array.isArray(item.steps) ? item.steps.map(normalizeStep) : [],
+  }
+}
+
+function normalizeCondition(raw: unknown): RuleCondition {
+  const item = (raw ?? {}) as Partial<RuleCondition>
+  return {
+    id: item.id || crypto.randomUUID(),
+    kind: CONDS.includes(item.kind as RuleCondKind) ? item.kind as RuleCondKind : 'always',
+    tag: item.tag ?? '',
+    left: item.left ?? '',
+    op: item.op || '==',
+    right: item.right ?? '',
+  }
+}
+
+function normalizeStep(raw: unknown): RuleStep {
+  const item = (raw ?? {}) as Partial<RuleStep> & { cond?: RuleCondKind, left?: string, op?: string, right?: string }
+  const step = emptyStep(STEPS.includes(item.do as RuleStepKind) ? item.do as RuleStepKind : 'message')
+  step.id = item.id || step.id
+  step.message = item.message ?? ''
+  step.name = item.name ?? ''
+  step.value = item.value ?? '0'
+  step.tag = item.tag ?? ''
+  step.seconds = Number.isFinite(item.seconds) ? Number(item.seconds) : step.seconds
+  step.clip = item.clip ?? ''
+  step.stateId = item.stateId ?? ''
+  step.level = item.level === 'warn' || item.level === 'error' ? item.level : 'info'
+  const legacy = item.do === 'if' && item.cond
+    ? [{ ...emptyCondition(CONDS.includes(item.cond) ? item.cond : 'always'), tag: item.tag ?? '', left: item.left ?? '', op: item.op || '==', right: item.right ?? '' }]
+    : []
+  step.conditions = Array.isArray(item.conditions) && item.conditions.length > 0 ? item.conditions.map(normalizeCondition) : legacy
+  step.steps = Array.isArray(item.steps) ? item.steps.map(normalizeStep) : []
+  return step
+}
+
+function normalizeState(raw: unknown): RuleStateNode | null {
+  if (!raw || typeof raw !== 'object') return null
+  const item = raw as Partial<RuleStateNode>
+  if (!item.id) return null
+  return {
+    id: item.id,
+    name: item.name ?? '',
+    children: Array.isArray(item.children) ? item.children.map(normalizeState).filter((node): node is RuleStateNode => !!node) : [],
+    onEnter: Array.isArray(item.onEnter) ? item.onEnter.map(normalizeStep) : [],
+    onTick: Array.isArray(item.onTick) ? item.onTick.map(normalizeStep) : [],
+    onExit: Array.isArray(item.onExit) ? item.onExit.map(normalizeStep) : [],
+    transitions: Array.isArray(item.transitions) ? item.transitions.map(jump => ({
+      id: jump.id || crypto.randomUUID(),
+      targetId: jump.targetId ?? '',
+      conditions: Array.isArray(jump.conditions) ? jump.conditions.map(normalizeCondition) : [],
+    })) : [],
+    enter: Array.isArray(item.enter) ? item.enter.map(normalizeCondition) : [],
+  }
 }
 
 export interface NodeGameplay {
@@ -250,6 +474,7 @@ export interface NodeGameplay {
   checkpoint?: CheckpointSpec | null
   score?: ScoreSpec | null
   rules?: RuleEntry[]
+  ruleStates?: RuleStateNode[]
   /** 领域包（属性、战斗、感知、背包、对话）按包 id 挂载的数据槽，关闭领域包时不清除数据。 */
   packs?: Record<string, unknown>
 }

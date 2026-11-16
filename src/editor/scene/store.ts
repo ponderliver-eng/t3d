@@ -118,6 +118,7 @@ export interface EditorState {
   playState: PlayState
   playSnapshot: Record<string, SceneNode> | null
   playSelection: string[]
+  playDirty: boolean
   past: HistoryEntry[]
   future: HistoryEntry[]
   gesture: Gesture | null
@@ -198,6 +199,7 @@ export interface EditorState {
   play: () => void
   pause: () => void
   stop: () => void
+  keepPlayChanges: () => void
   newScene: () => void
   createScene: () => void
   openScene: (id: string) => void
@@ -262,6 +264,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   playState: 'stopped',
   playSnapshot: null,
   playSelection: [],
+  playDirty: false,
   past: [],
   future: [],
   gesture: null,
@@ -403,7 +406,13 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     if (get().prefabSession && !node.parentId && touchesTransform) return
     const next: SceneNode = { ...node, ...patch, id: node.id, kind: node.kind }
     if (!get().prefabSession) markOverrides(next, patch)
-    set(state => ({ nodes: { ...state.nodes, [id]: next } }))
+    const keys = Object.keys(patch)
+    const onlyRuntimeClock = keys.every(key => key === 'clipTime' || key === 'overlayTime')
+    const markPlayDirty = get().playState !== 'stopped' && !onlyRuntimeClock
+    set(state => ({
+      nodes: { ...state.nodes, [id]: next },
+      ...(markPlayDirty ? { playDirty: true } : {}),
+    }))
   },
 
   createNode: (kind, parentId = null) => {
@@ -805,11 +814,27 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     }
     if (state === 'playing') return
     resetUiValues()
+    const snapshot = cloneNodes(get().nodes)
+    const nodes = cloneNodes(snapshot)
+    for (const node of Object.values(nodes)) {
+      if (node.kind !== 'model') continue
+      const animator = node.animator?.enabled ? node.animator : null
+      if (animator) {
+        const start = animator.states.find(state => state.id === (animator.defaultStateId || animator.stateId)) ?? animator.states[0]
+        if (!start?.clip) continue
+        nodes[node.id] = { ...node, clipPlaying: true, clipTime: 0, animator: { ...animator, stateId: start.id } }
+        continue
+      }
+      if (!node.clip) continue
+      nodes[node.id] = { ...node, clipPlaying: true, clipTime: 0 }
+    }
     set({
       playState: 'playing',
-      playSnapshot: cloneNodes(get().nodes),
+      playSnapshot: snapshot,
+      nodes,
       playSelection: get().selection.slice(),
       playPicture: structuredClone(get().picture),
+      playDirty: false,
     })
     get().log('info', translate('log.startPlay'))
   },
@@ -832,9 +857,61 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       playSnapshot: null,
       picture: picture ? structuredClone(picture) : get().picture,
       playPicture: null,
+      playDirty: false,
     })
     resetUiValues()
     get().log('info', translate('log.stopPlay'))
+  },
+
+  keepPlayChanges: () => {
+    const snapshot = get().playSnapshot
+    if (get().playState === 'stopped' || !snapshot) return
+    const beforeNodes = cloneNodes(snapshot)
+    const beforePicture = get().playPicture ? structuredClone(get().playPicture!) : structuredClone(get().picture)
+    const currentNodes = get().nodes
+    const nextSnapshot: Record<string, SceneNode> = {}
+    for (const [id, snapNode] of Object.entries(snapshot)) {
+      const liveNode = currentNodes[id]
+      if (!liveNode) {
+        nextSnapshot[id] = structuredClone(snapNode)
+        continue
+      }
+      const merged = structuredClone(liveNode)
+      // 保留试玩前的出生位姿与动画初始状态，只同步组件、材质、灯光等配置参数
+      merged.position = [...snapNode.position] as Vec3
+      merged.rotation = [...snapNode.rotation] as Vec3
+      merged.scale = [...snapNode.scale] as Vec3
+      merged.clipPlaying = snapNode.clipPlaying
+      merged.clipTime = snapNode.clipTime
+      merged.overlayPlaying = snapNode.overlayPlaying
+      merged.overlayTime = snapNode.overlayTime
+      if (merged.animator && snapNode.animator) {
+        merged.animator = {
+          ...merged.animator,
+          stateId: snapNode.animator.stateId,
+        }
+      }
+      nextSnapshot[id] = merged
+    }
+    const nextPicture = structuredClone(get().picture)
+    if (!sameNodes(beforeNodes, nextSnapshot) || !sameJson(beforePicture, nextPicture)) {
+      pushHistory(set, {
+        label: translate('inspector.keepPlayChanges'),
+        before: beforeNodes,
+        after: cloneNodes(nextSnapshot),
+        beforeSelection: get().playSelection.slice(),
+        afterSelection: get().playSelection.slice(),
+        beforePicture,
+        afterPicture: structuredClone(nextPicture),
+      })
+    }
+    set({
+      playSnapshot: nextSnapshot,
+      playPicture: nextPicture,
+      playDirty: false,
+    })
+    get().notify(translate('log.keptPlayChanges'))
+    get().log('info', translate('log.keptPlayChanges'))
   },
 
   newScene: () => {
@@ -1027,7 +1104,10 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     }, 2600)
   },
 
-  setPicture: patch => set({ picture: normalizePicture({ ...get().picture, ...patch }) }),
+  setPicture: patch => set(state => ({
+    picture: normalizePicture({ ...state.picture, ...patch }),
+    ...(state.playState !== 'stopped' ? { playDirty: true } : {}),
+  })),
 
   rememberEditorView: view => {
     if (get().prefabSession || get().playState !== 'stopped') return

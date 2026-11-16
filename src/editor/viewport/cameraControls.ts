@@ -125,8 +125,8 @@ export class EditorCameraRig {
     this.persp.position.copy(this.pivot).addScaledVector(this.forward(), -this.orbitDistance)
   }
 
-  update(dt: number) {
-    if (this.drag !== 'look' || this.view !== 'persp') return
+  update(dt: number, fly = true) {
+    if (!fly || this.drag !== 'look' || this.view !== 'persp') return
     const speed = (this.keys.has('ShiftLeft') || this.keys.has('ShiftRight') ? 24 : 8) * dt
     const move = new Vector3()
     const forward = this.forward()

@@ -26,9 +26,35 @@
 }
 
 .inspector__banner--play {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
   background: rgba(255, 193, 7, 0.12);
   border-color: rgba(255, 193, 7, 0.35);
   color: var(--text-secondary);
+}
+
+.inspector__banner-btn {
+  flex-shrink: 0;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 193, 7, 0.5);
+  background: rgba(255, 193, 7, 0.2);
+  color: #ffd54f;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.inspector__banner-btn:hover:not(:disabled) {
+  background: rgba(255, 193, 7, 0.32);
+}
+
+.inspector__banner-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
 }
 
 .inspector__header input,
@@ -158,8 +184,68 @@
   padding: 8px 10px;
 }
 
-.iv2-card--wide .field {
-  grid-template-columns: 88px minmax(0, 1fr);
+.iv2-section .field {
+  grid-template-columns: 72px minmax(0, 1fr);
+}
+
+.iv2-section {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding-top: 8px;
+  margin-top: 4px;
+  border-top: 1px solid var(--border);
+}
+
+.iv2-section:first-child {
+  padding-top: 0;
+  margin-top: 0;
+  border-top: 0;
+}
+
+.iv2-section__title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-muted);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+}
+
+.iv2-section__title i {
+  width: 3px;
+  height: 10px;
+  border-radius: 2px;
+  background: currentColor;
+}
+
+.iv2-pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px 8px;
+}
+
+.iv2-pair .field {
+  grid-template-columns: 48px minmax(0, 1fr);
+  gap: 4px;
+}
+
+.iv2-card--wide .field > span,
+.iv2-card--wide .vec3__label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.iv2-card--wide .field > select,
+.iv2-card--wide .field > input,
+.iv2-card--wide .field > button,
+.iv2-card--wide .vec3__cell input {
+  position: relative;
+  z-index: 1;
+  min-width: 0;
+  pointer-events: auto;
+  user-select: text;
 }
 
 .particle-checks {
@@ -329,11 +415,22 @@
 
 .field > span { white-space: nowrap; }
 
-.field select {
+.field select,
+.field > button {
   width: 100%;
   height: 22px;
   background: rgba(0, 0, 0, 0.25);
   color: var(--text-primary);
+}
+
+.field > button {
+  padding: 0 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .inspector__resets {
@@ -346,13 +443,13 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 4px;
   height: 24px;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
   color: var(--text-muted);
-  font-size: 11px;
 }
+
+.inspector__resets button:disabled { opacity: 0.4; }
 
 .inspector__resets button:hover:not(:disabled) { background: var(--bg-hover); color: var(--text-primary); }
 
@@ -443,6 +540,10 @@
 }
 
 .anim-state .field { flex: 1 1 100%; }
+
+.iv2-section .anim-mode {
+  margin-bottom: 0;
+}
 
 .anim-mode {
   display: flex;
@@ -642,7 +743,27 @@
 
 .prefab-actions__name svg { flex-shrink: 0; color: #c79bff; }
 .prefab-actions__name span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.prefab-actions em { margin-left: auto; color: #e2b15a; font-style: normal; font-size: 14px; }
+.prefab-actions em { color: #e2b15a; font-style: normal; font-size: 14px; }
+.prefab-actions .prefab-actions__unpack {
+  width: auto;
+  height: 22px;
+  margin-left: auto;
+  padding: 0 8px;
+  white-space: nowrap;
+  font-size: 11px;
+}
+.prefab-actions__rebind {
+  display: flex;
+  flex: 1 1 100%;
+  gap: 4px;
+  min-width: 0;
+}
+.prefab-actions__rebind select { flex: 1; min-width: 0; }
+.prefab-actions__rebind button {
+  width: auto;
+  padding: 0 8px;
+  white-space: nowrap;
+}
 .prefab-actions button {
   display: inline-flex;
   align-items: center;

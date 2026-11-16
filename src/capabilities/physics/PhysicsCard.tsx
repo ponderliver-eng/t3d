@@ -21,7 +21,7 @@ export function PhysicsCard({ node, disabled }: { node: SceneNode, disabled: boo
     patch({ ...physics, ...partial })
   }
   return (
-    <section className="iv2-card">
+    <section className="iv2-card iv2-card--wide">
       <header className="iv2-card__header" onClick={() => setOpen(!open)}>
         <span className="iv2-card__dot" style={{ background: '#8bc34a' }} />
         <span>{t('physics.title')}</span>
@@ -39,6 +39,8 @@ export function PhysicsCard({ node, disabled }: { node: SceneNode, disabled: boo
         {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
       </header>
       {open && <div className="iv2-card__body">
+          <section className="iv2-section">
+            <div className="iv2-section__title" style={{ color: '#8bc34a' }}><i /><span>{t('physics.shape')}</span></div>
           <label className="field">
             <span>{t('physics.body')}</span>
             <select disabled={disabled} value={physics.body} onChange={event => edit({ body: event.target.value as PhysicsBodyKind })}>
@@ -58,10 +60,10 @@ export function PhysicsCard({ node, disabled }: { node: SceneNode, disabled: boo
           {physics.shape === 'sphere' ? (
             <NumberInput label={t('physics.radius')} disabled={disabled} value={physics.size[0]} step={0.01} min={0.01} onChange={radius => edit({ size: [radius, radius, radius] })} />
           ) : physics.shape === 'capsule' ? (
-            <>
+            <div className="iv2-pair">
               <NumberInput label={t('physics.radius')} disabled={disabled} value={physics.size[0]} step={0.01} min={0.01} onChange={radius => edit({ size: [radius, physics.size[1], radius] })} />
               <NumberInput label={t('physics.height')} disabled={disabled} value={physics.size[1]} step={0.01} min={0.02} onChange={height => edit({ size: [physics.size[0], height, physics.size[0]] })} />
-            </>
+            </div>
           ) : (
             <SizeInput label={t('physics.size')} disabled={disabled} value={physics.size} onChange={size => edit({ size })} />
           )}
@@ -69,16 +71,25 @@ export function PhysicsCard({ node, disabled }: { node: SceneNode, disabled: boo
             <span>{t('physics.trigger')}</span>
             <input type="checkbox" disabled={disabled} checked={physics.trigger} onChange={event => edit({ trigger: event.target.checked })} />
           </label>
+          </section>
           {physics.body === 'dynamic' && (
-            <>
+            <section className="iv2-section">
+              <div className="iv2-section__title" style={{ color: '#aed581' }}><i /><span>{t('physics.mass')}</span></div>
+              <div className="iv2-pair">
               <NumberInput label={t('physics.mass')} disabled={disabled} value={physics.mass} step={0.1} min={0.001} onChange={mass => edit({ mass })} />
               <NumberInput label={t('physics.gravityScale')} disabled={disabled} value={physics.gravityScale} step={0.05} onChange={gravityScale => edit({ gravityScale })} />
               <NumberInput label={t('physics.linearDamping')} disabled={disabled} value={physics.linearDamping} step={0.01} min={0} onChange={linearDamping => edit({ linearDamping })} />
               <NumberInput label={t('physics.angularDamping')} disabled={disabled} value={physics.angularDamping} step={0.01} min={0} onChange={angularDamping => edit({ angularDamping })} />
-            </>
+              </div>
+            </section>
           )}
+          <section className="iv2-section">
+            <div className="iv2-section__title" style={{ color: '#c5e1a5' }}><i /><span>{t('physics.friction')}</span></div>
+            <div className="iv2-pair">
           <NumberInput label={t('physics.friction')} disabled={disabled} value={physics.friction} step={0.01} min={0} onChange={friction => edit({ friction })} />
           <NumberInput label={t('physics.restitution')} disabled={disabled} value={physics.restitution} step={0.01} min={0} max={1} onChange={restitution => edit({ restitution })} />
+            </div>
+          </section>
       </div>}
     </section>
   )

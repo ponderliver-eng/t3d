@@ -83,3 +83,26 @@
   color: var(--stop-color);
   background: rgba(244, 67, 54, 0.12);
 }
+
+.toolbar__btn--keep {
+  margin-left: 2px;
+  padding: 4px 8px;
+  border: 1px solid transparent;
+  font-size: 11px;
+}
+
+.toolbar__btn--keep:disabled {
+  opacity: 0.4;
+}
+
+.toolbar__btn--keep-dirty {
+  color: #ffc107;
+  background: rgba(255, 193, 7, 0.14);
+  border-color: rgba(255, 193, 7, 0.4);
+}
+
+.toolbar__btn--keep-dirty:hover:not(:disabled) {
+  color: #ffd54f;
+  background: rgba(255, 193, 7, 0.24);
+  border-color: rgba(255, 193, 7, 0.6);
+}

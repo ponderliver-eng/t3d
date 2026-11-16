@@ -1,4 +1,5 @@
 import { registerRuntimeSystem, type InteractSpec, type MoverSpec, type SceneRuntimeHost, type TriggerZoneSpec } from './sceneRuntime'
+import { postRuleEvent, postRuleMessage } from './rules'
 import { useEditorStore } from '../editor/scene/store'
 import type { SceneNode, Vec3 } from '../editor/scene/types'
 import { relocateCharacter } from './character'
@@ -71,6 +72,7 @@ function touchInteract(node: SceneNode, spec: InteractSpec, actors: SceneNode[],
     const message = spec.message || 'onInteract'
     useEditorStore.getState().log('info', `${node.name}：${message}`)
     hear(message)
+    postRuleEvent(node.id, 'interact')
     grantInteractScore()
     return ''
   }
@@ -91,12 +93,15 @@ function touchTrigger(node: SceneNode, spec: TriggerZoneSpec, actors: SceneNode[
     if (!live.inside.has(actor.id)) {
       useEditorStore.getState().log('info', `${node.name}：${spec.enterMessage || 'onZoneEnter'}`)
       hear(spec.enterMessage || 'onZoneEnter')
+      postRuleEvent(node.id, 'enter')
       live.used = true
     }
   }
   for (const id of live.inside) {
     if (nowInside.has(id)) continue
     useEditorStore.getState().log('info', `${node.name}：${spec.exitMessage || 'onZoneExit'}`)
+    hear(spec.exitMessage || 'onZoneExit')
+    postRuleEvent(node.id, 'exit')
     live.used = true
   }
   live.inside = nowInside
@@ -199,7 +204,9 @@ let clock = 0
 let shownTime = -1
 
 function hear(message: string) {
-  if (message) heard.add(message)
+  if (!message) return
+  heard.add(message)
+  postRuleMessage(message)
 }
 
 export function carryFor(x: number, y: number, z: number): { dx: number, dy: number, dz: number } | null {

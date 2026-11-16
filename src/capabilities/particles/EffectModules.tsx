@@ -33,7 +33,7 @@ export function EffectModules({
   return (
     <>
       {slots.length > 1 && (
-        <section className="iv2-card">
+        <section className="iv2-card iv2-card--wide">
           <div className="iv2-card__body">
             <label className="field">
               <span>{t('particles.emitter')}</span>
@@ -45,12 +45,17 @@ export function EffectModules({
         </section>
       )}
       <Card id="particle-main" title={t('particles.main')}>
+        <section className="iv2-section">
+          <div className="iv2-section__title" style={{ color: '#ffb25a' }}><i /><span>{t('particles.duration')}</span></div>
         <Num label={t('particles.duration')} value={view.duration} step={0.1} min={0.05} disabled={disabled} onChange={duration => edit({ duration })} />
         <div className="particle-checks">
           <Check label={t('particles.looping')} checked={view.looping} disabled={disabled} onChange={looping => edit({ looping })} />
           <Check label={t('particles.prewarm')} checked={view.prewarm} disabled={disabled} onChange={prewarm => edit({ prewarm })} />
           <Check label={t('particles.worldSpace')} checked={view.worldSpace} disabled={disabled} onChange={worldSpace => edit({ worldSpace })} />
         </div>
+        </section>
+        <section className="iv2-section">
+          <div className="iv2-section__title" style={{ color: '#ffd09a' }}><i /><span>{t('particles.renderMode')}</span></div>
         <label className="field">
           <span>{t('particles.renderMode')}</span>
           <select disabled={disabled} value={view.renderMode} onChange={event => edit({ renderMode: Number(event.target.value) })}>
@@ -63,22 +68,28 @@ export function EffectModules({
           </select>
         </label>
         {view.renderMode === 1 && (
-          <>
+          <div className="iv2-pair">
             <Num label={t('particles.speedFactor')} value={view.speedFactor} step={0.05} min={0} disabled={disabled} onChange={speedFactor => edit({ speedFactor })} />
             <Num label={t('particles.lengthFactor')} value={view.lengthFactor} step={0.05} disabled={disabled} onChange={lengthFactor => edit({ lengthFactor })} />
-          </>
+          </div>
         )}
         {view.renderMode === 3 && (
           <Num label={t('particles.trailLength')} value={view.trailLength} step={1} min={2} disabled={disabled} onChange={trailLength => edit({ trailLength })} />
         )}
+        </section>
       </Card>
       <Card id="particle-emission" title={t('particles.emission')}>
+        <section className="iv2-section">
+          <div className="iv2-section__title" style={{ color: '#ffb25a' }}><i /><span>{t('particles.emission')}</span></div>
         <Pair label={t('particles.rate')} min={view.rateMin} max={view.rateMax} step={1} disabled={disabled || view.rateCurve} curve={view.rateCurve} onChange={(rateMin, rateMax) => edit({ rateMin, rateMax })} />
         {view.burstLocked
           ? <p className="settings-note">{t('particles.burstsLocked')}</p>
           : <Num label={t('particles.burst')} value={view.burst} step={1} min={0} disabled={disabled} onChange={burst => edit({ burst })} />}
+        </section>
       </Card>
       <Card id="particle-start" title={t('particles.start')}>
+        <section className="iv2-section">
+          <div className="iv2-section__title" style={{ color: '#ffd09a' }}><i /><span>{t('particles.start')}</span></div>
         <div className="particle-pair particle-pair--head"><span /><span>{t('particles.min')}</span><span>{t('particles.max')}</span></div>
         <Pair label={t('particles.life')} min={view.lifeMin} max={view.lifeMax} step={0.05} disabled={disabled || view.lifeCurve} curve={view.lifeCurve} onChange={(lifeMin, lifeMax) => edit({ lifeMin, lifeMax })} />
         <Pair label={t('particles.speed')} min={view.speedMin} max={view.speedMax} step={0.1} disabled={disabled || view.speedCurve} curve={view.speedCurve} onChange={(speedMin, speedMax) => edit({ speedMin, speedMax })} />
@@ -92,8 +103,11 @@ export function EffectModules({
         <Num label={t('particles.alpha')} value={view.colorAlpha} step={0.05} min={0} max={1} disabled={disabled || view.colorCurve} onChange={colorAlpha => edit({ colorAlpha })} />
         {view.colorCurve && <p className="settings-note">{t('particles.curve')}</p>}
         {view.modules.length > 0 && <p className="settings-note">{t('particles.modules')}：{view.modules.map(module => moduleLabel(module, t)).join('、')}</p>}
+        </section>
       </Card>
       <Card id="particle-shape" title={t('particles.shape')}>
+        <section className="iv2-section">
+          <div className="iv2-section__title" style={{ color: '#ffe0b8' }}><i /><span>{t('particles.shape')}</span></div>
         <label className="field">
           <span>{t('particles.shapeType')}</span>
           {isKnownShape(view.shape) ? (
@@ -119,17 +133,26 @@ export function EffectModules({
           <Num label={t('particles.thickness')} value={view.thickness} step={0.05} min={0} max={1} disabled={disabled} onChange={thickness => edit({ thickness })} />
         )}
         {view.shape === 'rectangle' && (
-          <>
+          <div className="iv2-pair">
             <Num label={t('particles.width')} value={view.width} step={0.01} min={0} disabled={disabled} onChange={width => edit({ width })} />
             <Num label={t('particles.height')} value={view.height} step={0.01} min={0} disabled={disabled} onChange={height => edit({ height })} />
-          </>
+          </div>
         )}
-        <Num label={t('particles.tilesX')} value={view.tilesX} step={1} min={1} disabled={disabled} onChange={tilesX => edit({ tilesX })} />
-        <Num label={t('particles.tilesY')} value={view.tilesY} step={1} min={1} disabled={disabled} onChange={tilesY => edit({ tilesY })} />
+        </section>
+        <section className="iv2-section">
+          <div className="iv2-section__title" style={{ color: '#fff1d6' }}><i /><span>{t('particles.tilesX')}</span></div>
+        <div className="iv2-pair">
+          <Num label={t('particles.tilesX')} value={view.tilesX} step={1} min={1} disabled={disabled} onChange={tilesX => edit({ tilesX })} />
+          <Num label={t('particles.tilesY')} value={view.tilesY} step={1} min={1} disabled={disabled} onChange={tilesY => edit({ tilesY })} />
+        </div>
+        </section>
       </Card>
       <Card id="particle-force" title={t('particles.force')}>
+        <section className="iv2-section">
+          <div className="iv2-section__title" style={{ color: '#ffb25a' }}><i /><span>{t('particles.force')}</span></div>
         <Num label={t('particles.gravity')} value={view.gravity} step={0.1} disabled={disabled || view.gravityLocked} onChange={gravity => edit({ gravity })} />
         {view.gravityLocked && <p className="settings-note">{t('particles.gravityLocked')}</p>}
+        </section>
       </Card>
     </>
   )
@@ -192,7 +215,7 @@ function moduleLabel(type: string, t: (key: MessageKey, vars?: Record<string, st
 function Card({ id, title, children }: { id: string, title: string, children: ReactNode }) {
   const [open, setOpen] = useInspectorCardOpen(id)
   return (
-    <section className="iv2-card">
+    <section className="iv2-card iv2-card--wide">
       <header className="iv2-card__header" onClick={() => setOpen(!open)}>
         <span className="iv2-card__dot" style={{ background: '#ffb25a' }} />
         <span>{title}</span>

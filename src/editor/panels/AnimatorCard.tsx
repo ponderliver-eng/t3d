@@ -15,10 +15,21 @@ export function AnimatorCard({ nodeId }: { nodeId: string }) {
   const write = (next: AnimatorController) => useEditorStore.getState().updateNode(nodeId, { animator: next })
   const current = activeAnimatorState(animator)
   const patchState = (id: string, patch: Partial<AnimatorController['states'][number]>) => {
-    write({ ...animator, states: animator.states.map(item => item.id === id ? { ...item, ...patch } : item) })
+    const states = animator.states.map(item => item.id === id ? { ...item, ...patch } : item)
+    const next = { ...animator, states }
+    const activeId = next.stateId || next.defaultStateId || states[0]?.id
+    const active = states.find(item => item.id === activeId)
+    useEditorStore.getState().updateNode(nodeId, {
+      animator: next,
+      ...(patch.clip !== undefined && id === activeId
+        ? { clipPlaying: Boolean(active?.clip), clipTime: 0 }
+        : {}),
+    })
   }
   return (
     <div className="anim-machine anim-fields">
+      <section className="iv2-section">
+        <div className="iv2-section__title" style={{ color: '#f2cf7f' }}><i /><span>{t('anim.state')}</span></div>
       <p className="anim-current">{t('anim.current', { name: current?.name || current?.clip || '—' })}</p>
       {animator.states.map(state => (
         <div key={state.id} className="anim-block">
@@ -87,8 +98,17 @@ export function AnimatorCard({ nodeId }: { nodeId: string }) {
           const names = clips.filter(Boolean)
           if (names.length === 0) return
           const states = names.map(name => ({ id: crypto.randomUUID(), name, clip: name, clipAssetId: node.clipAssetId, loop: true, speed: 1, mask: 'full' as const }))
-          write({ ...animator, states, stateId: states[0]!.id, defaultStateId: states[0]!.id })
+          useEditorStore.getState().updateNode(nodeId, {
+            animator: { ...animator, states, stateId: states[0]!.id, defaultStateId: states[0]!.id },
+            clipPlaying: true,
+            clipTime: 0,
+          })
         }}>{t('anim.fromClips')}</button>
+      </div>
+      </section>
+      <section className="iv2-section">
+        <div className="iv2-section__title" style={{ color: '#e7c56a' }}><i /><span>{t('anim.param')}</span></div>
+      <div className="anim-tools">
         <button type="button" onClick={() => {
           const parameters = [...animator.parameters]
           if (!parameters.some(param => param.name === 'speed')) parameters.push({ id: crypto.randomUUID(), name: 'speed', type: 'number', value: 0 })
@@ -104,6 +124,11 @@ export function AnimatorCard({ nodeId }: { nodeId: string }) {
           ...animator,
           parameters: [...animator.parameters, { id: crypto.randomUUID(), name: t('anim.param'), type: 'bool', value: false }],
         })}>{t('anim.addParam')}</button>
+      </div>
+      </section>
+      <section className="iv2-section">
+        <div className="iv2-section__title" style={{ color: '#d4b8ff' }}><i /><span>{t('anim.transitions')}</span></div>
+      <div className="anim-tools">
         <button type="button" onClick={() => {
           const [from, to] = animator.states
           if (!from || !to) return
@@ -129,6 +154,7 @@ export function AnimatorCard({ nodeId }: { nodeId: string }) {
           onRemove={() => write({ ...animator, transitions: animator.transitions.filter(item => item.id !== transition.id) })}
         />
       ))}
+      </section>
     </div>
   )
 }

@@ -63,6 +63,7 @@ import { stepSceneRuntime } from '../../runtime/sceneRuntime'
 import '../../runtime/character'
 import '../../runtime/camera'
 import '../../runtime/devices'
+import '../../runtime/rules'
 import { boundsOf, prepareSkinnedPickBounds } from '../scene/bounds'
 import { isLight, isMesh } from '../scene/kinds'
 import { setSpawnProvider } from '../scene/spawn'
@@ -169,6 +170,7 @@ export class EditorViewport {
   private height = 0
   private last = 0
   private clipWrite = 0
+  private playPhase: 'stopped' | 'playing' | 'paused' = 'stopped'
   private applyingAnimator = false
   private fpsFrames = 0
   private fpsAccum = 0
@@ -180,6 +182,9 @@ export class EditorViewport {
   private volumeMuted = false
   private readonly navDebug = new Group()
   private frameCamera: EditorCameraRig['active'] | null = null
+  private readonly viewForward = new Vector3()
+  private readonly viewUp = new Vector3()
+  private readonly viewQuat = new Quaternion()
   private playCameraWarned = ''
   private clickPoints: { left: [number, number, number] | null, right: [number, number, number] | null } = { left: null, right: null }
   private pointerDelta = { x: 0, y: 0 }
@@ -831,7 +836,7 @@ export class EditorViewport {
       return
     }
     this.ignoreDoubleClick = event.button !== 0 || event.altKey || event.shiftKey || event.ctrlKey || event.metaKey
-    if (event.button === 0) {
+    if (event.button === 0 && useEditorStore.getState().playState === 'stopped') {
       this.press = {
         x: event.clientX,
         y: event.clientY,
@@ -849,6 +854,11 @@ export class EditorViewport {
       return
     }
     this.rig.pointerMove(event)
+    if (useEditorStore.getState().playState !== 'stopped') {
+      this.press = null
+      if (this.marquee) this.marquee.style.display = 'none'
+      return
+    }
     if (!this.press) return
     const dx = event.clientX - this.press.x
     const dy = event.clientY - this.press.y
@@ -884,6 +894,10 @@ export class EditorViewport {
       this.clickPoints[event.button === 2 ? 'right' : 'left'] = drop.point
     }
     if (this.canvas.hasPointerCapture(event.pointerId)) this.canvas.releasePointerCapture(event.pointerId)
+    if (useEditorStore.getState().playState !== 'stopped') {
+      if (this.marquee) this.marquee.style.display = 'none'
+      return
+    }
     const dragged = press && this.marquee?.style.display === 'block'
     if (this.marquee) this.marquee.style.display = 'none'
     if (!press || event.button !== 0) return
@@ -894,6 +908,7 @@ export class EditorViewport {
   }
 
   private onDoubleClick = (event: MouseEvent) => {
+    if (useEditorStore.getState().playState !== 'stopped') return
     if (this.ignoreDoubleClick || event.button !== 0) return
     if (event.altKey || event.shiftKey || event.ctrlKey || event.metaKey) return
     if (this.playCameraLocked() || this.transform.dragging) return
@@ -1096,7 +1111,8 @@ export class EditorViewport {
       this.fpsAccum += elapsed
     }
     if (this.playCameraLocked()) this.rig.pointerUp()
-    this.rig.update(dt)
+    // 试玩时 WASD 属于角色。编辑飞行用的是同一组键，相机会跑得比角色快，画面上就像在倒着走。
+    this.rig.update(dt, useEditorStore.getState().playState !== 'playing')
     this.commitView()
     this.placeGrid()
     const bake = consumeNavBake()
@@ -1107,11 +1123,12 @@ export class EditorViewport {
       })
       bake.finish(collectNavSurfaces(roots))
     }
+    this.frameCamera = this.activeCamera()
     stepSceneRuntime(dt, {
       ready: this.ready && Boolean(this.picture) && this.width > 1 && this.height > 1,
       resolveObject: id => this.objects.get(id) ?? null,
       updateAnimations: stepDt => this.updateMixers(stepDt),
-      yaw: () => this.rig.snapshot().yaw,
+      yaw: () => this.viewYaw(),
       pitch: () => this.rig.snapshot().pitch,
       poseCamera: (position, lookAt, fov) => {
         if (this.playCameraLocked()) return
@@ -1647,6 +1664,8 @@ export class EditorViewport {
   private updateMixers(dt: number) {
     const state = useEditorStore.getState()
     const nodes = state.nodes
+    const justStarted = state.playState === 'playing' && this.playPhase === 'stopped'
+    this.playPhase = state.playState
     let write = false
     if (performance.now() - this.clipWrite > 120) {
       this.clipWrite = performance.now()
@@ -1657,6 +1676,7 @@ export class EditorViewport {
       const data = dataOf(group)
       if (!node || !data.mixer) continue
       const selected = state.selection.includes(id)
+      if (justStarted) data.animatorTime = 0
       if (node.animator?.enabled && node.clipPlaying) {
         if (data.animatorState !== node.animator.stateId) {
           data.animatorState = node.animator.stateId
@@ -1676,6 +1696,14 @@ export class EditorViewport {
         }
       }
       if (!(node.clipPlaying || node.overlayPlaying)) continue
+      if (justStarted) {
+        const start = data.actions?.get(data.activeClip ?? '')
+        if (start && node.clip) {
+          start.time = 0
+          start.paused = false
+          start.play()
+        }
+      }
       const overlayKeep = node.overlayPlaying ? data.actions?.get(data.activeOverlay ?? '') : undefined
       const bodyKeep = node.clipPlaying ? data.actions?.get(data.activeClip ?? '') : undefined
       data.bodyBlend = this.stepBlend(data, data.bodyBlend, overlayKeep)
@@ -1733,6 +1761,21 @@ export class EditorViewport {
 
   private viewCamera() {
     return this.frameCamera ?? this.rig.active
+  }
+
+  /** 当前画面镜头的水平朝向。镜头看向本地 -Z；直上直下时改用屏幕上方。 */
+  private viewYaw(): number {
+    const camera = this.viewCamera()
+    camera.getWorldQuaternion(this.viewQuat)
+    this.viewForward.set(0, 0, -1).applyQuaternion(this.viewQuat)
+    const fx = this.viewForward.x
+    const fz = this.viewForward.z
+    if (fx * fx + fz * fz > 0.04) return Math.atan2(-fx, -fz)
+    this.viewUp.set(0, 1, 0).applyQuaternion(this.viewQuat)
+    const ux = this.viewUp.x
+    const uz = this.viewUp.z
+    if (ux * ux + uz * uz > 1e-6) return Math.atan2(-ux, -uz)
+    return this.rig.snapshot().yaw
   }
 
   /** 用正在看的那台相机发出射线，并沿用它的近远裁剪。相机图标若和视口重合，交点在镜头上，距离是 0，不该挡住后面的物体。 */

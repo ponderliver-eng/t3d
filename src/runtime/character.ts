@@ -11,6 +11,7 @@ import {
 } from './sceneRuntime'
 
 interface Motion {
+  yaw: number
   vy: number
   grounded: boolean
   lastGrounded: number
@@ -103,7 +104,7 @@ function stepCharacters(dt: number, host: SceneRuntimeHost) {
     const spec = { ...defaultCharacter(), ...raw }
     const object = host.resolveObject(node.id)
     if (!object) continue
-    const live = motion.get(node.id) ?? freshMotion()
+    const live = motion.get(node.id) ?? freshMotion(yawOf(object.quaternion))
     const placed = takeRelocation(node.id)
     if (placed) {
       object.position.set(placed[0], placed[1], placed[2])
@@ -117,7 +118,7 @@ function stepCharacters(dt: number, host: SceneRuntimeHost) {
     const world = rotate(wish.x, wish.z, basis.moveYaw)
     const dashPressed = spec.dash && tapped(spec.dashKey || 'KeyC')
     if (dashPressed && now >= live.dashReady) {
-      const dir = wish.amount > 0.1 ? world : { x: Math.sin(basis.faceYaw), z: Math.cos(basis.faceYaw) }
+      const dir = wish.amount > 0.1 ? world : { x: Math.sin(live.yaw), z: Math.cos(live.yaw) }
       const len = Math.hypot(dir.x, dir.z) || 1
       live.dashX = dir.x / len
       live.dashZ = dir.z / len
@@ -199,7 +200,11 @@ function stepCharacters(dt: number, host: SceneRuntimeHost) {
     const carry = carryFor(nextX, nextY, nextZ)
     if (carry && live.grounded) object.position.set(nextX + carry.dx, nextY + carry.dy, nextZ + carry.dz)
     const face = faceYaw(spec, basis, wish, moveX, moveZ, dodging, live)
-    object.quaternion.set(0, Math.sin(face / 2), 0, Math.cos(face / 2))
+    if (face !== null) {
+      const rate = Math.max(30, spec.turnSpeed) * Math.PI / 180 * (basis.lock ? 1.5 : 1)
+      live.yaw = stepYaw(live.yaw, face, rate * dt)
+    }
+    object.quaternion.set(0, Math.sin(live.yaw / 2), 0, Math.cos(live.yaw / 2))
     const clip = pickClip(spec, live.grounded, dodging, Math.hypot(moveX, moveZ) > 0.2, sprint)
     if (clip && clip !== live.clip) {
       live.clip = clip
@@ -210,9 +215,9 @@ function stepCharacters(dt: number, host: SceneRuntimeHost) {
   consumeTaps()
 }
 
-function freshMotion(): Motion {
+function freshMotion(yaw: number): Motion {
   return {
-    vy: 0, grounded: false, lastGrounded: 0, jumpBufferUntil: 0, jumpsUsed: 0,
+    yaw, vy: 0, grounded: false, lastGrounded: 0, jumpBufferUntil: 0, jumpsUsed: 0,
     dashUntil: 0, dashReady: 0, dashX: 0, dashZ: 1, invincibleUntil: 0,
     clip: '', path: [], pathIndex: 0, footstep: 0, footsteps: 0,
   }
@@ -240,9 +245,13 @@ function facingBasis(
   cameraYaw: number,
   host: SceneRuntimeHost,
 ): { moveYaw: number, faceYaw: number, lock: boolean } {
-  if (spec.mode === 'side25d') return { moveYaw: 0, faceYaw: 0, lock: false }
-  if (spec.mode === 'lockOn' && spec.lockTargetName) {
-    const target = Object.values(nodes).find(item => item.id !== selfId && item.name === spec.lockTargetName)
+  if (spec.mode === 'side25d') return { moveYaw: cameraYaw, faceYaw: 0, lock: false }
+  if (spec.mode === 'lockOn') {
+    const target = spec.lockTargetId && spec.lockTargetId !== selfId
+      ? nodes[spec.lockTargetId]
+      : spec.lockTargetName
+        ? Object.values(nodes).find(item => item.id !== selfId && item.name === spec.lockTargetName)
+        : undefined
     const targetObject = target ? host.resolveObject(target.id) : null
     if (targetObject) {
       const yaw = Math.atan2(targetObject.position.x - x, targetObject.position.z - z)
@@ -264,11 +273,23 @@ function rotate(x: number, z: number, yaw: number): { x: number, z: number } {
   }
 }
 
-function faceYaw(spec: CharacterSpec, basis: { faceYaw: number, lock: boolean }, wish: { amount: number }, moveX: number, moveZ: number, dodging: boolean, live: Motion): number {
+function faceYaw(spec: CharacterSpec, basis: { faceYaw: number, lock: boolean }, wish: { amount: number }, moveX: number, moveZ: number, dodging: boolean, live: Motion): number | null {
   if (dodging) return Math.atan2(live.dashX, live.dashZ)
   if (basis.lock || spec.mode === 'strafe' || spec.mode === 'firstPerson' || spec.mode === 'lockOn') return basis.faceYaw
   if (wish.amount > 0.1 || Math.hypot(moveX, moveZ) > 0.2) return Math.atan2(moveX, moveZ)
-  return basis.faceYaw
+  return null
+}
+
+function yawOf(q: { x: number, y: number, z: number, w: number }): number {
+  return Math.atan2(2 * (q.w * q.y + q.x * q.z), 1 - 2 * (q.y * q.y + q.z * q.z))
+}
+
+function stepYaw(current: number, target: number, maxStep: number): number {
+  let delta = target - current
+  if (delta > Math.PI) delta -= Math.PI * 2
+  if (delta < -Math.PI) delta += Math.PI * 2
+  if (Math.abs(delta) <= maxStep) return target
+  return current + Math.sign(delta) * maxStep
 }
 
 function followPath(x: number, z: number, live: Motion, stop: number): { x: number, z: number } {

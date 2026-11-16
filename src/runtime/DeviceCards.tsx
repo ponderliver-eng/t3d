@@ -52,12 +52,20 @@ export function InteractCard({ node, disabled }: { node: SceneNode, disabled: bo
       </header>
       {open && (
         <div className="iv2-card__body">
-          <Text label={t('interact.prompt')} value={view.prompt} disabled={disabled} onChange={prompt => write({ prompt })} />
-          <Text label={t('interact.key')} value={view.key} disabled={disabled} onChange={key => write({ key })} />
-          <Num label={t('interact.radius')} value={view.radius} disabled={disabled} onChange={radius => write({ radius })} />
-          <TagSelect label={t('interact.tag')} empty={t('interact.any')} value={view.filterTagId} tags={tags} disabled={disabled} onChange={filterTagId => write({ filterTagId })} />
-          <Text label={t('interact.message')} value={view.message} disabled={disabled} onChange={message => write({ message })} />
-          <Check label={t('interact.once')} disabled={disabled} checked={view.once} onChange={once => write({ once })} />
+          <section className="iv2-section">
+            <div className="iv2-section__title" style={{ color: '#e0a15a' }}><i /><span>{t('interact.prompt')}</span></div>
+            <div className="iv2-pair">
+              <Text label={t('interact.prompt')} value={view.prompt} disabled={disabled} onChange={prompt => write({ prompt })} />
+              <Text label={t('interact.key')} value={view.key} disabled={disabled} onChange={key => write({ key })} />
+            </div>
+            <Check label={t('interact.once')} disabled={disabled} checked={view.once} onChange={once => write({ once })} />
+          </section>
+          <section className="iv2-section">
+            <div className="iv2-section__title" style={{ color: '#f0c674' }}><i /><span>{t('interact.radius')}</span></div>
+            <Num label={t('interact.radius')} value={view.radius} disabled={disabled} onChange={radius => write({ radius })} />
+            <TagSelect label={t('interact.tag')} empty={t('interact.any')} value={view.filterTagId} tags={tags} disabled={disabled} onChange={filterTagId => write({ filterTagId })} />
+            <Text label={t('interact.message')} value={view.message} disabled={disabled} onChange={message => write({ message })} />
+          </section>
         </div>
       )}
     </section>
@@ -111,11 +119,19 @@ export function TriggerCard({ node, disabled }: { node: SceneNode, disabled: boo
       </header>
       {open && (
         <div className="iv2-card__body">
-          <Num label={t('trigger.radius')} value={view.radius} disabled={disabled} onChange={radius => write({ radius })} />
-          <TagSelect label={t('trigger.tag')} empty={t('interact.any')} value={view.filterTagId} tags={tags} disabled={disabled} onChange={filterTagId => write({ filterTagId })} />
-          <Text label={t('trigger.enter')} value={view.enterMessage} disabled={disabled} onChange={enterMessage => write({ enterMessage })} />
-          <Text label={t('trigger.exit')} value={view.exitMessage} disabled={disabled} onChange={exitMessage => write({ exitMessage })} />
-          <Check label={t('trigger.once')} disabled={disabled} checked={view.once} onChange={once => write({ once })} />
+          <section className="iv2-section">
+            <div className="iv2-section__title" style={{ color: '#d27ba0' }}><i /><span>{t('trigger.radius')}</span></div>
+            <div className="iv2-pair">
+              <Num label={t('trigger.radius')} value={view.radius} disabled={disabled} onChange={radius => write({ radius })} />
+              <Check label={t('trigger.once')} disabled={disabled} checked={view.once} onChange={once => write({ once })} />
+            </div>
+            <TagSelect label={t('trigger.tag')} empty={t('interact.any')} value={view.filterTagId} tags={tags} disabled={disabled} onChange={filterTagId => write({ filterTagId })} />
+          </section>
+          <section className="iv2-section">
+            <div className="iv2-section__title" style={{ color: '#e7a0c0' }}><i /><span>{t('rule.message')}</span></div>
+            <Text label={t('trigger.enter')} value={view.enterMessage} disabled={disabled} onChange={enterMessage => write({ enterMessage })} />
+            <Text label={t('trigger.exit')} value={view.exitMessage} disabled={disabled} onChange={exitMessage => write({ exitMessage })} />
+          </section>
         </div>
       )}
     </section>
@@ -168,13 +184,21 @@ export function MoverCard({ node, disabled }: { node: SceneNode, disabled: boole
       </header>
       {open && (
         <div className="iv2-card__body">
-          <Vec3Field label={t('mover.offset')} value={view.offset} disabled={disabled} onChange={offset => write({ offset })} />
-          <Num label={t('mover.duration')} value={view.duration} disabled={disabled} onChange={duration => write({ duration })} />
-          <Num label={t('mover.pause')} value={view.pause} disabled={disabled} onChange={pause => write({ pause })} />
-          <Num label={t('mover.carry')} value={view.carryRadius} disabled={disabled} onChange={carryRadius => write({ carryRadius })} />
-          <Check label={t('mover.ping')} disabled={disabled} checked={view.pingPong} onChange={pingPong => write({ pingPong })} />
-          <Check label={t('mover.auto')} disabled={disabled} checked={view.autoPlay} onChange={autoPlay => write({ autoPlay })} />
-          {!view.autoPlay && <Text label={t('mover.message')} value={view.startMessage} disabled={disabled} onChange={startMessage => write({ startMessage })} />}
+          <section className="iv2-section">
+            <div className="iv2-section__title" style={{ color: '#6ec4c4' }}><i /><span>{t('mover.offset')}</span></div>
+            <Vec3Field label={t('mover.offset')} value={view.offset} disabled={disabled} onChange={offset => write({ offset })} />
+            <Num label={t('mover.carry')} value={view.carryRadius} disabled={disabled} onChange={carryRadius => write({ carryRadius })} />
+          </section>
+          <section className="iv2-section">
+            <div className="iv2-section__title" style={{ color: '#9ad7d7' }}><i /><span>{t('mover.duration')}</span></div>
+            <div className="iv2-pair">
+              <Num label={t('mover.duration')} value={view.duration} disabled={disabled} onChange={duration => write({ duration })} />
+              <Num label={t('mover.pause')} value={view.pause} disabled={disabled} onChange={pause => write({ pause })} />
+            </div>
+            <Check label={t('mover.ping')} disabled={disabled} checked={view.pingPong} onChange={pingPong => write({ pingPong })} />
+            <Check label={t('mover.auto')} disabled={disabled} checked={view.autoPlay} onChange={autoPlay => write({ autoPlay })} />
+            {!view.autoPlay && <Text label={t('mover.message')} value={view.startMessage} disabled={disabled} onChange={startMessage => write({ startMessage })} />}
+          </section>
         </div>
       )}
     </section>
@@ -227,11 +251,19 @@ export function CheckpointCard({ node, disabled }: { node: SceneNode, disabled: 
       </header>
       {open && (
         <div className="iv2-card__body">
-          <Check label={t('checkpoint.spawn')} disabled={disabled} checked={view.spawn} onChange={spawn => write({ spawn })} />
-          <Num label={t('checkpoint.radius')} value={view.radius} disabled={disabled} onChange={radius => write({ radius })} />
-          <Num label={t('checkpoint.delay')} value={view.delay} disabled={disabled} onChange={delay => write({ delay })} />
-          <Num label={t('checkpoint.abyss')} value={view.abyssY} disabled={disabled} onChange={abyssY => write({ abyssY })} />
-          <Text label={t('checkpoint.message')} value={view.message} disabled={disabled} onChange={message => write({ message })} />
+          <section className="iv2-section">
+            <div className="iv2-section__title" style={{ color: '#d4c15a' }}><i /><span>{t('checkpoint.spawn')}</span></div>
+            <Check label={t('checkpoint.spawn')} disabled={disabled} checked={view.spawn} onChange={spawn => write({ spawn })} />
+            <div className="iv2-pair">
+              <Num label={t('checkpoint.radius')} value={view.radius} disabled={disabled} onChange={radius => write({ radius })} />
+              <Num label={t('checkpoint.delay')} value={view.delay} disabled={disabled} onChange={delay => write({ delay })} />
+            </div>
+          </section>
+          <section className="iv2-section">
+            <div className="iv2-section__title" style={{ color: '#e07a7a' }}><i /><span>{t('checkpoint.abyss')}</span></div>
+            <Num label={t('checkpoint.abyss')} value={view.abyssY} disabled={disabled} onChange={abyssY => write({ abyssY })} />
+            <Text label={t('checkpoint.message')} value={view.message} disabled={disabled} onChange={message => write({ message })} />
+          </section>
         </div>
       )}
     </section>
@@ -284,11 +316,19 @@ export function ScoreCard({ node, disabled }: { node: SceneNode, disabled: boole
       </header>
       {open && (
         <div className="iv2-card__body">
-          <p className="character-card__hint">{t('score.hint')}</p>
-          <Text label={t('score.objective')} value={view.title} disabled={disabled} onChange={title => write({ title })} />
-          <Num label={t('score.target')} value={view.target} disabled={disabled} onChange={target => write({ target })} />
-          <Num label={t('score.interact')} value={view.perInteract} disabled={disabled} onChange={perInteract => write({ perInteract })} />
-          <Num label={t('score.time')} value={view.timeLimit} disabled={disabled} onChange={timeLimit => write({ timeLimit })} />
+          <section className="iv2-section">
+            <div className="iv2-section__title" style={{ color: '#c48bdc' }}><i /><span>{t('score.objective')}</span></div>
+            <Text label={t('score.objective')} value={view.title} disabled={disabled} onChange={title => write({ title })} />
+            <div className="iv2-pair">
+              <Num label={t('score.target')} value={view.target} disabled={disabled} onChange={target => write({ target })} />
+              <Num label={t('score.interact')} value={view.perInteract} disabled={disabled} onChange={perInteract => write({ perInteract })} />
+            </div>
+          </section>
+          <section className="iv2-section">
+            <div className="iv2-section__title" style={{ color: '#d7b0e8' }}><i /><span>{t('score.time')}</span></div>
+            <Num label={t('score.time')} value={view.timeLimit} disabled={disabled} onChange={timeLimit => write({ timeLimit })} />
+            <p className="settings-note">{t('score.hint')}</p>
+          </section>
         </div>
       )}
     </section>

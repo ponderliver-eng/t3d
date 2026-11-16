@@ -1,4 +1,4 @@
-import { ArrowDownToLine, Axis3d, BoxSelect, Crosshair, FilePlus, Globe, Grid3x3, History, Magnet, Move3d, Pause, Play, Redo2, RotateCcw, Save, Scaling, Square, Undo2 } from 'lucide-react'
+import { ArrowDownToLine, Axis3d, BoxSelect, Check, Crosshair, FilePlus, Globe, Grid3x3, History, Magnet, Move3d, Pause, Play, Redo2, RotateCcw, Save, Scaling, Square, Undo2 } from 'lucide-react'
 import { saveProjectNow } from '../assets/project'
 import { translate, useI18n } from '../i18n'
 import { askNewScene, useEditorStore } from '../scene/store'
@@ -13,6 +13,7 @@ export default function Toolbar() {
   const origin = useEditorStore(state => state.gizmoOrigin)
   const grid = useEditorStore(state => state.gridVisible)
   const playState = useEditorStore(state => state.playState)
+  const playDirty = useEditorStore(state => state.playDirty)
   const sidePanel = useEditorStore(state => state.sidePanel)
   const sceneUndo = useEditorStore(state => (state.past.length > 0 || state.gesture !== null) && state.playState === 'stopped')
   const sceneRedo = useEditorStore(state => state.future.length > 0 && state.gesture === null && state.playState === 'stopped')
@@ -101,7 +102,8 @@ export default function Toolbar() {
           type="button"
           className={`toolbar__btn toolbar__btn--play ${playState === 'playing' ? 'toolbar__btn--playing' : ''}`}
           title={playState === 'playing' ? t('tool.pause') : t('tool.play')}
-          onClick={() => {
+          onClick={event => {
+            event.currentTarget.blur()
             const state = useEditorStore.getState()
             if (state.playState === 'playing') state.pause()
             else state.play()
@@ -115,10 +117,25 @@ export default function Toolbar() {
           className="toolbar__btn toolbar__btn--stop"
           title={t('tool.stop')}
           disabled={playState === 'stopped'}
-          onClick={() => useEditorStore.getState().stop()}
+          onClick={event => {
+            event.currentTarget.blur()
+            useEditorStore.getState().stop()
+          }}
         >
           <Square size={12} />
         </button>
+        {playState !== 'stopped' && (
+          <button
+            type="button"
+            className={`toolbar__btn toolbar__btn--keep ${playDirty ? 'toolbar__btn--keep-dirty' : ''}`}
+            title={t('tool.keepPlayChanges')}
+            disabled={!playDirty}
+            onClick={() => useEditorStore.getState().keepPlayChanges()}
+          >
+            <Check size={13} />
+            <span>{t('inspector.keepPlayChanges')}</span>
+          </button>
+        )}
       </div>
       <div className="toolbar__spacer" />
       <button
