@@ -1,4 +1,4 @@
-import { Box3, Sphere, Vector3, type Object3D, type SkinnedMesh } from 'three'
+import { Box3, Matrix4, Sphere, Vector3, type Object3D, type SkinnedMesh } from 'three'
 
 type SkinnedBounds = Omit<SkinnedMesh, 'boundingBox' | 'boundingSphere'> & {
   boundingBox: Box3 | null
@@ -6,33 +6,67 @@ type SkinnedBounds = Omit<SkinnedMesh, 'boundingBox' | 'boundingSphere'> & {
 }
 
 const vertex = new Vector3()
+const inverse = new Matrix4()
+const boneBox = new Box3()
+const vertexBox = new Box3()
 
 /**
- * 蒙皮包围盒依赖骨骼的世界矩阵，以及网格上的绑定逆矩阵。
- * 先刷新整棵子树的世界矩阵，再在首次缺失时按局部空间缓存蒙皮包围盒，避免每帧在 CPU 上逐顶点蒙皮。
+ * 射线先用包围球把网格丢掉。导入时的球是没蒙皮的，蹲下后身体会露在外面，点击就穿过角色打到地面。
+ * 肉的厚度只量一次；之后每次拾取只用骨骼关节更新包围盒，不逐顶点蒙皮。
  */
-export function refreshObjectBounds(root: Object3D) {
+export function prepareSkinnedPickBounds(root: Object3D) {
+  let skinned = false
+  root.traverse(child => {
+    if ((child as SkinnedMesh).isSkinnedMesh) skinned = true
+  })
+  if (!skinned) return
   root.updateMatrixWorld(true)
   root.traverse(child => {
-    const skinned = child as SkinnedBounds
-    if (!skinned.isSkinnedMesh || !skinned.skeleton) return
-    if (skinned.boundingBox && !skinned.boundingBox.isEmpty()) return
-    const position = skinned.geometry?.getAttribute('position')
-    if (!position || position.count === 0) return
-    const box = new Box3()
-    const step = Math.max(1, Math.floor(position.count / 2048))
-    for (let i = 0; i < position.count; i += step) {
-      skinned.getVertexPosition(i, vertex)
-      box.expandByPoint(vertex)
+    const mesh = child as SkinnedBounds
+    if (!mesh.isSkinnedMesh || !mesh.skeleton) return
+    mesh.skeleton.update()
+    inverse.copy(mesh.matrixWorld).invert()
+    boneBox.makeEmpty()
+    for (const bone of mesh.skeleton.bones) {
+      bone.getWorldPosition(vertex).applyMatrix4(inverse)
+      boneBox.expandByPoint(vertex)
     }
-    skinned.boundingBox = box
-    if (!skinned.boundingSphere) {
-      skinned.boundingSphere = box.getBoundingSphere(new Sphere())
-    }
+    if (boneBox.isEmpty()) return
+    const pad = skinPad(mesh, boneBox)
+    const box = mesh.boundingBox ?? new Box3()
+    box.copy(boneBox).expandByScalar(pad)
+    mesh.boundingBox = box
+    mesh.boundingSphere = box.getBoundingSphere(mesh.boundingSphere ?? new Sphere())
   })
 }
 
+function skinPad(mesh: SkinnedBounds, bones: Box3): number {
+  const cached = mesh.userData.t3dSkinPad
+  if (typeof cached === 'number') return cached
+  const position = mesh.geometry?.getAttribute('position')
+  if (!position || position.count === 0) return 0.05
+  vertexBox.makeEmpty()
+  const step = position.count > 24000 ? Math.ceil(position.count / 12000) : 1
+  for (let i = 0; i < position.count; i += step) {
+    mesh.getVertexPosition(i, vertex)
+    vertexBox.expandByPoint(vertex)
+  }
+  const pad = vertexBox.isEmpty()
+    ? 0.05
+    : Math.max(
+      bones.min.x - vertexBox.min.x,
+      vertexBox.max.x - bones.max.x,
+      bones.min.y - vertexBox.min.y,
+      vertexBox.max.y - bones.max.y,
+      bones.min.z - vertexBox.min.z,
+      vertexBox.max.z - bones.max.z,
+      0.02,
+    )
+  mesh.userData.t3dSkinPad = pad
+  return pad
+}
+
 export function boundsOf(root: Object3D): Box3 {
-  refreshObjectBounds(root)
+  prepareSkinnedPickBounds(root)
   return new Box3().setFromObject(root)
 }

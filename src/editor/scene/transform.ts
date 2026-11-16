@@ -54,6 +54,19 @@ export function worldPose(nodes: Record<string, SceneNode>, id: string): Pose {
   return { position, quaternion, scale }
 }
 
+/** 把文档里的局部变换贴到父级当前的世界位姿上。试玩中父级已经被物理改过，不能再从文档重算整条链。 */
+export function appendLocalPose(parent: Pose, node: Pick<SceneNode, 'position' | 'rotation' | 'scale'>): Pose {
+  const position = new Vector3(node.position[0], node.position[1], node.position[2])
+    .multiply(parent.scale)
+    .applyQuaternion(parent.quaternion)
+    .add(parent.position)
+  return {
+    position,
+    quaternion: parent.quaternion.clone().multiply(eulerQuaternion(node.rotation)),
+    scale: parent.scale.clone().multiply(new Vector3(node.scale[0], node.scale[1], node.scale[2])),
+  }
+}
+
 export function worldMatrix(nodes: Record<string, SceneNode>, id: string): Matrix4 {
   const pose = worldPose(nodes, id)
   return new Matrix4().compose(pose.position, pose.quaternion, pose.scale)

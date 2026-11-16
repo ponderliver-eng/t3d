@@ -63,13 +63,13 @@ import { stepSceneRuntime } from '../../runtime/sceneRuntime'
 import '../../runtime/character'
 import '../../runtime/camera'
 import '../../runtime/devices'
-import { boundsOf } from '../scene/bounds'
+import { boundsOf, prepareSkinnedPickBounds } from '../scene/bounds'
 import { isLight, isMesh } from '../scene/kinds'
 import { setSpawnProvider } from '../scene/spawn'
 import { setEditorViewBridge, setGroundSnapper, setViewportAlign } from '../scene/viewportBridge'
 import { useEditorStore } from '../scene/store'
 import { useInspectorMemory } from '../panels/inspectorMemory'
-import { localPoseFromWorld, poseComponents, worldPose } from '../scene/transform'
+import { appendLocalPose, localPoseFromWorld, poseComponents, worldPose } from '../scene/transform'
 import type { SceneNode, ToneMap } from '../scene/types'
 import { EditorCameraRig } from './cameraControls'
 import { resolvePlayCamera } from './playCamera'
@@ -956,6 +956,7 @@ export class EditorViewport {
 
   private pickId(clientX: number, clientY: number): string | null {
     if (!this.aimPointer(clientX, clientY)) return null
+    this.preparePickBounds()
     const hits = this.raycaster.intersectObjects(this.pickables, true)
     for (const hit of hits) {
       let object: Object3D | null = hit.object
@@ -981,6 +982,7 @@ export class EditorViewport {
 
   private pickSurface(clientX: number, clientY: number): { id: string, object: Object3D, materialIndex: number } | null {
     if (!this.aimPointer(clientX, clientY)) return null
+    this.preparePickBounds()
     const hits = this.raycaster.intersectObjects(this.pickables, true)
     for (const hit of hits) {
       let owner: Object3D | null = hit.object
@@ -1130,6 +1132,7 @@ export class EditorViewport {
         return point
       },
     })
+    this.followSimulatedParents()
     const editor = useEditorStore.getState()
     syncNavDebug(
       this.navDebug,
@@ -1203,6 +1206,26 @@ export class EditorViewport {
       this.raycaster.layers.mask = previousMask
     }
     return null
+  }
+
+  private followSimulatedParents() {
+    const state = useEditorStore.getState()
+    if (state.playState !== 'playing') return
+    for (const id of orderedIds(state.nodes)) {
+      const node = state.nodes[id]
+      if (!node?.parentId) continue
+      if (node.physics?.body === 'dynamic' || node.gameplay?.character?.enabled || node.gameplay?.mover?.enabled) continue
+      const parent = this.objects.get(node.parentId)
+      const group = this.objects.get(id)
+      if (!parent || !group) continue
+      const world = appendLocalPose(
+        { position: parent.position, quaternion: parent.quaternion, scale: parent.scale },
+        node,
+      )
+      group.position.copy(world.position)
+      group.quaternion.copy(world.quaternion)
+      group.scale.copy(world.scale)
+    }
   }
 
   private aspect() {
@@ -1702,6 +1725,10 @@ export class EditorViewport {
         item.transparent = true
       }
     })
+  }
+
+  private preparePickBounds() {
+    for (const pick of this.pickables) prepareSkinnedPickBounds(pick)
   }
 
   private viewCamera() {

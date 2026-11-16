@@ -26,7 +26,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import { reimportModel, setModelImportScale, setModelSockets } from '../assets/import'
 import { useAssetStore, type ModelSocket } from '../assets/library'
 import { getModelTemplate, instantiateModel, subscribeModels } from '../assets/models'
-import { boundsOf, refreshObjectBounds } from '../scene/bounds'
+import { boundsOf, prepareSkinnedPickBounds } from '../scene/bounds'
 import { useI18n } from '../i18n'
 import { popPreviewWindow } from './previewStore'
 
@@ -200,7 +200,7 @@ export function ModelPreview({ assetId, standalone = false }: { assetId: string,
         if (mesh.isSkinnedMesh) mesh.frustumCulled = false
       })
       scene.add(root)
-      refreshObjectBounds(root)
+      prepareSkinnedPickBounds(root)
       box = new BoxHelper(root, 0x4a9eff)
       box.visible = false
       scene.add(box)
@@ -226,7 +226,7 @@ export function ModelPreview({ assetId, standalone = false }: { assetId: string,
       setScale: scale => {
         if (!root) return
         root.scale.setScalar(scale)
-        refreshObjectBounds(root)
+        prepareSkinnedPickBounds(root)
         fit('persp')
       },
       highlight: name => paintPick(name),
@@ -293,7 +293,7 @@ export function ModelPreview({ assetId, standalone = false }: { assetId: string,
         setTime(action.time)
       }
       if (root && box?.visible) {
-        refreshObjectBounds(root)
+        prepareSkinnedPickBounds(root)
         box.update()
       }
       controls.update()
