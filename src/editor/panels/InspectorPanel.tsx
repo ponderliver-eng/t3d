@@ -12,6 +12,9 @@ import { capabilityEnabled } from '../../capabilities/registry'
 import { EffectModules } from '../../capabilities/particles/EffectModules'
 import { openProjectSettings } from '../project/ProjectSettingsDialog'
 import { PhysicsCard } from '../../capabilities/physics/PhysicsCard'
+import { CharacterCard } from '../../runtime/CharacterCard'
+import { CameraCard } from '../../runtime/CameraCard'
+import { InteractCard, TriggerCard, MoverCard, CheckpointCard, ScoreCard } from '../../runtime/DeviceCards'
 import { EffectCard } from '../../capabilities/particles/EffectCard'
 import { NavigationCard, SceneNavigationCard } from '../../capabilities/navigation/NavigationCards'
 import {
@@ -173,6 +176,27 @@ export default function InspectorPanel() {
         </div>
       </Card>
 
+      {(node.kind === 'model' || node.kind === 'empty') && (
+        <CharacterCard node={node} disabled={locked || playing} />
+      )}
+      {(node.kind === 'model' || node.kind === 'empty' || node.kind === 'camera') && (
+        <CameraCard node={node} disabled={locked || playing} />
+      )}
+      {(isMesh(node.kind) || node.kind === 'model' || node.kind === 'empty') && (
+        <InteractCard node={node} disabled={locked || playing} />
+      )}
+      {(isMesh(node.kind) || node.kind === 'model' || node.kind === 'empty') && (
+        <TriggerCard node={node} disabled={locked || playing} />
+      )}
+      {(isMesh(node.kind) || node.kind === 'model' || node.kind === 'empty') && (
+        <MoverCard node={node} disabled={locked || playing} />
+      )}
+      {(isMesh(node.kind) || node.kind === 'model' || node.kind === 'empty') && (
+        <CheckpointCard node={node} disabled={locked || playing} />
+      )}
+      {(isMesh(node.kind) || node.kind === 'model' || node.kind === 'empty') && (
+        <ScoreCard node={node} disabled={locked || playing} />
+      )}
       {(isMesh(node.kind) || node.kind === 'model' || node.kind === 'empty') && (
         <PhysicsCard node={node} disabled={locked || playing} />
       )}

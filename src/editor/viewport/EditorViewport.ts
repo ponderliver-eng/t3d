@@ -60,6 +60,9 @@ import { collectNavSurfaces } from '../../capabilities/navigation/collect'
 import { syncNavDebug } from '../../capabilities/navigation/debug'
 import { consumeNavBake, navDebugGeometry } from '../../capabilities/navigation/session'
 import { stepSceneRuntime } from '../../runtime/sceneRuntime'
+import '../../runtime/character'
+import '../../runtime/camera'
+import '../../runtime/devices'
 import { boundsOf, refreshObjectBounds } from '../scene/bounds'
 import { isLight, isMesh } from '../scene/kinds'
 import { setSpawnProvider } from '../scene/spawn'
@@ -174,6 +177,9 @@ export class EditorViewport {
   private readonly navDebug = new Group()
   private frameCamera: EditorCameraRig['active'] | null = null
   private playCameraWarned = ''
+  private clickPoints: { left: [number, number, number] | null, right: [number, number, number] | null } = { left: null, right: null }
+  private pointerDelta = { x: 0, y: 0 }
+  private rightButton = false
   private appliedViewNonce = 0
   private readonly unsubscribe: () => void
   private readonly unsubscribeAssets: () => void
@@ -356,7 +362,7 @@ export class EditorViewport {
       const ancestorChanged = Boolean(node.parentId && changed.has(node.parentId))
       const nodeChanged = data.syncedNode !== node
       if (nodeChanged || ancestorChanged) changed.add(id)
-      const skipTransform = this.driving && (this.singleId === id || this.baselines.some(item => item.id === id))
+      const skipTransform = state.playState === 'playing' || (this.driving && (this.singleId === id || this.baselines.some(item => item.id === id)))
       if (!skipTransform && (nodeChanged || ancestorChanged)) {
         const pose = worldPose(state.nodes, id)
         group.position.copy(pose.position)
@@ -814,6 +820,7 @@ export class EditorViewport {
     if (active && active !== this.canvas && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA')) active.blur()
     const gizmo = this.transform.axis !== null && event.button === 0 && !event.altKey
     this.press = null
+    this.rightButton = (event.buttons & 2) !== 0
     if (gizmo || this.playCameraLocked() || event.button !== 0 || event.altKey || event.shiftKey || event.ctrlKey || event.metaKey) {
       this.ignoreDoubleClick = true
     }
@@ -838,6 +845,9 @@ export class EditorViewport {
   }
 
   private onPointerMove = (event: PointerEvent) => {
+    this.pointerDelta.x += event.movementX
+    this.pointerDelta.y += event.movementY
+    this.rightButton = (event.buttons & 2) !== 0
     this.rig.pointerMove(event)
     if (!this.press) return
     const dx = event.clientX - this.press.x
@@ -858,8 +868,13 @@ export class EditorViewport {
   private onPointerUp = (event: PointerEvent) => {
     const press = this.press
     this.press = null
+    this.rightButton = false
     this.rig.pointerUp()
     this.commitView()
+    if (useEditorStore.getState().playState === 'playing' && (event.button === 0 || event.button === 2)) {
+      const drop = this.raycastDrop(event.clientX, event.clientY)
+      this.clickPoints[event.button === 2 ? 'right' : 'left'] = drop.point
+    }
     if (this.canvas.hasPointerCapture(event.pointerId)) this.canvas.releasePointerCapture(event.pointerId)
     const dragged = press && this.marquee?.style.display === 'block'
     if (this.marquee) this.marquee.style.display = 'none'
@@ -1101,6 +1116,26 @@ export class EditorViewport {
       ready: this.ready && Boolean(this.picture) && this.width > 1 && this.height > 1,
       resolveObject: id => this.objects.get(id) ?? null,
       updateAnimations: stepDt => this.updateMixers(stepDt),
+      yaw: () => this.rig.snapshot().yaw,
+      pitch: () => this.rig.snapshot().pitch,
+      poseCamera: (position, lookAt, fov) => {
+        if (this.playCameraLocked()) return
+        const eye = new Vector3(position[0], position[1], position[2])
+        const target = new Vector3(lookAt[0], lookAt[1], lookAt[2])
+        this.rig.place(eye, target, fov)
+      },
+      pointerDelta: () => {
+        const delta = this.pointerDelta
+        this.pointerDelta = { x: 0, y: 0 }
+        return delta
+      },
+      rightHeld: () => this.rightButton,
+      probe: (origin, direction, max, ignoreId) => this.probeScene(origin, direction, max, ignoreId),
+      consumeClick: button => {
+        const point = this.clickPoints[button]
+        this.clickPoints[button] = null
+        return point
+      },
     })
     const editor = useEditorStore.getState()
     syncNavDebug(
@@ -1145,6 +1180,27 @@ export class EditorViewport {
       }
     }
     this.publishStats()
+  }
+
+  private probeScene(origin: [number, number, number], direction: [number, number, number], max: number, ignoreId: string): number | null {
+    const dir = new Vector3(direction[0], direction[1], direction[2])
+    if (dir.lengthSq() < 1e-8) return null
+    dir.normalize()
+    this.raycaster.set(new Vector3(origin[0], origin[1], origin[2]), dir)
+    this.raycaster.near = 0.02
+    this.raycaster.far = max
+    const targets: Object3D[] = []
+    for (const pick of this.pickables) {
+      if (belongsToNode(pick, ignoreId)) continue
+      targets.push(pick)
+    }
+    for (const hit of this.raycaster.intersectObjects(targets, true)) {
+      let object: Object3D | null = hit.object
+      while (object && !object.userData.nodeId) object = object.parent
+      if (!object || object.userData.nodeId === ignoreId || !isRendered(object)) continue
+      return hit.distance
+    }
+    return null
   }
 
   private aspect() {
@@ -1744,6 +1800,15 @@ function mountGuide(group: Group, guide: SceneGuide, nodeId: string) {
   group.add(guide.icon)
   group.add(guide.lines)
   dataOf(group).pick = guide.icon
+}
+
+function belongsToNode(object: Object3D, nodeId: string): boolean {
+  let current: Object3D | null = object
+  while (current) {
+    if (current.userData.nodeId === nodeId) return true
+    current = current.parent
+  }
+  return false
 }
 
 function isRendered(object: Object3D): boolean {

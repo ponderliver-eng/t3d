@@ -88,6 +88,19 @@
   touch-action: none;
 }
 
+.play-prompt {
+  position: absolute;
+  left: 50%;
+  bottom: 72px;
+  transform: translateX(-50%);
+  padding: 6px 12px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.72);
+  color: #f2f2f2;
+  font-size: 13px;
+  pointer-events: none;
+}
+
 .viewcube {
   position: absolute;
   right: 12px;

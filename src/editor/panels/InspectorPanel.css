@@ -121,6 +121,10 @@
   padding: 8px 10px;
 }
 
+.iv2-card--wide .field {
+  grid-template-columns: 88px minmax(0, 1fr);
+}
+
 .particle-checks {
   display: flex;
   flex-wrap: wrap;
@@ -523,4 +527,11 @@
   height: 18px;
   padding: 0;
   background: transparent;
+}
+
+.character-card__hint {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.45;
 }

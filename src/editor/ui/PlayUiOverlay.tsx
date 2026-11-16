@@ -1,9 +1,11 @@
+import { useSyncExternalStore } from 'react'
 import { useAssetStore } from '../assets/library'
 import { translate } from '../i18n'
 import { useEditorStore } from '../scene/store'
 import type { UiNode } from '../../runtime/ui/spec'
 import { UiScreenStack } from '../../runtime/ui/dom'
 import { dispatchUiClick } from '../../runtime/ui/values'
+import { playPrompt, subscribePlayPrompt } from '../../runtime/devices'
 import { readPlayScreens } from './ScreenCard'
 import { useUiValues } from './runtimeStore'
 
@@ -11,16 +13,21 @@ export function PlayUiOverlay() {
   const nodes = useEditorStore(state => state.nodes)
   const revision = useAssetStore(state => state.revision)
   const values = useUiValues()
+  const prompt = useSyncExternalStore(subscribePlayPrompt, playPrompt)
   const mounts = readPlayScreens(nodes)
-  if (mounts.length === 0) return null
   return (
-    <UiScreenStack
-      key={revision}
-      mounts={mounts}
-      values={values}
-      resolveImageUrl={textureUrl}
-      onActivate={node => activate(node)}
-    />
+    <>
+      {mounts.length > 0 && (
+        <UiScreenStack
+          key={revision}
+          mounts={mounts}
+          values={values}
+          resolveImageUrl={textureUrl}
+          onActivate={node => activate(node)}
+        />
+      )}
+      {prompt && <div className="play-prompt">{prompt}</div>}
+    </>
   )
 }
 

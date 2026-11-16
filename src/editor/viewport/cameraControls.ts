@@ -185,6 +185,28 @@ export class EditorCameraRig {
     this.use(this.persp, 'persp', VIEW_LABEL.persp)
   }
 
+  /** 试玩时把环绕中心放到角色上，不改当前朝向和距离。 */
+  place(eye: Vector3, target: Vector3, fov: number) {
+    if (this.persp.fov !== fov) {
+      this.persp.fov = fov
+      this.persp.updateProjectionMatrix()
+    }
+    this.persp.position.copy(eye)
+    this.persp.lookAt(target)
+    this.pivot.copy(target)
+    this.orbitDistance = Math.max(eye.distanceTo(target), 0.15)
+    this.readYawPitch()
+    this.active = this.persp
+    this.view = 'persp'
+  }
+
+  followTarget(center: Vector3, distance?: number) {
+    this.pivot.copy(center)
+    if (this.view !== 'persp') return
+    if (distance !== undefined && Number.isFinite(distance)) this.orbitDistance = MathUtils.clamp(distance, 0.15, 80)
+    this.persp.position.copy(center).addScaledVector(this.forward(), -this.orbitDistance)
+  }
+
   focus(center: Vector3, radius: number, flat = false) {
     this.pivot.copy(center)
     if (this.view !== 'persp') {
