@@ -1,4 +1,5 @@
-import { Activity, BarChart3, Box, X } from 'lucide-react'
+import { useState } from 'react'
+import { Activity, BarChart3, Box, ChevronDown, ChevronUp, X } from 'lucide-react'
 import { capabilityEnabled } from '../../capabilities/registry'
 import { useAssetStore } from '../assets/library'
 import { useI18n } from '../i18n'
@@ -12,8 +13,19 @@ function fmtNum(n: number): string {
   return String(Math.round(n))
 }
 
+const COLLAPSE_KEY = 't3d-viewport-stats-collapsed'
+
+function readCollapsed(): boolean {
+  try {
+    return localStorage.getItem(COLLAPSE_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
 export function ViewportStatsDrawer({ onClose }: { onClose: () => void }) {
   const { t } = useI18n()
+  const [collapsed, setCollapsed] = useState(readCollapsed)
   const stats = useEditorStore(state => state.viewportStats)
   const backend = useEditorStore(state => state.renderBackend)
   const nodes = useEditorStore(state => state.nodes)
@@ -40,21 +52,42 @@ export function ViewportStatsDrawer({ onClose }: { onClose: () => void }) {
   const playCamera = playCameraId ? nodes[playCameraId] : undefined
   const fpsColor = stats.fps >= 50 ? '#34d399' : stats.fps >= 30 ? '#fbbf24' : '#f87171'
   const [x, y, z] = stats.camera
+  const toggleCollapsed = () => {
+    setCollapsed(value => {
+      const next = !value
+      try {
+        localStorage.setItem(COLLAPSE_KEY, next ? '1' : '0')
+      } catch {
+        // 记住折叠只是方便下次打开，写不进去也不影响这次显示。
+      }
+      return next
+    })
+  }
   return (
-    <div className="viewport-stats-drawer" onClick={event => event.stopPropagation()} onPointerDown={event => event.stopPropagation()}>
+    <div className={`viewport-stats-drawer${collapsed ? ' viewport-stats-drawer--collapsed' : ''}`} onClick={event => event.stopPropagation()} onPointerDown={event => event.stopPropagation()}>
       <div className="viewport-stats-drawer__header">
         <div className="viewport-stats-drawer__title">
           <BarChart3 size={13} />
-          <span>{t('view.statsTitle')}</span>
+          {!collapsed && <span>{t('view.statsTitle')}</span>}
         </div>
         <div className="viewport-stats-drawer__header-right">
           <span className="viewport-stats-drawer__fps-pill" style={{ color: fpsColor, borderColor: `${fpsColor}44`, background: `${fpsColor}14` }}>
             {stats.fps.toFixed(1)} FPS · {stats.frameMs.toFixed(1)} ms
           </span>
+          {collapsed && (
+            <div className="viewport-stats-drawer__compact">
+              <Chip k={t('view.statsCallsShort')} v={fmtNum(stats.calls)} />
+              <Chip k={t('view.statsTrisShort')} v={fmtNum(stats.triangles)} />
+              <Chip k={t('view.statsVertices')} v={fmtNum(stats.vertices)} />
+            </div>
+          )}
+          <button type="button" className="viewport-stats-drawer__close" title={collapsed ? t('view.statsExpand') : t('view.statsCollapse')} aria-expanded={!collapsed} onClick={toggleCollapsed}>
+            {collapsed ? <ChevronDown size={13} /> : <ChevronUp size={13} />}
+          </button>
           <button type="button" className="viewport-stats-drawer__close" onClick={onClose}><X size={13} /></button>
         </div>
       </div>
-      <div className="viewport-stats-drawer__body">
+      {!collapsed && <div className="viewport-stats-drawer__body">
         <div className="viewport-stats-drawer__section">
           <div className="viewport-stats-drawer__section-title"><BarChart3 size={11} /> {t('view.statsRender')}</div>
           <div className="viewport-stats-drawer__grid">
@@ -84,8 +117,17 @@ export function ViewportStatsDrawer({ onClose }: { onClose: () => void }) {
             <Row k={t('view.statsSelected')} v={selected ? `${selected.name} · ${selected.kind}` : t('view.statsNone')} />
           </div>
         </div>
-      </div>
+      </div>}
     </div>
+  )
+}
+
+function Chip({ k, v }: { k: string, v: string }) {
+  return (
+    <span className="viewport-stats-drawer__chip" title={`${k} ${v}`}>
+      <span>{k}</span>
+      <strong>{v}</strong>
+    </span>
   )
 }
 

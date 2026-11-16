@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import {
   Mesh,
   MeshBasicMaterial,
+  OrthographicCamera,
   PerspectiveCamera,
   PlaneGeometry,
   Scene,
@@ -9,7 +10,6 @@ import {
   SphereGeometry,
   Texture,
   TextureLoader,
-  Vector2,
   WebGLRenderer,
 } from 'three'
 import { useI18n } from '../i18n'
@@ -36,9 +36,12 @@ export function TexturePreview({ assetId, environment = false, standalone = fals
     if (!canvas || !asset || !('url' in asset)) return
     const renderer = new WebGLRenderer({ canvas, antialias: true, alpha: true })
     renderer.setPixelRatio(Math.min(devicePixelRatio, 2))
+    renderer.setClearColor(0x000000, 0)
     const scene = new Scene()
-    const camera = new PerspectiveCamera(40, 1, 0.01, 20)
-    camera.position.z = environment ? 2.6 : 2.2
+    const camera = environment
+      ? new PerspectiveCamera(40, 1, 0.01, 20)
+      : new OrthographicCamera(-1, 1, 1, -1, 0.1, 10)
+    camera.position.z = environment ? 2.6 : 1
     let map: Texture | null = environment ? environmentFor(assetId) : textureFor(assetId, true)
     let owned = false
     if (!map && !environment && asset.url) {
@@ -51,8 +54,6 @@ export function TexturePreview({ assetId, environment = false, standalone = fals
         uniforms: {
           map: { value: map },
           channel: { value: 0 },
-          pan: { value: new Vector2() },
-          zoom: { value: 1 },
         },
         vertexShader: `
           varying vec2 vUv;
@@ -64,12 +65,9 @@ export function TexturePreview({ assetId, environment = false, standalone = fals
         fragmentShader: `
           uniform sampler2D map;
           uniform int channel;
-          uniform vec2 pan;
-          uniform float zoom;
           varying vec2 vUv;
           void main() {
-            vec2 uv = (vUv - 0.5) / max(zoom, 0.001) + 0.5 + pan;
-            vec4 color = texture2D(map, uv);
+            vec4 color = texture2D(map, vUv);
             if (channel == 1) color = vec4(vec3(color.r), 1.0);
             else if (channel == 2) color = vec4(vec3(color.g), 1.0);
             else if (channel == 3) color = vec4(vec3(color.b), 1.0);
@@ -79,38 +77,83 @@ export function TexturePreview({ assetId, environment = false, standalone = fals
         `,
       })
     const mesh = new Mesh(
-      environment ? new SphereGeometry(1, 48, 32) : new PlaneGeometry(2.2, 2.2),
+      environment ? new SphereGeometry(1, 48, 32) : new PlaneGeometry(1, 1),
       material,
     )
     scene.add(mesh)
     let frame = 0
+    let zoom = 1
+    let panX = 0
+    let panY = 0
+    let spanX = 1
+    let spanY = 1
+    const frameTexture = () => {
+      if (!(camera instanceof OrthographicCamera)) return
+      const rect = canvas.getBoundingClientRect()
+      if (rect.width < 2 || rect.height < 2) return
+      const image = map?.image as { width?: number, height?: number } | undefined
+      const iw = image?.width && image.height ? image.width : 1
+      const ih = image?.width && image.height ? image.height : 1
+      const imageAspect = iw / ih
+      mesh.scale.set(imageAspect, 1, 1)
+      const viewAspect = rect.width / rect.height
+      const worldW = viewAspect >= imageAspect ? viewAspect : imageAspect
+      const worldH = viewAspect >= imageAspect ? 1 : imageAspect / viewAspect
+      spanX = worldW / zoom
+      spanY = worldH / zoom
+      camera.left = panX - spanX / 2
+      camera.right = panX + spanX / 2
+      camera.top = panY + spanY / 2
+      camera.bottom = panY - spanY / 2
+      camera.updateProjectionMatrix()
+    }
     const resize = () => {
       const rect = canvas.parentElement?.getBoundingClientRect()
-      if (!rect || rect.width < 2) return
+      if (!rect || rect.width < 2 || rect.height < 2) return
       renderer.setSize(rect.width, rect.height, false)
-      camera.aspect = rect.width / Math.max(rect.height, 1)
-      camera.updateProjectionMatrix()
+      if (camera instanceof PerspectiveCamera) {
+        camera.aspect = rect.width / rect.height
+        camera.updateProjectionMatrix()
+        return
+      }
+      frameTexture()
     }
     const observer = new ResizeObserver(resize)
     if (canvas.parentElement) observer.observe(canvas.parentElement)
     resize()
     const onWheel = (event: WheelEvent) => {
-      if (!(material instanceof ShaderMaterial)) {
+      if (!(camera instanceof OrthographicCamera)) {
         camera.position.z = Math.min(6, Math.max(1.2, camera.position.z + event.deltaY * 0.002))
         return
       }
       event.preventDefault()
-      const zoom = material.uniforms.zoom.value as number
-      material.uniforms.zoom.value = Math.min(8, Math.max(0.4, zoom * (event.deltaY > 0 ? 0.9 : 1.1)))
+      const rect = canvas.getBoundingClientRect()
+      const next = Math.min(16, Math.max(0.25, zoom * (event.deltaY > 0 ? 0.9 : 1.1)))
+      if (rect.width > 2 && rect.height > 2) {
+        const u = (event.clientX - rect.left) / rect.width
+        const v = (event.clientY - rect.top) / rect.height
+        const worldX = panX + (u - 0.5) * spanX
+        const worldY = panY + (0.5 - v) * spanY
+        zoom = next
+        frameTexture()
+        panX = worldX - (u - 0.5) * spanX
+        panY = worldY - (0.5 - v) * spanY
+      } else {
+        zoom = next
+      }
+      frameTexture()
     }
     let drag: { x: number, y: number } | null = null
     const onDown = (event: PointerEvent) => { drag = { x: event.clientX, y: event.clientY } }
     const onMove = (event: PointerEvent) => {
       if (!drag) return
-      if (material instanceof ShaderMaterial) {
-        const pan = material.uniforms.pan.value as Vector2
-        pan.x -= (event.clientX - drag.x) / 420
-        pan.y += (event.clientY - drag.y) / 420
+      if (camera instanceof OrthographicCamera) {
+        const rect = canvas.getBoundingClientRect()
+        if (rect.width > 2 && rect.height > 2) {
+          panX -= (event.clientX - drag.x) / rect.width * spanX
+          panY += (event.clientY - drag.y) / rect.height * spanY
+          frameTexture()
+        }
       } else {
         mesh.rotation.y += (event.clientX - drag.x) * 0.005
         mesh.rotation.x += (event.clientY - drag.y) * 0.005
@@ -125,7 +168,10 @@ export function TexturePreview({ assetId, environment = false, standalone = fals
     const tick = () => {
       if (material instanceof ShaderMaterial) material.uniforms.channel.value = CHANNEL[channelRef.current]
       const image = map?.image as { width?: number, height?: number } | undefined
-      if (image?.width && image.height) setSize(`${image.width} × ${image.height}`)
+      if (image?.width && image.height) {
+        setSize(`${image.width} × ${image.height}`)
+        if (camera instanceof OrthographicCamera && Math.abs(mesh.scale.x - image.width / image.height) > 1e-4) frameTexture()
+      }
       renderer.render(scene, camera)
       frame = requestAnimationFrame(tick)
     }
