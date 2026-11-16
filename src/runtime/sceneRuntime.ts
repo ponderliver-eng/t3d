@@ -38,10 +38,15 @@ export interface CharacterSpec {
   lockTargetId?: string
   lockTargetName: string
   idleClip: string
+  idleClipAssetId: string
   walkClip: string
+  walkClipAssetId: string
   runClip: string
+  runClipAssetId: string
   jumpClip: string
+  jumpClipAssetId: string
   dodgeClip: string
+  dodgeClipAssetId: string
 }
 
 export function defaultCharacter(): CharacterSpec {
@@ -71,10 +76,15 @@ export function defaultCharacter(): CharacterSpec {
     lockTargetId: '',
     lockTargetName: '',
     idleClip: '',
+    idleClipAssetId: '',
     walkClip: '',
+    walkClipAssetId: '',
     runClip: '',
+    runClipAssetId: '',
     jumpClip: '',
+    jumpClipAssetId: '',
     dodgeClip: '',
+    dodgeClipAssetId: '',
   }
 }
 
@@ -302,6 +312,8 @@ export interface RuleStep {
   tag: string
   seconds: number
   clip: string
+  /** 片段所在的模型或动画资源。空着表示用物体自己的模型。 */
+  clipAssetId: string
   stateId: string
   level: 'info' | 'warn' | 'error'
   conditions: RuleCondition[]
@@ -355,6 +367,7 @@ export function emptyStep(kind: RuleStepKind = 'message'): RuleStep {
     tag: '',
     seconds: kind === 'wait' ? 0.5 : 0,
     clip: '',
+    clipAssetId: '',
     stateId: '',
     level: 'info',
     conditions: kind === 'if' ? [emptyCondition('hasTag')] : [],
@@ -444,6 +457,7 @@ function normalizeStep(raw: unknown): RuleStep {
   step.tag = item.tag ?? ''
   step.seconds = Number.isFinite(item.seconds) ? Number(item.seconds) : step.seconds
   step.clip = item.clip ?? ''
+  step.clipAssetId = item.clipAssetId ?? ''
   step.stateId = item.stateId ?? ''
   step.level = item.level === 'warn' || item.level === 'error' ? item.level : 'info'
   const legacy = item.do === 'if' && item.cond

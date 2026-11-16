@@ -206,9 +206,16 @@ function stepCharacters(dt: number, host: SceneRuntimeHost) {
     }
     object.quaternion.set(0, Math.sin(live.yaw / 2), 0, Math.cos(live.yaw / 2))
     const clip = pickClip(spec, live.grounded, dodging, Math.hypot(moveX, moveZ) > 0.2, sprint)
-    if (clip && clip !== live.clip) {
-      live.clip = clip
-      playBody(node.id, { clip, loop: clip !== spec.jumpClip && clip !== spec.dodgeClip, fade: 0.12 })
+    const clipKey = clip.name ? `${clip.assetId}\0${clip.name}` : ''
+    if (clipKey && clipKey !== live.clip) {
+      live.clip = clipKey
+      const own = !clip.assetId || clip.assetId === node.assetId
+      playBody(node.id, {
+        clip: clip.name,
+        assetId: own ? null : clip.assetId,
+        loop: clip.name !== spec.jumpClip && clip.name !== spec.dodgeClip,
+        fade: 0.12,
+      })
     }
     motion.set(node.id, live)
   }
@@ -320,12 +327,12 @@ function steerPoint(x: number, z: number, tx: number, tz: number): { x: number, 
   return { x: dx / len, z: dz / len }
 }
 
-function pickClip(spec: CharacterSpec, grounded: boolean, dodging: boolean, moving: boolean, sprint: boolean): string {
-  if (dodging && spec.dodgeClip) return spec.dodgeClip
-  if (!grounded && spec.jumpClip) return spec.jumpClip
-  if (moving && sprint && spec.runClip) return spec.runClip
-  if (moving && spec.walkClip) return spec.walkClip
-  return spec.idleClip
+function pickClip(spec: CharacterSpec, grounded: boolean, dodging: boolean, moving: boolean, sprint: boolean): { name: string, assetId: string } {
+  if (dodging && spec.dodgeClip) return { name: spec.dodgeClip, assetId: spec.dodgeClipAssetId }
+  if (!grounded && spec.jumpClip) return { name: spec.jumpClip, assetId: spec.jumpClipAssetId }
+  if (moving && sprint && spec.runClip) return { name: spec.runClip, assetId: spec.runClipAssetId }
+  if (moving && spec.walkClip) return { name: spec.walkClip, assetId: spec.walkClipAssetId }
+  return { name: spec.idleClip, assetId: spec.idleClipAssetId }
 }
 
 function groundUnder(host: SceneRuntimeHost, x: number, y: number, z: number, id: string, spec: CharacterSpec): number | null {

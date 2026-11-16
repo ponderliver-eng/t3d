@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom'
 import { ChevronDown, ChevronRight, Search, Trash2, X } from 'lucide-react'
 import { CardReset } from '../editor/panels/CardReset'
 import { KeyField } from '../editor/ui/KeyField'
-import { clipNamesFor } from '../editor/assets/models'
+import { ClipField } from '../editor/panels/ClipPicker'
 import { useInspectorCardOpen } from '../editor/panels/inspectorMemory'
 import { useEditorStore } from '../editor/scene/store'
 import { useI18n, type MessageKey } from '../editor/i18n'
@@ -34,7 +34,6 @@ export function CharacterCard({ node, disabled }: { node: SceneNode, disabled: b
   if (!spec) return null
   const view = characterOrDefault(spec)
   const cam = resolveCharacterCamera(view, node.gameplay?.cameraFollow)
-  const clips = [...new Set([...clipNamesFor(node.assetId), ...clipNamesFor(node.clipAssetId)])]
   const lockNode = view.lockTargetId
     ? nodes[view.lockTargetId]
     : view.lockTargetName
@@ -158,12 +157,12 @@ export function CharacterCard({ node, disabled }: { node: SceneNode, disabled: b
           )}
           </Section>
           <Section title={t('character.section.clips')} color="#c79bff">
-          <Clip label={t('character.idle')} value={view.idleClip} clips={clips} disabled={disabled} onChange={idleClip => write({ idleClip })} />
-          <Clip label={t('character.walkClip')} value={view.walkClip} clips={clips} disabled={disabled} onChange={walkClip => write({ walkClip })} />
-          <Clip label={t('character.runClip')} value={view.runClip} clips={clips} disabled={disabled} onChange={runClip => write({ runClip })} />
+          <ClipField label={t('character.idle')} assetId={view.idleClipAssetId} name={view.idleClip} disabled={disabled} onChange={clip => write({ idleClip: clip?.name ?? '', idleClipAssetId: clip?.assetId ?? '' })} />
+          <ClipField label={t('character.walkClip')} assetId={view.walkClipAssetId} name={view.walkClip} disabled={disabled} onChange={clip => write({ walkClip: clip?.name ?? '', walkClipAssetId: clip?.assetId ?? '' })} />
+          <ClipField label={t('character.runClip')} assetId={view.runClipAssetId} name={view.runClip} disabled={disabled} onChange={clip => write({ runClip: clip?.name ?? '', runClipAssetId: clip?.assetId ?? '' })} />
           <div className="iv2-pair">
-          <Clip label={t('character.jumpClip')} value={view.jumpClip} clips={clips} disabled={disabled} onChange={jumpClip => write({ jumpClip })} />
-          <Clip label={t('character.dodgeClip')} value={view.dodgeClip} clips={clips} disabled={disabled} onChange={dodgeClip => write({ dodgeClip })} />
+          <ClipField label={t('character.jumpClip')} assetId={view.jumpClipAssetId} name={view.jumpClip} disabled={disabled} onChange={clip => write({ jumpClip: clip?.name ?? '', jumpClipAssetId: clip?.assetId ?? '' })} />
+          <ClipField label={t('character.dodgeClip')} assetId={view.dodgeClipAssetId} name={view.dodgeClip} disabled={disabled} onChange={clip => write({ dodgeClip: clip?.name ?? '', dodgeClipAssetId: clip?.assetId ?? '' })} />
           </div>
           </Section>
           <Section title={t('camera.title')} color="#7aa2ff">
@@ -344,19 +343,6 @@ function Text({ label, value, disabled, onChange }: { label: string, value: stri
     <label className="field">
       <span>{label}</span>
       <input value={value} disabled={disabled} onChange={event => onChange(event.target.value.trim())} />
-    </label>
-  )
-}
-
-function Clip({ label, value, clips, disabled, onChange }: { label: string, value: string, clips: string[], disabled: boolean, onChange: (value: string) => void }) {
-  const names = value && !clips.includes(value) ? [value, ...clips] : clips
-  return (
-    <label className="field">
-      <span>{label}</span>
-      <select value={value} disabled={disabled} onChange={event => onChange(event.target.value)}>
-        <option value="" />
-        {names.map(name => <option key={name} value={name}>{name}</option>)}
-      </select>
     </label>
   )
 }

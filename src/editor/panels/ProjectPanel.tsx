@@ -18,6 +18,7 @@ const PILLS = [
   { id: 'model', icon: Box },
   { id: 'image', icon: Image },
   { id: 'audio', icon: Music },
+  { id: 'animation', icon: Clapperboard },
   { id: 'scene', icon: Globe },
   { id: 'used', icon: MapPin },
   { id: 'unused', icon: Unlink },
@@ -89,7 +90,8 @@ export default function ProjectPanel() {
     const matchesPill = (asset: ProjectAsset) => {
       if (pill === 'model' && asset.kind !== 'model' && asset.kind !== 'prefab') return false
       if (pill === 'image' && asset.kind !== 'texture' && asset.kind !== 'material' && asset.kind !== 'environment') return false
-      if (pill === 'audio' && asset.kind !== 'audio' && asset.kind !== 'animation') return false
+      if (pill === 'audio' && asset.kind !== 'audio') return false
+      if (pill === 'animation' && asset.kind !== 'animation') return false
       if (pill === 'scene' && asset.kind !== 'scene') return false
       if (pill === 'used' && !referenced.has(asset.id)) return false
       if (pill === 'unused' && referenced.has(asset.id)) return false

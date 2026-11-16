@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } 
 import { createPortal } from 'react-dom'
 import { ChevronDown, ChevronRight, Component, ExternalLink, Eye, FolderOpen, FolderSearch, Image as ImageIcon, MapPin, Move, Package, Pause, Play, Plus, Rotate3d, Scaling, Search, Square, SunMedium, Trash2, Undo2, Unlink, Upload, X } from 'lucide-react'
 import { clipDuration, clipNamesFor, loadModelTemplate, subscribeModels } from '../assets/models'
+import { ClipField } from './ClipPicker'
 import { activeAnimatorState, emptyAnimator } from '../animation/animator'
 import { HumanoidCard } from './HumanoidCard'
 import { AnimatorCard } from './AnimatorCard'
@@ -1024,21 +1025,6 @@ function AnimationCard({
   const playSource = drivenState ? (drivenState.clipAssetId || assetId) : sourceId
   const duration = clipDuration(playSource, playName)
   const shown = duration > 0 ? Math.min(clipTime, duration) : clipTime
-  const choose = (value: string) => {
-    const store = useEditorStore.getState()
-    if (!value) {
-      store.updateNode(nodeId, { clip: '', clipTime: 0, clipPlaying: false })
-      return
-    }
-    const [source, name] = value.split('\u001f')
-    if (source === 'file') store.updateNode(nodeId, { clip: name, clipTime: 0, clipPlaying: true })
-    else store.updateNode(nodeId, {
-      clip: name,
-      clipTime: 0,
-      clipPlaying: true,
-      ...(fileClips.includes(name) ? { clipAssetId: null } : {}),
-    })
-  }
   return (
     <div className="anim-fields">
       <div className="anim-transport">
@@ -1086,22 +1072,27 @@ function AnimationCard({
         />
         <span>{formatClipTime(shown)} / {formatClipTime(duration)}</span>
       </div>
-      {!driven && <label className="field">
-        <span>{t('inspector.clip')}</span>
-        <select value={clip ? `${fromFile ? 'file' : 'model'}\u001f${clip}` : ''} onChange={event => choose(event.target.value)}>
-          <option value="">{t('material.none')}</option>
-          {modelClips.length > 0 && (
-            <optgroup label={t('inspector.modelClips')}>
-              {modelClips.map(name => <option key={`model:${name}`} value={`model\u001f${name}`}>{name}</option>)}
-            </optgroup>
-          )}
-          {fileClips.length > 0 && (
-            <optgroup label={t('inspector.fileClips')}>
-              {fileClips.map(name => <option key={`file:${name}`} value={`file\u001f${name}`}>{name}</option>)}
-            </optgroup>
-          )}
-        </select>
-      </label>}
+      {!driven && (
+        <ClipField
+          label={t('inspector.clip')}
+          assetId={fromFile ? (clipAssetId ?? '') : (clip ? (assetId ?? '') : '')}
+          name={clip}
+          onChange={next => {
+            const store = useEditorStore.getState()
+            if (!next) {
+              store.updateNode(nodeId, { clip: '', clipAssetId: null, clipTime: 0, clipPlaying: false })
+              return
+            }
+            const own = !assetId || next.assetId === assetId
+            store.updateNode(nodeId, {
+              clip: next.name,
+              clipAssetId: own ? null : next.assetId,
+              clipTime: 0,
+              clipPlaying: true,
+            })
+          }}
+        />
+      )}
       {!driven && <AssetRef
         label={t('inspector.animFile')}
         title={t('inspector.animFile')}
@@ -1153,31 +1144,26 @@ function AnimationCard({
           <option value="lower">{t('anim.maskLower')}</option>
         </select>
       </label>
-      <label className="field">
-        <span>{t('anim.overlay')}</span>
-        <select
-          value={playback?.overlayClip ? `${playback.overlayAssetId ? 'file' : 'model'}\u001f${playback.overlayClip}` : ''}
-          onChange={event => {
-            const store = useEditorStore.getState()
-            if (!event.target.value) {
-              store.updateNode(nodeId, { overlayClip: '', overlayPlaying: false, overlayTime: 0 })
-              return
-            }
-            const [source, name] = event.target.value.split('\u001f')
-            store.updateNode(nodeId, {
-              overlayClip: name,
-              overlayAssetId: source === 'file' ? clipAssetId : null,
-              overlayTime: 0,
-              overlayPlaying: true,
-              overlayLoop: false,
-            })
-          }}
-        >
-          <option value="">{t('anim.overlayStop')}</option>
-          {modelClips.map(name => <option key={`overlay-model:${name}`} value={`model\u001f${name}`}>{name}</option>)}
-          {fileClips.map(name => <option key={`overlay-file:${name}`} value={`file\u001f${name}`}>{name}</option>)}
-        </select>
-      </label>
+      <ClipField
+        label={t('anim.overlay')}
+        assetId={playback?.overlayAssetId || (playback?.overlayClip ? (assetId ?? '') : '')}
+        name={playback?.overlayClip ?? ''}
+        onChange={next => {
+          const store = useEditorStore.getState()
+          if (!next) {
+            store.updateNode(nodeId, { overlayClip: '', overlayAssetId: null, overlayPlaying: false, overlayTime: 0 })
+            return
+          }
+          const own = !assetId || next.assetId === assetId
+          store.updateNode(nodeId, {
+            overlayClip: next.name,
+            overlayAssetId: own ? null : next.assetId,
+            overlayTime: 0,
+            overlayPlaying: true,
+            overlayLoop: false,
+          })
+        }}
+      />
       </Section>}
     </div>
   )

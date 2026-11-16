@@ -224,7 +224,10 @@ function run(node: SceneNode, step: RuleStep, host: SceneRuntimeHost, now: numbe
     return
   }
   if (step.do === 'playClip' && step.clip) {
-    if (host.resolveObject(node.id)) playBody(node.id, { clip: step.clip, loop: true, fade: node.clipFade ?? 0.15 })
+    if (host.resolveObject(node.id)) {
+      const own = !step.clipAssetId || step.clipAssetId === node.assetId
+      playBody(node.id, { clip: step.clip, assetId: own ? null : step.clipAssetId, loop: true, fade: node.clipFade ?? 0.15 })
+    }
     return
   }
   if (step.do === 'log') {

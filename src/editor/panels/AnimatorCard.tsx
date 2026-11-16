@@ -1,6 +1,7 @@
 import { Star, Trash2 } from 'lucide-react'
 import { activeAnimatorState, emptyAnimator, type AnimatorController, type AnimatorParam, type AnimatorTransition } from '../animation/animator'
 import { clipNamesFor } from '../assets/models'
+import { ClipField } from './ClipPicker'
 import { useI18n } from '../i18n'
 import { useEditorStore } from '../scene/store'
 
@@ -46,25 +47,19 @@ export function AnimatorCard({ nodeId }: { nodeId: string }) {
               })
             }}><Trash2 size={13} /></button>
           </div>
-          <label className="field">
-            <span>{t('inspector.clip')}</span>
-            <select
-              value={state.clip ? `${state.clipAssetId ? 'file' : 'model'}\u001f${state.clip}` : ''}
-              onChange={event => {
-                const value = event.target.value
-                if (!value) {
-                  patchState(state.id, { clip: '', clipAssetId: null })
-                  return
-                }
-                const [source, name] = value.split('\u001f')
-                patchState(state.id, { clip: name ?? '', clipAssetId: source === 'file' ? node.clipAssetId : null })
-              }}
-            >
-              <option value="">{t('material.none')}</option>
-              {modelClips.map(name => <option key={`model:${name}`} value={`model\u001f${name}`}>{name}</option>)}
-              {fileClips.map(name => <option key={`file:${name}`} value={`file\u001f${name}`}>{name}</option>)}
-            </select>
-          </label>
+          <ClipField
+            label={t('inspector.clip')}
+            assetId={state.clipAssetId || (state.clip ? (node.assetId ?? '') : '')}
+            name={state.clip}
+            onChange={next => {
+              if (!next) {
+                patchState(state.id, { clip: '', clipAssetId: null })
+                return
+              }
+              const own = !node.assetId || next.assetId === node.assetId
+              patchState(state.id, { clip: next.name, clipAssetId: own ? null : next.assetId })
+            }}
+          />
           <label className="field">
             <span>{t('anim.speed')}</span>
             <input type="number" min={0.05} step={0.05} value={state.speed} onChange={event => patchState(state.id, { speed: Number(event.target.value) })} />

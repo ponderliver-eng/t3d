@@ -1,5 +1,6 @@
 import { Plus, Trash2 } from 'lucide-react'
 import { useI18n, type MessageKey } from '../editor/i18n'
+import { ClipField } from '../editor/panels/ClipPicker'
 import {
   emptyCondition,
   emptyStep,
@@ -144,7 +145,16 @@ function StepFields({
   }
   if (step.do === 'removeTag') return <input disabled={disabled} value={step.tag} placeholder={t('rule.tag')} onChange={event => onChange({ tag: event.target.value })} />
   if (step.do === 'wait') return <input disabled={disabled} type="number" min={0} step={0.1} value={step.seconds} title={t('rule.seconds')} onChange={event => onChange({ seconds: Number(event.target.value) })} />
-  if (step.do === 'playClip') return <input disabled={disabled} value={step.clip} placeholder={t('rule.clip')} onChange={event => onChange({ clip: event.target.value })} />
+  if (step.do === 'playClip') {
+    return (
+      <ClipField
+        assetId={step.clipAssetId}
+        name={step.clip}
+        disabled={disabled}
+        onChange={next => onChange({ clip: next?.name ?? '', clipAssetId: next?.assetId ?? '' })}
+      />
+    )
+  }
   if (step.do === 'log') {
     return (
       <span className="rules-step__compare rules-step__compare--log">

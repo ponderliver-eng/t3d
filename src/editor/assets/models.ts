@@ -57,6 +57,33 @@ export function releaseModel(assetId: string) {
   releaseHumanoidPlayback(assetId)
 }
 
+export interface ProjectClip {
+  assetId: string
+  assetName: string
+  kind: 'model' | 'animation'
+  name: string
+  duration: number
+}
+
+/** 工程里所有模型和动画资源上的片段。缺目录的会在后台加载。 */
+export function projectClips(): ProjectClip[] {
+  const out: ProjectClip[] = []
+  for (const asset of Object.values(useAssetStore.getState().assets)) {
+    if (asset.kind !== 'model' && asset.kind !== 'animation') continue
+    for (const name of clipNamesFor(asset.id)) {
+      out.push({
+        assetId: asset.id,
+        assetName: asset.name,
+        kind: asset.kind,
+        name,
+        duration: clipDuration(asset.id, name),
+      })
+    }
+  }
+  out.sort((a, b) => a.assetName.localeCompare(b.assetName, 'zh') || a.name.localeCompare(b.name, 'zh'))
+  return out
+}
+
 export function clipNamesFor(assetId: string | null): string[] {
   if (!assetId) return []
   const template = templates.get(assetId)
