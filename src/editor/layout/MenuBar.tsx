@@ -6,7 +6,8 @@ import { LIGHT_KINDS, MESH_KINDS } from '../scene/kinds'
 import { useI18n, translate, type MessageKey } from '../i18n'
 import { usePrefsStore } from '../prefs/store'
 import { openImport } from '../assets/import'
-import { createDirectoryProject, notifyProjectSaved, openDirectoryProject, openRecentProject, saveProjectNow } from '../assets/project'
+import { createDirectoryProject, notifyProjectSaved, openDirectoryProject, openRecentProject, saveCacheAsDirectoryProject, saveProjectNow } from '../assets/project'
+import { useProjectDirectory } from '../project/disk'
 import { RecentProjectService, type RecentProject } from '../project/recents'
 import { bindPackagePicker, openPackagePicker, usePackageImportStore } from '../assets/packageImportStore'
 import { PackageExtractDialog } from '../panels/PackageExtractDialog'
@@ -36,6 +37,7 @@ export default function MenuBar() {
   const canPaste = useEditorStore(state => state.canPaste)
 
   const { t } = useI18n()
+  const cachedProject = !useProjectDirectory(state => state.active)
   const packageFile = usePackageImportStore(state => state.file)
   const packageInputRef = useRef<HTMLInputElement>(null)
   const [recentProjects, setRecentProjects] = useState<RecentProject[]>(() => RecentProjectService.getAll())
@@ -100,6 +102,9 @@ export default function MenuBar() {
           <Sep />
           <Item onClick={askNewScene}>{t('menu.newScene')}<span className="menubar__hint">Ctrl+N</span></Item>
           <Item onClick={() => { void saveProjectNow().then(() => notifyProjectSaved()).catch(error => useEditorStore.getState().log('error', translate('log.projectFailed', { message: error instanceof Error ? error.message : String(error) }))) }}>{t('menu.save')}<span className="menubar__hint">Ctrl+S</span></Item>
+          {cachedProject && (
+            <Item disabled={playing} onClick={() => { void saveCacheAsDirectoryProject() }}>{t('menu.saveAsProject')}</Item>
+          )}
           <Item onClick={openImport}>{t('menu.import')}</Item>
           <Item onClick={openPackagePicker}>{t('menu.extractPackage')}</Item>
         </Dropdown>

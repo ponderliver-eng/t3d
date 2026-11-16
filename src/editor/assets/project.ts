@@ -111,38 +111,65 @@ export async function createDirectoryProject(): Promise<void> {
       if (opened) useEditorStore.getState().log('info', translate('log.projectExists', { name }))
       return
     }
-    suspendLayout()
-    setDirectoryFlushEnabled(false)
-    try {
-      const sources = await collectSources()
-      const artifacts = await collectArtifacts(sources)
-      await scaffold(picked)
-      if (typeof picked === 'string') {
-        await beginPath(picked, name, [], null)
-        RecentProjectService.addPath(picked, name)
-      } else {
-        await begin(picked, name, [], null)
-        await RecentProjectService.add(picked, name)
-      }
-      useAssetStore.setState({ folders: withDefaultFolders(useAssetStore.getState().folders) })
-      await runPool(sources, 4, async file => {
-        const meta = metaForSource(file, artifacts.has(file.hash))
-        const directory = assetDirectory(file.id, useAssetStore.getState().assetDirs)
-        await writeSourceAsset(meta, file.bytes, directory)
-      })
-      for (const [hash, glb] of artifacts) await writeArtifact(artifactKey(hash), glb)
-      await reconcileLooseAssets()
-    } finally {
-      setDirectoryFlushEnabled(true)
-      await resumeLayout()
-    }
-    await saveProjectNow()
+    await publishSessionToDirectory(picked, name)
     const message = translate('log.projectCreated', { name })
     useEditorStore.getState().log('info', message)
     useEditorStore.getState().notify(message)
   } catch (error) {
     await salvageProject(error)
   }
+}
+
+/** 把当前缓存里的临时项目写成所选目录下的新工程，并改由该目录继续保存。 */
+export async function saveCacheAsDirectoryProject(): Promise<void> {
+  if (useEditorStore.getState().playState !== 'stopped') return
+  if (isDirectoryProject()) return
+  try {
+    const picked = await pickDirectory()
+    if (!picked) return
+    const name = typeof picked === 'string' ? directoryBaseName(picked) : picked.name
+    if (await readProjectText(picked)) {
+      const message = translate('log.projectSaveAsOccupied', { name })
+      useEditorStore.getState().log('warn', message)
+      useEditorStore.getState().notify(message)
+      return
+    }
+    await publishSessionToDirectory(picked, name)
+    const message = translate('log.projectSavedAs', { name })
+    useEditorStore.getState().log('info', message)
+    useEditorStore.getState().notify(message)
+  } catch (error) {
+    await salvageProject(error)
+  }
+}
+
+async function publishSessionToDirectory(picked: FileSystemDirectoryHandle | string, name: string) {
+  suspendLayout()
+  setDirectoryFlushEnabled(false)
+  try {
+    const sources = await collectSources()
+    const artifacts = await collectArtifacts(sources)
+    await scaffold(picked)
+    if (typeof picked === 'string') {
+      await beginPath(picked, name, [], null)
+      RecentProjectService.addPath(picked, name)
+    } else {
+      await begin(picked, name, [], null)
+      await RecentProjectService.add(picked, name)
+    }
+    useAssetStore.setState({ folders: withDefaultFolders(useAssetStore.getState().folders) })
+    await runPool(sources, 4, async file => {
+      const meta = metaForSource(file, artifacts.has(file.hash))
+      const directory = assetDirectory(file.id, useAssetStore.getState().assetDirs)
+      await writeSourceAsset(meta, file.bytes, directory)
+    })
+    for (const [hash, glb] of artifacts) await writeArtifact(artifactKey(hash), glb)
+    await reconcileLooseAssets()
+  } finally {
+    setDirectoryFlushEnabled(true)
+    await resumeLayout()
+  }
+  await saveProjectNow()
 }
 
 export async function openDirectoryProject(): Promise<void> {

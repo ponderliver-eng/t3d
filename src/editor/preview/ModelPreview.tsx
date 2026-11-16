@@ -226,6 +226,7 @@ export function ModelPreview({ assetId, standalone = false }: { assetId: string,
       setScale: scale => {
         if (!root) return
         root.scale.setScalar(scale)
+        refreshObjectBounds(root)
         fit('persp')
       },
       highlight: name => paintPick(name),
@@ -559,6 +560,7 @@ function scaleAdvice(facts: ModelFacts, scale: number): { scale: number, height:
   const extent = Math.max(facts.size[0], facts.size[1], facts.size[2]) * scale
   if (facts.humanoid && height >= 0.008 && height < 0.04) return { scale: Number((scale * 100).toFixed(4)), height }
   if (facts.humanoid && height >= 0.04 && height < 0.45) return { scale: Number((scale * 10).toFixed(4)), height }
+  if (facts.humanoid && height > 8 && height <= 20) return { scale: Number((scale * 0.1).toFixed(4)), height }
   if (facts.humanoid && height > 20 && height < 400) return { scale: Number((scale * 0.01).toFixed(4)), height }
   if (!facts.humanoid && (extent < 0.05 || extent > 120)) {
     const next = extent < 0.05 ? 10 : 0.01

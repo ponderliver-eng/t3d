@@ -1,5 +1,7 @@
 import { createContext, createElement, useContext, useLayoutEffect, useRef, type ReactNode, type UIEvent } from 'react'
 import { create } from 'zustand'
+import { selectTab } from '../layout/events'
+import { useEditorStore } from '../scene/store'
 
 const STORAGE_KEY = 't3d-inspector-memory'
 
@@ -9,12 +11,22 @@ interface InspectorEntry {
   slot: number | null
 }
 
+export interface MaterialSlotFocus {
+  nodeId: string
+  slot: number
+  nonce: number
+}
+
 interface InspectorMemoryState {
   entries: Record<string, InspectorEntry>
+  materialFocus: MaterialSlotFocus | null
   setOpen: (subject: string, card: string, open: boolean) => void
   setScroll: (subject: string, scroll: number) => void
   setSlot: (subject: string, slot: number | null) => void
+  focusMaterialSlot: (nodeId: string, slot: number) => void
 }
+
+let materialFocusNonce = 0
 
 function load(): Record<string, InspectorEntry> {
   try {
@@ -46,6 +58,7 @@ window.addEventListener('pagehide', () => {
 
 export const useInspectorMemory = create<InspectorMemoryState>(set => ({
   entries: load(),
+  materialFocus: null,
   setOpen: (subject, card, open) => set(state => {
     const prev = state.entries[subject] ?? { scroll: 0, open: {}, slot: null }
     const prevOpen = prev.open ?? {}
@@ -68,6 +81,27 @@ export const useInspectorMemory = create<InspectorMemoryState>(set => ({
     schedulePersist(entries)
     return { entries }
   }),
+  focusMaterialSlot: (nodeId, slot) => {
+    useEditorStore.getState().setSelection([nodeId])
+    useEditorStore.getState().setSidePanel('inspector')
+    selectTab('tab-inspector')
+    materialFocusNonce += 1
+    const nonce = materialFocusNonce
+    set(state => {
+      const subject = `node:${nodeId}`
+      const prev = state.entries[subject] ?? { scroll: 0, open: {}, slot: null }
+      const entries = {
+        ...state.entries,
+        [subject]: {
+          ...prev,
+          open: { ...prev.open, 'model-renderer': true, 'material-slots': true },
+          slot,
+        },
+      }
+      schedulePersist(entries)
+      return { entries, materialFocus: { nodeId, slot, nonce } }
+    })
+  },
 }))
 
 export const InspectorSubject = createContext('inspector')

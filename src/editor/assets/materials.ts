@@ -159,22 +159,47 @@ export function applyNodeMaterial(root: Mesh, node: SceneNode): Material {
 }
 
 export function applyModelMaterials(root: Object3D, slots: PbrSlot[]) {
-  const byName = new Map(slots.map(slot => [slot.name, resolveModelSlot(slot)]))
+  const indexByName = new Map(slots.map((slot, index) => [slot.name, index]))
   root.traverse(child => {
     const mesh = child as Mesh
     if (!mesh.isMesh) return
     const geometry = mesh.geometry as BufferGeometry
     if (geometry?.attributes.uv && !geometry.attributes.uv2) geometry.setAttribute('uv2', geometry.attributes.uv)
     const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material]
+    const slotIndices: number[] = []
     const next = materials.map(material => {
-      const slot = byName.get(material.name) ?? (slots.length === 1 ? resolveModelSlot(slots[0]) : undefined)
-      if (!slot) return material
-      const painted = applySlot(material, slot)
+      const slotIndex = slotIndexForMaterial(material, slots, indexByName)
+      slotIndices.push(slotIndex)
+      if (!material || slotIndex < 0) return material
+      const painted = applySlot(material, resolveModelSlot(slots[slotIndex]))
       painted.name = material.name
+      painted.userData.t3dSlot = slotIndex
       return painted
     })
+    mesh.userData.t3dSlotIndices = slotIndices
     mesh.material = Array.isArray(mesh.material) ? next : next[0]
   })
+}
+
+/** 视口双击拾取：子网格的 materialIndex 对应导入时记下的材质槽。 */
+export function slotIndexOnMesh(object: Object3D, materialIndex: number): number | null {
+  const stamped = object.userData.t3dSlotIndices
+  if (!Array.isArray(stamped)) return null
+  const value = stamped[materialIndex] ?? (stamped.length === 1 ? stamped[0] : undefined)
+  return typeof value === 'number' && value >= 0 ? value : null
+}
+
+function slotIndexForMaterial(material: Material | null | undefined, slots: PbrSlot[], indexByName: Map<string, number>): number {
+  const token = materialSlotToken(material)
+  if (token != null && token < slots.length) return token
+  const named = material?.name ? indexByName.get(material.name) : undefined
+  if (named != null) return named
+  return slots.length === 1 ? 0 : -1
+}
+
+function materialSlotToken(material: Material | null | undefined): number | null {
+  const value = material?.userData?.t3dSlot
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? Math.floor(value) : null
 }
 
 function ensureClass(material: Material, slot: SurfaceSlot): Material {
@@ -183,6 +208,8 @@ function ensureClass(material: Material, slot: SurfaceSlot): Material {
   if (!basic && (material as MeshStandardMaterial).isMeshStandardMaterial) return material
   const next = basic ? new MeshBasicMaterial() : new MeshStandardMaterial()
   next.name = material.name
+  const token = materialSlotToken(material)
+  if (token != null) next.userData.t3dSlot = token
   return next
 }
 

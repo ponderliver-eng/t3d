@@ -46,7 +46,7 @@ import {
 import { WebGPURenderer } from 'three/webgpu'
 import { TransformControls } from 'three/addons/controls/TransformControls.js'
 import { translate } from '../i18n'
-import { applyModelMaterials, applyNodeMaterial } from '../assets/materials'
+import { applyModelMaterials, applyNodeMaterial, slotIndexOnMesh } from '../assets/materials'
 import { clipDuration, getModelTemplate, instantiateModel, modelRevision } from '../assets/models'
 import { clipsForSkeleton, humanoidBindingKey } from '../animation/humanoidPlayback'
 import { activeAnimatorState, stepAnimator } from '../animation/animator'
@@ -65,6 +65,7 @@ import { isLight, isMesh } from '../scene/kinds'
 import { setSpawnProvider } from '../scene/spawn'
 import { setEditorViewBridge, setGroundSnapper, setViewportAlign } from '../scene/viewportBridge'
 import { useEditorStore } from '../scene/store'
+import { useInspectorMemory } from '../panels/inspectorMemory'
 import { localPoseFromWorld, poseComponents, worldPose } from '../scene/transform'
 import type { SceneNode, ToneMap } from '../scene/types'
 import { EditorCameraRig } from './cameraControls'
@@ -140,6 +141,9 @@ export class EditorViewport {
   private readonly pickables: Object3D[] = []
   private readonly proxy = new Group()
   private selectionHelpers: BoxHelper[] = []
+  private partFlash: { helper: BoxHelper, target: Object3D } | null = null
+  private partFlashTimer = 0
+  private ignoreDoubleClick = false
   private selectionKey = ''
   private attachKey = ''
   private cameraNonce = 0
@@ -252,6 +256,7 @@ export class EditorViewport {
     this.canvas.addEventListener('pointerdown', this.onPointerDown, true)
     this.canvas.addEventListener('pointermove', this.onPointerMove)
     this.canvas.addEventListener('pointerup', this.onPointerUp)
+    this.canvas.addEventListener('dblclick', this.onDoubleClick)
     this.canvas.addEventListener('wheel', this.onWheel, { passive: false })
     this.canvas.addEventListener('contextmenu', this.onContext)
 
@@ -279,6 +284,8 @@ export class EditorViewport {
     this.canvas.removeEventListener('pointerdown', this.onPointerDown, true)
     this.canvas.removeEventListener('pointermove', this.onPointerMove)
     this.canvas.removeEventListener('pointerup', this.onPointerUp)
+    this.canvas.removeEventListener('dblclick', this.onDoubleClick)
+    this.clearPartFlash()
     this.canvas.removeEventListener('wheel', this.onWheel)
     this.canvas.removeEventListener('contextmenu', this.onContext)
     disposeParticles()
@@ -807,15 +814,20 @@ export class EditorViewport {
     if (active && active !== this.canvas && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA')) active.blur()
     const gizmo = this.transform.axis !== null && event.button === 0 && !event.altKey
     this.press = null
+    if (gizmo || this.playCameraLocked() || event.button !== 0 || event.altKey || event.shiftKey || event.ctrlKey || event.metaKey) {
+      this.ignoreDoubleClick = true
+    }
     if (gizmo) return
     if (this.playCameraLocked()) {
       event.preventDefault()
       return
     }
     if (this.rig.pointerDown(event)) {
+      this.ignoreDoubleClick = true
       this.canvas.setPointerCapture(event.pointerId)
       return
     }
+    this.ignoreDoubleClick = event.button !== 0 || event.altKey || event.shiftKey || event.ctrlKey || event.metaKey
     if (event.button === 0) {
       this.press = {
         x: event.clientX,
@@ -852,8 +864,24 @@ export class EditorViewport {
     const dragged = press && this.marquee?.style.display === 'block'
     if (this.marquee) this.marquee.style.display = 'none'
     if (!press || event.button !== 0) return
-    if (dragged) this.selectMarquee(press.x, press.y, event.clientX, event.clientY, press.additive)
-    else this.pick(press.x, press.y, press.additive)
+    if (dragged) {
+      this.ignoreDoubleClick = true
+      this.selectMarquee(press.x, press.y, event.clientX, event.clientY, press.additive)
+    } else this.pick(press.x, press.y, press.additive)
+  }
+
+  private onDoubleClick = (event: MouseEvent) => {
+    if (this.ignoreDoubleClick || event.button !== 0) return
+    if (event.altKey || event.shiftKey || event.ctrlKey || event.metaKey) return
+    if (this.playCameraLocked() || this.transform.dragging) return
+    const hit = this.pickSurface(event.clientX, event.clientY)
+    if (!hit) return
+    const node = useEditorStore.getState().nodes[hit.id]
+    if (!node) return
+    const slot = this.materialSlotFor(node, hit.object, hit.materialIndex)
+    if (slot == null) return
+    useInspectorMemory.getState().focusMaterialSlot(hit.id, slot)
+    this.flashPart(hit.object)
   }
 
   private onWheel = (event: WheelEvent) => {
@@ -926,6 +954,63 @@ export class EditorViewport {
     }
     if (additive) setSelection(selection.includes(id) ? selection.filter(item => item !== id) : [...selection, id])
     else setSelection([id])
+  }
+
+  private pickSurface(clientX: number, clientY: number): { id: string, object: Object3D, materialIndex: number } | null {
+    if (!this.aimPointer(clientX, clientY)) return null
+    const hits = this.raycaster.intersectObjects(this.pickables, true)
+    for (const hit of hits) {
+      let owner: Object3D | null = hit.object
+      while (owner && !owner.userData.nodeId) owner = owner.parent
+      if (!owner || !isRendered(owner)) continue
+      const id = owner.userData.nodeId as string
+      if (useEditorStore.getState().nodes[id]?.locked) continue
+      const faceIndex = hit.face?.materialIndex
+      const materialIndex = typeof faceIndex === 'number' && faceIndex >= 0 ? faceIndex : 0
+      return { id, object: hit.object, materialIndex }
+    }
+    return null
+  }
+
+  private materialSlotFor(node: SceneNode, object: Object3D, materialIndex: number): number | null {
+    if (isMesh(node.kind)) return 0
+    if (node.kind !== 'model' || node.slots.length === 0) return null
+    const stamped = slotIndexOnMesh(object, materialIndex)
+    if (stamped != null && stamped < node.slots.length) return stamped
+    const mesh = object as Mesh
+    if (!mesh.isMesh) return node.slots.length === 1 ? 0 : null
+    const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material]
+    const material = materials[materialIndex] ?? materials[0]
+    const found = material?.name ? node.slots.findIndex(slot => slot.name === material.name) : -1
+    if (found >= 0) return found
+    return node.slots.length === 1 ? 0 : null
+  }
+
+  private flashPart(target: Object3D) {
+    this.clearPartFlash()
+    const helper = new BoxHelper(target, 0x39ff14)
+    helper.raycast = () => {}
+    const material = helper.material as Material & { depthTest?: boolean, transparent?: boolean }
+    material.depthTest = false
+    material.transparent = true
+    helper.renderOrder = 21
+    markHelper(helper, true)
+    this.scene.add(helper)
+    this.partFlash = { helper, target }
+    this.partFlashTimer = window.setTimeout(() => this.clearPartFlash(), 1600)
+  }
+
+  private clearPartFlash() {
+    if (this.partFlashTimer) window.clearTimeout(this.partFlashTimer)
+    this.partFlashTimer = 0
+    const flash = this.partFlash
+    this.partFlash = null
+    if (!flash) return
+    flash.helper.removeFromParent()
+    flash.helper.geometry.dispose()
+    const material = flash.helper.material
+    if (Array.isArray(material)) material.forEach(item => item.dispose())
+    else material.dispose()
   }
 
   raycastDrop(clientX: number, clientY: number): { point: [number, number, number], nodeId: string | null } {
@@ -1028,6 +1113,10 @@ export class EditorViewport {
       const target = (helper as { object?: Object3D }).object
       if (target) refreshObjectBounds(target)
       helper.update()
+    }
+    if (this.partFlash) {
+      if (!this.partFlash.target.parent) this.clearPartFlash()
+      else this.partFlash.helper.update()
     }
     this.flattenGizmo()
     this.frameCamera = this.activeCamera()

@@ -266,7 +266,7 @@ async function exportGlb(template: ModelTemplate): Promise<ArrayBuffer | null> {
 
 async function compressMeshopt(glb: ArrayBuffer): Promise<ArrayBuffer> {
   try {
-    const [{ WebIO }, { meshopt }, { EXTMeshoptCompression, KHRMeshQuantization }, { MeshoptEncoder }] = await Promise.all([
+    const [{ WebIO }, { meshopt, reorder }, { EXTMeshoptCompression, KHRMeshQuantization }, { MeshoptEncoder }] = await Promise.all([
       import('@gltf-transform/core'),
       import('@gltf-transform/functions'),
       import('@gltf-transform/extensions'),
@@ -277,7 +277,16 @@ async function compressMeshopt(glb: ArrayBuffer): Promise<ArrayBuffer> {
       .registerExtensions([EXTMeshoptCompression, KHRMeshQuantization])
       .registerDependencies({ 'meshopt.encoder': MeshoptEncoder })
     const document = await io.readBinary(new Uint8Array(glb))
-    await document.transform(meshopt({ encoder: MeshoptEncoder, level: 'medium' }))
+    const hasSkin = document.getRoot().listSkins().length > 0
+    if (hasSkin) {
+      await document.transform(reorder({ encoder: MeshoptEncoder, target: 'size' }))
+      document
+        .createExtension(EXTMeshoptCompression)
+        .setRequired(true)
+        .setEncoderOptions({ method: EXTMeshoptCompression.EncoderMethod.FILTER })
+    } else {
+      await document.transform(meshopt({ encoder: MeshoptEncoder, level: 'medium' }))
+    }
     const compressed = await io.writeBinary(document)
     if (compressed.byteLength === 0 || compressed.byteLength >= glb.byteLength) return glb
     return compressed.buffer.slice(compressed.byteOffset, compressed.byteOffset + compressed.byteLength)
@@ -393,6 +402,7 @@ function inferHumanoidImportScale(template: ModelTemplate): number {
   const height = Math.max(0, size.y)
   if (height >= 0.008 && height < 0.04) return 100
   if (height >= 0.04 && height < 0.45) return 10
+  if (height > 8 && height <= 20) return 0.1
   if (height > 20 && height < 400) return 0.01
   return 1
 }
@@ -429,7 +439,25 @@ function readSlots(root: Object3D): PbrSlot[] {
     const mesh = child as Mesh
     if (!mesh.isMesh) return
     const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material]
-    for (const material of materials) slots.push(...slotFromMaterial(material, seen, slots.length))
+    const indices: number[] = []
+    for (const material of materials) {
+      if (!material) {
+        indices.push(-1)
+        continue
+      }
+      const added = slotFromMaterial(material, seen, slots.length)
+      if (added.length > 0) {
+        const index = slots.length
+        slots.push(...added)
+        material.userData.t3dSlot = index
+        indices.push(index)
+      } else {
+        const index = slots.findIndex(slot => slot.name === material.name)
+        material.userData.t3dSlot = index
+        indices.push(index)
+      }
+    }
+    mesh.userData.t3dSlotIndices = indices
   })
   return slots
 }

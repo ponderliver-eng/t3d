@@ -17,6 +17,7 @@ import { NavigationCard, SceneNavigationCard } from '../../capabilities/navigati
 import {
   InspectorFrame,
   useInspectorCardOpen,
+  useInspectorMemory,
   useInspectorSlot,
 } from './inspectorMemory'
 import { TagLayerStrip } from './TagLayerCards'
@@ -549,11 +550,33 @@ function MeshRendererCard({ node }: { node: SceneNode }) {
   const [query, setQuery] = useState('')
   const [dropSlot, setDropSlot] = useState<number | null>(null)
   const [picking, setPicking] = useState<number | null>(null)
+  const [handledNonce, setHandledNonce] = useState(0)
+  const [flashNonce, setFlashNonce] = useState(0)
+  const focus = useInspectorMemory(state => state.materialFocus)
+  const pickedFocus = focus?.nodeId === node.id ? focus : null
+  if (pickedFocus && pickedFocus.nonce !== handledNonce) {
+    setHandledNonce(pickedFocus.nonce)
+    if (query) setQuery('')
+  }
   useEffect(() => {
     setQuery('')
     setDropSlot(null)
     setPicking(null)
   }, [node.id])
+  useEffect(() => {
+    if (!pickedFocus) return
+    setFlashNonce(pickedFocus.nonce)
+    const timer = window.setTimeout(() => {
+      setFlashNonce(current => current === pickedFocus.nonce ? 0 : current)
+    }, 1600)
+    const frame = window.requestAnimationFrame(() => {
+      document.getElementById(`mesh-slot-${node.id}-${pickedFocus.slot}`)?.scrollIntoView({ block: 'nearest' })
+    })
+    return () => {
+      window.clearTimeout(timer)
+      window.cancelAnimationFrame(frame)
+    }
+  }, [pickedFocus, node.id])
   const entries = node.kind === 'model'
     ? node.slots.map((slot, index) => ({ index, name: slot.name, linked: linkedMaterialId(slot.materialAssetId, assets) }))
     : [{ index: 0, name: node.name, linked: linkedMaterialId(node.materialAssetId, assets) }]
@@ -587,13 +610,15 @@ function MeshRendererCard({ node }: { node: SceneNode }) {
       )}
       {listOpen && visible.map(entry => {
         const open = openSlot === entry.index
+        const picked = flashNonce !== 0 && pickedFocus?.nonce === flashNonce && pickedFocus.slot === entry.index
         const source = node.kind === 'model' ? node.slots[entry.index] : null
         const resolved = source ? resolveModelSlot(source) : slotFromNode(node)
         const linked = entry.linked
         return (
           <div
             key={entry.index}
-            className={`mesh-slot ${open ? 'is-open' : ''} ${dropSlot === entry.index ? 'is-drop' : ''}`}
+            id={`mesh-slot-${node.id}-${entry.index}`}
+            className={`mesh-slot ${open ? 'is-open' : ''} ${picked ? 'is-picked' : ''} ${dropSlot === entry.index ? 'is-drop' : ''}`}
             onDragOver={event => onSlotDragOver(event, entry.index, setDropSlot)}
             onDragLeave={() => setDropSlot(current => current === entry.index ? null : current)}
             onDrop={event => {
