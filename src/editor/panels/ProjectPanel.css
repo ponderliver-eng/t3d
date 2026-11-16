@@ -212,7 +212,7 @@
 .project-panel__menu button {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 8px;
   width: 100%;
   height: 24px;
@@ -220,6 +220,21 @@
   text-align: left;
   color: var(--text-secondary);
   font-size: var(--font-size-sm);
+}
+
+.project-panel__menu button svg {
+  flex-shrink: 0;
+  color: var(--text-muted);
+}
+
+.project-panel__submenu > button > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.project-panel__submenu > button > svg:last-child {
+  margin-left: auto;
 }
 
 .project-panel__sep {
@@ -243,10 +258,11 @@
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
 }
 
-.project-panel__submenu:hover .project-panel__submenu-pop,
-.project-panel__submenu:focus-within .project-panel__submenu-pop { display: block; }
+.project-panel__submenu:hover > .project-panel__submenu-pop,
+.project-panel__submenu:focus-within > .project-panel__submenu-pop { display: block; }
 
 .project-panel__menu button:hover { background: var(--bg-hover); color: var(--text-primary); }
+.project-panel__menu button:hover svg { color: var(--text-primary); }
 
 .project-panel__hint-note {
   padding: 10px 12px;

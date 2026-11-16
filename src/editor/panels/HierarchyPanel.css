@@ -91,12 +91,20 @@
 
 .scene-panel__popover button,
 .scene-panel__context button {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 8px;
   width: 100%;
   text-align: left;
   padding: 5px 12px;
   font-size: var(--font-size-sm);
   color: var(--text-secondary);
+}
+
+.scene-panel__popover button svg,
+.scene-panel__context button svg {
+  flex-shrink: 0;
+  color: var(--text-muted);
 }
 
 .scene-panel__popover button:hover:not(:disabled),
@@ -105,10 +113,34 @@
   color: var(--text-primary);
 }
 
+.scene-panel__popover button:hover:not(:disabled) svg,
+.scene-panel__context button:hover:not(:disabled) svg {
+  color: var(--text-primary);
+}
+
 .scene-panel__popover-label {
   padding: 6px 12px 2px;
   font-size: 10px;
   color: var(--text-muted);
+}
+
+.scene-panel__sep {
+  height: 1px;
+  margin: 4px 8px;
+  background: var(--border);
+}
+
+.scene-panel__submenu > button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.scene-panel__submenu > button > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .scene-panel__list {
@@ -209,8 +241,13 @@
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
 }
-.scene-panel__submenu:hover .scene-panel__submenu-pop,
-.scene-panel__submenu:focus-within .scene-panel__submenu-pop { display: block; }
+.scene-panel__submenu:hover > .scene-panel__submenu-pop,
+.scene-panel__submenu:focus-within > .scene-panel__submenu-pop { display: block; }
+
+.scene-panel__submenu-pop .scene-panel__submenu-pop {
+  right: auto;
+  left: calc(100% - 4px);
+}
 
 .scene-item--hidden { opacity: 0.45; }
 .scene-item--ancestor-hidden { opacity: 0.35; }

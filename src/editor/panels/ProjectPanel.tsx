@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type MouseEvent } from 'react'
-import { Box, ChevronRight, Clapperboard, Component, Folder, FolderOpen, FolderPlus, Globe, Image, LayoutGrid, List, Minus, Music, Palette, PanelsTopLeft, Plus, Rows3, Search, Sparkles, Sun, Trash2, Upload, X } from 'lucide-react'
+import { Box, ChevronRight, Clapperboard, Component, CopyPlus, Folder, FolderOpen, FolderPlus, Globe, Image, LayoutGrid, List, ListTree, Minus, Music, PackageOpen, Palette, PanelsTopLeft, Pencil, Plus, RefreshCw, Rows3, Search, Sparkles, Sun, Trash2, Upload, X } from 'lucide-react'
 import { CLIP_MIME } from '../animation/playback'
 import { ASSET_MIME, assignClip, bindImportInput, createDefaultMaterial, createDefaultUi, deleteAsset, duplicateAsset, importFiles, openAsset, openImport, reimportModel, reportAssetUsers } from '../assets/import'
 import { savePrefabFromSelection } from '../assets/import'
@@ -339,18 +339,19 @@ export default function ProjectPanel() {
               if (preview) openAssetPreview(preview, asset.id, asset.name)
             } else void openAsset(menu.id)
             setMenu(null)
-          }}>{t('project.open')}</button>
+          }}><FolderOpen size={12} />{t('project.open')}</button>
           {(assetKind(menu.id) === 'model' || assetKind(menu.id) === 'prefab') && (
-            <button type="button" onClick={() => { void openAsset(menu.id); setMenu(null) }}>{t('project.place')}</button>
+            <button type="button" onClick={() => { void openAsset(menu.id); setMenu(null) }}><Box size={12} />{t('project.place')}</button>
           )}
           {(assetKind(menu.id) === 'model' || assetKind(menu.id) === 'animation') && (
-            <button type="button" onClick={() => { void reimportModel(menu.id); setMenu(null) }}>{t('preview.reimport')}</button>
+            <button type="button" onClick={() => { void reimportModel(menu.id); setMenu(null) }}><RefreshCw size={12} />{t('preview.reimport')}</button>
           )}
           {(assetKind(menu.id) === 'material' || assetKind(menu.id) === 'scene' || assetKind(menu.id) === 'prefab') && (
-            <button type="button" onClick={() => { duplicateAsset(menu.id); setMenu(null) }}>{t('project.duplicate')}</button>
+            <button type="button" onClick={() => { duplicateAsset(menu.id); setMenu(null) }}><CopyPlus size={12} />{t('project.duplicate')}</button>
           )}
-          <button type="button" onClick={() => { reportAssetUsers(menu.id); setMenu(null) }}>{t('project.findRefs')}</button>
-          <button type="button" onClick={() => { setRenameId(menu.id); setMenu(null) }}>{t('project.rename')}</button>
+          <div className="project-panel__sep" />
+          <button type="button" onClick={() => { reportAssetUsers(menu.id); setMenu(null) }}><ListTree size={12} />{t('project.findRefs')}</button>
+          <button type="button" onClick={() => { setRenameId(menu.id); setMenu(null) }}><Pencil size={12} />{t('project.rename')}</button>
           <div className="project-panel__sep" />
           <button type="button" onClick={() => {
             if (assetKind(menu.id) === 'scene') {
@@ -359,22 +360,24 @@ export default function ProjectPanel() {
             }
             deleteAsset(menu.id)
             setMenu(null)
-          }}>{t('project.delete')}</button>
+          }}><Trash2 size={12} />{t('project.delete')}</button>
         </div>
       )}
       {menu?.target === 'dir' && (
         <div className="project-panel__menu" style={{ left: menu.x, top: menu.y }} onPointerDown={event => event.stopPropagation()}>
           <CreateMenu dir={menu.path} onDone={() => setMenu(null)} onNewFolder={path => setRenamePath(path)} />
           <div className="project-panel__sep" />
-          <button type="button" onClick={() => { useAssetStore.getState().setBrowseDir(menu.path); setMenu(null) }}>{t('project.open')}</button>
-          <button type="button" onClick={() => { setMenu(null); openPackagePicker() }}>{t('menu.extractPackage')}</button>
-          {menu.path !== ASSETS_ROOT && <button type="button" onClick={() => { setRenamePath(menu.path); setMenu(null) }}>{t('project.rename')}</button>}
+          <button type="button" onClick={() => { useAssetStore.getState().setBrowseDir(menu.path); setMenu(null) }}><FolderOpen size={12} />{t('project.open')}</button>
+          <button type="button" onClick={() => { setMenu(null); openPackagePicker() }}><PackageOpen size={12} />{t('menu.extractPackage')}</button>
+          {menu.path !== ASSETS_ROOT && <div className="project-panel__sep" />}
+          {menu.path !== ASSETS_ROOT && <button type="button" onClick={() => { setRenamePath(menu.path); setMenu(null) }}><Pencil size={12} />{t('project.rename')}</button>}
+          {menu.path !== ASSETS_ROOT && <div className="project-panel__sep" />}
           {menu.path !== ASSETS_ROOT && (
             <button type="button" onClick={() => {
               const name = menu.path.slice(menu.path.lastIndexOf('/') + 1)
               if (window.confirm(t('project.deleteFolder', { name }))) useAssetStore.getState().deleteFolder(menu.path)
               setMenu(null)
-            }}>{t('project.delete')}</button>
+            }}><Trash2 size={12} />{t('project.delete')}</button>
           )}
         </div>
       )}
@@ -387,13 +390,19 @@ function CreateMenu({ dir, onDone, onNewFolder }: { dir: string, onDone: () => v
   const hasSelection = useEditorStore(state => state.selection.length > 0)
   return (
     <div className="project-panel__submenu">
-      <button type="button">{t('project.create')}<ChevronRight size={12} /></button>
+      <button type="button"><span><Plus size={12} />{t('project.create')}</span><ChevronRight size={12} /></button>
       <div className="project-panel__submenu-pop">
-        <button type="button" onClick={() => { onNewFolder(useAssetStore.getState().createFolder(dir)); onDone() }}>{t('project.newFolderMenu')}</button>
-        <button type="button" onClick={() => { useAssetStore.getState().setBrowseDir(dir); useEditorStore.getState().createScene(); onDone() }}>{t('project.createScene')}</button>
-        <button type="button" onClick={() => { createDefaultMaterial(dir); onDone() }}>{t('project.createMaterial')}</button>
-        <button type="button" onClick={() => { createDefaultUi(dir); onDone() }}>{t('project.createUi')}</button>
-        <button type="button" disabled={!hasSelection} onClick={() => { useAssetStore.getState().setBrowseDir(dir); savePrefabFromSelection(); onDone() }}>{t('project.createPrefab')}</button>
+        <button type="button" onClick={() => { onNewFolder(useAssetStore.getState().createFolder(dir)); onDone() }}><FolderPlus size={12} />{t('project.newFolderMenu')}</button>
+        <div className="project-panel__sep" />
+        <div className="project-panel__submenu">
+          <button type="button"><span><Folder size={12} />{t('panel.project')}</span><ChevronRight size={12} /></button>
+          <div className="project-panel__submenu-pop">
+            <button type="button" onClick={() => { useAssetStore.getState().setBrowseDir(dir); useEditorStore.getState().createScene(); onDone() }}><Globe size={12} />{t('project.createScene')}</button>
+            <button type="button" onClick={() => { createDefaultMaterial(dir); onDone() }}><Palette size={12} />{t('project.createMaterial')}</button>
+            <button type="button" onClick={() => { createDefaultUi(dir); onDone() }}><PanelsTopLeft size={12} />{t('project.createUi')}</button>
+            <button type="button" disabled={!hasSelection} onClick={() => { useAssetStore.getState().setBrowseDir(dir); savePrefabFromSelection(); onDone() }}><Component size={12} />{t('project.createPrefab')}</button>
+          </div>
+        </div>
       </div>
     </div>
   )

@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type PointerEvent as ReactPointerEvent } from 'react'
 import { createPortal } from 'react-dom'
 import {
-  Axis3d, Box, Boxes, Camera, ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, Circle, Cone, Cylinder, Eye, EyeOff,
-  Flashlight, Lightbulb, Lock, PanelsTopLeft, Pill, Plus, Search, Sparkles, Square, Sun, Sunrise, Unlock, X,
+  ArrowDown, ArrowDownToLine, ArrowUp, Axis3d, Box, Boxes, Camera, ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, Circle, ClipboardPaste, Component, Cone, Copy, CopyPlus, Cylinder, ExternalLink, Eye, EyeOff,
+  Flashlight, Focus, Group, Lightbulb, Lock, MapPin, Package, PanelsTopLeft, Pencil, Pill, Plus, Search, Sparkles, Square, Sun, Sunrise, Trash2, Undo2, Ungroup, Unlink, Unlock, Upload, X,
 } from 'lucide-react'
 import { readClipDrag } from '../animation/playback'
 import { assignClip } from '../assets/import'
@@ -515,7 +515,7 @@ export default function HierarchyPanel() {
       {menu && createPortal(
         <div ref={menuRef} className="scene-panel__context" style={{ left: menu.x, top: menu.y }} onPointerDown={event => event.stopPropagation()}>
           <div className="scene-panel__submenu">
-            <button type="button" disabled={playing}>{menu.id ? t('hierarchy.createChild') : t('hierarchy.create')}</button>
+            <button type="button" disabled={playing}><span><Plus size={12} />{menu.id ? t('hierarchy.createChild') : t('hierarchy.create')}</span><ChevronRight size={12} /></button>
             {!playing && (
               <div className="scene-panel__submenu-pop">
                 <CreateList onCreate={kind => create(kind, menu.id)} />
@@ -524,38 +524,48 @@ export default function HierarchyPanel() {
           </div>
           {menu.id && (
             <>
-              <button type="button" disabled={playing || !canShift(nodes, menu.id, 'before')} onClick={() => { shiftNode(menu.id!, 'before'); setMenu(null) }}>{t('hierarchy.moveUp')}</button>
-              <button type="button" disabled={playing || !canShift(nodes, menu.id, 'after')} onClick={() => { shiftNode(menu.id!, 'after'); setMenu(null) }}>{t('hierarchy.moveDown')}</button>
-              <button type="button" onClick={() => { startRename(menu.id!); setMenu(null) }}>{t('project.rename')}</button>
-              <button type="button" onClick={() => { useEditorStore.getState().setSelection([menu.id!]); useEditorStore.getState().requestFocus(); setMenu(null) }}>{t('menu.focus')}</button>
-              <button type="button" disabled={playing} onClick={() => { useEditorStore.getState().duplicateSelection(); setMenu(null) }}>{t('menu.duplicate')}</button>
-              <button type="button" disabled={playing} onClick={() => { useEditorStore.getState().copySelection(); setMenu(null) }}>{t('menu.copy')}</button>
-              <button type="button" disabled={playing || !useEditorStore.getState().canPaste} onClick={() => { useEditorStore.getState().pasteClipboard(menu.id); setMenu(null) }}>{t('hierarchy.pasteChild')}</button>
-              <button type="button" disabled={playing} onClick={() => { useEditorStore.getState().groupSelection(); setMenu(null) }}>{t('menu.group')}</button>
-              <button type="button" disabled={playing} onClick={() => { useEditorStore.getState().snapSelectionToGround(); setMenu(null) }}>{t('menu.ground')}</button>
-              {!isPrefabRoot(nodes[menu.id!]) && (
-                <button type="button" disabled={playing} onClick={() => { setSavePrefab({ id: menu.id!, name: nodes[menu.id!]?.name ?? '' }); setMenu(null) }}>{t('prefab.saveAs')}</button>
-              )}
-              {nodes[menu.id!]?.nestedPrefabId && (
-                <button type="button" onClick={() => { useEditorStore.getState().openPrefab(nodes[menu.id!]?.nestedPrefabId ?? ''); setMenu(null) }}>{t('prefab.edit')}</button>
-              )}
-              {isPrefabRoot(nodes[menu.id!]) && (
-                <>
-                  <button type="button" onClick={() => { useEditorStore.getState().openPrefab(nodes[menu.id!]?.prefabAssetId ?? ''); setMenu(null) }}>{t('prefab.edit')}</button>
-                  <button type="button" onClick={() => { revealPrefab(nodes[menu.id!]?.prefabAssetId ?? ''); setMenu(null) }}>{t('prefab.reveal')}</button>
-                  <button type="button" disabled={playing || !instanceDirty(nodes, menu.id!)} onClick={() => { useEditorStore.getState().applyPrefabInstance(menu.id!); setMenu(null) }}>{t('prefab.apply')}</button>
-                  <button type="button" disabled={playing || !instanceDirty(nodes, menu.id!)} onClick={() => { useEditorStore.getState().revertPrefabInstance(menu.id!); setMenu(null) }}>{t('prefab.revert')}</button>
-                  <button type="button" disabled={playing} onClick={() => { setUnpackId(menu.id); setMenu(null) }}>{t('prefab.unpack')}</button>
-                </>
-              )}
-              <button type="button" disabled={playing} onClick={() => { useEditorStore.getState().deleteSelection(); setMenu(null) }}>{t('menu.delete')}</button>
+              <div className="scene-panel__sep" />
+              <button type="button" disabled={playing || !canShift(nodes, menu.id, 'before')} onClick={() => { shiftNode(menu.id!, 'before'); setMenu(null) }}><ArrowUp size={12} />{t('hierarchy.moveUp')}</button>
+              <button type="button" disabled={playing || !canShift(nodes, menu.id, 'after')} onClick={() => { shiftNode(menu.id!, 'after'); setMenu(null) }}><ArrowDown size={12} />{t('hierarchy.moveDown')}</button>
               <button
                 type="button"
                 disabled={playing || !nodes[menu.id]?.parentId}
                 onClick={() => { useEditorStore.getState().reparent(menu.id!, null); setMenu(null) }}
               >
-                {t('hierarchy.unparent')}
+                <Ungroup size={12} />{t('hierarchy.unparent')}
               </button>
+              <div className="scene-panel__sep" />
+              <button type="button" onClick={() => { startRename(menu.id!); setMenu(null) }}><Pencil size={12} />{t('project.rename')}</button>
+              <button type="button" onClick={() => { useEditorStore.getState().setSelection([menu.id!]); useEditorStore.getState().requestFocus(); setMenu(null) }}><Focus size={12} />{t('menu.focus')}</button>
+              <div className="scene-panel__sep" />
+              <button type="button" disabled={playing} onClick={() => { useEditorStore.getState().duplicateSelection(); setMenu(null) }}><CopyPlus size={12} />{t('menu.duplicate')}</button>
+              <button type="button" disabled={playing} onClick={() => { useEditorStore.getState().copySelection(); setMenu(null) }}><Copy size={12} />{t('menu.copy')}</button>
+              <button type="button" disabled={playing || !useEditorStore.getState().canPaste} onClick={() => { useEditorStore.getState().pasteClipboard(menu.id); setMenu(null) }}><ClipboardPaste size={12} />{t('hierarchy.pasteChild')}</button>
+              <button type="button" disabled={playing} onClick={() => { useEditorStore.getState().groupSelection(); setMenu(null) }}><Group size={12} />{t('menu.group')}</button>
+              <button type="button" disabled={playing} onClick={() => { useEditorStore.getState().snapSelectionToGround(); setMenu(null) }}><ArrowDownToLine size={12} />{t('menu.ground')}</button>
+              <div className="scene-panel__sep" />
+              {!isPrefabRoot(nodes[menu.id!]) && (
+                <button type="button" disabled={playing} onClick={() => { setSavePrefab({ id: menu.id!, name: nodes[menu.id!]?.name ?? '' }); setMenu(null) }}><Package size={12} />{t('prefab.saveAs')}</button>
+              )}
+              {nodes[menu.id!]?.nestedPrefabId && (
+                <button type="button" onClick={() => { useEditorStore.getState().openPrefab(nodes[menu.id!]?.nestedPrefabId ?? ''); setMenu(null) }}><ExternalLink size={12} />{t('prefab.edit')}</button>
+              )}
+              {isPrefabRoot(nodes[menu.id!]) && (
+                <div className="scene-panel__submenu">
+                  <button type="button"><span><Component size={12} />{t('prefab.instance')}</span><ChevronRight size={12} /></button>
+                  <div className="scene-panel__submenu-pop">
+                    <button type="button" onClick={() => { useEditorStore.getState().openPrefab(nodes[menu.id!]?.prefabAssetId ?? ''); setMenu(null) }}><ExternalLink size={12} />{t('prefab.edit')}</button>
+                    <button type="button" onClick={() => { revealPrefab(nodes[menu.id!]?.prefabAssetId ?? ''); setMenu(null) }}><MapPin size={12} />{t('prefab.reveal')}</button>
+                    <div className="scene-panel__sep" />
+                    <button type="button" disabled={playing || !instanceDirty(nodes, menu.id!)} onClick={() => { useEditorStore.getState().applyPrefabInstance(menu.id!); setMenu(null) }}><Upload size={12} />{t('prefab.apply')}</button>
+                    <button type="button" disabled={playing || !instanceDirty(nodes, menu.id!)} onClick={() => { useEditorStore.getState().revertPrefabInstance(menu.id!); setMenu(null) }}><Undo2 size={12} />{t('prefab.revert')}</button>
+                    <div className="scene-panel__sep" />
+                    <button type="button" disabled={playing} onClick={() => { setUnpackId(menu.id); setMenu(null) }}><Unlink size={12} />{t('prefab.unpack')}</button>
+                  </div>
+                </div>
+              )}
+              <div className="scene-panel__sep" />
+              <button type="button" disabled={playing} onClick={() => { useEditorStore.getState().deleteSelection(); setMenu(null) }}><Trash2 size={12} />{t('menu.delete')}</button>
             </>
           )}
         </div>,
@@ -637,14 +647,30 @@ function CreateList({ onCreate }: { onCreate: (kind: NodeKind) => void }) {
   const kindName = (kind: NodeKind) => t(`kind.${kind}` as MessageKey)
   return (
     <>
-      <button type="button" onClick={() => onCreate('empty')}>{t('menu.empty')}</button>
-      <div className="scene-panel__popover-label">{t('menu.meshes')}</div>
-      {MESH_KINDS.map(kind => <button key={kind} type="button" onClick={() => onCreate(kind)}>{kindName(kind)}</button>)}
-      <div className="scene-panel__popover-label">{t('menu.lights')}</div>
-      {LIGHT_KINDS.map(kind => <button key={kind} type="button" onClick={() => onCreate(kind)}>{kindName(kind)}</button>)}
-      <button type="button" onClick={() => onCreate('camera')}>{t('menu.camera')}</button>
-      <button type="button" onClick={() => onCreate('effect')}>{t('menu.effect')}</button>
-      <button type="button" onClick={() => onCreate('screen')}>{t('menu.screen')}</button>
+      <button type="button" onClick={() => onCreate('empty')}><Axis3d size={12} />{t('menu.empty')}</button>
+      <div className="scene-panel__sep" />
+      <div className="scene-panel__submenu">
+        <button type="button"><span><Boxes size={12} />{t('menu.meshes')}</span><ChevronRight size={12} /></button>
+        <div className="scene-panel__submenu-pop">
+          {MESH_KINDS.map(kind => {
+            const Icon = ICONS[kind]
+            return <button key={kind} type="button" onClick={() => onCreate(kind)}><Icon size={12} />{kindName(kind)}</button>
+          })}
+        </div>
+      </div>
+      <div className="scene-panel__submenu">
+        <button type="button"><span><Sun size={12} />{t('menu.lights')}</span><ChevronRight size={12} /></button>
+        <div className="scene-panel__submenu-pop">
+          {LIGHT_KINDS.map(kind => {
+            const Icon = ICONS[kind]
+            return <button key={kind} type="button" onClick={() => onCreate(kind)}><Icon size={12} />{kindName(kind)}</button>
+          })}
+        </div>
+      </div>
+      <div className="scene-panel__sep" />
+      <button type="button" onClick={() => onCreate('camera')}><Camera size={12} />{t('menu.camera')}</button>
+      <button type="button" onClick={() => onCreate('effect')}><Sparkles size={12} />{t('menu.effect')}</button>
+      <button type="button" onClick={() => onCreate('screen')}><PanelsTopLeft size={12} />{t('menu.screen')}</button>
     </>
   )
 }

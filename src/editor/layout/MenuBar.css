@@ -59,14 +59,26 @@
   position: relative;
   display: flex;
   align-items: center;
+  gap: 8px;
   width: 100%;
   text-align: left;
-  padding: 5px 14px;
+  padding: 5px 12px;
   font-size: var(--font-size-sm);
   color: var(--text-secondary);
   background: none;
   border: none;
   white-space: nowrap;
+}
+
+.menubar__glyph {
+  display: inline-flex;
+  width: 14px;
+  flex-shrink: 0;
+  color: var(--text-muted);
+}
+
+.menubar__menu-item:hover:not(:disabled) .menubar__glyph {
+  color: var(--text-primary);
 }
 
 .menubar__menu-item:hover:not(:disabled) {
