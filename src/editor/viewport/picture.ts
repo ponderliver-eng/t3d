@@ -1,6 +1,6 @@
-import { UnsignedByteType, type Camera, type Scene, type WebGPURenderer } from 'three/webgpu'
+import { UnsignedByteType, type Camera, type Object3D, type Scene, type WebGPURenderer } from 'three/webgpu'
 import { RenderPipeline } from 'three/webgpu'
-import { diffuseColor, hue, metalness, mrt, normalView, output, packNormalToRGB, pass, roughness, sample, saturation, unpackRGBToNormal, vec4 } from 'three/tsl'
+import { diffuseColor, hue, metalness, mix, mrt, normalView, output, packNormalToRGB, pass, roughness, sample, saturation, unpackRGBToNormal, vec4 } from 'three/tsl'
 import { useEditorStore } from '../scene/store'
 import { bloom } from 'three/addons/tsl/display/BloomNode.js'
 import { ssao } from 'three/addons/tsl/display/SSAONode.js'
@@ -9,6 +9,7 @@ import { ssr } from 'three/addons/tsl/display/SSRNode.js'
 import { ssgi } from 'three/addons/tsl/display/SSGINode.js'
 import { smaa } from 'three/addons/tsl/display/SMAANode.js'
 import type { ScenePicture } from '../scene/types'
+import { SelectionOutlineNode } from './selectionOutline'
 
 interface BloomUniforms {
   strength: { value: number }
@@ -38,16 +39,17 @@ export class ScenePicturePipeline {
   private bloomNode: BloomUniforms | null = null
   private ssrNode: SsrUniforms | null = null
   private ssgiNode: SsgiUniforms | null = null
+  private outlineNode: SelectionOutlineNode | null = null
   private key = ''
   private failed = false
 
   constructor(private readonly renderer: WebGPURenderer) {}
 
-  usesEffects(picture: ScenePicture): boolean {
-    return picture.bloom || picture.ssr || picture.ssgi || picture.aa !== false || picture.ao || picture.dof || picture.hue !== 0 || picture.saturation !== 1
+  usesEffects(picture: ScenePicture, hasOutline = false): boolean {
+    return hasOutline || picture.bloom || picture.ssr || picture.ssgi || picture.aa !== false || picture.ao || picture.dof || picture.hue !== 0 || picture.saturation !== 1
   }
 
-  render(scene: Scene, camera: Camera, picture: ScenePicture, width: number, height: number) {
+  render(scene: Scene, camera: Camera, picture: ScenePicture, width: number, height: number, outlineTargets: readonly Object3D[] = [], flashTarget: Object3D | null = null) {
     const key = [camera.uuid, picture.toneMapping, picture.bloom, picture.ssr, picture.ssgi, picture.aa !== false, picture.ao, picture.dof, picture.hue !== 0 || picture.saturation !== 1, width, height].join('|')
     if (this.failed && this.key === key) {
       this.renderer.render(scene, camera)
@@ -56,6 +58,11 @@ export class ScenePicturePipeline {
     if (this.key !== key || !this.pipeline) {
       this.failed = false
       this.rebuild(scene, camera, picture, key)
+    }
+    if (this.outlineNode) {
+      this.outlineNode.selectedRoots.length = 0
+      for (const obj of outlineTargets) this.outlineNode.selectedRoots.push(obj)
+      this.outlineNode.flashRoot = flashTarget
     }
     if (this.bloomNode) {
       this.bloomNode.strength.value = picture.bloomStrength
@@ -87,11 +94,15 @@ export class ScenePicturePipeline {
   }
 
   dispose() {
+    this.outlineNode?.dispose()
+    this.outlineNode = null
     this.pipeline?.dispose()
     this.pipeline = null
   }
 
   private rebuild(scene: Scene, camera: Camera, picture: ScenePicture, key: string) {
+    this.outlineNode?.dispose()
+    this.outlineNode = null
     this.pipeline?.dispose()
     // 画布开了 4 倍采样。这张离屏图若跟着多重采样，深度不能再被反射读取，射线没有落点。抗锯齿由后面的 SMAA 负责。
     const scenePass = pass(scene, camera, { samples: 0 })
@@ -149,7 +160,14 @@ export class ScenePicturePipeline {
     const graded = picture.hue !== 0 || picture.saturation !== 1
       ? vec4(saturation(hue(current.rgb as never, picture.hue), picture.saturation), current.a as never)
       : current
-    const outputNode = picture.aa !== false ? smaa(graded as never) : graded
+    const outlinePass = new SelectionOutlineNode(scene, camera)
+    this.outlineNode = outlinePass
+    const outlineSample = (outlinePass as unknown as { rgb: unknown, a: unknown })
+    const withOutline = vec4(
+      mix((graded as { rgb: unknown }).rgb as never, outlineSample.rgb as never, outlineSample.a as never),
+      (graded as { a: unknown }).a as never,
+    )
+    const outputNode = picture.aa !== false ? smaa(withOutline as never) : withOutline
     const pipeline = new RenderPipeline(this.renderer, outputNode as never)
     pipeline.outputColorTransform = true
     this.pipeline = pipeline

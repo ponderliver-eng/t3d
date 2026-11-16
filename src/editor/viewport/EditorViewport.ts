@@ -9,7 +9,6 @@ import {
   AmbientLight,
   Box3,
   BoxGeometry,
-  BoxHelper,
   CapsuleGeometry,
   Color,
   ConeGeometry,
@@ -24,6 +23,7 @@ import {
   OctahedronGeometry,
   PCFShadowMap,
   PerspectiveCamera,
+  Plane,
   PlaneGeometry,
   PointLight,
   Quaternion,
@@ -63,7 +63,7 @@ import { stepSceneRuntime } from '../../runtime/sceneRuntime'
 import '../../runtime/character'
 import '../../runtime/camera'
 import '../../runtime/devices'
-import { boundsOf, refreshObjectBounds } from '../scene/bounds'
+import { boundsOf } from '../scene/bounds'
 import { isLight, isMesh } from '../scene/kinds'
 import { setSpawnProvider } from '../scene/spawn'
 import { setEditorViewBridge, setGroundSnapper, setViewportAlign } from '../scene/viewportBridge'
@@ -76,6 +76,7 @@ import { resolvePlayCamera } from './playCamera'
 import { viewCubePose } from './viewCubeBridge'
 import { createEditorGrid, gridStepForDistance } from './editorGrid'
 import { createSceneGuide, type SceneGuide } from './lightCameraGizmo'
+import { createDeviceGuide, deviceHandlePatch, hasDeviceShape, type DeviceGuide, type DeviceHandleRole } from './deviceGizmo'
 import { ScenePicturePipeline } from './picture'
 import { createVolumeLight } from './volumeLight'
 
@@ -87,6 +88,7 @@ interface ViewData {
   material?: Material
   light?: Light
   guide?: SceneGuide
+  device?: DeviceGuide
   sceneCamera?: PerspectiveCamera
   modelRoot?: Object3D
   modelKey?: string
@@ -143,8 +145,8 @@ export class EditorViewport {
   private readonly objects = new Map<string, Group>()
   private readonly pickables: Object3D[] = []
   private readonly proxy = new Group()
-  private selectionHelpers: BoxHelper[] = []
-  private partFlash: { helper: BoxHelper, target: Object3D } | null = null
+  private selectionRoots: Object3D[] = []
+  private partFlashTarget: Object3D | null = null
   private partFlashTimer = 0
   private ignoreDoubleClick = false
   private selectionKey = ''
@@ -159,6 +161,8 @@ export class EditorViewport {
   private readonly proxyScale = new Vector3(1, 1, 1)
   private readonly cubeQuat = new Quaternion()
   private press: Press | null = null
+  private deviceDrag: { id: string, role: DeviceHandleRole } | null = null
+  private deviceGesture = false
   private marquee: HTMLDivElement | null = null
   private centerAttached = false
   private width = 0
@@ -300,7 +304,10 @@ export class EditorViewport {
     this.transform.dispose()
     this.rig.dispose()
     this.clearHelpers()
-    for (const group of this.objects.values()) disposeObject(group)
+    for (const group of this.objects.values()) {
+      dataOf(group).device?.dispose()
+      disposeObject(group)
+    }
     this.objects.clear()
     this.grid.geometry.dispose()
     const gridMaterial = this.grid.material as Material | Material[]
@@ -343,6 +350,7 @@ export class EditorViewport {
     const helpers = state.helpersVisible
     for (const [id, group] of this.objects) {
       if (!state.nodes[id]) {
+        dataOf(group).device?.dispose()
         group.parent?.remove(group)
         disposeObject(group)
         this.objects.delete(id)
@@ -750,33 +758,20 @@ export class EditorViewport {
 
   private rebuildHelpers() {
     this.clearHelpers()
-    const { selection, playState } = useEditorStore.getState()
+    const { nodes, selection, playState } = useEditorStore.getState()
     if (playState !== 'stopped') return
     for (const id of selection) {
+      const node = nodes[id]
+      if (!node || !(isMesh(node.kind) || node.kind === 'model')) continue
       const pick = dataOf(this.objects.get(id) ?? new Group()).pick
       const source = pick ?? this.objects.get(id)
       if (!source) continue
-      refreshObjectBounds(source)
-      const helper = new BoxHelper(source, 0x4a9eff)
-      helper.raycast = () => {}
-      const material = helper.material as Material & { depthTest?: boolean; transparent?: boolean }
-      material.depthTest = false
-      material.transparent = true
-      helper.renderOrder = 20
-      markHelper(helper)
-      this.scene.add(helper)
-      this.selectionHelpers.push(helper)
+      this.selectionRoots.push(source)
     }
   }
 
   private clearHelpers() {
-    for (const helper of this.selectionHelpers) {
-      helper.parent?.remove(helper)
-      helper.geometry.dispose()
-      const material = helper.material as Material
-      material.dispose()
-    }
-    this.selectionHelpers = []
+    this.selectionRoots = []
   }
 
   private focusSelection() {
@@ -820,6 +815,7 @@ export class EditorViewport {
     if (active && active !== this.canvas && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA')) active.blur()
     const gizmo = this.transform.axis !== null && event.button === 0 && !event.altKey
     this.press = null
+    if (event.button === 0 && !event.altKey && !this.playCameraLocked() && this.beginDeviceDrag(event)) return
     this.rightButton = (event.buttons & 2) !== 0
     if (gizmo || this.playCameraLocked() || event.button !== 0 || event.altKey || event.shiftKey || event.ctrlKey || event.metaKey) {
       this.ignoreDoubleClick = true
@@ -848,6 +844,10 @@ export class EditorViewport {
     this.pointerDelta.x += event.movementX
     this.pointerDelta.y += event.movementY
     this.rightButton = (event.buttons & 2) !== 0
+    if (this.deviceDrag) {
+      this.dragDevice(event)
+      return
+    }
     this.rig.pointerMove(event)
     if (!this.press) return
     const dx = event.clientX - this.press.x
@@ -866,6 +866,14 @@ export class EditorViewport {
   }
 
   private onPointerUp = (event: PointerEvent) => {
+    if (this.deviceDrag) {
+      if (this.deviceGesture) useEditorStore.getState().endGesture()
+      this.deviceDrag = null
+      this.deviceGesture = false
+      this.ignoreDoubleClick = true
+      if (this.canvas.hasPointerCapture(event.pointerId)) this.canvas.releasePointerCapture(event.pointerId)
+      return
+    }
     const press = this.press
     this.press = null
     this.rightButton = false
@@ -1003,29 +1011,14 @@ export class EditorViewport {
 
   private flashPart(target: Object3D) {
     this.clearPartFlash()
-    const helper = new BoxHelper(target, 0x39ff14)
-    helper.raycast = () => {}
-    const material = helper.material as Material & { depthTest?: boolean, transparent?: boolean }
-    material.depthTest = false
-    material.transparent = true
-    helper.renderOrder = 21
-    markHelper(helper, true)
-    this.scene.add(helper)
-    this.partFlash = { helper, target }
+    this.partFlashTarget = target
     this.partFlashTimer = window.setTimeout(() => this.clearPartFlash(), 1600)
   }
 
   private clearPartFlash() {
     if (this.partFlashTimer) window.clearTimeout(this.partFlashTimer)
     this.partFlashTimer = 0
-    const flash = this.partFlash
-    this.partFlash = null
-    if (!flash) return
-    flash.helper.removeFromParent()
-    flash.helper.geometry.dispose()
-    const material = flash.helper.material
-    if (Array.isArray(material)) material.forEach(item => item.dispose())
-    else material.dispose()
+    this.partFlashTarget = null
   }
 
   raycastDrop(clientX: number, clientY: number): { point: [number, number, number], nodeId: string | null } {
@@ -1144,14 +1137,8 @@ export class EditorViewport {
       capabilityEnabled(editor.capabilities, 'navigation') && (editor.helpersVisible || editor.playState !== 'stopped'),
     )
     this.refreshGuides()
-    for (const helper of this.selectionHelpers) {
-      const target = (helper as { object?: Object3D }).object
-      if (target) refreshObjectBounds(target)
-      helper.update()
-    }
-    if (this.partFlash) {
-      if (!this.partFlash.target.parent) this.clearPartFlash()
-      else this.partFlash.helper.update()
+    if (this.partFlashTarget && !this.partFlashTarget.parent) {
+      this.clearPartFlash()
     }
     this.flattenGizmo()
     this.frameCamera = this.activeCamera()
@@ -1164,10 +1151,13 @@ export class EditorViewport {
         this.applyPicture()
         if (this.volumeMuted) this.volume.mesh.visible = false
         this.renderer.info.reset()
-        if (!this.picture.usesEffects(picture)) {
+        const outlineTargets = editor.playState === 'stopped' ? this.selectionRoots : []
+        const flashTarget = editor.playState === 'stopped' ? this.partFlashTarget : null
+        const hasOutline = outlineTargets.length > 0 || flashTarget !== null
+        if (!this.picture.usesEffects(picture, hasOutline)) {
           this.renderer.render(this.scene, camera)
         } else {
-          this.picture.render(this.scene, camera, picture, this.width, this.height)
+          this.picture.render(this.scene, camera, picture, this.width, this.height, outlineTargets, flashTarget)
         }
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error)
@@ -1229,6 +1219,62 @@ export class EditorViewport {
       if (!guide || !node) continue
       guide.refresh(node, group.scale, aspect, show, state.selection.includes(id))
     }
+    this.refreshDeviceGuides(state.nodes, show, state.selection)
+  }
+
+  private refreshDeviceGuides(nodes: Record<string, SceneNode>, show: boolean, selection: string[]) {
+    const selected = new Set(selection)
+    for (const [id, group] of this.objects) {
+      const node = nodes[id]
+      const data = dataOf(group)
+      if (!node || !hasDeviceShape(node)) {
+        data.device?.dispose()
+        data.device = undefined
+        continue
+      }
+      if (!data.device) {
+        data.device = createDeviceGuide()
+        markHelper(data.device.root)
+        this.scene.add(data.device.root)
+      }
+      data.device.refresh(node, group.getWorldPosition(new Vector3()), show, selected.has(id))
+    }
+  }
+
+  private beginDeviceDrag(event: PointerEvent): boolean {
+    if (!this.aimPointer(event.clientX, event.clientY)) return false
+    const handles = [...this.objects.values()].flatMap(group => dataOf(group).device?.handles ?? [])
+    const hit = this.raycaster.intersectObjects(handles, false).find(item => item.object.visible)
+    if (!hit) return false
+    const role = hit.object.userData.deviceRole as DeviceHandleRole | undefined
+    const id = hit.object.userData.nodeId as string | undefined
+    if (!role || !id) return false
+    this.deviceDrag = { id, role }
+    this.ignoreDoubleClick = true
+    this.canvas.setPointerCapture(event.pointerId)
+    return true
+  }
+
+  private dragDevice(event: PointerEvent) {
+    const drag = this.deviceDrag
+    const group = drag ? this.objects.get(drag.id) : undefined
+    const node = drag ? useEditorStore.getState().nodes[drag.id] : undefined
+    if (!drag || !group || !node || !this.aimPointer(event.clientX, event.clientY)) return
+    const origin = group.getWorldPosition(new Vector3())
+    const normal = this.viewCamera().getWorldPosition(new Vector3()).sub(origin)
+    if (drag.role === 'checkpoint-abyss' || drag.role === 'mover-carry') normal.y = 0
+    if (normal.lengthSq() < 1e-6) normal.set(0, 0, 1)
+    normal.normalize()
+    const hit = new Vector3()
+    if (!this.raycaster.ray.intersectPlane(new Plane().setFromNormalAndCoplanarPoint(normal, origin), hit)) return
+    const patch = deviceHandlePatch(node, drag.role, hit, origin)
+    if (!patch) return
+    const store = useEditorStore.getState()
+    if (!this.deviceGesture) {
+      store.beginGesture('调整装置')
+      this.deviceGesture = true
+    }
+    store.updateNode(drag.id, patch)
   }
 
   private toneMappingOf(mode: ToneMap) {
@@ -1329,6 +1375,7 @@ export class EditorViewport {
     data.activeOverlay = ''
     data.bodyBlend = undefined
     data.overlayBlend = undefined
+    this.selectionKey = ''
   }
 
   private playbackSource(node: SceneNode) {

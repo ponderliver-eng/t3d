@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type MouseEvent } from 'react'
-import { Box, ChevronRight, Clapperboard, Component, CopyPlus, Folder, FolderOpen, FolderPlus, Globe, Image, LayoutGrid, List, ListTree, Minus, Music, PackageOpen, Palette, PanelsTopLeft, Pencil, Plus, RefreshCw, Rows3, Search, Sparkles, Sun, Trash2, Upload, X } from 'lucide-react'
+import { Box, ChevronRight, Clapperboard, Component, CopyPlus, Folder, FolderOpen, FolderPlus, Globe, Image, Layers, LayoutGrid, List, ListTree, MapPin, Minus, Music, PackageOpen, Palette, PanelsTopLeft, Pencil, Plus, RefreshCw, Rows3, Search, Sparkles, Sun, Trash2, Unlink, Upload, X } from 'lucide-react'
 import { CLIP_MIME } from '../animation/playback'
 import { ASSET_MIME, assignClip, bindImportInput, createDefaultMaterial, createDefaultUi, deleteAsset, duplicateAsset, importFiles, openAsset, openImport, reimportModel, reportAssetUsers } from '../assets/import'
 import { savePrefabFromSelection } from '../assets/import'
@@ -13,13 +13,13 @@ import { openPackagePicker, usePackageImportStore } from '../assets/packageImpor
 import './ProjectPanel.css'
 
 const PILLS = [
-  { id: 'all' },
-  { id: 'model' },
-  { id: 'image' },
-  { id: 'audio' },
-  { id: 'scene' },
-  { id: 'used' },
-  { id: 'unused' },
+  { id: 'all', icon: Layers },
+  { id: 'model', icon: Box },
+  { id: 'image', icon: Image },
+  { id: 'audio', icon: Music },
+  { id: 'scene', icon: Globe },
+  { id: 'used', icon: MapPin },
+  { id: 'unused', icon: Unlink },
 ] as const
 
 type PillId = (typeof PILLS)[number]['id']
@@ -196,10 +196,16 @@ export default function ProjectPanel() {
           />
         </div>
         <div className="project-browse__filters">
-          {PILLS.map(item => (
-            <button key={item.id} type="button" className={pill === item.id ? 'is-on' : ''} onClick={() => setPill(item.id)}>{t(`project.${item.id}` as MessageKey)}</button>
-          ))}
-          <span>{t('project.count', { count: items.length })}</span>
+          {PILLS.map(item => {
+            const Icon = item.icon
+            const label = t(`project.${item.id}` as MessageKey)
+            return (
+              <button key={item.id} type="button" className={pill === item.id ? 'is-on' : ''} title={label} aria-label={label} onClick={() => setPill(item.id)}>
+                <Icon size={13} />
+              </button>
+            )
+          })}
+          <span title={t('project.count', { count: items.length })}>{items.length}</span>
           <button type="button" className={view === 'list' ? 'is-on' : ''} title={t('project.list')} onClick={() => setView('list')}><List size={13} /></button>
           <button type="button" className={view === 'details' ? 'is-on' : ''} title={t('project.details')} onClick={() => setView('details')}><Rows3 size={13} /></button>
           <button type="button" className={view === 'grid' ? 'is-on' : ''} title={t('project.grid')} onClick={() => setView('grid')}><LayoutGrid size={13} /></button>
@@ -643,7 +649,7 @@ function DirNodeView({
             onToggle(node.path)
           }}
         >
-          {node.children.length > 0 && (open ? <Minus size={10} /> : <Plus size={10} />)}
+          {node.children.length > 0 && (open ? <Minus size={11} strokeWidth={2.75} /> : <Plus size={11} strokeWidth={2.75} />)}
         </button>
         <Icon size={13} />
         {renamePath === node.path ? (

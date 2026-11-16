@@ -302,6 +302,18 @@
 
 .project-browse__tree-tools button:hover,
 .project-browse__tree-toggle:hover { color: var(--text-primary); }
+.project-browse__tree-toggle:not(.is-empty) {
+  width: 16px;
+  height: 16px;
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: 2px;
+}
+.project-browse__tree-toggle:not(.is-empty):hover {
+  background: rgba(255, 255, 255, 0.18);
+  border-color: rgba(255, 255, 255, 0.5);
+}
 .project-browse__tree-toggle.is-empty { visibility: hidden; }
 
 .project-browse__tree-item {
@@ -360,8 +372,8 @@
   color: var(--text-secondary);
 }
 
-.project-browse__filters { flex-wrap: wrap; padding-top: 4px; }
-.project-browse__filters > button { border: 0; height: 20px; color: var(--text-muted); }
+.project-browse__filters { flex-wrap: nowrap; padding-top: 4px; }
+.project-browse__filters > button { border: 0; width: 22px; height: 22px; padding: 0; color: var(--text-muted); }
 .project-browse__filters > button.is-on,
 .project-browse__toolbar > button:hover,
 .project-browse__filters > button:hover { color: var(--text-primary); background: var(--bg-hover); }
