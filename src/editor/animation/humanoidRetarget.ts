@@ -434,13 +434,18 @@ function plantFeet(tracks: PoseTrack[], source: HumanoidRigProfile, target: Huma
   if (!source.hasTrueBindPose) return
   const hips = tracks.find(track => track.slot === 'Hips' && track.property === 'position')
   if (!hips || (!tracks.some(track => track.slot === 'LeftLowerLeg') && !tracks.some(track => track.slot === 'RightLowerLeg'))) return
-  const leg = Math.max(target.legScaleMetric, source.legScaleMetric, 1e-3)
+  const srcLeg = Math.max(source.legScaleMetric * (source.externalScale && source.externalScale > 1e-4 ? source.externalScale : 1), 1e-3)
+  const dstLeg = Math.max(target.legScaleMetric * (target.externalScale && target.externalScale > 1e-4 ? target.externalScale : 1), 1e-3)
   const hipsValues: Array<[number, number, number]> = []
+  let minY = Infinity
+  let maxY = -Infinity
   for (let i = 0; i < hips.times.length; i += 1) {
     const value = vecAt(hips.values, i)
     hipsValues.push([value.x, value.y, value.z])
+    minY = Math.min(minY, value.y)
+    maxY = Math.max(maxY, value.y)
   }
-  if (xzSpan(hipsValues) > 0.2 * leg) return
+  if (xzSpan(hipsValues) > 0.2 * target.legScaleMetric || (maxY - minY) > 0.45 * target.legScaleMetric) return
   const sourceRot = (slot: HumanoidBoneSlot) => {
     const bone = nameForSlot(source, slot)
     return bone ? findAuthored(authored, bone, 'rotationQuaternion') : undefined
@@ -474,7 +479,7 @@ function plantFeet(tracks: PoseTrack[], source: HumanoidRigProfile, target: Huma
   if (sourceRestFoot === null) return
   const contact = frames.filter(frame => {
     const foot = sourceFoot(frame)
-    return foot !== null && foot <= sourceRestFoot + 0.08 * leg
+    return foot !== null && foot <= sourceRestFoot + 0.08 * srcLeg
   })
   if (contact.length === 0) return
   const targetRest = target.bySlot.get('Hips')
@@ -501,8 +506,8 @@ function plantFeet(tracks: PoseTrack[], source: HumanoidRigProfile, target: Huma
   const sorted = [...targetFeet].sort((a, b) => a - b)
   const mid = Math.floor(sorted.length / 2)
   const median = sorted.length % 2 === 0 ? ((sorted[mid - 1] ?? 0) + (sorted[mid] ?? 0)) / 2 : (sorted[mid] ?? 0)
-  const offset = Math.max(-0.45 * leg, Math.min(0.45 * leg, targetRestFoot - median))
-  if (Math.abs(offset) < 0.004 * leg) return
+  const offset = Math.max(-0.45 * dstLeg, Math.min(0.45 * dstLeg, targetRestFoot - median))
+  if (Math.abs(offset) < 0.004 * dstLeg) return
   const scale = target.externalScale && target.externalScale > 1e-4 ? target.externalScale : 1
   const local = new Vector3(0, offset / scale, 0).applyQuaternion((targetRest.parentWorldRotation ?? new Quaternion()).clone().invert())
   for (let i = 0; i < hips.times.length; i += 1) writeVec(hips, i, vecAt(hips.values, i).add(local))
@@ -682,7 +687,25 @@ export function bindHumanoidClip(input: {
     }
     if (property === 'scale') continue
     const sampled = readSamples(track)
-    const next: PoseTrack = { bone: targetBone, slot: effective, property, times: sampled.times, values: sampled.values, passthrough: null }
+    let times = sampled.times
+    let values = sampled.values
+    if (property === 'position' && effective === 'Hips') {
+      const foldedHips = authored.find(item => item.targetProperty === 'position' && item.targetName && normHumanoidBoneName(item.targetName) === norm)
+      if (foldedHips && foldedHips.keys.length > 0) {
+        const foldedTimes: number[] = []
+        const foldedValues: number[] = []
+        for (const k of foldedHips.keys) {
+          if (!Array.isArray(k.value) || k.value.length < 3) continue
+          foldedTimes.push(k.frame ?? 0)
+          foldedValues.push(Number(k.value[0]) || 0, Number(k.value[1]) || 0, Number(k.value[2]) || 0)
+        }
+        if (foldedTimes.length > 0) {
+          times = foldedTimes
+          values = foldedValues
+        }
+      }
+    }
+    const next: PoseTrack = { bone: targetBone, slot: effective, property, times, values, passthrough: null }
     const srcRest = (sourceSlot ? source.bySlot.get(sourceSlot) : undefined) ?? source.byNormName.get(norm)
     const dstRest = effective ? target.bySlot.get(effective) : undefined
     if (dstRest && effective) {

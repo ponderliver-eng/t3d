@@ -366,6 +366,41 @@ export function captureHumanoidSkeletons(root: Object3D): HumanoidSkeletonRecord
       externalScale: frame.scale,
     })
   }
+  if (records.length === 0) {
+    const fallbackBones: Object3D[] = []
+    root.traverse(child => {
+      if (child === root || (child as SkinnedMesh).isMesh || isSynthetic(child)) return
+      if ((child as Bone).isBone || classifyHumanoidBoneSlot(child.name) !== null || /^b[-_]root$/i.test(child.name)) {
+        const target = (child as Bone).isBone ? canonicalBone(child as Bone) : child
+        if (!fallbackBones.includes(target)) fallbackBones.push(target)
+      }
+    })
+    const hips = fallbackBones.find(bone => classifyHumanoidBoneSlot(bone.name) === 'Hips')
+    if (hips && fallbackBones.length >= 6) {
+      const boneSet = new Set<Object3D>(fallbackBones)
+      const listed = fallbackBones.map((bone, index) => {
+        let parentObj = bone.parent
+        while (parentObj && (parentObj as Bone).isBone && parentObj.name === bone.name) {
+          parentObj = parentObj.parent
+        }
+        const parent = parentObj && (parentObj as Bone).isBone ? canonicalBone(parentObj as Bone) : parentObj
+        const parentIndex = parent && fallbackBones.includes(parent) ? fallbackBones.indexOf(parent) : undefined
+        const matrix = new Matrix4().compose(bone.position, bone.quaternion, bone.scale)
+        return {
+          index,
+          name: bone.name,
+          ...(parentIndex !== undefined && parentIndex >= 0 ? { parentIndex } : {}),
+          restMatrix: Array.from(matrix.elements),
+        }
+      })
+      const frame = externalOf(hips, root, boneSet)
+      records.push({
+        bones: listed,
+        externalRotation: [frame.rotation.x, frame.rotation.y, frame.rotation.z, frame.rotation.w],
+        externalScale: frame.scale,
+      })
+    }
+  }
   return records
 }
 

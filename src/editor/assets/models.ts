@@ -95,6 +95,7 @@ export function loadModelTemplate(asset: FileAsset, forceSource = false): Promis
     templates.set(asset.id, template)
     revisions.set(asset.id, (revisions.get(asset.id) ?? 0) + 1)
     pending.delete(asset.id)
+    releaseHumanoidPlayback(asset.id)
     registerHumanoidSkeletons(asset.id, template.humanoid.skeletons)
     rememberHumanoidAvatar(asset.id, template.humanoid.avatar)
     rememberHumanoidImportScale(asset.id, template, forceSource)

@@ -36,13 +36,21 @@ type Side = 'left' | 'right' | null
 function detectSideAndStem(cleanName: string): { side: Side; stem: string } {
   const withoutMiddle = cleanName.replace(/[._\-\s]+m$/i, '')
   const lower = withoutMiddle.toLowerCase()
-  if (/(^|[._\-\s])(end|nub|twist\d*|roll\d*|ik|pole|rootpart\d*)($|[._\-\s])/i.test(lower) || /(?<!b)end$/i.test(lower)) {
+  if ((/(^|[._\-\s])(end|nub|twist\d*|roll\d*|ik|pole|rootpart\d*)($|[._\-\s])/i.test(lower) || /twist\d*(l|r)?$/i.test(lower) || /sharebone/i.test(lower) || /(?<!b)end$/i.test(lower)) && !/^necktwist0*1$/i.test(lower)) {
     return { side: null, stem: '' }
   }
   const suffixMatch = /^(.*?)[._\-\s]+(l|r|left|right)$/i.exec(lower)
   if (suffixMatch) {
     const token = suffixMatch[2].toLowerCase()
     return { side: token === 'l' || token === 'left' ? 'left' : 'right', stem: suffixMatch[1].replace(/[._\-\s]+/g, '') }
+  }
+  // GLTFLoader.createUniqueName 会剥掉骨骼名中的 '.'，导致 `thigh.L` / `upperarm.R` 变成 `thighL` / `upperarmR`
+  const camelSuffixMatch = /^(.+?)(L|R)$/.exec(withoutMiddle)
+  if (camelSuffixMatch) {
+    const stemCandidate = camelSuffixMatch[1]!.toLowerCase().replace(/[._\-\s]+/g, '')
+    if (/^(shoulder|clavicle|collar|scapula|shldr|upperarm|arm|uparm|bicep|humerus|shldrbend|lowerarm|forearm|loarm|elbow|forearmbend|ulna|hand|wrist|palm|upperleg|upleg|thigh|hip|femur|thighbend|lowerleg|leg|calf|shin|knee|tibia|foot|ankle|toes|toe|toebase|ball|forefoot|eye|eyeball|(hand|f)?(thumb|index|forefinger|middle|mid|ring|third|pinky|little|small|finger\d)(finger)?(\d*|a|b|c|proximal|intermediate|distal))$/.test(stemCandidate)) {
+      return { side: camelSuffixMatch[2] === 'L' ? 'left' : 'right', stem: stemCandidate }
+    }
   }
   const prefixWordMatch = /^(left|right)[._\-\s]*(.+)$/i.exec(lower)
   if (prefixWordMatch) {
@@ -114,7 +122,7 @@ export function classifyHumanoidBoneSlot(rawBoneName: string): HumanoidBoneSlot 
     if (['spine', 'spine01', 'spine1', 'spine00', 'spinea', 'abdomen', 'abdomenlower', 'torso'].includes(stem)) return 'Spine'
     if (['spine2', 'spine02', 'spineb', 'chest', 'thorax', 'ribcage', 'abdomenupper', 'chestlower'].includes(stem)) return 'Chest'
     if (['spine3', 'spine03', 'spine04', 'spine4', 'spinec', 'upperchest', 'topchest', 'chestupper'].includes(stem)) return 'UpperChest'
-    if (stem === 'neck' || stem === 'neck01' || stem === 'neck1' || stem === 'necklower') return 'Neck'
+    if (stem === 'neck' || stem === 'neck01' || stem === 'neck1' || stem === 'necklower' || stem === 'necktwist01' || stem === 'necktwist1') return 'Neck'
     if (stem === 'head' || stem === 'head01' || stem === 'head1') return 'Head'
     if (stem === 'jaw' || stem === 'chin' || stem === 'mandible') return 'Jaw'
     return null
