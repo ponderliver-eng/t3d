@@ -15,6 +15,10 @@ contextBridge.exposeInMainWorld('__electron', {
     removeDir: (dirPath: string) => ipcRenderer.invoke('fs:removeDir', dirPath),
     list: (dirPath: string) => ipcRenderer.invoke('fs:list', dirPath),
   },
+  shell: {
+    showItemInFolder: (filePath: string) => ipcRenderer.invoke('shell:showItemInFolder', filePath),
+    openPath: (targetPath: string) => ipcRenderer.invoke('shell:openPath', targetPath),
+  },
   dialog: {
     showOpenDirectoryDialog: () => ipcRenderer.invoke('dialog:showOpenDirectoryDialog'),
   },

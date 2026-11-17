@@ -16,6 +16,10 @@ export interface ElectronBridge {
     removeDir: (dirPath: string) => Promise<void>
     list: (dirPath: string) => Promise<ElectronListEntry[]>
   }
+  shell: {
+    showItemInFolder: (filePath: string) => Promise<void>
+    openPath: (targetPath: string) => Promise<void>
+  }
   dialog: {
     showOpenDirectoryDialog: () => Promise<string | null>
   }

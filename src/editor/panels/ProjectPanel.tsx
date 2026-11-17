@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type MouseEvent } from 'react'
 import { createPortal } from 'react-dom'
-import { Box, ChevronRight, Clapperboard, Component, CopyPlus, Folder, FolderOpen, FolderPlus, Globe, Image, Layers, LayoutGrid, List, ListTree, MapPin, Minus, Music, PackageOpen, Palette, PanelsTopLeft, Pencil, Plus, RefreshCw, Rows3, Search, Sparkles, Sun, Trash2, Unlink, Upload, X } from 'lucide-react'
+import { Box, ChevronRight, Clapperboard, Component, CopyPlus, Folder, FolderOpen, FolderPlus, FolderSearch, Globe, Image, Layers, LayoutGrid, List, ListTree, MapPin, Minus, Music, PackageOpen, Palette, PanelsTopLeft, Pencil, Plus, RefreshCw, Rows3, Search, Sparkles, Sun, Trash2, Unlink, Upload, X } from 'lucide-react'
 import { CLIP_MIME } from '../animation/playback'
 import { ASSET_MIME, assignClip, bindImportInput, createDefaultMaterial, createDefaultUi, deleteAsset, duplicateAsset, importFiles, isNodeDrag, logNamed, NODE_MIME, openAsset, openImport, reimportModel, reportAssetUsers } from '../assets/import'
 import { savePrefabFromSelection } from '../assets/import'
@@ -8,6 +8,9 @@ import { readPrefab } from '../assets/prefab'
 import { ASSETS_ROOT, directoryTree, findDir, isWithin, parentDir, type DirNode } from '../assets/folders'
 import { MaterialBall } from '../assets/materialBall'
 import { assetDirectory, useAssetStore, type ProjectAsset } from '../assets/library'
+import { assetDiskPath, folderDiskPath } from '../project/disk'
+import { electronBridge } from '../project/electronBridge'
+import { clipDuration, clipNamesFor, subscribeModels } from '../assets/models'
 import { useEditorStore } from '../scene/store'
 import { translate, useI18n, type MessageKey } from '../i18n'
 import { openAssetPreview, type PreviewKind } from '../preview/previewStore'
@@ -85,6 +88,8 @@ export default function ProjectPanel() {
   const inspectedAssetId = useEditorStore(state => state.inspectedAssetId)
   const assetPing = useEditorStore(state => state.assetPing)
   const [pingedId, setPingedId] = useState<string | null>(null)
+  const [modelVersion, setModelVersion] = useState(0)
+  useEffect(() => subscribeModels(() => setModelVersion(value => value + 1)), [])
   const nodes = useEditorStore(state => state.nodes)
   const q = query.trim().toLowerCase()
   const referenced = useMemo(() => referencedIds(nodes, assets), [nodes, assets])
@@ -94,7 +99,7 @@ export default function ProjectPanel() {
       if (pill === 'model' && asset.kind !== 'model' && asset.kind !== 'prefab') return false
       if (pill === 'image' && asset.kind !== 'texture' && asset.kind !== 'material' && asset.kind !== 'environment') return false
       if (pill === 'audio' && asset.kind !== 'audio') return false
-      if (pill === 'animation' && asset.kind !== 'animation') return false
+      if (pill === 'animation' && asset.kind !== 'animation' && clipEntries(asset).length === 0) return false
       if (pill === 'scene' && asset.kind !== 'scene') return false
       if (pill === 'used' && !referenced.has(asset.id)) return false
       if (pill === 'unused' && referenced.has(asset.id)) return false
@@ -115,7 +120,7 @@ export default function ProjectPanel() {
     const children = findDir(tree, browseDir)?.children ?? []
     const here = Object.values(assets).filter(asset => assetDirectory(asset.id, assetDirs) === browseDir).sort(byName)
     return [...children.map(dirItem), ...here.map(assetItem)]
-  }, [assets, assetDirs, browseDir, pill, q, referenced, tree])
+  }, [assets, assetDirs, browseDir, modelVersion, pill, q, referenced, tree])
 
   useEffect(() => {
     const current = useAssetStore.getState().expanded
@@ -468,6 +473,7 @@ export default function ProjectPanel() {
           {(assetKind(menu.id) === 'material' || assetKind(menu.id) === 'scene' || assetKind(menu.id) === 'prefab') && (
             <button type="button" onClick={() => { duplicateAsset(menu.id); setMenu(null) }}><CopyPlus size={12} />{t('project.duplicate')}</button>
           )}
+          <button type="button" onClick={() => { void revealOnDisk(assetDiskPath(menu.id)); setMenu(null) }}><FolderSearch size={12} />{t('project.reveal')}</button>
           <div className="project-panel__sep" />
           <button type="button" onClick={() => { reportAssetUsers(menu.id); setMenu(null) }}><ListTree size={12} />{t('project.findRefs')}</button>
           <button type="button" onClick={() => { setRenameId(menu.id); setMenu(null) }}><Pencil size={12} />{t('project.rename')}</button>
@@ -483,6 +489,7 @@ export default function ProjectPanel() {
           <CreateMenu dir={menu.path} onDone={() => setMenu(null)} onNewFolder={path => setRenamePath(path)} />
           <div className="project-panel__sep" />
           <button type="button" onClick={() => { useAssetStore.getState().setBrowseDir(menu.path); setMenu(null) }}><FolderOpen size={12} />{t('project.open')}</button>
+          <button type="button" onClick={() => { void revealOnDisk(folderDiskPath(menu.path), true); setMenu(null) }}><FolderSearch size={12} />{t('project.reveal')}</button>
           <button type="button" onClick={() => { setMenu(null); openPackagePicker() }}><PackageOpen size={12} />{t('menu.extractPackage')}</button>
           {menu.path !== ASSETS_ROOT && <div className="project-panel__sep" />}
           {menu.path !== ASSETS_ROOT && <button type="button" onClick={() => { setRenamePath(menu.path); setMenu(null) }}><Pencil size={12} />{t('project.rename')}</button>}
@@ -564,8 +571,23 @@ function CreateMenu({ dir, onDone, onNewFolder }: { dir: string, onDone: () => v
   )
 }
 
+function revealOnDisk(target: string | null, folder = false) {
+  const desktop = electronBridge()
+  if (!desktop?.shell || !target) {
+    useEditorStore.getState().log('warn', translate('project.revealMissing'))
+    return
+  }
+  const opened = folder ? desktop.shell.openPath(target) : desktop.shell.showItemInFolder(target)
+  void opened.catch(error => {
+    const message = error instanceof Error ? error.message : String(error)
+    useEditorStore.getState().log('error', translate('project.revealFailed', { message }))
+  })
+}
+
 function clipEntries(asset: ProjectAsset) {
-  return 'clipCatalog' in asset && asset.clipCatalog ? asset.clipCatalog : []
+  if ('clipCatalog' in asset && asset.clipCatalog?.length) return asset.clipCatalog
+  if (asset.kind !== 'model' && asset.kind !== 'animation') return []
+  return clipNamesFor(asset.id).map(name => ({ name, duration: clipDuration(asset.id, name) }))
 }
 
 function AssetRow({

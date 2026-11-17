@@ -1,7 +1,7 @@
 import { importExtractedBytes } from '../import'
 import { useAssetStore } from '../library'
 import { normalizeDir } from '../folders'
-import { normalizeMaterialKey, retargetClipsOntoModel, type ModelMaterialHint } from '../models'
+import { getModelTemplate, normalizeMaterialKey, retargetClipsOntoModel, type ModelMaterialHint } from '../models'
 import { importUnityMatText, textureGuidRegex, UNITY_MAT_TEXTURE_PROPERTIES } from '../unityMaterial'
 import { decodeTgaToRgba, encodeRgbaToPng } from '../ufbx/tgaTexture'
 import type { PackageAssetScannerEntry, PackageMaterialBindingSource } from './packageAssetScanner'
@@ -164,18 +164,34 @@ export async function extractPackageEntries(
     completed += 1
   }
 
-  // 4. 动画重定向合并
+  // 4. 已导入的人形片段都可以重定向到其他人形本体，不要求文件名带 @。
   if (options.mergeAnimations) {
-    for (const entry of models) {
-      const role = options.roles[entry.id] ?? entry.roleGuess?.role
-      if (role !== 'animationCarrier') continue
-      const carrierId = importedIds.get(entry.id)
-      const bodyEntryId = options.carrierBodies[entry.id] ?? entry.roleGuess?.relatedBodyEntryIds?.[0]
-      const bodyId = bodyEntryId ? importedIds.get(bodyEntryId) : undefined
-      if (!carrierId || !bodyId) continue
-      report('retarget', entry.fileName)
-      const added = retargetClipsOntoModel(bodyId, carrierId, clipNameOf(entry))
-      if (added === 0) failed.push({ name: entry.fileName, error: '没有可重定向到本体的动画' })
+    const ready = models.flatMap(entry => {
+      const id = importedIds.get(entry.id)
+      const template = id ? getModelTemplate(id) : undefined
+      if (!id || !template?.clips.length || !template.humanoid.profile) return []
+      return [{ entry, id }]
+    })
+    const bodies = ready.filter(item => useAssetStore.getState().assets[item.id]?.kind !== 'animation')
+    for (const source of ready) {
+      const role = options.roles[source.entry.id] ?? source.entry.roleGuess?.role
+      const linkedId = options.carrierBodies[source.entry.id] ?? source.entry.roleGuess?.relatedBodyEntryIds?.[0]
+      const linked = linkedId ? importedIds.get(linkedId) : undefined
+      const asset = useAssetStore.getState().assets[source.id]
+      const standalone = asset?.kind === 'animation' || role === 'animationCarrier'
+      const targets = linked
+        ? ready.filter(item => item.id === linked)
+        : (standalone ? bodies : bodies.filter(item => item.id !== source.id))
+      for (const body of targets) {
+        if (body.id === source.id) continue
+        report('retarget', source.entry.fileName)
+        const added = retargetClipsOntoModel(
+          body.id,
+          source.id,
+          source.entry.kind === 'animation' ? clipNameOf(source.entry) : undefined,
+        )
+        if (added === 0) failed.push({ name: source.entry.fileName, error: '没有可重定向到本体的动画' })
+      }
     }
   }
 

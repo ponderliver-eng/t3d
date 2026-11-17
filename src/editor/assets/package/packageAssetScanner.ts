@@ -438,7 +438,7 @@ function classifyExtractableAsset(
   }
   if (MODEL_EXTENSIONS.has(extension)) {
     const base = stripExtension(fileNameOf(originalPath))
-    if (extension === 'fbx' && /@[^/\\]+$/.test(base)) {
+    if (extension === 'fbx' && (hasAtClipName(base) || isAnimationFolder(originalPath))) {
       return {
         kind: 'animation',
         outputExtension: 'clip',
@@ -592,4 +592,13 @@ function directoryOf(path: string): string {
 function stripExtension(name: string): string {
   const index = name.lastIndexOf('.')
   return index > 0 ? name.slice(0, index) : name
+}
+
+function hasAtClipName(base: string): boolean {
+  const at = base.lastIndexOf('@')
+  return at > 0 && at < base.length - 1
+}
+
+function isAnimationFolder(path: string): boolean {
+  return /(^|\/)(animations?|anims?|motions?)(\/|$)/i.test(normalizePackagePath(path))
 }

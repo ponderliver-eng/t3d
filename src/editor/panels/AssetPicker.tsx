@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { LayoutGrid, List, Search, X } from 'lucide-react'
 import { MaterialBall } from '../assets/materialBall'
+import { subscribeModels } from '../assets/models'
 import { useAssetStore, type ProjectAsset } from '../assets/library'
 import { useI18n, type MessageKey } from '../i18n'
 import './AssetPicker.css'
@@ -37,6 +38,8 @@ export function AssetPicker({
   const [view, setView] = useState<'list' | 'grid'>(textures ? readTextureView : 'list')
   const thumbs = textures && view === 'grid'
   const [query, setQuery] = useState('')
+  const [modelVersion, setModelVersion] = useState(0)
+  useEffect(() => subscribeModels(() => setModelVersion(value => value + 1)), [])
   const q = query.trim().toLowerCase()
   const chooseView = (next: 'list' | 'grid') => {
     setView(next)
@@ -46,7 +49,7 @@ export function AssetPicker({
     if (!kinds.includes(asset.kind)) return false
     if (include && !include(asset)) return false
     return !q || asset.name.toLowerCase().includes(q)
-  }).sort((a, b) => a.name.localeCompare(b.name, 'zh')), [assets, kinds, include, q])
+  }).sort((a, b) => a.name.localeCompare(b.name, 'zh')), [assets, kinds, include, q, modelVersion])
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {

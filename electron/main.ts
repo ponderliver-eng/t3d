@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import fs from 'node:fs/promises'
 
-const { app, BrowserWindow, ipcMain, dialog } = electron
+const { app, BrowserWindow, ipcMain, dialog, shell } = electron
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const VITE_DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL
@@ -97,6 +97,13 @@ function registerIpc() {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') return []
       throw error
     }
+  })
+  ipcMain.handle('shell:showItemInFolder', (_event, filePath: string) => {
+    shell.showItemInFolder(filePath)
+  })
+  ipcMain.handle('shell:openPath', async (_event, targetPath: string) => {
+    const error = await shell.openPath(targetPath)
+    if (error) throw new Error(error)
   })
   ipcMain.handle('dialog:showOpenDirectoryDialog', async () => {
     const win = BrowserWindow.getFocusedWindow() ?? mainWindow

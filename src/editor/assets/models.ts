@@ -589,8 +589,14 @@ function templateFromObject(object: Object3D, clips: AnimationClip[]): ModelTemp
 }
 
 function rememberClipCatalog(assetId: string, clips: AnimationClip[]) {
-  const catalog = clips.filter(clip => clip.name).map(clip => ({ name: clip.name, duration: clip.duration }))
+  const catalog = clips.map((clip, index) => ({
+    name: clip.name || `Animation_${index + 1}`,
+    duration: clip.duration,
+  })).filter(entry => entry.name)
   if (catalog.length === 0) return
+  for (let index = 0; index < clips.length; index += 1) {
+    if (!clips[index]?.name) clips[index]!.name = catalog[index]?.name ?? clips[index]!.name
+  }
   const asset = useAssetStore.getState().assets[assetId]
   if (!asset || !('fileName' in asset)) return
   if (JSON.stringify(asset.clipCatalog ?? null) === JSON.stringify(catalog)) return

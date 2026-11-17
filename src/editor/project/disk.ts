@@ -71,6 +71,23 @@ let flushTimer = 0
 let flushEnabled = true
 let ioChain: Promise<void> = Promise.resolve()
 
+export function projectRootPath(): string | null {
+  return root?.kind === 'path' ? root.path : null
+}
+
+export function assetDiskPath(id: string): string | null {
+  const base = projectRootPath()
+  const record = records.get(id)
+  if (!base || !record) return null
+  return joinProjectPath(base, record.relativePath)
+}
+
+export function folderDiskPath(relativeDir: string): string | null {
+  const base = projectRootPath()
+  if (!base) return null
+  return joinProjectPath(base, relativeDir)
+}
+
 export function isDirectoryProject(): boolean {
   return root !== null
 }

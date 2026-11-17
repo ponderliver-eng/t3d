@@ -1316,7 +1316,8 @@ function AnimationCard({
       {!driven && <AssetRef
         label={t('inspector.animFile')}
         title={t('inspector.animFile')}
-        kinds={['animation']}
+        kinds={['animation', 'model']}
+        include={asset => asset.kind === 'animation' || clipNamesFor(asset.id).length > 0}
         value={clipAssetId}
         onChange={id => {
           const store = useEditorStore.getState()
@@ -1325,11 +1326,11 @@ function AnimationCard({
             return
           }
           const file = useAssetStore.getState().assets[id]
-          if (!file || file.kind !== 'animation') return
+          if (!file || (file.kind !== 'animation' && file.kind !== 'model')) return
           void loadModelTemplate(file).then(() => {
             const names = clipNamesFor(id)
             useEditorStore.getState().updateNode(nodeId, {
-              clipAssetId: id,
+              clipAssetId: id === assetId ? null : id,
               clip: names[0] ?? '',
               clipTime: 0,
               clipPlaying: names.length > 0,
@@ -1510,11 +1511,12 @@ function EnvField({ value, onChange }: { value: string | null; onChange: (id: st
 }
 
 function AssetRef({
-  label, title, kinds, value, onChange,
+  label, title, kinds, include, value, onChange,
 }: {
   label: string
   title: string
   kinds: Array<import('../assets/library').ProjectAsset['kind']>
+  include?: (asset: import('../assets/library').ProjectAsset) => boolean
   value: string | null
   onChange: (id: string | null) => void
 }) {
@@ -1532,6 +1534,7 @@ function AssetRef({
         <AssetPicker
           title={title}
           kinds={kinds}
+          include={include}
           selectedId={value}
           onSelect={id => { onChange(id); setOpen(false) }}
           onClose={() => setOpen(false)}

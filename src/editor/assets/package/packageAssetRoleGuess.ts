@@ -43,13 +43,15 @@ function guessRole(
       ...(related.length ? { relatedBodyEntryIds: related.map(item => item.id) } : {}),
     }
   }
-  if (entry.kind === 'animation') {
+  if (entry.kind === 'animation' || isAnimationFolder(entry.originalPath)) {
+    const bodies = bodyCandidates.filter(item => item.id !== entry.id && item.kind !== 'animation')
     return {
       role: 'animationCarrier',
       confidence: 'medium',
       source: 'filename',
-      reasons: ['scanner-animation-kind'],
+      reasons: ['imported-clips'],
       clipNames: [clipNameFromFile(entry.fileName)],
+      ...(bodies.length ? { relatedBodyEntryIds: bodies.map(item => item.id) } : {}),
     }
   }
   const pathScore = bodyPathScore(entry.originalPath)
@@ -100,6 +102,10 @@ function bodyPathScore(path: string): number {
   if (/(^|\/)(models?|meshes?|characters?|fbx)(\/|$)/i.test(normalized)) score += 1
   if (!/(^|\/)(animations?|anim|motions?)(\/|$)/i.test(normalized)) score += 1
   return score
+}
+
+function isAnimationFolder(path: string): boolean {
+  return /(^|\/)(animations?|anims?|motions?)(\/|$)/i.test(path.replace(/\\/g, '/'))
 }
 
 function clipNameFromFile(fileName: string): string {
