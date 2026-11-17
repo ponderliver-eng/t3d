@@ -23,12 +23,14 @@ export interface ModelTemplate {
   clips: AnimationClip[]
   slots: PbrSlot[]
   humanoid: ModelHumanoid
+  tree: ModelTreeNode[]
 }
 
 export interface ModelTreeNode {
   name: string
   path: string
   kind: 'bone' | 'mesh' | 'node'
+  slotIndices: number[]
   children: ModelTreeNode[]
 }
 
@@ -39,13 +41,54 @@ export function describeModelTree(root: Object3D): ModelTreeNode[] {
     const mesh = object as Mesh
     const bone = object.type === 'Bone' || (object as { isBone?: boolean }).isBone
     const kind: ModelTreeNode['kind'] = bone ? 'bone' : mesh.isMesh ? 'mesh' : 'node'
+    const rawIndices = mesh.isMesh && Array.isArray(mesh.userData?.t3dSlotIndices)
+      ? (mesh.userData.t3dSlotIndices as number[]).filter(index => typeof index === 'number' && index >= 0)
+      : []
+    const slotIndices = [...new Set(rawIndices)]
     const children = object.children
       .map(child => walk(child, path))
       .filter((child): child is ModelTreeNode => child !== null)
     if (kind === 'node' && children.length === 0) return null
-    return { name: object.name || label, path, kind, children }
+    return { name: object.name || label, path, kind, slotIndices, children }
   }
   return root.children.map(child => walk(child, '')).filter((child): child is ModelTreeNode => child !== null)
+}
+
+export function pathOfModelObject(root: Object3D, target: Object3D): string | null {
+  const parts: string[] = []
+  let cursor: Object3D | null = target
+  while (cursor && cursor !== root) {
+    parts.push(cursor.name || cursor.type)
+    cursor = cursor.parent
+  }
+  if (cursor !== root || parts.length === 0) return null
+  parts.reverse()
+  return parts.join('/')
+}
+
+export function findModelObject(root: Object3D, key: string): Object3D | null {
+  let found: Object3D | null = null
+  const walk = (object: Object3D, parentPath: string) => {
+    if (found) return
+    const label = object.name || object.type
+    const path = parentPath ? `${parentPath}/${label}` : label
+    if (path === key) {
+      found = object
+      return
+    }
+    for (const child of object.children) walk(child, path)
+  }
+  for (const child of root.children) walk(child, '')
+  return found
+}
+
+export function slotIndicesOfModelObject(object: Object3D): number[] {
+  const mesh = object as Mesh
+  if (!mesh.isMesh) return []
+  const raw = Array.isArray(mesh.userData?.t3dSlotIndices)
+    ? (mesh.userData.t3dSlotIndices as number[]).filter(index => typeof index === 'number' && index >= 0)
+    : []
+  return [...new Set(raw)]
 }
 
 export function findModelBone(root: Object3D, key: string): Object3D | null {
@@ -488,7 +531,8 @@ function templateFromObject(object: Object3D, clips: AnimationClip[]): ModelTemp
     scene = new Group()
     scene.add(object)
   }
-  return { scene, clips, slots: readSlots(scene), humanoid: describeHumanoid(scene, clips) }
+  const slots = readSlots(scene)
+  return { scene, clips, slots, humanoid: describeHumanoid(scene, clips), tree: describeModelTree(scene) }
 }
 
 function rememberClipCatalog(assetId: string, clips: AnimationClip[]) {

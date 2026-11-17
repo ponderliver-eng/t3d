@@ -20,7 +20,7 @@ import {
 import { useAssetStore } from './library'
 import { textureFor, unityMetallicRoughnessTextureFor } from './textures'
 import type { ParticleMaterialDesc } from '../../capabilities/particles/runtime'
-import type { AlphaMode, CullMode, ParticleBlend, PbrSlot, SceneNode, SurfaceShader } from '../scene/types'
+import type { AlphaMode, CullMode, ModelPartOverride, ParticleBlend, PbrSlot, SceneNode, SurfaceShader } from '../scene/types'
 
 export interface SurfaceSlot extends PbrSlot {
   materialAssetId: string | null
@@ -158,27 +158,41 @@ export function applyNodeMaterial(root: Mesh, node: SceneNode): Material {
   return next
 }
 
-export function applyModelMaterials(root: Object3D, slots: PbrSlot[]) {
+export function applyModelMaterials(root: Object3D, slots: PbrSlot[], partOverrides?: Record<string, ModelPartOverride>) {
   const indexByName = new Map(slots.map((slot, index) => [slot.name, index]))
-  root.traverse(child => {
-    const mesh = child as Mesh
-    if (!mesh.isMesh) return
-    const geometry = mesh.geometry as BufferGeometry
-    if (geometry?.attributes.uv && !geometry.attributes.uv2) geometry.setAttribute('uv2', geometry.attributes.uv)
-    const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material]
-    const slotIndices: number[] = []
-    const next = materials.map(material => {
-      const slotIndex = slotIndexForMaterial(material, slots, indexByName)
-      slotIndices.push(slotIndex)
-      if (!material || slotIndex < 0) return material
-      const painted = applySlot(material, resolveModelSlot(slots[slotIndex]))
-      painted.name = material.name
-      painted.userData.t3dSlot = slotIndex
-      return painted
-    })
-    mesh.userData.t3dSlotIndices = slotIndices
-    mesh.material = Array.isArray(mesh.material) ? next : next[0]
-  })
+  const walk = (object: Object3D, parentPath: string) => {
+    const label = object.name || object.type
+    const path = parentPath ? `${parentPath}/${label}` : label
+    const mesh = object as Mesh
+    if (mesh.isMesh) {
+      const geometry = mesh.geometry as BufferGeometry
+      if (geometry?.attributes.uv && !geometry.attributes.uv2) geometry.setAttribute('uv2', geometry.attributes.uv)
+      const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material]
+      const overrideSlot = materialSlot(partOverrides?.[path]?.materialAssetId)
+      const existingIndices = Array.isArray(mesh.userData.t3dSlotIndices) ? mesh.userData.t3dSlotIndices as number[] : null
+      const slotIndices: number[] = []
+      const next = materials.map((material, index) => {
+        const slotIndex = existingIndices?.[index] ?? slotIndexForMaterial(material, slots, indexByName)
+        slotIndices.push(slotIndex)
+        if (!material) return material
+        if (overrideSlot) {
+          const painted = applySlot(material, overrideSlot)
+          painted.name = material.name
+          painted.userData.t3dSlot = slotIndex
+          return painted
+        }
+        if (slotIndex < 0) return material
+        const painted = applySlot(material, resolveModelSlot(slots[slotIndex]))
+        painted.name = material.name
+        painted.userData.t3dSlot = slotIndex
+        return painted
+      })
+      mesh.userData.t3dSlotIndices = slotIndices
+      mesh.material = Array.isArray(mesh.material) ? next : next[0]
+    }
+    for (const child of object.children) walk(child, path)
+  }
+  for (const child of root.children) walk(child, '')
 }
 
 /** 视口双击拾取：子网格的 materialIndex 对应导入时记下的材质槽。 */

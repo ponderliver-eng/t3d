@@ -316,8 +316,25 @@
 .scene-item:hover .scene-item__actions,
 .scene-item--selected .scene-item__actions,
 .scene-item__actions:has(.scene-item__off),
-.scene-item__actions:has(.scene-item__locked) {
+.scene-item__actions:has(.scene-item__locked),
+.scene-item__actions:has(.scene-item__socket-ready) {
   opacity: 1;
+}
+
+.scene-item--sub .scene-item__name {
+  color: var(--text-secondary);
+}
+
+.scene-item--sub-bone .scene-item__name {
+  color: #e6d19c;
+}
+
+.scene-item--sub.scene-item--selected .scene-item__name {
+  color: var(--text-primary);
+}
+
+.scene-item__socket-ready {
+  color: #f2cf7f !important;
 }
 
 .scene-item__actions button {

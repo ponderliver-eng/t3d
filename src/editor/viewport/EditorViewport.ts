@@ -47,7 +47,7 @@ import { WebGPURenderer } from 'three/webgpu'
 import { TransformControls } from 'three/addons/controls/TransformControls.js'
 import { translate } from '../i18n'
 import { applyModelMaterials, applyNodeMaterial, slotIndexOnMesh } from '../assets/materials'
-import { clipDuration, findModelBone, getModelTemplate, instantiateModel, modelRevision } from '../assets/models'
+import { clipDuration, findModelBone, findModelObject, getModelTemplate, instantiateModel, modelRevision, pathOfModelObject, slotIndicesOfModelObject } from '../assets/models'
 import { clipsForSkeleton, humanoidBindingKey } from '../animation/humanoidPlayback'
 import { activeAnimatorState, stepAnimator } from '../animation/animator'
 import { lockClipInPlace, maskClip } from '../animation/playback'
@@ -149,6 +149,8 @@ export class EditorViewport {
   private selectionRoots: Object3D[] = []
   private partFlashTarget: Object3D | null = null
   private partFlashTimer = 0
+  private lastFlashNonce = 0
+  private unsubInspectorMemory: () => void
   private ignoreDoubleClick = false
   private selectionKey = ''
   private attachKey = ''
@@ -281,6 +283,16 @@ export class EditorViewport {
     this.resize()
     this.unsubscribe = useEditorStore.subscribe(() => this.onStore())
     this.unsubscribeAssets = useAssetStore.subscribe(() => this.onStore())
+    this.unsubInspectorMemory = useInspectorMemory.subscribe(state => {
+      const req = state.partFlashRequest
+      if (!req || req.nonce === this.lastFlashNonce) return
+      this.lastFlashNonce = req.nonce
+      const group = this.objects.get(req.nodeId)
+      const root = group ? dataOf(group).modelRoot : undefined
+      if (!root) return
+      const target = findModelObject(root, req.path)
+      if (target) this.flashPart(target)
+    })
     this.onStore()
     void this.boot()
     this.raf = requestAnimationFrame(this.tick)
@@ -291,6 +303,7 @@ export class EditorViewport {
     cancelAnimationFrame(this.raf)
     this.unsubscribe()
     this.unsubscribeAssets()
+    this.unsubInspectorMemory()
     this.resizeObserver.disconnect()
     setSpawnProvider(() => [0, 0, 0])
     setGroundSnapper(null)
@@ -376,7 +389,9 @@ export class EditorViewport {
       const ancestorChanged = Boolean(node.parentId && changed.has(node.parentId))
       const nodeChanged = data.syncedNode !== node
       if (nodeChanged || ancestorChanged) changed.add(id)
-      const skipTransform = state.playState === 'playing' || (this.driving && (this.singleId === id || this.baselines.some(item => item.id === id)))
+      const skipTransform = state.playState === 'playing'
+        || Boolean(node.socketBone && node.parentId)
+        || (this.driving && (this.singleId === id || this.baselines.some(item => item.id === id)))
       if (!skipTransform && (nodeChanged || ancestorChanged)) {
         const pose = worldPose(state.nodes, id)
         group.position.copy(pose.position)
@@ -408,6 +423,7 @@ export class EditorViewport {
       if (pick) this.pickables.push(pick)
     }
 
+    this.poseSockets()
     applyCameraMask(this.rig.persp, state.editorCullingMask)
     applyCameraMask(this.rig.ortho, state.editorCullingMask)
     this.raycaster.layers.mask = this.rig.persp.layers.mask
@@ -522,14 +538,8 @@ export class EditorViewport {
         const file = node.assetId ? useAssetStore.getState().assets[node.assetId] : undefined
         const importScale = file && 'importScale' in file && typeof file.importScale === 'number' && file.importScale > 0 ? file.importScale : 1
         data.modelRoot.scale.setScalar(importScale)
-        applyModelMaterials(data.modelRoot, node.slots)
-        data.modelRoot.traverse(child => {
-          const mesh = child as Mesh
-          if (!mesh.isMesh) return
-          mesh.castShadow = node.castShadow
-          mesh.receiveShadow = node.receiveShadow
-        })
-        applyPartVisibility(data.modelRoot, node.hiddenParts ?? [])
+        applyModelMaterials(data.modelRoot, node.slots, node.partOverrides)
+        applyPartAttributes(data.modelRoot, node.hiddenParts ?? [], node.partOverrides, node.castShadow, node.receiveShadow)
       }
       this.syncClip(data, node)
     }
@@ -759,7 +769,9 @@ export class EditorViewport {
       quaternion: object.quaternion.clone(),
       scale: object.scale.clone(),
     }
-    const parent = node.parentId ? worldPose(nodes, node.parentId) : null
+    const parent = node.parentId
+      ? (node.socketBone ? (this.socketBasePose(this.objects.get(node.parentId), node.socketBone) ?? worldPose(nodes, node.parentId)) : worldPose(nodes, node.parentId))
+      : null
     useEditorStore.getState().updateNode(id, poseComponents(localPoseFromWorld(parent, world)))
   }
 
@@ -783,6 +795,28 @@ export class EditorViewport {
 
   private focusSelection() {
     const { selection } = useEditorStore.getState()
+    const sub = useInspectorMemory.getState().subSelection
+    if (sub && selection.length === 1 && selection[0] === sub.nodeId) {
+      const group = this.objects.get(sub.nodeId)
+      const root = group ? dataOf(group).modelRoot : undefined
+      const target = root ? findModelObject(root, sub.path) : null
+      if (target) {
+        target.updateWorldMatrix(true, false)
+        const box = sub.kind === 'mesh' ? boundsOf(target) : new Box3()
+        if (!box.isEmpty()) {
+          const size = box.getSize(new Vector3())
+          const center = box.getCenter(new Vector3())
+          const radius = Math.max(size.length() * 0.5, 0.35)
+          const flat = size.y < Math.max(size.x, size.z) * 0.08 && Math.max(size.x, size.z) > 1
+          this.rig.focus(center, radius, flat)
+          return
+        }
+        const center = new Vector3()
+        target.getWorldPosition(center)
+        this.rig.focus(center, sub.kind === 'bone' ? 0.4 : 0.6)
+        return
+      }
+    }
     const box = new Box3()
     for (const id of selection) {
       const pick = dataOf(this.objects.get(id) ?? new Group()).pick
@@ -919,6 +953,25 @@ export class EditorViewport {
     const node = useEditorStore.getState().nodes[hit.id]
     if (!node) return
     const slot = this.materialSlotFor(node, hit.object, hit.materialIndex)
+    if (node.kind === 'model') {
+      const group = this.objects.get(hit.id)
+      const root = group ? dataOf(group).modelRoot : undefined
+      const path = root ? pathOfModelObject(root, hit.object) : null
+      if (path) {
+        const slotIndices = slot != null
+          ? [slot, ...slotIndicesOfModelObject(hit.object).filter(item => item !== slot)]
+          : slotIndicesOfModelObject(hit.object)
+        useInspectorMemory.getState().selectSubItem({
+          nodeId: hit.id,
+          path,
+          name: hit.object.name || path.split('/').pop() || node.name,
+          kind: 'mesh',
+          slotIndices,
+        }, { openInspector: true })
+        this.flashPart(hit.object)
+        return
+      }
+    }
     if (slot == null) return
     useInspectorMemory.getState().focusMaterialSlot(hit.id, slot)
     this.flashPart(hit.object)
@@ -992,14 +1045,41 @@ export class EditorViewport {
   }
 
   private pick(clientX: number, clientY: number, additive: boolean) {
-    const id = this.pickId(clientX, clientY)
-    const { selection, setSelection } = useEditorStore.getState()
-    if (!id) {
-      if (!additive) setSelection([])
+    const { selection, setSelection, nodes } = useEditorStore.getState()
+    if (additive) {
+      const id = this.pickId(clientX, clientY)
+      if (!id) return
+      setSelection(selection.includes(id) ? selection.filter(item => item !== id) : [...selection, id])
       return
     }
-    if (additive) setSelection(selection.includes(id) ? selection.filter(item => item !== id) : [...selection, id])
-    else setSelection([id])
+    const hit = this.pickSurface(clientX, clientY)
+    if (!hit) {
+      setSelection([])
+      return
+    }
+    const node = nodes[hit.id]
+    if (node?.kind === 'model' && selection.length === 1 && selection[0] === hit.id) {
+      const group = this.objects.get(hit.id)
+      const root = group ? dataOf(group).modelRoot : undefined
+      const path = root ? pathOfModelObject(root, hit.object) : null
+      if (path) {
+        const slot = this.materialSlotFor(node, hit.object, hit.materialIndex)
+        const slotIndices = slot != null
+          ? [slot, ...slotIndicesOfModelObject(hit.object).filter(item => item !== slot)]
+          : slotIndicesOfModelObject(hit.object)
+        useInspectorMemory.getState().selectSubItem({
+          nodeId: hit.id,
+          path,
+          name: hit.object.name || path.split('/').pop() || node.name,
+          kind: 'mesh',
+          slotIndices,
+        })
+        this.flashPart(hit.object)
+        return
+      }
+    }
+    useInspectorMemory.getState().clearSubSelection()
+    setSelection([hit.id])
   }
 
   private pickSurface(clientX: number, clientY: number): { id: string, object: Object3D, materialIndex: number } | null {
@@ -1238,24 +1318,36 @@ export class EditorViewport {
     return null
   }
 
+  private socketBasePose(parent: Group | undefined, bonePath: string): { position: Vector3, quaternion: Quaternion, scale: Vector3 } | null {
+    const root = parent ? dataOf(parent).modelRoot : undefined
+    if (!parent || !root) return null
+    const bone = findModelBone(root, bonePath)
+    if (!bone) return null
+    bone.updateWorldMatrix(true, false)
+    const position = new Vector3()
+    const quaternion = new Quaternion()
+    const scale = new Vector3()
+    bone.matrixWorld.decompose(position, quaternion, scale)
+    // 剥离模型资产自身的 importScale（如 FBX 0.01），挂点只继承场景父节点的缩放
+    return { position, quaternion, scale: parent.scale.clone() }
+  }
+
   private poseSockets() {
     const nodes = useEditorStore.getState().nodes
     const posed = new Set<string>()
     for (const id of orderedIds(nodes)) {
       const node = nodes[id]
       if (!node?.socketBone || !node.parentId) continue
+      const isDragged = this.driving && (this.singleId === id || this.baselines.some(item => item.id === id))
+      if (isDragged) {
+        posed.add(id)
+        continue
+      }
       const parent = this.objects.get(node.parentId)
       const group = this.objects.get(id)
-      const root = parent ? dataOf(parent).modelRoot : undefined
-      if (!parent || !group || !root) continue
-      const bone = findModelBone(root, node.socketBone)
-      if (!bone) continue
-      bone.updateWorldMatrix(true, false)
-      const position = new Vector3()
-      const quaternion = new Quaternion()
-      const scale = new Vector3()
-      bone.matrixWorld.decompose(position, quaternion, scale)
-      const world = appendLocalPose({ position, quaternion, scale }, node)
+      const base = this.socketBasePose(parent, node.socketBone)
+      if (!group || !base) continue
+      const world = appendLocalPose(base, node)
       group.position.copy(world.position)
       group.quaternion.copy(world.quaternion)
       group.scale.copy(world.scale)
@@ -1265,6 +1357,11 @@ export class EditorViewport {
       const node = nodes[id]
       if (!node?.parentId || posed.has(id)) continue
       if (node.physics?.body === 'dynamic' || node.gameplay?.character?.enabled || node.gameplay?.mover?.enabled) continue
+      const isDragged = this.driving && (this.singleId === id || this.baselines.some(item => item.id === id))
+      if (isDragged) {
+        posed.add(id)
+        continue
+      }
       let cursor: string | null = node.parentId
       let follows = false
       while (cursor) {
@@ -1291,7 +1388,7 @@ export class EditorViewport {
     if (state.playState !== 'playing') return
     for (const id of orderedIds(state.nodes)) {
       const node = state.nodes[id]
-      if (!node?.parentId) continue
+      if (!node?.parentId || node.socketBone) continue
       if (node.physics?.body === 'dynamic' || node.gameplay?.character?.enabled || node.gameplay?.mover?.enabled) continue
       const parent = this.objects.get(node.parentId)
       const group = this.objects.get(id)
@@ -1904,13 +2001,24 @@ function dataOf(group: Group): ViewData {
   return group.userData as ViewData
 }
 
-function applyPartVisibility(root: Object3D, hidden: string[]) {
+function applyPartAttributes(
+  root: Object3D,
+  hidden: string[],
+  overrides: SceneNode['partOverrides'],
+  castShadow: boolean,
+  receiveShadow: boolean,
+) {
   const hiddenSet = new Set(hidden)
   const walk = (object: Object3D, parentPath: string) => {
     const label = object.name || object.type
     const path = parentPath ? `${parentPath}/${label}` : label
     const mesh = object as Mesh
-    if (mesh.isMesh) mesh.visible = !hiddenSet.has(path)
+    if (mesh.isMesh) {
+      mesh.visible = !hiddenSet.has(path)
+      const override = overrides?.[path]
+      mesh.castShadow = override?.castShadow ?? castShadow
+      mesh.receiveShadow = override?.receiveShadow ?? receiveShadow
+    }
     for (const child of object.children) walk(child, path)
   }
   for (const child of root.children) walk(child, '')

@@ -17,16 +17,35 @@ export interface MaterialSlotFocus {
   nonce: number
 }
 
+export interface SubSelection {
+  nodeId: string
+  path: string
+  name: string
+  kind: 'mesh' | 'bone' | 'node'
+  slotIndices: number[]
+}
+
+export interface PartFlashRequest {
+  nodeId: string
+  path: string
+  nonce: number
+}
+
 interface InspectorMemoryState {
   entries: Record<string, InspectorEntry>
   materialFocus: MaterialSlotFocus | null
+  subSelection: SubSelection | null
+  partFlashRequest: PartFlashRequest | null
   setOpen: (subject: string, card: string, open: boolean) => void
   setScroll: (subject: string, scroll: number) => void
   setSlot: (subject: string, slot: number | null) => void
   focusMaterialSlot: (nodeId: string, slot: number) => void
+  selectSubItem: (item: SubSelection, options?: { openInspector?: boolean; flash?: boolean }) => void
+  clearSubSelection: () => void
 }
 
 let materialFocusNonce = 0
+let partFlashNonce = 0
 
 function load(): Record<string, InspectorEntry> {
   try {
@@ -59,6 +78,8 @@ window.addEventListener('pagehide', () => {
 export const useInspectorMemory = create<InspectorMemoryState>(set => ({
   entries: load(),
   materialFocus: null,
+  subSelection: null,
+  partFlashRequest: null,
   setOpen: (subject, card, open) => set(state => {
     const prev = state.entries[subject] ?? { scroll: 0, open: {}, slot: null }
     const prevOpen = prev.open ?? {}
@@ -102,7 +123,62 @@ export const useInspectorMemory = create<InspectorMemoryState>(set => ({
       return { entries, materialFocus: { nodeId, slot, nonce } }
     })
   },
+  selectSubItem: (item, options) => {
+    const store = useEditorStore.getState()
+    if (store.selection.length !== 1 || store.selection[0] !== item.nodeId) {
+      store.setSelection([item.nodeId])
+    }
+    if (options?.openInspector) {
+      store.setSidePanel('inspector')
+      selectTab('tab-inspector')
+    }
+    const firstSlot = item.kind === 'mesh' ? item.slotIndices[0] : undefined
+    let materialFocus: MaterialSlotFocus | null | undefined
+    if (typeof firstSlot === 'number') {
+      materialFocusNonce += 1
+      materialFocus = { nodeId: item.nodeId, slot: firstSlot, nonce: materialFocusNonce }
+    }
+    let partFlashRequest: PartFlashRequest | undefined
+    if (options?.flash && item.kind === 'mesh') {
+      partFlashNonce += 1
+      partFlashRequest = { nodeId: item.nodeId, path: item.path, nonce: partFlashNonce }
+    }
+    set(state => {
+      if (typeof firstSlot !== 'number') {
+        return {
+          subSelection: item,
+          ...(partFlashRequest ? { partFlashRequest } : {}),
+        }
+      }
+      const subject = `node:${item.nodeId}`
+      const prev = state.entries[subject] ?? { scroll: 0, open: {}, slot: null }
+      const entries = {
+        ...state.entries,
+        [subject]: {
+          ...prev,
+          open: { ...prev.open, 'model-renderer': true, 'material-slots': true },
+          slot: firstSlot,
+        },
+      }
+      schedulePersist(entries)
+      return {
+        entries,
+        subSelection: item,
+        materialFocus: materialFocus ?? state.materialFocus,
+        ...(partFlashRequest ? { partFlashRequest } : {}),
+      }
+    })
+  },
+  clearSubSelection: () => set(state => (state.subSelection ? { subSelection: null } : state)),
 }))
+
+useEditorStore.subscribe(state => {
+  const sub = useInspectorMemory.getState().subSelection
+  if (!sub) return
+  if (state.selection.length !== 1 || state.selection[0] !== sub.nodeId) {
+    useInspectorMemory.getState().clearSubSelection()
+  }
+})
 
 export const InspectorSubject = createContext('inspector')
 

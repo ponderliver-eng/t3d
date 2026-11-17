@@ -268,6 +268,12 @@ export function normalizeEditorView(value: unknown): EditorView | null {
 }
 export type SidePanel = 'inspector' | 'history'
 
+export interface ModelPartOverride {
+  castShadow?: boolean
+  receiveShadow?: boolean
+  materialAssetId?: string | null
+}
+
 export interface SceneNode {
   id: string
   name: string
@@ -345,6 +351,8 @@ export interface SceneNode {
   renderLayerId?: string
   /** 模型里要藏起来的部位路径。 */
   hiddenParts?: string[]
+  /** 按部位路径单独覆盖阴影与材质球，未设置时跟随模型整体。 */
+  partOverrides?: Record<string, ModelPartOverride>
   /** 非空时，这个节点跟着父模型上的这根骨头走。存的是骨骼路径。 */
   socketBone?: string
   slots: PbrSlot[]

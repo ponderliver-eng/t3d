@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { Bone, Box, Check, ChevronDown, ChevronRight, Component, ExternalLink, Eye, EyeOff, FolderOpen, FolderSearch, Image as ImageIcon, MapPin, Move, Package, Pause, Play, Plus, Rotate3d, Scaling, Search, Square, SunMedium, Trash2, Undo2, Unlink, Upload, X } from 'lucide-react'
-import { clipDuration, clipNamesFor, describeModelTree, getModelTemplate, loadModelTemplate, subscribeModels, type ModelTreeNode } from '../assets/models'
+import { Bone, ChevronDown, ChevronRight, Component, ExternalLink, Eye, FolderOpen, FolderSearch, Image as ImageIcon, MapPin, Move, Package, Pause, Play, Plus, Rotate3d, Scaling, Search, Square, SunMedium, Trash2, Undo2, Unlink, Upload, X } from 'lucide-react'
+import { clipDuration, clipNamesFor, getModelTemplate, loadModelTemplate, subscribeModels, type ModelTreeNode } from '../assets/models'
 import { ClipField } from './ClipPicker'
 import { activeAnimatorState, emptyAnimator } from '../animation/animator'
 import { HumanoidCard } from './HumanoidCard'
@@ -72,6 +72,8 @@ export default function InspectorPanel() {
   const { t } = useI18n()
   const id = primaryId({ selection })
   const node = id ? nodes[id] : undefined
+  const subSelection = useInspectorMemory(state => state.subSelection)
+  const activeSub = node && subSelection?.nodeId === node.id ? subSelection : null
   const kindName = (kind: NodeKind) => t(`kind.${kind}` as MessageKey)
 
   if (asset && selection.length === 0) {
@@ -131,6 +133,15 @@ export default function InspectorPanel() {
       </header>
 
       <TagLayerStrip node={node} disabled={locked} />
+
+      {activeSub && (
+        <div className="sub-crumb">
+          <span className={`sub-crumb__badge is-${activeSub.kind}`}>{activeSub.name}</span>
+          <button type="button" onClick={() => useInspectorMemory.getState().clearSubSelection()}>{t('inspector.backToModel')}</button>
+        </div>
+      )}
+
+      {activeSub?.kind === 'bone' && <BoneSocketCard node={node} sub={activeSub} disabled={locked || playing} />}
 
       {templateRoot && <div className="inspector__banner">{t('prefab.rootLocked')}</div>}
       {prefabRoot && isPrefabRoot(prefabRoot) && (
@@ -657,146 +668,53 @@ function SceneSettings() {
   )
 }
 
-function ModelStructureSections({ node }: { node: SceneNode }) {
-  const { t } = useI18n()
-  const [version, setVersion] = useState(0)
-  const [query, setQuery] = useState('')
-  const [openPaths, setOpenPaths] = useState<Record<string, boolean>>({})
-  const playing = useEditorStore(state => state.playState !== 'stopped')
-  const socketKey = useEditorStore(state => {
-    const bones: string[] = []
-    for (const item of Object.values(state.nodes)) {
-      if (item.parentId === node.id && item.socketBone) bones.push(item.socketBone)
-    }
-    bones.sort()
-    return bones.join('\n')
-  })
-  useEffect(() => subscribeModels(() => setVersion(value => value + 1)), [])
-  void version
-  const scene = node.assetId ? getModelTemplate(node.assetId)?.scene : undefined
-  const tree = scene ? describeModelTree(scene) : []
-  if (!node.assetId || tree.length === 0) return null
-  const hidden = new Set(node.hiddenParts ?? [])
-  const taken = new Set(socketKey ? socketKey.split('\n') : [])
-  const q = query.trim().toLowerCase()
-  const shown = q ? filterModelTree(tree, q) : tree
-  const togglePart = (id: string, visible: boolean) => {
-    const next = visible
-      ? (node.hiddenParts ?? []).filter(item => item !== id)
-      : [...(node.hiddenParts ?? []), id]
-    commitNode(node.id, t('inspector.parts'), { hiddenParts: next })
-  }
-  return (
-    <Section title={t('inspector.hierarchy')} color="#9fc5ff">
-      <div className="model-structure__legend">
-        <span className="is-mesh"><Box size={11} />{t('inspector.parts')}</span>
-        <span className="is-bone"><Bone size={11} />{t('inspector.sockets')}</span>
-      </div>
-      <div className="model-structure__search">
-        <Search size={12} />
-        <input value={query} placeholder={t('inspector.searchBones')} onChange={event => setQuery(event.target.value)} />
-      </div>
-      <div className="model-structure">
-        {shown.map(item => (
-          <StructureBranch
-            key={item.path}
-            item={item}
-            depth={0}
-            forceOpen={q.length > 0}
-            openPaths={openPaths}
-            hidden={hidden}
-            taken={taken}
-            disabled={playing}
-            extractLabel={t('inspector.extractSocket')}
-            readyLabel={t('inspector.socketReady')}
-            onOpen={setOpenPaths}
-            onToggle={togglePart}
-            onExtract={bone => useEditorStore.getState().extractSocket(node.id, bone.path, bone.name)}
-          />
-        ))}
-      </div>
-    </Section>
-  )
-}
-
-function StructureBranch({
-  item, depth, forceOpen, openPaths, hidden, taken, disabled, extractLabel, readyLabel, onOpen, onToggle, onExtract,
+function BoneSocketCard({
+  node,
+  sub,
+  disabled,
 }: {
-  item: ModelTreeNode
-  depth: number
-  forceOpen: boolean
-  openPaths: Record<string, boolean>
-  hidden: Set<string>
-  taken: Set<string>
+  node: SceneNode
+  sub: NonNullable<ReturnType<typeof useInspectorMemory.getState>['subSelection']>
   disabled: boolean
-  extractLabel: string
-  readyLabel: string
-  onOpen: (next: Record<string, boolean> | ((current: Record<string, boolean>) => Record<string, boolean>)) => void
-  onToggle: (id: string, visible: boolean) => void
-  onExtract: (item: ModelTreeNode) => void
 }) {
-  const open = forceOpen || openPaths[item.path] === true
-  const shown = !hidden.has(item.path)
-  const ready = item.kind === 'bone' && taken.has(item.path)
+  const { t } = useI18n()
+  const socketId = useEditorStore(state => {
+    for (const item of Object.values(state.nodes)) {
+      if (item.parentId === node.id && item.socketBone === sub.path) return item.id
+    }
+    return null
+  })
   return (
-    <div>
-      <div className={`model-structure__row is-${item.kind}${shown ? '' : ' is-off'}${ready ? ' is-ready' : ''}`} style={{ paddingLeft: 4 + depth * 12 }} title={item.path}>
-        {item.children.length > 0 ? (
-          <button type="button" className="model-structure__twist" aria-expanded={open} onClick={() => onOpen(current => ({ ...current, [item.path]: !open }))}>
-            <ChevronRight size={12} style={{ transform: open ? 'rotate(90deg)' : undefined }} />
-          </button>
-        ) : <span className="model-structure__twist" />}
-        <span className="model-structure__mark" aria-hidden="true">
-          {item.kind === 'bone' ? <Bone size={12} /> : item.kind === 'mesh' ? <Box size={12} /> : null}
-        </span>
-        <span className="model-structure__name"><span>{item.name}</span></span>
-        {item.kind === 'mesh' && (
-          <button type="button" className="model-structure__icon" onClick={() => onToggle(item.path, !shown)}>
-            {shown ? <Eye size={13} /> : <EyeOff size={13} />}
-          </button>
-        )}
-        {item.kind === 'bone' && (
-          <button
-            type="button"
-            className={`model-structure__icon model-structure__add${ready ? ' is-on' : ''}`}
-            title={ready ? readyLabel : extractLabel}
-            disabled={disabled || ready}
-            onClick={() => onExtract(item)}
-          >
-            {ready ? <Check size={12} /> : <Plus size={12} />}
-          </button>
-        )}
-        {item.kind === 'node' && <span className="model-structure__icon" />}
-      </div>
-      {open && item.children.map(child => (
-        <StructureBranch
-          key={child.path}
-          item={child}
-          depth={depth + 1}
-          forceOpen={forceOpen}
-          openPaths={openPaths}
-          hidden={hidden}
-          taken={taken}
+    <Card id="bone-socket" title={t('inspector.sockets')} color="#f2cf7f">
+      <Section title={sub.name} color="#f2cf7f">
+        <label className="field">
+          <span>{t('inspector.bonePath')}</span>
+          <span className="bone-socket__path" title={sub.path}>{sub.path}</span>
+        </label>
+        <p className="settings-note">{t('inspector.socketHint')}</p>
+        <button
+          type="button"
           disabled={disabled}
-          extractLabel={extractLabel}
-          readyLabel={readyLabel}
-          onOpen={onOpen}
-          onToggle={onToggle}
-          onExtract={onExtract}
-        />
-      ))}
-    </div>
+          onClick={() => {
+            const store = useEditorStore.getState()
+            if (socketId) store.setSelection([socketId])
+            else store.extractSocket(node.id, sub.path, sub.name)
+          }}
+        >
+          <Bone size={12} /> {socketId ? t('inspector.jumpSocket') : t('inspector.extractSocket')}
+        </button>
+      </Section>
+    </Card>
   )
 }
 
-function filterModelTree(nodes: ModelTreeNode[], query: string): ModelTreeNode[] {
-  const out: ModelTreeNode[] = []
-  for (const node of nodes) {
-    const children = filterModelTree(node.children, query)
-    const self = node.name.toLowerCase().includes(query) || node.path.toLowerCase().includes(query)
-    if (self || children.length > 0) out.push({ ...node, children })
+function countSlotUsers(nodes: ModelTreeNode[], slotIndex: number): number {
+  let count = 0
+  for (const item of nodes) {
+    if (item.kind === 'mesh' && item.slotIndices.includes(slotIndex)) count += 1
+    if (item.children.length > 0) count += countSlotUsers(item.children, slotIndex)
   }
-  return out
+  return count
 }
 
 function MeshRendererCard({ node }: { node: SceneNode }) {
@@ -804,9 +722,19 @@ function MeshRendererCard({ node }: { node: SceneNode }) {
   const assets = useAssetStore(state => state.assets)
   const [listOpen, setListOpen] = useInspectorCardOpen('material-slots')
   const [storedSlot, setOpenSlot] = useInspectorSlot()
-  const openSlot = storedSlot === undefined
-    ? (node.kind === 'model' && node.slots.length > 1 ? null : 0)
-    : storedSlot
+  const subSelection = useInspectorMemory(state => state.subSelection)
+  const activePart = node.kind === 'model' && subSelection?.nodeId === node.id && subSelection.kind === 'mesh' ? subSelection : null
+  const [showAllSlots, setShowAllSlots] = useState(false)
+  const [pickingPartMat, setPickingPartMat] = useState(false)
+  const [dropPartMat, setDropPartMat] = useState(false)
+  useEffect(() => {
+    setShowAllSlots(false)
+    setPickingPartMat(false)
+    setDropPartMat(false)
+  }, [activePart?.path])
+  const openSlot = activePart && !showAllSlots && activePart.slotIndices.length > 0
+    ? (storedSlot !== undefined && storedSlot !== null && activePart.slotIndices.includes(storedSlot) ? storedSlot : activePart.slotIndices[0])
+    : (storedSlot === undefined ? (node.kind === 'model' && node.slots.length > 1 ? null : 0) : storedSlot)
   const [query, setQuery] = useState('')
   const [dropSlot, setDropSlot] = useState<number | null>(null)
   const [picking, setPicking] = useState<number | null>(null)
@@ -840,10 +768,29 @@ function MeshRendererCard({ node }: { node: SceneNode }) {
   const entries = node.kind === 'model'
     ? node.slots.map((slot, index) => ({ index, name: slot.name, linked: linkedMaterialId(slot.materialAssetId, assets) }))
     : [{ index: 0, name: node.name, linked: linkedMaterialId(node.materialAssetId, assets) }]
+  const partFiltered = activePart && !showAllSlots
+    ? entries.filter(entry => activePart.slotIndices.includes(entry.index))
+    : entries
   const q = query.trim().toLowerCase()
   const visible = q
-    ? entries.filter(entry => String(entry.index).includes(q) || entry.name.toLowerCase().includes(q) || (entry.linked ? assets[entry.linked]?.name.toLowerCase().includes(q) : t('inspector.inline').toLowerCase().includes(q)))
-    : entries
+    ? partFiltered.filter(entry => String(entry.index).includes(q) || entry.name.toLowerCase().includes(q) || (entry.linked ? assets[entry.linked]?.name.toLowerCase().includes(q) : t('inspector.inline').toLowerCase().includes(q)))
+    : partFiltered
+  const tree = node.kind === 'model' && node.assetId ? (getModelTemplate(node.assetId)?.tree ?? []) : []
+  const partVisible = activePart ? !(node.hiddenParts ?? []).includes(activePart.path) : true
+  const partOverride = activePart ? node.partOverrides?.[activePart.path] : undefined
+  const partMatLinked = linkedMaterialId(partOverride?.materialAssetId, assets)
+  const writePartOverride = (patch: Partial<{ castShadow?: boolean; receiveShadow?: boolean; materialAssetId?: string | null }>) => {
+    if (!activePart) return
+    const nextMap = { ...(node.partOverrides ?? {}) }
+    const merged = { ...(nextMap[activePart.path] ?? {}), ...patch }
+    if (merged.castShadow === undefined) delete merged.castShadow
+    if (merged.receiveShadow === undefined) delete merged.receiveShadow
+    if (!merged.materialAssetId) delete merged.materialAssetId
+    if (Object.keys(merged).length === 0) delete nextMap[activePart.path]
+    else nextMap[activePart.path] = merged
+    commitNode(node.id, t('inspector.parts'), { partOverrides: Object.keys(nextMap).length > 0 ? nextMap : undefined })
+  }
+  const effectiveOpen = Boolean(activePart && !showAllSlots && !partMatLinked) || listOpen
   return (
     <Card id="model-renderer" title={t('inspector.modelRenderer')} color={kindColor(node.kind)}>
       {node.kind === 'model' && (
@@ -851,6 +798,99 @@ function MeshRendererCard({ node }: { node: SceneNode }) {
           <button type="button" title={t('inspector.savePrefab')} aria-label={t('inspector.savePrefab')} onClick={savePrefabFromSelection}><Package size={14} /></button>
           {node.assetId && <button type="button" title={t('inspector.previewModel')} aria-label={t('inspector.previewModel')} onClick={() => openAssetPreview('model', node.assetId!, node.name)}><Eye size={14} /></button>}
         </div>
+      )}
+      {activePart && (
+        <Section title={activePart.name} color="#9fc5ff">
+          <label className="field">
+            <span>{t('inspector.partVisible')}</span>
+            <input
+              type="checkbox"
+              checked={partVisible}
+              onChange={event => {
+                const next = event.target.checked
+                  ? (node.hiddenParts ?? []).filter(id => id !== activePart.path)
+                  : [...(node.hiddenParts ?? []), activePart.path]
+                commitNode(node.id, t('inspector.parts'), { hiddenParts: next })
+              }}
+            />
+          </label>
+          <div className="iv2-pair">
+            <label className="field">
+              <span>{t('inspector.castShadow')}</span>
+              <select
+                value={partOverride?.castShadow === undefined ? 'follow' : partOverride.castShadow ? 'on' : 'off'}
+                onChange={event => {
+                  const val = event.target.value
+                  writePartOverride({ castShadow: val === 'follow' ? undefined : val === 'on' })
+                }}
+              >
+                <option value="follow">{t('inspector.followModel')}</option>
+                <option value="on">{t('inspector.on')}</option>
+                <option value="off">{t('inspector.off')}</option>
+              </select>
+            </label>
+            <label className="field">
+              <span>{t('inspector.receiveShadow')}</span>
+              <select
+                value={partOverride?.receiveShadow === undefined ? 'follow' : partOverride.receiveShadow ? 'on' : 'off'}
+                onChange={event => {
+                  const val = event.target.value
+                  writePartOverride({ receiveShadow: val === 'follow' ? undefined : val === 'on' })
+                }}
+              >
+                <option value="follow">{t('inspector.followModel')}</option>
+                <option value="on">{t('inspector.on')}</option>
+                <option value="off">{t('inspector.off')}</option>
+              </select>
+            </label>
+          </div>
+          <div
+            className={`field ${dropPartMat ? 'is-drop' : ''}`}
+            onDragOver={event => {
+              if ([...event.dataTransfer.types].includes(ASSET_MIME)) {
+                event.preventDefault()
+                event.stopPropagation()
+                setDropPartMat(true)
+              }
+            }}
+            onDragLeave={() => setDropPartMat(false)}
+            onDrop={event => {
+              const id = materialIdFromDrop(event)
+              setDropPartMat(false)
+              if (id) writePartOverride({ materialAssetId: id })
+            }}
+          >
+            <span>{t('inspector.partMaterial')}</span>
+            <div className="mesh-slot__row" style={{ flex: 1, minWidth: 0 }}>
+              <button type="button" className="mesh-slot__pick asset-ref" onClick={() => setPickingPartMat(true)}>
+                <span>{partMatLinked ? (assets[partMatLinked]?.name ?? t('inspector.followSlot')) : t('inspector.followSlot')}</span>
+                <Search size={12} />
+              </button>
+              {partMatLinked && (
+                <>
+                  <button type="button" title={t('inspector.reveal')} onClick={() => useEditorStore.getState().inspectAsset(partMatLinked)}>
+                    <FolderSearch size={12} />
+                  </button>
+                  <button type="button" title={t('inspector.clear')} onClick={() => writePartOverride({ materialAssetId: undefined })}>
+                    <Trash2 size={12} />
+                  </button>
+                </>
+              )}
+            </div>
+            {pickingPartMat && (
+              <AssetPicker
+                title={t('picker.material')}
+                kinds={['material']}
+                selectedId={partMatLinked}
+                onSelect={id => {
+                  writePartOverride({ materialAssetId: id ?? undefined })
+                  setPickingPartMat(false)
+                }}
+                onClose={() => setPickingPartMat(false)}
+              />
+            )}
+          </div>
+        </Section>
       )}
       <Section title={t('inspector.shadow')} color="#ffd36b">
         <div className="shadow-flags">
@@ -866,22 +906,29 @@ function MeshRendererCard({ node }: { node: SceneNode }) {
           </label>
         </div>
       </Section>
-      {node.kind === 'model' && <ModelStructureSections node={node} />}
       <Section title={t('inspector.materialSlots')} color="#d4b8ff">
-      <button type="button" className="mesh-slots__head" aria-expanded={listOpen} onClick={() => setListOpen(!listOpen)}>
-        {listOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-        <span>{t('inspector.materialSlots')}</span>
-        <em>{entries.length}</em>
-      </button>
-      {listOpen && entries.length >= 6 && (
+      <div className="mesh-slots__bar">
+        <button type="button" className="mesh-slots__head" aria-expanded={effectiveOpen} onClick={() => setListOpen(!listOpen)}>
+          {effectiveOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+          <span>{t('inspector.materialSlots')}</span>
+          <em>{visible.length}</em>
+        </button>
+        {activePart && entries.length > partFiltered.length && (
+          <button type="button" className="mesh-slots__filter" onClick={() => setShowAllSlots(value => !value)}>
+            {showAllSlots ? t('inspector.partSlotsOnly') : t('inspector.showAllSlots', { count: entries.length })}
+          </button>
+        )}
+      </div>
+      {effectiveOpen && visible.length >= 6 && (
         <input className="mesh-slots__search" value={query} placeholder={t('inspector.searchSlots')} onChange={event => setQuery(event.target.value)} />
       )}
-      {listOpen && visible.map(entry => {
+      {effectiveOpen && visible.map(entry => {
         const open = openSlot === entry.index
         const picked = flashNonce !== 0 && pickedFocus?.nonce === flashNonce && pickedFocus.slot === entry.index
         const source = node.kind === 'model' ? node.slots[entry.index] : null
         const resolved = source ? resolveModelSlot(source) : slotFromNode(node)
         const linked = entry.linked
+        const shared = activePart && !showAllSlots && tree.length > 0 && countSlotUsers(tree, entry.index) > 1
         return (
           <div
             key={entry.index}
@@ -939,6 +986,7 @@ function MeshRendererCard({ node }: { node: SceneNode }) {
             </div>
             {open && (
               <div className="mesh-slot__body">
+                {shared && <div className="inspector__banner">{t('inspector.sharedSlotHint')}</div>}
                 {linked && <div className="inspector__banner">{t('inspector.linkedNote')}</div>}
                 <MaterialEditor
                   slot={resolved}

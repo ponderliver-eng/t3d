@@ -629,133 +629,55 @@
 
 .anim-state .field { flex: 1 1 100%; }
 
-.model-structure__search {
+.sub-crumb {
   display: flex;
   align-items: center;
-  gap: 6px;
-  height: 26px;
-  padding: 0 8px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 4px;
-  background: rgba(0, 0, 0, 0.25);
-  color: var(--text-muted);
+  justify-content: space-between;
+  gap: 8px;
+  padding: 5px 8px;
+  border: 1px solid rgba(159, 197, 255, 0.25);
+  border-radius: 5px;
+  background: rgba(159, 197, 255, 0.08);
 }
 
-.model-structure__search input {
-  flex: 1;
-  min-width: 0;
-  height: 24px;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: inherit;
-}
-
-.model-structure {
-  display: flex;
-  flex-direction: column;
-  max-height: 240px;
-  overflow: auto;
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 6px;
-  background: rgba(0, 0, 0, 0.18);
-}
-
-.model-structure__row {
-  display: grid;
-  grid-template-columns: 16px 14px minmax(0, 1fr) 18px;
-  gap: 4px;
-  align-items: center;
-  min-height: 24px;
-  padding: 0 6px;
-  color: var(--text-secondary);
-}
-
-.model-structure__row.is-mesh .model-structure__mark { color: #9fc5ff; }
-.model-structure__row.is-bone .model-structure__mark { color: #f2cf7f; }
-
-.model-structure__legend {
-  display: flex;
-  gap: 12px;
-  color: var(--text-muted);
-  font-size: 10px;
-}
-
-.model-structure__legend span {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.model-structure__legend .is-mesh { color: #9fc5ff; }
-.model-structure__legend .is-bone { color: #f2cf7f; }
-
-.model-structure__row:hover {
-  background: rgba(255, 255, 255, 0.04);
-}
-
-.model-structure__row.is-off {
-  color: var(--text-muted);
-}
-
-.model-structure__row.is-ready .model-structure__name span {
-  color: #f2cf7f;
-}
-
-.model-structure__row.is-nested {
-  padding-left: 22px;
-}
-
-.model-structure__name {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: inherit;
-  text-align: left;
-}
-
-.model-structure__name span {
+.sub-crumb__badge {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-size: 11px;
+  font-weight: 600;
 }
 
-.model-structure__name em {
+.sub-crumb__badge.is-mesh { color: #9fc5ff; }
+.sub-crumb__badge.is-bone { color: #f2cf7f; }
+
+.sub-crumb button,
+.mesh-slots__filter {
   flex: none;
-  color: var(--text-muted);
-  font-style: normal;
-  font-size: 10px;
+  height: 22px;
+  padding: 0 8px;
+  font-size: 11px;
 }
 
-.model-structure__twist,
-.model-structure__icon {
-  display: inline-flex;
+.mesh-slots__bar {
+  display: flex;
   align-items: center;
-  justify-content: center;
-  width: 16px;
-  height: 16px;
-  padding: 0;
-  border: 0;
-  background: transparent;
+  gap: 6px;
+}
+
+.mesh-slots__bar .mesh-slots__head {
+  flex: 1;
+  min-width: 0;
+}
+
+.bone-socket__path {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   color: var(--text-muted);
-}
-
-.model-structure__add {
-  opacity: 0;
-}
-
-.model-structure__row:hover .model-structure__add,
-.model-structure__add.is-on {
-  opacity: 1;
-}
-
-.model-structure__add.is-on {
-  color: #f2cf7f;
+  font-size: 11px;
 }
 
 .iv2-section .anim-mode {

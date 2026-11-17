@@ -203,7 +203,7 @@ export interface EditorState {
   endGesture: () => void
   updateNode: (id: string, patch: Partial<SceneNode>) => void
   createNode: (kind: NodeKind, parentId?: string | null) => void
-  extractSocket: (modelId: string, bone: string, name: string) => void
+  extractSocket: (modelId: string, bone: string, name: string, select?: boolean) => string | null
   createDevice: (device: DeviceKind, parentId?: string | null) => void
   spawnEffect: (assetId: string, point: Vec3) => void
   mountScreen: (assetId: string, point: Vec3) => void
@@ -215,6 +215,7 @@ export interface EditorState {
   snapSelectionToGround: () => void
   canPaste: boolean
   reparent: (id: string, parentId: string | null) => void
+  attachToBone: (id: string, modelId: string, bonePath: string) => void
   placeNodes: (ids: string[], parentId: string | null, zone: 'before' | 'into' | 'after' | 'end', anchorId?: string | null) => void
   toggleVisible: (id: string) => void
   toggleLocked: (id: string) => void
@@ -471,17 +472,19 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     if (ok && created) get().log('info', translate('log.created', { name: created }))
   },
 
-  extractSocket: (modelId, bone, name) => {
-    if (get().playState !== 'stopped') return
+  extractSocket: (modelId, bone, name, select = true) => {
+    if (get().playState !== 'stopped') return null
     const parent = get().nodes[modelId]
-    if (!parent || parent.kind !== 'model') return
+    if (!parent || parent.kind !== 'model') return null
     const existing = Object.values(get().nodes).find(node => node.parentId === modelId && node.socketBone === bone)
     if (existing) {
-      get().setSelection([existing.id])
-      return
+      if (select) get().setSelection([existing.id])
+      return existing.id
     }
+    let createdId: string | null = null
     mutate(set, get, translate('inspector.extractSocket'), draft => {
       const id = crypto.randomUUID()
+      createdId = id
       draft.nodes[id] = makeNode({
         id,
         name: uniqueName(draft.nodes, name || bone),
@@ -491,8 +494,9 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         socketBone: bone,
       })
       tagAddedChild(draft.nodes, id)
-      draft.selection = [id]
+      if (select) draft.selection = [id]
     })
+    return createdId
   },
 
   createDevice: (device, parentId = null) => {
@@ -761,6 +765,28 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     get().placeNodes([id], parentId, 'end')
   },
 
+  attachToBone: (id, modelId, bonePath) => {
+    const nodes = get().nodes
+    const node = nodes[id]
+    const model = nodes[modelId]
+    if (!node || !model || model.kind !== 'model' || node.locked) return
+    if (id === modelId || isUnder(nodes, modelId, id)) {
+      get().log('warn', translate('log.cycle'))
+      return
+    }
+    mutate(set, get, translate('inspector.extractSocket'), draft => {
+      const current = draft.nodes[id]
+      if (!current) return
+      current.parentId = modelId
+      current.socketBone = bonePath
+      current.position = [0, 0, 0]
+      current.rotation = [0, 0, 0]
+      current.order = nextOrder(draft.nodes, modelId, id)
+      detachIfReparented(draft.nodes, id)
+      draft.selection = [id]
+    })
+  },
+
   placeNodes: (ids, parentId, zone, anchorId = null) => {
     const nodes = get().nodes
     const moving = selectionRoots(nodes, ids).filter(id => nodes[id] && !nodes[id].locked)
@@ -784,6 +810,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         const world = worlds.get(id)
         if (!world) continue
         current.parentId = nextParent
+        delete current.socketBone
         writePose(current, localPoseFromWorld(parentPose, world))
         detachIfReparented(draft.nodes, id)
       }

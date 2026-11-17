@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useRef, useState, type DragEvent, type KeyboardEvent, type MouseEvent } from 'react'
 import { createPortal } from 'react-dom'
 import {
-  ArrowDown, ArrowDownToLine, ArrowUp, Axis3d, Box, Boxes, Camera, ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, Circle, ClipboardPaste, Component, Cone, Copy, CopyPlus, Cylinder, ExternalLink, Eye, EyeOff,
+  ArrowDown, ArrowDownToLine, ArrowUp, Axis3d, Bone, Box, Boxes, Camera, Check, ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, Circle, ClipboardPaste, Component, Cone, Copy, CopyPlus, Cylinder, ExternalLink, Eye, EyeOff,
   Flashlight, Focus, Group, Lightbulb, Lock, MapPin, Package, PanelsTopLeft, Pencil, Pill, Plus, Search, Sparkles, Square, Sun, Sunrise, Trash2, Undo2, Ungroup, Unlink, Unlock, Upload, X,
 } from 'lucide-react'
 import { readClipDrag } from '../animation/playback'
 import { assignClip, isNodeDrag, NODE_MIME } from '../assets/import'
 import { assetDirectory, useAssetStore } from '../assets/library'
+import { getModelTemplate, subscribeModels, type ModelTreeNode } from '../assets/models'
 import { instanceDirty, isPrefabRoot } from '../assets/prefab'
 import { useI18n, type MessageKey } from '../i18n'
 import { TAG_FILTER_UNTAGGED, sortedTags } from '../project/taxonomy'
@@ -14,6 +15,7 @@ import { childrenOf, isLight, isMesh, LIGHT_KINDS, MESH_KINDS } from '../scene/k
 import { useEditorStore, primaryId, type DeviceKind } from '../scene/store'
 import { isUnder } from '../scene/transform'
 import type { NodeKind, SceneNode } from '../scene/types'
+import { useInspectorMemory } from './inspectorMemory'
 import './HierarchyPanel.css'
 
 const ICONS: Record<NodeKind, typeof Box> = {
@@ -37,16 +39,34 @@ const ICONS: Record<NodeKind, typeof Box> = {
 const RENAME_DELAY_MS = 1000
 type DropZone = 'before' | 'into' | 'after'
 
+type TreeRow =
+  | { kind: 'node'; node: SceneNode; depth: number }
+  | { kind: 'sub'; node: SceneNode; item: ModelTreeNode; depth: number }
+
+function filterSubTree(nodes: ModelTreeNode[], query: string): ModelTreeNode[] {
+  const out: ModelTreeNode[] = []
+  for (const item of nodes) {
+    const children = filterSubTree(item.children, query)
+    const self = item.name.toLowerCase().includes(query) || item.path.toLowerCase().includes(query)
+    if (self || children.length > 0) out.push({ ...item, children })
+  }
+  return out
+}
+
 export default function HierarchyPanel() {
   const nodes = useEditorStore(state => state.nodes)
   const selection = useEditorStore(state => state.selection)
   const playing = useEditorStore(state => state.playState !== 'stopped')
+  const subSelection = useInspectorMemory(state => state.subSelection)
   const { t } = useI18n()
+  const [modelVersion, setModelVersion] = useState(0)
   const [query, setQuery] = useState('')
   const [tagFilter, setTagFilter] = useState('all')
   const tags = useEditorStore(state => state.tags)
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
+  const [subOpen, setSubOpen] = useState<Record<string, boolean>>({})
   const [drop, setDrop] = useState<{ id: string, zone: 'before' | 'into' | 'after' } | null>(null)
+  const [boneDropKey, setBoneDropKey] = useState<string | null>(null)
   const [menu, setMenu] = useState<{ x: number; y: number; id: string | null } | null>(null)
   const [renameId, setRenameId] = useState<string | null>(null)
   const [createOpen, setCreateOpen] = useState(false)
@@ -64,6 +84,35 @@ export default function HierarchyPanel() {
   const pendingRenameId = useEditorStore(state => state.pendingRenameId)
 
   const q = query.trim().toLowerCase()
+  useEffect(() => subscribeModels(() => setModelVersion(value => value + 1)), [])
+
+  const modelTrees = useMemo(() => {
+    void modelVersion
+    const map = new Map<string, ModelTreeNode[]>()
+    for (const node of Object.values(nodes)) {
+      if (node.kind !== 'model' || !node.assetId) continue
+      if (map.has(node.assetId)) continue
+      const template = getModelTemplate(node.assetId)
+      if (template?.tree.length) map.set(node.assetId, template.tree)
+    }
+    return map
+  }, [nodes, modelVersion])
+
+  const boneChildren = useMemo(() => {
+    const map = new Map<string, SceneNode[]>()
+    for (const node of Object.values(nodes)) {
+      if (!node.parentId || !node.socketBone) continue
+      const key = `${node.parentId}\n${node.socketBone}`
+      const list = map.get(key) ?? []
+      list.push(node)
+      map.set(key, list)
+    }
+    for (const list of map.values()) {
+      list.sort((a, b) => a.order - b.order || a.name.localeCompare(b.name, 'zh'))
+    }
+    return map
+  }, [nodes])
+
   const matches = useMemo(() => {
     const cache = new Map<string, boolean>()
     const visit = (id: string): boolean => {
@@ -75,7 +124,10 @@ export default function HierarchyPanel() {
       const tagged = Boolean(node.tagId) || (node.tagIds?.length ?? 0) > 0
       const tagOk = tagFilter === 'all'
         || (tagFilter === TAG_FILTER_UNTAGGED ? !tagged : node.tagId === tagFilter || node.tagIds?.includes(tagFilter))
-      const self = nameOk && tagOk
+      const subMatch = q && tagOk && node.kind === 'model' && node.assetId
+        ? filterSubTree(modelTrees.get(node.assetId) ?? [], q).length > 0
+        : false
+      const self = (nameOk && tagOk) || subMatch
       const child = childrenOf(nodes, id).some(item => visit(item.id))
       const ok = self || child
       cache.set(id, ok)
@@ -83,21 +135,46 @@ export default function HierarchyPanel() {
     }
     if (q || tagFilter !== 'all') Object.keys(nodes).forEach(visit)
     return cache
-  }, [nodes, q, tagFilter])
+  }, [nodes, q, tagFilter, modelTrees])
 
   const visibleRows = useMemo(() => {
-    const rows: { node: SceneNode; depth: number }[] = []
-    const walk = (parentId: string | null, depth: number) => {
-      for (const node of childrenOf(nodes, parentId)) {
-        if ((q || tagFilter !== 'all') && !matches.get(node.id)) continue
-        rows.push({ node, depth })
-        const open = q || tagFilter !== 'all' ? true : !collapsed[node.id]
-        if (open) walk(node.id, depth + 1)
+    const rows: TreeRow[] = []
+    let searchSubExpanded = 0
+    const walkNodeBranch = (node: SceneNode, depth: number) => {
+      if ((q || tagFilter !== 'all') && !matches.get(node.id)) return
+      rows.push({ kind: 'node', node, depth })
+      const internal = node.kind === 'model' && node.assetId ? (modelTrees.get(node.assetId) ?? []) : []
+      const isModelDefaultCollapsed = node.kind === 'model' && collapsed[node.id] === undefined
+      const filteredSub = q && internal.length > 0 ? filterSubTree(internal, q) : []
+      const openBySearch = (q && filteredSub.length > 0 && searchSubExpanded < 5)
+      if (openBySearch) searchSubExpanded += 1
+      const open = q || tagFilter !== 'all'
+        ? (!isModelDefaultCollapsed || openBySearch || childrenOf(nodes, node.id).some(c => matches.get(c.id)))
+        : (node.kind === 'model' ? collapsed[node.id] === false : !collapsed[node.id])
+      if (!open) return
+      if (internal.length > 0 && (q ? filteredSub.length > 0 && openBySearch : collapsed[node.id] === false)) {
+        walkSub(node, q ? filteredSub : internal, depth + 1, Boolean(q && filteredSub.length > 0))
+      }
+      for (const child of childrenOf(nodes, node.id)) {
+        if (internal.length > 0 && child.socketBone) continue
+        walkNodeBranch(child, depth + 1)
       }
     }
-    walk(null, 0)
+    const walkSub = (owner: SceneNode, items: ModelTreeNode[], depth: number, forceOpen: boolean) => {
+      for (const item of items) {
+        rows.push({ kind: 'sub', node: owner, item, depth })
+        const key = `${owner.id}:${item.path}`
+        const attached = item.kind === 'bone' ? (boneChildren.get(`${owner.id}\n${item.path}`) ?? []) : []
+        const hasSubKids = item.children.length > 0 || attached.length > 0
+        if (hasSubKids && (forceOpen || subOpen[key] === true)) {
+          if (item.children.length > 0) walkSub(owner, item.children, depth + 1, forceOpen)
+          for (const child of attached) walkNodeBranch(child, depth + 1)
+        }
+      }
+    }
+    for (const root of childrenOf(nodes, null)) walkNodeBranch(root, 0)
     return rows
-  }, [nodes, collapsed, q, tagFilter, matches])
+  }, [nodes, collapsed, subOpen, q, tagFilter, matches, modelTrees, boneChildren])
 
   useEffect(() => {
     if (!menu && !createOpen) return
@@ -126,19 +203,71 @@ export default function HierarchyPanel() {
       let parent = current[primary]?.parentId ?? null
       let changed = false
       while (parent) {
-        if (next[parent]) {
+        const pNode = current[parent]
+        if (pNode?.kind === 'model') {
+          if (next[parent] !== false) {
+            next[parent] = false
+            changed = true
+          }
+        } else if (next[parent]) {
           delete next[parent]
           changed = true
         }
-        parent = current[parent]?.parentId ?? null
+        parent = pNode?.parentId ?? null
       }
       return changed ? next : state
     })
+    const targetNode = current[primary]
+    if (targetNode?.parentId && targetNode.socketBone) {
+      const parts = targetNode.socketBone.split('/')
+      setSubOpen(prev => {
+        const next = { ...prev }
+        let changed = false
+        let prefix = ''
+        for (const part of parts) {
+          prefix = prefix ? `${prefix}/${part}` : part
+          const key = `${targetNode.parentId}:${prefix}`
+          if (!next[key]) {
+            next[key] = true
+            changed = true
+          }
+        }
+        return changed ? next : prev
+      })
+    }
     const timer = window.setTimeout(() => {
       listRef.current?.querySelector(`[data-node-id="${primary}"]`)?.scrollIntoView({ block: 'nearest' })
     }, 0)
     return () => window.clearTimeout(timer)
   }, [primary])
+
+  useEffect(() => {
+    if (!subSelection) return
+    setCollapsed(current => (current[subSelection.nodeId] === false ? current : { ...current, [subSelection.nodeId]: false }))
+    const parts = subSelection.path.split('/')
+    if (parts.length > 1) {
+      setSubOpen(current => {
+        const next = { ...current }
+        let changed = false
+        let prefix = ''
+        for (let i = 0; i < parts.length - 1; i += 1) {
+          prefix = prefix ? `${prefix}/${parts[i]}` : parts[i]
+          const key = `${subSelection.nodeId}:${prefix}`
+          if (!next[key]) {
+            next[key] = true
+            changed = true
+          }
+        }
+        return changed ? next : current
+      })
+    }
+    const timer = window.setTimeout(() => {
+      listRef.current
+        ?.querySelector(`[data-sub-key="${CSS.escape(`${subSelection.nodeId}:${subSelection.path}`)}"]`)
+        ?.scrollIntoView({ block: 'nearest' })
+    }, 20)
+    return () => window.clearTimeout(timer)
+  }, [subSelection])
 
   useEffect(() => {
     if (!pendingRenameId) return
@@ -166,7 +295,7 @@ export default function HierarchyPanel() {
       return
     }
     const store = useEditorStore.getState()
-    const ids = visibleRows.map(row => row.node.id)
+    const ids = visibleRows.filter((row): row is Extract<TreeRow, { kind: 'node' }> => row.kind === 'node').map(row => row.node.id)
     if (event.ctrlKey || event.metaKey) {
       clearRenameTimer()
       const next = selection.includes(id) ? selection.filter(item => item !== id) : [...selection, id]
@@ -183,6 +312,12 @@ export default function HierarchyPanel() {
         store.setSelection([...range, id])
         return
       }
+    }
+    const currentSub = useInspectorMemory.getState().subSelection
+    if (currentSub && currentSub.nodeId === id) {
+      clearRenameTimer()
+      useInspectorMemory.getState().clearSubSelection()
+      return
     }
     const sole = selection.length === 1 && selection[0] === id && renameId !== id
     if (sole) {
@@ -331,9 +466,12 @@ export default function HierarchyPanel() {
           onClick={() => {
             const next: Record<string, boolean> = {}
             for (const node of Object.values(nodes)) {
-              if (childrenOf(nodes, node.id).length > 0) next[node.id] = true
+              if (childrenOf(nodes, node.id).length > 0 || (node.kind === 'model' && node.assetId && modelTrees.has(node.assetId))) {
+                next[node.id] = true
+              }
             }
             setCollapsed(next)
+            setSubOpen({})
           }}
         >
           <ChevronsDownUp size={14} />
@@ -364,10 +502,144 @@ export default function HierarchyPanel() {
         }}
       >
         {visibleRows.length === 0 && <div className="scene-panel__empty">{t('hierarchy.empty')}</div>}
-        {visibleRows.map(({ node, depth }) => {
+        {visibleRows.map(row => {
+          if (row.kind === 'sub') {
+            const { node, item, depth } = row
+            const key = `${node.id}:${item.path}`
+            const open = q ? true : subOpen[key] === true
+            const subSelected = subSelection?.nodeId === node.id && subSelection.path === item.path
+            const partVisible = !(node.hiddenParts ?? []).includes(item.path)
+            const attached = item.kind === 'bone' ? (boneChildren.get(`${node.id}\n${item.path}`) ?? []) : []
+            const hasSubKids = item.children.length > 0 || attached.length > 0
+            const socketId = attached[0]?.id
+            const canDropOnBone = item.kind === 'bone' && boneDropKey === key
+            return (
+              <div
+                key={key}
+                data-sub-key={key}
+                className={[
+                  'scene-item',
+                  'scene-item--sub',
+                  `scene-item--sub-${item.kind}`,
+                  subSelected ? 'scene-item--selected scene-item--primary' : '',
+                  !partVisible ? 'scene-item--hidden' : '',
+                  canDropOnBone ? 'scene-item--into' : '',
+                ].filter(Boolean).join(' ')}
+                style={{ paddingLeft: 6 + depth * 14 }}
+                title={item.path}
+                onClick={event => {
+                  event.stopPropagation()
+                  useInspectorMemory.getState().selectSubItem({
+                    nodeId: node.id,
+                    path: item.path,
+                    name: item.name,
+                    kind: item.kind,
+                    slotIndices: item.slotIndices,
+                  }, { flash: true })
+                }}
+                onDoubleClick={event => {
+                  event.preventDefault()
+                  event.stopPropagation()
+                  useInspectorMemory.getState().selectSubItem({
+                    nodeId: node.id,
+                    path: item.path,
+                    name: item.name,
+                    kind: item.kind,
+                    slotIndices: item.slotIndices,
+                  }, { flash: true })
+                  useEditorStore.getState().requestFocus()
+                }}
+                onDragOver={event => {
+                  if (item.kind !== 'bone' || !isNodeDrag(event.dataTransfer)) return
+                  const sourceId = draggingRef.current
+                  if (!sourceId || sourceId === node.id || isUnder(nodes, node.id, sourceId)) return
+                  event.preventDefault()
+                  event.stopPropagation()
+                  event.dataTransfer.dropEffect = 'move'
+                  if (boneDropKey !== key) setBoneDropKey(key)
+                }}
+                onDragLeave={() => {
+                  if (boneDropKey === key) setBoneDropKey(null)
+                }}
+                onDrop={event => {
+                  if (item.kind !== 'bone' || !isNodeDrag(event.dataTransfer)) return
+                  const sourceId = event.dataTransfer.getData(NODE_MIME) || draggingRef.current
+                  setBoneDropKey(null)
+                  if (!sourceId || sourceId === node.id || isUnder(nodes, node.id, sourceId)) return
+                  event.preventDefault()
+                  event.stopPropagation()
+                  useEditorStore.getState().attachToBone(sourceId, node.id, item.path)
+                  setCollapsed(current => ({ ...current, [node.id]: false }))
+                  setSubOpen(current => ({ ...current, [key]: true }))
+                }}
+              >
+                <button
+                  type="button"
+                  className="scene-item__twist"
+                  onMouseDown={event => event.stopPropagation()}
+                  onClick={event => {
+                    event.stopPropagation()
+                    if (hasSubKids) setSubOpen(current => ({ ...current, [key]: !open }))
+                  }}
+                >
+                  {hasSubKids ? (open ? <ChevronDown size={12} /> : <ChevronRight size={12} />) : null}
+                </button>
+                {item.kind === 'bone' ? (
+                  <Bone size={13} color="#f2cf7f" />
+                ) : item.kind === 'mesh' ? (
+                  <Box size={13} color="#9fc5ff" />
+                ) : (
+                  <Box size={12} color="#8c8c8c" />
+                )}
+                <span className="scene-item__name">{item.name}</span>
+                <span className="scene-item__actions scene-item__actions--sub">
+                  {item.kind === 'mesh' && (
+                    <button
+                      type="button"
+                      className={partVisible ? '' : 'scene-item__off'}
+                      title={partVisible ? t('hierarchy.hide') : t('hierarchy.show')}
+                      onMouseDown={event => event.stopPropagation()}
+                      onClick={event => {
+                        event.stopPropagation()
+                        const store = useEditorStore.getState()
+                        store.beginGesture(t('inspector.parts'))
+                        const next = partVisible
+                          ? [...(node.hiddenParts ?? []), item.path]
+                          : (node.hiddenParts ?? []).filter(id => id !== item.path)
+                        store.updateNode(node.id, { hiddenParts: next })
+                        store.endGesture()
+                      }}
+                    >
+                      {partVisible ? <Eye size={12} /> : <EyeOff size={12} />}
+                    </button>
+                  )}
+                  {item.kind === 'bone' && (
+                    <button
+                      type="button"
+                      disabled={playing}
+                      className={socketId ? 'scene-item__socket-ready' : 'scene-item__socket-add'}
+                      title={socketId ? t('inspector.socketReady') : t('inspector.extractSocket')}
+                      onMouseDown={event => event.stopPropagation()}
+                      onClick={event => {
+                        event.stopPropagation()
+                        const store = useEditorStore.getState()
+                        if (socketId) store.setSelection([socketId])
+                        else store.extractSocket(node.id, item.path, item.name)
+                      }}
+                    >
+                      {socketId ? <Check size={12} /> : <Plus size={12} />}
+                    </button>
+                  )}
+                </span>
+              </div>
+            )
+          }
+          const { node, depth } = row
           const Icon = ICONS[node.kind]
-          const hasChildren = childrenOf(nodes, node.id).length > 0
-          const selected = selection.includes(node.id)
+          const hasInternal = node.kind === 'model' && Boolean(node.assetId && modelTrees.get(node.assetId)?.length)
+          const hasChildren = childrenOf(nodes, node.id).length > 0 || hasInternal
+          const isOpen = node.kind === 'model' ? (collapsed[node.id] === false || (Boolean(q) && hasInternal)) : !collapsed[node.id]
+          const selected = selection.includes(node.id) && !(subSelection?.nodeId === node.id)
           return (
             <div
               key={node.id}
@@ -438,12 +710,19 @@ export default function HierarchyPanel() {
                 onMouseDown={event => event.stopPropagation()}
                 onClick={event => {
                   event.stopPropagation()
-                  if (hasChildren) setCollapsed(state => ({ ...state, [node.id]: !state[node.id] }))
+                  if (!hasChildren) return
+                  setCollapsed(state => {
+                    if (node.kind === 'model') {
+                      const nextOpen = state[node.id] !== false
+                      return { ...state, [node.id]: nextOpen ? false : true }
+                    }
+                    return { ...state, [node.id]: !state[node.id] }
+                  })
                 }}
               >
-                {hasChildren ? (collapsed[node.id] && !q ? <ChevronRight size={12} /> : <ChevronDown size={12} />) : null}
+                {hasChildren ? (isOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />) : null}
               </button>
-              <Icon size={13} color={iconColor(node.kind)} />
+              <Icon size={13} color={node.socketBone ? '#f2cf7f' : iconColor(node.kind)} />
               {renameId === node.id ? (
                 <input
                   className="scene-item__rename"

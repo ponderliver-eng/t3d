@@ -1,4 +1,4 @@
-import { CanvasTexture, EquirectangularReflectionMapping, NoColorSpace, SRGBColorSpace, Texture, TextureLoader } from 'three'
+import { CanvasTexture, DataTexture, EquirectangularReflectionMapping, NoColorSpace, RGBAFormat, SRGBColorSpace, Texture, TextureLoader, UnsignedByteType } from 'three'
 import { KTX2Loader } from 'three/addons/loaders/KTX2Loader.js'
 import { RGBELoader } from 'three/addons/loaders/RGBELoader.js'
 import { EXRLoader } from 'three/addons/loaders/EXRLoader.js'
@@ -9,6 +9,7 @@ import { type FileAsset, useAssetStore } from './library'
 const images = new Map<string, Texture>()
 const linearImages = new Map<string, Texture>()
 const unityMrImages = new Map<string, Texture>()
+const unityMrPending = new Set<string>()
 const pendingImages = new Map<string, Promise<void>>()
 const environments = new Map<string, Texture>()
 const pendingEnvironments = new Map<string, Promise<void>>()
@@ -64,6 +65,132 @@ export function textureFor(assetId: string | null, colorMap: boolean): Texture |
   return linear
 }
 
+const REPACK_WORKER_CODE = `
+self.onmessage = async (e) => {
+  const { id, bitmap } = e.data;
+  try {
+    const w = bitmap.width, h = bitmap.height;
+    const canvas = new OffscreenCanvas(w, h);
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(bitmap, 0, 0);
+    bitmap.close();
+    const img = ctx.getImageData(0, 0, w, h);
+    const data = img.data;
+    const len = data.length;
+    let hasAlpha = false;
+    const firstA = data[3] ?? 255;
+    for (let i = 3; i < len; i += 4) {
+      if (Math.abs(data[i] - firstA) > 2) { hasAlpha = true; break; }
+    }
+    const useA = hasAlpha || firstA < 250;
+    for (let i = 0; i < len; i += 4) {
+      const r = data[i];
+      const g = data[i + 1];
+      const a = data[i + 3];
+      data[i] = g > 0 ? g : 255;
+      data[i + 1] = 255 - (useA ? a : r);
+      data[i + 2] = r;
+      data[i + 3] = 255;
+    }
+    self.postMessage({ id, w, h, buffer: data.buffer }, [data.buffer]);
+  } catch (err) {
+    self.postMessage({ id, error: String(err) });
+  }
+};
+`
+
+let repackWorker: Worker | null = null
+const repackCallbacks = new Map<string, (res: { w: number; h: number; buffer: ArrayBuffer } | null) => void>()
+
+function getRepackWorker(): Worker | null {
+  if (repackWorker) return repackWorker
+  if (typeof Worker === 'undefined' || typeof OffscreenCanvas === 'undefined') return null
+  try {
+    const blob = new Blob([REPACK_WORKER_CODE], { type: 'application/javascript' })
+    const url = URL.createObjectURL(blob)
+    repackWorker = new Worker(url)
+    repackWorker.onmessage = (event: MessageEvent<{ id: string; w?: number; h?: number; buffer?: ArrayBuffer; error?: string }>) => {
+      const { id, w, h, buffer } = event.data
+      const cb = repackCallbacks.get(id)
+      repackCallbacks.delete(id)
+      if (cb) cb(w && h && buffer ? { w, h, buffer } : null)
+    }
+    return repackWorker
+  } catch {
+    return null
+  }
+}
+
+function scheduleUnityRepack(assetId: string, base: Texture, source: CanvasImageSource, width: number, height: number) {
+  if (unityMrPending.has(assetId)) return
+  unityMrPending.add(assetId)
+  const finishWithBuffer = (w: number, h: number, buffer: ArrayBuffer) => {
+    const converted = new DataTexture(new Uint8Array(buffer), w, h, RGBAFormat, UnsignedByteType)
+    converted.colorSpace = NoColorSpace
+    converted.flipY = base.flipY
+    converted.wrapS = base.wrapS
+    converted.wrapT = base.wrapT
+    converted.generateMipmaps = true
+    converted.needsUpdate = true
+    unityMrImages.set(assetId, converted)
+    unityMrPending.delete(assetId)
+    useAssetStore.getState().bump()
+  }
+  const worker = getRepackWorker()
+  if (worker && typeof createImageBitmap === 'function') {
+    createImageBitmap(source).then(bitmap => {
+      repackCallbacks.set(assetId, res => {
+        if (!res) { unityMrPending.delete(assetId); return }
+        finishWithBuffer(res.w, res.h, res.buffer)
+      })
+      worker.postMessage({ id: assetId, bitmap }, [bitmap])
+    }).catch(() => {
+      unityMrPending.delete(assetId)
+    })
+    return
+  }
+  // 回退：异步微任务切出当前渲染帧再做重排
+  window.setTimeout(() => {
+    try {
+      const canvas = document.createElement('canvas')
+      canvas.width = width
+      canvas.height = height
+      const ctx = canvas.getContext('2d', { willReadFrequently: true })
+      if (!ctx) { unityMrPending.delete(assetId); return }
+      ctx.drawImage(source, 0, 0, width, height)
+      const imgData = ctx.getImageData(0, 0, width, height)
+      const data = imgData.data
+      let hasAlpha = false
+      const firstA = data[3] ?? 255
+      for (let i = 3; i < data.length; i += 4) {
+        if (Math.abs((data[i] ?? 255) - firstA) > 2) { hasAlpha = true; break }
+      }
+      const useA = hasAlpha || firstA < 250
+      for (let i = 0; i < data.length; i += 4) {
+        const r = data[i]!
+        const g = data[i + 1]!
+        const a = data[i + 3]!
+        data[i] = g > 0 ? g : 255
+        data[i + 1] = 255 - (useA ? a : r)
+        data[i + 2] = r
+        data[i + 3] = 255
+      }
+      ctx.putImageData(imgData, 0, 0)
+      const converted = new CanvasTexture(canvas)
+      converted.colorSpace = NoColorSpace
+      converted.flipY = base.flipY
+      converted.wrapS = base.wrapS
+      converted.wrapT = base.wrapT
+      converted.needsUpdate = true
+      unityMrImages.set(assetId, converted)
+      unityMrPending.delete(assetId)
+      useAssetStore.getState().bump()
+    } catch {
+      unityMrPending.delete(assetId)
+    }
+  }, 0)
+}
+
 /**
  * Unity Standard / URP MaskMap 金属光滑图重排为 Three.js / glTF ORM 贴图：
  * - Unity 输入：R = Metallic，G = AO（或 R 副本），A = Smoothness（1 - Roughness）
@@ -79,48 +206,8 @@ export function unityMetallicRoughnessTextureFor(assetId: string | null): Textur
   const width = source?.naturalWidth || source?.width || 0
   const height = source?.naturalHeight || source?.height || 0
   if (!source || width <= 0 || height <= 0 || typeof document === 'undefined') return base
-  try {
-    const canvas = document.createElement('canvas')
-    canvas.width = width
-    canvas.height = height
-    const ctx = canvas.getContext('2d', { willReadFrequently: true })
-    if (!ctx) return base
-    ctx.drawImage(source, 0, 0, width, height)
-    const imgData = ctx.getImageData(0, 0, width, height)
-    const data = imgData.data
-    let hasAlphaVariation = false
-    const firstAlpha = data[3] ?? 255
-    for (let i = 0; i < data.length; i += 4) {
-      if (Math.abs((data[i + 3] ?? 255) - firstAlpha) > 2) {
-        hasAlphaVariation = true
-        break
-      }
-    }
-    for (let i = 0; i < data.length; i += 4) {
-      const r = data[i]!
-      const g = data[i + 1]!
-      const a = data[i + 3]!
-      // 若贴图 Alpha 全为 255（无透明通道），则用 R 通道作为光滑度来源兜底
-      const smoothness = hasAlphaVariation || firstAlpha < 250 ? a : r
-      const roughness = 255 - smoothness
-      const ao = g > 0 ? g : 255
-      data[i] = ao
-      data[i + 1] = roughness
-      data[i + 2] = r
-      data[i + 3] = 255
-    }
-    ctx.putImageData(imgData, 0, 0)
-    const converted = new CanvasTexture(canvas)
-    converted.colorSpace = NoColorSpace
-    converted.flipY = base.flipY
-    converted.wrapS = base.wrapS
-    converted.wrapT = base.wrapT
-    converted.needsUpdate = true
-    unityMrImages.set(assetId, converted)
-    return converted
-  } catch {
-    return base
-  }
+  scheduleUnityRepack(assetId, base, source, width, height)
+  return base
 }
 
 export function environmentFor(assetId: string | null): Texture | null {
@@ -141,6 +228,7 @@ export function releaseTexture(assetId: string) {
   linearImages.delete(assetId)
   unityMrImages.get(assetId)?.dispose()
   unityMrImages.delete(assetId)
+  unityMrPending.delete(assetId)
   pendingImages.delete(assetId)
   environments.get(assetId)?.dispose()
   environments.delete(assetId)
@@ -189,12 +277,13 @@ export function loadTextureAsset(asset: FileAsset): Promise<void> {
       })
     }
     if (lower.endsWith('.svg')) return loadSvgTexture(asset.id, url)
-    return loader.loadAsync(url).then(texture => {
+    return loadBitmapTexture(url).then(texture => {
       texture.colorSpace = SRGBColorSpace
       images.set(asset.id, texture)
       linearImages.delete(asset.id)
       unityMrImages.get(asset.id)?.dispose()
       unityMrImages.delete(asset.id)
+      unityMrPending.delete(asset.id)
       pendingImages.delete(asset.id)
       useAssetStore.getState().bump()
     })
@@ -204,6 +293,23 @@ export function loadTextureAsset(asset: FileAsset): Promise<void> {
   })
   pendingImages.set(asset.id, task)
   return task
+}
+
+async function loadBitmapTexture(url: string): Promise<Texture> {
+  if (typeof createImageBitmap === 'function') {
+    try {
+      const response = await fetch(url)
+      const blob = await response.blob()
+      const bitmap = await createImageBitmap(blob, { imageOrientation: 'flipY' })
+      const texture = new Texture(bitmap)
+      texture.flipY = false
+      texture.needsUpdate = true
+      return texture
+    } catch {
+      // 某些格式（如浏览器不支持选项）回退到标准 TextureLoader
+    }
+  }
+  return loader.loadAsync(url)
 }
 
 function loadSvgTexture(assetId: string, url: string): Promise<void> {
