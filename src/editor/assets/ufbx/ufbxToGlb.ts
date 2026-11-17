@@ -270,6 +270,7 @@ export function buildGlbFromUfbxScene(
 
   // 5. Skins
   const skinJointGltfNodeSet = new Set<number>()
+  const boneAncestorGltfNodeSet = new Set<number>()
   const gltfSkins: Array<Record<string, unknown>> = scene.skins.map((s, si) => {
     const joints: number[] = []
     for (let j = 0; j < s.joints.length; j += 1) {
@@ -277,6 +278,14 @@ export function buildGlbFromUfbxScene(
       const gltfNodeIdx = nodeIndexByUfbxIndex.get(ufbxNodeIdx) ?? 0
       joints.push(gltfNodeIdx)
       skinJointGltfNodeSet.add(gltfNodeIdx)
+      let curParent = scene.nodes[ufbxNodeIdx]?.parent ?? -1
+      while (curParent >= 0 && curParent < scene.nodes.length) {
+        const pNode = scene.nodes[curParent]
+        if (!pNode || !pNode.isBone) break
+        const pGltfIdx = nodeIndexByUfbxIndex.get(curParent)
+        if (pGltfIdx !== undefined) boneAncestorGltfNodeSet.add(pGltfIdx)
+        curParent = pNode.parent
+      }
     }
     const ibm = ufbxF32(scene, s.ibm, s.joints.length * 16)
     const ibmAccessor = appendAccessor(ibm, 5126, 'MAT4', s.joints.length)
@@ -316,7 +325,7 @@ export function buildGlbFromUfbxScene(
       const usableTracks = dropNonJoint
         ? a.tracks.filter(tr => {
             const gIdx = nodeIndexByUfbxIndex.get(tr.node)
-            return gIdx !== undefined && skinJointGltfNodeSet.has(gIdx)
+            return gIdx !== undefined && (skinJointGltfNodeSet.has(gIdx) || boneAncestorGltfNodeSet.has(gIdx))
           })
         : a.tracks
       const tracksToEmit = usableTracks.length > 0 ? usableTracks : a.tracks

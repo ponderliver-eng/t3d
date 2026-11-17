@@ -704,6 +704,21 @@ export function bindHumanoidClip(input: {
           values = foldedValues
         }
       }
+    } else if (property === 'quaternion' && effective === 'Hips') {
+      const foldedHipsRot = authored.find(item => item.targetProperty === 'rotationQuaternion' && item.targetName && normHumanoidBoneName(item.targetName) === norm)
+      if (foldedHipsRot && foldedHipsRot.keys.length > 0) {
+        const foldedTimes: number[] = []
+        const foldedValues: number[] = []
+        for (const k of foldedHipsRot.keys) {
+          if (!Array.isArray(k.value) || k.value.length < 4) continue
+          foldedTimes.push(k.frame ?? 0)
+          foldedValues.push(Number(k.value[0]) || 0, Number(k.value[1]) || 0, Number(k.value[2]) || 0, Number(k.value[3]) ?? 1)
+        }
+        if (foldedTimes.length > 0) {
+          times = foldedTimes
+          values = foldedValues
+        }
+      }
     }
     const next: PoseTrack = { bone: targetBone, slot: effective, property, times, values, passthrough: null }
     const srcRest = (sourceSlot ? source.bySlot.get(sourceSlot) : undefined) ?? source.byNormName.get(norm)

@@ -26,7 +26,7 @@ const ARTIFACTS = 'artifacts'
 const SCENE = 'scene'
 const SCENE_KEY = 'current'
 
-export const MODEL_IMPORTER_VERSION = 't3d-glb-artifact-8-ufbx-light'
+export const MODEL_IMPORTER_VERSION = 't3d-glb-artifact-9-ufbx-biped'
 
 export interface CachedFile {
   id: string

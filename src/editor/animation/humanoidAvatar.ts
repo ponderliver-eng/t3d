@@ -2,6 +2,7 @@
  * 导入时记下的人形槽位。手改槽位盖过自动结果，并进入模型缓存版本。
  */
 
+import { Quaternion, Vector3 } from 'three'
 import {
   CORE_HUMANOID_SLOTS,
   buildHumanoidBoneMapFromNames,
@@ -338,22 +339,71 @@ function spanOf(keys: readonly { value: unknown }[]): number {
   return Math.hypot(maxX - minX, maxZ - minZ)
 }
 
-function sample(keys: readonly { frame?: number; value: unknown }[], frame: number, fallback: Vec3): Vec3 {
-  let best: Vec3 | null = null
-  let bestFrame = -Infinity
+function lerpVec(keys: readonly { frame?: number; value: unknown }[], frame: number, fallback: Vec3): Vec3 {
+  const valid: Array<{ t: number; v: Vec3 }> = []
   for (const key of keys) {
-    const value = asVec3(key.value)
-    if (!value) continue
-    const keyFrame = key.frame ?? 0
-    if (keyFrame <= frame && keyFrame >= bestFrame) {
-      best = value
-      bestFrame = keyFrame
+    const v = asVec3(key.value)
+    if (v) valid.push({ t: key.frame ?? 0, v })
+  }
+  if (valid.length === 0) return fallback
+  if (frame <= valid[0]!.t) return valid[0]!.v
+  for (let i = 1; i < valid.length; i += 1) {
+    const a = valid[i - 1]!
+    const b = valid[i]!
+    if (frame <= b.t) {
+      const span = b.t - a.t
+      const alpha = span > 1e-6 ? (frame - a.t) / span : 0
+      return [
+        a.v[0] + (b.v[0] - a.v[0]) * alpha,
+        a.v[1] + (b.v[1] - a.v[1]) * alpha,
+        a.v[2] + (b.v[2] - a.v[2]) * alpha,
+      ]
     }
   }
-  return best ?? fallback
+  return valid[valid.length - 1]!.v
 }
 
-/** 盆骨几乎不动、父节点在走时，把父节点位移收进盆骨。按这一条片段判断。 */
+function asQuat4(value: unknown): [number, number, number, number] | null {
+  if (!Array.isArray(value) || value.length < 4) return null
+  const x = Number(value[0])
+  const y = Number(value[1])
+  const z = Number(value[2])
+  const w = Number(value[3])
+  if (![x, y, z, w].every(Number.isFinite)) return null
+  const len = Math.hypot(x, y, z, w) || 1
+  return [x / len, y / len, z / len, w / len]
+}
+
+function slerpQuat(keys: readonly { frame?: number; value: unknown }[], frame: number, fallback: Quaternion): Quaternion {
+  const valid: Array<{ t: number; q: Quaternion }> = []
+  for (const key of keys) {
+    const arr = asQuat4(key.value)
+    if (arr) valid.push({ t: key.frame ?? 0, q: new Quaternion(...arr) })
+  }
+  if (valid.length === 0) return fallback.clone()
+  if (frame <= valid[0]!.t) return valid[0]!.q.clone()
+  for (let i = 1; i < valid.length; i += 1) {
+    const a = valid[i - 1]!
+    const b = valid[i]!
+    if (frame <= b.t) {
+      const span = b.t - a.t
+      const alpha = span > 1e-6 ? (frame - a.t) / span : 0
+      return a.q.clone().slerp(b.q, alpha).normalize()
+    }
+  }
+  return valid[valid.length - 1]!.q.clone()
+}
+
+function mergeFrames(a: readonly { frame?: number }[] | undefined, b: readonly { frame?: number }[] | undefined): number[] {
+  const raw = [...(a ?? []), ...(b ?? [])].map(k => k.frame ?? 0).sort((x, y) => x - y)
+  const out: number[] = []
+  for (const t of raw) {
+    if (out.length === 0 || Math.abs(t - out[out.length - 1]!) > 1e-4) out.push(t)
+  }
+  return out
+}
+
+/** 盆骨几乎不动、父节点在走时，把父节点位移与旋转收进盆骨。按这一条片段判断。 */
 export function foldRootMotionTracks<T extends HumanoidAvatarTrackInput>(
   tracks: readonly T[],
   skeletons: readonly HumanoidAvatarSkeletonInput[],
@@ -377,20 +427,53 @@ export function foldRootMotionTracks<T extends HumanoidAvatarTrackInput>(
     ? avatar.rootBoneName
     : parent?.name
   if (!rootName || normHumanoidBoneName(rootName) === normHumanoidBoneName(hipsName)) return tracks
-  const rootTrack = tracks.find(track => track.targetProperty === 'position' && track.targetName && normHumanoidBoneName(track.targetName) === normHumanoidBoneName(rootName))
+  const rootNorm = normHumanoidBoneName(rootName)
+  const hipsNorm = normHumanoidBoneName(hipsName)
+  const rootTrack = tracks.find(track => track.targetProperty === 'position' && track.targetName && normHumanoidBoneName(track.targetName) === rootNorm)
   if (!rootTrack || rootTrack.keys.length === 0) return tracks
-  const hipsTrack = tracks.find(track => track.targetProperty === 'position' && track.targetName && normHumanoidBoneName(track.targetName) === normHumanoidBoneName(hipsName))
+  const hipsTrack = tracks.find(track => track.targetProperty === 'position' && track.targetName && normHumanoidBoneName(track.targetName) === hipsNorm)
   if (!(spanOf(rootTrack.keys) > 1e-3 && spanOf(rootTrack.keys) > spanOf(hipsTrack?.keys ?? []) * 1.5)) return tracks
-  const rootRest = translationOf(findBone(skeletons, rootName)?.bone)
+  const rootBone = findBone(skeletons, rootName)?.bone
+  const rootRest = translationOf(rootBone)
+  const rootRestQuatArr = matrixQuaternion(rootBone?.restMatrix) ?? [0, 0, 0, 1]
+  const rootRestQuat = new Quaternion(...rootRestQuatArr)
+  const invRootRestQuat = rootRestQuat.clone().invert()
   const hipsRest = translationOf(hipsBone?.bone)
-  const frames = (hipsTrack?.keys.length ? hipsTrack.keys : rootTrack.keys).map(key => key.frame ?? 0)
-  const keys = frames.map(frame => {
-    const hips = sample(hipsTrack?.keys ?? [], frame, hipsRest)
-    const root = sample(rootTrack.keys, frame, rootRest)
-    return { frame, value: [hips[0] + root[0] - rootRest[0], hips[1] + root[1] - rootRest[1], hips[2] + root[2] - rootRest[2]] }
+  const rootRotTrack = tracks.find(track => track.targetProperty === 'rotationQuaternion' && track.targetName && normHumanoidBoneName(track.targetName) === rootNorm)
+  const hipsRotTrack = tracks.find(track => track.targetProperty === 'rotationQuaternion' && track.targetName && normHumanoidBoneName(track.targetName) === hipsNorm)
+  const posFrames = mergeFrames(hipsTrack?.keys, rootTrack.keys)
+  const posKeys = posFrames.map(frame => {
+    const hips = lerpVec(hipsTrack?.keys ?? [], frame, hipsRest)
+    const root = lerpVec(rootTrack.keys, frame, rootRest)
+    const rootQ = rootRotTrack ? slerpQuat(rootRotTrack.keys, frame, rootRestQuat) : rootRestQuat
+    const rotatedHips = new Vector3(...hips).applyQuaternion(rootQ)
+    const combined = new Vector3(
+      root[0] - rootRest[0] + rotatedHips.x,
+      root[1] - rootRest[1] + rotatedHips.y,
+      root[2] - rootRest[2] + rotatedHips.z,
+    ).applyQuaternion(invRootRestQuat)
+    return { frame, value: [combined.x, combined.y, combined.z] }
   })
-  if (hipsTrack) return tracks.map(track => track === hipsTrack ? { ...track, keys } : track)
-  return [...tracks, { ...rootTrack, targetName: hipsName, targetProperty: 'position', keys } as T]
+  let result: T[] = hipsTrack
+    ? tracks.map(track => track === hipsTrack ? { ...track, keys: posKeys } : track)
+    : [...tracks, { ...rootTrack, targetName: hipsName, targetProperty: 'position', keys: posKeys } as T]
+
+  if (rootRotTrack && rootRotTrack.keys.length > 0 && hipsRotTrack) {
+    const hipsRestQuatArr = matrixQuaternion(hipsBone?.bone?.restMatrix) ?? [0, 0, 0, 1]
+    const hipsRestQuat = new Quaternion(...hipsRestQuatArr)
+    const rotFrames = mergeFrames(hipsRotTrack.keys, rootRotTrack.keys)
+    let prev: Quaternion | null = null
+    const rotKeys = rotFrames.map(frame => {
+      const rootQ = slerpQuat(rootRotTrack.keys, frame, rootRestQuat)
+      const hipsQ = slerpQuat(hipsRotTrack.keys, frame, hipsRestQuat)
+      const combined = invRootRestQuat.clone().multiply(rootQ).multiply(hipsQ).normalize()
+      if (prev && combined.dot(prev) < 0) combined.set(-combined.x, -combined.y, -combined.z, -combined.w)
+      prev = combined.clone()
+      return { frame, value: [combined.x, combined.y, combined.z, combined.w] }
+    })
+    result = result.map(track => track === hipsRotTrack ? { ...track, keys: rotKeys } : track)
+  }
+  return result
 }
 
 function findBone(skeletons: readonly HumanoidAvatarSkeletonInput[], name: string) {

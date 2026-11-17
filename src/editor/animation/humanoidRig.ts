@@ -342,8 +342,70 @@ export function captureHumanoidSkeletons(root: Object3D): HumanoidSkeletonRecord
         if ((child as Bone).isBone || classifyHumanoidBoneSlot(child.name) !== null) addBone(child)
       })
     }
+    const hipsAncestors: Object3D[] = []
+    if (hips) {
+      let cur = hips.parent
+      while (cur && cur !== root && !isSynthetic(cur) && (cur as Bone).isBone) {
+        const target = canonicalBone(cur as Bone)
+        if (!bones.includes(target)) hipsAncestors.unshift(target)
+        cur = target.parent
+      }
+      for (const ancestor of hipsAncestors) addBone(ancestor)
+    }
     bones.forEach(bone => seen.add(bone))
     const boneSet = new Set<Object3D>(bones)
+    const bindWorldByBone = new Map<Object3D, Matrix4>()
+    const meshBind = mesh.bindMatrix ?? new Matrix4()
+    for (let i = 0; i < mesh.skeleton.bones.length; i += 1) {
+      const raw = mesh.skeleton.bones[i]
+      const inv = mesh.skeleton.boneInverses[i]
+      if (!raw || !inv || Math.abs(inv.determinant()) <= 1e-10) continue
+      const target = (raw as Bone).isBone ? canonicalBone(raw as Bone) : raw
+      if (!bindWorldByBone.has(target)) {
+        bindWorldByBone.set(target, meshBind.clone().multiply(inv.clone().invert()))
+      }
+    }
+    let useBindPose = false
+    const localBindByBone = new Map<Object3D, Matrix4>()
+    if (bindWorldByBone.size > 0) {
+      let maxAngle = 0
+      const curPos = new Vector3()
+      const curQuat = new Quaternion()
+      const curScale = new Vector3()
+      const bindPos = new Vector3()
+      const bindQuat = new Quaternion()
+      const bindScale = new Vector3()
+      for (const bone of bones) {
+        const wBind = bindWorldByBone.get(bone)
+        if (!wBind) continue
+        let parentObj = bone.parent
+        while (parentObj && (parentObj as Bone).isBone && parentObj.name === bone.name) {
+          parentObj = parentObj.parent
+        }
+        const parent = parentObj && (parentObj as Bone).isBone ? canonicalBone(parentObj as Bone) : parentObj
+        const pBind = parent ? bindWorldByBone.get(parent) : undefined
+        let lBind: Matrix4 | null = null
+        if (pBind && Math.abs(pBind.determinant()) > 1e-10) {
+          lBind = pBind.clone().invert().multiply(wBind)
+        } else if (parent && hipsAncestors.includes(parent)) {
+          const anchorParent = parent.parent
+          if (anchorParent && Math.abs(anchorParent.matrixWorld.determinant()) > 1e-10) {
+            lBind = anchorParent.matrixWorld.clone().invert().multiply(wBind)
+          } else {
+            lBind = wBind.clone()
+          }
+          localBindByBone.set(parent, new Matrix4())
+        }
+        if (!lBind) continue
+        localBindByBone.set(bone, lBind)
+        lBind.decompose(bindPos, bindQuat, bindScale)
+        new Matrix4().compose(bone.position, bone.quaternion, bone.scale).decompose(curPos, curQuat, curScale)
+        const dot = Math.min(1, Math.abs(curQuat.dot(bindQuat)))
+        const angle = 2 * Math.acos(dot)
+        if (angle > maxAngle) maxAngle = angle
+      }
+      if (maxAngle > 0.26) useBindPose = true
+    }
     const listed = bones.map((bone, index) => {
       let parentObj = bone.parent
       while (parentObj && (parentObj as Bone).isBone && parentObj.name === bone.name) {
@@ -351,7 +413,8 @@ export function captureHumanoidSkeletons(root: Object3D): HumanoidSkeletonRecord
       }
       const parent = parentObj && (parentObj as Bone).isBone ? canonicalBone(parentObj as Bone) : parentObj
       const parentIndex = parent && bones.includes(parent) ? bones.indexOf(parent) : undefined
-      const matrix = new Matrix4().compose(bone.position, bone.quaternion, bone.scale)
+      const matrix = (useBindPose ? localBindByBone.get(bone) : undefined)
+        ?? new Matrix4().compose(bone.position, bone.quaternion, bone.scale)
       return {
         index,
         name: bone.name,
