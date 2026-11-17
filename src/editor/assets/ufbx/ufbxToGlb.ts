@@ -44,15 +44,6 @@ function fixQuatContinuity(q: Float32Array): void {
   }
 }
 
-function flipUvV(src: Float32Array): Float32Array {
-  const out = new Float32Array(src.length)
-  for (let i = 0; i < src.length; i += 2) {
-    out[i] = src[i]!
-    out[i + 1] = 1 - src[i + 1]!
-  }
-  return out
-}
-
 export async function convertFbxBytesToGlbWithUfbx(
   sourceBytes: Uint8Array,
   options: UfbxToGlbOptions = {},
@@ -246,10 +237,10 @@ export function buildGlbFromUfbxScene(
         attrs.NORMAL = appendAccessor(ufbxF32(scene, p.nrm, p.vertexCount * 3), 5126, 'VEC3', p.vertexCount, { target: 34962 })
       }
       if (p.uv >= 0) {
-        attrs.TEXCOORD_0 = appendAccessor(flipUvV(ufbxF32(scene, p.uv, p.vertexCount * 2)), 5126, 'VEC2', p.vertexCount, { target: 34962 })
+        attrs.TEXCOORD_0 = appendAccessor(ufbxF32(scene, p.uv, p.vertexCount * 2), 5126, 'VEC2', p.vertexCount, { target: 34962 })
       }
       if (p.uv1 !== undefined && p.uv1 >= 0) {
-        attrs.TEXCOORD_1 = appendAccessor(flipUvV(ufbxF32(scene, p.uv1, p.vertexCount * 2)), 5126, 'VEC2', p.vertexCount, { target: 34962 })
+        attrs.TEXCOORD_1 = appendAccessor(ufbxF32(scene, p.uv1, p.vertexCount * 2), 5126, 'VEC2', p.vertexCount, { target: 34962 })
       }
       if (p.col >= 0) {
         const col = ufbxF32(scene, p.col, p.vertexCount * 4)
