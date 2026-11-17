@@ -67,7 +67,10 @@ export function PackageExtractDialog({ file, open, onClose }: { file: File | nul
     material: entries.filter(entry => entry.kind === 'material').length,
   }), [entries])
   const selected = entries.filter(entry => selectedIds.has(entry.id))
-  const expanded = useMemo(() => withReferencedTextures(selected, entries), [entries, selectedIds])
+  const expanded = useMemo(
+    () => withReferencedTextures(selected, entries, result?.materialBindingSources),
+    [entries, selectedIds, result?.materialBindingSources],
+  )
   const directoryIds = useMemo(() => result ? directoryEntryIds(result.tree) : new Map<string, string[]>(), [result])
   const bodies = entries.filter(entry => (roleOverrides[entry.id] ?? entry.roleGuess?.role) === 'modelBody')
   const bodyOptions = bodies.map(entry => <option key={entry.id} value={entry.id}>{entry.fileName}</option>)
@@ -84,6 +87,7 @@ export function PackageExtractDialog({ file, open, onClose }: { file: File | nul
         mergeAnimations,
         roles: reviewedRoles(entries, roleOverrides),
         carrierBodies: reviewedLinks(entries, roleOverrides, carrierBodyLinks),
+        materialBindingSources: result?.materialBindingSources,
         onProgress: setProgress,
       })
       const editor = useEditorStore.getState()

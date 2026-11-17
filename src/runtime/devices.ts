@@ -293,11 +293,16 @@ function stepRound(_dt: number, host: SceneRuntimeHost) {
 }
 
 function grantInteractScore() {
+  const board = Object.values(useEditorStore.getState().nodes).find(node => node.gameplay?.score?.enabled)
+  addRuleScore(board?.gameplay?.score?.perInteract ?? 0)
+}
+
+export function addRuleScore(amount: number) {
   const state = useEditorStore.getState()
   const board = Object.values(state.nodes).find(node => node.gameplay?.score?.enabled)
   const score = board?.gameplay?.score
   if (!score || scoreState === 'done' || scoreState === 'defeat' || scoreState === 'victory') return
-  scoreValue += Math.max(0, score.perInteract)
+  scoreValue += amount
   writeUiVariable('score', scoreValue)
   writeUiVariable('objective', score.title)
   if (scoreValue >= score.target) {

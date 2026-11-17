@@ -80,6 +80,12 @@ export function relocateCharacter(id: string, x: number, y: number, z: number) {
   relocations.set(id, [x, y, z])
 }
 
+const orders = new Map<string, Vec3>()
+
+export function orderCharacterMove(id: string, x: number, y: number, z: number) {
+  orders.set(id, [x, y, z])
+}
+
 const relocations = new Map<string, Vec3>()
 
 function takeRelocation(id: string): Vec3 | null {
@@ -93,6 +99,7 @@ function stepCharacters(dt: number, host: SceneRuntimeHost) {
   const state = useEditorStore.getState()
   if (state.playState !== 'playing') {
     motion.clear()
+    orders.clear()
     consumeTaps()
     return
   }
@@ -105,6 +112,13 @@ function stepCharacters(dt: number, host: SceneRuntimeHost) {
     const object = host.resolveObject(node.id)
     if (!object) continue
     const live = motion.get(node.id) ?? freshMotion(yawOf(object.quaternion))
+    const order = orders.get(node.id)
+    if (order) {
+      const path = findNavigationPath([object.position.x, object.position.y, object.position.z], order)
+      live.path = path && path.length > 1 ? path.slice(1) : [order]
+      live.pathIndex = 0
+      orders.delete(node.id)
+    }
     const placed = takeRelocation(node.id)
     if (placed) {
       object.position.set(placed[0], placed[1], placed[2])

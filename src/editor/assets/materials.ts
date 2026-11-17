@@ -18,7 +18,7 @@ import {
   type Side,
 } from 'three'
 import { useAssetStore } from './library'
-import { textureFor } from './textures'
+import { textureFor, unityMetallicRoughnessTextureFor } from './textures'
 import type { ParticleMaterialDesc } from '../../capabilities/particles/runtime'
 import type { AlphaMode, CullMode, ParticleBlend, PbrSlot, SceneNode, SurfaceShader } from '../scene/types'
 
@@ -203,7 +203,7 @@ function materialSlotToken(material: Material | null | undefined): number | null
 }
 
 function ensureClass(material: Material, slot: SurfaceSlot): Material {
-  const basic = slot.shader !== 'lit'
+  const basic = slot.shader !== 'lit' && slot.shader !== 'unity-standard'
   if (basic && (material as MeshBasicMaterial).isMeshBasicMaterial) return material
   if (!basic && (material as MeshStandardMaterial).isMeshStandardMaterial) return material
   const next = basic ? new MeshBasicMaterial() : new MeshStandardMaterial()
@@ -238,8 +238,11 @@ function paint(material: Material, slot: SurfaceSlot) {
     material.needsUpdate = true
     return
   }
-  if (slot.shader === 'lit') {
-    standard.metalness = slot.metalness
+  if (slot.shader === 'lit' || slot.shader === 'unity-standard') {
+    const isUnity = slot.shader === 'unity-standard'
+    const hasMrMap = Boolean(slot.metallicRoughnessAssetId)
+    // Unity Standard 绑定了 _MetallicGlossMap 时，金属度完全由贴图 R 通道决定（标量系数为 1）
+    standard.metalness = isUnity && hasMrMap ? 1 : slot.metalness
     standard.roughness = slot.roughness
     standard.emissive?.set(slot.emissive)
     standard.emissiveIntensity = slot.emissiveIntensity
@@ -247,10 +250,10 @@ function paint(material: Material, slot: SurfaceSlot) {
     standard.normalScale = new Vector2(slot.normalScale, slot.normalScale)
     assignMap(standard, 'map', slot.mapAssetId, true)
     assignMap(standard, 'normalMap', slot.normalAssetId, false)
-    assignMap(standard, 'roughnessMap', slot.metallicRoughnessAssetId, false)
-    assignMap(standard, 'metalnessMap', slot.metallicRoughnessAssetId, false)
+    assignMap(standard, 'roughnessMap', slot.metallicRoughnessAssetId, false, isUnity)
+    assignMap(standard, 'metalnessMap', slot.metallicRoughnessAssetId, false, isUnity)
     assignMap(standard, 'emissiveMap', slot.emissiveAssetId, true)
-    assignMap(standard, 'aoMap', slot.aoAssetId ?? slot.metallicRoughnessAssetId, false)
+    assignMap(standard, 'aoMap', slot.aoAssetId ?? slot.metallicRoughnessAssetId, false, isUnity && !slot.aoAssetId)
   } else {
     assignMap(basic, 'map', slot.mapAssetId, true)
   }
@@ -308,7 +311,13 @@ function packedMetallicRoughness(slot: Partial<PbrSlot>): string | null {
   return metalness ?? roughness
 }
 
-function assignMap(material: MeshStandardMaterial | MeshBasicMaterial, key: 'map' | 'normalMap' | 'roughnessMap' | 'metalnessMap' | 'emissiveMap' | 'aoMap', assetId: string | null, colorMap: boolean) {
+function assignMap(
+  material: MeshStandardMaterial | MeshBasicMaterial,
+  key: 'map' | 'normalMap' | 'roughnessMap' | 'metalnessMap' | 'emissiveMap' | 'aoMap',
+  assetId: string | null,
+  colorMap: boolean,
+  unityMetallicGloss = false,
+) {
   if (!('map' in material) && key !== 'map') return
   const target = material as MeshStandardMaterial
   const embedded = (material.userData as Record<string, unknown>)[`embedded_${key}`]
@@ -320,6 +329,6 @@ function assignMap(material: MeshStandardMaterial | MeshBasicMaterial, key: 'map
     if (target[key] !== fallback) target[key] = fallback
     return
   }
-  const texture = textureFor(assetId, colorMap)
+  const texture = unityMetallicGloss ? unityMetallicRoughnessTextureFor(assetId) : textureFor(assetId, colorMap)
   if (texture && target[key] !== texture) target[key] = texture
 }

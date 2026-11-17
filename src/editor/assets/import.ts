@@ -1,7 +1,8 @@
 import { getSpawn } from '../scene/spawn'
 import { useEditorStore } from '../scene/store'
 import { normalizeSlot, resolveModelSlot, slotFromNode } from './materials'
-import { clipNamesFor, getModelTemplate, loadModelTemplate, releaseModel, withFbxCompanions } from './models'
+import { applyModelMaterialBindings, clipNamesFor, getModelTemplate, loadModelTemplate, releaseModel, withFbxCompanions, type ModelMaterialHint } from './models'
+import { importUnityMatText } from './unityMaterial'
 import { loadEnvironmentAsset, loadTextureAsset, releaseTexture, ensureAssetUrl } from './textures'
 import { deleteModelArtifact, forgetFile, patchAssetMeta, readFileBytes, rememberFile, sha256, updateCachedThumb } from './cache'
 import { imageThumb, renderModelThumb } from './thumbs'
@@ -38,6 +39,7 @@ export async function importExtractedBytes(
   bytes: Uint8Array,
   dir: string,
   companions: ReadonlyArray<{ name: string; data: Uint8Array }> = [],
+  materialHint?: ModelMaterialHint,
 ): Promise<string | null> {
     const kind = fileKindFor(fileName)
   if (!kind) return null
@@ -49,8 +51,12 @@ export async function importExtractedBytes(
   if (existing) {
     useAssetStore.getState().place(existing.id, dir)
     if (existing.kind === 'model' || existing.kind === 'animation') {
-      if (companions.length > 0) await withFbxCompanions(existing.id, companions, () => loadModelTemplate(existing, true))
+      if (companions.length > 0) await withFbxCompanions(existing.id, companions, () => loadModelTemplate(existing, true), materialHint)
       else await loadModelTemplate(existing)
+      if (existing.kind === 'model') {
+        const nextSlots = applyModelMaterialBindings(existing.id, materialHint)
+        if (nextSlots) syncReimportedModelNodes(existing.id, nextSlots, clipNamesFor(existing.id))
+      }
     }
     return existing.id
   }
@@ -69,7 +75,7 @@ export async function importExtractedBytes(
     await rememberFile({ ...asset, bytes: copy }).catch(error => {
       console.warn('[cache] 写入失败', error)
     })
-    const ok = await withFbxCompanions(asset.id, companions, () => ingestModelAfterRegister(asset))
+    const ok = await withFbxCompanions(asset.id, companions, () => ingestModelAfterRegister(asset), materialHint)
     return ok ? asset.id : null
   }
   const stored = await ingest(asset, copy, dir)
@@ -79,7 +85,9 @@ export async function importExtractedBytes(
 export async function importFiles(files: File[], dir = useAssetStore.getState().browseDir): Promise<string[]> {
   const created: string[] = []
   const modelsToLoad: FileAsset[] = []
-  for (const file of files) {
+  const matFiles = files.filter(file => file.name.toLowerCase().endsWith('.mat'))
+  const otherFiles = files.filter(file => !file.name.toLowerCase().endsWith('.mat'))
+  for (const file of otherFiles) {
     if (file.name.toLowerCase().endsWith('.json')) {
       const effectId = await importEffectJson(file, dir)
       if (effectId) created.push(effectId)
@@ -123,6 +131,16 @@ export async function importFiles(files: File[], dir = useAssetStore.getState().
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       useEditorStore.getState().log('error', translate('log.importFail', { name: file.name, message }))
+    }
+  }
+  for (const matFile of matFiles) {
+    try {
+      const text = await matFile.text()
+      const matId = importUnityMatText(text, matFile.name, dir)
+      if (matId) created.push(matId)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      useEditorStore.getState().log('error', translate('log.importFail', { name: matFile.name, message }))
     }
   }
   for (const modelAsset of modelsToLoad) {

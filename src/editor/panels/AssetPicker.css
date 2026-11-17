@@ -1,7 +1,7 @@
 .asset-picker__backdrop {
   position: fixed;
   inset: 0;
-  z-index: 50;
+  z-index: 200;
   background: rgba(0, 0, 0, 0.45);
   display: flex;
   align-items: center;
@@ -162,10 +162,17 @@
 .field__range {
   flex: 1;
   min-width: 0;
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(96px, 1fr) 56px;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
 }
 
-.field__range input[type='range'] { flex: 1; min-width: 0; }
-.field__range input[type='number'] { width: 64px; flex-shrink: 0; }
+.field__range input[type='range'] {
+  width: 100%;
+  min-width: 96px;
+  padding: 0;
+  border: none;
+  background: transparent;
+}
+.field__range input[type='number'] { width: 100%; min-width: 0; height: 22px; padding: 0 4px; }

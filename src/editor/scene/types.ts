@@ -21,7 +21,7 @@ export type NodeKind =
   | 'effect'
   | 'screen'
 
-export type SurfaceShader = 'lit' | 'unlit-color' | 'unlit-texture' | 'particle-unlit'
+export type SurfaceShader = 'lit' | 'unity-standard' | 'unlit-color' | 'unlit-texture' | 'particle-unlit'
 export type ParticleBlend = 'alpha' | 'premultiply' | 'additive' | 'multiply'
 export type AlphaMode = 'opaque' | 'blend' | 'clip'
 export type CullMode = 'back' | 'front' | 'off'

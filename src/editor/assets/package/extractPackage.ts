@@ -1,10 +1,10 @@
-import { normalizeSlot } from '../materials'
 import { importExtractedBytes } from '../import'
 import { useAssetStore } from '../library'
 import { normalizeDir } from '../folders'
-import { retargetClipsOntoModel } from '../models'
+import { normalizeMaterialKey, retargetClipsOntoModel, type ModelMaterialHint } from '../models'
+import { importUnityMatText, textureGuidRegex, UNITY_MAT_TEXTURE_PROPERTIES } from '../unityMaterial'
 import { decodeTgaToRgba, encodeRgbaToPng } from '../ufbx/tgaTexture'
-import type { PackageAssetScannerEntry } from './packageAssetScanner'
+import type { PackageAssetScannerEntry, PackageMaterialBindingSource } from './packageAssetScanner'
 import type { PackageModelAssetRole } from './packageAssetRoleGuess'
 
 export interface PackageExtractionProgress {
@@ -17,19 +17,59 @@ export interface PackageExtractionProgress {
 export function withReferencedTextures(
   selected: readonly PackageAssetScannerEntry[],
   all: readonly PackageAssetScannerEntry[],
+  materialBindingSources?: readonly PackageMaterialBindingSource[],
 ): PackageAssetScannerEntry[] {
   const ids = new Set(selected.map(entry => entry.id))
   const textureByGuid = new Map<string, PackageAssetScannerEntry>()
+  const materialByGuid = new Map<string, PackageAssetScannerEntry>()
+  const materialByKey = new Map<string, PackageAssetScannerEntry>()
   for (const entry of all) {
-    if (entry.kind !== 'texture') continue
-    const guid = guidOf(entry.metaBytes)
-    if (guid) textureByGuid.set(guid, entry)
+    if (entry.kind === 'texture') {
+      const guid = guidOf(entry.metaBytes)
+      if (guid) textureByGuid.set(guid, entry)
+    } else if (entry.kind === 'material') {
+      const guid = guidOf(entry.metaBytes)
+      if (guid) materialByGuid.set(guid, entry)
+      const key = normalizeMaterialKey(entry.fileName.replace(/\.mat$/i, ''))
+      if (key && !materialByKey.has(key)) materialByKey.set(key, entry)
+    }
   }
   for (const entry of selected) {
-    if (entry.kind !== 'material') continue
+    if (entry.kind !== 'model') continue
+    if (entry.metaBytes) {
+      const metaText = new TextDecoder().decode(entry.metaBytes)
+      for (const alias of parseMetaExternalMaterialObjects(metaText)) {
+        const mat = materialByGuid.get(alias.materialGuid)
+        if (mat) ids.add(mat.id)
+      }
+    }
+    const modelGuid = guidOf(entry.metaBytes)
+    if (modelGuid && materialBindingSources?.length) {
+      for (const source of materialBindingSources) {
+        const text = new TextDecoder().decode(source.assetBytes)
+        for (const renderer of parseRendererMaterials(text)) {
+          if (renderer.meshGuid !== modelGuid) continue
+          for (const matGuid of renderer.materialGuids) {
+            const mat = materialByGuid.get(matGuid)
+            if (mat) ids.add(mat.id)
+          }
+        }
+      }
+    }
+    const dir = entry.originalPath.split('/').slice(0, -1).join('/').toLowerCase()
+    for (const candidate of all) {
+      if (candidate.kind !== 'material') continue
+      const matDir = candidate.originalPath.split('/').slice(0, -1).join('/').toLowerCase()
+      if (dir && (matDir === dir || matDir === `${dir}/materials` || matDir.startsWith(`${dir}/`))) {
+        ids.add(candidate.id)
+      }
+    }
+  }
+  for (const entry of all) {
+    if (entry.kind !== 'material' || !ids.has(entry.id)) continue
     const text = new TextDecoder().decode(entry.assetBytes)
-    for (const property of ['_MainTex', '_BaseMap', '_BumpMap', '_EmissionMap', '_OcclusionMap', '_MetallicGlossMap']) {
-      const guid = textureGuid(text, property)
+    for (const property of UNITY_MAT_TEXTURE_PROPERTIES) {
+      const guid = textureGuidRegex(text, property)
       const texture = guid ? textureByGuid.get(guid) : undefined
       if (texture) ids.add(texture.id)
     }
@@ -45,13 +85,16 @@ export async function extractPackageEntries(
     mergeAnimations: boolean
     roles: Record<string, PackageModelAssetRole>
     carrierBodies: Record<string, string>
+    materialBindingSources?: readonly PackageMaterialBindingSource[]
     onProgress?: (progress: PackageExtractionProgress) => void
   },
 ): Promise<{ imported: string[]; failed: Array<{ name: string; error: string }> }> {
   const imported: string[] = []
   const failed: Array<{ name: string; error: string }> = []
   const importedIds = new Map<string, string>()
-  const guidToAsset = new Map<string, string>()
+  const guidToTexture = new Map<string, string>()
+  const guidToMaterial = new Map<string, string>()
+  const nameToMaterial = new Map<string, string>()
   const total = entries.length
   let completed = 0
   const report = (phase: PackageExtractionProgress['phase'], fileName?: string) => {
@@ -60,6 +103,8 @@ export async function extractPackageEntries(
   const textures = entries.filter(entry => entry.kind === 'texture')
   const materials = entries.filter(entry => entry.kind === 'material')
   const models = entries.filter(entry => entry.kind !== 'texture' && entry.kind !== 'material')
+
+  // 1. 先导贴图（记录 GUID -> 贴图 AssetId）
   for (const entry of textures) {
     report('textures', entry.fileName)
     try {
@@ -68,18 +113,47 @@ export async function extractPackageEntries(
         imported.push(id)
         importedIds.set(entry.id, id)
         const guid = guidOf(entry.metaBytes)
-        if (guid) guidToAsset.set(guid, id)
+        if (guid) guidToTexture.set(guid, id)
       }
     } catch (error) {
       failed.push({ name: entry.fileName, error: error instanceof Error ? error.message : String(error) })
     }
     completed += 1
   }
+
+  // 2. 再导材质（这样后面模型导入时，工程里已经有完整的 MaterialAsset 可供绑定）
+  for (const entry of materials) {
+    report('materials', entry.fileName)
+    try {
+      const dir = destinationDir(entry, options.targetDirectory, options.directoryMode)
+      ensureFolder(dir)
+      const text = new TextDecoder().decode(entry.assetBytes)
+      const id = importUnityMatText(text, entry.fileName, dir, guid => guidToTexture.get(guid.toLowerCase()) ?? null)
+      if (id) {
+        imported.push(id)
+        importedIds.set(entry.id, id)
+        const guid = guidOf(entry.metaBytes)
+        if (guid) guidToMaterial.set(guid, id)
+        const matAsset = useAssetStore.getState().assets[id]
+        for (const candidate of [matAsset?.name, entry.fileName.replace(/\.mat$/i, '')]) {
+          if (!candidate) continue
+          const key = normalizeMaterialKey(candidate)
+          if (key) nameToMaterial.set(key, id)
+        }
+      }
+    } catch (error) {
+      failed.push({ name: entry.fileName, error: error instanceof Error ? error.message : String(error) })
+    }
+    completed += 1
+  }
+
+  // 3. 导入模型与动画，并传入从 .meta / .prefab / .unity 解析出的材质绑定提示
   for (const entry of models) {
     const role = options.roles[entry.id] ?? entry.roleGuess?.role
     report(role === 'animationCarrier' || entry.kind === 'animation' ? 'animations' : 'models', entry.fileName)
     try {
-      const id = await importOne(entry, options.targetDirectory, options.directoryMode)
+      const hint = buildModelMaterialHint(entry, guidToMaterial, nameToMaterial, options.materialBindingSources)
+      const id = await importOne(entry, options.targetDirectory, options.directoryMode, hint)
       if (id) {
         imported.push(id)
         importedIds.set(entry.id, id)
@@ -89,6 +163,8 @@ export async function extractPackageEntries(
     }
     completed += 1
   }
+
+  // 4. 动画重定向合并
   if (options.mergeAnimations) {
     for (const entry of models) {
       const role = options.roles[entry.id] ?? entry.roleGuess?.role
@@ -102,21 +178,17 @@ export async function extractPackageEntries(
       if (added === 0) failed.push({ name: entry.fileName, error: '没有可重定向到本体的动画' })
     }
   }
-  for (const entry of materials) {
-    report('materials', entry.fileName)
-    try {
-      const id = importMaterial(entry, guidToAsset, destinationDir(entry, options.targetDirectory, options.directoryMode))
-      if (id) imported.push(id)
-    } catch (error) {
-      failed.push({ name: entry.fileName, error: error instanceof Error ? error.message : String(error) })
-    }
-    completed += 1
-  }
+
   options.onProgress?.({ phase: 'materials', completed: total, total })
   return { imported, failed }
 }
 
-async function importOne(entry: PackageAssetScannerEntry, target: string, mode: 'flat' | 'preserve'): Promise<string | null> {
+async function importOne(
+  entry: PackageAssetScannerEntry,
+  target: string,
+  mode: 'flat' | 'preserve',
+  materialHint?: ModelMaterialHint,
+): Promise<string | null> {
   const dir = destinationDir(entry, target, mode)
   ensureFolder(dir)
   if (entry.extension === 'tga') {
@@ -124,7 +196,7 @@ async function importOne(entry: PackageAssetScannerEntry, target: string, mode: 
     const name = entry.fileName.replace(/\.tga$/i, '.png')
     return importExtractedBytes(name, png, dir)
   }
-  return importExtractedBytes(entry.fileName, entry.assetBytes, dir, companionTextures(entry))
+  return importExtractedBytes(entry.fileName, entry.assetBytes, dir, companionTextures(entry), materialHint)
 }
 
 function companionTextures(entry: PackageAssetScannerEntry): Array<{ name: string; data: Uint8Array }> {
@@ -174,61 +246,125 @@ function ensureFolder(path: string) {
 
 function guidOf(meta: Uint8Array | undefined): string | null {
   if (!meta) return null
-  return new TextDecoder().decode(meta).match(/^guid:\s*([0-9a-f]+)/im)?.[1] ?? null
+  return new TextDecoder().decode(meta).match(/^guid:\s*([0-9a-f]+)/im)?.[1]?.toLowerCase() ?? null
 }
 
-function importMaterial(entry: PackageAssetScannerEntry, guids: Map<string, string>, dir: string): string | null {
-  const text = new TextDecoder().decode(entry.assetBytes)
-  const name = text.match(/m_Name:\s*(.+)/)?.[1]?.trim() || entry.fileName.replace(/\.mat$/i, '')
-  const color = unityColor(text, '_Color') ?? unityColor(text, '_BaseColor') ?? '#ffffff'
-  const emission = unityColor(text, '_EmissionColor') ?? '#000000'
-  const metallic = unityFloat(text, '_Metallic') ?? 0
-  const gloss = unityFloat(text, '_Glossiness') ?? unityFloat(text, '_Smoothness')
-  const mainGuid = textureGuid(text, '_MainTex') ?? textureGuid(text, '_BaseMap')
-  const normalGuid = textureGuid(text, '_BumpMap')
-  const id = crypto.randomUUID()
-  ensureFolder(dir)
-  useAssetStore.getState().add({
-    id,
-    name,
-    kind: 'material',
-    slot: normalizeSlot({
-      name,
-      color,
-      metalness: metallic,
-      roughness: gloss == null ? 0.5 : 1 - Math.min(1, Math.max(0, gloss)),
-      emissive: emission,
-      emissiveIntensity: emission === '#000000' ? 0 : 1,
-      opacity: 1,
-      ao: 1,
-      mapAssetId: mainGuid ? guids.get(mainGuid) ?? null : null,
-      normalAssetId: normalGuid ? guids.get(normalGuid) ?? null : null,
-      metallicRoughnessAssetId: null,
-      emissiveAssetId: null,
-      aoAssetId: null,
-    }),
-  })
-  useAssetStore.getState().place(id, dir)
-  return id
+function buildModelMaterialHint(
+  entry: PackageAssetScannerEntry,
+  guidToMaterial: ReadonlyMap<string, string>,
+  nameToMaterial: ReadonlyMap<string, string>,
+  sources?: readonly PackageMaterialBindingSource[],
+): ModelMaterialHint | undefined {
+  const byName: Record<string, string> = Object.fromEntries(nameToMaterial)
+  const bySlotIndex: Record<number, string> = {}
+
+  // 1. 解析模型自身 .meta 中的 externalObjects（UnityEngine:Material 名称 -> 材质 GUID）
+  if (entry.metaBytes) {
+    const metaText = new TextDecoder().decode(entry.metaBytes)
+    for (const alias of parseMetaExternalMaterialObjects(metaText)) {
+      const matId = guidToMaterial.get(alias.materialGuid.toLowerCase())
+      if (matId) {
+        const key = normalizeMaterialKey(alias.name)
+        if (key) byName[key] = matId
+      }
+    }
+  }
+
+  // 2. 解析包内 .prefab / .unity 中引用该模型 GUID 的 Renderer.m_Materials 槽位绑定
+  const modelGuid = guidOf(entry.metaBytes)
+  if (modelGuid && sources?.length) {
+    let bestScore = -1
+    let bestGuids: string[] = []
+    for (const source of sources) {
+      const text = new TextDecoder().decode(source.assetBytes)
+      for (const renderer of parseRendererMaterials(text)) {
+        if (renderer.meshGuid && renderer.meshGuid !== modelGuid) continue
+        if (renderer.materialGuids.length === 0) continue
+        const score = bindingScore(entry.originalPath, source.originalPath) + (renderer.meshGuid === modelGuid ? 200 : 0)
+        if (score > bestScore || (score === bestScore && renderer.materialGuids.length > bestGuids.length)) {
+          bestScore = score
+          bestGuids = renderer.materialGuids
+        }
+      }
+    }
+    bestGuids.forEach((guid, index) => {
+      const matId = guidToMaterial.get(guid.toLowerCase())
+      if (matId) bySlotIndex[index] = matId
+    })
+  }
+
+  if (Object.keys(byName).length === 0 && Object.keys(bySlotIndex).length === 0) return undefined
+  return { byName, bySlotIndex }
 }
 
-function textureGuid(text: string, property: string): string | null {
-  const match = text.match(new RegExp(`${property}:[\\s\\S]{0,180}?guid:\\s*([0-9a-f]+)`, 'i'))
-  return match?.[1] ?? null
+function parseMetaExternalMaterialObjects(text: string): Array<{ name: string; materialGuid: string }> {
+  const out: Array<{ name: string; materialGuid: string }> = []
+  const marker = /^\s*-\s+first:\s*$/gm
+  const starts = [...text.matchAll(marker)].map(match => match.index ?? 0)
+  for (let i = 0; i < starts.length; i += 1) {
+    const start = starts[i]!
+    const end = starts[i + 1] ?? text.length
+    const block = text.slice(start, end)
+    if (!/^\s*type:\s*UnityEngine:Material\s*$/m.test(block)) continue
+    const name = /^\s*name:\s*(.+?)\s*$/m.exec(block)?.[1]?.trim()
+    const materialGuid = /\bsecond:\s*\{[^}]*\bguid:\s*([0-9a-fA-F]{8,32})\b[^}]*\}/m.exec(block)?.[1]
+    if (name && materialGuid) out.push({ name, materialGuid: materialGuid.toLowerCase() })
+  }
+  return out
 }
 
-function unityFloat(text: string, property: string): number | null {
-  const match = text.match(new RegExp(`${property}:\\s*(-?\\d+(?:\\.\\d+)?)`))
-  if (!match) return null
-  const value = Number(match[1])
-  return Number.isFinite(value) ? value : null
+function parseRendererMaterials(text: string): Array<{ meshGuid?: string; materialGuids: string[] }> {
+  const blocks = text.split(/\n---\s*!u!/)
+  const meshGuidByGo = new Map<string, string>()
+  const parsed: Array<{ className: string; goId?: string; meshGuid?: string; materialGuids: string[] }> = []
+
+  for (const block of blocks) {
+    const className = /^\s*(?:\d+\s+&?\d+\s*)?\r?\n?\s*([A-Za-z_][\w]*):\s*$/m.exec(block)?.[1]
+    if (!className) continue
+    const goId = /^\s*m_GameObject:\s*\{[^}]*\bfileID:\s*(-?\d+)\b[^}]*\}/m.exec(block)?.[1]
+    const meshGuid = /^\s*m_Mesh:\s*\{[^}]*\bguid:\s*([0-9a-fA-F]{8,32})\b[^}]*\}/m.exec(block)?.[1]?.toLowerCase()
+    if (className === 'MeshFilter' && goId && meshGuid) {
+      meshGuidByGo.set(goId, meshGuid)
+    }
+    if (className === 'MeshRenderer' || className === 'SkinnedMeshRenderer') {
+      const materialGuids = parseMaterialGuidList(block)
+      parsed.push({ className, goId, meshGuid, materialGuids })
+    }
+  }
+
+  return parsed.map(item => ({
+    meshGuid: item.meshGuid ?? (item.goId ? meshGuidByGo.get(item.goId) : undefined),
+    materialGuids: item.materialGuids,
+  }))
 }
 
-function unityColor(text: string, property: string): string | null {
-  const match = text.match(new RegExp(`${property}:\\s*\\{[^}]*r:\\s*([\\d.]+)[^}]*g:\\s*([\\d.]+)[^}]*b:\\s*([\\d.]+)`, 'i'))
-  if (!match) return null
-  const channel = (raw: string) => Math.round(Math.min(1, Math.max(0, Number(raw))) * 255).toString(16).padStart(2, '0')
-  return `#${channel(match[1] ?? '1')}${channel(match[2] ?? '1')}${channel(match[3] ?? '1')}`
+function parseMaterialGuidList(block: string): string[] {
+  const start = block.search(/^\s*m_Materials:\s*$/m)
+  if (start < 0) return []
+  const lines = block.slice(start).split(/\r?\n/)
+  const guids: string[] = []
+  for (let i = 1; i < lines.length; i += 1) {
+    const line = lines[i] ?? ''
+    if (/^\s*[A-Za-z_][\w]*:\s*/.test(line) && !/^\s+-\s+/.test(line)) break
+    const match = /\bguid:\s*([0-9a-fA-F]{8,32})\b/.exec(line)
+    if (match?.[1]) guids.push(match[1].toLowerCase())
+  }
+  return guids
+}
+
+function bindingScore(modelPath: string, sourcePath: string): number {
+  const mParts = modelPath.replace(/\\/g, '/').toLowerCase().split('/').filter(Boolean)
+  const sParts = sourcePath.replace(/\\/g, '/').toLowerCase().split('/').filter(Boolean)
+  const mBase = (mParts.at(-1) ?? '').replace(/\.[^.]+$/, '')
+  const sBase = (sParts.at(-1) ?? '').replace(/\.[^.]+$/, '')
+  let score = 0
+  if (mBase && mBase === sBase) score += 100
+  if (sParts.includes(mBase)) score += 30
+  let shared = 0
+  while (shared < mParts.length && shared < sParts.length && mParts[shared] === sParts[shared]) shared += 1
+  score += shared * 4
+  if (sourcePath.toLowerCase().endsWith('.prefab')) score += 10
+  return score
 }
 
 function clipNameOf(entry: PackageAssetScannerEntry): string {

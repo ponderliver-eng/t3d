@@ -7,8 +7,20 @@ export interface PlayCameraChoice {
   multipleMain: boolean
 }
 
-/** 试玩镜头：MainCamera 优先，否则用层级里的第一台可见相机。没有相机时继续用编辑镜头。 */
+let forcedCameraId = ''
+
+export function forcePlayCamera(id: string) {
+  forcedCameraId = id
+}
+
+export function clearPlayCameraForce() {
+  forcedCameraId = ''
+}
+
+/** 试玩镜头：律令指定的相机优先，其次 MainCamera，否则用层级里的第一台可见相机。 */
 export function resolvePlayCamera(nodes: Record<string, SceneNode>, tags: TagDefinition[]): PlayCameraChoice {
+  const forced = forcedCameraId ? nodes[forcedCameraId] : undefined
+  if (forced?.kind === 'camera' && forced.visible) return { id: forced.id, multipleMain: false }
   const cameras: SceneNode[] = []
   const walk = (parentId: string | null) => {
     for (const node of childrenOf(nodes, parentId)) {

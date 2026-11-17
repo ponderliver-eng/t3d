@@ -157,7 +157,7 @@ export function RulesWorkbench({
                       <StepList steps={active.steps} disabled={disabled} activeId={trace?.ruleId === active.id ? trace.stepId : ''} states={flat} onChange={steps => update(active.id, { steps })} />
                     )}
                   </div>
-                  {trace?.stepId ? <div className="rules-live">{trace.waiting ? t('rule.waiting') : t('rule.live')}</div> : null}
+                  {trace?.stepId ? <div className="rules-live">{trace.waiting ? t('rule.waiting') : t('rule.live')}{trace.value !== null ? ` · ${trace.value}` : ''}</div> : null}
                 </>
               )}
             </section>

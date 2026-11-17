@@ -296,6 +296,20 @@
   gap: 4px;
 }
 
+.rules-step .asset-ref,
+.rules-step__compare .asset-ref {
+  width: 100%;
+  height: 26px;
+}
+
+.rules-step__compare--tag {
+  grid-template-columns: minmax(0, 1fr) 72px;
+}
+
+.rules-step__compare--pick {
+  grid-template-columns: minmax(0, 1fr) minmax(88px, 0.7fr);
+}
+
 .rules-step__compare--log {
   grid-template-columns: 88px minmax(0, 1fr);
 }

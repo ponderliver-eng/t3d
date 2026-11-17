@@ -10,7 +10,8 @@ import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js'
 import type { PbrSlot } from '../scene/types'
 import { boundsOf } from '../scene/bounds'
 import { patchAssetMeta, readFileBytes, readModelArtifact, writeModelArtifact } from './cache'
-import { type FileAsset, useAssetStore } from './library'
+import { type FileAsset, type MaterialAsset, useAssetStore } from './library'
+import { applyModelMaterials, normalizeSlot } from './materials'
 import { mergedHumanoidSlots, preserveHumanoidAvatarOverrides } from '../animation/humanoidAvatar'
 import { bindHumanoidClip } from '../animation/humanoidRetarget'
 import { releaseHumanoidPlayback } from '../animation/humanoidPlayback'
@@ -119,17 +120,20 @@ export function loadModelTemplate(asset: FileAsset, forceSource = false): Promis
   const running = pending.get(asset.id)
   if (running) return running
   const promise = (forceSource ? loadFromSource(asset) : loadCachedOrSource(asset)).then(template => {
-    templates.set(asset.id, template)
+    const resolvedSlots = bindSlotsToProjectAssets(template.slots, template.scene, asset.name)
+    const nextTemplate = { ...template, slots: resolvedSlots }
+    applyModelMaterials(nextTemplate.scene, nextTemplate.slots)
+    templates.set(asset.id, nextTemplate)
     revisions.set(asset.id, (revisions.get(asset.id) ?? 0) + 1)
     pending.delete(asset.id)
     releaseHumanoidPlayback(asset.id)
-    registerHumanoidSkeletons(asset.id, template.humanoid.skeletons)
-    rememberHumanoidAvatar(asset.id, template.humanoid.avatar)
-    rememberHumanoidImportScale(asset.id, template, forceSource)
-    rememberClipCatalog(asset.id, template.clips)
+    registerHumanoidSkeletons(asset.id, nextTemplate.humanoid.skeletons)
+    rememberHumanoidAvatar(asset.id, nextTemplate.humanoid.avatar)
+    rememberHumanoidImportScale(asset.id, nextTemplate, forceSource)
+    rememberClipCatalog(asset.id, nextTemplate.clips)
     useAssetStore.getState().bump()
     listeners.forEach(listener => listener())
-    return template
+    return nextTemplate
   }).catch(error => {
     pending.delete(asset.id)
     throw error
@@ -186,12 +190,39 @@ function uniqueClipName(clips: AnimationClip[], base: string): string {
   return `${base} ${index}`
 }
 
-const extraExternalFiles = new Map<string, Array<{ name: string; data: Uint8Array }>>()
+export interface ModelMaterialHint {
+  bySlotIndex?: Record<number, string>
+  byName?: Record<string, string>
+}
 
-export function withFbxCompanions<T>(assetId: string, files: ReadonlyArray<{ name: string; data: Uint8Array }>, run: () => Promise<T>): Promise<T> {
-  if (files.length === 0) return run()
-  extraExternalFiles.set(assetId, [...files])
-  return run().finally(() => extraExternalFiles.delete(assetId))
+const extraExternalFiles = new Map<string, Array<{ name: string; data: Uint8Array }>>()
+const modelMaterialHints = new Map<string, ModelMaterialHint>()
+
+export function withFbxCompanions<T>(
+  assetId: string,
+  files: ReadonlyArray<{ name: string; data: Uint8Array }>,
+  run: () => Promise<T>,
+  materialHint?: ModelMaterialHint,
+): Promise<T> {
+  if (files.length > 0) extraExternalFiles.set(assetId, [...files])
+  if (materialHint) modelMaterialHints.set(assetId, materialHint)
+  return run().finally(() => {
+    extraExternalFiles.delete(assetId)
+    modelMaterialHints.delete(assetId)
+  })
+}
+
+export function applyModelMaterialBindings(assetId: string, hint?: ModelMaterialHint): PbrSlot[] | null {
+  const template = templates.get(assetId)
+  if (!template) return null
+  const asset = useAssetStore.getState().assets[assetId]
+  const slots = bindSlotsToProjectAssets(template.slots, template.scene, asset?.name ?? '', hint ?? modelMaterialHints.get(assetId))
+  template.slots = slots
+  applyModelMaterials(template.scene, slots)
+  revisions.set(assetId, (revisions.get(assetId) ?? 0) + 1)
+  useAssetStore.getState().bump()
+  listeners.forEach(listener => listener())
+  return slots
 }
 
 export function instantiateModel(assetId: string): { object: Object3D, clips: AnimationClip[] } | null {
@@ -204,10 +235,19 @@ export function instantiateModel(assetId: string): { object: Object3D, clips: An
     mesh.castShadow = true
     mesh.receiveShadow = true
     if ((mesh as Mesh & { isSkinnedMesh?: boolean }).isSkinnedMesh) mesh.frustumCulled = false
-    if (Array.isArray(mesh.material)) mesh.material = mesh.material.map(material => material.clone())
-    else mesh.material = mesh.material.clone()
+    if (Array.isArray(mesh.material)) mesh.material = mesh.material.map(material => cloneMaterialWithSlotToken(material))
+    else mesh.material = cloneMaterialWithSlotToken(mesh.material)
   })
+  applyModelMaterials(object, template.slots)
   return { object, clips: template.clips }
+}
+
+function cloneMaterialWithSlotToken(material: Material): Material {
+  const next = material.clone()
+  if (material.userData?.t3dSlot !== undefined) {
+    next.userData = { ...next.userData, t3dSlot: material.userData.t3dSlot }
+  }
+  return next
 }
 
 function loadCachedOrSource(asset: FileAsset): Promise<ModelTemplate> {
@@ -490,17 +530,212 @@ function readSlots(root: Object3D): PbrSlot[] {
   return slots
 }
 
-function matchProjectTexture(slotName: string): string | null {
-  const clean = slotName.split(':').pop()?.trim().toLowerCase().replace(/^mat[_-]?/i, '') ?? ''
-  if (!clean) return null
-  const textures = Object.values(useAssetStore.getState().assets).filter(
-    (item): item is FileAsset => item.kind === 'texture' && 'fileName' in item,
-  )
-  for (const tex of textures) {
-    const stem = tex.name.trim().toLowerCase()
-    if (stem === clean || stem === `masa_${clean}`) return tex.id
+export function normalizeMaterialKey(raw: string): string {
+  return raw
+    .split(':')
+    .pop()!
+    .trim()
+    .toLowerCase()
+    .replace(/\.(?:mat|t3dmat|gm3dmat)$/i, '')
+    .replace(/\.\d+$/g, '')
+    .replace(/^(?:m|mat|mtl)[_-]+/i, '')
+    .replace(/(?:[_-\s]+(?:material|mat|mtl|instance))+$/i, '')
+    .replace(/[\s._-]+/g, '')
+}
+
+function collectMeshNamesBySlot(root: Object3D): Map<number, string[]> {
+  const out = new Map<number, string[]>()
+  root.traverse(child => {
+    const mesh = child as Mesh
+    if (!mesh.isMesh) return
+    const meshName = mesh.name || mesh.parent?.name || ''
+    if (!meshName) return
+    const indices = Array.isArray(mesh.userData?.t3dSlotIndices) ? mesh.userData.t3dSlotIndices as number[] : []
+    for (const slotIndex of indices) {
+      if (typeof slotIndex !== 'number' || slotIndex < 0) continue
+      const list = out.get(slotIndex) ?? []
+      if (!list.includes(meshName)) list.push(meshName)
+      out.set(slotIndex, list)
+    }
+  })
+  return out
+}
+
+function bindSlotsToProjectAssets(
+  slots: PbrSlot[],
+  root: Object3D,
+  modelName: string,
+  hint?: ModelMaterialHint,
+): PbrSlot[] {
+  const assets = useAssetStore.getState().assets
+  const materials = Object.values(assets).filter((item): item is MaterialAsset => item.kind === 'material')
+  const textures = Object.values(assets).filter((item): item is FileAsset => item.kind === 'texture' && 'fileName' in item)
+  const meshNamesBySlot = collectMeshNamesBySlot(root)
+
+  const matByKey = new Map<string, MaterialAsset>()
+  for (const mat of materials) {
+    const key = normalizeMaterialKey(mat.name)
+    if (key && !matByKey.has(key)) matByKey.set(key, mat)
   }
-  return null
+
+  return slots.map((slot, index) => {
+    const candidates = [
+      slot.name,
+      ...(meshNamesBySlot.get(index) ?? []),
+      ...(slots.length === 1 && modelName ? [modelName] : []),
+    ].filter(Boolean)
+
+    // 1. 显式绑定或工程现有 MaterialAsset 匹配
+    let matchedMat: MaterialAsset | undefined
+    const explicitId = hint?.bySlotIndex?.[index]
+      ?? candidates.map(name => hint?.byName?.[normalizeMaterialKey(name)]).find(Boolean)
+    if (explicitId && assets[explicitId]?.kind === 'material') {
+      matchedMat = assets[explicitId] as MaterialAsset
+    }
+    if (!matchedMat) {
+      for (const candidate of candidates) {
+        const key = normalizeMaterialKey(candidate)
+        if (!key) continue
+        const exact = matByKey.get(key)
+        if (exact) {
+          matchedMat = exact
+          break
+        }
+      }
+    }
+    if (!matchedMat) {
+      for (const candidate of candidates) {
+        const key = normalizeMaterialKey(candidate)
+        if (!key || key.length < 3) continue
+        const suffixMatches = materials.filter(mat => {
+          const matKey = normalizeMaterialKey(mat.name)
+          return matKey && (matKey.endsWith(key) || key.endsWith(matKey))
+        })
+        if (suffixMatches.length === 1) {
+          matchedMat = suffixMatches[0]
+          break
+        }
+      }
+    }
+    if (!matchedMat && slots.length === 1 && materials.length === 1) {
+      matchedMat = materials[0]
+    }
+
+    if (matchedMat) {
+      const surface = normalizeSlot(matchedMat.slot)
+      const inferred = inferTextureSet(candidates, modelName, textures)
+      const mapAssetId = surface.mapAssetId ?? slot.mapAssetId ?? inferred.mapAssetId
+      const normalAssetId = surface.normalAssetId ?? slot.normalAssetId ?? inferred.normalAssetId
+      const metallicRoughnessAssetId = surface.metallicRoughnessAssetId ?? slot.metallicRoughnessAssetId ?? inferred.metallicRoughnessAssetId
+      const emissiveAssetId = surface.emissiveAssetId ?? slot.emissiveAssetId ?? inferred.emissiveAssetId
+      const aoAssetId = surface.aoAssetId ?? slot.aoAssetId ?? inferred.aoAssetId
+      // 若材质资产本身缺贴图但推断出了贴图，同步补齐到材质资产上
+      if (
+        (!surface.mapAssetId && mapAssetId)
+        || (!surface.normalAssetId && normalAssetId)
+        || (!surface.metallicRoughnessAssetId && metallicRoughnessAssetId)
+        || (!surface.emissiveAssetId && emissiveAssetId)
+        || (!surface.aoAssetId && aoAssetId)
+      ) {
+        useAssetStore.getState().updateMaterial(matchedMat.id, {
+          ...(mapAssetId ? { mapAssetId } : {}),
+          ...(normalAssetId ? { normalAssetId } : {}),
+          ...(metallicRoughnessAssetId ? { metallicRoughnessAssetId } : {}),
+          ...(emissiveAssetId ? { emissiveAssetId } : {}),
+          ...(aoAssetId ? { aoAssetId } : {}),
+        })
+      }
+      return {
+        ...surface,
+        name: slot.name,
+        materialAssetId: matchedMat.id,
+        mapAssetId,
+        normalAssetId,
+        metallicRoughnessAssetId,
+        emissiveAssetId,
+        aoAssetId,
+      }
+    }
+
+    // 2. 没有匹配到材质球时，按槽位名/网格名/模型名自动推断 PBR 全套贴图
+    const inferred = inferTextureSet(candidates, modelName, textures)
+    const hasAnyMap = Boolean(
+      slot.mapAssetId || inferred.mapAssetId
+      || slot.normalAssetId || inferred.normalAssetId
+      || slot.metallicRoughnessAssetId || inferred.metallicRoughnessAssetId,
+    )
+    return {
+      ...slot,
+      ...(hasAnyMap && slot.color === '#000000' ? { color: '#ffffff' } : {}),
+      ...(inferred.unityPacked && !slot.shader ? { shader: 'unity-standard' as const } : {}),
+      mapAssetId: slot.mapAssetId ?? inferred.mapAssetId,
+      normalAssetId: slot.normalAssetId ?? inferred.normalAssetId,
+      metallicRoughnessAssetId: slot.metallicRoughnessAssetId ?? inferred.metallicRoughnessAssetId,
+      emissiveAssetId: slot.emissiveAssetId ?? inferred.emissiveAssetId,
+      aoAssetId: slot.aoAssetId ?? inferred.aoAssetId,
+    }
+  })
+}
+
+function inferTextureSet(
+  candidates: string[],
+  modelName: string,
+  textures: FileAsset[],
+): {
+  mapAssetId: string | null
+  normalAssetId: string | null
+  metallicRoughnessAssetId: string | null
+  emissiveAssetId: string | null
+  aoAssetId: string | null
+  unityPacked: boolean
+} {
+  const stems = [...candidates, modelName]
+    .map(normalizeMaterialKey)
+    .filter(Boolean)
+  let mapAssetId: string | null = null
+  let normalAssetId: string | null = null
+  let metallicRoughnessAssetId: string | null = null
+  let emissiveAssetId: string | null = null
+  let aoAssetId: string | null = null
+  let unityPacked = false
+
+  for (const stem of stems) {
+    for (const tex of textures) {
+      const raw = tex.name.trim().toLowerCase().replace(/^t[_-]/i, '')
+      const role = classifyTextureRole(raw)
+      const baseKey = normalizeMaterialKey(role.base)
+      if (!baseKey || (baseKey !== stem && !baseKey.endsWith(stem) && !stem.endsWith(baseKey))) continue
+      if (role.kind === 'albedo' && !mapAssetId) mapAssetId = tex.id
+      else if (role.kind === 'normal' && !normalAssetId) normalAssetId = tex.id
+      else if (role.kind === 'metallic' && !metallicRoughnessAssetId) {
+        metallicRoughnessAssetId = tex.id
+        if (role.unityPacked) unityPacked = true
+      } else if (role.kind === 'emissive' && !emissiveAssetId) emissiveAssetId = tex.id
+      else if (role.kind === 'ao' && !aoAssetId) aoAssetId = tex.id
+    }
+  }
+  return { mapAssetId, normalAssetId, metallicRoughnessAssetId, emissiveAssetId, aoAssetId, unityPacked }
+}
+
+function classifyTextureRole(name: string): {
+  base: string
+  kind: 'albedo' | 'normal' | 'metallic' | 'emissive' | 'ao'
+  unityPacked?: boolean
+} {
+  const rules: Array<{ re: RegExp; kind: 'albedo' | 'normal' | 'metallic' | 'emissive' | 'ao'; unityPacked?: boolean }> = [
+    { re: /(?:[_-\s]+)(?:normal|norm|nrm|nor|bump|n)$/i, kind: 'normal' },
+    { re: /(?:[_-\s]+)(?:metallicgloss|metallicsmoothness|maskmap|mask|ms)$/i, kind: 'metallic', unityPacked: true },
+    { re: /(?:[_-\s]+)(?:metallicroughness|metalrough|orm|arm|metallic|metalness|metal|roughness|rough|gloss|m)$/i, kind: 'metallic' },
+    { re: /(?:[_-\s]+)(?:emission|emissive|emit|glow|e)$/i, kind: 'emissive' },
+    { re: /(?:[_-\s]+)(?:occlusion|ambientocclusion|ao|occ)$/i, kind: 'ao' },
+    { re: /(?:[_-\s]+)(?:albedo|basecolor|basemap|maintex|diffuse|color|col|diff|alb|bc|d|c)$/i, kind: 'albedo' },
+  ]
+  for (const rule of rules) {
+    if (rule.re.test(name)) {
+      return { base: name.replace(rule.re, ''), kind: rule.kind, unityPacked: rule.unityPacked }
+    }
+  }
+  return { base: name, kind: 'albedo' }
 }
 
 function slotFromMaterial(material: Material, seen: Set<string>, index: number): PbrSlot[] {
@@ -508,17 +743,16 @@ function slotFromMaterial(material: Material, seen: Set<string>, index: number):
   if (seen.has(name)) return []
   seen.add(name)
   const standard = material as MeshStandardMaterial
-  const matchedMap = !standard.map ? matchProjectTexture(name) : null
   return [{
     name,
-    color: standard.color ? `#${standard.color.getHexString()}` : '#d5dde6',
+    color: standard.color ? `#${standard.color.getHexString()}` : '#ffffff',
     metalness: standard.metalness ?? 0,
-    roughness: standard.roughness ?? 1,
+    roughness: standard.roughness ?? 0.5,
     emissive: standard.emissive ? `#${standard.emissive.getHexString()}` : '#000000',
     emissiveIntensity: standard.emissiveIntensity ?? 1,
     opacity: standard.opacity ?? 1,
     ao: standard.aoMapIntensity ?? 1,
-    mapAssetId: matchedMap,
+    mapAssetId: null,
     normalAssetId: null,
     metallicRoughnessAssetId: null,
     emissiveAssetId: null,

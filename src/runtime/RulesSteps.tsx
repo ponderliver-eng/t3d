@@ -1,6 +1,7 @@
 import { Plus, Trash2 } from 'lucide-react'
 import { useI18n, type MessageKey } from '../editor/i18n'
 import { ClipField } from '../editor/panels/ClipPicker'
+import { NodeField, PrefabField, TagField } from './RulePickers'
 import {
   emptyCondition,
   emptyStep,
@@ -12,8 +13,13 @@ import {
 } from './sceneRuntime'
 
 export const TRIGGERS = ['playStart', 'interact', 'key', 'message', 'enter', 'exit', 'hit'] as const
-export const CONDS: RuleCondKind[] = ['always', 'hasTag', 'missingTag', 'compare']
-export const STEP_KINDS: RuleStepKind[] = ['message', 'setVar', 'addTag', 'removeTag', 'wait', 'playClip', 'if', 'switchState', 'log']
+export const CONDS: RuleCondKind[] = ['always', 'hasTag', 'missingTag', 'compare', 'formula']
+export const STEP_KINDS: RuleStepKind[] = [
+  'message', 'setVar', 'addTag', 'removeTag', 'wait', 'waitFrame', 'waitUpper', 'waitMark',
+  'playClip', 'playUpper', 'stance',
+  'if', 'gather', 'each', 'switchState',
+  'showUi', 'hideUi', 'lock', 'camera', 'moveTo', 'spawn', 'hide', 'score', 'log',
+]
 export const OPS = ['==', '!=', '>', '<', '>=', '<=']
 const NEST = 3
 
@@ -23,9 +29,24 @@ const TONE: Record<RuleStepKind, string> = {
   addTag: '#34d399',
   removeTag: '#f87171',
   wait: '#fbbf24',
+  waitFrame: '#fbbf24',
+  waitUpper: '#fbbf24',
+  waitMark: '#fbbf24',
   playClip: '#f2cf7f',
+  playUpper: '#f2cf7f',
+  stance: '#e7c56a',
   if: '#3b82f6',
+  gather: '#22d3ee',
+  each: '#22d3ee',
   switchState: '#fb923c',
+  showUi: '#38bdf8',
+  hideUi: '#38bdf8',
+  lock: '#f472b6',
+  camera: '#818cf8',
+  moveTo: '#4ade80',
+  spawn: '#c084fc',
+  hide: '#f87171',
+  score: '#facc15',
   log: '#94a3b8',
 }
 
@@ -49,7 +70,7 @@ export function ConditionEditor({
             {CONDS.map(item => <option key={item} value={item}>{t(`rule.cond.${item}`)}</option>)}
           </select>
           {cond.kind === 'hasTag' || cond.kind === 'missingTag' ? (
-            <input disabled={disabled} value={cond.tag} placeholder={t('rule.tag')} onChange={event => patch(cond.id, { tag: event.target.value })} />
+            <TagField value={cond.tag} disabled={disabled} onChange={tag => patch(cond.id, { tag })} />
           ) : cond.kind === 'compare' ? (
             <span className="rules-step__compare">
               <input disabled={disabled} value={cond.left} placeholder={t('rule.left')} onChange={event => patch(cond.id, { left: event.target.value })} />
@@ -58,6 +79,8 @@ export function ConditionEditor({
               </select>
               <input disabled={disabled} value={cond.right} placeholder={t('rule.right')} onChange={event => patch(cond.id, { right: event.target.value })} />
             </span>
+          ) : cond.kind === 'formula' ? (
+            <input disabled={disabled} value={cond.left} placeholder={t('rule.formula')} onChange={event => patch(cond.id, { left: event.target.value })} />
           ) : <span className="rules-step__mute">{t('rule.alwaysPass')}</span>}
           <button type="button" disabled={disabled} title={t('rule.remove')} onClick={() => onChange(conditions.filter(item => item.id !== cond.id))}><Trash2 size={12} /></button>
         </div>
@@ -95,11 +118,11 @@ export function StepList({
             <StepFields step={step} disabled={disabled} states={states} onChange={partial => patch(index, partial)} />
             <button type="button" disabled={disabled} title={t('rule.remove')} onClick={() => onChange(steps.filter((_, item) => item !== index))}><Trash2 size={12} /></button>
           </div>
-          {step.do === 'if' && (
+          {(step.do === 'if' || step.do === 'each') && (
             <div className="rules-step__nest">
               {depth < NEST ? (
                 <>
-                  <ConditionEditor conditions={step.conditions} disabled={disabled} onChange={conditions => patch(index, { conditions })} />
+                  {step.do === 'if' && <ConditionEditor conditions={step.conditions} disabled={disabled} onChange={conditions => patch(index, { conditions })} />}
                   <StepList steps={step.steps} disabled={disabled} depth={depth + 1} activeId={activeId} states={states} onChange={children => patch(index, { steps: children })} />
                   <button type="button" className="rules-text-btn" disabled={disabled} onClick={() => patch(index, { steps: [...step.steps, emptyStep('message')] })}>
                     <Plus size={12} /> {t('rule.addChild')}
@@ -137,15 +160,17 @@ function StepFields({
   }
   if (step.do === 'addTag') {
     return (
-      <span className="rules-step__compare">
-        <input disabled={disabled} value={step.tag} placeholder={t('rule.tag')} onChange={event => onChange({ tag: event.target.value })} />
+      <span className="rules-step__compare rules-step__compare--tag">
+        <TagField value={step.tag} disabled={disabled} onChange={tag => onChange({ tag })} />
         <input disabled={disabled} type="number" min={0} step={0.1} value={step.seconds} title={t('rule.seconds')} onChange={event => onChange({ seconds: Number(event.target.value) })} />
       </span>
     )
   }
-  if (step.do === 'removeTag') return <input disabled={disabled} value={step.tag} placeholder={t('rule.tag')} onChange={event => onChange({ tag: event.target.value })} />
-  if (step.do === 'wait') return <input disabled={disabled} type="number" min={0} step={0.1} value={step.seconds} title={t('rule.seconds')} onChange={event => onChange({ seconds: Number(event.target.value) })} />
-  if (step.do === 'playClip') {
+  if (step.do === 'removeTag') return <TagField value={step.tag} disabled={disabled} onChange={tag => onChange({ tag })} />
+  if (step.do === 'wait') return <input disabled={disabled} value={step.value || String(step.seconds)} title={t('rule.seconds')} placeholder={t('rule.seconds')} onChange={event => onChange({ value: event.target.value, seconds: Number(event.target.value) || 0 })} />
+  if (step.do === 'waitFrame' || step.do === 'waitUpper' || step.do === 'hide') return <span className="rules-step__mute">{t(`rule.step.${step.do}`)}</span>
+  if (step.do === 'waitMark') return <input disabled={disabled} value={step.value} placeholder="0-1" title={t('rule.mark')} onChange={event => onChange({ value: event.target.value })} />
+  if (step.do === 'playClip' || step.do === 'playUpper' || step.do === 'stance') {
     return (
       <ClipField
         assetId={step.clipAssetId}
@@ -155,6 +180,42 @@ function StepFields({
       />
     )
   }
+  if (step.do === 'showUi' || step.do === 'hideUi') {
+    return <NodeField value={step.name} kinds={['screen']} title={t('rule.pickScreen')} disabled={disabled} onChange={name => onChange({ name })} />
+  }
+  if (step.do === 'camera') {
+    return <NodeField value={step.name} kinds={['camera']} title={t('rule.pickCamera')} disabled={disabled} onChange={name => onChange({ name })} />
+  }
+  if (step.do === 'lock') {
+    return <NodeField value={step.name} title={t('rule.pickNode')} disabled={disabled} onChange={name => onChange({ name })} />
+  }
+  if (step.do === 'moveTo') {
+    return (
+      <span className="rules-step__compare rules-step__compare--pick">
+        <NodeField value={step.name} title={t('rule.pickNode')} disabled={disabled} onChange={name => onChange({ name })} />
+        <input disabled={disabled} value={step.value} placeholder="x,y,z" onChange={event => onChange({ value: event.target.value })} />
+      </span>
+    )
+  }
+  if (step.do === 'spawn') {
+    return (
+      <span className="rules-step__compare rules-step__compare--pick">
+        <PrefabField value={step.name} disabled={disabled} onChange={name => onChange({ name })} />
+        <input disabled={disabled} value={step.value} placeholder={t('rule.offset')} onChange={event => onChange({ value: event.target.value })} />
+      </span>
+    )
+  }
+  if (step.do === 'score') return <input disabled={disabled} value={step.value} placeholder={t('rule.amount')} onChange={event => onChange({ value: event.target.value })} />
+  if (step.do === 'gather') {
+    return (
+      <span className="rules-step__compare">
+        <input disabled={disabled} type="number" min={0.1} step={0.1} value={step.seconds || 3} title={t('rule.radius')} onChange={event => onChange({ seconds: Number(event.target.value) })} />
+        <TagField value={step.tag} disabled={disabled} onChange={tag => onChange({ tag })} />
+        <input disabled={disabled} value={step.value} placeholder={t('rule.angle')} onChange={event => onChange({ value: event.target.value })} />
+      </span>
+    )
+  }
+  if (step.do === 'each') return <span className="rules-step__mute">{t('rule.step.each')}</span>
   if (step.do === 'log') {
     return (
       <span className="rules-step__compare rules-step__compare--log">

@@ -1,6 +1,13 @@
-import { playBody } from '../editor/animation/director'
+import { playBody, playUpper, stopUpper, bodyProgress } from '../editor/animation/director'
+import { clipDuration } from '../editor/assets/models'
+import { instantiatePrefab, readPrefab } from '../editor/assets/prefab'
+import { useAssetStore } from '../editor/assets/library'
+import { clearPlayCameraForce, forcePlayCamera } from '../editor/viewport/playCamera'
 import { useEditorStore } from '../editor/scene/store'
-import type { SceneNode } from '../editor/scene/types'
+import type { SceneNode, Vec3 } from '../editor/scene/types'
+import { orderCharacterMove } from './character'
+import { addRuleScore } from './devices'
+import { setScreenVisible } from './ui/values'
 import {
   readRuleStates,
   readRules,
@@ -20,6 +27,10 @@ interface Job {
   steps: RuleStep[]
   index: number
   wait: number
+  frame: boolean
+  list: string[]
+  target: string
+  loop: { ids: string[], item: number, steps: RuleStep[], after: RuleStep[] } | null
 }
 
 interface StateCursor {
@@ -33,10 +44,12 @@ export interface RuleTrace {
   stepId: string
   stateId: string
   waiting: boolean
+  value: number | null
 }
 
 const jobs: Job[] = []
 const vars = new Map<string, number>()
+const texts = new Map<string, string>()
 const tags = new Map<string, Map<string, number>>()
 const inbox: { nodeId: string, trigger: RuleEntry['trigger'], message: string }[] = []
 const heldKeys = new Set<string>()
@@ -72,6 +85,7 @@ export function postRuleEvent(nodeId: string, trigger: RuleEntry['trigger'], mes
 
 export function postRuleMessage(message: string, nodeId = '') {
   if (!message) return
+  texts.set('msg', message)
   inbox.push({ nodeId, trigger: 'message', message })
 }
 
@@ -81,12 +95,14 @@ function stepRules(dt: number, host: SceneRuntimeHost) {
   if (state.playState !== 'playing') {
     jobs.length = 0
     vars.clear()
+    texts.clear()
     tags.clear()
     inbox.length = 0
     tappedKeys.clear()
     cursors.clear()
     traces.clear()
     started = false
+    clearPlayCameraForce()
     return
   }
   const now = performance.now() / 1000
@@ -151,88 +167,199 @@ function arm(node: SceneNode, rule: RuleEntry) {
   if (!rule.enabled) return
   if (!allPass(node, rule.conditions)) return
   if (rule.steps.length === 0) return
-  jobs.push({ nodeId: node.id, ruleId: rule.id, stateId: '', source: 'rule', steps: rule.steps.map(copyStep), index: 0, wait: 0 })
+  jobs.push({
+    nodeId: node.id, ruleId: rule.id, stateId: '', source: 'rule',
+    steps: rule.steps.map(copyStep), index: 0, wait: 0, frame: false, list: [], target: '', loop: null,
+  })
 }
 
 function advance(job: Job, dt: number, host: SceneRuntimeHost, now: number): boolean {
   const node = useEditorStore.getState().nodes[job.nodeId]
   if (!node) return true
   let guard = 0
-  while (job.index < job.steps.length && guard < 32) {
+  while (job.index < job.steps.length && guard < 48) {
     guard += 1
     const step = job.steps[job.index]
-    traces.set(job.nodeId, {
-      ruleId: job.ruleId,
-      stepId: step?.id ?? '',
-      stateId: cursors.get(job.nodeId)?.stateId ?? job.stateId,
-      waiting: step?.do === 'wait' && job.wait > 0,
-    })
+    const waiting = step?.do === 'wait' && job.wait > 0 || step?.do === 'waitUpper' || step?.do === 'waitMark' || step?.do === 'waitFrame' && job.frame
+    markTrace(job, step, waiting)
     if (!step) break
     if (step.do === 'wait') {
-      if (job.wait <= 0) job.wait = Math.max(0, step.seconds)
+      if (job.wait <= 0) job.wait = Math.max(0, evaluate(step.value) || step.seconds)
       job.wait -= dt
       if (job.wait > 0) {
-        traces.set(job.nodeId, { ruleId: job.ruleId, stepId: step.id, stateId: cursors.get(job.nodeId)?.stateId ?? job.stateId, waiting: true })
+        markTrace(job, step, true)
         return false
       }
       job.wait = 0
       job.index += 1
       continue
     }
+    if (step.do === 'waitFrame') {
+      if (!job.frame) {
+        job.frame = true
+        markTrace(job, step, true)
+        return false
+      }
+      job.frame = false
+      job.index += 1
+      continue
+    }
+    if (step.do === 'waitUpper') {
+      if (node.overlayPlaying) {
+        markTrace(job, step, true)
+        return false
+      }
+      job.index += 1
+      continue
+    }
+    if (step.do === 'waitMark') {
+      const mark = Math.min(1, Math.max(0, evaluate(step.value) || step.seconds))
+      const progress = node.overlayClip ? overlayProgress(node) : bodyProgress(node.id)
+      lastValue = progress
+      if (progress + 0.001 < mark) {
+        markTrace(job, step, true)
+        return false
+      }
+      job.index += 1
+      continue
+    }
     if (step.do === 'if') {
-      if (allPass(node, step.conditions) && step.steps.length > 0) {
+      const passed = allPass(node, step.conditions)
+      lastValue = passed ? 1 : 0
+      if (passed && step.steps.length > 0) {
         job.steps = [...job.steps.slice(0, job.index + 1), ...step.steps.map(copyStep), ...job.steps.slice(job.index + 1)]
       }
       job.index += 1
       continue
     }
+    if (step.do === 'each') {
+      if (job.list.length === 0 || step.steps.length === 0) {
+        job.index += 1
+        continue
+      }
+      job.loop = {
+        ids: job.list.slice(),
+        item: 0,
+        steps: step.steps.map(copyStep),
+        after: job.steps.slice(job.index + 1).map(copyStep),
+      }
+      job.target = job.loop.ids[0]
+      job.steps = job.loop.steps.map(copyStep)
+      job.index = 0
+      continue
+    }
     if (step.do === 'switchState' && step.stateId) {
       const cursor = cursors.get(job.nodeId)
-      if (cursor && cursor.stateId !== step.stateId) {
-        cursor.pendingId = step.stateId
-      }
+      if (cursor && cursor.stateId !== step.stateId) cursor.pendingId = step.stateId
       job.index += 1
       continue
     }
-    run(node, step, host, now)
+    run(node, step, job, host, now)
     job.index += 1
   }
+  if (job.loop && job.index >= job.steps.length) {
+    job.loop.item += 1
+    if (job.loop.item < job.loop.ids.length) {
+      job.target = job.loop.ids[job.loop.item]
+      job.steps = job.loop.steps.map(copyStep)
+      job.index = 0
+      return false
+    }
+    job.steps = job.loop.after
+    job.index = 0
+    job.loop = null
+    return false
+  }
   const cursor = cursors.get(job.nodeId)
-  traces.set(job.nodeId, { ruleId: '', stepId: '', stateId: cursor?.stateId ?? '', waiting: false })
+  traces.set(job.nodeId, { ruleId: '', stepId: '', stateId: cursor?.stateId ?? '', waiting: false, value: lastValue })
   return job.index >= job.steps.length
 }
 
-function run(node: SceneNode, step: RuleStep, host: SceneRuntimeHost, now: number) {
+function markTrace(job: Job, step: RuleStep | undefined, waiting: boolean) {
+  traces.set(job.nodeId, {
+    ruleId: job.ruleId,
+    stepId: step?.id ?? '',
+    stateId: cursors.get(job.nodeId)?.stateId ?? job.stateId,
+    waiting,
+    value: lastValue,
+  })
+}
+
+function run(node: SceneNode, step: RuleStep, job: Job, host: SceneRuntimeHost, now: number) {
+  const actor = job.target ? useEditorStore.getState().nodes[job.target] ?? node : node
   if (step.do === 'message') {
     postRuleMessage(step.message)
     useEditorStore.getState().log('info', `${node.name}：${step.message}`)
     return
   }
   if (step.do === 'setVar') {
-    const numeric = Number(step.value)
-    vars.set(step.name, Number.isFinite(numeric) ? numeric : readValue(step.value))
+    const value = evaluate(step.value)
+    lastValue = value
+    if (step.name) vars.set(step.name, value)
     return
   }
   if (step.do === 'addTag') {
-    const bag = tags.get(node.id) ?? new Map<string, number>()
-    bag.set(step.tag, step.seconds > 0 ? now + step.seconds : 0)
-    tags.set(node.id, bag)
+    const bag = tags.get(actor.id) ?? new Map<string, number>()
+    const seconds = step.seconds > 0 ? step.seconds : evaluate(step.value)
+    bag.set(step.tag, seconds > 0 ? now + seconds : 0)
+    tags.set(actor.id, bag)
     return
   }
   if (step.do === 'removeTag') {
-    tags.get(node.id)?.delete(step.tag)
+    tags.get(actor.id)?.delete(step.tag)
     return
   }
   if (step.do === 'playClip' && step.clip) {
-    if (host.resolveObject(node.id)) {
-      const own = !step.clipAssetId || step.clipAssetId === node.assetId
-      playBody(node.id, { clip: step.clip, assetId: own ? null : step.clipAssetId, loop: true, fade: node.clipFade ?? 0.15 })
-    }
+    playOn(actor, step, false)
     return
   }
-  if (step.do === 'log') {
-    useEditorStore.getState().log(step.level, step.message)
+  if (step.do === 'playUpper' && step.clip) {
+    playOn(actor, step, true)
+    return
   }
+  if (step.do === 'stance') {
+    if (!step.clip) stopUpper(actor.id)
+    else playUpper(actor.id, { clip: step.clip, assetId: clipAsset(actor, step), loop: true, fade: actor.clipFade ?? 0.15 })
+    return
+  }
+  if (step.do === 'showUi' || step.do === 'hideUi') {
+    const screen = findNamed(step.name, 'screen')
+    if (screen) setScreenVisible(screen.id, step.do === 'showUi')
+    return
+  }
+  if (step.do === 'lock') {
+    const target = step.name ? findNamed(step.name) : job.target ? useEditorStore.getState().nodes[job.target] : undefined
+    const character = node.gameplay?.character
+    if (!character) return
+    useEditorStore.getState().updateNode(node.id, {
+      gameplay: { ...node.gameplay, character: { ...character, lockTargetName: target?.name ?? '', lockTargetId: target?.id ?? '' } },
+    })
+    return
+  }
+  if (step.do === 'camera') {
+    const camera = findNamed(step.name, 'camera')
+    if (camera) forcePlayCamera(camera.id)
+    return
+  }
+  if (step.do === 'moveTo') {
+    const point = pointOf(step, job, host)
+    if (point) orderCharacterMove(node.id, point[0], point[1], point[2])
+    return
+  }
+  if (step.do === 'spawn') spawnPrefab(node, step, host)
+  if (step.do === 'hide') useEditorStore.getState().updateNode(actor.id, { visible: false })
+  if (step.do === 'score') {
+    const amount = evaluate(step.value)
+    lastValue = amount
+    addRuleScore(amount)
+    return
+  }
+  if (step.do === 'gather') {
+    job.list = gather(node, step, host)
+    lastValue = job.list.length
+    return
+  }
+  if (step.do === 'log') useEditorStore.getState().log(step.level, step.message)
 }
 
 function allPass(node: SceneNode, conditions: RuleCondition[]): boolean {
@@ -241,6 +368,11 @@ function allPass(node: SceneNode, conditions: RuleCondition[]): boolean {
 
 function passes(node: SceneNode, cond: RuleCondition): boolean {
   if (cond.kind === 'always') return true
+  if (cond.kind === 'formula') {
+    const value = evaluate(cond.left)
+    lastValue = value
+    return value > 0
+  }
   if (cond.kind === 'hasTag') return hasTag(node, cond.tag)
   if (cond.kind === 'missingTag') return !hasTag(node, cond.tag)
   const a = readValue(cond.left)
@@ -324,6 +456,10 @@ function startEdge(node: SceneNode, state: RuleStateNode, source: 'enter' | 'tic
     steps: steps.map(copyStep),
     index: 0,
     wait: 0,
+    frame: false,
+    list: [],
+    target: '',
+    loop: null,
   })
 }
 
@@ -357,3 +493,163 @@ function pickLeaf(node: SceneNode, state: RuleStateNode | undefined): RuleStateN
 }
 
 registerRuntimeSystem('core.rules', 35, stepRules)
+
+let lastValue: number | null = null
+
+function playOn(node: SceneNode, step: RuleStep, upper: boolean) {
+  const assetId = clipAsset(node, step)
+  const play = { clip: step.clip, assetId, loop: !upper, fade: node.clipFade ?? 0.15 }
+  if (upper) playUpper(node.id, play)
+  else playBody(node.id, play)
+}
+
+function clipAsset(node: SceneNode, step: RuleStep): string | null {
+  if (!step.clipAssetId || step.clipAssetId === node.assetId) return null
+  return step.clipAssetId
+}
+
+function overlayProgress(node: SceneNode): number {
+  if (!node.overlayClip) return 0
+  const duration = clipDuration(node.overlayAssetId || node.assetId, node.overlayClip)
+  if (duration <= 0) return node.overlayPlaying ? 0 : 1
+  return Math.min(1, Math.max(0, (node.overlayTime ?? 0) / duration))
+}
+
+function findNamed(name: string, kind?: SceneNode['kind']): SceneNode | undefined {
+  const trimmed = name.trim()
+  if (!trimmed) return undefined
+  return Object.values(useEditorStore.getState().nodes).find(node => (!kind || node.kind === kind) && (node.id === trimmed || node.name === trimmed))
+}
+
+function pointOf(step: RuleStep, job: Job, host: SceneRuntimeHost): Vec3 | null {
+  const named = step.name ? findNamed(step.name) : job.target ? useEditorStore.getState().nodes[job.target] : undefined
+  if (named) {
+    const object = host.resolveObject(named.id)
+    if (!object) return null
+    return [object.position.x, object.position.y, object.position.z]
+  }
+  const parts = step.value.split(',').map(item => Number(item.trim()))
+  if (parts.length === 3 && parts.every(item => Number.isFinite(item))) return [parts[0], parts[1], parts[2]]
+  return null
+}
+
+function gather(node: SceneNode, step: RuleStep, host: SceneRuntimeHost): string[] {
+  const self = host.resolveObject(node.id)
+  if (!self) return []
+  const radius = Math.max(0.1, step.seconds > 0 ? step.seconds : evaluate(step.value) || 3)
+  const angle = step.value.includes(',') ? 0 : Number(step.value)
+  const limit = Number.isFinite(angle) && angle > 0 ? angle * Math.PI / 180 : Math.PI * 2
+  const forward = { x: -Math.sin(yawOf(self.quaternion)), z: -Math.cos(yawOf(self.quaternion)) }
+  const hits: string[] = []
+  for (const other of Object.values(useEditorStore.getState().nodes)) {
+    if (other.id === node.id || !other.visible) continue
+    if (step.tag && other.tagId !== step.tag && !(other.tagIds ?? []).includes(step.tag) && !tags.get(other.id)?.has(step.tag)) continue
+    const object = host.resolveObject(other.id)
+    if (!object) continue
+    const dx = object.position.x - self.position.x
+    const dz = object.position.z - self.position.z
+    if (dx * dx + dz * dz > radius * radius) continue
+    if (limit < Math.PI * 2) {
+      const len = Math.hypot(dx, dz) || 1
+      const dot = (forward.x * dx + forward.z * dz) / len
+      if (Math.acos(Math.min(1, Math.max(-1, dot))) > limit / 2) continue
+    }
+    hits.push(other.id)
+  }
+  return hits
+}
+
+function yawOf(quaternion: { y: number, w: number }): number {
+  return Math.atan2(2 * quaternion.w * quaternion.y, 1 - 2 * quaternion.y * quaternion.y)
+}
+
+function spawnPrefab(node: SceneNode, step: RuleStep, host: SceneRuntimeHost) {
+  const asset = Object.values(useAssetStore.getState().assets).find(item => item.kind === 'prefab' && (item.id === step.name || item.name === step.name))
+  if (!asset || asset.kind !== 'prefab') return
+  const doc = readPrefab(asset)
+  if (!doc.rootId) return
+  const self = host.resolveObject(node.id)
+  const parts = step.value.split(',').map(item => Number(item.trim()))
+  const offset = parts.length >= 3 && parts.every(item => Number.isFinite(item)) ? parts : [1, 0, 0]
+  const position: Vec3 = [
+    (self?.position.x ?? node.position[0]) + offset[0],
+    (self?.position.y ?? node.position[1]) + offset[1],
+    (self?.position.z ?? node.position[2]) + offset[2],
+  ]
+  const state = useEditorStore.getState()
+  const nodes = structuredClone(state.nodes)
+  const lookup = (assetId: string) => {
+    const nested = useAssetStore.getState().assets[assetId]
+    if (!nested || nested.kind !== 'prefab') return null
+    const next = readPrefab(nested)
+    return next.rootId ? next : null
+  }
+  const id = instantiatePrefab(nodes, doc, asset.id, node.parentId, position, lookup)
+  if (!id) return
+  useEditorStore.setState({ nodes, playDirty: true })
+}
+
+function evaluate(source: string): number {
+  const text = source.trim()
+  if (!text) return 0
+  let index = 0
+  const skip = () => { while (text[index] === ' ') index += 1 }
+  const unary = (): number => {
+    skip()
+    if (text[index] === '-') { index += 1; return -unary() }
+    if (text[index] === '(') { index += 1; const value = expression(); skip(); if (text[index] === ')') index += 1; return value }
+    const start = index
+    if (/[0-9.]/.test(text[index] ?? '')) {
+      while (/[0-9.]/.test(text[index] ?? '')) index += 1
+      return Number(text.slice(start, index)) || 0
+    }
+    while (/[\w.]/.test(text[index] ?? '')) index += 1
+    return readValue(text.slice(start, index))
+  }
+  const product = (): number => {
+    let value = unary()
+    for (;;) {
+      skip()
+      if (text[index] === '*') { index += 1; value *= unary() }
+      else if (text[index] === '/') { index += 1; const divisor = unary(); value = divisor === 0 ? 0 : value / divisor }
+      else break
+    }
+    return value
+  }
+  const sum = (): number => {
+    let value = product()
+    for (;;) {
+      skip()
+      if (text[index] === '+') { index += 1; value += product() }
+      else if (text[index] === '-') { index += 1; value -= product() }
+      else break
+    }
+    return value
+  }
+  const expression = (): number => {
+    const value = sum()
+    skip()
+    const two = text.slice(index, index + 2)
+    if (two === '>=' || two === '<=' || two === '==' || two === '!=') {
+      index += 2
+      return compare(value, sum(), two) ? 1 : 0
+    }
+    if (text[index] === '>' || text[index] === '<') {
+      const op = text[index]
+      index += 1
+      return compare(value, sum(), op) ? 1 : 0
+    }
+    return value
+  }
+  const value = expression()
+  return Number.isFinite(value) ? value : 0
+}
+
+function compare(left: number, right: number, op: string): boolean {
+  if (op === '!=') return left !== right
+  if (op === '>') return left > right
+  if (op === '<') return left < right
+  if (op === '>=') return left >= right
+  if (op === '<=') return left <= right
+  return left === right
+}

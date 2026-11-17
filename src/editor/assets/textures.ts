@@ -8,6 +8,7 @@ import { type FileAsset, useAssetStore } from './library'
 
 const images = new Map<string, Texture>()
 const linearImages = new Map<string, Texture>()
+const unityMrImages = new Map<string, Texture>()
 const pendingImages = new Map<string, Promise<void>>()
 const environments = new Map<string, Texture>()
 const pendingEnvironments = new Map<string, Promise<void>>()
@@ -63,6 +64,65 @@ export function textureFor(assetId: string | null, colorMap: boolean): Texture |
   return linear
 }
 
+/**
+ * Unity Standard / URP MaskMap 金属光滑图重排为 Three.js / glTF ORM 贴图：
+ * - Unity 输入：R = Metallic，G = AO（或 R 副本），A = Smoothness（1 - Roughness）
+ * - Three.js 输出：R = AO（取 G），G = Roughness（1 - A），B = Metallic（取 R）
+ */
+export function unityMetallicRoughnessTextureFor(assetId: string | null): Texture | null {
+  if (!assetId) return null
+  const packed = unityMrImages.get(assetId)
+  if (packed) return packed
+  const base = textureFor(assetId, false)
+  if (!base) return null
+  const source = base.image as (CanvasImageSource & { width?: number, height?: number, naturalWidth?: number, naturalHeight?: number }) | undefined
+  const width = source?.naturalWidth || source?.width || 0
+  const height = source?.naturalHeight || source?.height || 0
+  if (!source || width <= 0 || height <= 0 || typeof document === 'undefined') return base
+  try {
+    const canvas = document.createElement('canvas')
+    canvas.width = width
+    canvas.height = height
+    const ctx = canvas.getContext('2d', { willReadFrequently: true })
+    if (!ctx) return base
+    ctx.drawImage(source, 0, 0, width, height)
+    const imgData = ctx.getImageData(0, 0, width, height)
+    const data = imgData.data
+    let hasAlphaVariation = false
+    const firstAlpha = data[3] ?? 255
+    for (let i = 0; i < data.length; i += 4) {
+      if (Math.abs((data[i + 3] ?? 255) - firstAlpha) > 2) {
+        hasAlphaVariation = true
+        break
+      }
+    }
+    for (let i = 0; i < data.length; i += 4) {
+      const r = data[i]!
+      const g = data[i + 1]!
+      const a = data[i + 3]!
+      // 若贴图 Alpha 全为 255（无透明通道），则用 R 通道作为光滑度来源兜底
+      const smoothness = hasAlphaVariation || firstAlpha < 250 ? a : r
+      const roughness = 255 - smoothness
+      const ao = g > 0 ? g : 255
+      data[i] = ao
+      data[i + 1] = roughness
+      data[i + 2] = r
+      data[i + 3] = 255
+    }
+    ctx.putImageData(imgData, 0, 0)
+    const converted = new CanvasTexture(canvas)
+    converted.colorSpace = NoColorSpace
+    converted.flipY = base.flipY
+    converted.wrapS = base.wrapS
+    converted.wrapT = base.wrapT
+    converted.needsUpdate = true
+    unityMrImages.set(assetId, converted)
+    return converted
+  } catch {
+    return base
+  }
+}
+
 export function environmentFor(assetId: string | null): Texture | null {
   if (!assetId) return null
   const env = environments.get(assetId)
@@ -79,6 +139,8 @@ export function releaseTexture(assetId: string) {
   images.delete(assetId)
   linearImages.get(assetId)?.dispose()
   linearImages.delete(assetId)
+  unityMrImages.get(assetId)?.dispose()
+  unityMrImages.delete(assetId)
   pendingImages.delete(assetId)
   environments.get(assetId)?.dispose()
   environments.delete(assetId)
@@ -120,6 +182,8 @@ export function loadTextureAsset(asset: FileAsset): Promise<void> {
       return ktx2.loadAsync(url).then(texture => {
         images.set(asset.id, texture)
         linearImages.delete(asset.id)
+        unityMrImages.get(asset.id)?.dispose()
+        unityMrImages.delete(asset.id)
         pendingImages.delete(asset.id)
         useAssetStore.getState().bump()
       })
@@ -129,6 +193,8 @@ export function loadTextureAsset(asset: FileAsset): Promise<void> {
       texture.colorSpace = SRGBColorSpace
       images.set(asset.id, texture)
       linearImages.delete(asset.id)
+      unityMrImages.get(asset.id)?.dispose()
+      unityMrImages.delete(asset.id)
       pendingImages.delete(asset.id)
       useAssetStore.getState().bump()
     })

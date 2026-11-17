@@ -25,6 +25,7 @@ import {
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import { reimportModel, setModelImportScale, setModelSockets } from '../assets/import'
 import { useAssetStore, type ModelSocket } from '../assets/library'
+import { applyModelMaterials } from '../assets/materials'
 import { getModelTemplate, instantiateModel, subscribeModels } from '../assets/models'
 import { boundsOf, prepareSkinnedPickBounds } from '../scene/bounds'
 import { useI18n } from '../i18n'
@@ -281,6 +282,11 @@ export function ModelPreview({ assetId, standalone = false }: { assetId: string,
     }
     canvas.addEventListener('pointerdown', onClick)
     const stop = subscribeModels(mount)
+    const stopAssets = useAssetStore.subscribe(() => {
+      if (!root) return
+      const currentSlots = getModelTemplate(assetId)?.slots
+      if (currentSlots) applyModelMaterials(root, currentSlots)
+    })
     mount()
     let last = performance.now()
     const tick = () => {
@@ -304,6 +310,7 @@ export function ModelPreview({ assetId, standalone = false }: { assetId: string,
     return () => {
       cancelAnimationFrame(frame)
       stop()
+      stopAssets()
       observer.disconnect()
       canvas.removeEventListener('pointerdown', onClick)
       controls.dispose()

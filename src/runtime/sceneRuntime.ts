@@ -291,8 +291,12 @@ export function defaultScore(): ScoreSpec {
 }
 
 export type RuleTriggerKind = 'playStart' | 'interact' | 'key' | 'message' | 'enter' | 'exit' | 'hit'
-export type RuleCondKind = 'always' | 'hasTag' | 'missingTag' | 'compare'
-export type RuleStepKind = 'message' | 'setVar' | 'addTag' | 'removeTag' | 'wait' | 'playClip' | 'if' | 'switchState' | 'log'
+export type RuleCondKind = 'always' | 'hasTag' | 'missingTag' | 'compare' | 'formula'
+export type RuleStepKind =
+  | 'message' | 'setVar' | 'addTag' | 'removeTag' | 'wait' | 'waitFrame' | 'waitUpper' | 'waitMark'
+  | 'playClip' | 'playUpper' | 'stance'
+  | 'if' | 'gather' | 'each' | 'switchState'
+  | 'showUi' | 'hideUi' | 'lock' | 'camera' | 'moveTo' | 'spawn' | 'hide' | 'score' | 'log'
 
 export interface RuleCondition {
   id: string
@@ -350,8 +354,13 @@ export interface RuleEntry {
 }
 
 const TRIGGERS: RuleTriggerKind[] = ['playStart', 'interact', 'key', 'message', 'enter', 'exit', 'hit']
-const CONDS: RuleCondKind[] = ['always', 'hasTag', 'missingTag', 'compare']
-const STEPS: RuleStepKind[] = ['message', 'setVar', 'addTag', 'removeTag', 'wait', 'playClip', 'if', 'switchState', 'log']
+const CONDS: RuleCondKind[] = ['always', 'hasTag', 'missingTag', 'compare', 'formula']
+const STEPS: RuleStepKind[] = [
+  'message', 'setVar', 'addTag', 'removeTag', 'wait', 'waitFrame', 'waitUpper', 'waitMark',
+  'playClip', 'playUpper', 'stance',
+  'if', 'gather', 'each', 'switchState',
+  'showUi', 'hideUi', 'lock', 'camera', 'moveTo', 'spawn', 'hide', 'score', 'log',
+]
 
 export function emptyCondition(kind: RuleCondKind = 'hasTag'): RuleCondition {
   return { id: crypto.randomUUID(), kind, tag: '', left: '', op: '==', right: '' }

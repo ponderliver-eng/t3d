@@ -863,21 +863,24 @@ function materialIdFromDrop(event: DragEvent): string | null {
 
 function MaterialEditor({ slot, onChange }: { slot: PbrSlot, onChange: (patch: Partial<PbrSlot>) => void }) {
   const { t } = useI18n()
-  const lit = (slot.shader ?? 'lit') === 'lit'
-  const particle = (slot.shader ?? 'lit') === 'particle-unlit'
-  const textured = slot.shader !== 'unlit-color'
+  const shaderKind = slot.shader ?? 'lit'
+  const lit = shaderKind === 'lit' || shaderKind === 'unity-standard'
+  const isUnity = shaderKind === 'unity-standard'
+  const particle = shaderKind === 'particle-unlit'
+  const textured = shaderKind !== 'unlit-color'
   return (
     <>
       <Section title={t('material.shader')} color="#d4b8ff">
         <label className="field">
           <span>{t('material.shader')}</span>
-          <select value={slot.shader ?? 'lit'} onChange={event => {
+          <select value={shaderKind} onChange={event => {
             const shader = event.target.value as SurfaceShader
             onChange(shader === 'particle-unlit'
               ? { shader, particleBlend: slot.particleBlend ?? 'additive', depthWrite: false, cull: 'off', alphaMode: 'blend' }
               : { shader })
           }}>
             <option value="lit">{t('material.lit')}</option>
+            <option value="unity-standard">{t('material.unityStandard')}</option>
             <option value="unlit-color">{t('material.unlitColor')}</option>
             <option value="unlit-texture">{t('material.unlitTexture')}</option>
             <option value="particle-unlit">{t('material.particle')}</option>
@@ -893,7 +896,12 @@ function MaterialEditor({ slot, onChange }: { slot: PbrSlot, onChange: (patch: P
               <NumberRow label={t('material.metalness')} value={slot.metalness} min={0} max={1} step={0.01} gesture={t('gesture.material')} onChange={metalness => onChange({ metalness })} />
               <NumberRow label={t('material.roughness')} value={slot.roughness} min={0} max={1} step={0.01} gesture={t('gesture.material')} onChange={roughness => onChange({ roughness })} />
             </div>
-            <MapField label={t('material.metallicRoughness')} title={t('material.metallicRoughnessHint')} value={slot.metallicRoughnessAssetId ?? null} onChange={metallicRoughnessAssetId => onChange({ metallicRoughnessAssetId, roughnessAssetId: metallicRoughnessAssetId, metalnessAssetId: metallicRoughnessAssetId })} />
+            <MapField
+              label={isUnity ? t('material.unityMetallicGloss') : t('material.metallicRoughness')}
+              title={isUnity ? t('material.unityMetallicGlossHint') : t('material.metallicRoughnessHint')}
+              value={slot.metallicRoughnessAssetId ?? null}
+              onChange={metallicRoughnessAssetId => onChange({ metallicRoughnessAssetId, roughnessAssetId: metallicRoughnessAssetId, metalnessAssetId: metallicRoughnessAssetId })}
+            />
             <MapField label={t('material.normal')} value={slot.normalAssetId ?? null} onChange={normalAssetId => onChange({ normalAssetId })} />
             <div className="iv2-pair">
               <NumberRow label={t('material.normalScale')} value={slot.normalScale ?? 1} min={0} max={4} step={0.01} gesture={t('gesture.material')} onChange={normalScale => onChange({ normalScale })} />

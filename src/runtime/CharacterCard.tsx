@@ -337,12 +337,3 @@ function Vec3Field({ label, value, disabled, onChange }: { label: string, value:
     </div>
   )
 }
-
-function Text({ label, value, disabled, onChange }: { label: string, value: string, disabled: boolean, onChange: (value: string) => void }) {
-  return (
-    <label className="field">
-      <span>{label}</span>
-      <input value={value} disabled={disabled} onChange={event => onChange(event.target.value.trim())} />
-    </label>
-  )
-}
