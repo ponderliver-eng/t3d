@@ -408,6 +408,12 @@ export interface HistoryEntry {
   materialsOnly?: boolean
   beforeMaterials?: Record<string, PbrSlot>
   afterMaterials?: Record<string, PbrSlot>
+  /** 只改了玩法包开关或游戏数据库。 */
+  databaseOnly?: boolean
+  beforeDatabase?: import('../../gameplay/types').GameDatabase
+  afterDatabase?: import('../../gameplay/types').GameDatabase
+  beforePacks?: string[]
+  afterPacks?: string[]
 }
 
 export interface CameraRequest {

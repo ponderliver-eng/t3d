@@ -7,6 +7,9 @@ import { useEditorStore } from '../editor/scene/store'
 import type { SceneNode, Vec3 } from '../editor/scene/types'
 import { orderCharacterMove } from './character'
 import { addRuleScore } from './devices'
+import { findRow } from '../gameplay/registry'
+import { playJuice } from '../gameplay/juice'
+import { addRuntimeTag, clearRuntimeTags, nodeHasTag, removeRuntimeTag, tickRuntimeTags } from '../gameplay/runtimeTags'
 import { setScreenVisible } from './ui/values'
 import {
   readRuleStates,
@@ -50,7 +53,6 @@ export interface RuleTrace {
 const jobs: Job[] = []
 const vars = new Map<string, number>()
 const texts = new Map<string, string>()
-const tags = new Map<string, Map<string, number>>()
 const inbox: { nodeId: string, trigger: RuleEntry['trigger'], message: string }[] = []
 const heldKeys = new Set<string>()
 const tappedKeys = new Set<string>()
@@ -96,7 +98,7 @@ function stepRules(dt: number, host: SceneRuntimeHost) {
     jobs.length = 0
     vars.clear()
     texts.clear()
-    tags.clear()
+    clearRuntimeTags()
     inbox.length = 0
     tappedKeys.clear()
     cursors.clear()
@@ -106,12 +108,7 @@ function stepRules(dt: number, host: SceneRuntimeHost) {
     return
   }
   const now = performance.now() / 1000
-  for (const [nodeId, bag] of tags) {
-    for (const [tag, until] of bag) {
-      if (until > 0 && now >= until) bag.delete(tag)
-    }
-    if (bag.size === 0) tags.delete(nodeId)
-  }
+  tickRuntimeTags(now)
   if (!started) {
     started = true
     for (const node of Object.values(state.nodes)) fire(node, 'playStart', '')
@@ -299,14 +296,15 @@ function run(node: SceneNode, step: RuleStep, job: Job, host: SceneRuntimeHost, 
     return
   }
   if (step.do === 'addTag') {
-    const bag = tags.get(actor.id) ?? new Map<string, number>()
-    const seconds = step.seconds > 0 ? step.seconds : evaluate(step.value)
-    bag.set(step.tag, seconds > 0 ? now + seconds : 0)
-    tags.set(actor.id, bag)
+    const row = findRow(useEditorStore.getState().gameDatabase, 'tags', step.tag)
+    if (step.tag.trim() && !row) useEditorStore.getState().log('warn', `玩法标签缺少一行：${step.tag}`)
+    const fallback = Number(row?.fields?.defaultDurationSec ?? 0)
+    const seconds = step.seconds > 0 ? step.seconds : (Number.isFinite(fallback) ? fallback : 0)
+    addRuntimeTag(actor.id, step.tag, seconds, now)
     return
   }
   if (step.do === 'removeTag') {
-    tags.get(actor.id)?.delete(step.tag)
+    removeRuntimeTag(actor.id, step.tag)
     return
   }
   if (step.do === 'playClip' && step.clip) {
@@ -354,6 +352,10 @@ function run(node: SceneNode, step: RuleStep, job: Job, host: SceneRuntimeHost, 
     addRuleScore(amount)
     return
   }
+  if (step.do === 'juice') {
+    playJuice(step.name, actor.id, host)
+    return
+  }
   if (step.do === 'gather') {
     job.list = gather(node, step, host)
     lastValue = job.list.length
@@ -386,9 +388,7 @@ function passes(node: SceneNode, cond: RuleCondition): boolean {
 }
 
 function hasTag(node: SceneNode, tag: string): boolean {
-  if (!tag) return false
-  if (node.tagId === tag || (node.tagIds ?? []).includes(tag)) return true
-  return tags.get(node.id)?.has(tag) ?? false
+  return nodeHasTag(node, tag)
 }
 
 function readValue(token: string): number {
@@ -543,7 +543,7 @@ function gather(node: SceneNode, step: RuleStep, host: SceneRuntimeHost): string
   const hits: string[] = []
   for (const other of Object.values(useEditorStore.getState().nodes)) {
     if (other.id === node.id || !other.visible) continue
-    if (step.tag && other.tagId !== step.tag && !(other.tagIds ?? []).includes(step.tag) && !tags.get(other.id)?.has(step.tag)) continue
+    if (step.tag && !nodeHasTag(other, step.tag)) continue
     const object = host.resolveObject(other.id)
     if (!object) continue
     const dx = object.position.x - self.position.x

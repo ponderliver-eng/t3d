@@ -9,18 +9,38 @@ import { useI18n } from '../editor/i18n'
 import '../editor/panels/AssetPicker.css'
 
 export function TagField({ value, disabled, onChange }: { value: string, disabled: boolean, onChange: (id: string) => void }) {
+  return <DatabaseField tableId="tags" value={value} disabled={disabled} titleKey="rule.pickTag" onChange={onChange} />
+}
+
+export function JuiceField({ value, disabled, onChange }: { value: string, disabled: boolean, onChange: (id: string) => void }) {
+  return <DatabaseField tableId="juice" value={value} disabled={disabled} titleKey="rule.pickJuice" onChange={onChange} />
+}
+
+function DatabaseField({
+  tableId,
+  value,
+  disabled,
+  titleKey,
+  onChange,
+}: {
+  tableId: 'tags' | 'juice'
+  value: string
+  disabled: boolean
+  titleKey: 'rule.pickTag' | 'rule.pickJuice'
+  onChange: (id: string) => void
+}) {
   const { t } = useI18n()
-  const tags = useEditorStore(state => state.tags)
+  const rows = useEditorStore(state => state.gameDatabase.tables[tableId] ?? [])
   const [open, setOpen] = useState(false)
-  const current = tags.find(tag => tag.id === value || tag.name === value)
+  const current = rows.find(row => row.id === value)
   return (
     <>
       <PickButton disabled={disabled} label={current?.name || (value ? t('picker.missing') : t('picker.none'))} onClick={() => setOpen(true)} />
       {open && (
         <ListPicker
-          title={t('rule.pickTag')}
+          title={t(titleKey)}
           selectedId={current?.id ?? ''}
-          rows={tags.map(tag => ({ id: tag.id, name: tag.name }))}
+          rows={rows.map(row => ({ id: row.id, name: row.name, hint: row.category }))}
           onSelect={id => { onChange(id); setOpen(false) }}
           onClose={() => setOpen(false)}
         />

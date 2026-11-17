@@ -1,4 +1,5 @@
 import { useEditorStore } from '../editor/scene/store'
+import { juiceShake } from '../gameplay/juiceClock'
 import type { SceneNode, Vec3 } from '../editor/scene/types'
 import { defaultCameraFollow, defaultCharacter, registerRuntimeSystem, resolveCharacterCamera, type CameraFollowSpec, type SceneRuntimeHost } from './sceneRuntime'
 
@@ -80,13 +81,15 @@ function stepCameras(dt: number, host: SceneRuntimeHost) {
     from[1] + (desired[1] - from[1]) * alpha,
     from[2] + (desired[2] - from[2]) * alpha,
   ]
+  const shake = juiceShake()
+  const shaken: Vec3 = [next[0] + shake.x, next[1] + shake.y, next[2]]
   arm.position = next
   arms.set(active.id, arm)
   if (!arm.noted && armChanged(arm)) {
     arm.noted = true
     useEditorStore.setState({ playDirty: true })
   }
-  host.poseCamera?.(next, lookPoint(next, lookAt, spec.lookAtTarget), spec.fov)
+  host.poseCamera?.(shaken, lookPoint(shaken, lookAt, spec.lookAtTarget), spec.fov)
 }
 
 function freshArm(spec: CameraFollowSpec, host: SceneRuntimeHost): Arm {

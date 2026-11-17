@@ -88,6 +88,13 @@
   touch-action: none;
 }
 
+.play-flash {
+  position: absolute;
+  inset: 0;
+  opacity: 0.28;
+  pointer-events: none;
+}
+
 .play-prompt {
   position: absolute;
   left: 50%;

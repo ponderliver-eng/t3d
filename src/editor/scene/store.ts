@@ -27,6 +27,9 @@ import {
   uniqueName,
 } from './kinds'
 import { defaultCapabilities, normalizeCapabilities } from '../../capabilities/registry'
+import '../../gameplay/corePack'
+import { createDefaultGameDatabase, ensureGameDatabase, resolveEnabledPackIds } from '../../gameplay/registry'
+import type { GameDatabase } from '../../gameplay/types'
 import { defaultNodePhysics } from '../../capabilities/physics/defaults'
 import { defaultCameraFollow, defaultCharacter, defaultCheckpoint, defaultInteract, defaultMover, defaultScore, defaultTrigger, resolveCharacterCamera, type CameraFollowSpec, type NodeGameplay } from '../../runtime/sceneRuntime'
 import { cameraArmOf, settleCameraArm } from '../../runtime/camera'
@@ -145,6 +148,8 @@ export interface EditorState {
   gesture: Gesture | null
   logs: LogEntry[]
   notice: string | null
+  gameplayHubOpen: boolean
+  setGameplayHubOpen: (open: boolean) => void
   projectionLabel: string
   sidePanel: SidePanel
   cameraNonce: number
@@ -266,6 +271,9 @@ export interface EditorState {
   setCapability: (id: string, enabled: boolean) => void
   setTags: (tags: import('../project/taxonomy').TagDefinition[]) => void
   setLayers: (layers: import('../project/taxonomy').LayerDefinition[]) => void
+  gameplayPacks: string[]
+  gameDatabase: GameDatabase
+  commitGameplay: (packs: string[], database: GameDatabase, label: string) => void
   setEditorCullingMask: (mask: number) => void
   setPhysicsCollisionMatrix: (enabled: boolean, rows: Record<string, number>) => void
   applySimulation: (poses: Array<{ id: string, position: Vec3, rotation: [number, number, number, number] }>) => void
@@ -306,6 +314,8 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     },
   ],
   notice: null,
+  gameplayHubOpen: false,
+  setGameplayHubOpen: open => set({ gameplayHubOpen: open }),
   projectionLabel: '透视',
   sidePanel: 'inspector',
   cameraNonce: 0,
@@ -316,6 +326,8 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   editorViewNonce: 0,
   capabilities: defaultCapabilities(),
   tags: defaultTags(),
+  gameplayPacks: [...resolveEnabledPackIds()],
+  gameDatabase: createDefaultGameDatabase(),
   layers: defaultLayers(),
   editorCullingMask: ALL_LAYERS_VISIBLE_MASK,
   physicsCollisionMatrixEnabled: false,
@@ -855,6 +867,15 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const past = get().past
     const entry = past[past.length - 1]
     if (!entry) return
+    if (entry.databaseOnly && entry.beforeDatabase) {
+      set({
+        past: past.slice(0, -1),
+        future: [...get().future, entry],
+        gameDatabase: structuredClone(entry.beforeDatabase),
+        gameplayPacks: [...(entry.beforePacks ?? get().gameplayPacks)],
+      })
+      return
+    }
     if (entry.materialsOnly) {
       set({
         past: past.slice(0, -1),
@@ -885,6 +906,15 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const future = get().future
     const entry = future[future.length - 1]
     if (!entry) return
+    if (entry.databaseOnly && entry.afterDatabase) {
+      set({
+        future: future.slice(0, -1),
+        past: [...get().past, entry],
+        gameDatabase: structuredClone(entry.afterDatabase),
+        gameplayPacks: [...(entry.afterPacks ?? get().gameplayPacks)],
+      })
+      return
+    }
     if (entry.materialsOnly) {
       set({
         future: future.slice(0, -1),
@@ -1193,6 +1223,8 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       editorViewNonce: get().editorViewNonce + 1,
       capabilities: normalizeCapabilities(document.capabilities),
       tags: ensureTags(document.tags),
+      gameplayPacks: [...resolveEnabledPackIds(document.gameplayPacks)],
+      gameDatabase: ensureGameDatabase(document.gameDatabase, document.gameplayPacks),
       layers: ensureLayers(document.layers),
       editorCullingMask: typeof document.editorCullingMask === 'number' ? document.editorCullingMask >>> 0 : ALL_LAYERS_VISIBLE_MASK,
       physicsCollisionMatrixEnabled: document.physicsCollisionMatrixEnabled === true,
@@ -1234,14 +1266,38 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     capabilities: { ...state.capabilities, [id]: enabled },
   })),
 
+  commitGameplay: (packs, database, label) => {
+    const beforePacks = [...get().gameplayPacks]
+    const beforeDatabase = structuredClone(get().gameDatabase)
+    const nextPacks = [...resolveEnabledPackIds(packs)]
+    const nextDatabase = ensureGameDatabase(database, nextPacks)
+    if (JSON.stringify(beforePacks) === JSON.stringify(nextPacks) && JSON.stringify(beforeDatabase) === JSON.stringify(nextDatabase)) return
+    pushHistory(set, {
+      label,
+      before: {},
+      after: {},
+      beforeSelection: [],
+      afterSelection: [],
+      beforePicture: get().picture,
+      afterPicture: get().picture,
+      databaseOnly: true,
+      beforeDatabase,
+      afterDatabase: structuredClone(nextDatabase),
+      beforePacks,
+      afterPacks: nextPacks,
+    })
+    set({ gameplayPacks: nextPacks, gameDatabase: nextDatabase })
+  },
+
   setTags: tags => {
     const next = ensureTags(tags)
     const ids = new Set(next.map(tag => tag.id))
+    const previous = new Set(get().tags.map(tag => tag.id))
     set(state => {
       const nodes = { ...state.nodes }
       for (const [id, node] of Object.entries(nodes)) {
         const tagId = node.tagId && ids.has(node.tagId) ? node.tagId : null
-        const tagIds = (node.tagIds ?? []).filter(tag => ids.has(tag))
+        const tagIds = (node.tagIds ?? []).filter(tag => !previous.has(tag) || ids.has(tag))
         const samePrimary = (node.tagId ?? null) === tagId
         const sameExtra = (node.tagIds ?? []).join('|') === tagIds.join('|')
         if (!samePrimary || !sameExtra) nodes[id] = { ...node, tagId, tagIds }

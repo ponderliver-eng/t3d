@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from 'react'
+import { juiceFlash, subscribeJuiceFlash } from '../../gameplay/juiceClock'
 import { useAssetStore } from '../assets/library'
 import { translate } from '../i18n'
 import { useEditorStore } from '../scene/store'
@@ -14,6 +15,7 @@ export function PlayUiOverlay() {
   const revision = useAssetStore(state => state.revision)
   const values = useUiValues()
   const prompt = useSyncExternalStore(subscribePlayPrompt, playPrompt)
+  const flash = useSyncExternalStore(subscribeJuiceFlash, juiceFlash)
   const mounts = readPlayScreens(nodes)
   return (
     <>
@@ -27,6 +29,7 @@ export function PlayUiOverlay() {
         />
       )}
       {prompt && <div className="play-prompt">{prompt}</div>}
+      {flash && <div className="play-flash" style={{ background: flash }} />}
     </>
   )
 }

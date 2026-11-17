@@ -288,7 +288,7 @@
   border-radius: 3px;
 }
 
-.tag-pills { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
+.tag-pills { display: flex; flex-wrap: wrap; gap: 4px; margin-left: 18px; }
 
 .tag-pill {
   display: inline-flex;
@@ -298,6 +298,49 @@
   border-radius: 999px;
   font-size: 10px;
   border: 1px solid transparent;
+}
+
+.gameplay-tag-entry {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 18px;
+}
+
+.gameplay-tag-entry input {
+  flex: 1;
+  min-width: 0;
+  padding: 3px 7px;
+  font-size: 11px;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(0, 0, 0, 0.18);
+  color: var(--text-primary);
+}
+
+.gameplay-tag-entry button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.gameplay-tag-entry button:hover { background: rgba(255, 255, 255, 0.08); color: var(--text-primary); }
+
+.tag-pill--runtime {
+  border-style: dashed;
+}
+
+.tag-pill em {
+  font-style: normal;
+  opacity: 0.8;
 }
 
 .tag-pill button {

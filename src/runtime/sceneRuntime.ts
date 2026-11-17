@@ -3,6 +3,7 @@ import { tickPhysics } from '../capabilities/physics/session'
 import { tickNavigation } from '../capabilities/navigation/session'
 import { tickParticles } from '../capabilities/particles/session'
 import type { SceneNode, Vec3 } from '../editor/scene/types'
+import { scalePlayDt } from '../gameplay/juiceClock'
 
 /**
  * 核心玩法包（Core Pack）与领域包（Domain Packs）在节点上的统一挂载契约。
@@ -300,7 +301,7 @@ export type RuleStepKind =
   | 'message' | 'setVar' | 'addTag' | 'removeTag' | 'wait' | 'waitFrame' | 'waitUpper' | 'waitMark'
   | 'playClip' | 'playUpper' | 'stance'
   | 'if' | 'gather' | 'each' | 'switchState'
-  | 'showUi' | 'hideUi' | 'lock' | 'camera' | 'moveTo' | 'spawn' | 'hide' | 'score' | 'log'
+  | 'showUi' | 'hideUi' | 'lock' | 'camera' | 'moveTo' | 'spawn' | 'hide' | 'score' | 'juice' | 'log'
 
 export interface RuleCondition {
   id: string
@@ -363,7 +364,7 @@ const STEPS: RuleStepKind[] = [
   'message', 'setVar', 'addTag', 'removeTag', 'wait', 'waitFrame', 'waitUpper', 'waitMark',
   'playClip', 'playUpper', 'stance',
   'if', 'gather', 'each', 'switchState',
-  'showUi', 'hideUi', 'lock', 'camera', 'moveTo', 'spawn', 'hide', 'score', 'log',
+  'showUi', 'hideUi', 'lock', 'camera', 'moveTo', 'spawn', 'hide', 'score', 'juice', 'log',
 ]
 
 export function emptyCondition(kind: RuleCondKind = 'hasTag'): RuleCondition {
@@ -557,14 +558,15 @@ export function registerRuntimeSystem(id: string, order: number, step: RuntimeSy
  * 5. 骨骼动画混合器推进（AnimationMixer）
  */
 export function stepSceneRuntime(dt: number, host: SceneRuntimeHost) {
+  const scaled = scalePlayDt(dt)
   for (const system of systems) {
-    system.step(dt, host)
+    system.step(scaled, host)
   }
-  tickPhysics(dt, host.resolveObject)
+  tickPhysics(scaled, host.resolveObject)
   tickNavigation()
   if (host.ready) {
-    tickParticles(dt, host.resolveObject)
-    host.updateAnimations(dt)
+    tickParticles(scaled, host.resolveObject)
+    host.updateAnimations(scaled)
   }
 }
 

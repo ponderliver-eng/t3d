@@ -1,7 +1,7 @@
 import { Plus, Trash2 } from 'lucide-react'
 import { useI18n, type MessageKey } from '../editor/i18n'
 import { ClipField } from '../editor/panels/ClipPicker'
-import { NodeField, PrefabField, TagField } from './RulePickers'
+import { JuiceField, NodeField, PrefabField, TagField } from './RulePickers'
 import {
   emptyCondition,
   emptyStep,
@@ -18,7 +18,7 @@ export const STEP_KINDS: RuleStepKind[] = [
   'message', 'setVar', 'addTag', 'removeTag', 'wait', 'waitFrame', 'waitUpper', 'waitMark',
   'playClip', 'playUpper', 'stance',
   'if', 'gather', 'each', 'switchState',
-  'showUi', 'hideUi', 'lock', 'camera', 'moveTo', 'spawn', 'hide', 'score', 'log',
+  'showUi', 'hideUi', 'lock', 'camera', 'moveTo', 'spawn', 'hide', 'score', 'juice', 'log',
 ]
 export const OPS = ['==', '!=', '>', '<', '>=', '<=']
 const NEST = 3
@@ -47,6 +47,7 @@ const TONE: Record<RuleStepKind, string> = {
   spawn: '#c084fc',
   hide: '#f87171',
   score: '#facc15',
+  juice: '#fb7185',
   log: '#94a3b8',
 }
 
@@ -206,6 +207,7 @@ function StepFields({
     )
   }
   if (step.do === 'score') return <input disabled={disabled} value={step.value} placeholder={t('rule.amount')} onChange={event => onChange({ value: event.target.value })} />
+  if (step.do === 'juice') return <JuiceField value={step.name} disabled={disabled} onChange={name => onChange({ name })} />
   if (step.do === 'gather') {
     return (
       <span className="rules-step__compare">

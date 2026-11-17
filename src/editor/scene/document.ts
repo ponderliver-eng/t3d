@@ -15,6 +15,10 @@ export interface ProjectDocument {
   assetDirs?: Record<string, string>
   /** 官方能力包开关。缺省按各包的默认值。 */
   capabilities?: Record<string, boolean>
+  /** 已启用的玩法包。核心包始终在内。关掉的包不出现在数据表目录，已写的行留着。 */
+  gameplayPacks?: string[]
+  /** 玩法标签、打击感和以后的领域表。一行一条。 */
+  gameDatabase?: import('../../gameplay/types').GameDatabase
   tags?: TagDefinition[]
   layers?: LayerDefinition[]
   editorCullingMask?: number

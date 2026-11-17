@@ -22,6 +22,7 @@ import { readPrefab } from './prefab'
 import type { ProjectDocument, ProjectWorkspace } from '../scene/document'
 import { restoreInspectorEntries, snapshotInspectorEntries, useInspectorMemory } from '../panels/inspectorMemory'
 import { normalizeCapabilities } from '../../capabilities/registry'
+import { ensureGameDatabase, resolveEnabledPackIds } from '../../gameplay/registry'
 import { ALL_LAYERS_VISIBLE_MASK, ensureLayers, ensureTags } from '../project/taxonomy'
 import { normalizePicture, type SceneNode } from '../scene/types'
 import { serializeNavMeshes } from '../../capabilities/navigation/archive'
@@ -226,6 +227,8 @@ export async function saveProjectNow() {
     folders: catalog.folders,
     assetDirs: catalog.assetDirs,
     capabilities: editor.capabilities,
+    gameplayPacks: editor.gameplayPacks,
+    gameDatabase: editor.gameDatabase,
     tags: editor.tags,
     layers: editor.layers,
     editorCullingMask: editor.editorCullingMask,
@@ -875,6 +878,8 @@ function validDocument(document: ProjectDocument | null): ProjectDocument | null
     folders: Array.isArray(document.folders) ? document.folders.filter(item => typeof item === 'string') : [],
     assetDirs: cleanAssetDirs(document.assetDirs),
     capabilities: normalizeCapabilities(document.capabilities),
+    gameplayPacks: [...resolveEnabledPackIds(document.gameplayPacks)],
+    gameDatabase: ensureGameDatabase(document.gameDatabase, document.gameplayPacks),
     tags: ensureTags(document.tags),
     layers: ensureLayers(document.layers),
     editorCullingMask: typeof document.editorCullingMask === 'number' ? document.editorCullingMask >>> 0 : ALL_LAYERS_VISIBLE_MASK,

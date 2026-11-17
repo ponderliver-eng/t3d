@@ -1,4 +1,6 @@
 import { findNavigationPath } from '../capabilities/navigation/session'
+import { addRuntimeTag } from '../gameplay/runtimeTags'
+import { clearJuice } from '../gameplay/juiceClock'
 import { carryFor } from './devices'
 import { playBody } from '../editor/animation/director'
 import { useEditorStore } from '../editor/scene/store'
@@ -101,6 +103,7 @@ function stepCharacters(dt: number, host: SceneRuntimeHost) {
     motion.clear()
     orders.clear()
     consumeTaps()
+    clearJuice()
     return
   }
   const now = performance.now() / 1000
@@ -139,6 +142,7 @@ function stepCharacters(dt: number, host: SceneRuntimeHost) {
       live.dashUntil = now + spec.dashDuration
       live.dashReady = live.dashUntil + spec.dashCooldown
       live.invincibleUntil = now + spec.dashInvincible
+      addRuntimeTag(node.id, 'State.Invincible', spec.dashInvincible, now)
       live.path = []
     }
     const click = spec.mode === 'pointAndClick' || spec.driver !== 'capsule'
