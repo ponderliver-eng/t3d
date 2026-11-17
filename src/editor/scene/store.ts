@@ -28,7 +28,8 @@ import {
 } from './kinds'
 import { defaultCapabilities, normalizeCapabilities } from '../../capabilities/registry'
 import { defaultNodePhysics } from '../../capabilities/physics/defaults'
-import { defaultCheckpoint, defaultInteract, defaultMover, defaultScore, defaultTrigger, type NodeGameplay } from '../../runtime/sceneRuntime'
+import { defaultCameraFollow, defaultCharacter, defaultCheckpoint, defaultInteract, defaultMover, defaultScore, defaultTrigger, resolveCharacterCamera, type CameraFollowSpec, type NodeGameplay } from '../../runtime/sceneRuntime'
+import { cameraArmOf, settleCameraArm } from '../../runtime/camera'
 import { resetUiValues } from '../../runtime/ui/values'
 
 export type DeviceKind = 'interact' | 'trigger' | 'mover' | 'checkpoint' | 'score'
@@ -79,6 +80,24 @@ interface Draft {
 }
 
 const seed = createSeed()
+
+function bakeFollow(node: SceneNode): CameraFollowSpec | null {
+  const arm = cameraArmOf(node.id)
+  if (!arm?.changed) return null
+  const character = node.gameplay?.character?.enabled ? { ...defaultCharacter(), ...node.gameplay.character } : null
+  if (!character && !node.gameplay?.cameraFollow?.enabled) return null
+  const spec = character
+    ? resolveCharacterCamera(character, node.gameplay?.cameraFollow)
+    : { ...defaultCameraFollow(), ...node.gameplay?.cameraFollow }
+  if (!spec.enabled) return null
+  const zoom = arm.zoom
+  return {
+    ...spec,
+    offset: [spec.offset[0] * zoom, spec.offset[1] * zoom, spec.offset[2] * zoom],
+    orbitYaw: arm.yaw * 180 / Math.PI,
+    orbitPitch: arm.pitch * 180 / Math.PI,
+  }
+}
 
 function cloneNodes(nodes: Record<string, SceneNode>): Record<string, SceneNode> {
   return structuredClone(nodes)
@@ -872,6 +891,8 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const beforePicture = get().playPicture ? structuredClone(get().playPicture!) : structuredClone(get().picture)
     const currentNodes = get().nodes
     const nextSnapshot: Record<string, SceneNode> = {}
+    const liveNodes: Record<string, SceneNode> = { ...currentNodes }
+    let cameraKept = false
     for (const [id, snapNode] of Object.entries(snapshot)) {
       const liveNode = currentNodes[id]
       if (!liveNode) {
@@ -893,6 +914,14 @@ export const useEditorStore = create<EditorState>((set, get) => ({
           stateId: snapNode.animator.stateId,
         }
       }
+      const followed = bakeFollow(liveNode)
+      if (followed) {
+        const gameplay = { ...liveNode.gameplay, cameraFollow: followed }
+        merged.gameplay = gameplay
+        liveNodes[id] = { ...liveNode, gameplay }
+        cameraKept = true
+        settleCameraArm(id)
+      }
       nextSnapshot[id] = merged
     }
     const nextPicture = structuredClone(get().picture)
@@ -908,6 +937,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       })
     }
     set({
+      nodes: cameraKept ? liveNodes : currentNodes,
       playSnapshot: nextSnapshot,
       playPicture: nextPicture,
       playDirty: false,

@@ -114,6 +114,10 @@ export interface CameraFollowSpec {
   zoomSpeed: number
   minDistance: number
   maxDistance: number
+  /** 试玩里右键转出的水平角，度。空着表示开局跟编辑镜头。 */
+  orbitYaw?: number
+  /** 试玩里右键转出的俯仰角，度。空着表示开局跟编辑镜头。 */
+  orbitPitch?: number
 }
 
 export function defaultCameraFollow(): CameraFollowSpec {

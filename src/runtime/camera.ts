@@ -7,18 +7,29 @@ interface Arm {
   pitch: number
   /** 相对偏移长度的倍率。1 是组件上写的距离。 */
   zoom: number
+  startYaw: number
+  startPitch: number
   position: Vec3 | null
   local: boolean
+  noted: boolean
+}
+
+export interface CameraArmPose {
+  zoom: number
+  yaw: number
+  pitch: number
+  changed: boolean
 }
 
 const arms = new Map<string, Arm>()
 
 function stepCameras(dt: number, host: SceneRuntimeHost) {
   const state = useEditorStore.getState()
-  if (state.playState !== 'playing') {
+  if (state.playState === 'stopped') {
     arms.clear()
     return
   }
+  if (state.playState !== 'playing') return
   const wheel = host.wheel?.() ?? 0
   const active = Object.values(state.nodes).find(node => node.gameplay?.character?.enabled && node.gameplay.cameraFollow?.enabled !== false)
     ?? Object.values(state.nodes).find(node => node.gameplay?.cameraFollow?.enabled)
@@ -43,13 +54,7 @@ function stepCameras(dt: number, host: SceneRuntimeHost) {
     (focus[1] + lockObject.position.y + spec.pivot[1] * 0.6) * 0.5,
     (focus[2] + lockObject.position.z) * 0.5,
   ] : focus
-  const arm = arms.get(active.id) ?? {
-    yaw: spec.localOffset ? 0 : (host.yaw?.() ?? 0),
-    pitch: clampPitch(host.pitch?.() ?? 0, spec),
-    zoom: 1,
-    position: null,
-    local: spec.localOffset,
-  }
+  const arm = arms.get(active.id) ?? freshArm(spec, host)
   if (arm.local !== spec.localOffset) {
     arm.local = spec.localOffset
     arm.yaw = spec.localOffset ? 0 : (host.yaw?.() ?? arm.yaw)
@@ -77,7 +82,50 @@ function stepCameras(dt: number, host: SceneRuntimeHost) {
   ]
   arm.position = next
   arms.set(active.id, arm)
+  if (!arm.noted && armChanged(arm)) {
+    arm.noted = true
+    useEditorStore.setState({ playDirty: true })
+  }
   host.poseCamera?.(next, lookPoint(next, lookAt, spec.lookAtTarget), spec.fov)
+}
+
+function freshArm(spec: CameraFollowSpec, host: SceneRuntimeHost): Arm {
+  const yaw = typeof spec.orbitYaw === 'number'
+    ? spec.orbitYaw * Math.PI / 180
+    : (spec.localOffset ? 0 : (host.yaw?.() ?? 0))
+  const pitch = clampPitch(
+    typeof spec.orbitPitch === 'number' ? spec.orbitPitch * Math.PI / 180 : (host.pitch?.() ?? 0),
+    spec,
+  )
+  return { yaw, pitch, zoom: 1, startYaw: yaw, startPitch: pitch, position: null, local: spec.localOffset, noted: false }
+}
+
+function armChanged(arm: Arm): boolean {
+  return Math.abs(arm.zoom - 1) > 0.001 || Math.abs(angleDelta(arm.yaw, arm.startYaw)) > 0.001 || Math.abs(angleDelta(arm.pitch, arm.startPitch)) > 0.001
+}
+
+function angleDelta(current: number, start: number): number {
+  let delta = current - start
+  if (delta > Math.PI) delta -= Math.PI * 2
+  if (delta < -Math.PI) delta += Math.PI * 2
+  return delta
+}
+
+/** 试玩中滚轮和右键转出来的机位。保存修改时写回跟随镜头。 */
+export function cameraArmOf(id: string): CameraArmPose | null {
+  const arm = arms.get(id)
+  if (!arm) return null
+  return { zoom: arm.zoom, yaw: arm.yaw, pitch: arm.pitch, changed: armChanged(arm) }
+}
+
+/** 距离已经写进偏移后，倍率收回 1，避免下一帧再乘一次。 */
+export function settleCameraArm(id: string) {
+  const arm = arms.get(id)
+  if (!arm) return
+  arm.zoom = 1
+  arm.startYaw = arm.yaw
+  arm.startPitch = arm.pitch
+  arm.noted = false
 }
 
 function resolveLock(character: { lockTargetId?: string, lockTargetName: string }, selfId: string, nodes: Record<string, SceneNode>) {
