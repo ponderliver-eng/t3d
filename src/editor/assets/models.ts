@@ -707,28 +707,12 @@ function bindSlotsToProjectAssets(
 
     if (matchedMat) {
       const surface = normalizeSlot(matchedMat.slot)
-      const inferred = inferTextureSet(candidates, modelName, textures)
+      const inferred = inferTextureSet(candidates, textures)
       const mapAssetId = surface.mapAssetId ?? slot.mapAssetId ?? inferred.mapAssetId
       const normalAssetId = surface.normalAssetId ?? slot.normalAssetId ?? inferred.normalAssetId
       const metallicRoughnessAssetId = surface.metallicRoughnessAssetId ?? slot.metallicRoughnessAssetId ?? inferred.metallicRoughnessAssetId
       const emissiveAssetId = surface.emissiveAssetId ?? slot.emissiveAssetId ?? inferred.emissiveAssetId
       const aoAssetId = surface.aoAssetId ?? slot.aoAssetId ?? inferred.aoAssetId
-      // 若材质资产本身缺贴图但推断出了贴图，同步补齐到材质资产上
-      if (
-        (!surface.mapAssetId && mapAssetId)
-        || (!surface.normalAssetId && normalAssetId)
-        || (!surface.metallicRoughnessAssetId && metallicRoughnessAssetId)
-        || (!surface.emissiveAssetId && emissiveAssetId)
-        || (!surface.aoAssetId && aoAssetId)
-      ) {
-        useAssetStore.getState().updateMaterial(matchedMat.id, {
-          ...(mapAssetId ? { mapAssetId } : {}),
-          ...(normalAssetId ? { normalAssetId } : {}),
-          ...(metallicRoughnessAssetId ? { metallicRoughnessAssetId } : {}),
-          ...(emissiveAssetId ? { emissiveAssetId } : {}),
-          ...(aoAssetId ? { aoAssetId } : {}),
-        })
-      }
       return {
         ...surface,
         name: slot.name,
@@ -741,8 +725,8 @@ function bindSlotsToProjectAssets(
       }
     }
 
-    // 2. 没有匹配到材质球时，按槽位名/网格名/模型名自动推断 PBR 全套贴图
-    const inferred = inferTextureSet(candidates, modelName, textures)
+    // 2. 没有匹配到材质球时，按槽位名/网格名自动推断 PBR 全套贴图
+    const inferred = inferTextureSet(candidates, textures)
     const hasAnyMap = Boolean(
       slot.mapAssetId || inferred.mapAssetId
       || slot.normalAssetId || inferred.normalAssetId
@@ -763,7 +747,6 @@ function bindSlotsToProjectAssets(
 
 function inferTextureSet(
   candidates: string[],
-  modelName: string,
   textures: FileAsset[],
 ): {
   mapAssetId: string | null
@@ -773,7 +756,7 @@ function inferTextureSet(
   aoAssetId: string | null
   unityPacked: boolean
 } {
-  const stems = [...candidates, modelName]
+  const stems = candidates
     .map(normalizeMaterialKey)
     .filter(Boolean)
   let mapAssetId: string | null = null
@@ -788,7 +771,7 @@ function inferTextureSet(
       const raw = tex.name.trim().toLowerCase().replace(/^t[_-]/i, '')
       const role = classifyTextureRole(raw)
       const baseKey = normalizeMaterialKey(role.base)
-      if (!baseKey || (baseKey !== stem && !baseKey.endsWith(stem) && !stem.endsWith(baseKey))) continue
+      if (!baseKey || baseKey !== stem) continue
       if (role.kind === 'albedo' && !mapAssetId) mapAssetId = tex.id
       else if (role.kind === 'normal' && !normalAssetId) normalAssetId = tex.id
       else if (role.kind === 'metallic' && !metallicRoughnessAssetId) {
@@ -827,13 +810,15 @@ function slotFromMaterial(material: Material, seen: Set<string>, index: number):
   if (seen.has(name)) return []
   seen.add(name)
   const standard = material as MeshStandardMaterial
+  const emissiveHex = standard.emissive ? `#${standard.emissive.getHexString()}` : '#000000'
+  const hasEmissive = Boolean(standard.emissiveMap) || emissiveHex !== '#000000'
   return [{
     name,
     color: standard.color ? `#${standard.color.getHexString()}` : '#ffffff',
     metalness: standard.metalness ?? 0,
     roughness: standard.roughness ?? 0.5,
-    emissive: standard.emissive ? `#${standard.emissive.getHexString()}` : '#000000',
-    emissiveIntensity: standard.emissiveIntensity ?? 1,
+    emissive: emissiveHex,
+    emissiveIntensity: hasEmissive ? (standard.emissiveIntensity ?? 1) : 0,
     opacity: standard.opacity ?? 1,
     ao: standard.aoMapIntensity ?? 1,
     mapAssetId: null,

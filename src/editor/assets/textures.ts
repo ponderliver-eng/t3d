@@ -296,20 +296,10 @@ export function loadTextureAsset(asset: FileAsset): Promise<void> {
 }
 
 async function loadBitmapTexture(url: string): Promise<Texture> {
-  if (typeof createImageBitmap === 'function') {
-    try {
-      const response = await fetch(url)
-      const blob = await response.blob()
-      const bitmap = await createImageBitmap(blob, { imageOrientation: 'flipY' })
-      const texture = new Texture(bitmap)
-      texture.flipY = false
-      texture.needsUpdate = true
-      return texture
-    } catch {
-      // 某些格式（如浏览器不支持选项）回退到标准 TextureLoader
-    }
-  }
-  return loader.loadAsync(url)
+  const texture = await loader.loadAsync(url)
+  texture.flipY = false
+  texture.needsUpdate = true
+  return texture
 }
 
 function loadSvgTexture(assetId: string, url: string): Promise<void> {

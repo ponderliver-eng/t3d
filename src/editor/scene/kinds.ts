@@ -89,7 +89,7 @@ export function makeNode(partial: Pick<SceneNode, 'id' | 'name' | 'kind'> & Part
     metalness: kind === 'plane' ? 0 : 0.04,
     roughness: kind === 'plane' ? 0.92 : 0.58,
     emissive: '#000000',
-    emissiveIntensity: 1,
+    emissiveIntensity: 0,
     opacity: 1,
     ao: 1,
     mapAssetId: null,

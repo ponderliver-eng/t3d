@@ -51,7 +51,7 @@ export function normalizeSlot(slot: Partial<PbrSlot> & Pick<PbrSlot, 'name' | 'c
     metalness: slot.metalness ?? 0,
     roughness: slot.roughness ?? 1,
     emissive: slot.emissive ?? '#000000',
-    emissiveIntensity: slot.emissiveIntensity ?? 1,
+    emissiveIntensity: slot.emissiveIntensity ?? 0,
     opacity: slot.opacity ?? 1,
     ao: slot.ao ?? 1,
     mapAssetId: slot.mapAssetId ?? null,
@@ -167,6 +167,13 @@ export function applyModelMaterials(root: Object3D, slots: PbrSlot[], partOverri
     if (mesh.isMesh) {
       const geometry = mesh.geometry as BufferGeometry
       if (geometry?.attributes.uv && !geometry.attributes.uv2) geometry.setAttribute('uv2', geometry.attributes.uv)
+      if (geometry?.index && geometry.attributes.position && geometry.attributes.normal && geometry.attributes.uv && !geometry.attributes.tangent) {
+        try {
+          geometry.computeTangents()
+        } catch {
+          // ignore non-indexed or degenerate uv meshes
+        }
+      }
       const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material]
       const overrideSlot = materialSlot(partOverrides?.[path]?.materialAssetId)
       const existingIndices = Array.isArray(mesh.userData.t3dSlotIndices) ? mesh.userData.t3dSlotIndices as number[] : null

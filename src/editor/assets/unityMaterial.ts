@@ -68,7 +68,8 @@ export function parseUnityMaterialSlot(
   const emissiveAssetId = pickTex(EMISSION_KEYS)
   const aoAssetId = pickTex(AO_KEYS)
 
-  const hasEmission = emission !== '#000000' || Boolean(emissiveAssetId)
+  const emissionKeyword = /(?:^|\s)_EMISSION(?:\s|$)/.test(text)
+  const hasEmission = emissionKeyword && (emission !== '#000000' || Boolean(emissiveAssetId))
   return normalizeSlot({
     name,
     shader: 'unity-standard',
@@ -76,7 +77,7 @@ export function parseUnityMaterialSlot(
     metalness: metallic,
     roughness,
     normalScale,
-    emissive: hasEmission && emission === '#000000' ? '#ffffff' : emission,
+    emissive: hasEmission ? (emission === '#000000' ? '#ffffff' : emission) : '#000000',
     emissiveIntensity: hasEmission ? 1 : 0,
     opacity,
     ao,

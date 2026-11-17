@@ -576,7 +576,7 @@ async function importEffectJson(file: File, dir: string): Promise<string | null>
       metalness: 0,
       roughness: 1,
       emissive: '#000000',
-      emissiveIntensity: 1,
+      emissiveIntensity: 0,
       opacity: document.appearance.opacity,
       ao: 1,
       mapAssetId,

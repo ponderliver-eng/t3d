@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { FlipVertical2, Link2, Unlink2 } from 'lucide-react'
 import {
   Mesh,
   MeshBasicMaterial,
@@ -13,9 +14,62 @@ import {
   WebGLRenderer,
 } from 'three'
 import { useI18n } from '../i18n'
-import { environmentFor, textureFor } from '../assets/textures'
-import { useAssetStore } from '../assets/library'
+import { environmentFor, ensureAssetUrl, textureFor } from '../assets/textures'
+import { assetDirectory, useAssetStore } from '../assets/library'
+import { importExtractedBytes } from '../assets/import'
+import { useEditorStore } from '../scene/store'
 import { popPreviewWindow } from './previewStore'
+
+function clampSize(value: number): number {
+  if (!Number.isFinite(value)) return 1
+  return Math.max(1, Math.min(8192, Math.round(value)))
+}
+
+function scaledSize(next: number, other: number, base: number): number {
+  if (base < 1 || other < 1) return next
+  return clampSize(next * other / base)
+}
+
+function uniqueCopyName(base: string): string {
+  const names = new Set(Object.values(useAssetStore.getState().assets).map(item => item.name))
+  const stem = `${base} edit`
+  if (!names.has(stem)) return stem
+  let index = 2
+  while (names.has(`${stem} ${index}`)) index += 1
+  return `${stem} ${index}`
+}
+
+function renderEditedPng(url: string, width: number, height: number, flipY: boolean): Promise<ArrayBuffer> {
+  return new Promise((resolve, reject) => {
+    const image = new Image()
+    image.onload = () => {
+      const canvas = document.createElement('canvas')
+      canvas.width = width
+      canvas.height = height
+      const context = canvas.getContext('2d')
+      if (!context) {
+        reject(new Error('无法绘制贴图'))
+        return
+      }
+      if (flipY) {
+        context.translate(0, height)
+        context.scale(1, -1)
+      }
+      context.imageSmoothingEnabled = true
+      context.imageSmoothingQuality = 'high'
+      context.drawImage(image, 0, 0, width, height)
+      canvas.toBlob(blob => {
+        if (!blob) {
+          reject(new Error('无法导出 PNG'))
+          return
+        }
+        void blob.arrayBuffer().then(resolve, reject)
+      }, 'image/png')
+    }
+    image.onerror = () => reject(new Error('无法读取贴图'))
+    image.src = url
+  })
+}
 
 type Channel = 'rgb' | 'r' | 'g' | 'b' | 'a'
 
@@ -24,12 +78,50 @@ const CHANNEL: Record<Channel, number> = { rgb: 0, r: 1, g: 2, b: 3, a: 4 }
 export function TexturePreview({ assetId, environment = false, standalone = false }: { assetId: string, environment?: boolean, standalone?: boolean }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const channelRef = useRef<Channel>('rgb')
+  const flipRef = useRef(false)
+  const outSizeRef = useRef({ width: 0, height: 0 })
+  const sourceSizeRef = useRef({ width: 0, height: 0 })
   const [channel, setChannel] = useState<Channel>('rgb')
   const [size, setSize] = useState('')
+  const [flipY, setFlipY] = useState(false)
+  const [outWidth, setOutWidth] = useState(0)
+  const [outHeight, setOutHeight] = useState(0)
+  const [lockAspect, setLockAspect] = useState(true)
+  const [saving, setSaving] = useState(false)
   channelRef.current = channel
+  flipRef.current = flipY
+  outSizeRef.current = { width: outWidth, height: outHeight }
   const { t } = useI18n()
   const asset = useAssetStore(state => state.assets[assetId])
   const revision = useAssetStore(state => state.revision)
+
+  useEffect(() => {
+    sourceSizeRef.current = { width: 0, height: 0 }
+    setOutWidth(0)
+    setOutHeight(0)
+    setFlipY(false)
+    setSize('')
+  }, [assetId])
+
+  const saveEditedTexture = async () => {
+    if (!asset || !('fileName' in asset) || saving || outWidth < 1 || outHeight < 1) return
+    setSaving(true)
+    try {
+      const url = asset.url || await ensureAssetUrl(assetId)
+      const png = await renderEditedPng(url, outWidth, outHeight, flipY)
+      const dir = assetDirectory(assetId, useAssetStore.getState().assetDirs)
+      const fileName = `${uniqueCopyName(asset.name)}.png`
+      const id = await importExtractedBytes(fileName, new Uint8Array(png), dir)
+      if (!id) throw new Error('save failed')
+      useEditorStore.getState().pingAsset(id)
+      useEditorStore.getState().log('info', t('preview.savedTexture', { name: fileName.replace(/\.png$/i, '') }))
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      useEditorStore.getState().log('error', t('preview.saveTextureFail', { message }))
+    } finally {
+      setSaving(false)
+    }
+  }
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -94,8 +186,9 @@ export function TexturePreview({ assetId, environment = false, standalone = fals
       const image = map?.image as { width?: number, height?: number } | undefined
       const iw = image?.width && image.height ? image.width : 1
       const ih = image?.width && image.height ? image.height : 1
-      const imageAspect = iw / ih
-      mesh.scale.set(imageAspect, 1, 1)
+      const edited = outSizeRef.current
+      const imageAspect = edited.width > 0 && edited.height > 0 ? edited.width / edited.height : iw / ih
+      mesh.scale.set(imageAspect, flipRef.current ? -1 : 1, 1)
       const viewAspect = rect.width / rect.height
       const worldW = viewAspect >= imageAspect ? viewAspect : imageAspect
       const worldH = viewAspect >= imageAspect ? 1 : imageAspect / viewAspect
@@ -169,8 +262,16 @@ export function TexturePreview({ assetId, environment = false, standalone = fals
       if (material instanceof ShaderMaterial) material.uniforms.channel.value = CHANNEL[channelRef.current]
       const image = map?.image as { width?: number, height?: number } | undefined
       if (image?.width && image.height) {
-        setSize(`${image.width} × ${image.height}`)
-        if (camera instanceof OrthographicCamera && Math.abs(mesh.scale.x - image.width / image.height) > 1e-4) frameTexture()
+        if (sourceSizeRef.current.width !== image.width || sourceSizeRef.current.height !== image.height) {
+          sourceSizeRef.current = { width: image.width, height: image.height }
+          setSize(`${image.width} × ${image.height}`)
+          setOutWidth(current => current > 0 ? current : image.width)
+          setOutHeight(current => current > 0 ? current : image.height)
+        }
+        const edited = outSizeRef.current
+        const aspect = edited.width > 0 && edited.height > 0 ? edited.width / edited.height : image.width / image.height
+        const flip = flipRef.current ? -1 : 1
+        if (camera instanceof OrthographicCamera && (Math.abs(mesh.scale.x - aspect) > 1e-4 || Math.abs(mesh.scale.y - flip) > 1e-4)) frameTexture()
       }
       renderer.render(scene, camera)
       frame = requestAnimationFrame(tick)
@@ -194,15 +295,64 @@ export function TexturePreview({ assetId, environment = false, standalone = fals
     <div className="preview-view">
       <div className={`preview-view__stage ${environment ? '' : 'preview-view__stage--checker'}`}>
         <canvas ref={canvasRef} />
-        {size && <div className="preview-view__chip">{size}</div>}
+        {size && <div className="preview-view__chip">{t('preview.sourceSize', { size })}</div>}
+        {!environment && (
+          <div className="preview-view__float">
+            {(['rgb', 'r', 'g', 'b', 'a'] as Channel[]).map(item => (
+              <button key={item} type="button" className={channel === item ? 'is-on' : ''} onClick={() => setChannel(item)}>{item.toUpperCase()}</button>
+            ))}
+          </div>
+        )}
       </div>
-      <div className="preview-view__bar">
-        {!environment && (['rgb', 'r', 'g', 'b', 'a'] as Channel[]).map(item => (
-          <button key={item} type="button" className={channel === item ? 'is-on' : ''} onClick={() => setChannel(item)}>{item.toUpperCase()}</button>
-        ))}
-        <span>{environment ? t('preview.envHint') : t('preview.textureHint')}</span>
-        {!standalone && <button type="button" onClick={() => popPreviewWindow(environment ? 'environment' : 'texture', assetId)}>{t('preview.popout')}</button>}
-      </div>
+      {!environment ? (
+        <div className="tex-edit">
+          <div className="tex-edit__row">
+            <button type="button" className={`tex-edit__icon${flipY ? ' is-on' : ''}`} title={t('preview.flipY')} aria-label={t('preview.flipY')} onClick={() => setFlipY(value => !value)}>
+              <FlipVertical2 size={14} />
+            </button>
+            <label className="tex-edit__field">
+              <span>{t('preview.width')}</span>
+              <input
+                type="number"
+                min={1}
+                max={8192}
+                value={outWidth || ''}
+                onChange={event => {
+                  const next = clampSize(Number(event.target.value))
+                  setOutWidth(next)
+                  if (lockAspect) setOutHeight(scaledSize(next, sourceSizeRef.current.height, sourceSizeRef.current.width))
+                }}
+              />
+            </label>
+            <button type="button" className={`tex-edit__icon${lockAspect ? ' is-on' : ''}`} title={t('preview.lockAspect')} aria-label={t('preview.lockAspect')} onClick={() => setLockAspect(value => !value)}>
+              {lockAspect ? <Link2 size={14} /> : <Unlink2 size={14} />}
+            </button>
+            <label className="tex-edit__field">
+              <span>{t('preview.height')}</span>
+              <input
+                type="number"
+                min={1}
+                max={8192}
+                value={outHeight || ''}
+                onChange={event => {
+                  const next = clampSize(Number(event.target.value))
+                  setOutHeight(next)
+                  if (lockAspect) setOutWidth(scaledSize(next, sourceSizeRef.current.width, sourceSizeRef.current.height))
+                }}
+              />
+            </label>
+            <span className="tex-edit__spacer" />
+            {!standalone && <button type="button" className="tex-edit__ghost" onClick={() => popPreviewWindow('texture', assetId)}>{t('preview.popout')}</button>}
+            <button type="button" className="tex-edit__save" disabled={saving || outWidth < 1 || outHeight < 1 || !asset || !('url' in asset)} onClick={() => { void saveEditedTexture() }}>{saving ? t('preview.saving') : t('preview.saveTexture')}</button>
+          </div>
+          <p className="tex-edit__note">{t('preview.textureHint')}</p>
+        </div>
+      ) : (
+        <div className="preview-view__bar">
+          <span>{t('preview.envHint')}</span>
+          {!standalone && <button type="button" onClick={() => popPreviewWindow('environment', assetId)}>{t('preview.popout')}</button>}
+        </div>
+      )}
     </div>
   )
 }
