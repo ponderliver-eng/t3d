@@ -2009,19 +2009,20 @@ function applyPartAttributes(
   receiveShadow: boolean,
 ) {
   const hiddenSet = new Set(hidden)
-  const walk = (object: Object3D, parentPath: string) => {
+  const walk = (object: Object3D, parentPath: string, parentHidden: boolean) => {
     const label = object.name || object.type
     const path = parentPath ? `${parentPath}/${label}` : label
+    const isHidden = parentHidden || hiddenSet.has(path)
     const mesh = object as Mesh
     if (mesh.isMesh) {
-      mesh.visible = !hiddenSet.has(path)
+      mesh.visible = !isHidden
       const override = overrides?.[path]
       mesh.castShadow = override?.castShadow ?? castShadow
       mesh.receiveShadow = override?.receiveShadow ?? receiveShadow
     }
-    for (const child of object.children) walk(child, path)
+    for (const child of object.children) walk(child, path, isHidden)
   }
-  for (const child of root.children) walk(child, '')
+  for (const child of root.children) walk(child, '', false)
 }
 
 function orderedIds(nodes: Record<string, SceneNode>): string[] {

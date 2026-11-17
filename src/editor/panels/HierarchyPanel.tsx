@@ -43,6 +43,23 @@ type TreeRow =
   | { kind: 'node'; node: SceneNode; depth: number }
   | { kind: 'sub'; node: SceneNode; item: ModelTreeNode; depth: number }
 
+function hasMeshDescendant(item: ModelTreeNode): boolean {
+  if (item.kind === 'mesh') return true
+  return item.children.some(hasMeshDescendant)
+}
+
+function subAncestorHidden(hiddenParts: string[] | undefined, path: string): boolean {
+  if (!hiddenParts?.length || !path.includes('/')) return false
+  const set = new Set(hiddenParts)
+  const parts = path.split('/')
+  let prefix = ''
+  for (let i = 0; i < parts.length - 1; i += 1) {
+    prefix = prefix ? `${prefix}/${parts[i]}` : parts[i]
+    if (set.has(prefix)) return true
+  }
+  return false
+}
+
 function filterSubTree(nodes: ModelTreeNode[], query: string): ModelTreeNode[] {
   const out: ModelTreeNode[] = []
   for (const item of nodes) {
@@ -509,6 +526,8 @@ export default function HierarchyPanel() {
             const open = q ? true : subOpen[key] === true
             const subSelected = subSelection?.nodeId === node.id && subSelection.path === item.path
             const partVisible = !(node.hiddenParts ?? []).includes(item.path)
+            const parentHidden = subAncestorHidden(node.hiddenParts, item.path)
+            const canToggleVisibility = item.kind === 'mesh' || (item.kind === 'node' && hasMeshDescendant(item))
             const attached = item.kind === 'bone' ? (boneChildren.get(`${node.id}\n${item.path}`) ?? []) : []
             const hasSubKids = item.children.length > 0 || attached.length > 0
             const socketId = attached[0]?.id
@@ -523,6 +542,7 @@ export default function HierarchyPanel() {
                   `scene-item--sub-${item.kind}`,
                   subSelected ? 'scene-item--selected scene-item--primary' : '',
                   !partVisible ? 'scene-item--hidden' : '',
+                  parentHidden ? 'scene-item--ancestor-hidden' : '',
                   canDropOnBone ? 'scene-item--into' : '',
                 ].filter(Boolean).join(' ')}
                 style={{ paddingLeft: 6 + depth * 14 }}
@@ -593,7 +613,7 @@ export default function HierarchyPanel() {
                 )}
                 <span className="scene-item__name">{item.name}</span>
                 <span className="scene-item__actions scene-item__actions--sub">
-                  {item.kind === 'mesh' && (
+                  {canToggleVisibility && (
                     <button
                       type="button"
                       className={partVisible ? '' : 'scene-item__off'}
