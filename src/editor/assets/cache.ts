@@ -26,7 +26,7 @@ const ARTIFACTS = 'artifacts'
 const SCENE = 'scene'
 const SCENE_KEY = 'current'
 
-export const MODEL_IMPORTER_VERSION = 't3d-glb-artifact-3-ufbx'
+export const MODEL_IMPORTER_VERSION = 't3d-glb-artifact-6-uv-flip'
 
 export interface CachedFile {
   id: string
@@ -52,6 +52,7 @@ export interface AssetMeta {
   clipCatalog?: ClipCatalogEntry[]
   importScale?: number
   sockets?: ModelSocket[]
+  materialHint?: import('./models').ModelMaterialHint
 }
 
 export interface ModelArtifactRecord {

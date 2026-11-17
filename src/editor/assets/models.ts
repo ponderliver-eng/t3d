@@ -8,6 +8,7 @@ import { FBXLoader } from 'three/addons/loaders/FBXLoader.js'
 import { TDSLoader } from 'three/addons/loaders/TDSLoader.js'
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js'
 import type { PbrSlot } from '../scene/types'
+import { useEditorStore } from '../scene/store'
 import { boundsOf } from '../scene/bounds'
 import { patchAssetMeta, readFileBytes, readModelArtifact, writeModelArtifact } from './cache'
 import { type FileAsset, type MaterialAsset, useAssetStore } from './library'
@@ -203,7 +204,12 @@ export function loadModelTemplate(asset: FileAsset, forceSource = false): Promis
   const running = pending.get(asset.id)
   if (running) return running
   const promise = (forceSource ? loadFromSource(asset) : loadCachedOrSource(asset)).then(template => {
-    const resolvedSlots = bindSlotsToProjectAssets(template.slots, template.scene, asset.name)
+    const resolvedSlots = bindSlotsToProjectAssets(
+      template.slots,
+      template.scene,
+      asset.name,
+      modelMaterialHints.get(asset.id) ?? asset.materialHint,
+    )
     const nextTemplate = { ...template, slots: resolvedSlots }
     applyModelMaterials(nextTemplate.scene, nextTemplate.slots)
     templates.set(asset.id, nextTemplate)
@@ -214,6 +220,7 @@ export function loadModelTemplate(asset: FileAsset, forceSource = false): Promis
     rememberHumanoidAvatar(asset.id, nextTemplate.humanoid.avatar)
     rememberHumanoidImportScale(asset.id, nextTemplate, forceSource)
     rememberClipCatalog(asset.id, nextTemplate.clips)
+    syncLoadedModelNodes(asset.id, resolvedSlots)
     useAssetStore.getState().bump()
     listeners.forEach(listener => listener())
     return nextTemplate
@@ -223,6 +230,45 @@ export function loadModelTemplate(asset: FileAsset, forceSource = false): Promis
   })
   pending.set(asset.id, promise)
   return promise
+}
+
+function syncLoadedModelNodes(assetId: string, templateSlots: PbrSlot[]) {
+  if (templateSlots.length === 0) return
+  const editor = useEditorStore.getState()
+  if (editor.playState !== 'stopped') return
+  const byName = new Map(templateSlots.map(slot => [slot.name, slot]))
+  for (const node of Object.values(editor.nodes)) {
+    if (node.kind !== 'model' || node.assetId !== assetId || node.slots.length === 0) continue
+    let changed = false
+    const nextSlots = node.slots.map((slot, index) => {
+      const fresh = byName.get(slot.name) ?? templateSlots[index]
+      if (!fresh) return slot
+      const needMat = Boolean(fresh.materialAssetId && slot.materialAssetId !== fresh.materialAssetId)
+      const needMap = !slot.mapAssetId && fresh.mapAssetId
+      const needNormal = !slot.normalAssetId && fresh.normalAssetId
+      const needMr = !slot.metallicRoughnessAssetId && fresh.metallicRoughnessAssetId
+      const needAo = !slot.aoAssetId && fresh.aoAssetId
+      if (!needMat && !needMap && !needNormal && !needMr && !needAo) return slot
+      changed = true
+      return {
+        ...slot,
+        ...(needMat ? {
+          materialAssetId: fresh.materialAssetId,
+          shader: fresh.shader,
+          mapAssetId: fresh.mapAssetId,
+          normalAssetId: fresh.normalAssetId,
+          metallicRoughnessAssetId: fresh.metallicRoughnessAssetId,
+          emissiveAssetId: fresh.emissiveAssetId,
+          aoAssetId: fresh.aoAssetId,
+        } : {}),
+        ...(needMap ? { mapAssetId: fresh.mapAssetId } : {}),
+        ...(needNormal ? { normalAssetId: fresh.normalAssetId } : {}),
+        ...(needMr ? { metallicRoughnessAssetId: fresh.metallicRoughnessAssetId } : {}),
+        ...(needAo ? { aoAssetId: fresh.aoAssetId } : {}),
+      }
+    })
+    if (changed) editor.updateNode(node.id, { slots: nextSlots })
+  }
 }
 
 /** 把已加载的动画资源按现有人形重定向写进模型自己的片段。 */
@@ -273,9 +319,17 @@ function uniqueClipName(clips: AnimationClip[], base: string): string {
   return `${base} ${index}`
 }
 
+export interface ModelMaterialSourceBinding {
+  slotIndex: number
+  materialId: string
+  sourceMeshFileId?: string
+  sourceMeshName?: string
+}
+
 export interface ModelMaterialHint {
   bySlotIndex?: Record<number, string>
   byName?: Record<string, string>
+  sourceBindings?: ModelMaterialSourceBinding[]
 }
 
 const extraExternalFiles = new Map<string, Array<{ name: string; data: Uint8Array }>>()
@@ -288,7 +342,14 @@ export function withFbxCompanions<T>(
   materialHint?: ModelMaterialHint,
 ): Promise<T> {
   if (files.length > 0) extraExternalFiles.set(assetId, [...files])
-  if (materialHint) modelMaterialHints.set(assetId, materialHint)
+  if (materialHint) {
+    modelMaterialHints.set(assetId, materialHint)
+    const asset = useAssetStore.getState().assets[assetId]
+    if (asset && 'fileName' in asset && JSON.stringify(asset.materialHint ?? null) !== JSON.stringify(materialHint)) {
+      useAssetStore.getState().patch(assetId, { materialHint })
+      void patchAssetMeta(assetId, { materialHint })
+    }
+  }
   return run().finally(() => {
     extraExternalFiles.delete(assetId)
     modelMaterialHints.delete(assetId)
@@ -299,10 +360,12 @@ export function applyModelMaterialBindings(assetId: string, hint?: ModelMaterial
   const template = templates.get(assetId)
   if (!template) return null
   const asset = useAssetStore.getState().assets[assetId]
-  const slots = bindSlotsToProjectAssets(template.slots, template.scene, asset?.name ?? '', hint ?? modelMaterialHints.get(assetId))
+  const storedHint = asset && 'fileName' in asset ? asset.materialHint : undefined
+  const slots = bindSlotsToProjectAssets(template.slots, template.scene, asset?.name ?? '', hint ?? modelMaterialHints.get(assetId) ?? storedHint)
   template.slots = slots
   applyModelMaterials(template.scene, slots)
   revisions.set(assetId, (revisions.get(assetId) ?? 0) + 1)
+  syncLoadedModelNodes(assetId, slots)
   useAssetStore.getState().bump()
   listeners.forEach(listener => listener())
   return slots
@@ -627,22 +690,63 @@ export function normalizeMaterialKey(raw: string): string {
     .replace(/[\s._-]+/g, '')
 }
 
+function materialStem(raw: string): string {
+  return normalizeMaterialKey(raw).replace(/^(?:outfit|clothes|body|acc|char|prop|weapon)/, '')
+}
+
+function withinOneEdit(a: string, b: string): boolean {
+  if (Math.abs(a.length - b.length) > 1 || a.length < 5 || b.length < 5) return false
+  let i = 0
+  let j = 0
+  let diffs = 0
+  while (i < a.length && j < b.length) {
+    if (a[i] === b[j]) { i += 1; j += 1; continue }
+    diffs += 1
+    if (diffs > 1) return false
+    if (a.length > b.length) i += 1
+    else if (b.length > a.length) j += 1
+    else { i += 1; j += 1 }
+  }
+  if (i < a.length || j < b.length) diffs += 1
+  return diffs <= 1
+}
+
 function collectMeshNamesBySlot(root: Object3D): Map<number, string[]> {
   const out = new Map<number, string[]>()
   root.traverse(child => {
     const mesh = child as Mesh
     if (!mesh.isMesh) return
-    const meshName = mesh.name || mesh.parent?.name || ''
-    if (!meshName) return
+    const names = [mesh.name, mesh.parent?.name, mesh.parent?.parent?.name]
+      .filter((n): n is string => Boolean(n && n !== 'Scene' && n !== 'RootNode'))
+    if (names.length === 0) return
     const indices = Array.isArray(mesh.userData?.t3dSlotIndices) ? mesh.userData.t3dSlotIndices as number[] : []
     for (const slotIndex of indices) {
       if (typeof slotIndex !== 'number' || slotIndex < 0) continue
       const list = out.get(slotIndex) ?? []
-      if (!list.includes(meshName)) list.push(meshName)
+      for (const name of names) {
+        if (!list.includes(name)) list.push(name)
+      }
       out.set(slotIndex, list)
     }
   })
   return out
+}
+
+function sourceBindingForSlot(
+  meshNames: string[],
+  sourceBindings: ReadonlyArray<ModelMaterialSourceBinding> | undefined,
+): string | undefined {
+  if (!sourceBindings?.length) return undefined
+  const normalizedMeshes = new Set(meshNames.map(normalizeMaterialKey).filter(Boolean))
+  const matchedIds = new Set<string>()
+  for (const binding of sourceBindings) {
+    if (!binding.sourceMeshName) continue
+    if (normalizedMeshes.has(normalizeMaterialKey(binding.sourceMeshName))) {
+      matchedIds.add(binding.materialId)
+    }
+  }
+  if (matchedIds.size === 1) return [...matchedIds][0]
+  return undefined
 }
 
 function bindSlotsToProjectAssets(
@@ -663,42 +767,59 @@ function bindSlotsToProjectAssets(
   }
 
   return slots.map((slot, index) => {
+    const primaryCandidates = [slot.name].filter(Boolean)
+    const meshCandidates = (meshNamesBySlot.get(index) ?? []).filter(Boolean)
     const candidates = [
-      slot.name,
-      ...(meshNamesBySlot.get(index) ?? []),
+      ...primaryCandidates,
+      ...meshCandidates,
       ...(slots.length === 1 && modelName ? [modelName] : []),
-    ].filter(Boolean)
+    ]
 
-    // 1. 显式绑定或工程现有 MaterialAsset 匹配
+    // 1. 严格优先按槽位自身名称匹配（精确 → 后缀 → 词干），绝不先用父网格名把别的部位材质抢过来
     let matchedMat: MaterialAsset | undefined
-    const explicitId = hint?.bySlotIndex?.[index]
-      ?? candidates.map(name => hint?.byName?.[normalizeMaterialKey(name)]).find(Boolean)
-    if (explicitId && assets[explicitId]?.kind === 'material') {
-      matchedMat = assets[explicitId] as MaterialAsset
+    const explicitBySlot = hint?.bySlotIndex?.[index]
+      ?? primaryCandidates.map(name => hint?.byName?.[normalizeMaterialKey(name)]).find(Boolean)
+    if (explicitBySlot && assets[explicitBySlot]?.kind === 'material') {
+      matchedMat = assets[explicitBySlot] as MaterialAsset
     }
-    if (!matchedMat) {
-      for (const candidate of candidates) {
+    const matchByOrderedList = (list: string[]) => {
+      for (const candidate of list) {
         const key = normalizeMaterialKey(candidate)
         if (!key) continue
         const exact = matByKey.get(key)
-        if (exact) {
-          matchedMat = exact
-          break
-        }
+        if (exact) return exact
       }
-    }
-    if (!matchedMat) {
-      for (const candidate of candidates) {
+      for (const candidate of list) {
         const key = normalizeMaterialKey(candidate)
         if (!key || key.length < 3) continue
         const suffixMatches = materials.filter(mat => {
           const matKey = normalizeMaterialKey(mat.name)
           return matKey && (matKey.endsWith(key) || key.endsWith(matKey))
         })
-        if (suffixMatches.length === 1) {
-          matchedMat = suffixMatches[0]
-          break
-        }
+        if (suffixMatches.length === 1) return suffixMatches[0]
+      }
+      for (const candidate of list) {
+        const stem = materialStem(candidate)
+        if (!stem || stem.length < 4) continue
+        const stemMatches = materials.filter(mat => {
+          const mStem = materialStem(mat.name)
+          return mStem === stem || withinOneEdit(mStem, stem)
+        })
+        if (stemMatches.length === 1) return stemMatches[0]
+      }
+      return undefined
+    }
+    if (!matchedMat) {
+      matchedMat = matchByOrderedList(primaryCandidates)
+    }
+    // 只有槽位自身名字没匹配上时，才退回用网格名 / sourceBindings 匹配
+    if (!matchedMat) {
+      const explicitByMesh = sourceBindingForSlot(meshCandidates, hint?.sourceBindings)
+        ?? meshCandidates.map(name => hint?.byName?.[normalizeMaterialKey(name)]).find(Boolean)
+      if (explicitByMesh && assets[explicitByMesh]?.kind === 'material') {
+        matchedMat = assets[explicitByMesh] as MaterialAsset
+      } else {
+        matchedMat = matchByOrderedList(meshCandidates)
       }
     }
     if (!matchedMat && slots.length === 1 && materials.length === 1) {
@@ -782,6 +903,10 @@ function inferTextureSet(
     }
   }
   return { mapAssetId, normalAssetId, metallicRoughnessAssetId, emissiveAssetId, aoAssetId, unityPacked }
+}
+
+export function isNormalTextureName(name: string): boolean {
+  return /(?:[_-\s]+)(?:normal|norm|nrm|nor|bump|n)$/i.test(name.trim())
 }
 
 function classifyTextureRole(name: string): {

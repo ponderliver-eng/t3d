@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
-import { FlipVertical2, Link2, Unlink2 } from 'lucide-react'
+import { FlipHorizontal2, FlipVertical2, Link2, Unlink2 } from 'lucide-react'
 import {
   Mesh,
   MeshBasicMaterial,
+  NoColorSpace,
   OrthographicCamera,
   PerspectiveCamera,
   PlaneGeometry,
@@ -14,20 +15,30 @@ import {
   WebGLRenderer,
 } from 'three'
 import { useI18n } from '../i18n'
-import { environmentFor, ensureAssetUrl, textureFor } from '../assets/textures'
+import { environmentFor, ensureAssetUrl } from '../assets/textures'
+import { isNormalTextureName } from '../assets/models'
 import { assetDirectory, useAssetStore } from '../assets/library'
 import { importExtractedBytes } from '../assets/import'
 import { useEditorStore } from '../scene/store'
 import { popPreviewWindow } from './previewStore'
 
-function clampSize(value: number): number {
-  if (!Number.isFinite(value)) return 1
-  return Math.max(1, Math.min(8192, Math.round(value)))
+const POT_SIZES = [128, 256, 512, 1024, 2048, 4096, 8192]
+
+function nearestPot(value: number): number {
+  const target = Math.log2(Math.max(1, value))
+  return POT_SIZES.reduce((best, size) => Math.abs(Math.log2(size) - target) < Math.abs(Math.log2(best) - target) ? size : best)
 }
 
-function scaledSize(next: number, other: number, base: number): number {
+function linkedPot(next: number, other: number, base: number): number {
   if (base < 1 || other < 1) return next
-  return clampSize(next * other / base)
+  return nearestPot(next * other / base)
+}
+
+function invertGreenChannel(context: CanvasRenderingContext2D, width: number, height: number) {
+  const image = context.getImageData(0, 0, width, height)
+  const data = image.data
+  for (let i = 1; i < data.length; i += 4) data[i] = 255 - data[i]
+  context.putImageData(image, 0, 0)
 }
 
 function uniqueCopyName(base: string): string {
@@ -39,7 +50,7 @@ function uniqueCopyName(base: string): string {
   return `${stem} ${index}`
 }
 
-function renderEditedPng(url: string, width: number, height: number, flipY: boolean): Promise<ArrayBuffer> {
+function renderEditedPng(url: string, width: number, height: number, flipX: boolean, flipY: boolean, flipNormalY: boolean): Promise<ArrayBuffer> {
   return new Promise((resolve, reject) => {
     const image = new Image()
     image.onload = () => {
@@ -51,13 +62,14 @@ function renderEditedPng(url: string, width: number, height: number, flipY: bool
         reject(new Error('无法绘制贴图'))
         return
       }
-      if (flipY) {
-        context.translate(0, height)
-        context.scale(1, -1)
+      if (flipX || flipY) {
+        context.translate(flipX ? width : 0, flipY ? height : 0)
+        context.scale(flipX ? -1 : 1, flipY ? -1 : 1)
       }
       context.imageSmoothingEnabled = true
       context.imageSmoothingQuality = 'high'
       context.drawImage(image, 0, 0, width, height)
+      if (flipNormalY) invertGreenChannel(context, width, height)
       canvas.toBlob(blob => {
         if (!blob) {
           reject(new Error('无法导出 PNG'))
@@ -78,28 +90,33 @@ const CHANNEL: Record<Channel, number> = { rgb: 0, r: 1, g: 2, b: 3, a: 4 }
 export function TexturePreview({ assetId, environment = false, standalone = false }: { assetId: string, environment?: boolean, standalone?: boolean }) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const channelRef = useRef<Channel>('rgb')
-  const flipRef = useRef(false)
+  const flipRef = useRef({ x: false, y: false, normalY: false })
   const outSizeRef = useRef({ width: 0, height: 0 })
   const sourceSizeRef = useRef({ width: 0, height: 0 })
   const [channel, setChannel] = useState<Channel>('rgb')
   const [size, setSize] = useState('')
+  const [flipX, setFlipX] = useState(false)
   const [flipY, setFlipY] = useState(false)
+  const [flipNormalY, setFlipNormalY] = useState(false)
   const [outWidth, setOutWidth] = useState(0)
   const [outHeight, setOutHeight] = useState(0)
   const [lockAspect, setLockAspect] = useState(true)
   const [saving, setSaving] = useState(false)
   channelRef.current = channel
-  flipRef.current = flipY
+  flipRef.current = { x: flipX, y: flipY, normalY: flipNormalY }
   outSizeRef.current = { width: outWidth, height: outHeight }
   const { t } = useI18n()
   const asset = useAssetStore(state => state.assets[assetId])
   const revision = useAssetStore(state => state.revision)
+  const normalMap = Boolean(asset && 'fileName' in asset && (isNormalTextureName(asset.name) || isNormalTextureName(asset.fileName.replace(/\.[^.]+$/, ''))))
 
   useEffect(() => {
     sourceSizeRef.current = { width: 0, height: 0 }
     setOutWidth(0)
     setOutHeight(0)
+    setFlipX(false)
     setFlipY(false)
+    setFlipNormalY(false)
     setSize('')
   }, [assetId])
 
@@ -108,7 +125,7 @@ export function TexturePreview({ assetId, environment = false, standalone = fals
     setSaving(true)
     try {
       const url = asset.url || await ensureAssetUrl(assetId)
-      const png = await renderEditedPng(url, outWidth, outHeight, flipY)
+      const png = await renderEditedPng(url, outWidth, outHeight, flipX, flipY, normalMap && flipNormalY)
       const dir = assetDirectory(assetId, useAssetStore.getState().assetDirs)
       const fileName = `${uniqueCopyName(asset.name)}.png`
       const id = await importExtractedBytes(fileName, new Uint8Array(png), dir)
@@ -134,10 +151,11 @@ export function TexturePreview({ assetId, environment = false, standalone = fals
       ? new PerspectiveCamera(40, 1, 0.01, 20)
       : new OrthographicCamera(-1, 1, 1, -1, 0.1, 10)
     camera.position.z = environment ? 2.6 : 1
-    let map: Texture | null = environment ? environmentFor(assetId) : textureFor(assetId, true)
+    let map: Texture | null = environment ? environmentFor(assetId) : null
     let owned = false
     if (!map && !environment && asset.url) {
       map = new TextureLoader().load(asset.url)
+      map.colorSpace = NoColorSpace
       owned = true
     }
     const material = environment
@@ -146,6 +164,7 @@ export function TexturePreview({ assetId, environment = false, standalone = fals
         uniforms: {
           map: { value: map },
           channel: { value: 0 },
+          flipNormalY: { value: 0 },
         },
         vertexShader: `
           varying vec2 vUv;
@@ -157,9 +176,11 @@ export function TexturePreview({ assetId, environment = false, standalone = fals
         fragmentShader: `
           uniform sampler2D map;
           uniform int channel;
+          uniform int flipNormalY;
           varying vec2 vUv;
           void main() {
             vec4 color = texture2D(map, vUv);
+            if (flipNormalY == 1) color.g = 1.0 - color.g;
             if (channel == 1) color = vec4(vec3(color.r), 1.0);
             else if (channel == 2) color = vec4(vec3(color.g), 1.0);
             else if (channel == 3) color = vec4(vec3(color.b), 1.0);
@@ -188,7 +209,7 @@ export function TexturePreview({ assetId, environment = false, standalone = fals
       const ih = image?.width && image.height ? image.height : 1
       const edited = outSizeRef.current
       const imageAspect = edited.width > 0 && edited.height > 0 ? edited.width / edited.height : iw / ih
-      mesh.scale.set(imageAspect, flipRef.current ? -1 : 1, 1)
+      mesh.scale.set(imageAspect * (flipRef.current.x ? -1 : 1), flipRef.current.y ? -1 : 1, 1)
       const viewAspect = rect.width / rect.height
       const worldW = viewAspect >= imageAspect ? viewAspect : imageAspect
       const worldH = viewAspect >= imageAspect ? 1 : imageAspect / viewAspect
@@ -259,19 +280,25 @@ export function TexturePreview({ assetId, environment = false, standalone = fals
     window.addEventListener('pointermove', onMove)
     window.addEventListener('pointerup', onUp)
     const tick = () => {
-      if (material instanceof ShaderMaterial) material.uniforms.channel.value = CHANNEL[channelRef.current]
+      if (material instanceof ShaderMaterial) {
+        material.uniforms.channel.value = CHANNEL[channelRef.current]
+        material.uniforms.flipNormalY.value = flipRef.current.normalY ? 1 : 0
+      }
       const image = map?.image as { width?: number, height?: number } | undefined
-      if (image?.width && image.height) {
-        if (sourceSizeRef.current.width !== image.width || sourceSizeRef.current.height !== image.height) {
-          sourceSizeRef.current = { width: image.width, height: image.height }
-          setSize(`${image.width} × ${image.height}`)
-          setOutWidth(current => current > 0 ? current : image.width)
-          setOutHeight(current => current > 0 ? current : image.height)
+      const imageWidth = image?.width
+      const imageHeight = image?.height
+      if (imageWidth && imageHeight) {
+        if (sourceSizeRef.current.width !== imageWidth || sourceSizeRef.current.height !== imageHeight) {
+          sourceSizeRef.current = { width: imageWidth, height: imageHeight }
+          setSize(`${imageWidth} × ${imageHeight}`)
+          setOutWidth(current => current > 0 ? current : nearestPot(imageWidth))
+          setOutHeight(current => current > 0 ? current : nearestPot(imageHeight))
         }
         const edited = outSizeRef.current
-        const aspect = edited.width > 0 && edited.height > 0 ? edited.width / edited.height : image.width / image.height
-        const flip = flipRef.current ? -1 : 1
-        if (camera instanceof OrthographicCamera && (Math.abs(mesh.scale.x - aspect) > 1e-4 || Math.abs(mesh.scale.y - flip) > 1e-4)) frameTexture()
+        const aspect = edited.width > 0 && edited.height > 0 ? edited.width / edited.height : imageWidth / imageHeight
+        const scaleX = aspect * (flipRef.current.x ? -1 : 1)
+        const scaleY = flipRef.current.y ? -1 : 1
+        if (camera instanceof OrthographicCamera && (Math.abs(mesh.scale.x - scaleX) > 1e-4 || Math.abs(mesh.scale.y - scaleY) > 1e-4)) frameTexture()
       }
       renderer.render(scene, camera)
       frame = requestAnimationFrame(tick)
@@ -307,39 +334,45 @@ export function TexturePreview({ assetId, environment = false, standalone = fals
       {!environment ? (
         <div className="tex-edit">
           <div className="tex-edit__row">
-            <button type="button" className={`tex-edit__icon${flipY ? ' is-on' : ''}`} title={t('preview.flipY')} aria-label={t('preview.flipY')} onClick={() => setFlipY(value => !value)}>
+            <button type="button" className={`tex-edit__icon${flipX ? ' is-on' : ''}`} title={t('preview.flipX')} aria-label={t('preview.flipX')} onClick={() => setFlipX(value => !value)}>
               <FlipVertical2 size={14} />
             </button>
+            <button type="button" className={`tex-edit__icon${flipY ? ' is-on' : ''}`} title={t('preview.flipY')} aria-label={t('preview.flipY')} onClick={() => setFlipY(value => !value)}>
+              <FlipHorizontal2 size={14} />
+            </button>
+            {normalMap && (
+              <button type="button" className={`tex-edit__text${flipNormalY ? ' is-on' : ''}`} title={t('preview.flipNormalY')} onClick={() => setFlipNormalY(value => !value)}>
+                {t('preview.flipNormalY')}
+              </button>
+            )}
             <label className="tex-edit__field">
               <span>{t('preview.width')}</span>
-              <input
-                type="number"
-                min={1}
-                max={8192}
-                value={outWidth || ''}
+              <select
+                value={outWidth || POT_SIZES[0]}
                 onChange={event => {
-                  const next = clampSize(Number(event.target.value))
+                  const next = Number(event.target.value)
                   setOutWidth(next)
-                  if (lockAspect) setOutHeight(scaledSize(next, sourceSizeRef.current.height, sourceSizeRef.current.width))
+                  if (lockAspect) setOutHeight(linkedPot(next, sourceSizeRef.current.height, sourceSizeRef.current.width))
                 }}
-              />
+              >
+                {POT_SIZES.map(size => <option key={size} value={size}>{size}</option>)}
+              </select>
             </label>
             <button type="button" className={`tex-edit__icon${lockAspect ? ' is-on' : ''}`} title={t('preview.lockAspect')} aria-label={t('preview.lockAspect')} onClick={() => setLockAspect(value => !value)}>
               {lockAspect ? <Link2 size={14} /> : <Unlink2 size={14} />}
             </button>
             <label className="tex-edit__field">
               <span>{t('preview.height')}</span>
-              <input
-                type="number"
-                min={1}
-                max={8192}
-                value={outHeight || ''}
+              <select
+                value={outHeight || POT_SIZES[0]}
                 onChange={event => {
-                  const next = clampSize(Number(event.target.value))
+                  const next = Number(event.target.value)
                   setOutHeight(next)
-                  if (lockAspect) setOutWidth(scaledSize(next, sourceSizeRef.current.width, sourceSizeRef.current.height))
+                  if (lockAspect) setOutWidth(linkedPot(next, sourceSizeRef.current.width, sourceSizeRef.current.height))
                 }}
-              />
+              >
+                {POT_SIZES.map(size => <option key={size} value={size}>{size}</option>)}
+              </select>
             </label>
             <span className="tex-edit__spacer" />
             {!standalone && <button type="button" className="tex-edit__ghost" onClick={() => popPreviewWindow('texture', assetId)}>{t('preview.popout')}</button>}

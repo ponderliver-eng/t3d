@@ -404,6 +404,10 @@ export interface HistoryEntry {
   afterSelection: string[]
   beforePicture: ScenePicture
   afterPicture: ScenePicture
+  /** 只改了材质资源，撤销时不动场景物体。 */
+  materialsOnly?: boolean
+  beforeMaterials?: Record<string, PbrSlot>
+  afterMaterials?: Record<string, PbrSlot>
 }
 
 export interface CameraRequest {

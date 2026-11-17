@@ -255,6 +255,8 @@ export interface EditorState {
   unpackPrefabInstance: (id: string) => void
   assignMap: (id: string, assetId: string) => void
   assignMaterial: (id: string, materialId: string) => void
+  /** 改材质资源上的贴图槽，并记入撤销。 */
+  commitMaterial: (id: string, patch: Partial<PbrSlot>, label: string) => void
   capabilities: Record<string, boolean>
   tags: import('../project/taxonomy').TagDefinition[]
   layers: import('../project/taxonomy').LayerDefinition[]
@@ -853,6 +855,14 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const past = get().past
     const entry = past[past.length - 1]
     if (!entry) return
+    if (entry.materialsOnly) {
+      set({
+        past: past.slice(0, -1),
+        future: [...get().future, entry],
+      })
+      restoreMaterials(entry.beforeMaterials)
+      return
+    }
     set({
       nodes: cloneNodes(entry.before),
       selection: entry.beforeSelection.filter(id => entry.before[id]),
@@ -860,6 +870,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       future: [...get().future, entry],
       picture: structuredClone(entry.beforePicture),
     })
+    restoreMaterials(entry.beforeMaterials)
   },
 
   redo: () => {
@@ -874,6 +885,14 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const future = get().future
     const entry = future[future.length - 1]
     if (!entry) return
+    if (entry.materialsOnly) {
+      set({
+        future: future.slice(0, -1),
+        past: [...get().past, entry],
+      })
+      restoreMaterials(entry.afterMaterials)
+      return
+    }
     set({
       nodes: cloneNodes(entry.after),
       selection: entry.afterSelection.filter(id => entry.after[id]),
@@ -881,6 +900,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       past: [...get().past, entry],
       picture: structuredClone(entry.afterPicture),
     })
+    restoreMaterials(entry.afterMaterials)
   },
 
   play: () => {
@@ -1179,6 +1199,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       physicsCollisionRowMasks: document.physicsCollisionRowMasks ?? {},
       activeSceneId: document.activeSceneId,
       prefabSession: null,
+      inspectedAssetId: typeof document.workspace?.inspectedAssetId === 'string' ? document.workspace.inspectedAssetId : null,
     })
     hydrateNavigation(document.navMeshes)
   },
@@ -1482,21 +1503,52 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   assignMap: (id, assetId) => {
     const node = get().nodes[id]
     if (!node) return
-    get().beginGesture('指定贴图')
+    const label = translate(assetId ? 'gesture.map' : 'gesture.mapClear')
     if (node.kind === 'model' && node.slots.length > 0) {
       const linked = node.slots[0].materialAssetId
-      if (linked) useAssetStore.getState().updateMaterial(linked, { mapAssetId: assetId })
-      else {
-        get().updateNode(id, {
-          slots: node.slots.map((slot, index) => index === 0 ? { ...slot, mapAssetId: assetId } : slot),
-        })
+      if (linked) {
+        get().commitMaterial(linked, { mapAssetId: assetId }, label)
+        return
       }
-    } else if (node.materialAssetId) {
-      useAssetStore.getState().updateMaterial(node.materialAssetId, { mapAssetId: assetId })
-    } else {
-      get().updateNode(id, { mapAssetId: assetId })
+      get().beginGesture(label)
+      get().updateNode(id, {
+        slots: node.slots.map((slot, index) => index === 0 ? { ...slot, mapAssetId: assetId } : slot),
+      })
+      get().endGesture()
+      return
     }
+    if (node.materialAssetId) {
+      get().commitMaterial(node.materialAssetId, { mapAssetId: assetId }, label)
+      return
+    }
+    get().beginGesture(label)
+    get().updateNode(id, { mapAssetId: assetId })
     get().endGesture()
+  },
+
+  commitMaterial: (id, patch, label) => {
+    const asset = useAssetStore.getState().assets[id]
+    if (!asset || asset.kind !== 'material') return
+    const beforeSlot = structuredClone(asset.slot)
+    const afterSlot = { ...beforeSlot, ...patch }
+    if (sameJson(beforeSlot, afterSlot)) return
+    if (get().gesture) get().endGesture()
+    useAssetStore.getState().replaceMaterial(id, afterSlot)
+    const nodes = cloneNodes(get().nodes)
+    const selection = get().selection.slice()
+    const picture = structuredClone(get().picture)
+    pushHistory(set, {
+      label,
+      before: nodes,
+      after: cloneNodes(nodes),
+      beforeSelection: selection,
+      afterSelection: selection.slice(),
+      beforePicture: picture,
+      afterPicture: picture,
+      materialsOnly: true,
+      beforeMaterials: { [id]: beforeSlot },
+      afterMaterials: { [id]: structuredClone(afterSlot) },
+    })
   },
 
   assignMaterial: (id, materialId) => {
@@ -1588,6 +1640,13 @@ function mutate(
     afterPicture: picture,
   })
   return true
+}
+
+function restoreMaterials(slots: Record<string, PbrSlot> | undefined) {
+  if (!slots) return
+  for (const [id, slot] of Object.entries(slots)) {
+    useAssetStore.getState().replaceMaterial(id, structuredClone(slot))
+  }
 }
 
 function lookupPrefab(assetId: string) {

@@ -347,9 +347,16 @@ function assignMap(
   }
   if (!assetId) {
     const fallback = ((material.userData as Record<string, unknown>)[`embedded_${key}`] ?? null) as MeshStandardMaterial[typeof key]
-    if (target[key] !== fallback) target[key] = fallback
+    if (target[key] !== fallback) {
+      target[key] = fallback
+      material.needsUpdate = true
+    }
     return
   }
   const texture = unityMetallicGloss ? unityMetallicRoughnessTextureFor(assetId) : textureFor(assetId, colorMap)
-  if (texture && target[key] !== texture) target[key] = texture
+  // 当外部贴图尚在异步加载中时，先置为 null，不要继续保留 GLB 内嵌（方向相反）的临时贴图
+  if (target[key] !== texture) {
+    target[key] = texture
+    material.needsUpdate = true
+  }
 }

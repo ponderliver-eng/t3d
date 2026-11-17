@@ -388,7 +388,7 @@ function AssetSettings({ asset }: { asset: import('../assets/library').ProjectAs
       </header>
       {asset.kind === 'material' && (
         <Card id="material" title={t('inspector.material')} color="#ab47bc">
-          <MaterialEditor slot={normalizeSlot(asset.slot)} onChange={patch => useAssetStore.getState().updateMaterial(asset.id, patch)} />
+          <MaterialEditor slot={normalizeSlot(asset.slot)} onChange={patch => applyMaterialPatch(asset.id, patch)} />
         </Card>
       )}
       {asset.kind === 'effect' && (
@@ -1019,20 +1019,41 @@ function setSlotLink(nodeId: string, slotIndex: number | null, materialId: strin
   useEditorStore.getState().updateNode(nodeId, { materialAssetId: materialId })
 }
 
+const MAP_KEYS = new Set(['mapAssetId', 'normalAssetId', 'metallicRoughnessAssetId', 'roughnessAssetId', 'metalnessAssetId', 'emissiveAssetId', 'aoAssetId'])
+
+function isMapPatch(patch: Partial<PbrSlot>): boolean {
+  const keys = Object.keys(patch)
+  return keys.length > 0 && keys.every(key => MAP_KEYS.has(key))
+}
+
+function mapLabel(patch: Partial<PbrSlot>): string {
+  const clearing = Object.values(patch).every(value => value == null)
+  return translate(clearing ? 'gesture.mapClear' : 'gesture.map')
+}
+
+function applyMaterialPatch(id: string, patch: Partial<PbrSlot>) {
+  if (isMapPatch(patch)) {
+    useEditorStore.getState().commitMaterial(id, patch, mapLabel(patch))
+    return
+  }
+  useAssetStore.getState().updateMaterial(id, patch)
+}
+
 function writeSlot(nodeId: string, slotIndex: number | null, linked: string | null, patch: Partial<PbrSlot>) {
   if (linked) {
-    useAssetStore.getState().updateMaterial(linked, patch)
+    applyMaterialPatch(linked, patch)
     return
   }
   const node = useEditorStore.getState().nodes[nodeId]
   if (!node) return
-  if (node.kind === 'model' && slotIndex != null) {
-    useEditorStore.getState().updateNode(nodeId, {
-      slots: node.slots.map((item, index) => index === slotIndex ? { ...item, ...patch } : item),
-    })
+  const next = node.kind === 'model' && slotIndex != null
+    ? { slots: node.slots.map((item, index) => index === slotIndex ? { ...item, ...patch } : item) }
+    : patch
+  if (isMapPatch(patch)) {
+    commitNode(nodeId, mapLabel(patch), next)
     return
   }
-  useEditorStore.getState().updateNode(nodeId, patch)
+  useEditorStore.getState().updateNode(nodeId, next)
 }
 
 function onSlotDragOver(event: DragEvent, index: number, setDropSlot: (index: number | null) => void) {

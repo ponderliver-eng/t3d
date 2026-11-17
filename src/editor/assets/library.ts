@@ -22,6 +22,7 @@ export interface FileAsset {
   /** 导入时乘在模型根上，不写进场景物体的缩放。 */
   importScale?: number
   sockets?: ModelSocket[]
+  materialHint?: import('./models').ModelMaterialHint
 }
 
 export interface ModelSocket {
@@ -78,6 +79,8 @@ interface AssetState {
   folders: string[]
   assetDirs: Record<string, string>
   browseDir: string
+  /** 资源树里展开的目录。 */
+  expanded: Record<string, boolean>
   revision: number
   add: (asset: ProjectAsset) => void
   remove: (id: string) => void
@@ -85,12 +88,20 @@ interface AssetState {
   patch: (id: string, patch: Partial<FileAsset>) => void
   writeScene: (id: string, nodes: Record<string, SceneNode>, picture: ScenePicture, editorView?: EditorView | null) => void
   updateMaterial: (id: string, slot: Partial<PbrSlot>) => void
+  replaceMaterial: (id: string, slot: PbrSlot) => void
   updateEffect: (id: string, patch: { simulation?: unknown, materialAssetId?: string | null }) => void
   updateUi: (id: string, document: UiDocument) => void
   bump: () => void
   loadCatalog: (folders: string[], assetDirs: Record<string, string>) => void
-  loadSession: (assets: Record<string, ProjectAsset>, folders: string[], assetDirs: Record<string, string>) => void
+  loadSession: (
+    assets: Record<string, ProjectAsset>,
+    folders: string[],
+    assetDirs: Record<string, string>,
+    browseDir?: string,
+    expanded?: Record<string, boolean>,
+  ) => void
   setBrowseDir: (dir: string) => void
+  setExpanded: (expanded: Record<string, boolean>) => void
   place: (id: string, dir?: string) => void
   writePrefab: (id: string, rootId: string, nodes: Record<string, SceneNode>) => void
   createFolder: (parent?: string) => string
@@ -107,6 +118,7 @@ export const useAssetStore = create<AssetState>((set, get) => ({
   folders: [],
   assetDirs: {},
   browseDir: ASSETS_ROOT,
+  expanded: { [ASSETS_ROOT]: true },
   revision: 0,
   add: asset => set(state => ({ assets: { ...state.assets, [asset.id]: asset }, revision: state.revision + 1 })),
   remove: id => set(state => {
@@ -142,6 +154,12 @@ export const useAssetStore = create<AssetState>((set, get) => ({
     if (!asset || asset.kind !== 'material') return {}
     return { assets: { ...state.assets, [id]: { ...asset, slot: { ...asset.slot, ...slot } } }, revision: state.revision + 1 }
   }),
+  replaceMaterial: (id, slot) => set(state => {
+    const asset = state.assets[id]
+    if (!asset || asset.kind !== 'material') return {}
+    if (JSON.stringify(asset.slot) === JSON.stringify(slot)) return {}
+    return { assets: { ...state.assets, [id]: { ...asset, slot } }, revision: state.revision + 1 }
+  }),
   updateEffect: (id, patch) => set(state => {
     const asset = state.assets[id]
     if (!asset || asset.kind !== 'effect') return {}
@@ -157,14 +175,16 @@ export const useAssetStore = create<AssetState>((set, get) => ({
     folders: [...new Set(folders.map(normalizeDir).filter(path => path !== ASSETS_ROOT))],
     assetDirs: Object.fromEntries(Object.entries(assetDirs).map(([id, dir]) => [id, normalizeDir(dir)])),
   }),
-  loadSession: (assets, folders, assetDirs) => set(state => ({
+  loadSession: (assets, folders, assetDirs, browseDir, expanded) => set(state => ({
     assets,
     folders: [...new Set(folders.map(normalizeDir).filter(path => path !== ASSETS_ROOT))],
     assetDirs: Object.fromEntries(Object.entries(assetDirs).map(([id, dir]) => [id, normalizeDir(dir)])),
-    browseDir: ASSETS_ROOT,
+    browseDir: normalizeDir(browseDir || ASSETS_ROOT),
+    expanded: expanded ?? { [ASSETS_ROOT]: true },
     revision: state.revision + 1,
   })),
   setBrowseDir: dir => set({ browseDir: normalizeDir(dir) }),
+  setExpanded: expanded => set({ expanded }),
   writePrefab: (id, rootId, nodes) => set(state => {
     const asset = state.assets[id]
     if (!asset || asset.kind !== 'prefab') return {}
@@ -193,10 +213,13 @@ export const useAssetStore = create<AssetState>((set, get) => ({
     if (next === source) return
     const state = get()
     if (directoryExists(next, state.folders, state.assetDirs)) return
+    const expanded: Record<string, boolean> = {}
+    for (const [dir, open] of Object.entries(state.expanded)) expanded[relocateDir(dir, source, next)] = open
     set({
       folders: [...new Set(state.folders.map(folder => relocateDir(folder, source, next)).filter(folder => folder !== ASSETS_ROOT))],
       assetDirs: Object.fromEntries(Object.entries(state.assetDirs).map(([id, dir]) => [id, relocateDir(dir, source, next)])),
       browseDir: relocateDir(state.browseDir, source, next),
+      expanded,
       revision: state.revision + 1,
     })
   },
@@ -207,12 +230,17 @@ export const useAssetStore = create<AssetState>((set, get) => ({
     const state = get()
     const remains = Object.keys(state.assets).some(id => isWithin(assetDirectory(id, state.assetDirs), source))
     if (remains) return
+    const expanded = { ...state.expanded }
+    for (const dir of Object.keys(expanded)) {
+      if (dir === source || dir.startsWith(`${source}/`)) delete expanded[dir]
+    }
     set({
       folders: state.folders.filter(folder => {
         const dir = normalizeDir(folder)
         return dir !== source && !dir.startsWith(`${source}/`)
       }),
       browseDir: isWithin(state.browseDir, source) ? parent : state.browseDir,
+      expanded,
       revision: state.revision + 1,
     })
   },

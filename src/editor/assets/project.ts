@@ -19,7 +19,8 @@ import { useEditorStore } from '../scene/store'
 import { translate } from '../i18n'
 import { usePrefsStore } from '../prefs/store'
 import { readPrefab } from './prefab'
-import type { ProjectDocument } from '../scene/document'
+import type { ProjectDocument, ProjectWorkspace } from '../scene/document'
+import { restoreInspectorEntries, snapshotInspectorEntries, useInspectorMemory } from '../panels/inspectorMemory'
 import { normalizeCapabilities } from '../../capabilities/registry'
 import { ALL_LAYERS_VISIBLE_MASK, ensureLayers, ensureTags } from '../project/taxonomy'
 import { normalizePicture, type SceneNode } from '../scene/types'
@@ -89,6 +90,7 @@ export function bindProjectAutosave() {
   bindDirectoryLayout()
   useEditorStore.subscribe(scheduleSave)
   useAssetStore.subscribe(scheduleSave)
+  useInspectorMemory.subscribe(scheduleSave)
   window.addEventListener('beforeunload', () => { void saveProjectNow() })
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden') void saveProjectNow()
@@ -208,6 +210,7 @@ export async function saveProjectNow() {
     physicsCollisionMatrixEnabled: editor.physicsCollisionMatrixEnabled,
     physicsCollisionRowMasks: editor.physicsCollisionRowMasks,
     navMeshes: serializeNavMeshes(),
+    workspace: currentWorkspace(),
   }
   await writeSceneDocument(document)
 }
@@ -379,6 +382,11 @@ async function openNow() {
     for (const record of document.library) {
       if (!useAssetStore.getState().assets[record.id]) useAssetStore.getState().add(record)
     }
+    const placed = applyWorkspace(document)
+    if (placed) {
+      useAssetStore.getState().setBrowseDir(placed.browseDir)
+      useAssetStore.getState().setExpanded(placed.expanded)
+    }
     useEditorStore.getState().loadDocument(document)
   }
   useEditorStore.getState().ensureSceneAsset()
@@ -467,6 +475,7 @@ async function materialize(meta: AssetMeta, readBytesNow = true): Promise<FileAs
     ...(meta.clipCatalog?.length ? { clipCatalog: meta.clipCatalog } : {}),
     ...(typeof meta.importScale === 'number' ? { importScale: meta.importScale } : {}),
     ...(meta.sockets?.length ? { sockets: meta.sockets } : {}),
+    ...(meta.materialHint ? { materialHint: meta.materialHint } : {}),
   }
   if (!readBytesNow) return asset
   if ((meta.kind === 'model' || meta.kind === 'animation') && meta.artifactReady) return asset
@@ -604,7 +613,14 @@ function replaceSession(document: ProjectDocument) {
   }
   const assets: Record<string, MaterialAsset | PrefabAsset | SceneAsset | EffectAsset | UiAsset> = {}
   for (const record of document.library) assets[record.id] = record
-  useAssetStore.getState().loadSession(assets, document.folders ?? [], document.assetDirs ?? {})
+  const placed = applyWorkspace(document)
+  useAssetStore.getState().loadSession(
+    assets,
+    document.folders ?? [],
+    document.assetDirs ?? {},
+    placed?.browseDir,
+    placed?.expanded,
+  )
   useEditorStore.getState().loadDocument(document)
 }
 
@@ -692,6 +708,7 @@ function metaForSource(file: CachedFile, artifactReady: boolean): AssetMeta {
     ...(asset.clipCatalog !== undefined ? { clipCatalog: asset.clipCatalog } : {}),
     ...(typeof asset.importScale === 'number' ? { importScale: asset.importScale } : {}),
     ...(asset.sockets !== undefined ? { sockets: asset.sockets } : {}),
+    ...(asset.materialHint ? { materialHint: asset.materialHint } : {}),
   }
 }
 
@@ -817,6 +834,71 @@ function validDocument(document: ProjectDocument | null): ProjectDocument | null
     editorCullingMask: typeof document.editorCullingMask === 'number' ? document.editorCullingMask >>> 0 : ALL_LAYERS_VISIBLE_MASK,
     physicsCollisionMatrixEnabled: document.physicsCollisionMatrixEnabled === true,
     physicsCollisionRowMasks: document.physicsCollisionRowMasks ?? {},
+    workspace: document.workspace ? cleanWorkspace(document.workspace) : undefined,
+  }
+}
+
+let projectSessionLive = false
+
+function currentWorkspace(): ProjectWorkspace {
+  const catalog = useAssetStore.getState()
+  return {
+    assetExpanded: Object.entries(catalog.expanded).filter(([, open]) => open).map(([path]) => path),
+    assetBrowseDir: catalog.browseDir,
+    inspectedAssetId: useEditorStore.getState().inspectedAssetId,
+    inspector: snapshotInspectorEntries(),
+  }
+}
+
+function cleanWorkspace(value: ProjectWorkspace): ProjectWorkspace {
+  const assetExpanded = Array.isArray(value.assetExpanded) ? value.assetExpanded.filter(item => typeof item === 'string') : []
+  const inspector: NonNullable<ProjectWorkspace['inspector']> = {}
+  if (value.inspector && typeof value.inspector === 'object') {
+    for (const [subject, entry] of Object.entries(value.inspector)) {
+      if (!entry || typeof entry !== 'object' || typeof entry.scroll !== 'number' || !Number.isFinite(entry.scroll)) continue
+      const open: Record<string, boolean> = {}
+      if (entry.open && typeof entry.open === 'object') {
+        for (const [card, flag] of Object.entries(entry.open)) {
+          if (typeof flag === 'boolean') open[card] = flag
+        }
+      }
+      inspector[subject] = {
+        scroll: Math.max(0, entry.scroll),
+        open,
+        slot: typeof entry.slot === 'number' ? entry.slot : null,
+      }
+    }
+  }
+  return {
+    assetExpanded,
+    assetBrowseDir: typeof value.assetBrowseDir === 'string' ? normalizeDir(value.assetBrowseDir) : ASSETS_ROOT,
+    inspectedAssetId: typeof value.inspectedAssetId === 'string' ? value.inspectedAssetId : null,
+    inspector,
+  }
+}
+
+function expandedRecord(paths: string[]): Record<string, boolean> {
+  const expanded: Record<string, boolean> = {}
+  for (const path of paths) {
+    if (path.trim()) expanded[normalizeDir(path)] = true
+  }
+  if (Object.keys(expanded).length === 0) expanded[ASSETS_ROOT] = true
+  return expanded
+}
+
+/** 有存档就恢复；第一次打开旧工程先留着本机滚动，换工程则清空，避免串到别的工程。 */
+function applyWorkspace(document: ProjectDocument): { browseDir: string, expanded: Record<string, boolean> } | null {
+  const fresh = !projectSessionLive
+  projectSessionLive = true
+  if (!document.workspace) {
+    if (!fresh) restoreInspectorEntries({})
+    return null
+  }
+  const workspace = cleanWorkspace(document.workspace)
+  restoreInspectorEntries(workspace.inspector)
+  return {
+    browseDir: workspace.assetBrowseDir || ASSETS_ROOT,
+    expanded: expandedRecord(workspace.assetExpanded ?? []),
   }
 }
 

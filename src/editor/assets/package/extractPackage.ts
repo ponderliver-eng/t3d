@@ -257,6 +257,7 @@ function buildModelMaterialHint(
 ): ModelMaterialHint | undefined {
   const byName: Record<string, string> = Object.fromEntries(nameToMaterial)
   const bySlotIndex: Record<number, string> = {}
+  const sourceBindings: NonNullable<ModelMaterialHint['sourceBindings']> = []
 
   // 1. 解析模型自身 .meta 中的 externalObjects（UnityEngine:Material 名称 -> 材质 GUID）
   if (entry.metaBytes) {
@@ -270,31 +271,68 @@ function buildModelMaterialHint(
     }
   }
 
-  // 2. 解析包内 .prefab / .unity 中引用该模型 GUID 的 Renderer.m_Materials 槽位绑定
+  // 2. 对齐 GM3D：解析模型 .meta 的 fileIDToRecycleName / internalIDToNameTable，
+  //    并结合包内 .prefab / .unity 的 Renderer.m_Mesh(fileID) + m_Materials 建立部位级与槽位级材质映射
   const modelGuid = guidOf(entry.metaBytes)
+  const meshNameByFileId = parseModelMeshNamesByFileId(entry.metaBytes)
   if (modelGuid && sources?.length) {
-    let bestScore = -1
-    let bestGuids: string[] = []
+    const candidates: Array<{
+      score: number
+      bindings: Array<{ slotIndex: number; materialId: string; sourceMeshFileId?: string; sourceMeshName?: string }>
+    }> = []
     for (const source of sources) {
       const text = new TextDecoder().decode(source.assetBytes)
-      for (const renderer of parseRendererMaterials(text)) {
+      const renderers = parseRendererMaterials(text)
+      const bindings: Array<{ slotIndex: number; materialId: string; sourceMeshFileId?: string; sourceMeshName?: string }> = []
+      for (const renderer of renderers) {
         if (renderer.meshGuid && renderer.meshGuid !== modelGuid) continue
-        if (renderer.materialGuids.length === 0) continue
-        const score = bindingScore(entry.originalPath, source.originalPath) + (renderer.meshGuid === modelGuid ? 200 : 0)
-        if (score > bestScore || (score === bestScore && renderer.materialGuids.length > bestGuids.length)) {
-          bestScore = score
-          bestGuids = renderer.materialGuids
+        if (renderer.goName && renderer.materialGuids.length === 1) {
+          const matId = guidToMaterial.get(renderer.materialGuids[0]!.toLowerCase())
+          const goKey = normalizeMaterialKey(renderer.goName)
+          if (matId && goKey && !byName[goKey]) byName[goKey] = matId
         }
+        renderer.materialGuids.forEach((guid, slotIndex) => {
+          const matId = guidToMaterial.get(guid.toLowerCase())
+          if (!matId) return
+          const sourceMeshName = (renderer.meshFileId ? meshNameByFileId.get(renderer.meshFileId) : undefined) ?? renderer.goName
+          bindings.push({
+            slotIndex,
+            materialId: matId,
+            ...(renderer.meshFileId ? { sourceMeshFileId: renderer.meshFileId } : {}),
+            ...(sourceMeshName ? { sourceMeshName } : {}),
+          })
+        })
+      }
+      if (bindings.length > 0) {
+        candidates.push({
+          score: bindingScore(entry.originalPath, source.originalPath),
+          bindings,
+        })
       }
     }
-    bestGuids.forEach((guid, index) => {
-      const matId = guidToMaterial.get(guid.toLowerCase())
-      if (matId) bySlotIndex[index] = matId
-    })
+    candidates.sort((a, b) => b.score - a.score || b.bindings.length - a.bindings.length)
+    const best = candidates[0]?.bindings ?? []
+    sourceBindings.push(...best)
+    for (const item of best) {
+      if (item.sourceMeshName) {
+        const key = normalizeMaterialKey(item.sourceMeshName)
+        if (key && !byName[key]) byName[key] = item.materialId
+      }
+    }
+    // 只有当某个 slotIndex 在所有部位中唯一对应同一个材质时才写入全局 bySlotIndex（与 GM3D uniqueMaterialGuidBySlot 一致）
+    const bySlotSet = new Map<number, Set<string>>()
+    for (const item of best) {
+      const set = bySlotSet.get(item.slotIndex) ?? new Set<string>()
+      set.add(item.materialId)
+      bySlotSet.set(item.slotIndex, set)
+    }
+    for (const [slotIndex, set] of bySlotSet) {
+      if (set.size === 1) bySlotIndex[slotIndex] = [...set][0]!
+    }
   }
 
-  if (Object.keys(byName).length === 0 && Object.keys(bySlotIndex).length === 0) return undefined
-  return { byName, bySlotIndex }
+  if (Object.keys(byName).length === 0 && Object.keys(bySlotIndex).length === 0 && sourceBindings.length === 0) return undefined
+  return { byName, bySlotIndex, ...(sourceBindings.length ? { sourceBindings } : {}) }
 }
 
 function parseMetaExternalMaterialObjects(text: string): Array<{ name: string; materialGuid: string }> {
@@ -306,36 +344,83 @@ function parseMetaExternalMaterialObjects(text: string): Array<{ name: string; m
     const end = starts[i + 1] ?? text.length
     const block = text.slice(start, end)
     if (!/^\s*type:\s*UnityEngine:Material\s*$/m.test(block)) continue
-    const name = /^\s*name:\s*(.+?)\s*$/m.exec(block)?.[1]?.trim()
+    const rawName = /^\s*name:\s*(.+?)\s*$/m.exec(block)?.[1]?.trim()
+    const name = rawName?.replace(/^['"]|['"]$/g, '')
     const materialGuid = /\bsecond:\s*\{[^}]*\bguid:\s*([0-9a-fA-F]{8,32})\b[^}]*\}/m.exec(block)?.[1]
     if (name && materialGuid) out.push({ name, materialGuid: materialGuid.toLowerCase() })
   }
   return out
 }
 
-function parseRendererMaterials(text: string): Array<{ meshGuid?: string; materialGuids: string[] }> {
+function parseRendererMaterials(text: string): Array<{ goName?: string; meshGuid?: string; meshFileId?: string; materialGuids: string[] }> {
   const blocks = text.split(/\n---\s*!u!/)
   const meshGuidByGo = new Map<string, string>()
-  const parsed: Array<{ className: string; goId?: string; meshGuid?: string; materialGuids: string[] }> = []
+  const meshFileIdByGo = new Map<string, string>()
+  const nameByGo = new Map<string, string>()
+  const parsed: Array<{ className: string; goId?: string; meshGuid?: string; meshFileId?: string; materialGuids: string[] }> = []
 
   for (const block of blocks) {
+    const goIdMatch = /^\s*(?:\d+\s+)?&(-?\d+)\s*\r?\n\s*GameObject:\s*$/m.exec(block)
+    if (goIdMatch?.[1]) {
+      const goName = /^\s*m_Name:\s*(.+?)\s*$/m.exec(block)?.[1]?.trim().replace(/^['"]|['"]$/g, '')
+      if (goName) nameByGo.set(goIdMatch[1], goName)
+      continue
+    }
     const className = /^\s*(?:\d+\s+&?\d+\s*)?\r?\n?\s*([A-Za-z_][\w]*):\s*$/m.exec(block)?.[1]
     if (!className) continue
     const goId = /^\s*m_GameObject:\s*\{[^}]*\bfileID:\s*(-?\d+)\b[^}]*\}/m.exec(block)?.[1]
     const meshGuid = /^\s*m_Mesh:\s*\{[^}]*\bguid:\s*([0-9a-fA-F]{8,32})\b[^}]*\}/m.exec(block)?.[1]?.toLowerCase()
-    if (className === 'MeshFilter' && goId && meshGuid) {
-      meshGuidByGo.set(goId, meshGuid)
+    const meshFileId = /^\s*m_Mesh:\s*\{[^}]*\bfileID:\s*(-?\d+)\b[^}]*\}/m.exec(block)?.[1]
+    if (className === 'MeshFilter' && goId) {
+      if (meshGuid) meshGuidByGo.set(goId, meshGuid)
+      if (meshFileId) meshFileIdByGo.set(goId, meshFileId)
     }
     if (className === 'MeshRenderer' || className === 'SkinnedMeshRenderer') {
       const materialGuids = parseMaterialGuidList(block)
-      parsed.push({ className, goId, meshGuid, materialGuids })
+      parsed.push({ className, goId, meshGuid, meshFileId, materialGuids })
     }
   }
 
   return parsed.map(item => ({
+    goName: item.goId ? nameByGo.get(item.goId) : undefined,
     meshGuid: item.meshGuid ?? (item.goId ? meshGuidByGo.get(item.goId) : undefined),
+    meshFileId: item.meshFileId ?? (item.goId ? meshFileIdByGo.get(item.goId) : undefined),
     materialGuids: item.materialGuids,
   }))
+}
+
+function parseModelMeshNamesByFileId(metaBytes: Uint8Array | undefined): Map<string, string> {
+  const out = new Map<string, string>()
+  if (!metaBytes) return out
+  const text = new TextDecoder().decode(metaBytes)
+  const recycleStart = text.search(/^\s*fileIDToRecycleName:\s*$/m)
+  if (recycleStart >= 0) {
+    const lines = text.slice(recycleStart).split(/\r?\n/)
+    for (let i = 1; i < lines.length; i += 1) {
+      const line = lines[i] ?? ''
+      if (/^\S/.test(line)) break
+      const match = /^\s*([+-]?\d+):\s*(.+?)\s*$/.exec(line)
+      if (match?.[1] && match[2]?.trim()) out.set(match[1], match[2].trim().replace(/^['"]|['"]$/g, ''))
+    }
+  }
+  const tableStart = text.search(/^\s*internalIDToNameTable:\s*$/m)
+  if (tableStart >= 0) {
+    const lines = text.slice(tableStart).split(/\r?\n/)
+    for (let i = 1; i < lines.length; i += 1) {
+      const line = lines[i] ?? ''
+      if (/^\S/.test(line)) break
+      const id = /^\s*-?\s*first:\s*([+-]?\d+)\s*$/.exec(line)?.[1]
+      if (!id) continue
+      for (let j = i + 1; j < Math.min(lines.length, i + 5); j += 1) {
+        const name = /^\s*second:\s*(.+?)\s*$/.exec(lines[j] ?? '')?.[1]?.trim().replace(/^['"]|['"]$/g, '')
+        if (name) {
+          out.set(id, name)
+          break
+        }
+      }
+    }
+  }
+  return out
 }
 
 function parseMaterialGuidList(block: string): string[] {

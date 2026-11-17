@@ -286,14 +286,15 @@ function syncReimportedModelNodes(assetId: string, templateSlots: PbrSlot[], cli
       patch.slots = templateSlots.map(fresh => {
         const prev = existingByName.get(fresh.name)
         if (!prev) return fresh
+        const materialAssetId = fresh.materialAssetId ?? prev.materialAssetId
         return {
           ...fresh,
-          ...(prev.materialAssetId ? { materialAssetId: prev.materialAssetId } : {}),
-          mapAssetId: prev.mapAssetId ?? fresh.mapAssetId,
-          normalAssetId: prev.normalAssetId ?? fresh.normalAssetId,
-          metallicRoughnessAssetId: prev.metallicRoughnessAssetId ?? fresh.metallicRoughnessAssetId,
-          emissiveAssetId: prev.emissiveAssetId ?? fresh.emissiveAssetId,
-          aoAssetId: prev.aoAssetId ?? fresh.aoAssetId,
+          ...(materialAssetId ? { materialAssetId } : {}),
+          mapAssetId: fresh.mapAssetId ?? prev.mapAssetId,
+          normalAssetId: fresh.normalAssetId ?? prev.normalAssetId,
+          metallicRoughnessAssetId: fresh.metallicRoughnessAssetId ?? prev.metallicRoughnessAssetId,
+          emissiveAssetId: fresh.emissiveAssetId ?? prev.emissiveAssetId,
+          aoAssetId: fresh.aoAssetId ?? prev.aoAssetId,
         }
       })
     }

@@ -397,10 +397,9 @@
   letter-spacing: 0.06em;
 }
 
-.tex-edit__field input {
-  width: 68px;
+.tex-edit__field select {
   height: 24px;
-  padding: 0 8px 0 0;
+  padding: 0 6px 0 0;
   border: none;
   background: transparent;
   color: #e8eaed;
@@ -408,6 +407,7 @@
 }
 
 .tex-edit__icon,
+.tex-edit__text,
 .tex-edit__ghost,
 .tex-edit__save {
   height: 26px;
@@ -425,8 +425,18 @@
   color: #c5ced8;
 }
 
-.tex-edit__icon:hover { color: #fff; border-color: #4c5664; }
-.tex-edit__icon.is-on { color: #fff; border-color: var(--accent, #4a9eff); background: rgba(74, 158, 255, 0.18); }
+.tex-edit__icon:hover,
+.tex-edit__text:hover { color: #fff; border-color: #4c5664; }
+.tex-edit__icon.is-on,
+.tex-edit__text.is-on { color: #fff; border-color: var(--accent, #4a9eff); background: rgba(74, 158, 255, 0.18); }
+
+.tex-edit__text {
+  padding: 0 8px;
+  border: 1px solid #343b46;
+  background: #14181e;
+  color: #c5ced8;
+  white-space: nowrap;
+}
 
 .tex-edit__ghost {
   padding: 0 8px;

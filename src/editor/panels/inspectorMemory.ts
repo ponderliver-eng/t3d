@@ -33,6 +33,8 @@ export interface PartFlashRequest {
 
 interface InspectorMemoryState {
   entries: Record<string, InspectorEntry>
+  /** 工程恢复滚动后加一，让已经打开的面板重新对准。 */
+  scrollEpoch: number
   materialFocus: MaterialSlotFocus | null
   subSelection: SubSelection | null
   partFlashRequest: PartFlashRequest | null
@@ -77,6 +79,7 @@ window.addEventListener('pagehide', () => {
 
 export const useInspectorMemory = create<InspectorMemoryState>(set => ({
   entries: load(),
+  scrollEpoch: 0,
   materialFocus: null,
   subSelection: null,
   partFlashRequest: null,
@@ -182,13 +185,46 @@ useEditorStore.subscribe(state => {
 
 export const InspectorSubject = createContext('inspector')
 
+export function snapshotInspectorEntries(): Record<string, InspectorEntry> {
+  const saved: Record<string, InspectorEntry> = {}
+  for (const [subject, entry] of Object.entries(useInspectorMemory.getState().entries)) {
+    const open = entry.open ?? {}
+    if (entry.scroll <= 1 && entry.slot == null && Object.keys(open).length === 0) continue
+    saved[subject] = { scroll: Math.round(entry.scroll), open: { ...open }, slot: entry.slot ?? null }
+  }
+  return saved
+}
+
+export function restoreInspectorEntries(saved: Record<string, { scroll?: number, open?: Record<string, boolean>, slot?: number | null }> | undefined) {
+  const entries: Record<string, InspectorEntry> = {}
+  for (const [subject, entry] of Object.entries(saved ?? {})) {
+    if (!entry || typeof entry !== 'object') continue
+    const scroll = typeof entry.scroll === 'number' && Number.isFinite(entry.scroll) ? Math.max(0, entry.scroll) : 0
+    const open: Record<string, boolean> = {}
+    if (entry.open && typeof entry.open === 'object') {
+      for (const [card, value] of Object.entries(entry.open)) {
+        if (typeof value === 'boolean') open[card] = value
+      }
+    }
+    entries[subject] = { scroll, open, slot: typeof entry.slot === 'number' ? entry.slot : null }
+  }
+  schedulePersist(entries)
+  useInspectorMemory.setState(state => ({ entries, scrollEpoch: state.scrollEpoch + 1 }))
+}
+
 export function InspectorFrame({ subject, children }: { subject: string, children: ReactNode }) {
   const ref = useRef<HTMLDivElement>(null)
+  const scrollEpoch = useInspectorMemory(state => state.scrollEpoch)
   useLayoutEffect(() => {
     const el = ref.current
     if (!el) return
-    el.scrollTop = useInspectorMemory.getState().entries[subject]?.scroll ?? 0
-  }, [subject])
+    const apply = () => {
+      el.scrollTop = useInspectorMemory.getState().entries[subject]?.scroll ?? 0
+    }
+    apply()
+    const frame = requestAnimationFrame(apply)
+    return () => cancelAnimationFrame(frame)
+  }, [subject, scrollEpoch])
   return createElement(
     InspectorSubject.Provider,
     { value: subject },

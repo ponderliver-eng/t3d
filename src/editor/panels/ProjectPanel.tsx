@@ -68,7 +68,7 @@ export default function ProjectPanel() {
   const [menu, setMenu] = useState<BrowseMenu | null>(null)
   const [renameId, setRenameId] = useState<string | null>(null)
   const [renamePath, setRenamePath] = useState<string | null>(null)
-  const [expanded, setExpanded] = useState<Record<string, boolean>>({ [ASSETS_ROOT]: true })
+  const expanded = useAssetStore(state => state.expanded)
   const [over, setOver] = useState(false)
   const [dropPath, setDropPath] = useState<string | null>(null)
   const [clipOpen, setClipOpen] = useState<Record<string, boolean>>({})
@@ -117,19 +117,18 @@ export default function ProjectPanel() {
   }, [assets, assetDirs, browseDir, pill, q, referenced, tree])
 
   useEffect(() => {
-    setExpanded(current => {
-      const next = { ...current }
-      let cursor: string | null = browseDir
-      let changed = false
-      while (cursor) {
-        if (!next[cursor]) {
-          next[cursor] = true
-          changed = true
-        }
-        cursor = parentDir(cursor)
+    const current = useAssetStore.getState().expanded
+    const next = { ...current }
+    let cursor: string | null = browseDir
+    let changed = false
+    while (cursor) {
+      if (!next[cursor]) {
+        next[cursor] = true
+        changed = true
       }
-      return changed ? next : current
-    })
+      cursor = parentDir(cursor)
+    }
+    if (changed) useAssetStore.getState().setExpanded(next)
   }, [browseDir])
 
   useEffect(() => {
@@ -262,7 +261,10 @@ export default function ProjectPanel() {
           expanded={expanded}
           renamePath={renamePath}
           dropPath={dropPath}
-          onToggle={path => setExpanded(current => ({ ...current, [path]: !current[path] }))}
+          onToggle={path => {
+            const current = useAssetStore.getState().expanded
+            useAssetStore.getState().setExpanded({ ...current, [path]: !current[path] })
+          }}
           onOpen={path => {
             useAssetStore.getState().setBrowseDir(path)
             useEditorStore.getState().inspectAsset(null)

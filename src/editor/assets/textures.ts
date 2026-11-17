@@ -318,6 +318,7 @@ function loadSvgTexture(assetId: string, url: string): Promise<void> {
       context.drawImage(image, 0, 0, size, size)
       const texture = new CanvasTexture(canvas)
       texture.colorSpace = SRGBColorSpace
+      texture.flipY = false
       texture.needsUpdate = true
       images.set(assetId, texture)
       linearImages.delete(assetId)
