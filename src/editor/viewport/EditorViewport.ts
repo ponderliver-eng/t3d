@@ -294,12 +294,21 @@ export class EditorViewport {
       if (target) this.flashPart(target)
     })
     this.onStore()
+    window.addEventListener('t3d:warm-complete', this.onWarmComplete)
     void this.boot()
     this.raf = requestAnimationFrame(this.tick)
   }
 
+  private onWarmComplete = () => {
+    if (!this.ready || this.disposed) return
+    const compiler = this.renderer as WebGPURenderer & { compileAsync?: (scene: Scene, camera: PerspectiveCamera) => Promise<void> }
+    if (typeof compiler.compileAsync !== 'function') return
+    void compiler.compileAsync(this.scene, this.activeCamera() as PerspectiveCamera).catch(() => undefined)
+  }
+
   dispose() {
     this.disposed = true
+    window.removeEventListener('t3d:warm-complete', this.onWarmComplete)
     cancelAnimationFrame(this.raf)
     this.unsubscribe()
     this.unsubscribeAssets()

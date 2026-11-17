@@ -544,36 +544,13 @@ function loadWith<T>(loader: { load: (...args: never[]) => void }, url: string):
   })
 }
 
-async function collectProjectTextureFiles(): Promise<Array<{ name: string; data: Uint8Array }>> {
-  const assets = Object.values(useAssetStore.getState().assets)
-  const textures = assets.filter((item): item is FileAsset => item.kind === 'texture' && 'fileName' in item)
-  const out: Array<{ name: string; data: Uint8Array }> = []
-  for (const tex of textures) {
-    try {
-      const bytes = await sourceBytes(tex)
-      if (!bytes || bytes.byteLength === 0) continue
-      const data = new Uint8Array(bytes)
-      out.push({ name: tex.fileName, data })
-      if (tex.name && tex.name !== tex.fileName) {
-        const ext = tex.fileName.split('.').pop() ?? 'png'
-        out.push({ name: `${tex.name}.${ext}`, data })
-      }
-    } catch {
-      // ignore unreadable texture
-    }
-  }
-  return out
-}
-
 async function loadFbxWithUfbx(asset: FileAsset): Promise<ModelTemplate> {
-  const [bytes, externalFiles] = await Promise.all([
-    sourceBytes(asset),
-    collectProjectTextureFiles(),
-  ])
+  const bytes = await sourceBytes(asset)
   if (!bytes) throw new Error('无法读取 FBX 字节')
+  // 工程独立贴图由 applyModelMaterials 在加载后绑定，不再打包进 GLB 成品以免体积膨胀和二次解码
   const glb = await convertFbxBytesToGlbWithUfbx(new Uint8Array(bytes), {
     logicalFileName: asset.fileName,
-    externalFiles: [...externalFiles, ...(extraExternalFiles.get(asset.id) ?? [])],
+    externalFiles: extraExternalFiles.get(asset.id) ?? [],
   })
   const template = await parseArtifact(glb)
   if (asset.hash) {
@@ -594,6 +571,19 @@ function templateFromObject(object: Object3D, clips: AnimationClip[]): ModelTemp
     scene = new Group()
     scene.add(object)
   }
+  // 模板阶段预计算切线一次，后续克隆实例共享同一 BufferGeometry，不再在主线程重算
+  scene.traverse(child => {
+    const mesh = child as Mesh
+    if (!mesh.isMesh) return
+    const geometry = mesh.geometry as BufferGeometry | undefined
+    if (geometry?.index && geometry.attributes.position && geometry.attributes.normal && geometry.attributes.uv && !geometry.attributes.tangent) {
+      try {
+        geometry.computeTangents()
+      } catch {
+        // ignore non-indexed or degenerate uv meshes
+      }
+    }
+  })
   const slots = readSlots(scene)
   return { scene, clips, slots, humanoid: describeHumanoid(scene, clips), tree: describeModelTree(scene) }
 }

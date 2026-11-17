@@ -74,6 +74,28 @@ let layoutSuspended = 0
 let layoutPrevious = { folders: [] as string[], assetDirs: {} as Record<string, string> }
 let layoutChain: Promise<void> = Promise.resolve()
 
+export interface WarmProgress {
+  completed: number
+  total: number
+}
+
+let warmState: WarmProgress | null = null
+const warmListeners = new Set<() => void>()
+
+export function warmProgress(): WarmProgress | null {
+  return warmState
+}
+
+export function subscribeWarmProgress(listener: () => void): () => void {
+  warmListeners.add(listener)
+  return () => warmListeners.delete(listener)
+}
+
+function setWarmProgress(next: WarmProgress | null) {
+  warmState = next
+  warmListeners.forEach(listener => listener())
+}
+
 export function openCachedProject(): Promise<void> {
   opening ??= openCachedNow().catch(error => {
     opening = null
@@ -401,21 +423,30 @@ async function openNow() {
 async function warmAssets(token: number, metas: AssetMeta[], document: ProjectDocument | null, started: number, sceneMs: number) {
   const referenced = referencedAssetIds(document)
   const ordered = [...metas].sort((a, b) => rank(a, referenced) - rank(b, referenced))
+  const totalWarm = ordered.filter(meta => referenced.has(meta.id) || needsMetadataDiscovery(meta)).length
+  let warmedCount = 0
+  if (totalWarm > 0) setWarmProgress({ completed: 0, total: totalWarm })
   let hits = 0
   let parsed = 0
   let failed = 0
+  let modelMs = 0
+  let textureMs = 0
   await runPool(ordered, 3, async meta => {
     if (!warmCurrent(token)) return
+    const cleanMeta = stripRedundantThumb(meta)
+    const needed = referenced.has(cleanMeta.id) || needsMetadataDiscovery(cleanMeta)
     try {
-      const cleanMeta = stripRedundantThumb(meta)
-      const needed = referenced.has(cleanMeta.id) || needsMetadataDiscovery(cleanMeta)
       const asset = await materialize(cleanMeta, needed)
       if (!warmCurrent(token)) return
       if (!needed) {
         useAssetStore.getState().add(asset)
         return
       }
+      const stepStart = performance.now()
       const ok = await warmCachedAsset(asset)
+      const stepElapsed = performance.now() - stepStart
+      if (cleanMeta.kind === 'model' || cleanMeta.kind === 'animation') modelMs += stepElapsed
+      else if (cleanMeta.kind === 'texture' || cleanMeta.kind === 'environment') textureMs += stepElapsed
       if (!warmCurrent(token)) {
         releaseRuntimeAsset(asset.id, asset.url)
         useAssetStore.getState().remove(asset.id)
@@ -427,9 +458,15 @@ async function warmAssets(token: number, metas: AssetMeta[], document: ProjectDo
     } catch (error) {
       failed += 1
       console.warn('[cache] 资源恢复失败', meta.name, error)
+    } finally {
+      if (needed && warmCurrent(token)) {
+        warmedCount += 1
+        setWarmProgress({ completed: warmedCount, total: totalWarm })
+      }
     }
   })
   if (!warmCurrent(token)) return
+  setWarmProgress(null)
   if (isDirectoryProject()) {
     const validKeys = new Set<string>()
     for (const meta of metas) {
@@ -442,8 +479,17 @@ async function warmAssets(token: number, metas: AssetMeta[], document: ProjectDo
   const total = Math.round(performance.now() - started)
   useEditorStore.getState().log(
     'info',
-    translate('log.openedDetail', { total, scene: Math.round(sceneMs), hits, parsed, failed }),
+    translate('log.openedDetail', {
+      total,
+      scene: Math.round(sceneMs),
+      model: Math.round(modelMs),
+      texture: Math.round(textureMs),
+      hits,
+      parsed,
+      failed,
+    }),
   )
+  window.dispatchEvent(new CustomEvent('t3d:warm-complete'))
 }
 
 function stripRedundantThumb(meta: AssetMeta): AssetMeta {

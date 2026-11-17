@@ -1,4 +1,6 @@
+import { useSyncExternalStore } from 'react'
 import { useAssetStore } from '../assets/library'
+import { subscribeWarmProgress, warmProgress } from '../assets/project'
 import { useProjectDirectory } from '../project/disk'
 import { useI18n, type MessageKey } from '../i18n'
 import { primaryId, useEditorStore } from '../scene/store'
@@ -19,6 +21,7 @@ export default function StatusBar() {
   const origin = useEditorStore(state => state.gizmoOrigin)
   const notice = useEditorStore(state => state.notice)
   const activeSceneId = useEditorStore(state => state.activeSceneId)
+  const warming = useSyncExternalStore(subscribeWarmProgress, warmProgress)
   const { t } = useI18n()
   const projectName = useProjectDirectory(state => state.active ? state.name : '')
   const sceneAssetName = useAssetStore(state => {
@@ -42,6 +45,12 @@ export default function StatusBar() {
       {playState === 'playing' && <span className="statusbar__item statusbar__item--play">● {t('status.playing')}</span>}
       {playState === 'paused' && <span className="statusbar__item statusbar__item--pause">● {t('status.paused')}</span>}
       {playState === 'stopped' && <span className="statusbar__item statusbar__item--ready">● {t('status.ready')}</span>}
+      {warming && warming.total > 0 && (
+        <>
+          <span className="statusbar__sep" />
+          <span className="statusbar__item statusbar__item--notice">{t('status.warming', { completed: warming.completed, total: warming.total })}</span>
+        </>
+      )}
       {notice && (
         <>
           <span className="statusbar__sep" />

@@ -7,6 +7,7 @@ import { readFileBytes } from './cache'
 import { type FileAsset, useAssetStore } from './library'
 
 const images = new Map<string, Texture>()
+const imageHashes = new Map<string, string>()
 const linearImages = new Map<string, Texture>()
 const unityMrImages = new Map<string, Texture>()
 const unityMrPending = new Set<string>()
@@ -44,9 +45,14 @@ export async function ensureAssetUrl(assetId: string): Promise<string> {
 
 export function textureFor(assetId: string | null, colorMap: boolean): Texture | null {
   if (!assetId) return null
+  const asset = useAssetStore.getState().assets[assetId]
+  const currentHash = asset && 'hash' in asset ? asset.hash : ''
+  const cachedHash = imageHashes.get(assetId)
+  if (images.has(assetId) && cachedHash !== undefined && currentHash && cachedHash !== currentHash) {
+    releaseTexture(assetId)
+  }
   const texture = images.get(assetId)
   if (!texture) {
-    const asset = useAssetStore.getState().assets[assetId]
     if (asset && asset.kind === 'texture') void loadTextureAsset(asset).catch(() => undefined)
     return null
   }
@@ -207,7 +213,8 @@ export function unityMetallicRoughnessTextureFor(assetId: string | null): Textur
   const height = source?.naturalHeight || source?.height || 0
   if (!source || width <= 0 || height <= 0 || typeof document === 'undefined') return base
   scheduleUnityRepack(assetId, base, source, width, height)
-  return base
+  // 重排完成前返回 null，避免先将未重排的原图上传一次 GPU 造成闪烁与双倍显存
+  return null
 }
 
 export function environmentFor(assetId: string | null): Texture | null {
@@ -224,6 +231,7 @@ export function environmentFor(assetId: string | null): Texture | null {
 export function releaseTexture(assetId: string) {
   images.get(assetId)?.dispose()
   images.delete(assetId)
+  imageHashes.delete(assetId)
   linearImages.get(assetId)?.dispose()
   linearImages.delete(assetId)
   unityMrImages.get(assetId)?.dispose()
@@ -260,7 +268,11 @@ export function loadEnvironmentAsset(asset: FileAsset): Promise<void> {
 }
 
 export function loadTextureAsset(asset: FileAsset): Promise<void> {
-  if (images.has(asset.id)) return Promise.resolve()
+  if (images.has(asset.id)) {
+    const cachedHash = imageHashes.get(asset.id)
+    if (!cachedHash || !asset.hash || cachedHash === asset.hash) return Promise.resolve()
+    releaseTexture(asset.id)
+  }
   const running = pendingImages.get(asset.id)
   if (running) return running
   const lower = asset.fileName.toLowerCase()
@@ -269,6 +281,7 @@ export function loadTextureAsset(asset: FileAsset): Promise<void> {
       if (!ktx2) return Promise.reject(new Error('KTX2 转码器还没就绪'))
       return ktx2.loadAsync(url).then(texture => {
         images.set(asset.id, texture)
+        imageHashes.set(asset.id, asset.hash)
         linearImages.delete(asset.id)
         unityMrImages.get(asset.id)?.dispose()
         unityMrImages.delete(asset.id)
@@ -276,10 +289,11 @@ export function loadTextureAsset(asset: FileAsset): Promise<void> {
         useAssetStore.getState().bump()
       })
     }
-    if (lower.endsWith('.svg')) return loadSvgTexture(asset.id, url)
+    if (lower.endsWith('.svg')) return loadSvgTexture(asset.id, asset.hash, url)
     return loadBitmapTexture(url).then(texture => {
       texture.colorSpace = SRGBColorSpace
       images.set(asset.id, texture)
+      imageHashes.set(asset.id, asset.hash)
       linearImages.delete(asset.id)
       unityMrImages.get(asset.id)?.dispose()
       unityMrImages.delete(asset.id)
@@ -295,14 +309,43 @@ export function loadTextureAsset(asset: FileAsset): Promise<void> {
   return task
 }
 
+const MAX_TEXTURE_SIZE = 2048
+
 async function loadBitmapTexture(url: string): Promise<Texture> {
+  if (typeof createImageBitmap === 'function') {
+    try {
+      const response = await fetch(url)
+      const blob = await response.blob()
+      const probe = await createImageBitmap(blob, { imageOrientation: 'none' })
+      let bitmap = probe
+      const maxDim = Math.max(probe.width, probe.height)
+      if (maxDim > MAX_TEXTURE_SIZE) {
+        const scale = MAX_TEXTURE_SIZE / maxDim
+        const targetW = Math.max(1, Math.round(probe.width * scale))
+        const targetH = Math.max(1, Math.round(probe.height * scale))
+        probe.close()
+        bitmap = await createImageBitmap(blob, {
+          imageOrientation: 'none',
+          resizeWidth: targetW,
+          resizeHeight: targetH,
+          resizeQuality: 'high',
+        })
+      }
+      const texture = new Texture(bitmap)
+      texture.flipY = false
+      texture.needsUpdate = true
+      return texture
+    } catch {
+      // 回退到 TextureLoader
+    }
+  }
   const texture = await loader.loadAsync(url)
   texture.flipY = false
   texture.needsUpdate = true
   return texture
 }
 
-function loadSvgTexture(assetId: string, url: string): Promise<void> {
+function loadSvgTexture(assetId: string, hash: string, url: string): Promise<void> {
   return new Promise((resolve, reject) => {
     const image = new Image()
     image.onload = () => {
@@ -321,6 +364,7 @@ function loadSvgTexture(assetId: string, url: string): Promise<void> {
       texture.flipY = false
       texture.needsUpdate = true
       images.set(assetId, texture)
+      imageHashes.set(assetId, hash)
       linearImages.delete(assetId)
       pendingImages.delete(assetId)
       useAssetStore.getState().bump()
