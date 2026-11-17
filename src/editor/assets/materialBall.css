@@ -1,0 +1,53 @@
+.material-ball {
+  display: block;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+  border: none;
+  background:
+    radial-gradient(circle at 32% 28%, rgba(255, 255, 255, 0.14), transparent 38%),
+    #171a1f;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.14);
+}
+
+.material-ball--md {
+  width: 64px;
+  height: 64px;
+}
+
+.material-ball--lg {
+  width: 96px;
+  height: 96px;
+}
+
+.material-ball--flat {
+  background-image: none;
+}
+
+.project-asset--grid .material-ball--md {
+  align-self: center;
+}
+
+.asset-picker__list img.material-ball,
+.asset-picker__list i.material-ball {
+  width: 18px !important;
+  height: 18px !important;
+  border-radius: 50% !important;
+  border: none;
+  background-image: none;
+}
+
+.asset-picker__list.is-thumbs img.material-ball,
+.asset-picker__list.is-thumbs i.material-ball {
+  width: 96px !important;
+  height: 96px !important;
+  margin: 4px auto 0;
+  object-fit: cover;
+}
+
+.model-preview__card .material-ball {
+  width: 16px;
+  height: 16px;
+}

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { LayoutGrid, List, Search, X } from 'lucide-react'
+import { MaterialBall } from '../assets/materialBall'
 import { useAssetStore, type ProjectAsset } from '../assets/library'
 import { useI18n, type MessageKey } from '../i18n'
 import './AssetPicker.css'
@@ -104,6 +105,6 @@ function AssetMark({ asset, large = false }: { asset: ProjectAsset, large?: bool
     return <img src={asset.url} alt="" style={style} />
   }
   if ((asset.kind === 'model' || asset.kind === 'texture') && 'thumb' in asset && asset.thumb) return <img src={asset.thumb} alt="" style={style} />
-  if (asset.kind === 'material') return <i style={{ background: asset.slot.color, ...(large ? { width: '100%', height: 120 } : {}) }} />
+  if (asset.kind === 'material') return <MaterialBall slot={asset.slot} size={large ? 'lg' : 'sm'} />
   return <i style={large ? { width: '100%', height: 120 } : undefined} />
 }

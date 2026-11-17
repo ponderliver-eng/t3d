@@ -25,6 +25,7 @@ import {
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
 import { reimportModel, setModelImportScale, setModelSockets } from '../assets/import'
 import { useAssetStore, type ModelSocket } from '../assets/library'
+import { MaterialBall } from '../assets/materialBall'
 import { applyModelMaterials } from '../assets/materials'
 import { getModelTemplate, instantiateModel, subscribeModels } from '../assets/models'
 import { boundsOf, prepareSkinnedPickBounds } from '../scene/bounds'
@@ -433,7 +434,7 @@ export function ModelPreview({ assetId, standalone = false }: { assetId: string,
           )}
           {tab === 'material' && slots.map(slot => (
             <div key={slot.name} className="model-preview__card">
-              <i style={{ background: slot.color }} />
+              <MaterialBall slot={slot} />
               <strong>{slot.name}</strong>
             </div>
           ))}

@@ -6,6 +6,7 @@ import { ASSET_MIME, assignClip, bindImportInput, createDefaultMaterial, createD
 import { savePrefabFromSelection } from '../assets/import'
 import { readPrefab } from '../assets/prefab'
 import { ASSETS_ROOT, directoryTree, findDir, isWithin, parentDir, type DirNode } from '../assets/folders'
+import { MaterialBall } from '../assets/materialBall'
 import { assetDirectory, useAssetStore, type ProjectAsset } from '../assets/library'
 import { useEditorStore } from '../scene/store'
 import { translate, useI18n, type MessageKey } from '../i18n'
@@ -674,7 +675,7 @@ function Thumb({ asset, icon: Icon, color, large = false }: { asset: ProjectAsse
   const className = large ? 'project-asset__thumb project-asset__thumb--large' : 'project-asset__thumb'
   if ((asset.kind === 'model' || asset.kind === 'texture') && 'thumb' in asset && asset.thumb) return <img className={className} src={asset.thumb} alt="" />
   if (asset.kind === 'texture' && asset.url && !asset.fileName.toLowerCase().endsWith('.ktx2')) return <img className={className} src={asset.url} alt="" />
-  if (asset.kind === 'material') return <i className={large ? 'project-asset__swatch project-asset__swatch--large' : 'project-asset__swatch'} style={{ background: asset.slot.color }} />
+  if (asset.kind === 'material') return <MaterialBall slot={asset.slot} size={large ? 'md' : 'sm'} />
   return (
     <span className={large ? 'project-asset__type project-asset__type--large' : 'project-asset__type'} style={{ color }} title={kindLabel(asset.kind)}>
       <Icon size={large ? 28 : 14} />
