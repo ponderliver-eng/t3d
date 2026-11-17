@@ -303,6 +303,7 @@ function canonicalBone(bone: Bone): Bone {
 }
 
 export function captureHumanoidSkeletons(root: Object3D): HumanoidSkeletonRecord[] {
+  root.updateMatrixWorld(true)
   const meshes: SkinnedMesh[] = []
   root.traverse(child => {
     const mesh = child as SkinnedMesh
@@ -345,8 +346,8 @@ export function captureHumanoidSkeletons(root: Object3D): HumanoidSkeletonRecord
     const hipsAncestors: Object3D[] = []
     if (hips) {
       let cur = hips.parent
-      while (cur && cur !== root && !isSynthetic(cur) && (cur as Bone).isBone) {
-        const target = canonicalBone(cur as Bone)
+      while (cur && cur !== root && !isSynthetic(cur) && ((cur as Bone).isBone || /^bip0*\d+$/i.test(cur.name))) {
+        const target = (cur as Bone).isBone ? canonicalBone(cur as Bone) : cur
         if (!bones.includes(target)) hipsAncestors.unshift(target)
         cur = target.parent
       }
@@ -355,7 +356,9 @@ export function captureHumanoidSkeletons(root: Object3D): HumanoidSkeletonRecord
     bones.forEach(bone => seen.add(bone))
     const boneSet = new Set<Object3D>(bones)
     const bindWorldByBone = new Map<Object3D, Matrix4>()
-    const meshBind = mesh.bindMatrix ?? new Matrix4()
+    const rawBind = mesh.bindMatrix ?? new Matrix4()
+    const isIdentityBind = rawBind.elements.every((v, idx) => Math.abs(v - (idx % 5 === 0 ? 1 : 0)) < 1e-5)
+    const meshBind = isIdentityBind ? mesh.matrixWorld : rawBind
     for (let i = 0; i < mesh.skeleton.bones.length; i += 1) {
       const raw = mesh.skeleton.bones[i]
       const inv = mesh.skeleton.boneInverses[i]
