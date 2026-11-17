@@ -1,6 +1,7 @@
 import { findNavigationPath } from '../capabilities/navigation/session'
 import { addRuntimeTag } from '../gameplay/runtimeTags'
 import { clearJuice } from '../gameplay/juiceClock'
+import { emitFootstep } from './signals'
 import { carryFor } from './devices'
 import { playBody } from '../editor/animation/director'
 import { useEditorStore } from '../editor/scene/store'
@@ -76,6 +77,13 @@ function consumeTaps() {
 
 export function characterInvincible(nodeId: string, now = performance.now() / 1000): boolean {
   return (motion.get(nodeId)?.invincibleUntil ?? 0) > now
+}
+
+export function characterTraveling(id: string): boolean {
+  if (orders.has(id)) return true
+  const live = motion.get(id)
+  if (!live) return false
+  return live.pathIndex < live.path.length
 }
 
 export function relocateCharacter(id: string, x: number, y: number, z: number) {
@@ -212,6 +220,7 @@ function stepCharacters(dt: number, host: SceneRuntimeHost) {
       if (live.footstep >= spec.footstepDistance) {
         live.footstep = 0
         live.footsteps += 1
+        emitFootstep(node.id)
       }
     }
     object.position.set(nextX, nextY, nextZ)

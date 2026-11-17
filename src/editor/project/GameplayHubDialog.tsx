@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Database, Package, Plus, RotateCcw, Search, X } from 'lucide-react'
+import { Database, Layers, Package, Plus, RotateCcw, Search, Trash2, X } from 'lucide-react'
 import { useEditorStore } from '../scene/store'
 import { useI18n } from '../i18n'
 import {
@@ -87,10 +87,14 @@ function Hub() {
           <div className="hub-body">
             <aside className="hub-side">
               <div className="hub-muted">{t('hub.catalog')}</div>
+              <div className="hub-side__pack">{t('hub.corePack')}</div>
               {schemas.map(schema => (
-                <button key={schema.tableId} type="button" className={schema.tableId === active.tableId ? 'is-on' : ''} onClick={() => { setTableId(schema.tableId); setQuery('') }}>
-                  <strong>{schema.title}</strong>
-                  <span className="hub-muted">{t('hub.rowCount', { count: String(tableRows(database, schema.tableId).length) })}</span>
+                <button key={schema.tableId} type="button" className={schema.tableId === active.tableId ? 'hub-nav is-on' : 'hub-nav'} onClick={() => { setTableId(schema.tableId); setQuery('') }}>
+                  <Layers size={14} />
+                  <span className="hub-nav__text">
+                    <strong>{schema.title}</strong>
+                    <em>{t('hub.rowCount', { count: String(tableRows(database, schema.tableId).length) })}</em>
+                  </span>
                 </button>
               ))}
             </aside>
@@ -160,13 +164,24 @@ function RowCard({
 }) {
   const { t } = useI18n()
   const fields = row.fields ?? {}
+  const swatch = typeof fields.color === 'string' ? fields.color : ''
   return (
     <div className="hub-row">
-      <div className="hub-row__top">
-        <label className="hub-field"><span>{t('hub.id')}</span><input value={row.id} onChange={event => onPatch({ id: event.target.value })} /></label>
-        <label className="hub-field"><span>{t('hub.name')}</span><input value={row.name} onChange={event => onPatch({ name: event.target.value })} /></label>
-        <label className="hub-field"><span>{t('hub.category')}</span><input value={row.category ?? ''} onChange={event => onPatch({ category: event.target.value })} /></label>
-        <button type="button" onClick={onRemove}>{t('hub.delete')}</button>
+      <div className={swatch ? 'hub-row__top' : 'hub-row__top hub-row__top--plain'}>
+        {swatch && <i className="hub-swatch" style={{ background: swatch }} />}
+        <label className="hub-field"><span>{t('hub.id')}</span><input className="hub-input" value={row.id} onChange={event => onPatch({ id: event.target.value })} /></label>
+        <label className="hub-field"><span>{t('hub.name')}</span><input className="hub-input" value={row.name} onChange={event => onPatch({ name: event.target.value })} /></label>
+        <label className="hub-field">
+          <span>{t('hub.category')}</span>
+          <ChoiceField
+            title={t('hub.category')}
+            value={row.category ?? ''}
+            empty={t('picker.none')}
+            rows={categoryChoices(row.category)}
+            onChange={category => onPatch({ category })}
+          />
+        </label>
+        <button type="button" className="hub-icon" title={t('hub.delete')} onClick={onRemove}><Trash2 size={13} /></button>
       </div>
       <div className="hub-row__fields">
         {columns.map(column => (
@@ -177,9 +192,9 @@ function RowCard({
             onChange={value => onPatch({ fields: { ...fields, [column.key]: value } })}
           />
         ))}
-        <label className="hub-field" style={{ gridColumn: 'span 2' }}>
+        <label className="hub-field hub-field--wide">
           <span>{t('hub.note')}</span>
-          <input value={row.description ?? ''} onChange={event => onPatch({ description: event.target.value })} />
+          <input className="hub-input" value={row.description ?? ''} onChange={event => onPatch({ description: event.target.value })} />
         </label>
       </div>
     </div>
@@ -195,6 +210,7 @@ function ColumnField({
   value: unknown
   onChange: (value: unknown) => void
 }) {
+  const { t } = useI18n()
   if (column.type === 'boolean') {
     return (
       <label className="hub-field hub-check">
@@ -203,22 +219,27 @@ function ColumnField({
       </label>
     )
   }
-  if (column.type === 'color') {
-    const color = typeof value === 'string' && value ? value : '#ffffff'
+  if (column.type === 'color' || column.key === 'blockPrefix' || column.type === 'select') {
+    const current = typeof value === 'string' ? value : ''
+    const palette = column.type === 'color' && current && !COLOR_CHOICES.includes(current)
+      ? [current, ...COLOR_CHOICES]
+      : COLOR_CHOICES
+    const rows = column.type === 'color'
+      ? palette.map(item => ({ id: item, name: item }))
+      : column.key === 'blockPrefix'
+        ? prefixChoices(current)
+        : (column.options ?? []).map(option => ({ id: option.value, name: option.label }))
     return (
       <label className="hub-field">
         <span>{column.label}</span>
-        <input type="color" value={color} onChange={event => onChange(event.target.value)} />
-      </label>
-    )
-  }
-  if (column.type === 'select') {
-    return (
-      <label className="hub-field">
-        <span>{column.label}</span>
-        <select value={String(value ?? '')} onChange={event => onChange(event.target.value)}>
-          {(column.options ?? []).map(option => <option key={option.value} value={option.value}>{option.label}</option>)}
-        </select>
+        <ChoiceField
+          title={column.label}
+          value={current}
+          empty={column.key === 'blockPrefix' ? t('hub.noBlock') : t('picker.none')}
+          rows={rows}
+          swatch={column.type === 'color'}
+          onChange={onChange}
+        />
       </label>
     )
   }
@@ -227,12 +248,125 @@ function ColumnField({
     <label className="hub-field">
       <span>{column.label}</span>
       <input
+        className="hub-input"
         type={column.type === 'number' ? 'number' : 'text'}
         step={column.type === 'number' ? 'any' : undefined}
         value={shown}
         onChange={event => onChange(column.type === 'number' ? Number(event.target.value) : event.target.value)}
       />
     </label>
+  )
+}
+
+const COLOR_CHOICES = ['#4a9eff', '#4caf50', '#ff9800', '#f44336', '#f5a623', '#7c8ef5', '#ab47bc', '#e0e0e0', '#ffffff']
+
+function categoryChoices(current = ''): { id: string, name: string }[] {
+  const found = new Set<string>(['Team', 'State', 'State/Control', 'Action', 'Interactive', 'Combat', 'Interact'])
+  const tables = useEditorStore.getState().gameDatabase?.tables ?? {}
+  for (const list of Object.values(tables)) {
+    for (const row of list) if (row.category?.trim()) found.add(row.category.trim())
+  }
+  if (current.trim()) found.add(current.trim())
+  return [...found].map(id => ({ id, name: id }))
+}
+
+function prefixChoices(current: string): { id: string, name: string }[] {
+  const found = new Set<string>(['Team', 'State', 'Action', 'Interactive'])
+  for (const row of useEditorStore.getState().gameDatabase?.tables?.tags ?? []) {
+    const head = row.id.split('.')[0]
+    if (head) found.add(head)
+  }
+  if (current.trim()) found.add(current.trim())
+  return [...found].map(id => ({ id, name: id }))
+}
+
+function ChoiceField({
+  title,
+  value,
+  empty,
+  rows,
+  swatch,
+  onChange,
+}: {
+  title: string
+  value: string
+  empty: string
+  rows: { id: string, name: string }[]
+  swatch?: boolean
+  onChange: (id: string) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const known = !value || rows.some(row => row.id === value)
+  const label = value ? (rows.find(row => row.id === value)?.name ?? value) : empty
+  return (
+    <>
+      <button type="button" className={known ? 'hub-ref' : 'hub-ref is-missing'} onClick={() => setOpen(true)}>
+        {swatch && value ? <i className="hub-swatch hub-swatch--inline" style={{ background: value }} /> : null}
+        <span>{label}</span>
+        <Search size={12} />
+      </button>
+      {open && (
+        <ChoiceList
+          title={title}
+          selectedId={value}
+          rows={rows}
+          empty={empty}
+          swatch={swatch}
+          onSelect={id => { onChange(id); setOpen(false) }}
+          onClose={() => setOpen(false)}
+        />
+      )}
+    </>
+  )
+}
+
+function ChoiceList({
+  title,
+  selectedId,
+  rows,
+  empty,
+  swatch,
+  onSelect,
+  onClose,
+}: {
+  title: string
+  selectedId: string
+  rows: { id: string, name: string }[]
+  empty: string
+  swatch?: boolean
+  onSelect: (id: string) => void
+  onClose: () => void
+}) {
+  const [query, setQuery] = useState('')
+  const q = query.trim().toLowerCase()
+  const shown = rows.filter(row => !q || row.name.toLowerCase().includes(q) || row.id.toLowerCase().includes(q))
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => { if (event.key === 'Escape') onClose() }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
+  return (
+    <div className="hub-picker" onMouseDown={onClose}>
+      <section className="hub-picker__panel" role="dialog" aria-label={title} onMouseDown={event => event.stopPropagation()}>
+        <header>
+          <h2>{title}</h2>
+          <button type="button" onClick={onClose}><X size={14} /></button>
+        </header>
+        <label className="hub-search">
+          <Search size={12} />
+          <input value={query} onChange={event => setQuery(event.target.value)} />
+        </label>
+        <div className="hub-picker__list">
+          <button type="button" className={!selectedId ? 'is-on' : ''} onClick={() => onSelect('')}>{empty}</button>
+          {shown.map(row => (
+            <button key={row.id} type="button" className={selectedId === row.id ? 'is-on' : ''} onClick={() => onSelect(row.id)}>
+              {swatch ? <i className="hub-swatch hub-swatch--inline" style={{ background: row.id }} /> : null}
+              <span>{row.name}</span>
+            </button>
+          ))}
+        </div>
+      </section>
+    </div>
   )
 }
 

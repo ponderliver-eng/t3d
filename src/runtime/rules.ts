@@ -5,7 +5,8 @@ import { useAssetStore } from '../editor/assets/library'
 import { clearPlayCameraForce, forcePlayCamera } from '../editor/viewport/playCamera'
 import { useEditorStore } from '../editor/scene/store'
 import type { SceneNode, Vec3 } from '../editor/scene/types'
-import { orderCharacterMove } from './character'
+import { characterTraveling, orderCharacterMove } from './character'
+import { onFootstep } from './signals'
 import { addRuleScore } from './devices'
 import { findRow } from '../gameplay/registry'
 import { playJuice } from '../gameplay/juice'
@@ -33,6 +34,7 @@ interface Job {
   frame: boolean
   list: string[]
   target: string
+  moving: boolean
   loop: { ids: string[], item: number, steps: RuleStep[], after: RuleStep[] } | null
 }
 
@@ -53,6 +55,7 @@ export interface RuleTrace {
 const jobs: Job[] = []
 const vars = new Map<string, number>()
 const texts = new Map<string, string>()
+const messageFields = new Map<string, number>()
 const inbox: { nodeId: string, trigger: RuleEntry['trigger'], message: string }[] = []
 const heldKeys = new Set<string>()
 const tappedKeys = new Set<string>()
@@ -85,11 +88,20 @@ export function postRuleEvent(nodeId: string, trigger: RuleEntry['trigger'], mes
   inbox.push({ nodeId, trigger, message })
 }
 
-export function postRuleMessage(message: string, nodeId = '') {
+export function postRuleMessage(message: string, nodeId = '', fields?: Record<string, number | string>) {
   if (!message) return
   texts.set('msg', message)
+  messageFields.clear()
+  if (fields) {
+    for (const [key, raw] of Object.entries(fields)) {
+      const number = typeof raw === 'number' ? raw : Number(raw)
+      if (Number.isFinite(number)) messageFields.set(`msg.${key}`, number)
+    }
+  }
   inbox.push({ nodeId, trigger: 'message', message })
 }
+
+onFootstep(nodeId => postRuleMessage('onFootstep', nodeId))
 
 function stepRules(dt: number, host: SceneRuntimeHost) {
   watchKeys()
@@ -98,6 +110,7 @@ function stepRules(dt: number, host: SceneRuntimeHost) {
     jobs.length = 0
     vars.clear()
     texts.clear()
+    messageFields.clear()
     clearRuntimeTags()
     inbox.length = 0
     tappedKeys.clear()
@@ -166,7 +179,7 @@ function arm(node: SceneNode, rule: RuleEntry) {
   if (rule.steps.length === 0) return
   jobs.push({
     nodeId: node.id, ruleId: rule.id, stateId: '', source: 'rule',
-    steps: rule.steps.map(copyStep), index: 0, wait: 0, frame: false, list: [], target: '', loop: null,
+    steps: rule.steps.map(copyStep), index: 0, wait: 0, frame: false, list: [], target: '', moving: false, loop: null,
   })
 }
 
@@ -198,6 +211,26 @@ function advance(job: Job, dt: number, host: SceneRuntimeHost, now: number): boo
         return false
       }
       job.frame = false
+      job.index += 1
+      continue
+    }
+    if (step.do === 'moveTo') {
+      if (!job.moving) {
+        const point = pointOf(step, job, host)
+        if (!point) {
+          job.index += 1
+          continue
+        }
+        orderCharacterMove(job.nodeId, point[0], point[1], point[2])
+        job.moving = true
+        markTrace(job, step, true)
+        return false
+      }
+      if (characterTraveling(job.nodeId)) {
+        markTrace(job, step, true)
+        return false
+      }
+      job.moving = false
       job.index += 1
       continue
     }
@@ -339,13 +372,18 @@ function run(node: SceneNode, step: RuleStep, job: Job, host: SceneRuntimeHost, 
     if (camera) forcePlayCamera(camera.id)
     return
   }
-  if (step.do === 'moveTo') {
-    const point = pointOf(step, job, host)
-    if (point) orderCharacterMove(node.id, point[0], point[1], point[2])
+  if (step.do === 'spawn') spawnPrefab(node, step, host)
+  if (step.do === 'hide') {
+    const state = useEditorStore.getState()
+    const nodes = { ...state.nodes }
+    delete nodes[actor.id]
+    useEditorStore.setState({
+      nodes,
+      selection: state.selection.filter(id => id !== actor.id),
+      playDirty: true,
+    })
     return
   }
-  if (step.do === 'spawn') spawnPrefab(node, step, host)
-  if (step.do === 'hide') useEditorStore.getState().updateNode(actor.id, { visible: false })
   if (step.do === 'score') {
     const amount = evaluate(step.value)
     lastValue = amount
@@ -394,6 +432,7 @@ function hasTag(node: SceneNode, tag: string): boolean {
 function readValue(token: string): number {
   const numeric = Number(token)
   if (token.trim() !== '' && Number.isFinite(numeric)) return numeric
+  if (messageFields.has(token)) return messageFields.get(token) ?? 0
   return vars.get(token) ?? 0
 }
 
@@ -459,6 +498,7 @@ function startEdge(node: SceneNode, state: RuleStateNode, source: 'enter' | 'tic
     frame: false,
     list: [],
     target: '',
+    moving: false,
     loop: null,
   })
 }
@@ -604,7 +644,26 @@ function evaluate(source: string): number {
       return Number(text.slice(start, index)) || 0
     }
     while (/[\w.]/.test(text[index] ?? '')) index += 1
-    return readValue(text.slice(start, index))
+    const name = text.slice(start, index)
+    skip()
+    if (text[index] === '(') {
+      index += 1
+      const args: number[] = []
+      skip()
+      if (text[index] !== ')') {
+        args.push(expression())
+        for (;;) {
+          skip()
+          if (text[index] !== ',') break
+          index += 1
+          args.push(expression())
+        }
+      }
+      skip()
+      if (text[index] === ')') index += 1
+      return callFn(name, args)
+    }
+    return readValue(name)
   }
   const product = (): number => {
     let value = unary()
@@ -643,6 +702,14 @@ function evaluate(source: string): number {
   }
   const value = expression()
   return Number.isFinite(value) ? value : 0
+}
+
+function callFn(name: string, args: number[]): number {
+  if (name === 'clamp' && args.length >= 3) return Math.min(Math.max(args[0], args[1]), args[2])
+  if (name === 'min' && args.length > 0) return Math.min(...args)
+  if (name === 'max' && args.length > 0) return Math.max(...args)
+  if (name === 'abs' && args.length > 0) return Math.abs(args[0])
+  return 0
 }
 
 function compare(left: number, right: number, op: string): boolean {

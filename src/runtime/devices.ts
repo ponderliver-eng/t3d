@@ -268,13 +268,14 @@ function stepRound(_dt: number, host: SceneRuntimeHost) {
       if (home) {
         relocateCharacter(actor.id, home.position.x, home.position.y + 0.05, home.position.z)
         useEditorStore.getState().log('info', `${abyssName}：${abyssMessage}`)
+        hear(abyssMessage)
       }
       fallAt = 0
     }
   }
   const board = Object.values(state.nodes).find(node => node.gameplay?.score?.enabled)
   const score = board?.gameplay?.score
-  if (!score || scoreState === 'done') return
+  if (!score || scoreState === 'done' || scoreState === 'victory' || scoreState === 'defeat') return
   if (clock <= 0) {
     clock = performance.now() / 1000
     writeUiVariable('objective', score.title)
@@ -289,6 +290,7 @@ function stepRound(_dt: number, host: SceneRuntimeHost) {
   if (score.timeLimit > 0 && left <= 0 && scoreState !== 'defeat') {
     scoreState = 'defeat'
     useEditorStore.getState().log('info', `${board?.name}：${score.defeatMessage}`)
+    hear(score.defeatMessage)
   }
 }
 
@@ -308,6 +310,7 @@ export function addRuleScore(amount: number) {
   if (scoreValue >= score.target) {
     scoreState = 'victory'
     useEditorStore.getState().log('info', `${board?.name}：${score.victoryMessage}`)
+    hear(score.victoryMessage)
   }
 }
 
