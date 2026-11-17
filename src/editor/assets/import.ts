@@ -211,7 +211,8 @@ async function ingest(asset: FileAsset, bytes: ArrayBuffer, dir?: string): Promi
     await rememberFile({ ...asset, bytes }).catch(error => {
       console.warn('[cache] 写入失败', error)
     })
-    void attachThumb(asset.id)
+    if (asset.kind === 'texture') await attachThumb(asset.id)
+    else void attachThumb(asset.id)
     return true
   } catch (error) {
     useAssetStore.getState().remove(asset.id)
@@ -230,7 +231,7 @@ export async function warmCachedAsset(asset: FileAsset): Promise<boolean> {
     if (asset.kind === 'model' || asset.kind === 'animation') await loadModelTemplate(asset)
     if (asset.kind === 'texture') await loadTextureAsset(asset)
     if (asset.kind === 'environment') await loadEnvironmentAsset(asset)
-    if (!asset.thumb) void attachThumb(asset.id)
+    if (!asset.thumb) await attachThumb(asset.id)
     return true
   } catch (error) {
     useAssetStore.getState().remove(asset.id)

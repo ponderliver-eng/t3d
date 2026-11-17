@@ -25,6 +25,46 @@ export interface ModelTemplate {
   humanoid: ModelHumanoid
 }
 
+export interface ModelTreeNode {
+  name: string
+  path: string
+  kind: 'bone' | 'mesh' | 'node'
+  children: ModelTreeNode[]
+}
+
+export function describeModelTree(root: Object3D): ModelTreeNode[] {
+  const walk = (object: Object3D, parentPath: string): ModelTreeNode | null => {
+    const label = object.name || object.type
+    const path = parentPath ? `${parentPath}/${label}` : label
+    const mesh = object as Mesh
+    const bone = object.type === 'Bone' || (object as { isBone?: boolean }).isBone
+    const kind: ModelTreeNode['kind'] = bone ? 'bone' : mesh.isMesh ? 'mesh' : 'node'
+    const children = object.children
+      .map(child => walk(child, path))
+      .filter((child): child is ModelTreeNode => child !== null)
+    if (kind === 'node' && children.length === 0) return null
+    return { name: object.name || label, path, kind, children }
+  }
+  return root.children.map(child => walk(child, '')).filter((child): child is ModelTreeNode => child !== null)
+}
+
+export function findModelBone(root: Object3D, key: string): Object3D | null {
+  let found: Object3D | null = null
+  const walk = (object: Object3D, parentPath: string) => {
+    if (found) return
+    const label = object.name || object.type
+    const path = parentPath ? `${parentPath}/${label}` : label
+    const bone = object.type === 'Bone' || (object as { isBone?: boolean }).isBone
+    if (bone && (path === key || object.name === key)) {
+      found = object
+      return
+    }
+    for (const child of object.children) walk(child, object === root ? '' : path)
+  }
+  for (const child of root.children) walk(child, '')
+  return found
+}
+
 const templates = new Map<string, ModelTemplate>()
 const pending = new Map<string, Promise<ModelTemplate>>()
 const revisions = new Map<string, number>()

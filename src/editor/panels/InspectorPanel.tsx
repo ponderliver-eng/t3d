@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { ChevronDown, ChevronRight, Component, ExternalLink, Eye, FolderOpen, FolderSearch, Image as ImageIcon, MapPin, Move, Package, Pause, Play, Plus, Rotate3d, Scaling, Search, Square, SunMedium, Trash2, Undo2, Unlink, Upload, X } from 'lucide-react'
-import { clipDuration, clipNamesFor, loadModelTemplate, subscribeModels } from '../assets/models'
+import { Bone, Box, Check, ChevronDown, ChevronRight, Component, ExternalLink, Eye, EyeOff, FolderOpen, FolderSearch, Image as ImageIcon, MapPin, Move, Package, Pause, Play, Plus, Rotate3d, Scaling, Search, Square, SunMedium, Trash2, Undo2, Unlink, Upload, X } from 'lucide-react'
+import { clipDuration, clipNamesFor, describeModelTree, getModelTemplate, loadModelTemplate, subscribeModels, type ModelTreeNode } from '../assets/models'
 import { ClipField } from './ClipPicker'
 import { activeAnimatorState, emptyAnimator } from '../animation/animator'
 import { HumanoidCard } from './HumanoidCard'
@@ -657,6 +657,148 @@ function SceneSettings() {
   )
 }
 
+function ModelStructureSections({ node }: { node: SceneNode }) {
+  const { t } = useI18n()
+  const [version, setVersion] = useState(0)
+  const [query, setQuery] = useState('')
+  const [openPaths, setOpenPaths] = useState<Record<string, boolean>>({})
+  const playing = useEditorStore(state => state.playState !== 'stopped')
+  const socketKey = useEditorStore(state => {
+    const bones: string[] = []
+    for (const item of Object.values(state.nodes)) {
+      if (item.parentId === node.id && item.socketBone) bones.push(item.socketBone)
+    }
+    bones.sort()
+    return bones.join('\n')
+  })
+  useEffect(() => subscribeModels(() => setVersion(value => value + 1)), [])
+  void version
+  const scene = node.assetId ? getModelTemplate(node.assetId)?.scene : undefined
+  const tree = scene ? describeModelTree(scene) : []
+  if (!node.assetId || tree.length === 0) return null
+  const hidden = new Set(node.hiddenParts ?? [])
+  const taken = new Set(socketKey ? socketKey.split('\n') : [])
+  const q = query.trim().toLowerCase()
+  const shown = q ? filterModelTree(tree, q) : tree
+  const togglePart = (id: string, visible: boolean) => {
+    const next = visible
+      ? (node.hiddenParts ?? []).filter(item => item !== id)
+      : [...(node.hiddenParts ?? []), id]
+    commitNode(node.id, t('inspector.parts'), { hiddenParts: next })
+  }
+  return (
+    <Section title={t('inspector.hierarchy')} color="#9fc5ff">
+      <div className="model-structure__legend">
+        <span className="is-mesh"><Box size={11} />{t('inspector.parts')}</span>
+        <span className="is-bone"><Bone size={11} />{t('inspector.sockets')}</span>
+      </div>
+      <div className="model-structure__search">
+        <Search size={12} />
+        <input value={query} placeholder={t('inspector.searchBones')} onChange={event => setQuery(event.target.value)} />
+      </div>
+      <div className="model-structure">
+        {shown.map(item => (
+          <StructureBranch
+            key={item.path}
+            item={item}
+            depth={0}
+            forceOpen={q.length > 0}
+            openPaths={openPaths}
+            hidden={hidden}
+            taken={taken}
+            disabled={playing}
+            extractLabel={t('inspector.extractSocket')}
+            readyLabel={t('inspector.socketReady')}
+            onOpen={setOpenPaths}
+            onToggle={togglePart}
+            onExtract={bone => useEditorStore.getState().extractSocket(node.id, bone.path, bone.name)}
+          />
+        ))}
+      </div>
+    </Section>
+  )
+}
+
+function StructureBranch({
+  item, depth, forceOpen, openPaths, hidden, taken, disabled, extractLabel, readyLabel, onOpen, onToggle, onExtract,
+}: {
+  item: ModelTreeNode
+  depth: number
+  forceOpen: boolean
+  openPaths: Record<string, boolean>
+  hidden: Set<string>
+  taken: Set<string>
+  disabled: boolean
+  extractLabel: string
+  readyLabel: string
+  onOpen: (next: Record<string, boolean> | ((current: Record<string, boolean>) => Record<string, boolean>)) => void
+  onToggle: (id: string, visible: boolean) => void
+  onExtract: (item: ModelTreeNode) => void
+}) {
+  const open = forceOpen || openPaths[item.path] === true
+  const shown = !hidden.has(item.path)
+  const ready = item.kind === 'bone' && taken.has(item.path)
+  return (
+    <div>
+      <div className={`model-structure__row is-${item.kind}${shown ? '' : ' is-off'}${ready ? ' is-ready' : ''}`} style={{ paddingLeft: 4 + depth * 12 }} title={item.path}>
+        {item.children.length > 0 ? (
+          <button type="button" className="model-structure__twist" aria-expanded={open} onClick={() => onOpen(current => ({ ...current, [item.path]: !open }))}>
+            <ChevronRight size={12} style={{ transform: open ? 'rotate(90deg)' : undefined }} />
+          </button>
+        ) : <span className="model-structure__twist" />}
+        <span className="model-structure__mark" aria-hidden="true">
+          {item.kind === 'bone' ? <Bone size={12} /> : item.kind === 'mesh' ? <Box size={12} /> : null}
+        </span>
+        <span className="model-structure__name"><span>{item.name}</span></span>
+        {item.kind === 'mesh' && (
+          <button type="button" className="model-structure__icon" onClick={() => onToggle(item.path, !shown)}>
+            {shown ? <Eye size={13} /> : <EyeOff size={13} />}
+          </button>
+        )}
+        {item.kind === 'bone' && (
+          <button
+            type="button"
+            className={`model-structure__icon model-structure__add${ready ? ' is-on' : ''}`}
+            title={ready ? readyLabel : extractLabel}
+            disabled={disabled || ready}
+            onClick={() => onExtract(item)}
+          >
+            {ready ? <Check size={12} /> : <Plus size={12} />}
+          </button>
+        )}
+        {item.kind === 'node' && <span className="model-structure__icon" />}
+      </div>
+      {open && item.children.map(child => (
+        <StructureBranch
+          key={child.path}
+          item={child}
+          depth={depth + 1}
+          forceOpen={forceOpen}
+          openPaths={openPaths}
+          hidden={hidden}
+          taken={taken}
+          disabled={disabled}
+          extractLabel={extractLabel}
+          readyLabel={readyLabel}
+          onOpen={onOpen}
+          onToggle={onToggle}
+          onExtract={onExtract}
+        />
+      ))}
+    </div>
+  )
+}
+
+function filterModelTree(nodes: ModelTreeNode[], query: string): ModelTreeNode[] {
+  const out: ModelTreeNode[] = []
+  for (const node of nodes) {
+    const children = filterModelTree(node.children, query)
+    const self = node.name.toLowerCase().includes(query) || node.path.toLowerCase().includes(query)
+    if (self || children.length > 0) out.push({ ...node, children })
+  }
+  return out
+}
+
 function MeshRendererCard({ node }: { node: SceneNode }) {
   const { t } = useI18n()
   const assets = useAssetStore(state => state.assets)
@@ -724,6 +866,7 @@ function MeshRendererCard({ node }: { node: SceneNode }) {
           </label>
         </div>
       </Section>
+      {node.kind === 'model' && <ModelStructureSections node={node} />}
       <Section title={t('inspector.materialSlots')} color="#d4b8ff">
       <button type="button" className="mesh-slots__head" aria-expanded={listOpen} onClick={() => setListOpen(!listOpen)}>
         {listOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
@@ -1185,6 +1328,7 @@ function formatClipTime(seconds: number): string {
 function MapField({ label, title, value, onChange }: { label: string; title?: string; value: string | null; onChange: (id: string | null) => void }) {
   const { t } = useI18n()
   const [open, setOpen] = useState(false)
+  const [dropping, setDropping] = useState(false)
   const clickTimer = useRef<number | null>(null)
   const asset = useAssetStore(state => value ? state.assets[value] : undefined)
   const texture = asset?.kind === 'texture' ? asset : undefined
@@ -1193,12 +1337,16 @@ function MapField({ label, title, value, onChange }: { label: string; title?: st
     if (clickTimer.current != null) window.clearTimeout(clickTimer.current)
   }, [])
 
-  const openPicker = () => setOpen(true)
+  const reveal = () => {
+    if (!value) return
+    useEditorStore.getState().pingAsset(value)
+  }
   const previewClick = () => {
+    if (!texture) return
     if (clickTimer.current != null) window.clearTimeout(clickTimer.current)
     clickTimer.current = window.setTimeout(() => {
       clickTimer.current = null
-      openPicker()
+      reveal()
     }, 220)
   }
   const previewDoubleClick = () => {
@@ -1208,13 +1356,9 @@ function MapField({ label, title, value, onChange }: { label: string; title?: st
     }
     if (texture) openAssetPreview('texture', texture.id, texture.name)
   }
-  const reveal = () => {
-    if (!value) return
-    const library = useAssetStore.getState()
-    library.setBrowseDir(assetDirectory(value, library.assetDirs))
-    useEditorStore.setState({ inspectedAssetId: value })
-  }
+  const acceptsDrop = (event: DragEvent) => event.dataTransfer.types.includes(ASSET_MIME)
   const takeDrop = (event: DragEvent) => {
+    setDropping(false)
     const id = event.dataTransfer.getData(ASSET_MIME)
     const dropped = id ? useAssetStore.getState().assets[id] : undefined
     if (dropped?.kind !== 'texture') return
@@ -1226,16 +1370,28 @@ function MapField({ label, title, value, onChange }: { label: string; title?: st
     <div className="tex-slot">
       <span className="tex-slot__label" title={title}>{label}</span>
       <div
-        className="tex-slot__control"
+        className={`tex-slot__control${dropping ? ' is-drop' : ''}`}
+        onDragEnter={event => {
+          if (!acceptsDrop(event)) return
+          event.preventDefault()
+          setDropping(true)
+        }}
         onDragOver={event => {
-          if (event.dataTransfer.types.includes(ASSET_MIME)) event.preventDefault()
+          if (!acceptsDrop(event)) return
+          event.preventDefault()
+          event.dataTransfer.dropEffect = 'copy'
+          if (!dropping) setDropping(true)
+        }}
+        onDragLeave={event => {
+          if (event.currentTarget.contains(event.relatedTarget as Node | null)) return
+          setDropping(false)
         }}
         onDrop={takeDrop}
       >
         <button
           type="button"
           className="tex-slot__preview"
-          title={t('picker.textureHint')}
+          title={texture ? t('picker.textureLocate') : t('picker.textureDrop')}
           onClick={previewClick}
           onDoubleClick={previewDoubleClick}
         >
@@ -1244,21 +1400,20 @@ function MapField({ label, title, value, onChange }: { label: string; title?: st
         <button
           type="button"
           className={`tex-slot__name ${texture ? '' : 'tex-slot__name--empty'}`}
-          title={texture?.fileName ?? texture?.name ?? t('picker.textureHint')}
-          onClick={openPicker}
+          title={texture ? t('picker.textureLocate') : t('picker.textureDrop')}
+          onClick={reveal}
         >
-          {texture?.name ?? (value ? t('picker.missing') : t('picker.unset'))}
+          {dropping ? t('picker.textureDrop') : (texture?.name ?? (value ? t('picker.missing') : t('picker.unset')))}
         </button>
-        {value && (
-          <button type="button" className="tex-slot__icon" title={t('inspector.reveal')} onClick={reveal}>
-            <FolderSearch size={12} />
-          </button>
-        )}
+        <button type="button" className="tex-slot__icon" title={t('picker.textureReplace')} aria-label={t('picker.textureReplace')} onClick={() => setOpen(true)}>
+          <Search size={12} />
+        </button>
         {value && (
           <button type="button" className="tex-slot__icon" title={t('picker.clear')} onClick={() => onChange(null)}>
             <X size={12} />
           </button>
         )}
+        {dropping && <span className="tex-slot__drop">{t('picker.textureDrop')}</span>}
       </div>
       {open && (
         <AssetPicker

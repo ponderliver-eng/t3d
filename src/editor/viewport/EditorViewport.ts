@@ -47,7 +47,7 @@ import { WebGPURenderer } from 'three/webgpu'
 import { TransformControls } from 'three/addons/controls/TransformControls.js'
 import { translate } from '../i18n'
 import { applyModelMaterials, applyNodeMaterial, slotIndexOnMesh } from '../assets/materials'
-import { clipDuration, getModelTemplate, instantiateModel, modelRevision } from '../assets/models'
+import { clipDuration, findModelBone, getModelTemplate, instantiateModel, modelRevision } from '../assets/models'
 import { clipsForSkeleton, humanoidBindingKey } from '../animation/humanoidPlayback'
 import { activeAnimatorState, stepAnimator } from '../animation/animator'
 import { lockClipInPlace, maskClip } from '../animation/playback'
@@ -529,6 +529,7 @@ export class EditorViewport {
           mesh.castShadow = node.castShadow
           mesh.receiveShadow = node.receiveShadow
         })
+        applyPartVisibility(data.modelRoot, node.hiddenParts ?? [])
       }
       this.syncClip(data, node)
     }
@@ -1161,6 +1162,7 @@ export class EditorViewport {
       },
     })
     this.followSimulatedParents()
+    this.poseSockets()
     const editor = useEditorStore.getState()
     syncNavDebug(
       this.navDebug,
@@ -1234,6 +1236,54 @@ export class EditorViewport {
       this.raycaster.layers.mask = previousMask
     }
     return null
+  }
+
+  private poseSockets() {
+    const nodes = useEditorStore.getState().nodes
+    const posed = new Set<string>()
+    for (const id of orderedIds(nodes)) {
+      const node = nodes[id]
+      if (!node?.socketBone || !node.parentId) continue
+      const parent = this.objects.get(node.parentId)
+      const group = this.objects.get(id)
+      const root = parent ? dataOf(parent).modelRoot : undefined
+      if (!parent || !group || !root) continue
+      const bone = findModelBone(root, node.socketBone)
+      if (!bone) continue
+      bone.updateWorldMatrix(true, false)
+      const position = new Vector3()
+      const quaternion = new Quaternion()
+      const scale = new Vector3()
+      bone.matrixWorld.decompose(position, quaternion, scale)
+      const world = appendLocalPose({ position, quaternion, scale }, node)
+      group.position.copy(world.position)
+      group.quaternion.copy(world.quaternion)
+      group.scale.copy(world.scale)
+      posed.add(id)
+    }
+    for (const id of orderedIds(nodes)) {
+      const node = nodes[id]
+      if (!node?.parentId || posed.has(id)) continue
+      if (node.physics?.body === 'dynamic' || node.gameplay?.character?.enabled || node.gameplay?.mover?.enabled) continue
+      let cursor: string | null = node.parentId
+      let follows = false
+      while (cursor) {
+        if (posed.has(cursor)) { follows = true; break }
+        cursor = nodes[cursor]?.parentId ?? null
+      }
+      if (!follows) continue
+      const parent = this.objects.get(node.parentId)
+      const group = this.objects.get(id)
+      if (!parent || !group) continue
+      const world = appendLocalPose(
+        { position: parent.position, quaternion: parent.quaternion, scale: parent.scale },
+        node,
+      )
+      group.position.copy(world.position)
+      group.quaternion.copy(world.quaternion)
+      group.scale.copy(world.scale)
+      posed.add(id)
+    }
   }
 
   private followSimulatedParents() {
@@ -1852,6 +1902,18 @@ export class EditorViewport {
 
 function dataOf(group: Group): ViewData {
   return group.userData as ViewData
+}
+
+function applyPartVisibility(root: Object3D, hidden: string[]) {
+  const hiddenSet = new Set(hidden)
+  const walk = (object: Object3D, parentPath: string) => {
+    const label = object.name || object.type
+    const path = parentPath ? `${parentPath}/${label}` : label
+    const mesh = object as Mesh
+    if (mesh.isMesh) mesh.visible = !hiddenSet.has(path)
+    for (const child of object.children) walk(child, path)
+  }
+  for (const child of root.children) walk(child, '')
 }
 
 function orderedIds(nodes: Record<string, SceneNode>): string[] {

@@ -82,6 +82,8 @@ export default function ProjectPanel() {
   const browseDir = useAssetStore(state => state.browseDir)
   const activeSceneId = useEditorStore(state => state.activeSceneId)
   const inspectedAssetId = useEditorStore(state => state.inspectedAssetId)
+  const assetPing = useEditorStore(state => state.assetPing)
+  const [pingedId, setPingedId] = useState<string | null>(null)
   const nodes = useEditorStore(state => state.nodes)
   const q = query.trim().toLowerCase()
   const referenced = useMemo(() => referencedIds(nodes, assets), [nodes, assets])
@@ -145,6 +147,21 @@ export default function ProjectPanel() {
   useEffect(() => {
     document.querySelector('.project-browse__tree-item.is-active')?.scrollIntoView({ block: 'nearest' })
   }, [browseDir])
+
+  useEffect(() => {
+    if (!assetPing || !assets[assetPing.id]) return
+    const shown = items.some(item => item.kind === 'asset' && item.asset.id === assetPing.id)
+    if (!shown) {
+      if (pill !== 'all') setPill('all')
+      if (q) setQuery('')
+      return
+    }
+    const node = document.querySelector(`[data-asset-id="${CSS.escape(assetPing.id)}"]`)
+    node?.scrollIntoView({ block: 'nearest' })
+    setPingedId(assetPing.id)
+    const timer = window.setTimeout(() => setPingedId(current => current === assetPing.id ? null : current), 1400)
+    return () => window.clearTimeout(timer)
+  }, [assetPing, assets, items, pill, q])
 
   useEffect(() => {
     if (!inspectedAssetId || !assets[inspectedAssetId]) return
@@ -368,6 +385,7 @@ export default function ProjectPanel() {
               asset={item.asset}
               view={view}
               picked={inspectedAssetId === item.asset.id}
+              pinged={pingedId === item.asset.id}
               used={referenced.has(item.asset.id)}
               renaming={renameId === item.asset.id}
               onRenameDone={name => {
@@ -548,11 +566,12 @@ function clipEntries(asset: ProjectAsset) {
 }
 
 function AssetRow({
-  asset, view, picked, used, renaming, onRenameDone, onClick, onDoubleClick, onMenu, onDelete, clipsOpen, onToggleClips,
+  asset, view, picked, pinged, used, renaming, onRenameDone, onClick, onDoubleClick, onMenu, onDelete, clipsOpen, onToggleClips,
 }: {
   asset: ProjectAsset
   view: BrowseView
   picked: boolean
+  pinged: boolean
   used: boolean
   renaming: boolean
   onRenameDone: (name: string) => void
@@ -568,7 +587,7 @@ function AssetRow({
   return (
     <div className="project-asset-block">
     <div
-      className={`project-asset ${view === 'grid' ? 'project-asset--grid' : ''} ${view === 'details' ? 'project-asset--details' : ''} ${picked ? 'project-asset--picked' : ''}`}
+      className={`project-asset ${view === 'grid' ? 'project-asset--grid' : ''} ${view === 'details' ? 'project-asset--details' : ''} ${picked ? 'project-asset--picked' : ''} ${pinged ? 'project-asset--ping' : ''}`}
       data-asset-id={asset.id}
       draggable={!renaming}
       title={assetTitle(asset)}

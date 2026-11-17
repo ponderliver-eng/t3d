@@ -343,6 +343,10 @@ export interface SceneNode {
   tagIds?: string[]
   /** 渲染层 id。缺省为 Default。 */
   renderLayerId?: string
+  /** 模型里要藏起来的部位路径。 */
+  hiddenParts?: string[]
+  /** 非空时，这个节点跟着父模型上的这根骨头走。存的是骨骼路径。 */
+  socketBone?: string
   slots: PbrSlot[]
   castShadow: boolean
   receiveShadow: boolean

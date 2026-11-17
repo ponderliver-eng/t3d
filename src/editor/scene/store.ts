@@ -2,7 +2,7 @@ import { Quaternion, Vector3 } from 'three'
 import { create } from 'zustand'
 import { getSpawn } from './spawn'
 import { createFreshScene, createSeed } from './seed'
-import { useAssetStore } from '../assets/library'
+import { assetDirectory, useAssetStore } from '../assets/library'
 import {
   applyInstance,
   captureTemplate,
@@ -155,6 +155,7 @@ export interface EditorState {
   editorViewNonce: number
   activeSceneId: string
   inspectedAssetId: string | null
+  assetPing: { id: string, nonce: number } | null
   pendingRenameId: string | null
   renderBackend: string
   helpersVisible: boolean
@@ -184,6 +185,8 @@ export interface EditorState {
 
   setSelection: (ids: string[]) => void
   inspectAsset: (id: string | null) => void
+  /** 只在资源窗口定位并闪一下，不改检查器里正在看的物体或材质。 */
+  pingAsset: (id: string) => void
   setGizmoMode: (mode: GizmoMode) => void
   setGizmoSpace: (space: GizmoSpace) => void
   setGizmoOrigin: (origin: GizmoOrigin) => void
@@ -200,6 +203,7 @@ export interface EditorState {
   endGesture: () => void
   updateNode: (id: string, patch: Partial<SceneNode>) => void
   createNode: (kind: NodeKind, parentId?: string | null) => void
+  extractSocket: (modelId: string, bone: string, name: string) => void
   createDevice: (device: DeviceKind, parentId?: string | null) => void
   spawnEffect: (assetId: string, point: Vec3) => void
   mountScreen: (assetId: string, point: Vec3) => void
@@ -315,6 +319,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   physicsCollisionRowMasks: {},
   activeSceneId: '',
   inspectedAssetId: null,
+  assetPing: null,
   pendingRenameId: null,
   renderBackend: '正在初始化',
   helpersVisible: true,
@@ -333,6 +338,12 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     })
   },
   inspectAsset: id => set({ inspectedAssetId: id, selection: id ? [] : get().selection }),
+  pingAsset: id => {
+    const library = useAssetStore.getState()
+    if (!library.assets[id]) return
+    library.setBrowseDir(assetDirectory(id, library.assetDirs))
+    set({ assetPing: { id, nonce: Date.now() } })
+  },
   setGizmoMode: mode => {
     if (get().gizmoMode !== mode) set({ gizmoMode: mode })
   },
@@ -458,6 +469,30 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       created = name
     })
     if (ok && created) get().log('info', translate('log.created', { name: created }))
+  },
+
+  extractSocket: (modelId, bone, name) => {
+    if (get().playState !== 'stopped') return
+    const parent = get().nodes[modelId]
+    if (!parent || parent.kind !== 'model') return
+    const existing = Object.values(get().nodes).find(node => node.parentId === modelId && node.socketBone === bone)
+    if (existing) {
+      get().setSelection([existing.id])
+      return
+    }
+    mutate(set, get, translate('inspector.extractSocket'), draft => {
+      const id = crypto.randomUUID()
+      draft.nodes[id] = makeNode({
+        id,
+        name: uniqueName(draft.nodes, name || bone),
+        kind: 'empty',
+        parentId: modelId,
+        order: nextOrder(draft.nodes, modelId),
+        socketBone: bone,
+      })
+      tagAddedChild(draft.nodes, id)
+      draft.selection = [id]
+    })
   },
 
   createDevice: (device, parentId = null) => {

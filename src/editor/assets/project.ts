@@ -449,7 +449,7 @@ function stripRedundantThumb(meta: AssetMeta): AssetMeta {
 function needsMetadataDiscovery(meta: AssetMeta): boolean {
   if (meta.kind === 'model') return !meta.artifactReady || !meta.thumb
   if (meta.kind === 'animation') return !meta.artifactReady || !meta.clipCatalog?.length
-  if (meta.kind === 'texture') return !meta.thumb && !meta.fileName.toLowerCase().endsWith('.ktx2')
+  if (meta.kind === 'texture') return false
   return false
 }
 

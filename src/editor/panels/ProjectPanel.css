@@ -176,6 +176,7 @@
 
 .project-asset:hover { background: var(--bg-hover); color: var(--text-primary); }
 .project-asset--picked { background: var(--bg-selected); color: var(--text-primary); }
+.project-asset--ping { outline: 1px solid var(--accent, #4a9eff); background: rgba(74, 158, 255, 0.16); }
 
 .project-asset button {
   color: var(--text-muted);
