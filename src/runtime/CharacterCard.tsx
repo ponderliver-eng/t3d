@@ -130,6 +130,9 @@ export function CharacterCard({ node, disabled }: { node: SceneNode, disabled: b
           <Num label={t('character.radius')} value={view.radius} disabled={disabled} step={0.01} min={0.05} onChange={radius => write({ radius })} />
           <Num label={t('character.height')} value={view.height} disabled={disabled} step={0.01} min={0.2} onChange={height => write({ height })} />
           </div>
+          {view.driver !== 'nav' && (
+            <Vec3Field label={t('character.capsuleOffset')} value={view.capsuleOffset ?? [0, 0, 0]} disabled={disabled} onChange={capsuleOffset => write({ capsuleOffset })} />
+          )}
           </Section>
           <Section title={t('character.section.move')} color="#7eb6ff">
           <div className="iv2-pair">

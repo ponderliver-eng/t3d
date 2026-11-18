@@ -189,8 +189,12 @@ function stepCharacters(dt: number, host: SceneRuntimeHost) {
       moveX = steered.x * speed
       moveZ = steered.z * speed
     }
-    const feet = object.position.y
-    const ground = groundUnder(host, object.position.x, feet, object.position.z, node.id, spec)
+    const useCapsule = spec.driver !== 'nav'
+    const shift = useCapsule ? capsuleShift(spec, object.quaternion) : { x: 0, y: 0, z: 0 }
+    const feet = object.position.y + shift.y
+    const footX = object.position.x + shift.x
+    const footZ = object.position.z + shift.z
+    const ground = groundUnder(host, useCapsule ? footX : object.position.x, useCapsule ? feet : object.position.y, useCapsule ? footZ : object.position.z, node.id, spec)
     const onGround = ground !== null && feet <= ground + 0.08 && live.vy <= 0.1
     if (onGround) live.lastGrounded = now
     const coyote = now - live.lastGrounded <= spec.coyoteTime
@@ -208,29 +212,29 @@ function stepCharacters(dt: number, host: SceneRuntimeHost) {
     const supported = onGround || live.grounded
     if (!(supported && live.vy <= 0)) live.vy -= spec.gravity * dt
     let nextX = object.position.x + moveX * dt
-    let nextY = feet + live.vy * dt
+    let nextY = object.position.y + live.vy * dt
     let nextZ = object.position.z + moveZ * dt
     let landed = false
     if (spec.driver !== 'nav') {
       const solved = moveCharacters([{
         id: node.id,
-        position: [object.position.x, feet, object.position.z],
+        position: [footX, feet, footZ],
         displacement: [moveX * dt, live.vy * dt, moveZ * dt],
         radius: spec.radius,
         height: spec.height,
       }])
       const step = solved?.[0]
       if (step) {
-        nextX = step.position[0]
-        nextY = step.position[1]
-        nextZ = step.position[2]
+        nextX = step.position[0] - shift.x
+        nextY = step.position[1] - shift.y
+        nextZ = step.position[2] - shift.z
         landed = step.grounded && live.vy <= 0.35
       } else {
-        const blocked = slide(host, object.position.x, feet + spec.height * 0.45, object.position.z, nextX, nextZ, node.id, spec.radius)
-        nextX = blocked.x
-        nextZ = blocked.z
+        const blocked = slide(host, footX, feet + spec.height * 0.45, footZ, footX + moveX * dt, footZ + moveZ * dt, node.id, spec.radius)
+        nextX = blocked.x - shift.x
+        nextZ = blocked.z - shift.z
         landed = ground !== null && live.vy <= 0 && nextY <= ground + 0.08
-        if (landed && ground !== null) nextY = ground
+        if (landed && ground !== null) nextY = ground - shift.y
       }
     } else if (ground !== null && live.vy <= 0 && nextY <= ground + 0.08) {
       nextY = ground
@@ -348,6 +352,18 @@ function faceYaw(spec: CharacterSpec, basis: { faceYaw: number, lock: boolean },
   if (basis.lock || spec.mode === 'strafe' || spec.mode === 'firstPerson' || spec.mode === 'lockOn') return basis.faceYaw
   if (wish.amount > 0.1 || Math.hypot(moveX, moveZ) > 0.2) return Math.atan2(moveX, moveZ)
   return null
+}
+
+function capsuleShift(spec: CharacterSpec, q: { x: number, y: number, z: number, w: number }): { x: number, y: number, z: number } {
+  const offset = spec.capsuleOffset ?? [0, 0, 0]
+  const yaw = yawOf(q)
+  const sin = Math.sin(yaw)
+  const cos = Math.cos(yaw)
+  return {
+    x: offset[0] * cos + offset[2] * sin,
+    y: offset[1],
+    z: -offset[0] * sin + offset[2] * cos,
+  }
 }
 
 function yawOf(q: { x: number, y: number, z: number, w: number }): number {

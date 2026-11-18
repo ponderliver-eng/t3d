@@ -30,6 +30,8 @@ export interface CharacterSpec {
   gravity: number
   radius: number
   height: number
+  /** 胶囊脚底相对模型原点的偏移。Y 用来把胶囊抬到网格脚底。 */
+  capsuleOffset: Vec3
   dash: boolean
   dashKey: string
   dashDistance: number
@@ -72,6 +74,7 @@ export function defaultCharacter(): CharacterSpec {
     gravity: 18,
     radius: 0.35,
     height: 1.7,
+    capsuleOffset: [0, 0, 0],
     dash: true,
     dashKey: 'KeyC',
     dashDistance: 4,

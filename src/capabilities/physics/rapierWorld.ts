@@ -208,6 +208,17 @@ function ensurePuppet(world: RAPIER.World, puppets: Map<string, Puppet>, move: C
   return puppet
 }
 
+function scaledPositions(source: Float32Array, sx: number, sy: number, sz: number): Float32Array {
+  if (Math.abs(sx - 1) < 1e-4 && Math.abs(sy - 1) < 1e-4 && Math.abs(sz - 1) < 1e-4) return source
+  const scaled = new Float32Array(source.length)
+  for (let i = 0; i < source.length; i += 3) {
+    scaled[i] = source[i]! * sx
+    scaled[i + 1] = source[i + 1]! * sy
+    scaled[i + 2] = source[i + 2]! * sz
+  }
+  return scaled
+}
+
 function colliderDesc(desc: PhysicsBodyDesc): RAPIER.ColliderDesc {
   const collider = shapeDesc(desc)
   collider.setSensor(desc.trigger)
@@ -239,14 +250,14 @@ function shapeDesc(desc: PhysicsBodyDesc): RAPIER.ColliderDesc {
       : RAPIER.ColliderDesc.cone(half, radius)
   }
   if (desc.shape === 'convex' && desc.mesh && desc.mesh.positions.length >= 12) {
-    const hull = RAPIER.ColliderDesc.convexHull(desc.mesh.positions)
+    const hull = RAPIER.ColliderDesc.convexHull(scaledPositions(desc.mesh.positions, sx, sy, sz))
     if (hull) return hull
   }
   if (desc.shape === 'trimesh' && desc.mesh && desc.mesh.indices.length >= 3) {
     const flags = RAPIER.TriMeshFlags.MERGE_DUPLICATE_VERTICES
       | RAPIER.TriMeshFlags.DELETE_DEGENERATE_TRIANGLES
       | RAPIER.TriMeshFlags.FIX_INTERNAL_EDGES
-    return RAPIER.ColliderDesc.trimesh(desc.mesh.positions, desc.mesh.indices, flags)
+    return RAPIER.ColliderDesc.trimesh(scaledPositions(desc.mesh.positions, sx, sy, sz), desc.mesh.indices, flags)
   }
   return RAPIER.ColliderDesc.cuboid(
     Math.max(0.001, desc.size[0] * 0.5 * sx),

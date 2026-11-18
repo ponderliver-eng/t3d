@@ -249,6 +249,11 @@ export function useInspectorSlot(): [number | null | undefined, (slot: number | 
   return [slot, setSlot]
 }
 
+/** 没折叠过的卡片默认是展开的，和检查器里的初始状态一致。 */
+export function inspectorCardOpen(nodeId: string, card: string): boolean {
+  return useInspectorMemory.getState().entries[`node:${nodeId}`]?.open?.[card] ?? true
+}
+
 export function useInspectorCardOpen(card: string): [boolean, (open: boolean) => void] {
   const subject = useContext(InspectorSubject)
   const open = useInspectorMemory(state => state.entries[subject]?.open?.[card] ?? true)

@@ -53,6 +53,7 @@ import { activeAnimatorState, stepAnimator } from '../animation/animator'
 import { lockClipInPlace, maskClip } from '../animation/playback'
 import { useAssetStore } from '../assets/library'
 import { bindTextureRenderer, environmentFor } from '../assets/textures'
+import { inspectorCardOpen } from '../panels/inspectorMemory'
 import { EDITOR_HELPER_LAYER, layerBitIndex } from '../project/taxonomy'
 import { capabilityEnabled, syncCapabilityRuntimes } from '../../capabilities/registry'
 import { disposeParticles, mountParticles } from '../../capabilities/particles/session'
@@ -84,6 +85,7 @@ import { createDeviceGuide, deviceHandlePatch, hasDeviceShape, type DeviceGuide,
 import { ScenePicturePipeline } from './picture'
 import { runBeforeRenderHooks } from './renderHooks'
 import { createVolumeLight } from './volumeLight'
+import { createColliderGuide, type ColliderGuide } from './colliderGuide'
 
 const DEG = Math.PI / 180
 
@@ -94,6 +96,7 @@ interface ViewData {
   light?: Light
   guide?: SceneGuide
   device?: DeviceGuide
+  collider?: ColliderGuide
   sceneCamera?: PerspectiveCamera
   modelRoot?: Object3D
   modelKey?: string
@@ -347,6 +350,7 @@ export class EditorViewport {
     this.clearHelpers()
     for (const group of this.objects.values()) {
       dataOf(group).device?.dispose()
+      dataOf(group).collider?.dispose()
       disposeObject(group)
     }
     this.objects.clear()
@@ -394,6 +398,7 @@ export class EditorViewport {
     for (const [id, group] of this.objects) {
       if (!state.nodes[id]) {
         dataOf(group).device?.dispose()
+        dataOf(group).collider?.dispose()
         group.parent?.remove(group)
         disposeObject(group)
         this.objects.delete(id)
@@ -1523,12 +1528,36 @@ export class EditorViewport {
     const show = state.playState === 'stopped' && state.helpersVisible
     const aspect = this.aspect()
     for (const [id, group] of this.objects) {
-      const guide = dataOf(group).guide
       const node = state.nodes[id]
-      if (!guide || !node) continue
-      guide.refresh(node, group.scale, aspect, show, state.selection.includes(id))
+      if (!node) continue
+      const guide = dataOf(group).guide
+      if (guide) guide.refresh(node, group.scale, aspect, show, state.selection.includes(id))
+      const selected = show && state.selection.includes(id)
+      this.syncColliderGuide(
+        group,
+        node,
+        selected && inspectorCardOpen(id, 'physics'),
+        selected && inspectorCardOpen(id, 'character'),
+      )
     }
     this.refreshDeviceGuides(state.nodes, show, state.selection)
+  }
+
+  private syncColliderGuide(group: Group, node: SceneNode, physics: boolean, characterOn: boolean) {
+    const data = dataOf(group)
+    const character = node.gameplay?.character
+    const characterCapsule = Boolean(character?.enabled && character.driver !== 'nav')
+    if (!node.physics && !characterCapsule) {
+      data.collider?.dispose()
+      data.collider = undefined
+      return
+    }
+    if (!data.collider) {
+      data.collider = createColliderGuide()
+      markHelper(data.collider.root, true)
+      group.add(data.collider.root)
+    }
+    data.collider.sync(node, group, physics, characterOn)
   }
 
   private refreshDeviceGuides(nodes: Record<string, SceneNode>, show: boolean, selection: string[]) {
