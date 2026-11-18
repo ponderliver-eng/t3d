@@ -2,7 +2,7 @@ import { capabilityEnabled } from '../registry'
 import { worldPose } from '../../editor/scene/transform'
 import { rapierCollisionGroups } from '../../editor/project/taxonomy'
 import { useEditorStore } from '../../editor/scene/store'
-import type { PhysicsWorld } from './world'
+import type { CharacterMove, CharacterMoveResult, PhysicsWorld } from './world'
 
 let world: PhysicsWorld | null = null
 let booting = false
@@ -31,6 +31,12 @@ export function registerPhysicsExtension(id: string, order: number, step: Physic
     const idx = extensions.findIndex(item => item.id === id)
     if (idx >= 0) extensions.splice(idx, 1)
   }
+}
+
+/** 物理世界还没起来时返回 null，角色改走射线。 */
+export function moveCharacters(moves: CharacterMove[]): CharacterMoveResult[] | null {
+  if (!world || moves.length === 0) return null
+  return world.moveCharacters(moves)
 }
 
 export function tickPhysics(dt: number, resolveObject?: (id: string) => { position: { set: (x: number, y: number, z: number) => void }, quaternion: { set: (x: number, y: number, z: number, w: number) => void } } | null) {

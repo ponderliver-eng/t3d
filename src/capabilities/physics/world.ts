@@ -26,11 +26,28 @@ export interface PhysicsPose {
   rotation: [number, number, number, number]
 }
 
+/** 胶囊角色这一帧想走的位移。position 是脚底。 */
+export interface CharacterMove {
+  id: string
+  position: Vec3
+  displacement: Vec3
+  radius: number
+  height: number
+}
+
+export interface CharacterMoveResult {
+  id: string
+  position: Vec3
+  grounded: boolean
+}
+
 /** 试玩循环只依赖这个接口。具体库留在各自的实现文件里。 */
 export interface PhysicsWorld {
   setGravity(gravity: Vec3): void
   sync(bodies: PhysicsBodyDesc[]): void
   step(dt: number): void
   dynamicPoses(): PhysicsPose[]
+  /** 运动学胶囊贴着碰撞体走。陡坡会滑下，站在运动学平台上会跟着平台。 */
+  moveCharacters(moves: CharacterMove[]): CharacterMoveResult[]
   dispose(): void
 }

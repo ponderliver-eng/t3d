@@ -1,12 +1,27 @@
 import RAPIER from '@dimforge/rapier3d-compat'
-import type { PhysicsBodyDesc, PhysicsPose, PhysicsWorld } from './world'
+import type { CharacterMove, CharacterMoveResult, PhysicsBodyDesc, PhysicsPose, PhysicsWorld } from './world'
 
 const STEP = 1 / 60
+const CLIMB = 46 * Math.PI / 180
+const SLIDE = 50 * Math.PI / 180
+
+interface BodyData {
+  id: string
+  platform: [number, number, number]
+}
 
 interface LiveBody {
   body: RAPIER.RigidBody
   signature: string
   kind: PhysicsBodyDesc['body']
+  prev: [number, number, number]
+}
+
+interface Puppet {
+  body: RAPIER.RigidBody
+  collider: RAPIER.Collider
+  radius: number
+  height: number
 }
 
 export async function createRapierWorld(): Promise<PhysicsWorld> {
@@ -14,7 +29,15 @@ export async function createRapierWorld(): Promise<PhysicsWorld> {
   const world = new RAPIER.World({ x: 0, y: -9.81, z: 0 })
   world.timestep = STEP
   const bodies = new Map<string, LiveBody>()
+  const puppets = new Map<string, Puppet>()
   let accumulator = 0
+  const controller = world.createCharacterController(0.03)
+  controller.setUp({ x: 0, y: 1, z: 0 })
+  controller.setSlideEnabled(true)
+  controller.enableAutostep(0.3, 0.18, true)
+  controller.enableSnapToGround(0.25)
+  controller.setMaxSlopeClimbAngle(CLIMB)
+  controller.setMinSlopeSlideAngle(SLIDE)
 
   const api: PhysicsWorld = {
     setGravity(gravity) {
@@ -28,10 +51,26 @@ export async function createRapierWorld(): Promise<PhysicsWorld> {
         let live = bodies.get(desc.id)
         if (!live || live.signature !== signature) {
           if (live) world.removeRigidBody(live.body)
-          live = { body: createBody(world, desc), signature, kind: desc.body }
+          live = {
+            body: createBody(world, desc),
+            signature,
+            kind: desc.body,
+            prev: [desc.position[0], desc.position[1], desc.position[2]],
+          }
           bodies.set(desc.id, live)
         }
         if (desc.body !== 'dynamic') writePose(live.body, desc)
+        const data = bodyData(live.body)
+        if (desc.body === 'kinematic') {
+          data.platform = [
+            desc.position[0] - live.prev[0],
+            desc.position[1] - live.prev[1],
+            desc.position[2] - live.prev[2],
+          ]
+          live.prev = [desc.position[0], desc.position[1], desc.position[2]]
+        } else {
+          data.platform = [0, 0, 0]
+        }
       }
       for (const [id, live] of bodies) {
         if (seen.has(id)) continue
@@ -45,6 +84,55 @@ export async function createRapierWorld(): Promise<PhysicsWorld> {
         world.step()
         accumulator -= STEP
       }
+    },
+    moveCharacters(moves) {
+      const seen = new Set<string>()
+      const results: CharacterMoveResult[] = []
+      for (const move of moves) {
+        seen.add(move.id)
+        const puppet = ensurePuppet(world, puppets, move)
+        const half = capsuleHalf(puppet.height, puppet.radius)
+        puppet.body.setTranslation({
+          x: move.position[0],
+          y: move.position[1] + half + puppet.radius,
+          z: move.position[2],
+        }, true)
+        controller.computeColliderMovement(
+          puppet.collider,
+          { x: move.displacement[0], y: move.displacement[1], z: move.displacement[2] },
+          undefined,
+          undefined,
+          collider => {
+            const id = (collider.parent()?.userData as BodyData | undefined)?.id
+            return id !== move.id
+          },
+        )
+        const computed = controller.computedMovement()
+        const grounded = controller.computedGrounded()
+        let x = move.position[0] + computed.x
+        let y = move.position[1] + computed.y
+        let z = move.position[2] + computed.z
+        if (grounded) {
+          const count = controller.numComputedCollisions()
+          for (let i = 0; i < count; i += 1) {
+            const hit = controller.computedCollision(i)
+            const data = hit?.collider?.parent()?.userData as BodyData | undefined
+            if ((hit?.normal1.y ?? 0) <= 0.55 || !data?.platform) continue
+            x += data.platform[0]
+            y += data.platform[1]
+            z += data.platform[2]
+            break
+          }
+        }
+        puppet.body.setNextKinematicTranslation({ x, y: y + half + puppet.radius, z })
+        results.push({ id: move.id, position: [x, y, z], grounded })
+      }
+      for (const [id, puppet] of puppets) {
+        if (seen.has(id)) continue
+        world.removeRigidBody(puppet.body)
+        puppets.delete(id)
+      }
+      return results
     },
     dynamicPoses() {
       const poses: PhysicsPose[] = []
@@ -61,6 +149,8 @@ export async function createRapierWorld(): Promise<PhysicsWorld> {
       return poses
     },
     dispose() {
+      controller.free()
+      puppets.clear()
       bodies.clear()
       world.free()
     },
@@ -82,8 +172,40 @@ function createBody(world: RAPIER.World, desc: PhysicsBodyDesc): RAPIER.RigidBod
     .setGravityScale(desc.gravityScale)
   if (desc.body === 'dynamic') bodyDesc.setAdditionalMass(Math.max(0.001, desc.mass))
   const body = world.createRigidBody(bodyDesc)
+  body.userData = { id: desc.id, platform: [0, 0, 0] } satisfies BodyData
   world.createCollider(colliderDesc(desc), body)
   return body
+}
+
+function bodyData(body: RAPIER.RigidBody): BodyData {
+  const data = body.userData as BodyData | undefined
+  if (data) return data
+  const created: BodyData = { id: '', platform: [0, 0, 0] }
+  body.userData = created
+  return created
+}
+
+function capsuleHalf(height: number, radius: number): number {
+  return Math.max(0.02, height * 0.5 - radius)
+}
+
+function ensurePuppet(world: RAPIER.World, puppets: Map<string, Puppet>, move: CharacterMove): Puppet {
+  const radius = Math.max(0.05, move.radius)
+  const height = Math.max(radius * 2 + 0.08, move.height)
+  const current = puppets.get(move.id)
+  if (current && Math.abs(current.radius - radius) < 0.001 && Math.abs(current.height - height) < 0.001) return current
+  if (current) world.removeRigidBody(current.body)
+  const half = capsuleHalf(height, radius)
+  const body = world.createRigidBody(RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(
+    move.position[0],
+    move.position[1] + half + radius,
+    move.position[2],
+  ))
+  body.userData = { id: move.id, platform: [0, 0, 0] } satisfies BodyData
+  const collider = world.createCollider(RAPIER.ColliderDesc.capsule(half, radius).setFriction(0), body)
+  const puppet = { body, collider, radius, height }
+  puppets.set(move.id, puppet)
+  return puppet
 }
 
 function colliderDesc(desc: PhysicsBodyDesc): RAPIER.ColliderDesc {

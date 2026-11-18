@@ -1,4 +1,5 @@
 import { findNavigationPath } from '../capabilities/navigation/session'
+import { moveCharacters } from '../capabilities/physics/session'
 import { addRuntimeTag } from '../gameplay/runtimeTags'
 import { clearJuice } from '../gameplay/juiceClock'
 import { emitFootstep } from './signals'
@@ -204,26 +205,44 @@ function stepCharacters(dt: number, host: SceneRuntimeHost) {
       live.lastGrounded = -999
       jumped = true
     }
-    live.grounded = onGround && live.vy <= 0
-    if (live.grounded) live.vy = 0
-    else live.vy -= spec.gravity * dt
+    const supported = onGround || live.grounded
+    if (!(supported && live.vy <= 0)) live.vy -= spec.gravity * dt
     let nextX = object.position.x + moveX * dt
-    let nextZ = object.position.z + moveZ * dt
-    if (spec.driver !== 'nav') {
-      const blocked = slide(host, object.position.x, feet + spec.height * 0.45, object.position.z, nextX, nextZ, node.id, spec.radius)
-      nextX = blocked.x
-      nextZ = blocked.z
-    }
     let nextY = feet + live.vy * dt
-    if (ground !== null && live.vy <= 0) {
-      const gap = nextY - ground
-      const stick = live.grounded && gap >= 0 && gap <= 0.4
-      if (gap <= 0.02 || stick) {
-        nextY = ground
-        live.vy = 0
-        live.grounded = true
-        live.lastGrounded = now
+    let nextZ = object.position.z + moveZ * dt
+    let landed = false
+    if (spec.driver !== 'nav') {
+      const solved = moveCharacters([{
+        id: node.id,
+        position: [object.position.x, feet, object.position.z],
+        displacement: [moveX * dt, live.vy * dt, moveZ * dt],
+        radius: spec.radius,
+        height: spec.height,
+      }])
+      const step = solved?.[0]
+      if (step) {
+        nextX = step.position[0]
+        nextY = step.position[1]
+        nextZ = step.position[2]
+        landed = step.grounded && live.vy <= 0.35
+      } else {
+        const blocked = slide(host, object.position.x, feet + spec.height * 0.45, object.position.z, nextX, nextZ, node.id, spec.radius)
+        nextX = blocked.x
+        nextZ = blocked.z
+        landed = ground !== null && live.vy <= 0 && nextY <= ground + 0.08
+        if (landed && ground !== null) nextY = ground
       }
+    } else if (ground !== null && live.vy <= 0 && nextY <= ground + 0.08) {
+      nextY = ground
+      landed = true
+    }
+    if (landed) {
+      live.vy = 0
+      live.grounded = true
+      live.lastGrounded = now
+      if (!jumped) live.jumpsUsed = 0
+    } else {
+      live.grounded = false
     }
     const traveled = Math.hypot(nextX - object.position.x, nextZ - object.position.z)
     if (live.grounded && traveled > 0) {
@@ -398,14 +417,15 @@ function stepJumpPose(id: string, ownerAssetId: string, spec: CharacterSpec, liv
     else if (finished || falling) begin('hang')
   } else if (live.jumpPhase === 'hang') {
     live.jumpTime += dt
-    if (live.grounded) begin(live.jumpTime >= 0.15 && spec.landClip ? 'land' : 'none')
+    if (live.grounded) begin(spec.landClip ? 'land' : 'none')
   } else if (live.jumpPhase === 'land') {
     live.jumpTime += dt
     const duration = clipDuration(spec.landClipAssetId || ownerAssetId, spec.landClip)
-    const finished = (duration > 0 && live.jumpTime >= Math.min(duration, 0.45) - 0.02) || (duration <= 0 && live.jumpTime >= 0.28)
+    const contact = duration > 0 ? Math.min(0.22, Math.max(0.12, duration * 0.4)) : 0.16
+    const finished = (duration > 0 && live.jumpTime >= Math.min(duration, 0.5) - 0.02) || (duration <= 0 && live.jumpTime >= 0.28)
     if (!live.grounded && airborne(live, now)) begin(spec.airClip ? 'hang' : 'none')
-    else if (moving && live.jumpTime >= 0.1) begin('none')
     else if (finished) begin('none')
+    else if (moving && live.jumpTime >= contact) begin('none')
   } else if (!live.grounded && spec.airClip && airborne(live, now)) begin('hang')
   if (live.jumpPhase === 'rise' && spec.jumpClip) playOwned(id, ownerAssetId, live, spec.jumpClip, spec.jumpClipAssetId, false)
   else if (live.jumpPhase === 'hang' && spec.airClip) playOwned(id, ownerAssetId, live, spec.airClip, spec.airClipAssetId, true)
