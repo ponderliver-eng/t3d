@@ -445,7 +445,8 @@
   color: #c5ced8;
 }
 
-.tex-edit__ghost:hover { color: #fff; }
+.tex-edit__ghost:hover:not(:disabled) { color: #fff; }
+.tex-edit__ghost:disabled { opacity: 0.45; }
 
 .tex-edit__save {
   padding: 0 12px;

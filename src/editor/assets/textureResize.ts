@@ -38,7 +38,7 @@ function replaceExtensionWithPng(fileName: string): string {
   return dot > 0 ? `${fileName.slice(0, dot)}.png` : `${fileName}.png`
 }
 
-async function readCurrentBytes(asset: FileAsset): Promise<ArrayBuffer> {
+export async function readCurrentBytes(asset: FileAsset): Promise<ArrayBuffer> {
   const cached = await readFileBytes(asset.id)
   if (cached) return cached
   const url = await ensureAssetUrl(asset.id)
@@ -83,6 +83,9 @@ let glSampler: {
   tex: WebGLTexture
   fbo: WebGLFramebuffer
   outTex: WebGLTexture
+  uFlipX: WebGLUniformLocation | null
+  uFlipY: WebGLUniformLocation | null
+  uFlipNormalY: WebGLUniformLocation | null
 } | null = null
 
 function getGlSampler() {
@@ -114,10 +117,18 @@ function getGlSampler() {
   const fs = compile(gl.FRAGMENT_SHADER, `#version 300 es
     precision highp float;
     uniform sampler2D uTex;
+    uniform int uFlipX;
+    uniform int uFlipY;
+    uniform int uFlipNormalY;
     in vec2 vUv;
     out vec4 fragColor;
     void main() {
-      fragColor = texture(uTex, vUv);
+      vec2 uv = vUv;
+      if (uFlipX == 1) uv.x = 1.0 - uv.x;
+      if (uFlipY == 1) uv.y = 1.0 - uv.y;
+      vec4 c = texture(uTex, uv);
+      if (uFlipNormalY == 1) c.g = 1.0 - c.g;
+      fragColor = c;
     }
   `)
   const program = gl.createProgram()!
@@ -131,14 +142,24 @@ function getGlSampler() {
   const tex = gl.createTexture()!
   const outTex = gl.createTexture()!
   const fbo = gl.createFramebuffer()!
+  const uFlipX = gl.getUniformLocation(program, 'uFlipX')
+  const uFlipY = gl.getUniformLocation(program, 'uFlipY')
+  const uFlipNormalY = gl.getUniformLocation(program, 'uFlipNormalY')
 
-  glSampler = { gl, program, vao, tex, fbo, outTex }
+  glSampler = { gl, program, vao, tex, fbo, outTex, uFlipX, uFlipY, uFlipNormalY }
   return glSampler
 }
 
 /** 用 WebGL2 无预乘读出像素，避免 2D Canvas 把 A=0 区域的 RGB 清零导致发黑。 */
-function readUnpremultipliedRgba(source: TexImageSource, width: number, height: number): Uint8Array {
-  const { gl, program, vao, tex, fbo, outTex } = getGlSampler()
+function readUnpremultipliedRgba(
+  source: TexImageSource,
+  width: number,
+  height: number,
+  flipX = false,
+  flipY = false,
+  flipNormalY = false,
+): Uint8Array {
+  const { gl, program, vao, tex, fbo, outTex, uFlipX, uFlipY, uFlipNormalY } = getGlSampler()
   gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false)
   gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false)
   gl.pixelStorei(gl.UNPACK_COLORSPACE_CONVERSION_WEBGL, gl.NONE)
@@ -158,6 +179,9 @@ function readUnpremultipliedRgba(source: TexImageSource, width: number, height: 
   gl.viewport(0, 0, width, height)
   gl.disable(gl.BLEND)
   gl.useProgram(program)
+  gl.uniform1i(uFlipX, flipX ? 1 : 0)
+  gl.uniform1i(uFlipY, flipY ? 1 : 0)
+  gl.uniform1i(uFlipNormalY, flipNormalY ? 1 : 0)
   gl.bindVertexArray(vao)
   gl.activeTexture(gl.TEXTURE0)
   gl.bindTexture(gl.TEXTURE_2D, tex)
@@ -228,20 +252,24 @@ async function encodeRgbaPng(rgba: Uint8Array, width: number, height: number): P
   return out.buffer
 }
 
-async function resampleToPng(bytes: ArrayBuffer, targetWidth: number, targetHeight: number): Promise<ArrayBuffer> {
+export async function renderTextureToPng(
+  bytes: ArrayBuffer,
+  options: { width: number, height: number, flipX?: boolean, flipY?: boolean, flipNormalY?: boolean },
+): Promise<ArrayBuffer> {
+  const { width, height, flipX = false, flipY = false, flipNormalY = false } = options
   const blob = new Blob([bytes])
   if (typeof createImageBitmap === 'function') {
     const bitmap = await createImageBitmap(blob, {
       imageOrientation: 'none',
       premultiplyAlpha: 'none',
       colorSpaceConversion: 'none',
-      resizeWidth: targetWidth,
-      resizeHeight: targetHeight,
+      resizeWidth: width,
+      resizeHeight: height,
       resizeQuality: 'high',
     })
     try {
-      const rgba = readUnpremultipliedRgba(bitmap, targetWidth, targetHeight)
-      return await encodeRgbaPng(rgba, targetWidth, targetHeight)
+      const rgba = readUnpremultipliedRgba(bitmap, width, height, flipX, flipY, flipNormalY)
+      return await encodeRgbaPng(rgba, width, height)
     } finally {
       bitmap.close()
     }
@@ -249,11 +277,24 @@ async function resampleToPng(bytes: ArrayBuffer, targetWidth: number, targetHeig
   const url = URL.createObjectURL(blob)
   try {
     const img = await loadHtmlImage(url)
-    const rgba = readUnpremultipliedRgba(img, targetWidth, targetHeight)
-    return await encodeRgbaPng(rgba, targetWidth, targetHeight)
+    const rgba = readUnpremultipliedRgba(img, width, height, flipX, flipY, flipNormalY)
+    return await encodeRgbaPng(rgba, width, height)
   } finally {
     URL.revokeObjectURL(url)
   }
+}
+
+function resampleToPng(bytes: ArrayBuffer, targetWidth: number, targetHeight: number): Promise<ArrayBuffer> {
+  return renderTextureToPng(bytes, { width: targetWidth, height: targetHeight })
+}
+
+export async function saveOverwrittenTexture(asset: FileAsset, pngBytes: ArrayBuffer): Promise<void> {
+  const hasBackup = await hasOriginalTextureBackup(asset.id).catch(() => false)
+  if (!hasBackup) {
+    const raw = await readCurrentBytes(asset)
+    await writeOriginalTextureBackup(asset.id, asset.fileName, raw)
+  }
+  await overwriteTextureAsset(asset, pngBytes, replaceExtensionWithPng(asset.fileName))
 }
 
 async function overwriteTextureAsset(asset: FileAsset, bytes: ArrayBuffer, nextFileName: string): Promise<void> {

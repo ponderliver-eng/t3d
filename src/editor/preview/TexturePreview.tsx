@@ -15,7 +15,8 @@ import {
   WebGLRenderer,
 } from 'three'
 import { useI18n } from '../i18n'
-import { environmentFor, ensureAssetUrl } from '../assets/textures'
+import { environmentFor } from '../assets/textures'
+import { canResizeTextureFile, readCurrentBytes, renderTextureToPng, saveOverwrittenTexture } from '../assets/textureResize'
 import { isNormalTextureName } from '../assets/models'
 import { assetDirectory, useAssetStore } from '../assets/library'
 import { importExtractedBytes } from '../assets/import'
@@ -34,13 +35,6 @@ function linkedPot(next: number, other: number, base: number): number {
   return nearestPot(next * other / base)
 }
 
-function invertGreenChannel(context: CanvasRenderingContext2D, width: number, height: number) {
-  const image = context.getImageData(0, 0, width, height)
-  const data = image.data
-  for (let i = 1; i < data.length; i += 4) data[i] = 255 - data[i]
-  context.putImageData(image, 0, 0)
-}
-
 function uniqueCopyName(base: string): string {
   const names = new Set(Object.values(useAssetStore.getState().assets).map(item => item.name))
   const stem = `${base} edit`
@@ -48,39 +42,6 @@ function uniqueCopyName(base: string): string {
   let index = 2
   while (names.has(`${stem} ${index}`)) index += 1
   return `${stem} ${index}`
-}
-
-function renderEditedPng(url: string, width: number, height: number, flipX: boolean, flipY: boolean, flipNormalY: boolean): Promise<ArrayBuffer> {
-  return new Promise((resolve, reject) => {
-    const image = new Image()
-    image.onload = () => {
-      const canvas = document.createElement('canvas')
-      canvas.width = width
-      canvas.height = height
-      const context = canvas.getContext('2d')
-      if (!context) {
-        reject(new Error('无法绘制贴图'))
-        return
-      }
-      if (flipX || flipY) {
-        context.translate(flipX ? width : 0, flipY ? height : 0)
-        context.scale(flipX ? -1 : 1, flipY ? -1 : 1)
-      }
-      context.imageSmoothingEnabled = true
-      context.imageSmoothingQuality = 'high'
-      context.drawImage(image, 0, 0, width, height)
-      if (flipNormalY) invertGreenChannel(context, width, height)
-      canvas.toBlob(blob => {
-        if (!blob) {
-          reject(new Error('无法导出 PNG'))
-          return
-        }
-        void blob.arrayBuffer().then(resolve, reject)
-      }, 'image/png')
-    }
-    image.onerror = () => reject(new Error('无法读取贴图'))
-    image.src = url
-  })
 }
 
 type Channel = 'rgb' | 'r' | 'g' | 'b' | 'a'
@@ -121,17 +82,49 @@ export function TexturePreview({ assetId, environment = false, standalone = fals
   }, [assetId])
 
   const saveEditedTexture = async () => {
-    if (!asset || !('fileName' in asset) || saving || outWidth < 1 || outHeight < 1) return
+    if (!asset || !('fileName' in asset) || asset.kind !== 'texture' || saving || outWidth < 1 || outHeight < 1) return
     setSaving(true)
     try {
-      const url = asset.url || await ensureAssetUrl(assetId)
-      const png = await renderEditedPng(url, outWidth, outHeight, flipX, flipY, normalMap && flipNormalY)
+      const bytes = await readCurrentBytes(asset)
+      const png = await renderTextureToPng(bytes, {
+        width: outWidth,
+        height: outHeight,
+        flipX,
+        flipY,
+        flipNormalY: normalMap && flipNormalY,
+      })
       const dir = assetDirectory(assetId, useAssetStore.getState().assetDirs)
       const fileName = `${uniqueCopyName(asset.name)}.png`
       const id = await importExtractedBytes(fileName, new Uint8Array(png), dir)
       if (!id) throw new Error('save failed')
       useEditorStore.getState().pingAsset(id)
       useEditorStore.getState().log('info', t('preview.savedTexture', { name: fileName.replace(/\.png$/i, '') }))
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      useEditorStore.getState().log('error', t('preview.saveTextureFail', { message }))
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const overwriteTexture = async () => {
+    if (!asset || !('fileName' in asset) || asset.kind !== 'texture' || saving || outWidth < 1 || outHeight < 1) return
+    setSaving(true)
+    try {
+      const bytes = await readCurrentBytes(asset)
+      const png = await renderTextureToPng(bytes, {
+        width: outWidth,
+        height: outHeight,
+        flipX,
+        flipY,
+        flipNormalY: normalMap && flipNormalY,
+      })
+      await saveOverwrittenTexture(asset, png)
+      sourceSizeRef.current = { width: outWidth, height: outHeight }
+      setFlipX(false)
+      setFlipY(false)
+      setFlipNormalY(false)
+      useEditorStore.getState().log('info', t('preview.overwroteTexture', { name: asset.name }))
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       useEditorStore.getState().log('error', t('preview.saveTextureFail', { message }))
@@ -376,7 +369,8 @@ export function TexturePreview({ assetId, environment = false, standalone = fals
             </label>
             <span className="tex-edit__spacer" />
             {!standalone && <button type="button" className="tex-edit__ghost" onClick={() => popPreviewWindow('texture', assetId)}>{t('preview.popout')}</button>}
-            <button type="button" className="tex-edit__save" disabled={saving || outWidth < 1 || outHeight < 1 || !asset || !('url' in asset)} onClick={() => { void saveEditedTexture() }}>{saving ? t('preview.saving') : t('preview.saveTexture')}</button>
+            <button type="button" className="tex-edit__ghost" disabled={saving || outWidth < 1 || outHeight < 1 || !asset || !('fileName' in asset) || !canResizeTextureFile(asset.fileName)} onClick={() => { void saveEditedTexture() }}>{saving ? t('preview.saving') : t('preview.saveTexture')}</button>
+            <button type="button" className="tex-edit__save" disabled={saving || outWidth < 1 || outHeight < 1 || !asset || !('fileName' in asset) || !canResizeTextureFile(asset.fileName)} onClick={() => { void overwriteTexture() }}>{saving ? t('preview.saving') : t('preview.overwriteTexture')}</button>
           </div>
           <p className="tex-edit__note">{t('preview.textureHint')}</p>
         </div>
