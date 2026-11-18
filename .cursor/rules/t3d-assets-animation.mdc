@@ -1,0 +1,22 @@
+---
+description: 资源导入、缓存、贴图与人形重定向动画规范
+globs: src/editor/assets/**,src/editor/animation/**,src/editor/project/**
+alwaysApply: false
+---
+
+# 资源缓存与动画系统规范
+
+当修改 `src/editor/assets/`、`src/editor/animation/` 或 `src/editor/project/` 时遵守：
+
+## 1. 资源加载与缓存闭环
+- **内容寻址与成品隔离**：文件按 `SHA-256` 去重。模型/动画统一转为压缩 GLB Artifact（`${hash}__${MODEL_IMPORTER_VERSION}`）。**禁止**把工程已有的独立贴图重复打包进 FBX 转出的 GLB 成品中。
+- **按需懒加载**：`warmAssets` 仅预热当前场景、预制体、材质、特效、UI 实际引用的资源；未引用资源只登记 `AssetMeta`（不读源字节、不建 `Blob URL`）。
+- **贴图与通道规范**：
+  - 优先使用 `createImageBitmap` 后台解码并限制最大尺寸（`2048px`）。
+  - 颜色图（`SRGBColorSpace`）与线性数据图（`NoColorSpace`）必须通过共享 `source` 的克隆纹理隔离，禁止原地改共享 `Texture.colorSpace`。
+  - Unity `_MetallicGlossMap` / `_MaskMap` 使用 `unity-standard` 着色器模式，在后台 Worker 完成通道重排前返回 `null`，避免未重排原图上传 GPU。
+- **彻底释放**：删除或重导资源时，必须同步清理 GPU 纹理/几何、衍生贴图缓存、`Blob URL`、骨骼登记表（`forgetHumanoidSkeletons`）与重定向缓存（`releaseHumanoidPlayback`）。
+
+## 2. 动画与人形重定向
+- **绑定时重定向**：跨骨架动画在绑定动作时由 `clipsForSkeleton` 完成骨骼映射、Rest Pose 补偿与脚步防穿地并缓存，运行时 `AnimationMixer` 只播目标骨架 `AnimationClip`。
+- **双通道与相位对齐**：身体层（`body`）与上半身覆盖层（`overlay`）分离；当 `overlay` 激活时，全身身体层自动降为 `lower`。全身切换（如走 <-> 跑）必须保持步幅相位同步（Phase Sync），过渡结束时必须将淡出的旧 `AnimationAction` 彻底 `stop()`。

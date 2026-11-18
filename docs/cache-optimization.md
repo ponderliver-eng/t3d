@@ -1,8 +1,25 @@
-# 资源缓存与打开场景速度（优化建议）
+# 资源缓存与打开场景速度（优化记录与后续规划）
 
-本文记录 2026-11-17 讨论过、尚未实施的缓存优化。依据是对当前代码的阅读，没有做过加载耗时和内存的实测。实施前先补分阶段计时，用数字决定优先级。
+本文记录 2026-11-17 梳理的缓存与加载优化项。高性价比的核心项已在代码中落地，其余重型项保留作为后续按需演进依据。
 
-长期约束仍以 `docs/architecture-rules.md` 第 3 节为准：内容寻址、按需预热、色彩空间隔离、删除时释放显存。本文只补那一节没有覆盖的缺口。
+长期约束仍以 `docs/architecture-rules.md` 第 3 节为准：内容寻址、按需预热、色彩空间隔离、删除时释放显存。
+
+---
+
+## 0. 已落地实施项（2026-11-17）
+
+1. **分阶段计时与状态栏预热进度（原 3.6 / 3.7）**
+   - `warmAssets` 已拆分统计 `场景 / 模型累计 / 贴图累计` 耗时并输出到 `log.openedDetail`。
+   - 状态栏实时显示 `正在加载资源 x/y`，预热完成后自动收起。
+2. **模型 GLB 成品剔除重复内嵌的工程贴图（原 3.1）**
+   - `loadFbxWithUfbx` 不再把工程已有独立贴图打包进 `.cache/t3d/import-artifacts/` 的 GLB 成品，消除打开工程时同一张贴图的二次解码，成品版本已升至 `t3d-glb-artifact-8-ufbx-light`。
+3. **模板阶段一次性预计算切线 & 预热后管线预编译（原 3.4 / 3.5）**
+   - `templateFromObject` 在模型模板加载时计算一次 `computeTangents()`，所有克隆实例共享几何体；预热完成后触发 `t3d:warm-complete` 调用 `renderer.compileAsync(scene, camera)`。
+4. **贴图后台 `createImageBitmap` 解码、2048 最大尺寸限制与按 `hash` 自动失效（原 2.1 / 2.2 / 2.6）**
+   - `loadBitmapTexture` 优先走 `createImageBitmap` 异步解码并将超限大图等比降采样至 `2048px`。
+   - `imageHashes` 记录贴图内容哈希，贴图内容变更时自动释放旧 GPU 纹理与衍生副本。
+5. **Unity 金属光滑图重排不再预先上传原图（原 2.5）**
+   - `unityMetallicRoughnessTextureFor` 在 Worker 重排完成前返回 `null`，避免未重排原图上传 GPU 造成闪烁与双倍显存。
 
 相关代码：
 

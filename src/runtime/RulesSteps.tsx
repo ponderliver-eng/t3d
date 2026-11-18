@@ -1,10 +1,19 @@
 import { Plus, Trash2 } from 'lucide-react'
 import { useI18n, type MessageKey } from '../editor/i18n'
+import { useEditorStore } from '../editor/scene/store'
 import { ClipField } from '../editor/panels/ClipPicker'
+import {
+  findPackAction,
+  findPackCondition,
+  listEnabledPackActions,
+  listEnabledPackConditions,
+} from '../gameplay/registry'
 import { JuiceField, NodeField, PrefabField, TagField } from './RulePickers'
 import {
   emptyCondition,
   emptyStep,
+  isCoreCondition,
+  isCoreStep,
   type RuleCondition,
   type RuleCondKind,
   type RuleStateNode,
@@ -61,31 +70,42 @@ export function ConditionEditor({
   onChange: (next: RuleCondition[]) => void
 }) {
   const { t } = useI18n()
+  const enabledPacks = useEditorStore(state => state.gameplayPacks)
+  const packConds = listEnabledPackConditions(enabledPacks)
   const patch = (id: string, partial: Partial<RuleCondition>) => onChange(conditions.map(item => item.id === id ? { ...item, ...partial } : item))
   return (
     <div className="rules-steps">
-      {conditions.map((cond, index) => (
-        <div key={cond.id} className="rules-step">
-          <span className="rules-step__num">{index + 1}</span>
-          <select disabled={disabled} value={cond.kind} onChange={event => patch(cond.id, { kind: event.target.value as RuleCondKind })}>
-            {CONDS.map(item => <option key={item} value={item}>{t(`rule.cond.${item}`)}</option>)}
-          </select>
-          {cond.kind === 'hasTag' || cond.kind === 'missingTag' ? (
-            <TagField value={cond.tag} disabled={disabled} onChange={tag => patch(cond.id, { tag })} />
-          ) : cond.kind === 'compare' ? (
-            <span className="rules-step__compare">
-              <input disabled={disabled} value={cond.left} placeholder={t('rule.left')} onChange={event => patch(cond.id, { left: event.target.value })} />
-              <select disabled={disabled} value={cond.op} onChange={event => patch(cond.id, { op: event.target.value })}>
-                {OPS.map(op => <option key={op} value={op}>{op}</option>)}
-              </select>
-              <input disabled={disabled} value={cond.right} placeholder={t('rule.right')} onChange={event => patch(cond.id, { right: event.target.value })} />
-            </span>
-          ) : cond.kind === 'formula' ? (
-            <input disabled={disabled} value={cond.left} placeholder={t('rule.formula')} onChange={event => patch(cond.id, { left: event.target.value })} />
-          ) : <span className="rules-step__mute">{t('rule.alwaysPass')}</span>}
-          <button type="button" disabled={disabled} title={t('rule.remove')} onClick={() => onChange(conditions.filter(item => item.id !== cond.id))}><Trash2 size={12} /></button>
-        </div>
-      ))}
+      {conditions.map((cond, index) => {
+        const packCond = isCoreCondition(cond.kind) ? undefined : findPackCondition(cond.kind, enabledPacks)
+        const missing = !isCoreCondition(cond.kind) && !packCond?.enabled
+        const hint = packCond?.def.paramHint ?? 'formula'
+        return (
+          <div key={cond.id} className="rules-step">
+            <span className="rules-step__num">{index + 1}</span>
+            <select disabled={disabled} value={cond.kind} onChange={event => patch(cond.id, { kind: event.target.value as RuleCondKind })}>
+              {CONDS.map(item => <option key={item} value={item}>{t(`rule.cond.${item}` as MessageKey)}</option>)}
+              {packConds.map(item => <option key={item.def.kind} value={item.def.kind}>{item.def.label}</option>)}
+              {missing && <option value={cond.kind}>{t('rule.packMissing', { kind: packCond?.def.label ?? cond.kind })}</option>}
+            </select>
+            {missing ? (
+              <span className="rules-step__mute">{t('rule.packDisabledHint')}</span>
+            ) : cond.kind === 'hasTag' || cond.kind === 'missingTag' || (!isCoreCondition(cond.kind) && hint === 'tag') ? (
+              <TagField value={cond.tag} disabled={disabled} onChange={tag => patch(cond.id, { tag })} />
+            ) : cond.kind === 'compare' || (!isCoreCondition(cond.kind) && hint === 'compare') ? (
+              <span className="rules-step__compare">
+                <input disabled={disabled} value={cond.left} placeholder={t('rule.left')} onChange={event => patch(cond.id, { left: event.target.value })} />
+                <select disabled={disabled} value={cond.op} onChange={event => patch(cond.id, { op: event.target.value })}>
+                  {OPS.map(op => <option key={op} value={op}>{op}</option>)}
+                </select>
+                <input disabled={disabled} value={cond.right} placeholder={t('rule.right')} onChange={event => patch(cond.id, { right: event.target.value })} />
+              </span>
+            ) : cond.kind === 'formula' || (!isCoreCondition(cond.kind) && hint === 'formula') ? (
+              <input disabled={disabled} value={cond.left} placeholder={t('rule.formula')} onChange={event => patch(cond.id, { left: event.target.value })} />
+            ) : <span className="rules-step__mute">{t('rule.alwaysPass')}</span>}
+            <button type="button" disabled={disabled} title={t('rule.remove')} onClick={() => onChange(conditions.filter(item => item.id !== cond.id))}><Trash2 size={12} /></button>
+          </div>
+        )
+      })}
     </div>
   )
 }
@@ -106,17 +126,27 @@ export function StepList({
   onChange: (next: RuleStep[]) => void
 }) {
   const { t } = useI18n()
+  const enabledPacks = useEditorStore(state => state.gameplayPacks)
+  const packActions = listEnabledPackActions(enabledPacks)
   const patch = (index: number, partial: Partial<RuleStep>) => onChange(steps.map((step, item) => item === index ? { ...step, ...partial } : step))
   return (
     <div className="rules-steps" style={{ marginLeft: depth * 14 }}>
-      {steps.map((step, index) => (
+      {steps.map((step, index) => {
+        const packAct = isCoreStep(step.do) ? undefined : findPackAction(step.do, enabledPacks)
+        const missing = !isCoreStep(step.do) && !packAct?.enabled
+        const tone = TONE[step.do] ?? packAct?.def.tone ?? '#94a3b8'
+        return (
         <div key={step.id} className="rules-step-wrap">
-          <div className={`rules-step${activeId === step.id ? ' is-live' : ''}`} style={{ borderLeftColor: TONE[step.do] }}>
+          <div className={`rules-step${activeId === step.id ? ' is-live' : ''}`} style={{ borderLeftColor: tone }}>
             <span className="rules-step__num">{index + 1}</span>
             <select disabled={disabled} value={step.do} onChange={event => patch(index, freshKind(step, event.target.value as RuleStepKind))}>
               {STEP_KINDS.map(item => <option key={item} value={item}>{t(`rule.step.${item}` as MessageKey)}</option>)}
+              {packActions.map(item => <option key={item.def.kind} value={item.def.kind}>{item.def.label}</option>)}
+              {missing && <option value={step.do}>{t('rule.packMissing', { kind: packAct?.def.label ?? step.do })}</option>}
             </select>
-            <StepFields step={step} disabled={disabled} states={states} onChange={partial => patch(index, partial)} />
+            {missing
+              ? <span className="rules-step__mute">{t('rule.packDisabledHint')}</span>
+              : <StepFields step={step} disabled={disabled} states={states} packAction={packAct?.def} onChange={partial => patch(index, partial)} />}
             <button type="button" disabled={disabled} title={t('rule.remove')} onClick={() => onChange(steps.filter((_, item) => item !== index))}><Trash2 size={12} /></button>
           </div>
           {(step.do === 'if' || step.do === 'each') && (
@@ -133,7 +163,8 @@ export function StepList({
             </div>
           )}
         </div>
-      ))}
+        )
+      })}
     </div>
   )
 }
@@ -142,11 +173,13 @@ function StepFields({
   step,
   disabled,
   states,
+  packAction,
   onChange,
 }: {
   step: RuleStep
   disabled: boolean
   states: { id: string, name: string, depth: number }[]
+  packAction?: import('../gameplay/types').GameplayPackActionDef
   onChange: (patch: Partial<RuleStep>) => void
 }) {
   const { t } = useI18n()
@@ -169,7 +202,7 @@ function StepFields({
   }
   if (step.do === 'removeTag') return <TagField value={step.tag} disabled={disabled} onChange={tag => onChange({ tag })} />
   if (step.do === 'wait') return <input disabled={disabled} value={step.value || String(step.seconds)} title={t('rule.seconds')} placeholder={t('rule.seconds')} onChange={event => onChange({ value: event.target.value, seconds: Number(event.target.value) || 0 })} />
-  if (step.do === 'waitFrame' || step.do === 'waitUpper' || step.do === 'hide') return <span className="rules-step__mute">{t(`rule.step.${step.do}`)}</span>
+  if (step.do === 'waitFrame' || step.do === 'waitUpper' || step.do === 'hide') return <span className="rules-step__mute">{t(`rule.step.${step.do}` as MessageKey)}</span>
   if (step.do === 'waitMark') return <input disabled={disabled} value={step.value} placeholder="0-1" title={t('rule.mark')} onChange={event => onChange({ value: event.target.value })} />
   if (step.do === 'playClip' || step.do === 'playUpper' || step.do === 'stance') {
     return (
@@ -237,6 +270,22 @@ function StepFields({
         {states.map(item => <option key={item.id} value={item.id}>{`${'· '.repeat(item.depth)}${item.name || t('rule.unnamed')}`}</option>)}
       </select>
     )
+  }
+  if (packAction) {
+    const hint = packAction.paramHint ?? 'text'
+    if (hint === 'none') return <span className="rules-step__mute">{packAction.label}</span>
+    if (hint === 'tag') return <TagField value={step.tag} disabled={disabled} onChange={tag => onChange({ tag })} />
+    if (hint === 'node') return <NodeField value={step.name} title={t('rule.pickNode')} disabled={disabled} onChange={name => onChange({ name })} />
+    if (hint === 'formula') return <input disabled={disabled} value={step.value} placeholder={packAction.placeholder || t('rule.amount')} onChange={event => onChange({ value: event.target.value })} />
+    if (hint === 'targetFormula') {
+      return (
+        <span className="rules-step__compare rules-step__compare--pick">
+          <NodeField value={step.name} title={t('rule.pickNode')} disabled={disabled} onChange={name => onChange({ name })} />
+          <input disabled={disabled} value={step.value} placeholder={packAction.placeholder || t('rule.amount')} onChange={event => onChange({ value: event.target.value })} />
+        </span>
+      )
+    }
+    return <input disabled={disabled} value={step.message || step.name} placeholder={packAction.placeholder || t('rule.message')} onChange={event => onChange({ message: event.target.value, name: event.target.value })} />
   }
   return <span className="rules-step__mute">{t('rule.cond')}</span>
 }

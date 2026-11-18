@@ -1,0 +1,32 @@
+---
+description: 能力包（水体、载具、体积云、特殊动画等）与场景运行时五阶段流水线扩展规范
+globs: src/capabilities/**,src/runtime/**,src/editor/viewport/**
+alwaysApply: false
+---
+
+# 能力包与运行时流水线扩展规范
+
+当开发或接入新能力包（`src/capabilities/<id>/`）或运行时模块（`src/runtime/`）时遵守：
+
+## 1. 第三方库单点隔离与按需懒加载
+- **物理 (`physics`)**：仅 `src/capabilities/physics/rapierWorld.ts` 允许 import `@dimforge/rapier3d-compat`。
+- **导航 (`navigation`)**：仅 `recastNav.ts` 与 `bake.worker.ts` 允许 import `recast-navigation`。
+- **粒子 (`particles`)**：仅 `quarksRuntime.ts` 与 `tslBatch.ts` 允许 import `three.quarks`（保持 CPU 模拟 + TSL 实例化，不装 `quarks.nodes`）。
+- **新增能力包**：在 `src/capabilities/registry.ts` 中通过 `loadRuntime: () => import(...)` 动态懒加载，并声明 `dependencies`（如 `vehicle` 依赖 `['physics']`）。关闭能力包时卸载运行时，但保留 `node.capabilities[id]` / `picture.capabilities[id]` 中的配置数据。
+
+## 2. 五阶段帧流水线（`RUNTIME_STAGE`）
+所有每帧逻辑必须通过 `registerRuntimeSystem(id, order, step)` 挂入 `src/runtime/sceneRuntime.ts`，**禁止**私自开启 `requestAnimationFrame`：
+- `PRE_PHYSICS` (`0 ~ 49`)：输入、移动平台、角色控制器、跟随镜头、机关、律令、载具控制意图。
+- `PHYSICS_NAV` (`50`)：物理与导航步进。载具（Raycast Vehicle）、浮力、关节通过 `registerPhysicsExtension` 复用同一物理世界。
+- `ANIMATION` (`60`)：`AnimationMixer.update(dt)` 关键帧骨骼动画推进。
+- `POST_ANIMATION` (`70`)：**特殊/程序化动画包专属阶段**（LookAt、Foot IK、SpringBone 头发衣物摆动、布娃娃混合）。在关键帧动画之后直接修正 `Bone` 矩阵，禁止在 Mixer 中伪造 Clip 抢权重。
+- `PRE_RENDER` (`80`)：粒子模拟、材质时间 Uniform 更新。
+
+## 3. 视口渲染钩子与 MRT 保护
+- 需要离屏预渲染（如水体平面反射 Pass）统一通过 `src/editor/viewport/renderHooks.ts` 的 `registerBeforeRenderHook` 注册，禁止直接修改 `EditorViewport.ts` 主循环。
+- 开启 `SSR / SSGI / AO` 时主 Pass 带有 MRT（`output`、`normal`、`metalrough`）。半透明或全屏体积材质必须对 `normal` 和 `metalrough` 附件配置保留目标缓冲（`CustomBlending: Zero -> One`），防止冲掉 G-Buffer。
+
+## 4. 领域玩法包与品类专包（属性/战斗/RTS/塔防等）
+- 所有非核心玩法包统一通过 `src/gameplay/registry.ts` 的 `registerGameplayPack(manifest)` 注册数据表（`tables`）、节点组件（`components`）和律令词条（`triggers / conditions / actions`）。
+- 节点组件数据存放在 `node.gameplay.packs[packId][componentId]`，由 `InspectorPanel` 自动渲染与挂载；**禁止**在 `InspectorPanel.tsx` 或核心 `rules.ts` 中硬编码专包分支。
+- 试玩态视口交互（边缘滚屏、点选物体、按需拉框）统一经由 `SceneRuntimeHost`（`pointerNormalized`、`consumeNodeClick`、`setPlayMarqueeEnabled`、`consumePlayMarquee`）获取，多单位散开移动复用 `computeFormationTargets`。

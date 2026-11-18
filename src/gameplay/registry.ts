@@ -3,7 +3,11 @@ import {
   type GameDatabase,
   type GameDatabaseRow,
   type GameDatabaseTableSchema,
+  type GameplayPackActionDef,
+  type GameplayPackComponentDef,
+  type GameplayPackConditionDef,
   type GameplayPackManifest,
+  type GameplayPackTriggerDef,
 } from './types'
 
 const packs = new Map<string, GameplayPackManifest>()
@@ -99,4 +103,71 @@ export function findRow(database: GameDatabase | null | undefined, tableId: stri
   const key = id.trim()
   if (!key) return undefined
   return tableRows(database, tableId).find(row => row.id === key)
+}
+
+export function listEnabledPackComponents(enabled?: string[] | null): Array<{ packId: string, packName: string, def: GameplayPackComponentDef }> {
+  const on = resolveEnabledPackIds(enabled)
+  const out: Array<{ packId: string, packName: string, def: GameplayPackComponentDef }> = []
+  for (const pack of packs.values()) {
+    if (!on.has(pack.id)) continue
+    for (const def of pack.components ?? []) out.push({ packId: pack.id, packName: pack.name, def })
+  }
+  return out
+}
+
+export function listEnabledPackTriggers(enabled?: string[] | null): Array<{ packId: string, def: GameplayPackTriggerDef }> {
+  const on = resolveEnabledPackIds(enabled)
+  const out: Array<{ packId: string, def: GameplayPackTriggerDef }> = []
+  for (const pack of packs.values()) {
+    if (!on.has(pack.id)) continue
+    for (const def of pack.triggers ?? []) out.push({ packId: pack.id, def })
+  }
+  return out
+}
+
+export function listEnabledPackConditions(enabled?: string[] | null): Array<{ packId: string, def: GameplayPackConditionDef }> {
+  const on = resolveEnabledPackIds(enabled)
+  const out: Array<{ packId: string, def: GameplayPackConditionDef }> = []
+  for (const pack of packs.values()) {
+    if (!on.has(pack.id)) continue
+    for (const def of pack.conditions ?? []) out.push({ packId: pack.id, def })
+  }
+  return out
+}
+
+export function listEnabledPackActions(enabled?: string[] | null): Array<{ packId: string, def: GameplayPackActionDef }> {
+  const on = resolveEnabledPackIds(enabled)
+  const out: Array<{ packId: string, def: GameplayPackActionDef }> = []
+  for (const pack of packs.values()) {
+    if (!on.has(pack.id)) continue
+    for (const def of pack.actions ?? []) out.push({ packId: pack.id, def })
+  }
+  return out
+}
+
+export function findPackTrigger(kind: string, enabled?: string[] | null): { packId: string, enabled: boolean, def: GameplayPackTriggerDef } | undefined {
+  const on = resolveEnabledPackIds(enabled)
+  for (const pack of packs.values()) {
+    const def = pack.triggers?.find(item => item.kind === kind)
+    if (def) return { packId: pack.id, enabled: on.has(pack.id), def }
+  }
+  return undefined
+}
+
+export function findPackCondition(kind: string, enabled?: string[] | null): { packId: string, enabled: boolean, def: GameplayPackConditionDef } | undefined {
+  const on = resolveEnabledPackIds(enabled)
+  for (const pack of packs.values()) {
+    const def = pack.conditions?.find(item => item.kind === kind)
+    if (def) return { packId: pack.id, enabled: on.has(pack.id), def }
+  }
+  return undefined
+}
+
+export function findPackAction(kind: string, enabled?: string[] | null): { packId: string, enabled: boolean, def: GameplayPackActionDef } | undefined {
+  const on = resolveEnabledPackIds(enabled)
+  for (const pack of packs.values()) {
+    const def = pack.actions?.find(item => item.kind === kind)
+    if (def) return { packId: pack.id, enabled: on.has(pack.id), def }
+  }
+  return undefined
 }

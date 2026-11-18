@@ -54,7 +54,7 @@ import { lockClipInPlace, maskClip } from '../animation/playback'
 import { useAssetStore } from '../assets/library'
 import { bindTextureRenderer, environmentFor } from '../assets/textures'
 import { EDITOR_HELPER_LAYER, layerBitIndex } from '../project/taxonomy'
-import { capabilityEnabled } from '../../capabilities/registry'
+import { capabilityEnabled, syncCapabilityRuntimes } from '../../capabilities/registry'
 import { disposeParticles, mountParticles } from '../../capabilities/particles/session'
 import { collectNavSurfaces } from '../../capabilities/navigation/collect'
 import { syncNavDebug } from '../../capabilities/navigation/debug'
@@ -79,6 +79,7 @@ import { createEditorGrid, gridStepForDistance } from './editorGrid'
 import { createSceneGuide, type SceneGuide } from './lightCameraGizmo'
 import { createDeviceGuide, deviceHandlePatch, hasDeviceShape, type DeviceGuide, type DeviceHandleRole } from './deviceGizmo'
 import { ScenePicturePipeline } from './picture'
+import { runBeforeRenderHooks } from './renderHooks'
 import { createVolumeLight } from './volumeLight'
 
 const DEG = Math.PI / 180
@@ -189,7 +190,11 @@ export class EditorViewport {
   private readonly viewQuat = new Quaternion()
   private playCameraWarned = ''
   private clickPoints: { left: [number, number, number] | null, right: [number, number, number] | null } = { left: null, right: null }
+  private clickHits: { left: { nodeId: string | null, point: [number, number, number] } | null, right: { nodeId: string | null, point: [number, number, number] } | null } = { left: null, right: null }
   private pointerDelta = { x: 0, y: 0 }
+  private pointerNorm = { x: 0, y: 0 }
+  private playMarqueeEnabled = false
+  private playMarqueeResult: { ids: string[], additive: boolean } | null = null
   private wheelDelta = 0
   private rightButton = false
   private appliedViewNonce = 0
@@ -373,6 +378,7 @@ export class EditorViewport {
 
   private sync() {
     const state = useEditorStore.getState()
+    syncCapabilityRuntimes(state.capabilities)
     const assetRevision = useAssetStore.getState().revision
     const editing = state.playState === 'stopped'
     const helpers = state.helpersVisible
@@ -881,7 +887,8 @@ export class EditorViewport {
       return
     }
     this.ignoreDoubleClick = event.button !== 0 || event.altKey || event.shiftKey || event.ctrlKey || event.metaKey
-    if (event.button === 0 && useEditorStore.getState().playState === 'stopped') {
+    const playState = useEditorStore.getState().playState
+    if (event.button === 0 && (playState === 'stopped' || (playState === 'playing' && this.playMarqueeEnabled))) {
       this.press = {
         x: event.clientX,
         y: event.clientY,
@@ -893,13 +900,19 @@ export class EditorViewport {
   private onPointerMove = (event: PointerEvent) => {
     this.pointerDelta.x += event.movementX
     this.pointerDelta.y += event.movementY
+    const rect = this.canvas.getBoundingClientRect()
+    if (rect.width > 0 && rect.height > 0) {
+      this.pointerNorm.x = ((event.clientX - rect.left) / rect.width) * 2 - 1
+      this.pointerNorm.y = -((event.clientY - rect.top) / rect.height) * 2 + 1
+    }
     this.rightButton = (event.buttons & 2) !== 0
     if (this.deviceDrag) {
       this.dragDevice(event)
       return
     }
     this.rig.pointerMove(event)
-    if (useEditorStore.getState().playState !== 'stopped') {
+    const playState = useEditorStore.getState().playState
+    if (playState !== 'stopped' && !(playState === 'playing' && this.playMarqueeEnabled)) {
       this.press = null
       if (this.marquee) this.marquee.style.display = 'none'
       return
@@ -934,17 +947,27 @@ export class EditorViewport {
     this.rightButton = false
     this.rig.pointerUp()
     this.commitView()
-    if (useEditorStore.getState().playState === 'playing' && (event.button === 0 || event.button === 2)) {
-      const drop = this.raycastDrop(event.clientX, event.clientY)
-      this.clickPoints[event.button === 2 ? 'right' : 'left'] = drop.point
-    }
-    if (this.canvas.hasPointerCapture(event.pointerId)) this.canvas.releasePointerCapture(event.pointerId)
-    if (useEditorStore.getState().playState !== 'stopped') {
-      if (this.marquee) this.marquee.style.display = 'none'
-      return
-    }
+    const playState = useEditorStore.getState().playState
     const dragged = press && this.marquee?.style.display === 'block'
     if (this.marquee) this.marquee.style.display = 'none'
+    if (this.canvas.hasPointerCapture(event.pointerId)) this.canvas.releasePointerCapture(event.pointerId)
+    if (playState === 'playing') {
+      if (event.button === 0 && dragged && this.playMarqueeEnabled && press) {
+        this.playMarqueeResult = {
+          ids: this.collectMarqueeIds(press.x, press.y, event.clientX, event.clientY),
+          additive: press.additive,
+        }
+        return
+      }
+      if (event.button === 0 || event.button === 2) {
+        const drop = this.raycastDrop(event.clientX, event.clientY)
+        const key = event.button === 2 ? 'right' : 'left'
+        this.clickPoints[key] = drop.point
+        this.clickHits[key] = drop
+      }
+      return
+    }
+    if (playState !== 'stopped') return
     if (!press || event.button !== 0) return
     if (dragged) {
       this.ignoreDoubleClick = true
@@ -1013,7 +1036,7 @@ export class EditorViewport {
     return box
   }
 
-  private selectMarquee(x0: number, y0: number, x1: number, y1: number, additive: boolean) {
+  private collectMarqueeIds(x0: number, y0: number, x1: number, y1: number): string[] {
     const left = Math.min(x0, x1)
     const right = Math.max(x0, x1)
     const top = Math.min(y0, y1)
@@ -1033,6 +1056,11 @@ export class EditorViewport {
       const sy = (-ndc.y * 0.5 + 0.5) * rect.height + rect.top
       if (sx >= left && sx <= right && sy >= top && sy <= bottom) ids.push(id)
     }
+    return ids
+  }
+
+  private selectMarquee(x0: number, y0: number, x1: number, y1: number, additive: boolean) {
+    const ids = this.collectMarqueeIds(x0, y0, x1, y1)
     const store = useEditorStore.getState()
     if (additive) store.setSelection([...new Set([...store.selection, ...ids])])
     else store.setSelection(ids)
@@ -1249,6 +1277,21 @@ export class EditorViewport {
         this.clickPoints[button] = null
         return point
       },
+      pointerNormalized: () => ({ ...this.pointerNorm }),
+      consumeNodeClick: button => {
+        const hit = this.clickHits[button]
+        this.clickHits[button] = null
+        return hit
+      },
+      setPlayMarqueeEnabled: enabled => {
+        this.playMarqueeEnabled = enabled
+        if (!enabled) this.playMarqueeResult = null
+      },
+      consumePlayMarquee: () => {
+        const next = this.playMarqueeResult
+        this.playMarqueeResult = null
+        return next
+      },
     })
     this.followSimulatedParents()
     this.poseSockets()
@@ -1272,6 +1315,14 @@ export class EditorViewport {
       try {
         this.applyPicture()
         if (this.volumeMuted) this.volume.mesh.visible = false
+        runBeforeRenderHooks({
+          renderer: this.renderer,
+          scene: this.scene,
+          camera,
+          width: this.width,
+          height: this.height,
+          dt,
+        })
         this.renderer.info.reset()
         const outlineTargets = editor.playState === 'stopped' ? this.selectionRoots : []
         const flashTarget = editor.playState === 'stopped' ? this.partFlashTarget : null

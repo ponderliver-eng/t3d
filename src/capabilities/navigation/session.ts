@@ -280,3 +280,23 @@ function abortError(): Error {
   error.name = 'AbortError'
   return error
 }
+
+/**
+ * 为多单位同时移动生成方阵散开目标点，避免群体寻路聚拢在同一坐标点。
+ * 供策略/RTS/小队跟随等玩法包或律令遍历使用。
+ */
+export function computeFormationTargets(center: Vec3, count: number, spacing = 1.6): Vec3[] {
+  if (count <= 0) return []
+  if (count === 1) return [[center[0], center[1], center[2]]]
+  const cols = Math.ceil(Math.sqrt(count))
+  const rows = Math.ceil(count / cols)
+  const out: Vec3[] = []
+  for (let i = 0; i < count; i += 1) {
+    const col = i % cols
+    const row = Math.floor(i / cols)
+    const ox = (col - (cols - 1) * 0.5) * spacing
+    const oz = (row - (rows - 1) * 0.5) * spacing
+    out.push([center[0] + ox, center[1], center[2] + oz])
+  }
+  return out
+}

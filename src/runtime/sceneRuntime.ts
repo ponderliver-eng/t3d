@@ -295,13 +295,17 @@ export function defaultScore(): ScoreSpec {
   }
 }
 
-export type RuleTriggerKind = 'playStart' | 'interact' | 'key' | 'message' | 'enter' | 'exit' | 'hit'
-export type RuleCondKind = 'always' | 'hasTag' | 'missingTag' | 'compare' | 'formula'
-export type RuleStepKind =
+export type CoreRuleTriggerKind = 'playStart' | 'interact' | 'key' | 'message' | 'enter' | 'exit' | 'hit'
+export type CoreRuleCondKind = 'always' | 'hasTag' | 'missingTag' | 'compare' | 'formula'
+export type CoreRuleStepKind =
   | 'message' | 'setVar' | 'addTag' | 'removeTag' | 'wait' | 'waitFrame' | 'waitUpper' | 'waitMark'
   | 'playClip' | 'playUpper' | 'stance'
   | 'if' | 'gather' | 'each' | 'switchState'
   | 'showUi' | 'hideUi' | 'lock' | 'camera' | 'moveTo' | 'spawn' | 'hide' | 'score' | 'juice' | 'log'
+
+export type RuleTriggerKind = CoreRuleTriggerKind | (string & {})
+export type RuleCondKind = CoreRuleCondKind | (string & {})
+export type RuleStepKind = CoreRuleStepKind | (string & {})
 
 export interface RuleCondition {
   id: string
@@ -358,14 +362,26 @@ export interface RuleEntry {
   steps: RuleStep[]
 }
 
-const TRIGGERS: RuleTriggerKind[] = ['playStart', 'interact', 'key', 'message', 'enter', 'exit', 'hit']
-const CONDS: RuleCondKind[] = ['always', 'hasTag', 'missingTag', 'compare', 'formula']
-const STEPS: RuleStepKind[] = [
+const TRIGGERS: CoreRuleTriggerKind[] = ['playStart', 'interact', 'key', 'message', 'enter', 'exit', 'hit']
+const CONDS: CoreRuleCondKind[] = ['always', 'hasTag', 'missingTag', 'compare', 'formula']
+const STEPS: CoreRuleStepKind[] = [
   'message', 'setVar', 'addTag', 'removeTag', 'wait', 'waitFrame', 'waitUpper', 'waitMark',
   'playClip', 'playUpper', 'stance',
   'if', 'gather', 'each', 'switchState',
   'showUi', 'hideUi', 'lock', 'camera', 'moveTo', 'spawn', 'hide', 'score', 'juice', 'log',
 ]
+
+export function isCoreTrigger(kind: string): kind is CoreRuleTriggerKind {
+  return TRIGGERS.includes(kind as CoreRuleTriggerKind)
+}
+
+export function isCoreCondition(kind: string): kind is CoreRuleCondKind {
+  return CONDS.includes(kind as CoreRuleCondKind)
+}
+
+export function isCoreStep(kind: string): kind is CoreRuleStepKind {
+  return STEPS.includes(kind as CoreRuleStepKind)
+}
 
 export function emptyCondition(kind: RuleCondKind = 'hasTag'): RuleCondition {
   return { id: crypto.randomUUID(), kind, tag: '', left: '', op: '==', right: '' }
@@ -441,7 +457,7 @@ function normalizeRule(raw: unknown): RuleEntry | null {
     id: item.id || crypto.randomUUID(),
     name: item.name ?? '',
     enabled: item.enabled !== false,
-    trigger: TRIGGERS.includes(item.trigger as RuleTriggerKind) ? item.trigger as RuleTriggerKind : 'playStart',
+    trigger: typeof item.trigger === 'string' && item.trigger ? item.trigger : 'playStart',
     message: item.message ?? '',
     key: item.key || 'KeyE',
     conditions: Array.isArray(item.conditions) && item.conditions.length > 0 ? item.conditions.map(normalizeCondition) : legacy,
@@ -453,7 +469,7 @@ function normalizeCondition(raw: unknown): RuleCondition {
   const item = (raw ?? {}) as Partial<RuleCondition>
   return {
     id: item.id || crypto.randomUUID(),
-    kind: CONDS.includes(item.kind as RuleCondKind) ? item.kind as RuleCondKind : 'always',
+    kind: typeof item.kind === 'string' && item.kind ? item.kind : 'always',
     tag: item.tag ?? '',
     left: item.left ?? '',
     op: item.op || '==',
@@ -463,7 +479,8 @@ function normalizeCondition(raw: unknown): RuleCondition {
 
 function normalizeStep(raw: unknown): RuleStep {
   const item = (raw ?? {}) as Partial<RuleStep> & { cond?: RuleCondKind, left?: string, op?: string, right?: string }
-  const step = emptyStep(STEPS.includes(item.do as RuleStepKind) ? item.do as RuleStepKind : 'message')
+  const kind = typeof item.do === 'string' && item.do ? item.do : 'message'
+  const step = emptyStep(kind)
   step.id = item.id || step.id
   step.message = item.message ?? ''
   step.name = item.name ?? ''
@@ -475,7 +492,7 @@ function normalizeStep(raw: unknown): RuleStep {
   step.stateId = item.stateId ?? ''
   step.level = item.level === 'warn' || item.level === 'error' ? item.level : 'info'
   const legacy = item.do === 'if' && item.cond
-    ? [{ ...emptyCondition(CONDS.includes(item.cond) ? item.cond : 'always'), tag: item.tag ?? '', left: item.left ?? '', op: item.op || '==', right: item.right ?? '' }]
+    ? [{ ...emptyCondition(isCoreCondition(item.cond) ? item.cond : 'always'), tag: item.tag ?? '', left: item.left ?? '', op: item.op || '==', right: item.right ?? '' }]
     : []
   step.conditions = Array.isArray(item.conditions) && item.conditions.length > 0 ? item.conditions.map(normalizeCondition) : legacy
   step.steps = Array.isArray(item.steps) ? item.steps.map(normalizeStep) : []
@@ -532,30 +549,56 @@ export interface SceneRuntimeHost {
   probe?: (origin: Vec3, direction: Vec3, max: number, ignoreId: string) => number | null
   /** 取走一次地面点击。没有则返回 null。 */
   consumeClick?: (button: 'left' | 'right') => Vec3 | null
+  /** 当前鼠标在视口内的归一化坐标（[-1, 1]），供边缘滚屏、瞄准等玩法使用。 */
+  pointerNormalized?: () => { x: number, y: number }
+  /** 取走一次点击命中的节点与世界坐标（区分点中单位/建筑还是空地）。 */
+  consumeNodeClick?: (button: 'left' | 'right') => { nodeId: string | null, point: Vec3 } | null
+  /** 开启或关闭试玩态左键拉框选择（供策略/指挥类玩法包按需开启）。 */
+  setPlayMarqueeEnabled?: (enabled: boolean) => void
+  /** 取走试玩态最近一次左键拉框选中的节点 ID 列表。 */
+  consumePlayMarquee?: () => { ids: string[], additive: boolean } | null
 }
+
+/**
+ * 五阶段帧流水线顺序常量（供核心系统与社区扩展能力包对齐挂载阶段）：
+ * - PrePhysics (0~49): 输入、移动平台、角色意图、跟随镜头、交互机关、律令、载具输入
+ * - Physics & Nav (50): Rapier 物理世界与载具悬挂步进、Recast 导航网格步进
+ * - Animation (60): AnimationMixer 关键帧骨骼动画推进
+ * - PostAnimation (70): 骨骼后处理能力包（LookAt、Foot IK、SpringBone 头发衣物摆动、布娃娃混合）
+ * - PreRender (80): 粒子系统、水体波浪与反射相机更新、体积云噪声推进
+ */
+export const RUNTIME_STAGE = {
+  PRE_PHYSICS: 10,
+  PHYSICS_NAV: 50,
+  ANIMATION: 60,
+  POST_ANIMATION: 70,
+  PRE_RENDER: 80,
+} as const
 
 export type RuntimeSystemStep = (dt: number, host: SceneRuntimeHost) => void
 
 const systems: Array<{ id: string, order: number, step: RuntimeSystemStep }> = []
+const postAnimationSystems: Array<{ id: string, order: number, step: RuntimeSystemStep }> = []
 
 export function registerRuntimeSystem(id: string, order: number, step: RuntimeSystemStep): () => void {
-  const index = systems.findIndex(item => item.id === id)
-  if (index >= 0) systems.splice(index, 1)
-  systems.push({ id, order, step })
-  systems.sort((a, b) => a.order - b.order)
+  const target = order >= RUNTIME_STAGE.POST_ANIMATION ? postAnimationSystems : systems
+  const index = target.findIndex(item => item.id === id)
+  if (index >= 0) target.splice(index, 1)
+  target.push({ id, order, step })
+  target.sort((a, b) => a.order - b.order)
   return () => {
-    const idx = systems.findIndex(item => item.id === id)
-    if (idx >= 0) systems.splice(idx, 1)
+    const idx = target.findIndex(item => item.id === id)
+    if (idx >= 0) target.splice(idx, 1)
   }
 }
 
 /**
- * 统一场景运行时步进：
- * 1. 已注册的核心包/领域包系统（输入、角色控制器、跟随相机、触发器与律令）
- * 2. 物理世界步进（Rapier）
- * 3. 导航网格与动态障碍同步（Recast）
- * 4. 粒子系统模拟（Quarks）
- * 5. 骨骼动画混合器推进（AnimationMixer）
+ * 统一场景运行时五阶段步进：
+ * 1. PrePhysics：已注册的输入、角色、跟随相机、机关、律令与物理前能力包（order < 70）
+ * 2. Physics & Nav：物理世界步进（Rapier + 物理扩展）与导航网格同步（Recast）
+ * 3. Animation：骨骼关键帧动画混合器推进（AnimationMixer）
+ * 4. PostAnimation：骨骼后处理与渲染前能力包（IK / SpringBone / LookAt / 水体更新，order >= 70）
+ * 5. PreRender VFX：粒子系统模拟（Quarks）
  */
 export function stepSceneRuntime(dt: number, host: SceneRuntimeHost) {
   const scaled = scalePlayDt(dt)
@@ -565,8 +608,11 @@ export function stepSceneRuntime(dt: number, host: SceneRuntimeHost) {
   tickPhysics(scaled, host.resolveObject)
   tickNavigation()
   if (host.ready) {
-    tickParticles(scaled, host.resolveObject)
     host.updateAnimations(scaled)
+    for (const system of postAnimationSystems) {
+      system.step(scaled, host)
+    }
+    tickParticles(scaled, host.resolveObject)
   }
 }
 

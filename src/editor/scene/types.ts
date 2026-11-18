@@ -175,6 +175,8 @@ export interface ScenePicture {
   gravity: Vec3
   /** 导航烘焙参数。关掉能力包不会清掉它。 */
   navigation: NavSettings
+  /** 场景级扩展能力包（如体积云 clouds、大气天象等）按能力包 id 挂载的数据槽，关闭能力包时不清除数据。 */
+  capabilities?: Record<string, unknown>
 }
 
 export const DEFAULT_PICTURE: ScenePicture = {
@@ -229,6 +231,7 @@ export function normalizePicture(picture?: Partial<ScenePicture> | null): SceneP
     ssgiDenoise: picture?.ssgiDenoise === true,
     gravity: gravity?.length === 3 ? gravity : DEFAULT_PICTURE.gravity,
     navigation: { ...DEFAULT_NAV, ...picture?.navigation },
+    ...(picture?.capabilities && typeof picture.capabilities === 'object' ? { capabilities: { ...picture.capabilities } } : {}),
   }
 }
 
@@ -343,6 +346,8 @@ export interface SceneNode {
   screen?: NodeScreen | null
   /** 核心玩法包（角色、跟随相机、触发器、律令）与领域包统一挂载槽。 */
   gameplay?: NodeGameplay | null
+  /** 节点级扩展能力包（如水体 water、车辆 vehicle、弹簧骨骼 springBone、IK 等）按能力包 id 挂载的数据槽，关闭能力包时不清除数据。 */
+  capabilities?: Record<string, unknown> | null
   /** 主标签，对应工程标签表的 id。 */
   tagId?: string | null
   /** 额外层级标签，存标签 id。 */

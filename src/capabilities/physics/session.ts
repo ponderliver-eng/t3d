@@ -8,6 +8,31 @@ let world: PhysicsWorld | null = null
 let booting = false
 let lastInspectorSync = 0
 
+export interface PhysicsExtensionContext {
+  readonly dt: number
+  readonly world: PhysicsWorld
+  resolveObject?: (id: string) => { position: { set: (x: number, y: number, z: number) => void }, quaternion: { set: (x: number, y: number, z: number, w: number) => void } } | null
+}
+
+export type PhysicsExtensionStep = (ctx: PhysicsExtensionContext) => void
+
+const extensions: Array<{ id: string, order: number, step: PhysicsExtensionStep }> = []
+
+/**
+ * 注册依赖物理世界的能力包扩展（如车辆 Raycast Vehicle、浮力、绳索关节等），
+ * 在保持仅 rapierWorld.ts 直接 import Rapier 的前提下复用同一物理步进。
+ */
+export function registerPhysicsExtension(id: string, order: number, step: PhysicsExtensionStep): () => void {
+  const index = extensions.findIndex(item => item.id === id)
+  if (index >= 0) extensions.splice(index, 1)
+  extensions.push({ id, order, step })
+  extensions.sort((a, b) => a.order - b.order)
+  return () => {
+    const idx = extensions.findIndex(item => item.id === id)
+    if (idx >= 0) extensions.splice(idx, 1)
+  }
+}
+
 export function tickPhysics(dt: number, resolveObject?: (id: string) => { position: { set: (x: number, y: number, z: number) => void }, quaternion: { set: (x: number, y: number, z: number, w: number) => void } } | null) {
   const state = useEditorStore.getState()
   const enabled = capabilityEnabled(state.capabilities, 'physics')
@@ -22,6 +47,9 @@ export function tickPhysics(dt: number, resolveObject?: (id: string) => { positi
   }
   world.setGravity(state.picture.gravity ?? [0, -9.81, 0])
   world.sync(collectBodies())
+  for (const ext of extensions) {
+    ext.step({ dt, world, resolveObject })
+  }
   world.step(dt)
   const poses = world.dynamicPoses()
   if (resolveObject) {

@@ -8,7 +8,7 @@ import type { SceneNode, Vec3 } from '../editor/scene/types'
 import { characterTraveling, orderCharacterMove } from './character'
 import { onFootstep } from './signals'
 import { addRuleScore } from './devices'
-import { findRow } from '../gameplay/registry'
+import { findPackAction, findPackCondition, findPackTrigger, findRow, listEnabledPackTriggers } from '../gameplay/registry'
 import { playJuice } from '../gameplay/juice'
 import { addRuntimeTag, clearRuntimeTags, nodeHasTag, removeRuntimeTag, tickRuntimeTags } from '../gameplay/runtimeTags'
 import { setScreenVisible } from './ui/values'
@@ -142,6 +142,15 @@ function stepRules(dt: number, host: SceneRuntimeHost) {
   for (const node of Object.values(state.nodes)) {
     for (const rule of readRules(node.gameplay?.rules)) {
       if (rule.trigger === 'key' && keyHit(rule.key, tappedKeys)) arm(node, rule)
+    }
+  }
+  const packTriggers = listEnabledPackTriggers(state.gameplayPacks)
+  if (packTriggers.length > 0) {
+    for (const node of Object.values(state.nodes)) {
+      for (const rule of readRules(node.gameplay?.rules)) {
+        const reg = findPackTrigger(rule.trigger, state.gameplayPacks)
+        if (reg?.enabled && reg.def.poll?.(node, rule, host)) arm(node, rule)
+      }
     }
   }
   tappedKeys.clear()
@@ -399,7 +408,24 @@ function run(node: SceneNode, step: RuleStep, job: Job, host: SceneRuntimeHost, 
     lastValue = job.list.length
     return
   }
-  if (step.do === 'log') useEditorStore.getState().log(step.level, step.message)
+  if (step.do === 'log') {
+    useEditorStore.getState().log(step.level, step.message)
+    return
+  }
+  const packAction = findPackAction(step.do, useEditorStore.getState().gameplayPacks)
+  if (packAction?.enabled) {
+    packAction.def.execute({
+      node,
+      actor,
+      step,
+      host,
+      now,
+      evaluate,
+      postMessage: postRuleMessage,
+      log: (level, message) => useEditorStore.getState().log(level, message),
+      orderMove: (id, point) => orderCharacterMove(id, point[0], point[1], point[2]),
+    })
+  }
 }
 
 function allPass(node: SceneNode, conditions: RuleCondition[]): boolean {
@@ -415,6 +441,11 @@ function passes(node: SceneNode, cond: RuleCondition): boolean {
   }
   if (cond.kind === 'hasTag') return hasTag(node, cond.tag)
   if (cond.kind === 'missingTag') return !hasTag(node, cond.tag)
+  if (cond.kind !== 'compare') {
+    const packCond = findPackCondition(cond.kind, useEditorStore.getState().gameplayPacks)
+    if (!packCond?.enabled) return false
+    return packCond.def.test(node, cond, { hasTag: tag => hasTag(node, tag), evaluate })
+  }
   const a = readValue(cond.left)
   const b = readValue(cond.right)
   if (cond.op === '!=') return a !== b

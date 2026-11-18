@@ -77,4 +77,40 @@
    - **统一运行时调度（`src/runtime/sceneRuntime.ts`）**：物理、导航、粒子、骨骼动画以及核心包/领域包系统的每帧步进统一由 `stepSceneRuntime(dt, host)` 调度，`EditorViewport` 只作为宿主提供渲染与对象查询，确保编辑器试玩与未来独立导出运行 100% 共用同一循环。
    - **统一节点玩法挂载槽（`node.gameplay`）**：核心包与领域包数据统一挂在 `SceneNode.gameplay`（`NodeGameplay`）下，禁止继续向 `SceneNode` 顶层散落玩法字段。
    - **核心包（Core Pack）**常驻开启，提供成品级组件（角色移动 `character`、跟随相机 `cameraFollow`、触发器 `trigger`、互动点、移动机关、复活点、计分、标签与同一种“当……就……”律令表 `rules`）。
-   - **领域包（Domain Packs：属性、战斗、感知、背包、对话）**按需开启，数据存放在 `node.gameplay.packs[packId]`，只向同一套律令与配置表追加触发词、动作词与数据表；关闭领域包时不清除节点上已填写的配置数据。
+   - **领域包（Domain Packs：属性、战斗、感知、背包、对话）与品类专包（如策略/RTS、塔防、载具竞速等）**按需开启，数据存放在 `node.gameplay.packs[packId][componentId]`；通过 `src/gameplay/registry.ts` 的 `GameplayPackManifest` 统一声明数据表（`tables`）、节点组件（`components`）与律令词条（`triggers / conditions / actions`），**严禁**将新玩法包的组件卡片硬编码进 `InspectorPanel.tsx` 或将词条硬编码进核心 `rules.ts`。关闭玩法包时不清除节点上已填写的配置数据，律令编辑器自动标出缺失并安全跳过。
+   - 需要试玩态视口交互（如边缘滚屏、点选区分单位/空地、拉框选人、群体编队）时，统一通过 `SceneRuntimeHost`（`pointerNormalized`、`consumeNodeClick`、`setPlayMarqueeEnabled`、`consumePlayMarquee`）与导航包的 `computeFormationTargets` 接入。
+
+---
+
+## 6. 社区与新效果能力包扩展规范（水体、载具、体积云、程序化动画等）
+
+当需要将 Three.js 社区效果、官方 `three/addons` 或新算法封装为 T3D 能力包（`src/capabilities/<id>/`）时，必须遵守以下 5 条架构准则：
+
+1. **统一数据挂载槽与零顶层污染**
+   - 新增的节点级能力包（如水体 `water`、车辆 `vehicle`、弹簧骨骼 `springBone`、脚部 `footIk`）的数据统一存放在 **`node.capabilities[capabilityId]`**。
+   - 新增的场景/环境级能力包（如体积云 `clouds`、动态天象）的数据统一存放在 **`picture.capabilities[capabilityId]`**。
+   - **严禁**再为单个新能力包向 `SceneNode` 或 `ScenePicture` 顶层直接追加平铺字段。关闭能力包时保留已存数据，仅卸载运行时与隐藏属性面板卡片。
+
+2. **动态懒加载与依赖声明（`CapabilityManifest`）**
+   - 在 `src/capabilities/registry.ts` 中登记能力包时，凡包含重型算法或外部库的包，必须通过 `loadRuntime: () => import(...)` 动态按需加载，并由 `syncCapabilityRuntimes` 根据工程开关驱动 `mount / dispose`。
+   - 依赖其它能力的包（如 `vehicle` 依赖 `['physics']`）必须显式声明 `dependencies`，确保未开启时不占用首屏包体积与运行内存。
+   - 任何第三方 npm 库只允许在该能力包内部的单一适配文件中 `import`，严禁泄漏到 `EditorViewport` 或公共 store。
+
+3. **五阶段帧流水线对号入座（`RUNTIME_STAGE`）**
+   - 所有能力包的每帧逻辑必须通过 `registerRuntimeSystem(id, order, step)` 对齐到 `src/runtime/sceneRuntime.ts` 的五阶段流水线，严禁私自开启 `requestAnimationFrame`：
+     - **`PRE_PHYSICS` (`0 ~ 49`)**：玩家输入、角色控制器、载具油门/转向意图、机关与律令。
+     - **`PHYSICS_NAV` (`50`)**：物理世界步进（Rapier）与导航网格同步。依赖刚体/射线模拟的载具、浮力、关节等通过 `registerPhysicsExtension` 挂入此阶段。
+     - **`ANIMATION` (`60`)**：`AnimationMixer.update(dt)` 关键帧骨骼动画推进。
+     - **`POST_ANIMATION` (`70`)**：**特殊/程序化动画包专属阶段**（如 LookAt 头部注视、Foot IK 地形貼合、SpringBone 头发裙摆物理、布娃娃混合）。必须在关键帧动画算完之后、渲染之前修正 `Bone` 局部或世界矩阵，严禁在 `AnimationMixer` 中伪造虚拟 Clip 抢权重。
+     - **`PRE_RENDER` (`80`)**：粒子系统模拟、水体波浪时间与材质 Uniform 更新。
+
+4. **视口渲染钩子与 TSL + MRT 铁律**
+   - 需要离屏预渲染的效果（如水体平面反射、折射相机 Pass）统一通过 `src/editor/viewport/renderHooks.ts` 的 `registerBeforeRenderHook` 接入，**禁止**直接修改 `EditorViewport.ts` 主循环。
+   - 社区中的传统 GLSL `ShaderMaterial` / `RawShaderMaterial` 迁入时，必须改写为 `three/webgpu` 的 `NodeMaterial` + **TSL（`three/tsl`）**，以保证同时兼容 WebGPU 与 WebGL2 回退后端。
+   - 半透明或全屏体积效果若在主场景 Pass 绘制，必须遵守第 1.2 节的 **MRT G-Buffer 保护规则**（保留 `normal` 与 `metalrough` 缓冲），防止破坏 SSR / SSGI / AO。
+
+5. **标准能力包目录结构**
+   - 每个新增能力包在 `src/capabilities/<id>/` 下保持清晰职责拆分：
+     - `defaults.ts` / `types.ts`：纯序列化数据结构与默认值（零 Three.js / 第三方库依赖）。
+     - `session.ts` / `runtime.ts`：对接 `registerRuntimeSystem`、`registerPhysicsExtension` 或 `registerBeforeRenderHook` 的运行时生命周期。
+     - `<Name>Card.tsx`：遵循 `iv2-card` 布局规范的属性面板卡片，内部自行判断 `capabilityEnabled` 决定是否渲染。

@@ -20,6 +20,7 @@ import { RulesCard } from '../../runtime/RulesCard'
 import { emptyRule } from '../../runtime/sceneRuntime'
 import { CameraCard } from '../../runtime/CameraCard'
 import { InteractCard, TriggerCard, MoverCard, CheckpointCard, ScoreCard } from '../../runtime/DeviceCards'
+import { listEnabledPackComponents } from '../../gameplay/registry'
 import {
   cameraPresetForMode,
   defaultCameraFollow,
@@ -360,6 +361,7 @@ export default function InspectorPanel() {
       <CheckpointCard node={node} disabled={locked} />
       <ScoreCard node={node} disabled={locked} />
       <RulesCard node={node} disabled={locked} />
+      <PackComponentCards node={node} disabled={locked} />
       <PhysicsCard node={node} disabled={locked} />
       <NavigationCard node={node} disabled={locked} />
 
@@ -1796,16 +1798,33 @@ function kindColor(kind: NodeKind): string {
   return '#999999'
 }
 
-type ComponentId = 'character' | 'cameraFollow' | 'interact' | 'trigger' | 'mover' | 'checkpoint' | 'score' | 'rules' | 'physics' | 'navigation'
+type ComponentId = 'character' | 'cameraFollow' | 'interact' | 'trigger' | 'mover' | 'checkpoint' | 'score' | 'rules' | 'physics' | 'navigation' | (string & {})
 
 interface ComponentOption {
   id: ComponentId
   cardId: string
-  group: 'character' | 'devices' | 'world'
+  group: 'character' | 'devices' | 'world' | 'pack'
   label: string
   color: string
   added: boolean
   apply: () => void
+}
+
+function PackComponentCards({ node, disabled }: { node: SceneNode, disabled: boolean }) {
+  const enabledPacks = useEditorStore(state => state.gameplayPacks)
+  const packsData = node.gameplay?.packs
+  if (!packsData || typeof packsData !== 'object') return null
+  const registered = listEnabledPackComponents(enabledPacks)
+  return (
+    <>
+      {registered.map(({ packId, def }) => {
+        const bag = packsData[packId] as Record<string, unknown> | undefined
+        if (!bag || !bag[def.componentId]) return null
+        const CardView = def.Card
+        return <CardView key={`${packId}:${def.componentId}`} node={node} packId={packId} componentId={def.componentId} disabled={disabled} />
+      })}
+    </>
+  )
 }
 
 function AddComponentPicker({ node, disabled }: { node: SceneNode, disabled: boolean }) {
@@ -1997,6 +2016,28 @@ function AddComponentPicker({ node, disabled }: { node: SceneNode, disabled: boo
       })
     }
   }
+  const enabledPacks = useEditorStore.getState().gameplayPacks
+  for (const { packId, def } of listEnabledPackComponents(enabledPacks)) {
+    const allowed = def.appliesTo ? def.appliesTo.includes(node.kind) : canGameplay
+    if (!allowed) continue
+    const packBag = (node.gameplay?.packs?.[packId] ?? {}) as Record<string, unknown>
+    options.push({
+      id: `${packId}:${def.componentId}`,
+      cardId: `${packId}:${def.componentId}`,
+      group: def.group ?? 'pack',
+      label: def.label,
+      color: def.color,
+      added: Boolean(packBag[def.componentId]),
+      apply: () => {
+        const nextBag = { ...packBag, [def.componentId]: def.defaultData() }
+        const nextPacks = { ...(node.gameplay?.packs ?? {}), [packId]: nextBag }
+        commitNode(node.id, def.label, {
+          gameplay: { ...node.gameplay, packs: nextPacks },
+        })
+        useInspectorMemory.getState().setOpen(`node:${node.id}`, `${packId}:${def.componentId}`, true)
+      },
+    })
+  }
 
   if (options.length === 0) return null
 
@@ -2007,6 +2048,7 @@ function AddComponentPicker({ node, disabled }: { node: SceneNode, disabled: boo
       { key: 'character' as const, title: t('component.group.character') },
       { key: 'devices' as const, title: t('component.group.devices') },
       { key: 'world' as const, title: t('component.group.world') },
+      { key: 'pack' as const, title: t('component.group.pack') },
     ]
   )
     .map(group => ({ ...group, items: filtered.filter(item => item.group === group.key) }))

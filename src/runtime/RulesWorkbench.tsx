@@ -8,11 +8,16 @@ import { emptyRule, emptyStep, readRuleStates, readRules, type RuleEntry, type R
 import { ruleTrace } from './rules'
 import { KeyField } from '../editor/ui/KeyField'
 import { ConditionEditor, StepList, TRIGGERS, addCondition, flattenStates } from './RulesSteps'
+import { findPackTrigger, listEnabledPackTriggers } from '../gameplay/registry'
+import { isCoreTrigger } from './sceneRuntime'
 import { RulesStateTree } from './RulesStateTree'
 import './RulesWorkbench.css'
 
 export function whenText(rule: RuleEntry, t: (key: MessageKey, vars?: Record<string, string | number>) => string): string {
-  const name = t(`rule.trigger.${rule.trigger}`)
+  const pack = isCoreTrigger(rule.trigger) ? undefined : findPackTrigger(rule.trigger, useEditorStore.getState().gameplayPacks)
+  const name = isCoreTrigger(rule.trigger)
+    ? t(`rule.trigger.${rule.trigger}` as MessageKey)
+    : (pack?.def.label ?? rule.trigger)
   if (rule.trigger === 'key') return `${name} ${rule.key}`
   if (rule.trigger === 'message') return `${name} ${rule.message}`
   return name
@@ -32,6 +37,8 @@ export function RulesWorkbench({
   const { t } = useI18n()
   const rules = readRules(node.gameplay?.rules)
   const states = readRuleStates(node.gameplay?.ruleStates)
+  const enabledPacks = useEditorStore(state => state.gameplayPacks)
+  const packTriggers = listEnabledPackTriggers(enabledPacks)
   const [selectedId, setSelectedId] = useState(focusId || rules[0]?.id || '')
   const [view, setView] = useState<'rules' | 'states'>('rules')
   const playing = useEditorStore(state => state.playState === 'playing')
@@ -123,6 +130,10 @@ export function RulesWorkbench({
                         <span>{t('rule.triggerKind')}</span>
                         <select disabled={disabled} value={active.trigger} onChange={event => update(active.id, { trigger: event.target.value as RuleTriggerKind })}>
                           {TRIGGERS.map(item => <option key={item} value={item}>{t(`rule.trigger.${item}`)}</option>)}
+                          {packTriggers.map(item => <option key={item.def.kind} value={item.def.kind}>{item.def.label}</option>)}
+                          {!isCoreTrigger(active.trigger) && !findPackTrigger(active.trigger, enabledPacks)?.enabled && (
+                            <option value={active.trigger}>{t('rule.packMissing', { kind: findPackTrigger(active.trigger, enabledPacks)?.def.label ?? active.trigger })}</option>
+                          )}
                         </select>
                       </label>
                       {active.trigger === 'key' && (

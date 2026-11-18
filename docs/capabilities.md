@@ -24,7 +24,19 @@
 
 没有统一的生命周期基类。物理、导航、后期挂进编辑器的位置不一样，共用一份开关清单就够了。清单在 `src/capabilities/registry.ts`。
 
-加载用动态 `import()`。没开的能力不进内存。现在不从外部下载安装包。哪一项以后大到不该随安装包一起发，只改那一项的加载入口。
+加载用动态 `import()`（在 `CapabilityManifest.loadRuntime` 中声明，由 `syncCapabilityRuntimes` 按开关自动挂载与卸载）。没开的能力不进内存。现在不从外部下载安装包。哪一项以后大到不该随安装包一起发，只改那一项的加载入口。
+
+## 扩展新能力包（社区效果、载具、水体、特殊动画等）
+
+以后接入 Three.js 社区效果或新能力包时，统一遵守以下约定（细则见 `docs/architecture-rules.md` 第 6 节）：
+
+- **数据位置**：节点级能力数据统一写在 `node.capabilities[id]`，场景级环境能力数据统一写在 `picture.capabilities[id]`，不再往 `SceneNode` 或 `ScenePicture` 顶层加新字段。
+- **帧阶段（`RUNTIME_STAGE`）**：
+  - 物理前逻辑（`order < 50`）：输入与控制意图。
+  - 物理扩展（`registerPhysicsExtension`）：如车辆（Raycast Vehicle）、浮力，复用同一个 Rapier 世界与碰撞体。
+  - 动画后处理（`order >= 70`，`POST_ANIMATION`）：如 SpringBone 头发衣物摆动、Foot IK、LookAt 注视，在 `AnimationMixer` 更新后修正骨骼姿态。
+  - 渲染前钩子（`registerBeforeRenderHook`）：如水体平面反射渲染、天象 Uniform 更新，不直接改 `EditorViewport.ts`。
+- **材质与渲染**：统一使用 `NodeMaterial` + TSL（`three/tsl`），不引入仅支持 WebGL 的原始 GLSL `ShaderMaterial`，并在半透明/体积绘制时保护 MRT 的法线与金属粗糙度缓冲。
 
 ## 物理
 

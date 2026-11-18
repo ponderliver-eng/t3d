@@ -1,0 +1,26 @@
+---
+description: T3D 核心架构红线、渲染器与试玩性能铁律（所有会话强制生效）
+alwaysApply: true
+---
+
+# T3D 核心架构红线
+
+详细规范见 `docs/architecture-rules.md` 与 `docs/editor-phase-plan.md`。任何代码修改必须遵守以下铁律：
+
+## 1. 渲染管线
+- **单一渲染器**：主视口唯一渲染器为 `three` 0.187 的 `three/webgpu` `WebGPURenderer`（WebGL2 回退通过同一渲染器的 `forceWebGL` 实现）。**严禁**引入第二套 `WebGLRenderer` 或旧版 `EffectComposer`。
+- **后期与材质**：后期统一走 `src/editor/viewport/picture.ts` 的 `RenderPipeline` + TSL（`three/tsl`）。新增自定义着色器统一使用 `NodeMaterial` + TSL。
+- **图层保留**：用户图层为 `0 ~ 30` 位；第 `31` 位（`EDITOR_HELPER_LAYER`）专供编辑器辅助线/Gizmo/图标使用。
+
+## 2. 试玩（Play）与视口性能
+- **严禁 60Hz 刷 Store**：`playState === 'playing'` 期间，高频变化的位姿与状态必须直接驱动 `Object3D` 或运行时内存，**禁止**每帧批量改写 `useEditorStore.getState().nodes`。
+- **增量同步**：保持 `EditorViewport.sync()` 基于节点引用与 `assetRevision` 的脏检查短路。
+- **蒙皮包围盒**：严禁每帧将 `SkinnedMesh.boundingBox` 置为 `null` 触发 CPU 逐顶点蒙皮；使用 `src/editor/scene/bounds.ts` 的局部抽样缓存。
+
+## 3. 节点与玩法架构边界
+- **无积木化**：`NodeKind` 保持互斥，**不做**原子积木（`BlockRegistry`）拼装系统，**不做**以逻辑连线图为主界面的脚本或动画状态机编辑器。
+- **数据挂载槽**：
+  - 核心包与领域包玩法数据统一挂在 `node.gameplay`（领域包在 `node.gameplay.packs[packId]`）。
+  - 新增节点级能力包数据统一挂在 `node.capabilities[capabilityId]`，场景级环境能力包挂在 `picture.capabilities[capabilityId]`。
+  - **严禁**继续向 `SceneNode` 或 `ScenePicture` 顶层平铺新模块字段。
+- **沟通与提交**：始终使用简体中文回复；未经用户明确要求，不要自动执行 `git commit`。
