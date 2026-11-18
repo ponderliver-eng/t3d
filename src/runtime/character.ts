@@ -215,10 +215,15 @@ function stepCharacters(dt: number, host: SceneRuntimeHost) {
       nextZ = blocked.z
     }
     let nextY = feet + live.vy * dt
-    if (ground !== null && nextY <= ground && live.vy <= 0) {
-      nextY = ground
-      live.vy = 0
-      live.grounded = true
+    if (ground !== null && live.vy <= 0) {
+      const gap = nextY - ground
+      const stick = live.grounded && gap >= 0 && gap <= 0.4
+      if (gap <= 0.02 || stick) {
+        nextY = ground
+        live.vy = 0
+        live.grounded = true
+        live.lastGrounded = now
+      }
     }
     const traveled = Math.hypot(nextX - object.position.x, nextZ - object.position.z)
     if (live.grounded && traveled > 0) {
@@ -238,7 +243,7 @@ function stepCharacters(dt: number, host: SceneRuntimeHost) {
       live.yaw = stepYaw(live.yaw, face, rate * dt)
     }
     object.quaternion.set(0, Math.sin(live.yaw / 2), 0, Math.cos(live.yaw / 2))
-    stepJumpPose(node.id, node.assetId ?? '', spec, live, dt, jumped, dodging)
+    stepJumpPose(node.id, node.assetId ?? '', spec, live, dt, now, jumped, dodging, wish.amount > 0.1 || Math.hypot(moveX, moveZ) > 0.2)
     if (live.jumpPhase !== 'none') {
       motion.set(node.id, live)
       continue
@@ -367,7 +372,11 @@ function steerPoint(x: number, z: number, tx: number, tz: number): { x: number, 
 }
 
 /** 起跳、滞空、落地各播自己的片段。没填的那一段就跳过。 */
-function stepJumpPose(id: string, ownerAssetId: string, spec: CharacterSpec, live: Motion, dt: number, jumped: boolean, dodging: boolean) {
+function airborne(live: Motion, now: number): boolean {
+  return now - live.lastGrounded >= 0.12 || live.vy < -2
+}
+
+function stepJumpPose(id: string, ownerAssetId: string, spec: CharacterSpec, live: Motion, dt: number, now: number, jumped: boolean, dodging: boolean, moving: boolean) {
   const anyJump = spec.jumpClip || spec.airClip || spec.landClip
   if (dodging || !anyJump) {
     if (live.jumpPhase !== 'none') live.clip = ''
@@ -388,14 +397,16 @@ function stepJumpPose(id: string, ownerAssetId: string, spec: CharacterSpec, liv
     if (live.grounded) begin(spec.landClip ? 'land' : 'none')
     else if (finished || falling) begin('hang')
   } else if (live.jumpPhase === 'hang') {
-    if (live.grounded) begin(spec.landClip ? 'land' : 'none')
+    live.jumpTime += dt
+    if (live.grounded) begin(live.jumpTime >= 0.15 && spec.landClip ? 'land' : 'none')
   } else if (live.jumpPhase === 'land') {
     live.jumpTime += dt
     const duration = clipDuration(spec.landClipAssetId || ownerAssetId, spec.landClip)
-    const finished = (duration > 0 && live.jumpTime >= duration - 0.02) || (duration <= 0 && live.jumpTime >= 0.35)
-    if (!live.grounded) begin(spec.airClip ? 'hang' : 'none')
+    const finished = (duration > 0 && live.jumpTime >= Math.min(duration, 0.45) - 0.02) || (duration <= 0 && live.jumpTime >= 0.28)
+    if (!live.grounded && airborne(live, now)) begin(spec.airClip ? 'hang' : 'none')
+    else if (moving && live.jumpTime >= 0.1) begin('none')
     else if (finished) begin('none')
-  } else if (!live.grounded && spec.airClip) begin('hang')
+  } else if (!live.grounded && spec.airClip && airborne(live, now)) begin('hang')
   if (live.jumpPhase === 'rise' && spec.jumpClip) playOwned(id, ownerAssetId, live, spec.jumpClip, spec.jumpClipAssetId, false)
   else if (live.jumpPhase === 'hang' && spec.airClip) playOwned(id, ownerAssetId, live, spec.airClip, spec.airClipAssetId, true)
   else if (live.jumpPhase === 'land' && spec.landClip) playOwned(id, ownerAssetId, live, spec.landClip, spec.landClipAssetId, false)
