@@ -56,7 +56,7 @@ import { bindTextureRenderer, environmentFor } from '../assets/textures'
 import { EDITOR_HELPER_LAYER, layerBitIndex } from '../project/taxonomy'
 import { capabilityEnabled, syncCapabilityRuntimes } from '../../capabilities/registry'
 import { disposeParticles, mountParticles } from '../../capabilities/particles/session'
-import { releaseSkyResources, skyBlocksFrame, skyFogActive } from '../../capabilities/sky/session'
+import { releaseSkyResources, skyBlocksFrame, skyFogActive, takeSkyFrameTask } from '../../capabilities/sky/session'
 import { SKY_CAPABILITY_ID } from '../../capabilities/sky/defaults'
 import { collectNavSurfaces } from '../../capabilities/navigation/collect'
 import { syncNavDebug } from '../../capabilities/navigation/debug'
@@ -182,6 +182,7 @@ export class EditorViewport {
   private fpsAccum = 0
   private raf = 0
   private disposed = false
+  private presenting = false
   private ready = false
   private picture: ScenePicturePipeline | null = null
   private readonly volume = createVolumeLight()
@@ -1269,6 +1270,7 @@ export class EditorViewport {
   private tick = (time: number) => {
     if (this.disposed) return
     this.raf = requestAnimationFrame(this.tick)
+    if (this.presenting) return
     const elapsed = this.last ? (time - this.last) / 1000 : 0
     const dt = Math.min(0.05, elapsed)
     this.last = time
@@ -1372,17 +1374,32 @@ export class EditorViewport {
         })
         this.renderer.setRenderTarget(null)
         if (skyBlocksFrame()) return
-        this.renderer.info.reset()
-        const outlineTargets = editor.playState === 'stopped' ? this.selectionRoots : []
-        const flashTarget = editor.playState === 'stopped' ? this.partFlashTarget : null
-        const hasOutline = outlineTargets.length > 0 || flashTarget !== null
-        measureCost('render', () => {
-          if (!this.picture?.usesEffects(picture, hasOutline)) {
-            this.renderer.render(this.scene, camera)
-          } else {
-            this.picture?.render(this.scene, camera, picture, this.width, this.height, outlineTargets, flashTarget)
+        const present = () => {
+          if (this.disposed) return
+          try {
+            this.renderer.setRenderTarget(null)
+            this.renderer.info.reset()
+            const outlineTargets = editor.playState === 'stopped' ? this.selectionRoots : []
+            const flashTarget = editor.playState === 'stopped' ? this.partFlashTarget : null
+            const hasOutline = outlineTargets.length > 0 || flashTarget !== null
+            measureCost('render', () => {
+              if (!this.picture?.usesEffects(picture, hasOutline)) {
+                this.renderer.render(this.scene, camera)
+              } else {
+                this.picture?.render(this.scene, camera, picture, this.width, this.height, outlineTargets, flashTarget)
+              }
+            })
+          } catch (error) {
+            console.error(error)
           }
-        })
+        }
+        const haze = takeSkyFrameTask()
+        if (!haze) {
+          present()
+        } else {
+          this.presenting = true
+          void haze.then(() => present()).finally(() => { this.presenting = false })
+        }
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error)
         console.error(error)

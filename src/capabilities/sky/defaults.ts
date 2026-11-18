@@ -28,11 +28,23 @@ export interface SkySettings {
   /** 关掉跟随天空时，高度雾使用这个颜色。 */
   fogColor: string
   fogSkyColor: boolean
+  /** 空气透视。打开后每帧更新一张查找表。 */
+  haze: boolean
+  /** 0 没有雾气，1 是物理强度。 */
+  hazeStrength: number
   stars: boolean
+  /** 星星亮度。1 为默认。 */
+  starIntensity: number
+  /** 星点大小，像素。 */
+  starSize: number
+  /** 银河亮度。0 为隐藏。 */
+  milkyWay: number
   moon: boolean
   /** 月亮角直径，度。 */
   moonAngularDiameter: number
   moonPhase: number
+  /** 月光整体强度。 */
+  moonLight: number
   mirrorBelowHorizon: boolean
 }
 
@@ -56,10 +68,16 @@ export function defaultSkySettings(): SkySettings {
     fogMaxOpacity: 1,
     fogColor: '#c9d6e6',
     fogSkyColor: true,
+    haze: false,
+    hazeStrength: 1,
     stars: false,
+    starIntensity: 1,
+    starSize: 0.7,
+    milkyWay: 0.25,
     moon: false,
     moonAngularDiameter: 0.53,
     moonPhase: 0.5,
+    moonLight: 1,
     mirrorBelowHorizon: false,
   }
 }
@@ -89,10 +107,16 @@ export function normalizeSkySettings(value: unknown): SkySettings {
     fogMaxOpacity: clamp(raw.fogMaxOpacity, base.fogMaxOpacity, 0, 1),
     fogColor: colorOf(raw.fogColor, base.fogColor),
     fogSkyColor: bool(raw.fogSkyColor, base.fogSkyColor),
+    haze: bool(raw.haze, base.haze),
+    hazeStrength: clamp(raw.hazeStrength, base.hazeStrength, 0, 3),
     stars: bool(raw.stars, base.stars),
+    starIntensity: clamp(raw.starIntensity, base.starIntensity, 0, 4),
+    starSize: clamp(raw.starSize, base.starSize, 0.2, 3),
+    milkyWay: clamp(raw.milkyWay, base.milkyWay, 0, 2),
     moon: bool(raw.moon, base.moon),
     moonAngularDiameter: clamp(raw.moonAngularDiameter, base.moonAngularDiameter, 0.05, 12),
     moonPhase: clamp(raw.moonPhase, base.moonPhase, 0, 1),
+    moonLight: clamp(raw.moonLight, base.moonLight, 0, 3),
     mirrorBelowHorizon: bool(raw.mirrorBelowHorizon, base.mirrorBelowHorizon),
   }
 }

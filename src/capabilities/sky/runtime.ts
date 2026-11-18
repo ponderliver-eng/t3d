@@ -2,10 +2,10 @@ import type { Camera, Scene } from 'three'
 import { Color, OrthographicCamera } from 'three'
 import type { WebGPURenderer } from 'three/webgpu'
 import { mix, uniform, vec4 } from 'three/tsl'
-import { Sky, type SkyMoonlight, type SkySun } from '@pmndrs/sky'
+import { Sky, type SkyMoonlight, type SkyNight, type SkySun } from '@pmndrs/sky'
 import { EDITOR_HELPER_LAYER } from '../../editor/project/taxonomy'
 import type { SkySettings } from './defaults'
-import { setSkyViewState } from './session'
+import { noteSkyFrameTask, setSkyViewState } from './session'
 
 /**
  * 唯一允许 import `@pmndrs/sky` 的文件。
@@ -24,12 +24,22 @@ class SkyRuntime {
   private starsReady = false
   private starsPending = false
   private starToken = 0
+  private night: SkyNight | null = null
+  private starLook: SkySettings | null = null
   private readonly fogTint = uniform(new Color('#c9d6e6'))
   private readonly fogUseColor = uniform(0)
+  private hazeOn = false
+  private fogOn = false
   private readonly applyFogNode = (colorNode: unknown, scenePass: unknown) => {
-    const skyFog = this.sky.applyFog(colorNode, { scenePass }) as { rgb: unknown, a: unknown }
-    const amount = this.sky.applyFog(colorNode, { scenePass, debugMode: 'fog-amount' }) as { r: unknown }
-    const base = colorNode as { rgb: unknown }
+    let node = colorNode
+    if (this.hazeOn && this.sky.aerialPerspectiveTexture) {
+      this.sky.setHazePolicy('ap')
+      node = this.sky.applyHaze(node, { scenePass, policy: 'ap', raymarchFallback: false })
+    }
+    if (!this.fogOn) return node
+    const skyFog = this.sky.applyFog(node, { scenePass }) as { rgb: unknown, a: unknown }
+    const amount = this.sky.applyFog(node, { scenePass, debugMode: 'fog-amount' }) as { r: unknown }
+    const base = node as { rgb: unknown }
     const flat = mix(base.rgb as never, this.fogTint, amount.r as never)
     return vec4(mix(skyFog.rgb as never, flat, this.fogUseColor), skyFog.a as never)
   }
@@ -38,7 +48,7 @@ class SkyRuntime {
     this.sky = new Sky(renderer, {
       preset: 'earth',
       sunColor: 'bruneton',
-      enableAerialPerspective: false,
+      enableAerialPerspective: true,
     })
     this.sky.attach(scene)
     this.sun = this.sky.createSun({
@@ -55,6 +65,10 @@ class SkyRuntime {
   /** 构造时库自己已经开始编译。这里只取那一份 Promise，避免和主绘制抢渲染器。 */
   compile() {
     return this.sky.compileAsync()
+  }
+
+  hazeReady() {
+    return Boolean(this.sky.aerialPerspectiveTexture)
   }
 
   sync(settings: SkySettings, camera: Camera) {
@@ -85,14 +99,24 @@ class SkyRuntime {
     }
     this.fogTint.value.set(settings.fogColor)
     this.fogUseColor.value = settings.fogSkyColor ? 0 : 1
+    if (!prev || prev.hazeStrength !== settings.hazeStrength) {
+      this.sky.setHazeStrength(settings.hazeStrength)
+      this.sky.setAerialPerspectiveDistanceScale(settings.hazeStrength)
+    }
+    this.hazeOn = settings.haze
+    this.fogOn = settings.fog
     this.syncMoon(settings)
-    this.syncStars(settings.stars)
+    this.syncStars(settings)
     this.applied = settings
     this.sky.update(camera)
+    if (settings.haze && this.hazeReady()) noteSkyFrameTask(this.sky.updateAerialPerspective())
+    else noteSkyFrameTask(null)
+    const atmosphere = settings.fog || settings.haze
     setSkyViewState({
       owns: true,
-      fog: settings.fog,
-      apply: settings.fog ? this.applyFogNode : null,
+      fog: atmosphere,
+      apply: atmosphere ? this.applyFogNode : null,
+      signature: `${settings.haze ? 1 : 0}${settings.fog ? 1 : 0}`,
     })
   }
 
@@ -101,6 +125,7 @@ class SkyRuntime {
     this.starsWanted = false
     if (this.starsReady) this.sky.disableStars()
     this.starsReady = false
+    this.night = null
     this.moon?.dispose()
     this.moon = null
     this.sun.dispose()
@@ -124,40 +149,64 @@ class SkyRuntime {
       })
       lightUserLayers(this.moon.moon.light)
       this.moon.attach(this.scene)
+      this.moon.setIntensity(settings.moonLight)
       return
     }
     const prev = this.applied
+    if (!prev || prev.moonLight !== settings.moonLight) this.moon.setIntensity(settings.moonLight)
     if (!prev || prev.moonPhase !== settings.moonPhase) this.moon.setPhase(settings.moonPhase)
     if (!prev || prev.moonAngularDiameter !== settings.moonAngularDiameter) {
       this.moon.moon.setDiscAngularDiameter(degreesToRadians(settings.moonAngularDiameter))
     }
   }
 
-  private syncStars(enabled: boolean) {
-    if (enabled === this.starsWanted && (!enabled || this.starsReady || this.starsPending)) return
+  private syncStars(settings: SkySettings) {
+    const enabled = settings.stars
+    if (enabled) this.starLook = settings
+    if (enabled === this.starsWanted && (!enabled || this.starsReady || this.starsPending)) {
+      if (enabled && this.night) this.applyStarLook(settings)
+      return
+    }
     this.starsWanted = enabled
     this.starToken += 1
     if (!enabled) {
       if (this.starsReady) this.sky.disableStars()
       this.starsReady = false
       this.starsPending = false
+      this.night = null
       return
     }
     const token = this.starToken
     this.starsPending = true
-    void this.sky.enableStars().then(() => {
+    void this.sky.enableStars({
+      intensity: settings.starIntensity,
+      size: settings.starSize,
+      milkyWay: settings.milkyWay,
+    }).then(night => {
       if (token !== this.starToken) {
         this.sky.disableStars()
         this.starsReady = false
         this.starsPending = false
+        this.night = null
         return
       }
+      this.night = night
       this.starsPending = false
       this.starsReady = true
+      if (this.starLook) this.applyStarLook(this.starLook, true)
     }).catch(error => {
       if (token === this.starToken) this.starsPending = false
       console.warn('[sky] 星空加载失败', error)
     })
+  }
+
+  private applyStarLook(settings: SkySettings, force = false) {
+    const night = this.night
+    if (!night) return
+    const prev = force ? null : this.applied
+    if (!prev || prev.starIntensity !== settings.starIntensity) night.setIntensity(settings.starIntensity)
+    if (!prev || prev.starSize !== settings.starSize) night.setSize(settings.starSize)
+    if (!prev || prev.milkyWay !== settings.milkyWay) night.setMilkyWay(settings.milkyWay)
   }
 }
 

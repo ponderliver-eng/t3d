@@ -7,6 +7,7 @@ import type { Camera } from 'three'
 interface SkyDriver {
   sync: (settings: SkySettings, camera: Camera) => void
   compile: () => Promise<void>
+  hazeReady: () => boolean
   dispose: () => void
 }
 
@@ -15,6 +16,7 @@ type SkyFogApply = (colorNode: unknown, scenePass: unknown) => unknown
 let ownsSlots = false
 let fogActive = false
 let fogApply: SkyFogApply | null = null
+let fogSignature = ''
 let fogRevision = 0
 let removeHook: (() => void) | null = null
 let driver: SkyDriver | null = null
@@ -22,6 +24,7 @@ let booting = false
 let bootToken = 0
 let pending: ViewportRenderContext | null = null
 let compiling = false
+let frameTask: Promise<void> | null = null
 
 export function skyOwnsSceneSlots() {
   return ownsSlots
@@ -40,15 +43,28 @@ export function skyFogRevision() {
   return fogRevision
 }
 
+/** 空气透视的查找表要先算完，主画面才能采样到。 */
+export function takeSkyFrameTask() {
+  const task = frameTask
+  frameTask = null
+  return task
+}
+
+export function noteSkyFrameTask(task: Promise<void> | null) {
+  frameTask = task
+}
+
 export function composeSkyFog(colorNode: unknown, scenePass: unknown) {
   return fogApply ? fogApply(colorNode, scenePass) : colorNode
 }
 
-export function setSkyViewState(next: { owns: boolean, fog: boolean, apply: SkyFogApply | null }) {
+export function setSkyViewState(next: { owns: boolean, fog: boolean, apply: SkyFogApply | null, signature?: string }) {
   ownsSlots = next.owns
-  if (fogActive === next.fog && fogApply === next.apply) return
+  const signature = next.signature ?? ''
+  if (fogActive === next.fog && fogApply === next.apply && fogSignature === signature) return
   fogActive = next.fog
   fogApply = next.apply
+  fogSignature = signature
   fogRevision += 1
 }
 
@@ -92,6 +108,12 @@ function onBeforeRender(ctx: ViewportRenderContext) {
       return
     }
     if (compiling) return
+    if (settings.haze && !driver.hazeReady()) {
+      driver.dispose()
+      driver = null
+      ensure()
+      return
+    }
     driver.sync(settings, ctx.camera)
   } catch (error) {
     console.warn('[sky] 天空更新失败', error)

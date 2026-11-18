@@ -67,6 +67,10 @@ export function SkyCard() {
               <SkyNumber label={t('sky.albedo')} value={sky.groundAlbedo} min={0} max={1} step={0.01} onChange={groundAlbedo => write({ groundAlbedo })} />
             </div>
             <Check label={t('sky.mirror')} checked={sky.mirrorBelowHorizon} onChange={mirrorBelowHorizon => edit({ mirrorBelowHorizon })} />
+            <Check label={t('sky.haze')} checked={sky.haze} onChange={haze => edit({ haze })} />
+            {sky.haze && (
+              <SkyNumber label={t('sky.hazeStrength')} value={sky.hazeStrength} min={0} max={2} step={0.05} onChange={hazeStrength => write({ hazeStrength })} />
+            )}
           </section>
           <section className="iv2-section">
             <div className="iv2-section__title" style={{ color: '#ffd36b' }}><i /><span>{t('sky.sun')}</span></div>
@@ -96,12 +100,20 @@ export function SkyCard() {
           <section className="iv2-section">
             <div className="iv2-section__title" style={{ color: '#9fb4d8' }}><i /><span>{t('sky.night')}</span></div>
             <Check label={t('sky.stars')} checked={sky.stars} onChange={stars => edit({ stars })} />
+            {sky.stars && (
+              <div className="iv2-pair">
+                <SkyNumber label={t('sky.starIntensity')} value={sky.starIntensity} min={0} max={4} step={0.05} onChange={starIntensity => write({ starIntensity })} />
+                <SkyNumber label={t('sky.starSize')} value={sky.starSize} min={0.2} max={3} step={0.05} onChange={starSize => write({ starSize })} />
+                <SkyNumber label={t('sky.milkyWay')} value={sky.milkyWay} min={0} max={2} step={0.05} onChange={milkyWay => write({ milkyWay })} />
+              </div>
+            )}
             <Check label={t('sky.moon')} checked={sky.moon} onChange={moon => edit({ moon })} />
             {sky.moon && (
-              <>
+              <div className="iv2-pair">
                 <SkyNumber label={t('sky.angularSize')} value={sky.moonAngularDiameter} min={0.05} max={8} step={0.01} onChange={moonAngularDiameter => write({ moonAngularDiameter })} />
                 <SkyNumber label={t('sky.moonPhase')} value={sky.moonPhase} min={0} max={1} step={0.01} onChange={moonPhase => write({ moonPhase })} />
-              </>
+                <SkyNumber label={t('sky.moonLight')} value={sky.moonLight} min={0} max={3} step={0.05} onChange={moonLight => write({ moonLight })} />
+              </div>
             )}
           </section>
         </div>

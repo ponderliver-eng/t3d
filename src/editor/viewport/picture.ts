@@ -1,6 +1,6 @@
 import { UnsignedByteType, type Camera, type Object3D, type Scene, type WebGPURenderer } from 'three/webgpu'
 import { RenderPipeline } from 'three/webgpu'
-import { diffuseColor, hue, metalness, mix, mrt, normalView, output, packNormalToRGB, pass, roughness, sample, saturation, uniform, unpackRGBToNormal, vec4 } from 'three/tsl'
+import { abs, diffuseColor, hue, metalness, mix, mrt, normalView, output, packNormalToRGB, pass, roughness, sample, saturation, smoothstep, uniform, unpackRGBToNormal, vec4 } from 'three/tsl'
 import { useEditorStore } from '../scene/store'
 import { bloom } from 'three/addons/tsl/display/BloomNode.js'
 import { ssao } from 'three/addons/tsl/display/SSAONode.js'
@@ -188,7 +188,13 @@ export class ScenePicturePipeline {
       const focal = uniform(picture.dofFocal)
       const bokeh = uniform(picture.dofBokeh)
       this.dofNode = { focus, focal, bokeh }
-      current = dof(current as never, scenePass.getViewZNode(), focus, focal, bokeh) as unknown as typeof current
+      const viewZ = scenePass.getViewZNode()
+      const blurred = dof(current as never, viewZ, focus, focal, bokeh)
+      // 库里的合成用的是被模糊过的弥散圆，失焦背景的高光会渗进清晰轮廓。
+      // 这里改用该像素自己的景深权重，对焦处保持原色。
+      const coc = smoothstep(0, focal, abs(viewZ.negate().sub(focus)))
+      const weight = smoothstep(0.08, 0.45, coc)
+      current = mix(current as never, blurred as never, weight) as unknown as typeof current
     } else {
       this.dofNode = null
     }
