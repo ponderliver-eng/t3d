@@ -146,12 +146,12 @@ export function defaultCameraFollow(): CameraFollowSpec {
 }
 
 export function cameraPresetForMode(mode: CharacterMode): Partial<CameraFollowSpec> {
-  if (mode === 'strafe') return { offset: [0.65, 0.45, -2.2], pivot: [0, 1.5, 0], orbit: 'mouse', localOffset: true, lookAtTarget: true, fov: 55, collision: true }
+  if (mode === 'strafe') return { offset: [0.65, 0.45, -2.2], pivot: [0, 1.5, 0], orbit: 'mouse', localOffset: false, lookAtTarget: true, fov: 55, collision: true }
   if (mode === 'lockOn') return { offset: [0.35, 2.2, -4.8], pivot: [0, 1.35, 0], orbit: 'rightDrag', localOffset: false, lookAtTarget: true, fov: 58, collision: true }
   if (mode === 'pointAndClick') return { offset: [0, 10.5, -7.2], pivot: [0, 0.8, 0], orbit: 'none', localOffset: false, lookAtTarget: true, fov: 48, collision: false }
   if (mode === 'topDown') return { offset: [0, 9.5, -6.5], pivot: [0, 0.8, 0], orbit: 'none', localOffset: false, lookAtTarget: true, fov: 50, collision: false }
   if (mode === 'side25d') return { offset: [0, 1.6, -7.5], pivot: [0, 1.2, 0], orbit: 'none', localOffset: false, lookAtTarget: true, fov: 45, collision: false }
-  if (mode === 'firstPerson') return { offset: [0, 1.65, 0.15], pivot: [0, 1.65, 0], orbit: 'mouse', localOffset: false, lookAtTarget: true, fov: 72, collision: false, zoom: false }
+  if (mode === 'firstPerson') return { offset: [0, 0, 0.12], pivot: [0, 1.65, 0], orbit: 'mouse', localOffset: false, lookAtTarget: false, fov: 72, collision: false, zoom: false, damping: 0, minPitch: -85, maxPitch: 85 }
   return { offset: [0, 1.8, -4.2], pivot: [0, 1.4, 0], orbit: 'rightDrag', localOffset: false, lookAtTarget: true, fov: 60, collision: true }
 }
 
@@ -172,11 +172,23 @@ export function resolveCharacterCamera(character: CharacterSpec, raw?: Partial<C
     base.orbit = 'mouse'
     base.localOffset = false
     base.collision = false
+    base.zoom = false
+    base.lookAtTarget = false
+    base.damping = 0
+    if (base.minPitch === -35 && base.maxPitch === 70) {
+      base.minPitch = -85
+      base.maxPitch = 85
+    }
+    // 眼睛高度只放在 pivot。旧预设又把同样的高度写进 offset，镜头会绕着头甩。
+    if (base.offset[1] > 0.4 && Math.abs(base.offset[1] - base.pivot[1]) < 0.05) {
+      base.offset = [base.offset[0], 0, base.offset[2]]
+    }
     return base
   }
   if (mode === 'strafe') {
     base.orbit = 'mouse'
-    base.localOffset = true
+    // 朝向跟镜头走。若再把角色朝向加回镜头，越肩偏移会让两边互相追，镜头自己转个不停。
+    base.localOffset = false
     return base
   }
   base.localOffset = false

@@ -67,6 +67,10 @@ function stepCameras(dt: number, host: SceneRuntimeHost) {
     : Math.atan2(2 * (q.w * q.y + q.x * q.z), 1 - 2 * (q.y * q.y + q.z * q.z))
   steer(spec, arm, host)
   arm.pitch = clampPitch(arm.pitch, spec)
+  if (character?.mode === 'firstPerson') {
+    poseFirstPerson(active.id, spec, arm, focus, host)
+    return
+  }
   const scale = dolly(spec, arm, wheel)
   const yaw = lockObject
     ? targetYaw + Math.PI
@@ -90,6 +94,33 @@ function stepCameras(dt: number, host: SceneRuntimeHost) {
     useEditorStore.setState({ playDirty: true })
   }
   host.poseCamera?.(shaken, lookPoint(shaken, lookAt, spec.lookAtTarget), spec.fov)
+}
+
+/** 第一人称停在眼睛上，朝向跟着鼠标。不把眼睛高度再当成绕头公转的力臂。 */
+function poseFirstPerson(id: string, spec: CameraFollowSpec, arm: Arm, focus: Vec3, host: SceneRuntimeHost) {
+  const yaw = arm.yaw
+  const pitch = arm.pitch
+  const flat = Math.cos(pitch)
+  const forward: Vec3 = [-Math.sin(yaw) * flat, Math.sin(pitch), -Math.cos(yaw) * flat]
+  const right: Vec3 = [Math.cos(yaw), 0, -Math.sin(yaw)]
+  const eye: Vec3 = [
+    focus[0] + right[0] * spec.offset[0] + forward[0] * spec.offset[2],
+    focus[1] + spec.offset[1] + forward[1] * spec.offset[2],
+    focus[2] + right[2] * spec.offset[0] + forward[2] * spec.offset[2],
+  ]
+  const look: Vec3 = [eye[0] + forward[0], eye[1] + forward[1], eye[2] + forward[2]]
+  arm.position = eye
+  arms.set(id, arm)
+  if (!arm.noted && armChanged(arm)) {
+    arm.noted = true
+    useEditorStore.setState({ playDirty: true })
+  }
+  const shake = juiceShake()
+  host.poseCamera?.(
+    [eye[0] + shake.x, eye[1] + shake.y, eye[2]],
+    [look[0] + shake.x, look[1] + shake.y, look[2]],
+    spec.fov,
+  )
 }
 
 function freshArm(spec: CameraFollowSpec, host: SceneRuntimeHost): Arm {

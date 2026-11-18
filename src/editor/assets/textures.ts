@@ -144,7 +144,7 @@ function scheduleUnityRepack(assetId: string, base: Texture, source: CanvasImage
   }
   const worker = getRepackWorker()
   if (worker && typeof createImageBitmap === 'function') {
-    createImageBitmap(source).then(bitmap => {
+    createImageBitmap(source, { premultiplyAlpha: 'none', colorSpaceConversion: 'none' }).then(bitmap => {
       repackCallbacks.set(assetId, res => {
         if (!res) { unityMrPending.delete(assetId); return }
         finishWithBuffer(res.w, res.h, res.buffer)
@@ -316,7 +316,11 @@ async function loadBitmapTexture(url: string): Promise<Texture> {
     try {
       const response = await fetch(url)
       const blob = await response.blob()
-      const probe = await createImageBitmap(blob, { imageOrientation: 'none' })
+      const probe = await createImageBitmap(blob, {
+        imageOrientation: 'none',
+        premultiplyAlpha: 'none',
+        colorSpaceConversion: 'none',
+      })
       let bitmap = probe
       const maxDim = Math.max(probe.width, probe.height)
       if (maxDim > MAX_TEXTURE_SIZE) {
@@ -326,6 +330,8 @@ async function loadBitmapTexture(url: string): Promise<Texture> {
         probe.close()
         bitmap = await createImageBitmap(blob, {
           imageOrientation: 'none',
+          premultiplyAlpha: 'none',
+          colorSpaceConversion: 'none',
           resizeWidth: targetW,
           resizeHeight: targetH,
           resizeQuality: 'high',
