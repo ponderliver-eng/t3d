@@ -6,24 +6,29 @@ import {
   assetRecord,
   assetRecords,
   deleteArtifact,
+  deleteOriginalTexture,
   flushDocument,
   forgetAsset,
+  hasOriginalTexture,
   isDirectoryProject,
   patchAsset,
   readArtifact,
   readAssetBytes,
+  readOriginalTexture,
   sceneDocument,
   writeArtifact,
+  writeOriginalTexture,
   writeSourceAsset,
 } from '../project/disk'
 import { assetDirectory, useAssetStore, type FileKind, type ModelSocket } from './library'
 
 const DB_NAME = 't3d-asset-cache'
-const DB_VERSION = 2
+const DB_VERSION = 3
 const FILES = 'files'
 const META = 'meta'
 const ARTIFACTS = 'artifacts'
 const SCENE = 'scene'
+const ORIGINALS = 'originals'
 const SCENE_KEY = 'current'
 
 export const MODEL_IMPORTER_VERSION = 't3d-glb-artifact-9-ufbx-biped'
@@ -66,6 +71,12 @@ export interface ModelArtifactRecord {
 export interface SceneCacheRecord<T> {
   id: string
   document: T
+}
+
+export interface OriginalTextureRecord {
+  id: string
+  fileName: string
+  bytes: ArrayBuffer
 }
 
 let opening: Promise<IDBDatabase> | null = null
@@ -124,9 +135,10 @@ export async function forgetFile(id: string): Promise<void> {
   }
   const db = await database()
   const meta = await request<AssetMeta | undefined>(db, META, 'readonly', store => store.get(id))
-  await transaction(db, [FILES, META, ARTIFACTS], 'readwrite', stores => {
+  await transaction(db, [FILES, META, ARTIFACTS, ORIGINALS], 'readwrite', stores => {
     stores[FILES].delete(id)
     stores[META].delete(id)
+    stores[ORIGINALS].delete(id)
     if (meta?.hash) stores[ARTIFACTS].delete(artifactKey(meta.hash))
   })
 }
@@ -151,6 +163,38 @@ export async function readFileBytes(id: string): Promise<ArrayBuffer | null> {
   const db = await database()
   const row = await request<CachedFile | undefined>(db, FILES, 'readonly', store => store.get(id))
   return row?.bytes ?? null
+}
+
+export async function writeOriginalTextureBackup(id: string, fileName: string, bytes: ArrayBuffer): Promise<void> {
+  if (isDirectoryProject()) {
+    await writeOriginalTexture(id, fileName, bytes)
+    return
+  }
+  const db = await database()
+  await request(db, ORIGINALS, 'readwrite', store => store.put({ id, fileName, bytes } satisfies OriginalTextureRecord))
+}
+
+export async function readOriginalTextureBackup(id: string): Promise<{ fileName: string, bytes: ArrayBuffer } | null> {
+  if (isDirectoryProject()) return readOriginalTexture(id)
+  const db = await database()
+  const row = await request<OriginalTextureRecord | undefined>(db, ORIGINALS, 'readonly', store => store.get(id))
+  return row ? { fileName: row.fileName, bytes: row.bytes } : null
+}
+
+export async function hasOriginalTextureBackup(id: string): Promise<boolean> {
+  if (isDirectoryProject()) return hasOriginalTexture(id)
+  const db = await database()
+  const key = await request<IDBValidKey | undefined>(db, ORIGINALS, 'readonly', store => store.getKey(id))
+  return key !== undefined
+}
+
+export async function deleteOriginalTextureBackup(id: string): Promise<void> {
+  if (isDirectoryProject()) {
+    await deleteOriginalTexture(id)
+    return
+  }
+  const db = await database()
+  await request(db, ORIGINALS, 'readwrite', store => store.delete(id))
 }
 
 export async function deleteModelArtifact(hash: string): Promise<void> {
@@ -273,6 +317,7 @@ function openDb(): Promise<IDBDatabase> {
       if (!db.objectStoreNames.contains(META)) db.createObjectStore(META, { keyPath: 'id' })
       if (!db.objectStoreNames.contains(ARTIFACTS)) db.createObjectStore(ARTIFACTS, { keyPath: 'key' })
       if (!db.objectStoreNames.contains(SCENE)) db.createObjectStore(SCENE, { keyPath: 'id' })
+      if (!db.objectStoreNames.contains(ORIGINALS)) db.createObjectStore(ORIGINALS, { keyPath: 'id' })
     }
     request.onsuccess = () => resolve(request.result)
     request.onerror = () => reject(request.error)

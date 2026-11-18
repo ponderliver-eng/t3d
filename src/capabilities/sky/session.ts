@@ -24,7 +24,6 @@ let booting = false
 let bootToken = 0
 let pending: ViewportRenderContext | null = null
 let compiling = false
-let frameTask: Promise<void> | null = null
 
 export function skyOwnsSceneSlots() {
   return ownsSlots
@@ -41,17 +40,6 @@ export function skyFogActive() {
 
 export function skyFogRevision() {
   return fogRevision
-}
-
-/** 空气透视的查找表要先算完，主画面才能采样到。 */
-export function takeSkyFrameTask() {
-  const task = frameTask
-  frameTask = null
-  return task
-}
-
-export function noteSkyFrameTask(task: Promise<void> | null) {
-  frameTask = task
 }
 
 export function composeSkyFog(colorNode: unknown, scenePass: unknown) {

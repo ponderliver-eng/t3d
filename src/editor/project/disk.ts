@@ -21,6 +21,7 @@ import { directoryBaseName, electronBridge, joinProjectPath, toArrayBuffer } fro
 export const PROJECT_FILE = 'project.t3d'
 export const CACHE_ROOT = '.cache/t3d'
 export const IMPORT_ARTIFACTS = `${CACHE_ROOT}/import-artifacts`
+export const TEXTURE_ORIGINALS = `${CACHE_ROOT}/texture-originals`
 export const CACHE_INDEX_PATH = `${CACHE_ROOT}/editor-library/v1/cache-index.json`
 export const DEFAULT_ASSET_FOLDERS = [
   'Assets/Models',
@@ -335,6 +336,7 @@ export async function forgetAsset(id: string, artifactKey: string | null): Promi
   try {
     if (current) await removeFile(requireRoot(), current.relativePath)
     if (artifactKey) await deleteArtifact(artifactKey)
+    await deleteOriginalTexture(id)
   } finally {
     scheduleFlush()
   }
@@ -383,6 +385,47 @@ export async function deleteArtifact(key: string): Promise<void> {
   await removeFile(requireRoot(), artifactFilePath(key))
   delete cacheIndex.artifacts[key]
   await writeIndex()
+}
+
+function originalTexturePath(id: string): string {
+  return `${TEXTURE_ORIGINALS}/${id}.t3dorig`
+}
+
+export async function writeOriginalTexture(id: string, fileName: string, bytes: ArrayBuffer): Promise<void> {
+  const nameBytes = new TextEncoder().encode(fileName)
+  const packed = new Uint8Array(4 + nameBytes.byteLength + bytes.byteLength)
+  new DataView(packed.buffer).setUint32(0, nameBytes.byteLength, true)
+  packed.set(nameBytes, 4)
+  packed.set(new Uint8Array(bytes), 4 + nameBytes.byteLength)
+  await writeBytes(requireRoot(), originalTexturePath(id), packed.buffer)
+}
+
+export async function readOriginalTexture(id: string): Promise<{ fileName: string, bytes: ArrayBuffer } | null> {
+  if (!root) return null
+  const packed = await readBytes(root, originalTexturePath(id))
+  if (!packed || packed.byteLength < 4) return null
+  const nameLen = new DataView(packed).getUint32(0, true)
+  if (4 + nameLen > packed.byteLength) return null
+  const fileName = new TextDecoder().decode(new Uint8Array(packed, 4, nameLen))
+  const bytes = packed.slice(4 + nameLen)
+  return { fileName, bytes }
+}
+
+export async function hasOriginalTexture(id: string): Promise<boolean> {
+  if (!root) return false
+  const path = originalTexturePath(id)
+  if (root.kind === 'path') {
+    const desktop = electronBridge()
+    if (!desktop) return false
+    return desktop.fs.exists(joinProjectPath(root.path, path))
+  }
+  const file = await getFile(root.handle, path, false)
+  return file !== null
+}
+
+export async function deleteOriginalTexture(id: string): Promise<void> {
+  if (!root) return
+  await removeFile(root, originalTexturePath(id)).catch(() => undefined)
 }
 
 export async function pruneArtifacts(validKeys: ReadonlySet<string>): Promise<number> {

@@ -69,7 +69,10 @@ export function SkyCard() {
             <Check label={t('sky.mirror')} checked={sky.mirrorBelowHorizon} onChange={mirrorBelowHorizon => edit({ mirrorBelowHorizon })} />
             <Check label={t('sky.haze')} checked={sky.haze} onChange={haze => edit({ haze })} />
             {sky.haze && (
-              <SkyNumber label={t('sky.hazeStrength')} value={sky.hazeStrength} min={0} max={2} step={0.05} onChange={hazeStrength => write({ hazeStrength })} />
+              <div className="iv2-pair">
+                <SkyNumber label={t('sky.hazeStrength')} value={sky.hazeStrength} min={0} max={2} step={0.05} onChange={hazeStrength => write({ hazeStrength })} />
+                <SkyNumber label={t('sky.hazeNear')} value={sky.hazeNear} min={1} max={1000} step={5} onChange={hazeNear => write({ hazeNear })} />
+              </div>
             )}
           </section>
           <section className="iv2-section">

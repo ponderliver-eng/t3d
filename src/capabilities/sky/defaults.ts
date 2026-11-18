@@ -30,8 +30,13 @@ export interface SkySettings {
   fogSkyColor: boolean
   /** 空气透视。打开后每帧更新一张查找表。 */
   haze: boolean
-  /** 0 没有雾气，1 是物理强度。 */
+  /** 0 没有雾气，1 是查找表里的浓度。 */
   hazeStrength: number
+  /**
+   * 光学路径放大。查找表按公里切片，1 时几十米几乎没有雾。
+   * 越大，越近的表面也会往天空色靠。
+   */
+  hazeNear: number
   stars: boolean
   /** 星星亮度。1 为默认。 */
   starIntensity: number
@@ -70,6 +75,7 @@ export function defaultSkySettings(): SkySettings {
     fogSkyColor: true,
     haze: false,
     hazeStrength: 1,
+    hazeNear: 200,
     stars: false,
     starIntensity: 1,
     starSize: 0.7,
@@ -109,6 +115,7 @@ export function normalizeSkySettings(value: unknown): SkySettings {
     fogSkyColor: bool(raw.fogSkyColor, base.fogSkyColor),
     haze: bool(raw.haze, base.haze),
     hazeStrength: clamp(raw.hazeStrength, base.hazeStrength, 0, 3),
+    hazeNear: clamp(raw.hazeNear, base.hazeNear, 1, 1000),
     stars: bool(raw.stars, base.stars),
     starIntensity: clamp(raw.starIntensity, base.starIntensity, 0, 4),
     starSize: clamp(raw.starSize, base.starSize, 0.2, 3),

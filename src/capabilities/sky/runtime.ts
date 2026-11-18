@@ -5,7 +5,7 @@ import { mix, uniform, vec4 } from 'three/tsl'
 import { Sky, type SkyMoonlight, type SkyNight, type SkySun } from '@pmndrs/sky'
 import { EDITOR_HELPER_LAYER } from '../../editor/project/taxonomy'
 import type { SkySettings } from './defaults'
-import { noteSkyFrameTask, setSkyViewState } from './session'
+import { setSkyViewState } from './session'
 
 /**
  * 唯一允许 import `@pmndrs/sky` 的文件。
@@ -30,11 +30,18 @@ class SkyRuntime {
   private readonly fogUseColor = uniform(0)
   private hazeOn = false
   private fogOn = false
+  private apKey = ''
   private readonly applyFogNode = (colorNode: unknown, scenePass: unknown) => {
     let node = colorNode
     if (this.hazeOn && this.sky.aerialPerspectiveTexture) {
       this.sky.setHazePolicy('ap')
-      node = this.sky.applyHaze(node, { scenePass, policy: 'ap', raymarchFallback: false })
+      node = this.sky.applyHaze(node, {
+        scenePass,
+        policy: 'ap',
+        raymarchFallback: false,
+        // 编辑器远平面只有两千米。不传这个的话，远处地面的深度会被当成天空，雾气在合成时被减掉。
+        useCameraFar: true,
+      })
     }
     if (!this.fogOn) return node
     const skyFog = this.sky.applyFog(node, { scenePass }) as { rgb: unknown, a: unknown }
@@ -99,18 +106,25 @@ class SkyRuntime {
     }
     this.fogTint.value.set(settings.fogColor)
     this.fogUseColor.value = settings.fogSkyColor ? 0 : 1
-    if (!prev || prev.hazeStrength !== settings.hazeStrength) {
-      this.sky.setHazeStrength(settings.hazeStrength)
-      this.sky.setAerialPerspectiveDistanceScale(settings.hazeStrength)
-    }
+    if (!prev || prev.hazeStrength !== settings.hazeStrength) this.sky.setHazeStrength(settings.hazeStrength)
+    if (!prev || prev.hazeNear !== settings.hazeNear) this.sky.setAerialPerspectiveDistanceScale(settings.hazeNear)
     this.hazeOn = settings.haze
     this.fogOn = settings.fog
     this.syncMoon(settings)
     this.syncStars(settings)
     this.applied = settings
     this.sky.update(camera)
-    if (settings.haze && this.hazeReady()) noteSkyFrameTask(this.sky.updateAerialPerspective())
-    else noteSkyFrameTask(null)
+    this.applyCelestialFade(settings, prev)
+    if (settings.haze && this.hazeReady()) {
+      const e = camera.matrixWorld.elements
+      const nextApKey = `${e[0].toFixed(3)},${e[4].toFixed(3)},${e[8].toFixed(3)},${e[12].toFixed(2)},${e[13].toFixed(2)},${e[14].toFixed(2)}|${settings.timeOfDay}|${settings.latitude}|${settings.dayOfYear}|${settings.north}|${settings.turbidity}|${settings.groundAlbedo}`
+      if (nextApKey !== this.apKey) {
+        this.apKey = nextApKey
+        void this.sky.updateAerialPerspective()
+      }
+    } else {
+      this.apKey = ''
+    }
     const atmosphere = settings.fog || settings.haze
     setSkyViewState({
       owns: true,
@@ -150,6 +164,7 @@ class SkyRuntime {
       lightUserLayers(this.moon.moon.light)
       this.moon.attach(this.scene)
       this.moon.setIntensity(settings.moonLight)
+      this.moon.moon.setDiscIntensity(3)
       return
     }
     const prev = this.applied
@@ -158,6 +173,7 @@ class SkyRuntime {
     if (!prev || prev.moonAngularDiameter !== settings.moonAngularDiameter) {
       this.moon.moon.setDiscAngularDiameter(degreesToRadians(settings.moonAngularDiameter))
     }
+    this.moon.moon.setDiscIntensity(3)
   }
 
   private syncStars(settings: SkySettings) {
@@ -207,6 +223,24 @@ class SkyRuntime {
     if (!prev || prev.starIntensity !== settings.starIntensity) night.setIntensity(settings.starIntensity)
     if (!prev || prev.starSize !== settings.starSize) night.setSize(settings.starSize)
     if (!prev || prev.milkyWay !== settings.milkyWay) night.setMilkyWay(settings.milkyWay)
+    this.applyStarContrast(settings, prev)
+  }
+
+  /**
+   * 星星按天空亮度淡出，和夜空示例一样。
+   * 库的阈值按曝光 40 调过。这里曝光低得多，要按同样比例放大，否则白天也看得见。
+   * 月面不要再乘太阳高度：那会在白天把月盘亮度写成 0。月亮跟着月相转到地平线以下时，本来就看不到。
+   */
+  private applyCelestialFade(settings: SkySettings, prev: SkySettings | null) {
+    this.applyStarContrast(settings, prev)
+  }
+
+  private applyStarContrast(settings: SkySettings, prev: SkySettings | null) {
+    const night = this.night
+    if (!night || (prev && prev.exposure === settings.exposure)) return
+    const scale = 40 / Math.max(settings.exposure, 0.05)
+    night.setContrast(40 * scale)
+    night.setMilkyWayContrast(20 * scale)
   }
 }
 

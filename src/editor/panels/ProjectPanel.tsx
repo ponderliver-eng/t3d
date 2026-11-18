@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type MouseEvent } from 'react'
 import { createPortal } from 'react-dom'
-import { Box, ChevronRight, Clapperboard, Component, CopyPlus, Folder, FolderOpen, FolderPlus, FolderSearch, Globe, Image, Layers, LayoutGrid, List, ListTree, MapPin, Minus, Music, PackageOpen, Palette, PanelsTopLeft, Pencil, Plus, RefreshCw, Rows3, Search, Sparkles, Sun, Trash2, Unlink, Upload, X } from 'lucide-react'
+import { Box, ChevronRight, Clapperboard, Component, CopyPlus, Folder, FolderOpen, FolderPlus, FolderSearch, Globe, Image, Layers, LayoutGrid, List, ListTree, MapPin, Minus, Music, PackageOpen, Palette, PanelsTopLeft, Pencil, Plus, RefreshCw, Rows3, Scaling, Search, Sparkles, Sun, Trash2, Unlink, Upload, X } from 'lucide-react'
 import { CLIP_MIME } from '../animation/playback'
 import { ASSET_MIME, assignClip, bindImportInput, createDefaultMaterial, createDefaultUi, deleteAsset, duplicateAsset, importFiles, isNodeDrag, logNamed, NODE_MIME, openAsset, openImport, reimportModel, reportAssetUsers } from '../assets/import'
 import { savePrefabFromSelection } from '../assets/import'
@@ -15,6 +15,7 @@ import { useEditorStore } from '../scene/store'
 import { translate, useI18n, type MessageKey } from '../i18n'
 import { openAssetPreview, type PreviewKind } from '../preview/previewStore'
 import { openPackagePicker, usePackageImportStore } from '../assets/packageImportStore'
+import { TextureResizeDialog } from './TextureResizeDialog'
 import './ProjectPanel.css'
 
 const PILLS = [
@@ -77,6 +78,7 @@ export default function ProjectPanel() {
   const [dropPath, setDropPath] = useState<string | null>(null)
   const [clipOpen, setClipOpen] = useState<Record<string, boolean>>({})
   const [pending, setPending] = useState<{ kind: 'asset', id: string } | { kind: 'folder', path: string } | null>(null)
+  const [resizeTargets, setResizeTargets] = useState<string[] | null>(null)
   const renameTimer = useRef<number | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const panelRef = useRef<HTMLDivElement>(null)
@@ -470,6 +472,9 @@ export default function ProjectPanel() {
           {(assetKind(menu.id) === 'model' || assetKind(menu.id) === 'animation') && (
             <button type="button" onClick={() => { void reimportModel(menu.id); setMenu(null) }}><RefreshCw size={12} />{t('preview.reimport')}</button>
           )}
+          {assetKind(menu.id) === 'texture' && (
+            <button type="button" onClick={() => { setResizeTargets([menu.id]); setMenu(null) }}><Scaling size={12} />{t('project.resizeTextures')}</button>
+          )}
           {(assetKind(menu.id) === 'material' || assetKind(menu.id) === 'scene' || assetKind(menu.id) === 'prefab') && (
             <button type="button" onClick={() => { duplicateAsset(menu.id); setMenu(null) }}><CopyPlus size={12} />{t('project.duplicate')}</button>
           )}
@@ -490,6 +495,14 @@ export default function ProjectPanel() {
           <div className="project-panel__sep" />
           <button type="button" onClick={() => { useAssetStore.getState().setBrowseDir(menu.path); setMenu(null) }}><FolderOpen size={12} />{t('project.open')}</button>
           <button type="button" onClick={() => { void revealOnDisk(folderDiskPath(menu.path), true); setMenu(null) }}><FolderSearch size={12} />{t('project.reveal')}</button>
+          <button type="button" onClick={() => {
+            const store = useAssetStore.getState()
+            const ids = Object.values(store.assets)
+              .filter(asset => asset.kind === 'texture' && isWithin(assetDirectory(asset.id, store.assetDirs), menu.path))
+              .map(asset => asset.id)
+            setResizeTargets(ids)
+            setMenu(null)
+          }}><Scaling size={12} />{t('project.resizeTextures')}</button>
           <button type="button" onClick={() => { setMenu(null); openPackagePicker() }}><PackageOpen size={12} />{t('menu.extractPackage')}</button>
           {menu.path !== ASSETS_ROOT && <div className="project-panel__sep" />}
           {menu.path !== ASSETS_ROOT && <button type="button" onClick={() => { setRenamePath(menu.path); setMenu(null) }}><Pencil size={12} />{t('project.rename')}</button>}
@@ -501,6 +514,9 @@ export default function ProjectPanel() {
             }}><Trash2 size={12} />{t('project.delete')}</button>
           )}
         </div>
+      )}
+      {resizeTargets !== null && (
+        <TextureResizeDialog initialAssetIds={resizeTargets} onClose={() => setResizeTargets(null)} />
       )}
       {pending && createPortal(
         <div className="project-confirm__backdrop" onMouseDown={() => setPending(null)}>
