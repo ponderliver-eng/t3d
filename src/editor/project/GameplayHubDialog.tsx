@@ -1,13 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Database, Layers, Package, Plus, RotateCcw, Search, Trash2, X } from 'lucide-react'
+import { Layers, Plus, RotateCcw, Search, Trash2, X } from 'lucide-react'
 import { useEditorStore } from '../scene/store'
 import { useI18n } from '../i18n'
 import {
-  CORE_GAMEPLAY_PACK_ID,
   type GameDatabaseColumn,
   type GameDatabaseRow,
 } from '../../gameplay/types'
-import { defaultRows, listEnabledTableSchemas, listGameplayPacks, tableRows } from '../../gameplay/registry'
+import { defaultRows, listEnabledTableSchemas, tableRows } from '../../gameplay/registry'
 import './GameplayHubDialog.css'
 import '../prefs/SettingsDialog.css'
 
@@ -21,7 +20,6 @@ function Hub() {
   const { t } = useI18n()
   const database = useEditorStore(state => state.gameDatabase) ?? { tables: {} }
   const packsEnabled = useEditorStore(state => state.gameplayPacks) ?? []
-  const [tab, setTab] = useState<'database' | 'packs'>('database')
   const [tableId, setTableId] = useState('tags')
   const [query, setQuery] = useState('')
   const schemas = listEnabledTableSchemas(packsEnabled)
@@ -57,18 +55,12 @@ function Hub() {
         <header className="hub-head">
           <div>
             <h2>{t('hub.title')}</h2>
-            <p>{t('hub.count', { packs: String(listGameplayPacks().length), tables: String(schemas.length) })}</p>
+            <p>{t('hub.count', { tables: String(schemas.length) })}</p>
           </div>
           <button type="button" title={t('tags.done')} onClick={() => useEditorStore.getState().setGameplayHubOpen(false)}><X size={14} /></button>
         </header>
         <div className="hub-toolbar">
-          <button type="button" className={tab === 'database' ? 'is-on' : ''} onClick={() => setTab('database')}>
-            <Database size={13} /> {t('hub.database', { count: String(schemas.length) })}
-          </button>
-          <button type="button" className={tab === 'packs' ? 'is-on' : ''} onClick={() => setTab('packs')}>
-            <Package size={13} /> {t('hub.packs')}
-          </button>
-          {tab === 'database' && active && (
+          {active && (
             <>
               <label className="hub-search">
                 <Search size={13} />
@@ -83,7 +75,7 @@ function Hub() {
             </>
           )}
         </div>
-        {tab === 'packs' ? <PackList /> : active && (
+        {active && (
           <div className="hub-body">
             <aside className="hub-side">
               <div className="hub-muted">{t('hub.catalog')}</div>
@@ -122,31 +114,6 @@ function Hub() {
           </div>
         )}
       </section>
-    </div>
-  )
-}
-
-function PackList() {
-  const { t } = useI18n()
-  const enabled = useEditorStore(state => state.gameplayPacks)
-  return (
-    <div className="hub-packs">
-      {listGameplayPacks().map(pack => {
-        const on = pack.core || enabled.includes(pack.id) || pack.id === CORE_GAMEPLAY_PACK_ID
-        return (
-          <article key={pack.id} className="hub-pack">
-            <div>
-              <h3>{pack.name}</h3>
-              <p>{pack.description}</p>
-            </div>
-            <label className="hub-field hub-check">
-              <input type="checkbox" checked={on} disabled={pack.core === true} onChange={() => undefined} />
-              <span>{on ? t('hub.enabled') : t('hub.disabled')}</span>
-            </label>
-          </article>
-        )
-      })}
-      <p className="hub-muted">{t('hub.packHint')}</p>
     </div>
   )
 }

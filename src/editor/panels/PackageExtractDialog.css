@@ -246,6 +246,33 @@
   color-scheme: dark;
 }
 
+.pkg-extract__filter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 10px;
+  padding: 0 10px;
+  height: 32px;
+  border: 1px solid var(--border, rgba(255, 255, 255, 0.12));
+  border-radius: var(--radius-sm, 4px);
+  background: rgba(0, 0, 0, 0.2);
+  color: var(--text-muted, #9aa3ad);
+}
+
+.pkg-extract__filter input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  border: 0;
+  background: transparent;
+  color: var(--text-primary, #e8eaed);
+}
+
+.pkg-extract__filter button {
+  display: inline-flex;
+  color: var(--text-muted, #9aa3ad);
+}
+
 .pkg-extract__advanced {
   margin: 0 0 10px;
   border: 1px solid rgba(255, 190, 90, 0.48);

@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { Box, Clapperboard, Image, Minus, Palette, Plus, X } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Box, Clapperboard, Image, Minus, Palette, Plus, Search, X } from 'lucide-react'
 import { scanPackageAssets, type PackageAssetScannerDirectory, type PackageAssetScannerEntry, type PackageAssetScannerResult, type PackageExtractableAssetKind } from '../assets/package/packageAssetScanner'
 import { extractPackageEntries, withReferencedTextures, type PackageExtractionProgress } from '../assets/package/extractPackage'
 import type { PackageModelAssetRole } from '../assets/package/packageAssetRoleGuess'
@@ -22,10 +22,7 @@ export function PackageExtractDialog({ file, open, onClose }: { file: File | nul
   const [extracting, setExtracting] = useState(false)
   const [progress, setProgress] = useState<PackageExtractionProgress | null>(null)
   const [slowScan, setSlowScan] = useState(false)
-  const [roleOverrides, setRoleOverrides] = useState<Record<string, PackageModelAssetRole>>({})
-  const [carrierBodyLinks, setCarrierBodyLinks] = useState<Record<string, string>>({})
-  const [advancedOpen, setAdvancedOpen] = useState(true)
-  const [mergeAnimations, setMergeAnimations] = useState(false)
+  const [query, setQuery] = useState('')
 
   useEffect(() => {
     if (!open || !file) return
@@ -41,9 +38,7 @@ export function PackageExtractDialog({ file, open, onClose }: { file: File | nul
     setDiagnosticsOpen(false)
     setExtracting(false)
     setProgress(null)
-    setRoleOverrides({})
-    setCarrierBodyLinks({})
-    setMergeAnimations(false)
+    setQuery('')
     file.arrayBuffer()
       .then(buffer => scanPackageAssets(buffer))
       .then(next => {
@@ -71,10 +66,7 @@ export function PackageExtractDialog({ file, open, onClose }: { file: File | nul
     () => withReferencedTextures(selected, entries, result?.materialBindingSources),
     [entries, selectedIds, result?.materialBindingSources],
   )
-  const directoryIds = useMemo(() => result ? directoryEntryIds(result.tree) : new Map<string, string[]>(), [result])
-  const bodies = entries.filter(entry => (roleOverrides[entry.id] ?? entry.roleGuess?.role) === 'modelBody')
-  const bodyOptions = bodies.map(entry => <option key={entry.id} value={entry.id}>{entry.fileName}</option>)
-  const groups = mergeAnimations ? mergeGroups(entries, selectedIds, roleOverrides, carrierBodyLinks) : []
+  const filter = query.trim().toLowerCase()
 
   const extract = async () => {
     if (expanded.length === 0 || extracting) return
@@ -84,9 +76,9 @@ export function PackageExtractDialog({ file, open, onClose }: { file: File | nul
       const done = await extractPackageEntries(expanded, {
         targetDirectory: normalizeDir(targetDirectory),
         directoryMode,
-        mergeAnimations,
-        roles: reviewedRoles(entries, roleOverrides),
-        carrierBodies: reviewedLinks(entries, roleOverrides, carrierBodyLinks),
+        mergeAnimations: false,
+        roles: reviewedRoles(entries, {}),
+        carrierBodies: reviewedLinks(entries, {}, {}),
         materialBindingSources: result?.materialBindingSources,
         onProgress: setProgress,
       })
@@ -165,54 +157,26 @@ export function PackageExtractDialog({ file, open, onClose }: { file: File | nul
                   )}
                 </div>
               )}
-              <details className={`pkg-extract__advanced${mergeAnimations ? ' pkg-extract__advanced--enabled' : ''}`} open={advancedOpen} onToggle={event => setAdvancedOpen(event.currentTarget.open)}>
-                <summary>
-                  <span className="pkg-extract__advanced-title"><span>{advancedOpen ? '↑' : '↓'}</span><span>{t('pkg.advancedOptions')}</span></span>
-                  <span className="pkg-extract__advanced-status">{mergeAnimations ? t('pkg.advancedOptionsEnabled') : t('pkg.advancedOptionsOff')}</span>
-                </summary>
-                <div className="pkg-extract__advanced-options">
-                  <label>
-                    <input type="checkbox" checked={mergeAnimations} onChange={event => setMergeAnimations(event.target.checked)} />
-                    <span>{t('pkg.mergeFbxAnimations')}</span>
-                  </label>
-                </div>
-              </details>
-              {groups.length > 0 && (
-                <section className="pkg-extract__merge-preview">
-                  <header>
-                    <strong>{t('pkg.mergePreview.title')}</strong>
-                    <span>{t('pkg.mergePreview.summary', { bodies: groups.length, carriers: groups.reduce((sum, group) => sum + group.carriers.length, 0) })}</span>
-                  </header>
-                  <div className="pkg-extract__merge-preview-list">
-                    {groups.map(group => (
-                      <article key={group.body.id} className="pkg-extract__merge-preview-item">
-                        <div className="pkg-extract__merge-preview-body"><strong>{group.body.fileName}</strong><span>{group.body.originalPath}</span></div>
-                        <div className="pkg-extract__merge-preview-clips">{group.carriers.map(carrier => <span key={carrier.id}>{clipLabel(carrier)}</span>)}</div>
-                      </article>
-                    ))}
-                  </div>
-                </section>
-              )}
+              <label className="pkg-extract__filter">
+                <Search size={14} />
+                <input
+                  value={query}
+                  placeholder={t('pkg.filterPlaceholder')}
+                  onChange={event => setQuery(event.target.value)}
+                />
+                {query && <button type="button" aria-label={t('pkg.close')} onClick={() => setQuery('')}><X size={12} /></button>}
+              </label>
               <DirectoryTree
                 directory={result.tree}
                 root
+                filter={filter}
                 selectedIds={selectedIds}
-                directoryIds={directoryIds}
-                roles={roleOverrides}
-                links={carrierBodyLinks}
-                bodyOptions={bodyOptions}
-                showRoles={mergeAnimations}
                 onToggleEntry={id => setSelectedIds(prev => toggleSet(prev, id))}
                 onToggleDirectory={(ids, checked) => setSelectedIds(prev => {
                   const next = new Set(prev)
                   for (const id of ids) { if (checked) next.add(id); else next.delete(id) }
                   return next
                 })}
-                onRole={(id, role) => {
-                  setRoleOverrides(prev => ({ ...prev, [id]: role }))
-                  if (role !== 'animationCarrier') setCarrierBodyLinks(prev => { const next = { ...prev }; delete next[id]; return next })
-                }}
-                onLink={(id, bodyId) => setCarrierBodyLinks(prev => { const next = { ...prev }; if (bodyId) next[id] = bodyId; else delete next[id]; return next })}
               />
             </>
           )}
@@ -275,62 +239,36 @@ function Summary({ label, value, icon: Icon, color }: { label: string; value: nu
 function DirectoryTree(props: {
   directory: PackageAssetScannerDirectory
   root?: boolean
+  filter: string
   selectedIds: Set<string>
-  directoryIds: Map<string, string[]>
-  roles: Record<string, PackageModelAssetRole>
-  links: Record<string, string>
-  bodyOptions: ReactNode
-  showRoles: boolean
   onToggleEntry: (id: string) => void
   onToggleDirectory: (ids: string[], checked: boolean) => void
-  onRole: (id: string, role: PackageModelAssetRole) => void
-  onLink: (id: string, bodyId: string) => void
 }) {
   const { t } = useI18n()
-  const ids = props.directoryIds.get(props.directory.path) ?? []
-  const state = selectionState(ids, props.selectedIds)
+  const entries = props.directory.entries.filter(entry => matchesFilter(entry, props.filter))
+  const children = props.directory.children.filter(child => directoryVisible(child, props.filter))
+  const visibleIds = collectVisibleIds(props.directory, props.filter)
+  const state = selectionState(visibleIds, props.selectedIds)
+  if (!props.root && entries.length === 0 && children.length === 0) return null
   const content = (
     <>
-      {props.directory.entries.map(entry => {
-        const role = props.roles[entry.id] ?? entry.roleGuess?.role
-        const showRole = props.showRoles && (entry.kind === 'model' || entry.kind === 'animation')
-        return (
-          <div key={entry.id} className="pkg-extract__entry">
-            <input type="checkbox" checked={props.selectedIds.has(entry.id)} onChange={() => props.onToggleEntry(entry.id)} aria-label={entry.fileName} />
-            <KindMark kind={entry.kind} />
-            <div className="pkg-extract__entry-main">
-              <strong>{entry.fileName}</strong>
-              <span>{entry.originalPath}</span>
-              {showRole && (
-                <div className="pkg-extract__role-line">
-                  <span className={`pkg-extract__role-badge pkg-extract__role-badge--${role ?? 'unknownModel'}`}>{t(`pkg.role.${role ?? 'unknownModel'}` as MessageKey)}</span>
-                  {entry.roleGuess && <span>{t(`pkg.confidence.${entry.roleGuess.confidence}` as MessageKey)}</span>}
-                </div>
-              )}
-            </div>
-            <div className="pkg-extract__entry-meta">
-              {showRole && (
-                <select className="pkg-extract__role-select" value={role ?? 'unknownModel'} aria-label={t('pkg.roleOverrideFor', { name: entry.fileName })} onChange={event => props.onRole(entry.id, event.target.value as PackageModelAssetRole)}>
-                  <option value="modelBody">{t('pkg.role.modelBody')}</option>
-                  <option value="animationCarrier">{t('pkg.role.animationCarrier')}</option>
-                  <option value="ordinaryModel">{t('pkg.role.ordinaryModel')}</option>
-                  <option value="unknownModel">{t('pkg.role.unknownModel')}</option>
-                </select>
-              )}
-              {showRole && role === 'animationCarrier' && (
-                <select className="pkg-extract__role-select" value={props.links[entry.id] ?? entry.roleGuess?.relatedBodyEntryIds?.[0] ?? ''} aria-label={t('pkg.carrierBodyFor', { name: entry.fileName })} onChange={event => props.onLink(entry.id, event.target.value)}>
-                  <option value="">{t('pkg.noCarrierBody')}</option>
-                  {props.bodyOptions}
-                </select>
-              )}
-              {entry.conversionNote && <span>{entry.conversionNote}</span>}
-              {entry.companionFiles.length > 0 && <span>{t('pkg.companions', { count: entry.companionFiles.length })}</span>}
-              {entry.warnings.length > 0 && <span>{t('pkg.warnings', { count: entry.warnings.length })}</span>}
-            </div>
+      {entries.map(entry => (
+        <div key={entry.id} className="pkg-extract__entry">
+          <input type="checkbox" checked={props.selectedIds.has(entry.id)} onChange={() => props.onToggleEntry(entry.id)} aria-label={entry.fileName} />
+          <KindMark kind={entry.kind} />
+          <div className="pkg-extract__entry-main">
+            <strong>{entry.fileName}</strong>
+            <span>{entry.originalPath}</span>
           </div>
-        )
-      })}
-      {props.directory.children.map(child => <DirectoryTree key={child.path} {...props} directory={child} root={false} />)}
+          <div className="pkg-extract__entry-meta">
+            {entry.conversionNote && <span>{entry.conversionNote}</span>}
+            {entry.companionFiles.length > 0 && <span>{t('pkg.companions', { count: entry.companionFiles.length })}</span>}
+            {entry.warnings.length > 0 && <span>{t('pkg.warnings', { count: entry.warnings.length })}</span>}
+          </div>
+        </div>
+      ))}
+      {children.map(child => <DirectoryTree key={child.path} {...props} directory={child} root={false} />)}
+      {props.root && entries.length === 0 && children.length === 0 && <div className="pkg-extract__empty">{t('pkg.filterEmpty')}</div>}
     </>
   )
   if (props.root) return <div className="pkg-extract__tree">{content}</div>
@@ -341,7 +279,7 @@ function DirectoryTree(props: {
           <Plus size={11} strokeWidth={2.75} className="pkg-extract__dir-plus" />
           <Minus size={11} strokeWidth={2.75} className="pkg-extract__dir-minus" />
         </span>
-        <DirectoryCheck state={state} onToggle={() => props.onToggleDirectory(ids, state !== 'checked')} />
+        <DirectoryCheck state={state} onToggle={() => props.onToggleDirectory(visibleIds, state !== 'checked')} />
         <span className="pkg-extract__dir-name">{props.directory.name}</span>
       </summary>
       <div className="pkg-extract__dir-body">{content}</div>
@@ -362,16 +300,23 @@ function selectionState(ids: string[], selected: Set<string>): 'checked' | 'mixe
   return count === ids.length ? 'checked' : 'mixed'
 }
 
-function directoryEntryIds(root: PackageAssetScannerDirectory): Map<string, string[]> {
-  const out = new Map<string, string[]>()
-  const visit = (directory: PackageAssetScannerDirectory): string[] => {
-    const ids = directory.entries.map(entry => entry.id)
-    for (const child of directory.children) ids.push(...visit(child))
-    out.set(directory.path, ids)
-    return ids
+function matchesFilter(entry: PackageAssetScannerEntry, filter: string): boolean {
+  if (!filter) return true
+  return entry.fileName.toLowerCase().includes(filter) || entry.originalPath.toLowerCase().includes(filter)
+}
+
+function directoryVisible(directory: PackageAssetScannerDirectory, filter: string): boolean {
+  if (!filter) return true
+  if (directory.entries.some(entry => matchesFilter(entry, filter))) return true
+  return directory.children.some(child => directoryVisible(child, filter))
+}
+
+function collectVisibleIds(directory: PackageAssetScannerDirectory, filter: string): string[] {
+  const ids = directory.entries.filter(entry => matchesFilter(entry, filter)).map(entry => entry.id)
+  for (const child of directory.children) {
+    if (directoryVisible(child, filter)) ids.push(...collectVisibleIds(child, filter))
   }
-  visit(root)
-  return out
+  return ids
 }
 
 function toggleSet(source: Set<string>, id: string): Set<string> {
@@ -399,25 +344,6 @@ function reviewedLinks(entries: PackageAssetScannerEntry[], overrides: Record<st
     if (linked && bodies.has(linked)) out[entry.id] = linked
   }
   return out
-}
-
-function mergeGroups(entries: PackageAssetScannerEntry[], selected: Set<string>, overrides: Record<string, PackageModelAssetRole>, links: Record<string, string>) {
-  const bodies = new Map(entries.filter(entry => selected.has(entry.id) && entry.extension === 'fbx' && (overrides[entry.id] ?? entry.roleGuess?.role) === 'modelBody').map(entry => [entry.id, entry]))
-  const grouped = new Map<string, PackageAssetScannerEntry[]>()
-  for (const entry of entries) {
-    if (!selected.has(entry.id) || entry.extension !== 'fbx') continue
-    if ((overrides[entry.id] ?? entry.roleGuess?.role) !== 'animationCarrier') continue
-    const bodyId = links[entry.id] ?? entry.roleGuess?.relatedBodyEntryIds?.find(id => bodies.has(id))
-    if (!bodyId || !bodies.has(bodyId)) continue
-    grouped.set(bodyId, [...(grouped.get(bodyId) ?? []), entry])
-  }
-  return [...grouped].map(([id, carriers]) => ({ body: bodies.get(id)!, carriers }))
-}
-
-function clipLabel(entry: PackageAssetScannerEntry): string {
-  const base = entry.fileName.replace(/\.[^.]+$/, '')
-  const marker = base.lastIndexOf('@')
-  return marker >= 0 ? base.slice(marker + 1) : base
 }
 
 function defaultTarget(fileName: string): string {
