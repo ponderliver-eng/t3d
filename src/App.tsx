@@ -11,6 +11,7 @@ import SettingsDialog from './editor/prefs/SettingsDialog'
 import ProjectSettingsDialog from './editor/project/ProjectSettingsDialog'
 import TaxonomyDialogs from './editor/project/TaxonomyDialogs'
 import GameplayHubDialog from './editor/project/GameplayHubDialog'
+import LibraryDialog from './editor/library/LibraryDialog'
 import { usePrefsStore } from './editor/prefs/store'
 import { PreviewHost } from './editor/preview/PreviewHost'
 import { UiEditor } from './editor/ui/UiEditor'
@@ -184,6 +185,7 @@ export default function App() {
       <ProjectSettingsDialog />
       <TaxonomyDialogs />
       <GameplayHubDialog />
+      <LibraryDialog />
     </div>
   )
 }

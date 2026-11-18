@@ -62,6 +62,20 @@
   border-left: 1px solid var(--border);
 }
 
+.toolbar__btn--library {
+  margin-right: 8px;
+  padding: 4px 12px;
+  color: #f7f1e4;
+  background: linear-gradient(180deg, rgba(242, 207, 127, 0.22), rgba(242, 207, 127, 0.08));
+  border: 1px solid rgba(242, 207, 127, 0.55);
+  border-radius: 999px;
+}
+
+.toolbar__btn--library:hover:not(:disabled) {
+  background: rgba(242, 207, 127, 0.28);
+  color: #fff8e8;
+}
+
 .toolbar__btn--play {
   color: var(--play-color);
   padding: 4px 10px;

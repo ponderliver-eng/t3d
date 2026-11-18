@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import {
-  ArrowDown, ArrowDownToLine, ArrowLeft, ArrowRight, ArrowUp, Axis3d, Box, Boxes, Camera, ChevronRight, Circle, ClipboardPaste, Clock, Cone, Copy, CopyPlus, Cylinder, Database, Eye, FilePlus, Flashlight, Focus, Folder, FolderCog, FolderOpen, FolderPlus, Grid3x3, Group, Layers, LayoutDashboard, Lightbulb, Magnet, Package, PackageOpen, PanelsTopLeft, Pill, Redo2, Save, SaveAll, Scan, Settings, SlidersHorizontal, Sparkles, Square, Sun, Sunrise, Tag, Trash2, Undo2, Upload,
+  ArrowDown, ArrowDownToLine, ArrowLeft, ArrowRight, ArrowUp, Axis3d, Box, Boxes, Camera, ChevronRight, Circle, ClipboardPaste, Clock, Cone, Copy, CopyPlus, Cylinder, Database, Eye, FilePlus, Flashlight, Focus, Folder, FolderCog, FolderOpen, FolderPlus, Grid3x3, Group, Layers, LayoutDashboard, Library, Lightbulb, Magnet, Package, PackageOpen, PanelsTopLeft, Pill, Redo2, Save, SaveAll, Scan, Settings, SlidersHorizontal, Sparkles, Square, Sun, Sunrise, Tag, Trash2, Undo2, Upload,
 } from 'lucide-react'
 import { askNewScene, useEditorStore, type DeviceKind } from '../scene/store'
 import { redoActive, undoActive, useUiEditor } from '../ui/session'
@@ -111,9 +111,11 @@ export default function MenuBar() {
           <Item icon={<PackageOpen size={13} />} onClick={openPackagePicker}>{t('menu.extractPackage')}</Item>
           <Sep />
           <Item icon={<Database size={13} />} onClick={() => useEditorStore.getState().setGameplayHubOpen(true)}>{t('menu.database')}</Item>
+          <Item icon={<Library size={13} />} onClick={() => useEditorStore.getState().setLibraryOpen(true)}>{t('menu.library')}</Item>
           <Submenu icon={<FolderCog size={13} />} label={t('menu.projectMenu')}>
             <Item icon={<SlidersHorizontal size={13} />} onClick={openProjectSettings}>{t('menu.projectSettings')}</Item>
             <Item icon={<Database size={13} />} onClick={() => useEditorStore.getState().setGameplayHubOpen(true)}>{t('menu.database')}</Item>
+            <Item icon={<Library size={13} />} onClick={() => useEditorStore.getState().setLibraryOpen(true)}>{t('menu.library')}</Item>
             <Item icon={<Tag size={13} />} onClick={() => useTaxonomyUi.getState().openTags()}>{t('menu.tags')}</Item>
             <Item icon={<Layers size={13} />} onClick={() => useTaxonomyUi.getState().openLayers()}>{t('menu.layers')}</Item>
           </Submenu>

@@ -1,4 +1,4 @@
-import { ArrowDownToLine, Axis3d, BoxSelect, Check, Crosshair, FilePlus, Globe, Grid3x3, History, Magnet, Move3d, Pause, Play, Redo2, RotateCcw, Save, Scaling, Square, Undo2 } from 'lucide-react'
+import { ArrowDownToLine, Axis3d, BoxSelect, Check, Crosshair, FilePlus, Globe, Grid3x3, History, Library, Magnet, Move3d, Pause, Play, Redo2, RotateCcw, Save, Scaling, Square, Undo2 } from 'lucide-react'
 import { saveProjectNow } from '../assets/project'
 import { translate, useI18n } from '../i18n'
 import { askNewScene, useEditorStore } from '../scene/store'
@@ -138,6 +138,15 @@ export default function Toolbar() {
         )}
       </div>
       <div className="toolbar__spacer" />
+      <button
+        type="button"
+        className="toolbar__btn toolbar__btn--library"
+        title={t('library.title')}
+        onClick={() => useEditorStore.getState().setLibraryOpen(true)}
+      >
+        <Library size={14} />
+        <span>{t('library.title')}</span>
+      </button>
       <button
         type="button"
         className={`toolbar__btn ${sidePanel === 'history' ? 'toolbar__btn--active' : ''}`}

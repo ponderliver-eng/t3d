@@ -150,6 +150,8 @@ export interface EditorState {
   notice: string | null
   gameplayHubOpen: boolean
   setGameplayHubOpen: (open: boolean) => void
+  libraryOpen: boolean
+  setLibraryOpen: (open: boolean) => void
   projectionLabel: string
   sidePanel: SidePanel
   cameraNonce: number
@@ -316,6 +318,8 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   notice: null,
   gameplayHubOpen: false,
   setGameplayHubOpen: open => set({ gameplayHubOpen: open }),
+  libraryOpen: false,
+  setLibraryOpen: open => set({ libraryOpen: open }),
   projectionLabel: '透视',
   sidePanel: 'inspector',
   cameraNonce: 0,
