@@ -9,7 +9,7 @@ export interface ElectronBridge {
     writeTextFile: (filePath: string, content: string) => Promise<void>
     exists: (filePath: string) => Promise<boolean>
     mkdir: (dirPath: string) => Promise<void>
-    readBinaryFile: (filePath: string) => Promise<ArrayBuffer>
+    readBinaryFile: (filePath: string) => Promise<ArrayBuffer | null>
     writeBinaryFile: (filePath: string, data: ArrayBuffer) => Promise<void>
     movePath: (src: string, dest: string) => Promise<void>
     unlinkFile: (filePath: string) => Promise<void>

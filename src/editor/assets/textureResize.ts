@@ -151,7 +151,7 @@ function getGlSampler() {
 }
 
 /** 用 WebGL2 无预乘读出像素，避免 2D Canvas 把 A=0 区域的 RGB 清零导致发黑。 */
-function readUnpremultipliedRgba(
+export function readUnpremultipliedRgba(
   source: TexImageSource,
   width: number,
   height: number,

@@ -1,13 +1,18 @@
-import { CanvasTexture, DataTexture, EquirectangularReflectionMapping, NoColorSpace, RGBAFormat, SRGBColorSpace, Texture, TextureLoader, UnsignedByteType } from 'three'
+import { CanvasTexture, CompressedTexture, DataTexture, EquirectangularReflectionMapping, NoColorSpace, RGBA_BPTC_Format, RGBAFormat, SRGBColorSpace, Texture, TextureLoader, UnsignedByteType } from 'three'
 import { KTX2Loader } from 'three/addons/loaders/KTX2Loader.js'
 import { RGBELoader } from 'three/addons/loaders/RGBELoader.js'
 import { EXRLoader } from 'three/addons/loaders/EXRLoader.js'
 import type { WebGPURenderer } from 'three/webgpu'
-import { readFileBytes } from './cache'
+import { compressRgbaToBc7Mips, ensureBc7Readable, initBc7Compressor, isBc7Supported, packBc7Artifact, unpackBc7Artifact, type Bc7Mip, type WebGpuDeviceLike } from './bc7Compress'
+import { readFileBytes, readTextureArtifact, writeTextureArtifact } from './cache'
 import { type FileAsset, useAssetStore } from './library'
+import { readUnpremultipliedRgba } from './textureResize'
 
 const images = new Map<string, Texture>()
 const imageHashes = new Map<string, string>()
+const imageSources = new Map<string, 'bc7' | 'base' | 'source'>()
+const imageArtifactBytes = new Map<string, number>()
+const imageReadMs = new Map<string, number>()
 const linearImages = new Map<string, Texture>()
 const unityMrImages = new Map<string, Texture>()
 const unityMrPending = new Set<string>()
@@ -18,8 +23,52 @@ const loader = new TextureLoader()
 const hdrLoader = new RGBELoader()
 const exrLoader = new EXRLoader()
 let ktx2: KTX2Loader | null = null
+let bumpTimer = 0
+let warmBumpDeferred = false
+let warmBumpPending = false
+const unityMrWaiters = new Map<string, Array<() => void>>()
+
+export function setWarmBumpDeferred(deferred: boolean) {
+  warmBumpDeferred = deferred
+  if (!deferred && warmBumpPending) {
+    warmBumpPending = false
+    scheduleBump()
+  }
+}
+
+function scheduleBump() {
+  if (warmBumpDeferred) {
+    warmBumpPending = true
+    return
+  }
+  if (bumpTimer) return
+  bumpTimer = window.setTimeout(() => {
+    bumpTimer = 0
+    useAssetStore.getState().bump()
+  }, 16)
+}
+
+function notifyUnityMrReady(assetId: string) {
+  const list = unityMrWaiters.get(assetId)
+  if (!list) return
+  unityMrWaiters.delete(assetId)
+  for (const resolve of list) resolve()
+}
+
+export function warmUnityMetallicRoughness(assetId: string): Promise<void> {
+  if (unityMrImages.has(assetId)) return Promise.resolve()
+  const tex = unityMetallicRoughnessTextureFor(assetId)
+  if (tex) return Promise.resolve()
+  if (!unityMrPending.has(assetId)) return Promise.resolve()
+  return new Promise<void>(resolve => {
+    const list = unityMrWaiters.get(assetId) ?? []
+    list.push(resolve)
+    unityMrWaiters.set(assetId, list)
+  })
+}
 
 export function bindTextureRenderer(renderer: WebGPURenderer) {
+  initBc7Compressor((renderer.backend as { device?: WebGpuDeviceLike } | undefined)?.device)
   if (ktx2) return
   ktx2 = new KTX2Loader()
   ktx2.setTranscoderPath('/basis/')
@@ -73,15 +122,21 @@ export function textureFor(assetId: string | null, colorMap: boolean): Texture |
 
 const REPACK_WORKER_CODE = `
 self.onmessage = async (e) => {
-  const { id, bitmap } = e.data;
+  const { id, bitmap, width, height, buffer } = e.data;
   try {
-    const w = bitmap.width, h = bitmap.height;
-    const canvas = new OffscreenCanvas(w, h);
-    const ctx = canvas.getContext('2d');
-    ctx.drawImage(bitmap, 0, 0);
-    bitmap.close();
-    const img = ctx.getImageData(0, 0, w, h);
-    const data = img.data;
+    let w = width, h = height, data;
+    if (buffer) {
+      data = new Uint8Array(buffer);
+    } else {
+      w = bitmap.width;
+      h = bitmap.height;
+      const canvas = new OffscreenCanvas(w, h);
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(bitmap, 0, 0);
+      bitmap.close();
+      const img = ctx.getImageData(0, 0, w, h);
+      data = img.data;
+    }
     const len = data.length;
     let hasAlpha = false;
     const firstA = data[3] ?? 255;
@@ -127,74 +182,202 @@ function getRepackWorker(): Worker | null {
   }
 }
 
-function scheduleUnityRepack(assetId: string, base: Texture, source: CanvasImageSource, width: number, height: number) {
+const TEX_MAGIC = 0x54334454
+
+function packTextureArtifact(width: number, height: number, rgba: Uint8Array): ArrayBuffer {
+  const out = new Uint8Array(16 + rgba.byteLength)
+  const view = new DataView(out.buffer)
+  view.setUint32(0, TEX_MAGIC, true)
+  view.setUint32(4, 1, true)
+  view.setUint32(8, width, true)
+  view.setUint32(12, height, true)
+  out.set(rgba, 16)
+  return out.buffer
+}
+
+function unpackTextureArtifact(buffer: ArrayBuffer): { width: number, height: number, rgba: Uint8Array } | null {
+  if (buffer.byteLength < 16) return null
+  const view = new DataView(buffer)
+  if (view.getUint32(0, true) !== TEX_MAGIC || view.getUint32(4, true) !== 1) return null
+  const width = view.getUint32(8, true)
+  const height = view.getUint32(12, true)
+  const expected = width * height * 4
+  if (width <= 0 || height <= 0 || buffer.byteLength !== 16 + expected) return null
+  return { width, height, rgba: new Uint8Array(buffer, 16, expected) }
+}
+
+function buildDataTexture(width: number, height: number, rgba: Uint8Array, base?: Texture): DataTexture {
+  const tex = new DataTexture(rgba, width, height, RGBAFormat, UnsignedByteType)
+  tex.flipY = base ? base.flipY : false
+  if (base) {
+    tex.wrapS = base.wrapS
+    tex.wrapT = base.wrapT
+  }
+  tex.generateMipmaps = true
+  tex.needsUpdate = true
+  return tex
+}
+
+function buildBc7Texture(width: number, height: number, mips: Bc7Mip[], base?: Texture): CompressedTexture {
+  const tex = new CompressedTexture(mips as unknown as ImageData[], width, height, RGBA_BPTC_Format)
+  tex.flipY = base ? base.flipY : false
+  if (base) {
+    tex.wrapS = base.wrapS
+    tex.wrapT = base.wrapT
+  }
+  tex.needsUpdate = true
+  return tex
+}
+
+async function persistTextureCache(hash: string, width: number, height: number, rgba: Uint8Array, variantBase: string, variantBc7: string) {
+  if (isBc7Supported() && width >= 4 && height >= 4 && (width % 4) === 0 && (height % 4) === 0) {
+    const mips = await compressRgbaToBc7Mips(rgba, width, height).catch(() => null)
+    if (mips) {
+      await writeTextureArtifact(hash, packBc7Artifact(width, height, mips), variantBc7)
+      return
+    }
+  }
+  await writeTextureArtifact(hash, packTextureArtifact(width, height, rgba), variantBase)
+}
+
+function scheduleUnityRepack(
+  assetId: string,
+  base: Texture,
+  source: CanvasImageSource | null,
+  rawBuffer: Uint8Array | null,
+  width: number,
+  height: number,
+) {
   if (unityMrPending.has(assetId)) return
   unityMrPending.add(assetId)
-  const finishWithBuffer = (w: number, h: number, buffer: ArrayBuffer) => {
-    const converted = new DataTexture(new Uint8Array(buffer), w, h, RGBAFormat, UnsignedByteType)
+  const asset = useAssetStore.getState().assets[assetId]
+  const assetHash = asset && 'hash' in asset ? asset.hash : ''
+  const finishWithBuffer = (w: number, h: number, buffer: ArrayBuffer, persist = true) => {
+    const rgba = new Uint8Array(buffer)
+    const converted = buildDataTexture(w, h, rgba, base)
     converted.colorSpace = NoColorSpace
-    converted.flipY = base.flipY
-    converted.wrapS = base.wrapS
-    converted.wrapT = base.wrapT
-    converted.generateMipmaps = true
-    converted.needsUpdate = true
     unityMrImages.set(assetId, converted)
     unityMrPending.delete(assetId)
-    useAssetStore.getState().bump()
+    notifyUnityMrReady(assetId)
+    scheduleBump()
+    if (persist && assetHash) {
+      void persistTextureCache(assetHash, w, h, rgba, 'unity-mr', 'unity-mr-bc7').catch(() => undefined)
+    }
   }
-  const worker = getRepackWorker()
-  if (worker && typeof createImageBitmap === 'function') {
-    createImageBitmap(source, { premultiplyAlpha: 'none', colorSpaceConversion: 'none' }).then(bitmap => {
+  const runCompute = () => {
+    const worker = getRepackWorker()
+    if (worker && rawBuffer) {
+      const copy = new Uint8Array(rawBuffer).buffer
       repackCallbacks.set(assetId, res => {
         if (!res) { unityMrPending.delete(assetId); return }
         finishWithBuffer(res.w, res.h, res.buffer)
       })
-      worker.postMessage({ id: assetId, bitmap }, [bitmap])
-    }).catch(() => {
-      unityMrPending.delete(assetId)
-    })
+      worker.postMessage({ id: assetId, width, height, buffer: copy }, [copy])
+      return
+    }
+    if (worker && source && typeof createImageBitmap === 'function') {
+      createImageBitmap(source, { premultiplyAlpha: 'none', colorSpaceConversion: 'none' }).then(bitmap => {
+        repackCallbacks.set(assetId, res => {
+          if (!res) { unityMrPending.delete(assetId); return }
+          finishWithBuffer(res.w, res.h, res.buffer)
+        })
+        worker.postMessage({ id: assetId, bitmap }, [bitmap])
+      }).catch(() => {
+        unityMrPending.delete(assetId)
+      })
+      return
+    }
+    if (!source) {
+      // 主图走了 BC7 压缩缓存时，没有裸像素；按需回源解码一次生成重排缓存
+      ensureAssetUrl(assetId).then(url => loadBitmapTexture(url)).then(tex => {
+        const img = tex.image as { width?: number, height?: number, naturalWidth?: number, naturalHeight?: number } | undefined
+        const w = img?.naturalWidth || img?.width || 0
+        const h = img?.naturalHeight || img?.height || 0
+        if (!img || w <= 0 || h <= 0) { unityMrPending.delete(assetId); return }
+        const rgba = readUnpremultipliedRgba(img as TexImageSource, w, h)
+        tex.dispose()
+        if (worker) {
+          const copy = new Uint8Array(rgba).buffer
+          repackCallbacks.set(assetId, res => {
+            if (!res) { unityMrPending.delete(assetId); return }
+            finishWithBuffer(res.w, res.h, res.buffer)
+          })
+          worker.postMessage({ id: assetId, width: w, height: h, buffer: copy }, [copy])
+        } else {
+          unityMrPending.delete(assetId)
+        }
+      }).catch(() => { unityMrPending.delete(assetId) })
+      return
+    }
+    // 回退：异步微任务切出当前渲染帧再做重排
+    window.setTimeout(() => {
+      try {
+        const canvas = document.createElement('canvas')
+        canvas.width = width
+        canvas.height = height
+        const ctx = canvas.getContext('2d', { willReadFrequently: true })
+        if (!ctx) { unityMrPending.delete(assetId); return }
+        ctx.drawImage(source, 0, 0, width, height)
+        const imgData = ctx.getImageData(0, 0, width, height)
+        const data = imgData.data
+        let hasAlpha = false
+        const firstA = data[3] ?? 255
+        for (let i = 3; i < data.length; i += 4) {
+          if (Math.abs((data[i] ?? 255) - firstA) > 2) { hasAlpha = true; break }
+        }
+        const useA = hasAlpha || firstA < 250
+        for (let i = 0; i < data.length; i += 4) {
+          const r = data[i]!
+          const g = data[i + 1]!
+          const a = data[i + 3]!
+          data[i] = g > 0 ? g : 255
+          data[i + 1] = 255 - (useA ? a : r)
+          data[i + 2] = r
+          data[i + 3] = 255
+        }
+        ctx.putImageData(imgData, 0, 0)
+        const converted = new CanvasTexture(canvas)
+        converted.colorSpace = NoColorSpace
+        converted.flipY = base.flipY
+        converted.wrapS = base.wrapS
+        converted.wrapT = base.wrapT
+        converted.needsUpdate = true
+        unityMrImages.set(assetId, converted)
+        unityMrPending.delete(assetId)
+        notifyUnityMrReady(assetId)
+        scheduleBump()
+      } catch {
+        unityMrPending.delete(assetId)
+        notifyUnityMrReady(assetId)
+      }
+    }, 0)
+  }
+  if (assetHash) {
+    void (async () => {
+      if (await ensureBc7Readable()) {
+        const bc7 = await readTextureArtifact(assetHash, 'unity-mr-bc7').catch(() => null)
+        const unpackedBc7 = bc7 ? unpackBc7Artifact(bc7) : null
+        if (unpackedBc7) {
+          const converted = buildBc7Texture(unpackedBc7.width, unpackedBc7.height, unpackedBc7.mips, base)
+          converted.colorSpace = NoColorSpace
+          unityMrImages.set(assetId, converted)
+          unityMrPending.delete(assetId)
+          notifyUnityMrReady(assetId)
+          scheduleBump()
+          return
+        }
+      }
+      const cached = await readTextureArtifact(assetHash, 'unity-mr').catch(() => null)
+      const unpacked = cached ? unpackTextureArtifact(cached) : null
+      if (unpacked) {
+        finishWithBuffer(unpacked.width, unpacked.height, unpacked.rgba.buffer as ArrayBuffer, false)
+        return
+      }
+      runCompute()
+    })()
     return
   }
-  // 回退：异步微任务切出当前渲染帧再做重排
-  window.setTimeout(() => {
-    try {
-      const canvas = document.createElement('canvas')
-      canvas.width = width
-      canvas.height = height
-      const ctx = canvas.getContext('2d', { willReadFrequently: true })
-      if (!ctx) { unityMrPending.delete(assetId); return }
-      ctx.drawImage(source, 0, 0, width, height)
-      const imgData = ctx.getImageData(0, 0, width, height)
-      const data = imgData.data
-      let hasAlpha = false
-      const firstA = data[3] ?? 255
-      for (let i = 3; i < data.length; i += 4) {
-        if (Math.abs((data[i] ?? 255) - firstA) > 2) { hasAlpha = true; break }
-      }
-      const useA = hasAlpha || firstA < 250
-      for (let i = 0; i < data.length; i += 4) {
-        const r = data[i]!
-        const g = data[i + 1]!
-        const a = data[i + 3]!
-        data[i] = g > 0 ? g : 255
-        data[i + 1] = 255 - (useA ? a : r)
-        data[i + 2] = r
-        data[i + 3] = 255
-      }
-      ctx.putImageData(imgData, 0, 0)
-      const converted = new CanvasTexture(canvas)
-      converted.colorSpace = NoColorSpace
-      converted.flipY = base.flipY
-      converted.wrapS = base.wrapS
-      converted.wrapT = base.wrapT
-      converted.needsUpdate = true
-      unityMrImages.set(assetId, converted)
-      unityMrPending.delete(assetId)
-      useAssetStore.getState().bump()
-    } catch {
-      unityMrPending.delete(assetId)
-    }
-  }, 0)
+  runCompute()
 }
 
 /**
@@ -208,11 +391,21 @@ export function unityMetallicRoughnessTextureFor(assetId: string | null): Textur
   if (packed) return packed
   const base = textureFor(assetId, false)
   if (!base) return null
-  const source = base.image as (CanvasImageSource & { width?: number, height?: number, naturalWidth?: number, naturalHeight?: number }) | undefined
-  const width = source?.naturalWidth || source?.width || 0
-  const height = source?.naturalHeight || source?.height || 0
-  if (!source || width <= 0 || height <= 0 || typeof document === 'undefined') return base
-  scheduleUnityRepack(assetId, base, source, width, height)
+  if ((base as { isCompressedTexture?: boolean }).isCompressedTexture) {
+    const size = base.image as { width?: number, height?: number } | undefined
+    scheduleUnityRepack(assetId, base, null, null, size?.width ?? 0, size?.height ?? 0)
+    return null
+  }
+  const image = base.image as { data?: Uint8Array, width?: number, height?: number, naturalWidth?: number, naturalHeight?: number } | undefined
+  const width = image?.naturalWidth || image?.width || 0
+  const height = image?.naturalHeight || image?.height || 0
+  if (!image || width <= 0 || height <= 0) return base
+  if (image.data instanceof Uint8Array) {
+    scheduleUnityRepack(assetId, base, null, image.data, width, height)
+    return null
+  }
+  if (typeof document === 'undefined') return base
+  scheduleUnityRepack(assetId, base, image as CanvasImageSource, null, width, height)
   // 重排完成前返回 null，避免先将未重排的原图上传一次 GPU 造成闪烁与双倍显存
   return null
 }
@@ -228,10 +421,25 @@ export function environmentFor(assetId: string | null): Texture | null {
   return env
 }
 
+export function textureLoadSource(assetId: string): 'bc7' | 'base' | 'source' | null {
+  return imageSources.get(assetId) ?? null
+}
+
+export function textureLoadBytes(assetId: string): number {
+  return imageArtifactBytes.get(assetId) ?? 0
+}
+
+export function textureReadMs(assetId: string): number {
+  return imageReadMs.get(assetId) ?? 0
+}
+
 export function releaseTexture(assetId: string) {
   images.get(assetId)?.dispose()
   images.delete(assetId)
   imageHashes.delete(assetId)
+  imageSources.delete(assetId)
+  imageArtifactBytes.delete(assetId)
+  imageReadMs.delete(assetId)
   linearImages.get(assetId)?.dispose()
   linearImages.delete(assetId)
   unityMrImages.get(assetId)?.dispose()
@@ -257,7 +465,7 @@ export function loadEnvironmentAsset(asset: FileAsset): Promise<void> {
       texture.mapping = EquirectangularReflectionMapping
       environments.set(asset.id, texture)
       pendingEnvironments.delete(asset.id)
-      useAssetStore.getState().bump()
+      scheduleBump()
     })
   }).catch(error => {
     pendingEnvironments.delete(asset.id)
@@ -276,32 +484,84 @@ export function loadTextureAsset(asset: FileAsset): Promise<void> {
   const running = pendingImages.get(asset.id)
   if (running) return running
   const lower = asset.fileName.toLowerCase()
-  const task = ensureAssetUrl(asset.id).then(url => {
+  const finishBitmap = (texture: Texture) => {
+    texture.colorSpace = SRGBColorSpace
+    images.set(asset.id, texture)
+    imageHashes.set(asset.id, asset.hash)
+    linearImages.delete(asset.id)
+    unityMrImages.get(asset.id)?.dispose()
+    unityMrImages.delete(asset.id)
+    unityMrPending.delete(asset.id)
+    pendingImages.delete(asset.id)
+    scheduleBump()
+  }
+  const task = (async () => {
     if (lower.endsWith('.ktx2')) {
-      if (!ktx2) return Promise.reject(new Error('KTX2 转码器还没就绪'))
-      return ktx2.loadAsync(url).then(texture => {
-        images.set(asset.id, texture)
-        imageHashes.set(asset.id, asset.hash)
-        linearImages.delete(asset.id)
-        unityMrImages.get(asset.id)?.dispose()
-        unityMrImages.delete(asset.id)
-        pendingImages.delete(asset.id)
-        useAssetStore.getState().bump()
-      })
-    }
-    if (lower.endsWith('.svg')) return loadSvgTexture(asset.id, asset.hash, url)
-    return loadBitmapTexture(url).then(texture => {
-      texture.colorSpace = SRGBColorSpace
+      const url = await ensureAssetUrl(asset.id)
+      if (!ktx2) throw new Error('KTX2 转码器还没就绪')
+      const texture = await ktx2.loadAsync(url)
+      imageSources.set(asset.id, 'source')
       images.set(asset.id, texture)
       imageHashes.set(asset.id, asset.hash)
       linearImages.delete(asset.id)
       unityMrImages.get(asset.id)?.dispose()
       unityMrImages.delete(asset.id)
-      unityMrPending.delete(asset.id)
       pendingImages.delete(asset.id)
-      useAssetStore.getState().bump()
-    })
-  }).catch(error => {
+      scheduleBump()
+      return
+    }
+    if (lower.endsWith('.svg')) {
+      const url = await ensureAssetUrl(asset.id)
+      imageSources.set(asset.id, 'source')
+      await loadSvgTexture(asset.id, asset.hash, url)
+      return
+    }
+    if (asset.hash) {
+      if (await ensureBc7Readable()) {
+        const t0 = performance.now()
+        const bc7 = await readTextureArtifact(asset.hash, 'bc7').catch(() => null)
+        const readDt = performance.now() - t0
+        const unpackedBc7 = bc7 ? unpackBc7Artifact(bc7) : null
+        if (unpackedBc7) {
+          imageSources.set(asset.id, 'bc7')
+          imageArtifactBytes.set(asset.id, bc7!.byteLength)
+          imageReadMs.set(asset.id, readDt)
+          finishBitmap(buildBc7Texture(unpackedBc7.width, unpackedBc7.height, unpackedBc7.mips))
+          return
+        }
+      }
+      const cached = await readTextureArtifact(asset.hash, 'base').catch(() => null)
+      const unpacked = cached ? unpackTextureArtifact(cached) : null
+      if (unpacked) {
+        imageSources.set(asset.id, 'base')
+        imageArtifactBytes.set(asset.id, cached!.byteLength)
+        const tex = buildDataTexture(unpacked.width, unpacked.height, unpacked.rgba)
+        finishBitmap(tex)
+        return
+      }
+    }
+    const url = await ensureAssetUrl(asset.id)
+    const texture = await loadBitmapTexture(url)
+    imageSources.set(asset.id, 'source')
+    finishBitmap(texture)
+    if (asset.hash) {
+      const image = texture.image as { width?: number, height?: number, naturalWidth?: number, naturalHeight?: number } | undefined
+      const width = image?.naturalWidth || image?.width || 0
+      const height = image?.naturalHeight || image?.height || 0
+      if (image && width > 0 && height > 0) {
+        window.setTimeout(() => {
+          try {
+            const rgba = readUnpremultipliedRgba(image as TexImageSource, width, height)
+            void persistTextureCache(asset.hash, width, height, rgba, 'base', 'bc7').catch(error => {
+              console.warn('[cache] 贴图成品写入失败', asset.name, error)
+            })
+          } catch (error) {
+            console.warn('[cache] 贴图像素提取失败', asset.name, error)
+          }
+        }, 0)
+      }
+    }
+  })().catch(error => {
     pendingImages.delete(asset.id)
     throw error
   })

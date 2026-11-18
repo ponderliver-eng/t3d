@@ -21,6 +21,7 @@ import { directoryBaseName, electronBridge, joinProjectPath, toArrayBuffer } fro
 export const PROJECT_FILE = 'project.t3d'
 export const CACHE_ROOT = '.cache/t3d'
 export const IMPORT_ARTIFACTS = `${CACHE_ROOT}/import-artifacts`
+export const TEXTURE_ARTIFACTS = `${CACHE_ROOT}/texture-artifacts`
 export const TEXTURE_ORIGINALS = `${CACHE_ROOT}/texture-originals`
 export const CACHE_INDEX_PATH = `${CACHE_ROOT}/editor-library/v1/cache-index.json`
 export const DEFAULT_ASSET_FOLDERS = [
@@ -63,6 +64,7 @@ type ProjectRoot =
   | { kind: 'path', path: string }
 
 let root: ProjectRoot | null = null
+let texArtifactsDirPromise: Promise<FileSystemDirectoryHandle | null> | null = null
 let projectName = ''
 let records = new Map<string, DirectoryAssetRecord>()
 let storedDocument: ProjectDocument | null = null
@@ -230,6 +232,7 @@ async function beginRoot(
   document: ProjectDocument | null,
 ): Promise<void> {
   root = next
+  texArtifactsDirPromise = null
   projectName = name
   records = new Map(assets.map(asset => [asset.id, asset]))
   storedDocument = document
@@ -426,6 +429,55 @@ export async function hasOriginalTexture(id: string): Promise<boolean> {
 export async function deleteOriginalTexture(id: string): Promise<void> {
   if (!root) return
   await removeFile(root, originalTexturePath(id)).catch(() => undefined)
+}
+
+function textureArtifactFilePath(key: string): string {
+  return `${TEXTURE_ARTIFACTS}/${key}.t3dtex`
+}
+
+function getTexArtifactsDir(handle: FileSystemDirectoryHandle, create: boolean): Promise<FileSystemDirectoryHandle | null> {
+  if (!create && texArtifactsDirPromise) return texArtifactsDirPromise
+  const next = getDirectory(handle, TEXTURE_ARTIFACTS, create).catch(() => null)
+  if (!create) texArtifactsDirPromise = next
+  return next
+}
+
+export async function readTextureArtifactFile(key: string): Promise<ArrayBuffer | null> {
+  if (!key || !root) return null
+  if (root.kind === 'handle') {
+    const dir = await getTexArtifactsDir(root.handle, false)
+    if (!dir) return null
+    try {
+      const file = await dir.getFileHandle(`${key}.t3dtex`, { create: false })
+      return (await file.getFile()).arrayBuffer()
+    } catch {
+      return null
+    }
+  }
+  return readBytes(root, textureArtifactFilePath(key))
+}
+
+export async function writeTextureArtifactFile(key: string, bytes: ArrayBuffer): Promise<void> {
+  if (!key || !root) return
+  if (root.kind === 'handle') {
+    const dir = await getDirectory(root.handle, TEXTURE_ARTIFACTS, true)
+    if (!dir) return
+    texArtifactsDirPromise = Promise.resolve(dir)
+    const file = await dir.getFileHandle(`${key}.t3dtex`, { create: true })
+    const writable = await file.createWritable()
+    try {
+      await writable.write(bytes)
+    } finally {
+      await writable.close()
+    }
+    return
+  }
+  await writeBytes(root, textureArtifactFilePath(key), bytes)
+}
+
+export async function deleteTextureArtifactFile(key: string): Promise<void> {
+  if (!key || !root) return
+  await removeFile(root, textureArtifactFilePath(key)).catch(() => undefined)
 }
 
 export async function pruneArtifacts(validKeys: ReadonlySet<string>): Promise<number> {
@@ -661,7 +713,9 @@ async function movePathFile(absRoot: string, fromPath: string, toPath: string): 
   } catch (error) {
     console.warn('[project] 直接移动失败，改为复制', fromPath, error)
   }
-  const bytes = toArrayBuffer(await desktop.fs.readBinaryFile(from))
+  const raw = await desktop.fs.readBinaryFile(from)
+  if (!raw) return false
+  const bytes = toArrayBuffer(raw)
   await desktop.fs.writeBinaryFile(to, bytes)
   await desktop.fs.unlinkFile(from)
   return true
@@ -723,8 +777,12 @@ async function readBytes(current: ProjectRoot, path: string): Promise<ArrayBuffe
     const desktop = electronBridge()
     if (!desktop) return null
     const full = joinProjectPath(current.path, path)
-    if (!(await desktop.fs.exists(full))) return null
-    return toArrayBuffer(await desktop.fs.readBinaryFile(full))
+    try {
+      const data = await desktop.fs.readBinaryFile(full)
+      return data ? toArrayBuffer(data) : null
+    } catch {
+      return null
+    }
   }
   const file = await getFile(current.handle, path, false)
   if (!file) return null

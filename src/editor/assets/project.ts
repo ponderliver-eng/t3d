@@ -18,7 +18,6 @@ import { fileKindFor, warmCachedAsset } from './import'
 import { useEditorStore } from '../scene/store'
 import { translate } from '../i18n'
 import { usePrefsStore } from '../prefs/store'
-import { readPrefab } from './prefab'
 import type { ProjectDocument, ProjectWorkspace } from '../scene/document'
 import { restoreInspectorEntries, snapshotInspectorEntries, useInspectorMemory } from '../panels/inspectorMemory'
 import { normalizeCapabilities } from '../../capabilities/registry'
@@ -28,7 +27,7 @@ import { normalizePicture, type SceneNode } from '../scene/types'
 import { serializeNavMeshes } from '../../capabilities/navigation/archive'
 import { collectUiImageIds } from '../../runtime/ui/tree'
 import { releaseModel } from './models'
-import { releaseTexture } from './textures'
+import { releaseTexture, setWarmBumpDeferred, textureLoadBytes, textureLoadSource, textureReadMs, warmUnityMetallicRoughness } from './textures'
 import { ASSETS_ROOT, normalizeDir } from './folders'
 import {
   adoptAsset,
@@ -424,9 +423,22 @@ async function openNow() {
 }
 
 async function warmAssets(token: number, metas: AssetMeta[], document: ProjectDocument | null, started: number, sceneMs: number) {
-  const referenced = referencedAssetIds(document)
+  const { ids: referenced, unityMrIds } = referencedAssetIds(document)
   const ordered = [...metas].sort((a, b) => rank(a, referenced) - rank(b, referenced))
-  const totalWarm = ordered.filter(meta => referenced.has(meta.id) || needsMetadataDiscovery(meta)).length
+  const initialAssets: FileAsset[] = []
+  const warmQueue: { meta: AssetMeta, asset: FileAsset }[] = []
+  for (const rawMeta of ordered) {
+    const cleanMeta = stripRedundantThumb(rawMeta)
+    const asset = createFileAssetFromMeta(cleanMeta)
+    initialAssets.push(asset)
+    if (referenced.has(cleanMeta.id) || needsMetadataDiscovery(cleanMeta)) {
+      warmQueue.push({ meta: cleanMeta, asset })
+    }
+  }
+  setWarmBumpDeferred(true)
+  useAssetStore.getState().addMany(initialAssets)
+
+  const totalWarm = warmQueue.length
   let warmedCount = 0
   if (totalWarm > 0) setWarmProgress({ completed: 0, total: totalWarm })
   let hits = 0
@@ -434,40 +446,51 @@ async function warmAssets(token: number, metas: AssetMeta[], document: ProjectDo
   let failed = 0
   let modelMs = 0
   let textureMs = 0
-  await runPool(ordered, 3, async meta => {
-    if (!warmCurrent(token)) return
-    const cleanMeta = stripRedundantThumb(meta)
-    const needed = referenced.has(cleanMeta.id) || needsMetadataDiscovery(cleanMeta)
-    try {
-      const asset = await materialize(cleanMeta, needed)
+  let bc7Hits = 0
+  let baseHits = 0
+  let texBytes = 0
+  let texReadMs = 0
+  try {
+    await runPool(warmQueue, 6, async ({ meta: cleanMeta, asset }) => {
       if (!warmCurrent(token)) return
-      if (!needed) {
-        useAssetStore.getState().add(asset)
-        return
+      try {
+        await materialize(cleanMeta, true, asset)
+        if (!warmCurrent(token)) return
+        const stepStart = performance.now()
+        const ok = await warmCachedAsset(asset)
+        if (ok && cleanMeta.kind === 'texture' && unityMrIds.has(cleanMeta.id)) {
+          await warmUnityMetallicRoughness(cleanMeta.id)
+        }
+        const stepElapsed = performance.now() - stepStart
+        if (cleanMeta.kind === 'model' || cleanMeta.kind === 'animation') modelMs += stepElapsed
+        else if (cleanMeta.kind === 'texture' || cleanMeta.kind === 'environment') textureMs += stepElapsed
+        if (!warmCurrent(token)) {
+          releaseRuntimeAsset(asset.id, asset.url)
+          useAssetStore.getState().remove(asset.id)
+          return
+        }
+        if (!ok) failed += 1
+        else if ((cleanMeta.kind === 'model' || cleanMeta.kind === 'animation') && cleanMeta.artifactReady) hits += 1
+        else if (cleanMeta.kind === 'texture') {
+          const src = textureLoadSource(asset.id)
+          if (src === 'bc7') { hits += 1; bc7Hits += 1; texBytes += textureLoadBytes(asset.id); texReadMs += textureReadMs(asset.id) }
+          else if (src === 'base') { hits += 1; baseHits += 1; texBytes += textureLoadBytes(asset.id) }
+          else parsed += 1
+        }
+        else parsed += 1
+      } catch (error) {
+        failed += 1
+        console.warn('[cache] 资源恢复失败', cleanMeta.name, error)
+      } finally {
+        if (warmCurrent(token)) {
+          warmedCount += 1
+          setWarmProgress({ completed: warmedCount, total: totalWarm })
+        }
       }
-      const stepStart = performance.now()
-      const ok = await warmCachedAsset(asset)
-      const stepElapsed = performance.now() - stepStart
-      if (cleanMeta.kind === 'model' || cleanMeta.kind === 'animation') modelMs += stepElapsed
-      else if (cleanMeta.kind === 'texture' || cleanMeta.kind === 'environment') textureMs += stepElapsed
-      if (!warmCurrent(token)) {
-        releaseRuntimeAsset(asset.id, asset.url)
-        useAssetStore.getState().remove(asset.id)
-        return
-      }
-      if (!ok) failed += 1
-      else if ((cleanMeta.kind === 'model' || cleanMeta.kind === 'animation') && cleanMeta.artifactReady) hits += 1
-      else parsed += 1
-    } catch (error) {
-      failed += 1
-      console.warn('[cache] 资源恢复失败', meta.name, error)
-    } finally {
-      if (needed && warmCurrent(token)) {
-        warmedCount += 1
-        setWarmProgress({ completed: warmedCount, total: totalWarm })
-      }
-    }
-  })
+    })
+  } finally {
+    setWarmBumpDeferred(false)
+  }
   if (!warmCurrent(token)) return
   setWarmProgress(null)
   if (isDirectoryProject()) {
@@ -482,7 +505,7 @@ async function warmAssets(token: number, metas: AssetMeta[], document: ProjectDo
   const total = Math.round(performance.now() - started)
   useEditorStore.getState().log(
     'info',
-    translate('log.openedDetail', {
+    `${translate('log.openedDetail', {
       total,
       scene: Math.round(sceneMs),
       model: Math.round(modelMs),
@@ -490,7 +513,7 @@ async function warmAssets(token: number, metas: AssetMeta[], document: ProjectDo
       hits,
       parsed,
       failed,
-    }),
+    })} [BC7 ${bc7Hits} · 裸像素 ${baseHits} · ${(texBytes / (1024 * 1024)).toFixed(1)}MB · 读盘累计 ${Math.round(texReadMs)}ms]`,
   )
   window.dispatchEvent(new CustomEvent('t3d:warm-complete'))
 }
@@ -510,8 +533,8 @@ function needsMetadataDiscovery(meta: AssetMeta): boolean {
   return false
 }
 
-async function materialize(meta: AssetMeta, readBytesNow = true): Promise<FileAsset> {
-  const asset: FileAsset = {
+function createFileAssetFromMeta(meta: AssetMeta): FileAsset {
+  return {
     id: meta.id,
     name: meta.name,
     kind: meta.kind,
@@ -526,11 +549,19 @@ async function materialize(meta: AssetMeta, readBytesNow = true): Promise<FileAs
     ...(meta.sockets?.length ? { sockets: meta.sockets } : {}),
     ...(meta.materialHint ? { materialHint: meta.materialHint } : {}),
   }
+}
+
+async function materialize(meta: AssetMeta, readBytesNow = true, target?: FileAsset): Promise<FileAsset> {
+  const asset = target ?? createFileAssetFromMeta(meta)
   if (!readBytesNow) return asset
-  if ((meta.kind === 'model' || meta.kind === 'animation') && meta.artifactReady) return asset
+  // 模型、动画、贴图、环境贴图均由各自的加载器在缓存未命中时按需调用 ensureAssetUrl，启动时绝不预读源文件
+  if (meta.kind === 'model' || meta.kind === 'animation' || meta.kind === 'texture' || meta.kind === 'environment') {
+    return asset
+  }
   const bytes = await readFileBytes(meta.id)
   if (!bytes) throw new Error('缓存里没有源文件')
   asset.url = URL.createObjectURL(new Blob([bytes]))
+  useAssetStore.getState().patch(asset.id, { url: asset.url })
   return asset
 }
 
@@ -540,30 +571,37 @@ function rank(meta: AssetMeta, referenced: Set<string>): number {
   return used + ready
 }
 
-function referencedAssetIds(document: ProjectDocument | null): Set<string> {
+function referencedAssetIds(document: ProjectDocument | null): { ids: Set<string>, unityMrIds: Set<string> } {
   const ids = new Set<string>()
-  if (!document) return ids
-  collectNodeAssets(document.nodes, ids)
+  const unityMrIds = new Set<string>()
+  if (!document) return { ids, unityMrIds }
+  collectNodeAssets(document.nodes, ids, unityMrIds)
   if (document.picture.envAssetId) ids.add(document.picture.envAssetId)
+
+  // 只展开当前激活场景用到的特效、UI 与材质球，不预热未上场的其他材质/预制体/非激活场景
   for (const record of document.library) {
-    if (record.kind === 'prefab') collectNodeAssets(readPrefab(record).nodes, ids)
-    if (record.kind === 'scene') {
-      collectNodeAssets(record.nodes, ids)
-      if (record.picture.envAssetId) ids.add(record.picture.envAssetId)
+    if (record.kind === 'effect' && ids.has(record.id) && record.materialAssetId) {
+      ids.add(record.materialAssetId)
     }
-    if (record.kind === 'material') {
+    if (record.kind === 'ui' && ids.has(record.id)) {
+      collectUiImageIds(record.document.root, ids)
+    }
+  }
+  for (const record of document.library) {
+    if (record.kind === 'material' && ids.has(record.id)) {
       for (const key of MAP_KEYS) {
         const value = record.slot[key]
         if (value) ids.add(value)
       }
+      if (record.slot.shader === 'unity-standard' && record.slot.metallicRoughnessAssetId) {
+        unityMrIds.add(record.slot.metallicRoughnessAssetId)
+      }
     }
-    if (record.kind === 'effect' && record.materialAssetId) ids.add(record.materialAssetId)
-    if (record.kind === 'ui') collectUiImageIds(record.document.root, ids)
   }
-  return ids
+  return { ids, unityMrIds }
 }
 
-function collectNodeAssets(nodes: Record<string, SceneNode>, ids: Set<string>) {
+function collectNodeAssets(nodes: Record<string, SceneNode>, ids: Set<string>, unityMrIds?: Set<string>) {
   for (const node of Object.values(nodes)) {
     if (node.assetId) ids.add(node.assetId)
     if (node.clipAssetId) ids.add(node.clipAssetId)
@@ -577,15 +615,26 @@ function collectNodeAssets(nodes: Record<string, SceneNode>, ids: Set<string>) {
     if (node.effect?.assetId) ids.add(node.effect.assetId)
     if (node.effect?.materialAssetId) ids.add(node.effect.materialAssetId)
     if (node.screen?.documentId) ids.add(node.screen.documentId)
+    if (node.partOverrides) {
+      for (const override of Object.values(node.partOverrides)) {
+        if (override.materialAssetId) ids.add(override.materialAssetId)
+      }
+    }
     for (const key of MAP_KEYS) {
       const value = node[key]
       if (value) ids.add(value)
+    }
+    if (node.shader === 'unity-standard' && node.metallicRoughnessAssetId) {
+      unityMrIds?.add(node.metallicRoughnessAssetId)
     }
     for (const slot of node.slots) {
       if (slot.materialAssetId) ids.add(slot.materialAssetId)
       for (const key of MAP_KEYS) {
         const value = slot[key]
         if (value) ids.add(value)
+      }
+      if (slot.shader === 'unity-standard' && slot.metallicRoughnessAssetId) {
+        unityMrIds?.add(slot.metallicRoughnessAssetId)
       }
     }
   }

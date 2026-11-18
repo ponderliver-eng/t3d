@@ -64,8 +64,13 @@ function registerIpc() {
     await fs.mkdir(dirPath, { recursive: true })
   })
   ipcMain.handle('fs:readBinaryFile', async (_event, filePath: string) => {
-    const buf = await fs.readFile(filePath)
-    return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength)
+    try {
+      const buf = await fs.readFile(filePath)
+      return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength)
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null
+      throw error
+    }
   })
   ipcMain.handle('fs:writeBinaryFile', async (_event, filePath: string, data: ArrayBuffer | Uint8Array) => {
     await fs.mkdir(path.dirname(filePath), { recursive: true })

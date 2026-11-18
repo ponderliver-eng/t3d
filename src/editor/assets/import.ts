@@ -227,7 +227,9 @@ async function ingest(asset: FileAsset, bytes: ArrayBuffer, dir?: string): Promi
 
 export async function warmCachedAsset(asset: FileAsset): Promise<boolean> {
   try {
-    useAssetStore.getState().add(asset)
+    if (!useAssetStore.getState().assets[asset.id]) {
+      useAssetStore.getState().add(asset)
+    }
     if (asset.kind === 'model' || asset.kind === 'animation') await loadModelTemplate(asset)
     if (asset.kind === 'texture') await loadTextureAsset(asset)
     if (asset.kind === 'environment') await loadEnvironmentAsset(asset)

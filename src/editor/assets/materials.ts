@@ -238,7 +238,12 @@ function paint(material: Material, slot: SurfaceSlot) {
   const basic = material as MeshBasicMaterial
   const standard = material as MeshStandardMaterial
   const transparency = transparencyOf(slot)
-  material.side = sideFor(slot.cull)
+  const nextSide = sideFor(slot.cull)
+  let structuralChange =
+    material.side !== nextSide ||
+    material.transparent !== transparency.transparent ||
+    (material.alphaTest > 0) !== (transparency.alphaTest > 0)
+  material.side = nextSide
   ;(material as MeshBasicMaterial).wireframe = slot.wireframe
   material.depthWrite = transparency.depthWrite
   material.transparent = transparency.transparent
@@ -246,17 +251,24 @@ function paint(material: Material, slot: SurfaceSlot) {
   material.alphaTest = transparency.alphaTest
   basic.color?.set(slot.color)
   if (slot.shader === 'particle-unlit') {
+    if (!material.transparent) structuralChange = true
     material.transparent = true
     material.depthWrite = slot.depthWrite
     material.opacity = slot.opacity
+    const prevBlend = material.blending
+    const prevPremult = material.premultipliedAlpha
     applyParticleBlend(material, slot.particleBlend ?? 'additive')
+    if (material.blending !== prevBlend || material.premultipliedAlpha !== prevPremult) structuralChange = true
     assignMap(basic, 'map', slot.mapAssetId, true)
-    material.needsUpdate = true
+    if (structuralChange) material.needsUpdate = true
     return
   }
   if (slot.shader === 'unlit-color') {
-    basic.map = null
-    material.needsUpdate = true
+    if (basic.map !== null) {
+      basic.map = null
+      structuralChange = true
+    }
+    if (structuralChange) material.needsUpdate = true
     return
   }
   if (slot.shader === 'lit' || slot.shader === 'unity-standard') {
@@ -268,7 +280,8 @@ function paint(material: Material, slot: SurfaceSlot) {
     standard.emissive?.set(slot.emissive)
     standard.emissiveIntensity = slot.emissiveIntensity
     standard.aoMapIntensity = slot.ao
-    standard.normalScale = new Vector2(slot.normalScale, slot.normalScale)
+    if (standard.normalScale) standard.normalScale.set(slot.normalScale, slot.normalScale)
+    else standard.normalScale = new Vector2(slot.normalScale, slot.normalScale)
     assignMap(standard, 'map', slot.mapAssetId, true)
     assignMap(standard, 'normalMap', slot.normalAssetId, false)
     assignMap(standard, 'roughnessMap', slot.metallicRoughnessAssetId, false, isUnity)
@@ -278,7 +291,7 @@ function paint(material: Material, slot: SurfaceSlot) {
   } else {
     assignMap(basic, 'map', slot.mapAssetId, true)
   }
-  material.needsUpdate = true
+  if (structuralChange) material.needsUpdate = true
 }
 
 function transparencyOf(slot: SurfaceSlot) {

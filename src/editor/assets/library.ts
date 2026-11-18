@@ -83,6 +83,7 @@ interface AssetState {
   expanded: Record<string, boolean>
   revision: number
   add: (asset: ProjectAsset) => void
+  addMany: (assets: ProjectAsset[]) => void
   remove: (id: string) => void
   rename: (id: string, name: string) => void
   patch: (id: string, patch: Partial<FileAsset>) => void
@@ -121,6 +122,12 @@ export const useAssetStore = create<AssetState>((set, get) => ({
   expanded: { [ASSETS_ROOT]: true },
   revision: 0,
   add: asset => set(state => ({ assets: { ...state.assets, [asset.id]: asset }, revision: state.revision + 1 })),
+  addMany: list => set(state => {
+    if (list.length === 0) return {}
+    const assets = { ...state.assets }
+    for (const asset of list) assets[asset.id] = asset
+    return { assets, revision: state.revision + 1 }
+  }),
   remove: id => set(state => {
     const assets = { ...state.assets }
     const assetDirs = { ...state.assetDirs }

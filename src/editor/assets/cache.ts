@@ -7,31 +7,38 @@ import {
   assetRecords,
   deleteArtifact,
   deleteOriginalTexture,
+  deleteTextureArtifactFile,
   flushDocument,
   forgetAsset,
   hasOriginalTexture,
   isDirectoryProject,
   patchAsset,
+  projectRootPath,
   readArtifact,
   readAssetBytes,
   readOriginalTexture,
+  readTextureArtifactFile,
   sceneDocument,
   writeArtifact,
   writeOriginalTexture,
   writeSourceAsset,
+  writeTextureArtifactFile,
 } from '../project/disk'
 import { assetDirectory, useAssetStore, type FileKind, type ModelSocket } from './library'
 
 const DB_NAME = 't3d-asset-cache'
-const DB_VERSION = 3
+const DB_VERSION = 5
 const FILES = 'files'
 const META = 'meta'
 const ARTIFACTS = 'artifacts'
+const TEX_ARTIFACTS = 'texArtifacts'
+const MAT_THUMBS = 'matThumbs'
 const SCENE = 'scene'
 const ORIGINALS = 'originals'
 const SCENE_KEY = 'current'
 
 export const MODEL_IMPORTER_VERSION = 't3d-glb-artifact-9-ufbx-biped'
+export const TEXTURE_ARTIFACT_VERSION = 't3d-tex-1'
 
 export interface CachedFile {
   id: string
@@ -238,6 +245,93 @@ export async function writeModelArtifact(hash: string, glb: ArrayBuffer): Promis
   await request(db, ARTIFACTS, 'readwrite', store => store.put(record))
 }
 
+export function textureArtifactKey(hash: string, variant = 'base'): string {
+  return `${hash}__${variant}__${TEXTURE_ARTIFACT_VERSION}`
+}
+
+const pendingTexMirror = new Map<string, ArrayBuffer>()
+let mirrorFlushTimer = 0
+
+function scheduleTexMirrorFlush() {
+  if (mirrorFlushTimer) window.clearTimeout(mirrorFlushTimer)
+  mirrorFlushTimer = window.setTimeout(() => {
+    mirrorFlushTimer = 0
+    if (pendingTexMirror.size === 0) return
+    const entries = [...pendingTexMirror.entries()]
+    pendingTexMirror.clear()
+    void database().then(db =>
+      transaction(db, [TEX_ARTIFACTS], 'readwrite', stores => {
+        for (const [key, bytes] of entries) stores[TEX_ARTIFACTS].put({ key, bytes })
+      }),
+    ).catch(() => undefined)
+  }, 1500)
+}
+
+export async function readTextureArtifact(hash: string, variant = 'base'): Promise<ArrayBuffer | null> {
+  if (!hash) return null
+  const key = textureArtifactKey(hash, variant)
+  // Electron 原生目录路径下直接走 Node fs 读取，不绕道 IndexedDB
+  if (isDirectoryProject() && projectRootPath() !== null) {
+    return readTextureArtifactFile(key)
+  }
+  const mem = pendingTexMirror.get(key)
+  if (mem) return mem
+  const db = await database().catch(() => null)
+  if (db) {
+    const row = await request<{ key: string, bytes: ArrayBuffer } | undefined>(db, TEX_ARTIFACTS, 'readonly', store => store.get(key)).catch(() => undefined)
+    if (row?.bytes) return row.bytes
+  }
+  if (!isDirectoryProject()) return null
+  const diskBytes = await readTextureArtifactFile(key)
+  if (diskBytes) {
+    pendingTexMirror.set(key, diskBytes)
+    scheduleTexMirrorFlush()
+  }
+  return diskBytes
+}
+
+export async function writeTextureArtifact(hash: string, bytes: ArrayBuffer, variant = 'base'): Promise<void> {
+  if (!hash) return
+  const key = textureArtifactKey(hash, variant)
+  if (isDirectoryProject() && projectRootPath() !== null) {
+    await writeTextureArtifactFile(key, bytes)
+    return
+  }
+  pendingTexMirror.set(key, bytes)
+  scheduleTexMirrorFlush()
+  if (isDirectoryProject()) {
+    await writeTextureArtifactFile(key, bytes)
+  }
+}
+
+export async function readAllMaterialThumbs(): Promise<Array<{ key: string, url: string }>> {
+  try {
+    const db = await database()
+    return await request<Array<{ key: string, url: string }>>(db, MAT_THUMBS, 'readonly', store => store.getAll())
+  } catch {
+    return []
+  }
+}
+
+export function writeMaterialThumb(key: string, url: string): void {
+  if (!key || !url) return
+  void database().then(db =>
+    request(db, MAT_THUMBS, 'readwrite', store => store.put({ key, url })),
+  ).catch(() => undefined)
+}
+
+export async function deleteTextureArtifact(hash: string, variant = 'base'): Promise<void> {
+  if (!hash) return
+  const key = textureArtifactKey(hash, variant)
+  const db = await database().catch(() => null)
+  if (db) {
+    await request(db, TEX_ARTIFACTS, 'readwrite', store => store.delete(key)).catch(() => undefined)
+  }
+  if (isDirectoryProject()) {
+    await deleteTextureArtifactFile(key)
+  }
+}
+
 export async function readSceneDocument<T>(): Promise<T | null> {
   if (isDirectoryProject()) return sceneDocument<T>()
   const db = await database()
@@ -316,6 +410,8 @@ function openDb(): Promise<IDBDatabase> {
       if (!db.objectStoreNames.contains(FILES)) db.createObjectStore(FILES, { keyPath: 'id' })
       if (!db.objectStoreNames.contains(META)) db.createObjectStore(META, { keyPath: 'id' })
       if (!db.objectStoreNames.contains(ARTIFACTS)) db.createObjectStore(ARTIFACTS, { keyPath: 'key' })
+      if (!db.objectStoreNames.contains(TEX_ARTIFACTS)) db.createObjectStore(TEX_ARTIFACTS, { keyPath: 'key' })
+      if (!db.objectStoreNames.contains(MAT_THUMBS)) db.createObjectStore(MAT_THUMBS, { keyPath: 'key' })
       if (!db.objectStoreNames.contains(SCENE)) db.createObjectStore(SCENE, { keyPath: 'id' })
       if (!db.objectStoreNames.contains(ORIGINALS)) db.createObjectStore(ORIGINALS, { keyPath: 'id' })
     }

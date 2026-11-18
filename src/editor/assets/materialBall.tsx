@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useEffect, useState } from 'react'
 import {
   ACESFilmicToneMapping,
   AmbientLight,
@@ -15,14 +15,32 @@ import {
   type Texture,
 } from 'three'
 import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js'
+import { readAllMaterialThumbs, writeMaterialThumb } from './cache'
 import { useAssetStore } from './library'
 import { normalizeSlot, applySlot } from './materials'
+import { warmProgress } from './project'
 import { textureFor, unityMetallicRoughnessTextureFor } from './textures'
 import type { PbrSlot } from '../scene/types'
 import './materialBall.css'
 
 const SIZE = 128
 const cache = new Map<string, string>()
+let hydrated = false
+
+function ensureHydrated() {
+  if (hydrated) return
+  hydrated = true
+  void readAllMaterialThumbs().then(rows => {
+    let added = false
+    for (const row of rows) {
+      if (row.key && row.url && !cache.has(row.key)) {
+        cache.set(row.key, row.url)
+        added = true
+      }
+    }
+    if (added) listeners.forEach(listener => listener())
+  })
+}
 
 let renderer: WebGLRenderer | null = null
 let scene: Scene | null = null
@@ -68,12 +86,11 @@ function stage(): { renderer: WebGLRenderer, scene: Scene, camera: PerspectiveCa
   }
 }
 
-function mapToken(id: string | null | undefined, colorMap: boolean, unity = false): string {
+function stableMapToken(id: string | null | undefined, unity = false): string {
   if (!id) return ''
-  const texture: Texture | null = unity ? unityMetallicRoughnessTextureFor(id) : textureFor(id, colorMap)
-  if (!texture) return `${id}:0`
-  const image = texture.image as { width?: number } | undefined
-  return `${texture.uuid}:${image?.width ?? 0}`
+  const asset = useAssetStore.getState().assets[id]
+  const hash = asset && 'hash' in asset ? asset.hash : ''
+  return `${id}:${hash}:${unity ? 'u' : 's'}`
 }
 
 function signature(slot: PbrSlot): string {
@@ -93,16 +110,78 @@ function signature(slot: PbrSlot): string {
     surface.alphaCutoff,
     surface.wireframe,
     surface.particleBlend ?? '',
-    mapToken(surface.mapAssetId, true),
-    mapToken(surface.normalAssetId, false),
-    mapToken(surface.metallicRoughnessAssetId, false, unity),
-    mapToken(surface.emissiveAssetId, true),
-    mapToken(surface.aoAssetId, false),
+    stableMapToken(surface.mapAssetId),
+    stableMapToken(surface.normalAssetId),
+    stableMapToken(surface.metallicRoughnessAssetId, unity),
+    stableMapToken(surface.emissiveAssetId),
+    stableMapToken(surface.aoAssetId ?? (unity ? surface.metallicRoughnessAssetId : null), unity && !surface.aoAssetId),
   ])
 }
 
-export function renderMaterialBall(slot: PbrSlot): string {
-  const key = signature(slot)
+function ensureSlotTexturesReady(slot: PbrSlot): boolean {
+  const surface = normalizeSlot(slot)
+  const unity = surface.shader === 'unity-standard'
+  const assets = useAssetStore.getState().assets
+  const check = (id: string | null | undefined, colorMap: boolean, useUnityMr = false): boolean => {
+    if (!id) return true
+    const asset = assets[id]
+    if (!asset || asset.kind !== 'texture') return true
+    const tex: Texture | null = useUnityMr ? unityMetallicRoughnessTextureFor(id) : textureFor(id, colorMap)
+    return tex !== null
+  }
+  const r1 = check(surface.mapAssetId, true)
+  const r2 = check(surface.normalAssetId, false)
+  const r3 = check(surface.metallicRoughnessAssetId, false, unity)
+  const r4 = check(surface.emissiveAssetId, true)
+  const r5 = check(surface.aoAssetId ?? (unity ? surface.metallicRoughnessAssetId : null), false, unity && !surface.aoAssetId)
+  return r1 && r2 && r3 && r4 && r5
+}
+
+const pendingQueue = new Map<string, PbrSlot>()
+const listeners = new Set<() => void>()
+let pumpTimer = 0
+let pumpRaf = 0
+
+function schedulePump() {
+  if (pumpTimer || pumpRaf) return
+  if (warmProgress()) {
+    pumpTimer = window.setTimeout(() => {
+      pumpTimer = 0
+      schedulePump()
+    }, 100)
+    return
+  }
+  pumpRaf = requestAnimationFrame(pumpQueue)
+}
+
+function pumpQueue() {
+  pumpRaf = 0
+  if (warmProgress()) {
+    schedulePump()
+    return
+  }
+  const started = performance.now()
+  let count = 0
+  for (const [key, slot] of [...pendingQueue.entries()]) {
+    if (cache.has(key)) {
+      pendingQueue.delete(key)
+      continue
+    }
+    if (!ensureSlotTexturesReady(slot)) {
+      // 贴图尚在后台加载中，等贴图触发 bump 后再绘制，避免画半成品
+      continue
+    }
+    pendingQueue.delete(key)
+    renderMaterialBallNow(key, slot)
+    count += 1
+    if (count >= 1 || performance.now() - started >= 3) break
+  }
+  if (count > 0) listeners.forEach(listener => listener())
+  const hasReady = [...pendingQueue.values()].some(slot => ensureSlotTexturesReady(slot))
+  if (hasReady) schedulePump()
+}
+
+function renderMaterialBallNow(key: string, slot: PbrSlot): string {
   const cached = cache.get(key)
   if (cached) return cached
   const view = stage()
@@ -116,7 +195,8 @@ export function renderMaterialBall(slot: PbrSlot): string {
     view.renderer.render(view.scene, view.camera)
     const url = view.renderer.domElement.toDataURL('image/png')
     cache.set(key, url)
-    if (cache.size > 96) {
+    writeMaterialThumb(key, url)
+    if (cache.size > 256) {
       const oldest = cache.keys().next().value
       if (oldest) cache.delete(oldest)
     }
@@ -126,9 +206,35 @@ export function renderMaterialBall(slot: PbrSlot): string {
   }
 }
 
+export function renderMaterialBall(slot: PbrSlot): string {
+  ensureHydrated()
+  return renderMaterialBallNow(signature(slot), slot)
+}
+
 export function MaterialBall({ slot, size = 'sm' }: { slot: PbrSlot, size?: 'sm' | 'md' | 'lg' }) {
+  ensureHydrated()
   const revision = useAssetStore(state => state.revision)
-  const url = useMemo(() => renderMaterialBall(slot), [slot, revision])
+  const key = signature(slot)
+  const hit = cache.get(key) ?? ''
+  const [fallback, setFallback] = useState('')
+  const [, setTick] = useState(0)
+
+  useEffect(() => {
+    const onDone = () => setTick(value => value + 1)
+    listeners.add(onDone)
+    return () => { listeners.delete(onDone) }
+  }, [])
+
+  useEffect(() => {
+    if (hit) {
+      setFallback(hit)
+      return
+    }
+    pendingQueue.set(key, slot)
+    schedulePump()
+  }, [key, hit, slot, revision])
+
+  const url = hit || fallback
   const className = size === 'sm' ? 'material-ball' : `material-ball material-ball--${size}`
   if (!url) return <i className={`${className} material-ball--flat`} style={{ background: slot.color }} />
   return <img className={className} src={url} alt="" />

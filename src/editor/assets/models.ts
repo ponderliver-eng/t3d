@@ -210,20 +210,19 @@ export function loadModelTemplate(asset: FileAsset, forceSource = false): Promis
       asset.name,
       modelMaterialHints.get(asset.id) ?? asset.materialHint,
     )
-    const nextTemplate = { ...template, slots: resolvedSlots }
-    applyModelMaterials(nextTemplate.scene, nextTemplate.slots)
-    templates.set(asset.id, nextTemplate)
-    revisions.set(asset.id, (revisions.get(asset.id) ?? 0) + 1)
-    pending.delete(asset.id)
-    releaseHumanoidPlayback(asset.id)
-    registerHumanoidSkeletons(asset.id, nextTemplate.humanoid.skeletons)
-    rememberHumanoidAvatar(asset.id, nextTemplate.humanoid.avatar)
-    rememberHumanoidImportScale(asset.id, nextTemplate, forceSource)
-    rememberClipCatalog(asset.id, nextTemplate.clips)
-    syncLoadedModelNodes(asset.id, resolvedSlots)
-    useAssetStore.getState().bump()
-    listeners.forEach(listener => listener())
-    return nextTemplate
+      const nextTemplate = { ...template, slots: resolvedSlots }
+      templates.set(asset.id, nextTemplate)
+      revisions.set(asset.id, (revisions.get(asset.id) ?? 0) + 1)
+      pending.delete(asset.id)
+      releaseHumanoidPlayback(asset.id)
+      registerHumanoidSkeletons(asset.id, nextTemplate.humanoid.skeletons)
+      rememberHumanoidAvatar(asset.id, nextTemplate.humanoid.avatar)
+      rememberHumanoidImportScale(asset.id, nextTemplate, forceSource)
+      rememberClipCatalog(asset.id, nextTemplate.clips)
+      syncLoadedModelNodes(asset.id, resolvedSlots)
+      useAssetStore.getState().bump()
+      listeners.forEach(listener => listener())
+      return nextTemplate
   }).catch(error => {
     pending.delete(asset.id)
     throw error
