@@ -73,6 +73,7 @@
    - **物理（`physics`）**：仅 `src/capabilities/physics/rapierWorld.ts` 允许 import `@dimforge/rapier3d-compat`。
    - **导航（`navigation`）**：仅 `src/capabilities/navigation/recastNav.ts` 与 `bake.worker.ts` 允许 import `recast-navigation`。
    - **粒子（`particles`）**：默认关闭；仅 `src/capabilities/particles/quarksRuntime.ts` 与 `tslBatch.ts` 允许 import `three.quarks`；保持 CPU 模拟 + TSL 实例化绘制，不安装 `quarks.nodes`。
+   - **天空（`sky`）**：仅 `src/capabilities/sky/runtime.ts` 允许 import `@pmndrs/sky`。数据在 `picture.capabilities.sky`。
 3. **核心玩法包与领域包（Gameplay Packs）**
    - **统一运行时调度（`src/runtime/sceneRuntime.ts`）**：物理、导航、粒子、骨骼动画以及核心包/领域包系统的每帧步进统一由 `stepSceneRuntime(dt, host)` 调度，`EditorViewport` 只作为宿主提供渲染与对象查询，确保编辑器试玩与未来独立导出运行 100% 共用同一循环。
    - **统一节点玩法挂载槽（`node.gameplay`）**：核心包与领域包数据统一挂在 `SceneNode.gameplay`（`NodeGameplay`）下，禁止继续向 `SceneNode` 顶层散落玩法字段。

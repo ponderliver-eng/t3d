@@ -12,6 +12,7 @@ alwaysApply: false
 - **物理 (`physics`)**：仅 `src/capabilities/physics/rapierWorld.ts` 允许 import `@dimforge/rapier3d-compat`。
 - **导航 (`navigation`)**：仅 `recastNav.ts` 与 `bake.worker.ts` 允许 import `recast-navigation`。
 - **粒子 (`particles`)**：仅 `quarksRuntime.ts` 与 `tslBatch.ts` 允许 import `three.quarks`（保持 CPU 模拟 + TSL 实例化，不装 `quarks.nodes`）。
+- **天空 (`sky`)**：仅 `src/capabilities/sky/runtime.ts` 允许 import `@pmndrs/sky`。配置在 `picture.capabilities.sky`。绘制前用 `registerBeforeRenderHook` 更新，高度雾接进 `picture.ts` 的现有后期。
 - **新增能力包**：在 `src/capabilities/registry.ts` 中通过 `loadRuntime: () => import(...)` 动态懒加载，并声明 `dependencies`（如 `vehicle` 依赖 `['physics']`）。关闭能力包时卸载运行时，但保留 `node.capabilities[id]` / `picture.capabilities[id]` 中的配置数据。
 
 ## 2. 五阶段帧流水线（`RUNTIME_STAGE`）

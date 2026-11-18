@@ -11,6 +11,7 @@ import { denoise } from 'three/addons/tsl/display/DenoiseNode.js'
 import { smaa } from 'three/addons/tsl/display/SMAANode.js'
 import type { ScenePicture } from '../scene/types'
 import { SelectionOutlineNode } from './selectionOutline'
+import { composeSkyFog, skyFogActive, skyFogRevision } from '../../capabilities/sky/session'
 
 interface BloomUniforms {
   strength: { value: number }
@@ -55,11 +56,11 @@ export class ScenePicturePipeline {
   constructor(private readonly renderer: WebGPURenderer) {}
 
   usesEffects(picture: ScenePicture, hasOutline = false): boolean {
-    return hasOutline || picture.bloom || picture.ssr || picture.ssgi || picture.aa !== false || picture.ao || picture.dof || picture.hue !== 0 || picture.saturation !== 1
+    return hasOutline || picture.bloom || picture.ssr || picture.ssgi || picture.aa !== false || picture.ao || picture.dof || picture.hue !== 0 || picture.saturation !== 1 || skyFogActive()
   }
 
   render(scene: Scene, camera: Camera, picture: ScenePicture, width: number, height: number, outlineTargets: readonly Object3D[] = [], flashTarget: Object3D | null = null) {
-    const key = [camera.uuid, picture.toneMapping, picture.bloom, picture.ssr, picture.ssgi, picture.ssgi && picture.ssgiDenoise, picture.aa !== false, picture.ao, picture.dof, picture.hue !== 0 || picture.saturation !== 1, width, height].join('|')
+    const key = [camera.uuid, picture.toneMapping, picture.bloom, picture.ssr, picture.ssgi, picture.ssgi && picture.ssgiDenoise, picture.aa !== false, picture.ao, picture.dof, picture.hue !== 0 || picture.saturation !== 1, skyFogRevision(), width, height].join('|')
     if (this.failed && this.key === key) {
       this.renderer.render(scene, camera)
       return
@@ -191,6 +192,7 @@ export class ScenePicturePipeline {
     } else {
       this.dofNode = null
     }
+    if (skyFogActive()) current = composeSkyFog(current, scenePass) as typeof current
     const graded = picture.hue !== 0 || picture.saturation !== 1
       ? vec4(saturation(hue(current.rgb as never, picture.hue), picture.saturation), current.a as never)
       : current

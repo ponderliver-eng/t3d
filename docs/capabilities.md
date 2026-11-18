@@ -73,6 +73,12 @@
 
 特效包在 `src/capabilities/particles/`。默认关闭。资源和物体上的数据、材质引用、和 `three.quarks` 的版本隔离见 `docs/particles.md`。
 
+## 天空
+
+天空包在 `src/capabilities/sky/`。默认关闭。画面数据在 `picture.capabilities.sky`：时刻、纬度、年积日、大气、太阳、高度雾、星星和月亮。关掉后这些数留着，检查器收起，并且不再加载 `@pmndrs/sky`。
+
+开启时天空接管 `scene.background` 和 `scene.environment`，金属与粗糙度的反射跟着太阳走。高度雾画在现有后期里；它开着时不再叠加画面上的线性雾。`@pmndrs/sky` 只从 `runtime.ts` 引入。
+
 ## 界面
 
 界面不是能力包，没有开关。运行时和编辑器始终在。领域包可以自带界面文档；关掉领域包时，只收起那个包的文档。文档、编辑器和阶段见 `docs/ui.md`。

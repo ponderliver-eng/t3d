@@ -33,6 +33,7 @@ import {
 } from '../../runtime/sceneRuntime'
 import { EffectCard } from '../../capabilities/particles/EffectCard'
 import { NavigationCard, SceneNavigationCard } from '../../capabilities/navigation/NavigationCards'
+import { SkyCard } from '../../capabilities/sky/SkyCard'
 import {
   InspectorFrame,
   useInspectorCardOpen,
@@ -479,6 +480,15 @@ function assetKindLabel(kind: string): string {
   return known.includes(kind) ? translate(key) : kind
 }
 
+function SceneColumn({ title, children }: { title: string, children: ReactNode }) {
+  return (
+    <section className="inspector-column">
+      <h3 className="inspector-column__title">{title}</h3>
+      <div className="inspector-column__body">{children}</div>
+    </section>
+  )
+}
+
 function SceneSettings() {
   const { t } = useI18n()
   const picture = useEditorStore(state => state.picture)
@@ -519,32 +529,17 @@ function SceneSettings() {
           }}
         />
       </header>
-      {physicsOn && (
-        <Card id="scene-physics" title={t('physics.title')} color="#8bc34a">
-          <Section title={t('physics.gravity')} color="#8bc34a">
-            <Vec3Fields
-              label={t('physics.gravity')}
-              value={picture.gravity ?? [0, -9.81, 0]}
-              step={0.1}
-              gesture={t('gesture.picture')}
-              onChange={gravity => set({ gravity })}
-            />
+      <SceneColumn title={t('inspector.column.system')}>
+      {capabilityEnabled(capabilities, 'sky') ? null : (
+        <Card id="sky" title={t('inspector.sky')} color="#4a9eff">
+          <Section title={t('inspector.background')} color="#4a9eff">
+            <ColorField label={t('inspector.background')} value={picture.background} gesture={t('gesture.picture')} onChange={background => set({ background })} />
           </Section>
         </Card>
       )}
-      {!physicsOn && (
-        <Card id="scene-physics" title={t('physics.title')} color="#8bc34a">
-          <p className="settings-note">{t('physics.disabledHint')}</p>
-          <button type="button" onClick={openProjectSettings}>{t('menu.projectSettings')}</button>
-        </Card>
-      )}
-      <SceneNavigationCard />
-      <Card id="sky" title={t('inspector.sky')} color="#4a9eff">
-        <Section title={t('inspector.background')} color="#4a9eff">
-          <ColorField label={t('inspector.background')} value={picture.background} gesture={t('gesture.picture')} onChange={background => set({ background })} />
-          <NumberRow label={t('inspector.exposure')} value={picture.exposure} min={0} max={5} step={0.01} gesture={t('gesture.picture')} onChange={exposure => set({ exposure })} />
-        </Section>
+      <Card id="tone" title={t('inspector.toneMapping')} color="#8ec5ff">
         <Section title={t('inspector.toneMapping')} color="#8ec5ff">
+          <NumberRow label={t('inspector.exposure')} value={picture.exposure} min={0} max={5} step={0.01} gesture={t('gesture.picture')} onChange={exposure => set({ exposure })} />
           <label className="field">
             <span>{t('inspector.toneMapping')}</span>
             <select value={picture.toneMapping} onChange={event => set({ toneMapping: event.target.value as typeof picture.toneMapping })}>
@@ -573,11 +568,13 @@ function SceneSettings() {
           )}
         </Section>
       </Card>
-      <Card id="environment" title={t('inspector.environment')} color="#ffd36b">
-        <Section title={t('inspector.environment')} color="#ffd36b">
-          <EnvField value={picture.envAssetId} onChange={envAssetId => set({ envAssetId })} />
-        </Section>
-      </Card>
+      {!capabilityEnabled(capabilities, 'sky') && (
+        <Card id="environment" title={t('inspector.environment')} color="#ffd36b">
+          <Section title={t('inspector.environment')} color="#ffd36b">
+            <EnvField value={picture.envAssetId} onChange={envAssetId => set({ envAssetId })} />
+          </Section>
+        </Card>
+      )}
       <Card id="aa" title={t('inspector.aa')} color="#26c6da">
         <Section title={t('inspector.enabled')} color="#26c6da">
           <label className="field"><span>{t('inspector.enabled')}</span><input type="checkbox" checked={picture.aa !== false} onChange={event => set({ aa: event.target.checked })} /></label>
@@ -666,6 +663,30 @@ function SceneSettings() {
           </div>
         </Section>
       </Card>
+      </SceneColumn>
+      <SceneColumn title={t('inspector.column.packs')}>
+      {physicsOn && (
+        <Card id="scene-physics" title={t('physics.title')} color="#8bc34a">
+          <Section title={t('physics.gravity')} color="#8bc34a">
+            <Vec3Fields
+              label={t('physics.gravity')}
+              value={picture.gravity ?? [0, -9.81, 0]}
+              step={0.1}
+              gesture={t('gesture.picture')}
+              onChange={gravity => set({ gravity })}
+            />
+          </Section>
+        </Card>
+      )}
+      {!physicsOn && (
+        <Card id="scene-physics" title={t('physics.title')} color="#8bc34a">
+          <p className="settings-note">{t('physics.disabledHint')}</p>
+          <button type="button" onClick={openProjectSettings}>{t('menu.projectSettings')}</button>
+        </Card>
+      )}
+      <SceneNavigationCard />
+      {capabilityEnabled(capabilities, 'sky') && <SkyCard />}
+      </SceneColumn>
     </>
   )
 }

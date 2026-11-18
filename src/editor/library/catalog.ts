@@ -20,6 +20,7 @@ export const LIBRARY_ITEMS: LibraryItem[] = [
   { id: 'physics', shelf: 'capability', kind: 'capability', capabilityId: 'physics', name: 'library.item.physics', detail: 'library.item.physicsDetail', points: 'library.item.physicsPoints', hue: '#7eb6ff' },
   { id: 'navigation', shelf: 'capability', kind: 'capability', capabilityId: 'navigation', name: 'library.item.navigation', detail: 'library.item.navigationDetail', points: 'library.item.navigationPoints', hue: '#8fd0a4' },
   { id: 'particles', shelf: 'capability', kind: 'capability', capabilityId: 'particles', name: 'library.item.particles', detail: 'library.item.particlesDetail', points: 'library.item.particlesPoints', hue: '#f2cf7f' },
+  { id: 'sky', shelf: 'capability', kind: 'capability', capabilityId: 'sky', name: 'library.item.sky', detail: 'library.item.skyDetail', points: 'library.item.skyPoints', hue: '#7eb6ff' },
   { id: 'stats', shelf: 'gameplay', kind: 'soon', name: 'library.item.stats', detail: 'library.item.statsDetail', points: 'library.item.statsPoints', hue: '#e7a3b8' },
   { id: 'combat', shelf: 'gameplay', kind: 'soon', name: 'library.item.combat', detail: 'library.item.combatDetail', points: 'library.item.combatPoints', hue: '#e07a5f' },
   { id: 'perception', shelf: 'gameplay', kind: 'soon', name: 'library.item.perception', detail: 'library.item.perceptionDetail', points: 'library.item.perceptionPoints', hue: '#d4b8ff' },

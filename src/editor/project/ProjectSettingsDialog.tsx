@@ -27,6 +27,7 @@ const COPY: Record<CapabilityId, { name: MessageKey, detail: MessageKey }> = {
   physics: { name: 'physics.enable', detail: 'projectSettings.physicsDetail' },
   navigation: { name: 'navigation.enable', detail: 'projectSettings.navigationDetail' },
   particles: { name: 'particles.enable', detail: 'projectSettings.particlesDetail' },
+  sky: { name: 'sky.enable', detail: 'projectSettings.skyDetail' },
 }
 
 export default function ProjectSettingsDialog() {

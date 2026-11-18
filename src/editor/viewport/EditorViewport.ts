@@ -56,6 +56,8 @@ import { bindTextureRenderer, environmentFor } from '../assets/textures'
 import { EDITOR_HELPER_LAYER, layerBitIndex } from '../project/taxonomy'
 import { capabilityEnabled, syncCapabilityRuntimes } from '../../capabilities/registry'
 import { disposeParticles, mountParticles } from '../../capabilities/particles/session'
+import { releaseSkyResources, skyBlocksFrame, skyFogActive } from '../../capabilities/sky/session'
+import { SKY_CAPABILITY_ID } from '../../capabilities/sky/defaults'
 import { collectNavSurfaces } from '../../capabilities/navigation/collect'
 import { syncNavDebug } from '../../capabilities/navigation/debug'
 import { consumeNavBake, navDebugGeometry } from '../../capabilities/navigation/session'
@@ -337,6 +339,7 @@ export class EditorViewport {
     document.removeEventListener('pointerlockchange', this.onPointerLockChange)
     if (document.pointerLockElement === this.canvas) document.exitPointerLock()
     disposeParticles()
+    releaseSkyResources()
     this.volume.dispose()
     this.picture?.dispose()
     this.transform.dispose()
@@ -1367,6 +1370,8 @@ export class EditorViewport {
             dt,
           })
         })
+        this.renderer.setRenderTarget(null)
+        if (skyBlocksFrame()) return
         this.renderer.info.reset()
         const outlineTargets = editor.playState === 'stopped' ? this.selectionRoots : []
         const flashTarget = editor.playState === 'stopped' ? this.partFlashTarget : null
@@ -1592,22 +1597,25 @@ export class EditorViewport {
   }
 
   private applyPicture() {
-    const picture = useEditorStore.getState().picture
-    const env = environmentFor(picture.envAssetId)
-    if (env) {
-      if (this.scene.environment !== env) this.scene.environment = env
-      if (this.scene.background !== env) this.scene.background = env
-    } else {
-      if (this.scene.environment) this.scene.environment = null
-      const background = this.scene.background
-      if (!(background instanceof Color) || `#${background.getHexString()}` !== picture.background.toLowerCase()) {
-        this.scene.background = new Color(picture.background)
+    const state = useEditorStore.getState()
+    const picture = state.picture
+    if (!capabilityEnabled(state.capabilities, SKY_CAPABILITY_ID)) {
+      const env = environmentFor(picture.envAssetId)
+      if (env) {
+        if (this.scene.environment !== env) this.scene.environment = env
+        if (this.scene.background !== env) this.scene.background = env
+      } else {
+        if (this.scene.environment) this.scene.environment = null
+        const background = this.scene.background
+        if (!(background instanceof Color) || `#${background.getHexString()}` !== picture.background.toLowerCase()) {
+          this.scene.background = new Color(picture.background)
+        }
       }
     }
     this.renderer.toneMapping = this.toneMappingOf(picture.toneMapping)
     this.renderer.toneMappingExposure = picture.exposure
     this.volume.sync(picture)
-    if (picture.fog) {
+    if (picture.fog && !skyFogActive()) {
       const fog = this.scene.fog instanceof Fog ? this.scene.fog : new Fog(picture.fogColor, picture.fogNear, picture.fogFar)
       fog.color.set(picture.fogColor)
       fog.near = picture.fogNear
