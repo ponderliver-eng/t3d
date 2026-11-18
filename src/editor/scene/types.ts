@@ -27,12 +27,12 @@ export type AlphaMode = 'opaque' | 'blend' | 'clip'
 export type CullMode = 'back' | 'front' | 'off'
 
 export type PhysicsBodyKind = 'static' | 'dynamic' | 'kinematic'
-export type ColliderShape = 'box' | 'sphere' | 'capsule'
+export type ColliderShape = 'box' | 'sphere' | 'capsule' | 'cylinder' | 'cone' | 'convex' | 'trimesh'
 
 export interface NodePhysics {
   body: PhysicsBodyKind
   shape: ColliderShape
-  /** 盒子是完整尺寸。球体用 x 当半径。胶囊用 x 当半径、y 当总高度。 */
+  /** 盒子是完整尺寸。球体用 x 当半径。胶囊、圆柱、圆锥用 x 当半径、y 当总高度。凸包和三角网格读物体网格。 */
   size: Vec3
   trigger: boolean
   mass: number

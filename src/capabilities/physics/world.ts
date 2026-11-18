@@ -18,6 +18,8 @@ export interface PhysicsBodyDesc {
   gravityScale: number
   /** Rapier 交互组。缺省表示与所有层相撞。 */
   collisionGroups?: number
+  /** 凸包和三角网格使用。顶点在刚体局部空间。 */
+  mesh?: { key: string, positions: Float32Array, indices: Uint32Array }
 }
 
 export interface PhysicsPose {

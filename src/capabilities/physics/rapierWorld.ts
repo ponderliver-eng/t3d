@@ -231,6 +231,23 @@ function shapeDesc(desc: PhysicsBodyDesc): RAPIER.ColliderDesc {
     const half = Math.max(0.001, height * 0.5 - radius)
     return RAPIER.ColliderDesc.capsule(half, radius)
   }
+  if (desc.shape === 'cylinder' || desc.shape === 'cone') {
+    const radius = Math.max(0.001, desc.size[0]) * Math.max(sx, sz)
+    const half = Math.max(0.001, desc.size[1] * sy * 0.5)
+    return desc.shape === 'cylinder'
+      ? RAPIER.ColliderDesc.cylinder(half, radius)
+      : RAPIER.ColliderDesc.cone(half, radius)
+  }
+  if (desc.shape === 'convex' && desc.mesh && desc.mesh.positions.length >= 12) {
+    const hull = RAPIER.ColliderDesc.convexHull(desc.mesh.positions)
+    if (hull) return hull
+  }
+  if (desc.shape === 'trimesh' && desc.mesh && desc.mesh.indices.length >= 3) {
+    const flags = RAPIER.TriMeshFlags.MERGE_DUPLICATE_VERTICES
+      | RAPIER.TriMeshFlags.DELETE_DEGENERATE_TRIANGLES
+      | RAPIER.TriMeshFlags.FIX_INTERNAL_EDGES
+    return RAPIER.ColliderDesc.trimesh(desc.mesh.positions, desc.mesh.indices, flags)
+  }
   return RAPIER.ColliderDesc.cuboid(
     Math.max(0.001, desc.size[0] * 0.5 * sx),
     Math.max(0.001, desc.size[1] * 0.5 * sy),
@@ -265,5 +282,6 @@ function signatureOf(desc: PhysicsBodyDesc): string {
     n(desc.angularDamping),
     n(desc.gravityScale),
     desc.collisionGroups ?? 'all',
+    desc.mesh?.key ?? '',
   ].join('|')
 }

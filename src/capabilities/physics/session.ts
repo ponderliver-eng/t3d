@@ -2,11 +2,14 @@ import { capabilityEnabled } from '../registry'
 import { worldPose } from '../../editor/scene/transform'
 import { rapierCollisionGroups } from '../../editor/project/taxonomy'
 import { useEditorStore } from '../../editor/scene/store'
+import type { Object3D } from 'three'
+import { collectMeshCollider, meshColliderKey, type MeshColliderData } from './meshCollect'
 import type { CharacterMove, CharacterMoveResult, PhysicsWorld } from './world'
 
 let world: PhysicsWorld | null = null
 let booting = false
 let lastInspectorSync = 0
+const meshCache = new Map<string, MeshColliderData>()
 
 export interface PhysicsExtensionContext {
   readonly dt: number
@@ -39,7 +42,7 @@ export function moveCharacters(moves: CharacterMove[]): CharacterMoveResult[] | 
   return world.moveCharacters(moves)
 }
 
-export function tickPhysics(dt: number, resolveObject?: (id: string) => { position: { set: (x: number, y: number, z: number) => void }, quaternion: { set: (x: number, y: number, z: number, w: number) => void } } | null) {
+export function tickPhysics(dt: number, resolveObject?: (id: string) => Object3D | null) {
   const state = useEditorStore.getState()
   const enabled = capabilityEnabled(state.capabilities, 'physics')
   if (!enabled || state.playState === 'stopped') {
@@ -52,7 +55,7 @@ export function tickPhysics(dt: number, resolveObject?: (id: string) => { positi
     return
   }
   world.setGravity(state.picture.gravity ?? [0, -9.81, 0])
-  world.sync(collectBodies())
+  world.sync(collectBodies(resolveObject))
   for (const ext of extensions) {
     ext.step({ dt, world, resolveObject })
   }
@@ -93,9 +96,10 @@ function boot() {
 function disposePhysics() {
   world?.dispose()
   world = null
+  meshCache.clear()
 }
 
-function collectBodies() {
+function collectBodies(resolveObject?: (id: string) => Object3D | null) {
     const state = useEditorStore.getState()
     const nodes = state.nodes
   const bodies = []
@@ -123,7 +127,27 @@ function collectBodies() {
         state.physicsCollisionMatrixEnabled,
         state.physicsCollisionRowMasks,
       ),
+      mesh: node.physics.shape === 'convex' || node.physics.shape === 'trimesh'
+        ? meshFor(node.id, resolveObject?.(node.id) ?? null)
+        : undefined,
     })
   }
   return bodies
+}
+
+function meshFor(id: string, object: Object3D | null): MeshColliderData | undefined {
+  if (!object) {
+    meshCache.delete(id)
+    return undefined
+  }
+  const key = meshColliderKey(object)
+  const cached = meshCache.get(id)
+  if (cached && cached.key === key) return cached
+  const built = collectMeshCollider(object)
+  if (!built) {
+    meshCache.delete(id)
+    return undefined
+  }
+  meshCache.set(id, built)
+  return built
 }

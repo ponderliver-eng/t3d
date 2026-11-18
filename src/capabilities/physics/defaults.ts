@@ -21,8 +21,14 @@ export function defaultNodePhysics(kind: NodeKind): NodePhysics {
   if (kind === 'capsule') {
     return { ...SHARED, body: 'dynamic', shape: 'capsule', size: [0.3, 1.1, 0.3] }
   }
-  if (kind === 'cylinder' || kind === 'cone') {
-    return { ...SHARED, body: 'dynamic', shape: 'capsule', size: [0.5, 1, 0.5] }
+  if (kind === 'cylinder') {
+    return { ...SHARED, body: 'dynamic', shape: 'cylinder', size: [0.5, 1, 0.5] }
+  }
+  if (kind === 'cone') {
+    return { ...SHARED, body: 'dynamic', shape: 'cone', size: [0.5, 1, 0.5] }
+  }
+  if (kind === 'model') {
+    return { ...SHARED, body: 'static', shape: 'convex', size: [1, 1, 1] }
   }
   return { ...SHARED, body: 'dynamic', shape: 'box', size: [1, 1, 1] }
 }

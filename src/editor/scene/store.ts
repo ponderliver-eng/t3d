@@ -475,6 +475,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       if (get().prefabSession && !parent) parent = Object.values(draft.nodes).find(node => !node.parentId)?.id ?? null
       const id = crypto.randomUUID()
       const name = uniqueName(draft.nodes, label)
+      const shaped = kind === 'box' || kind === 'sphere' || kind === 'capsule' || kind === 'cylinder' || kind === 'cone'
       draft.nodes[id] = makeNode({
         id,
         name,
@@ -483,6 +484,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         order: nextOrder(draft.nodes, parent),
         position: spawnPosition(kind, parent, getSpawn()),
         rotation: kind === 'plane' ? [-90, 0, 0] : [0, 0, 0],
+        ...(shaped ? { physics: defaultNodePhysics(kind) } : {}),
       })
       tagAddedChild(draft.nodes, id)
       draft.selection = [id]

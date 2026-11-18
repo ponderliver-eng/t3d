@@ -58,15 +58,21 @@ export function PhysicsCard({ node, disabled }: { node: SceneNode, disabled: boo
               <option value="box">{t('physics.box')}</option>
               <option value="sphere">{t('physics.sphere')}</option>
               <option value="capsule">{t('physics.capsule')}</option>
+              <option value="cylinder">{t('physics.cylinder')}</option>
+              <option value="cone">{t('physics.cone')}</option>
+              <option value="convex">{t('physics.convex')}</option>
+              <option value="trimesh">{t('physics.trimesh')}</option>
             </select>
           </label>
           {physics.shape === 'sphere' ? (
             <NumberInput label={t('physics.radius')} disabled={disabled} value={physics.size[0]} step={0.01} min={0.01} onChange={radius => edit({ size: [radius, radius, radius] })} />
-          ) : physics.shape === 'capsule' ? (
+          ) : physics.shape === 'capsule' || physics.shape === 'cylinder' || physics.shape === 'cone' ? (
             <div className="iv2-pair">
               <NumberInput label={t('physics.radius')} disabled={disabled} value={physics.size[0]} step={0.01} min={0.01} onChange={radius => edit({ size: [radius, physics.size[1], radius] })} />
               <NumberInput label={t('physics.height')} disabled={disabled} value={physics.size[1]} step={0.01} min={0.02} onChange={height => edit({ size: [physics.size[0], height, physics.size[0]] })} />
             </div>
+          ) : physics.shape === 'convex' || physics.shape === 'trimesh' ? (
+            <p className="settings-note">{physics.shape === 'convex' ? t('physics.convexHint') : t('physics.trimeshHint')}</p>
           ) : (
             <SizeInput label={t('physics.size')} disabled={disabled} value={physics.size} onChange={size => edit({ size })} />
           )}
