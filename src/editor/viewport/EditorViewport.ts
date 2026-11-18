@@ -59,7 +59,6 @@ import { disposeParticles, mountParticles } from '../../capabilities/particles/s
 import { collectNavSurfaces } from '../../capabilities/navigation/collect'
 import { syncNavDebug } from '../../capabilities/navigation/debug'
 import { consumeNavBake, navDebugGeometry } from '../../capabilities/navigation/session'
-import { bodyPoseOf } from '../../runtime/bodyPose'
 import { stepSceneRuntime } from '../../runtime/sceneRuntime'
 import '../../runtime/character'
 import '../../runtime/camera'
@@ -1972,13 +1971,6 @@ export class EditorViewport {
       const bodyKeep = node.clipPlaying ? data.actions?.get(data.activeClip ?? '') : undefined
       data.bodyBlend = this.stepBlend(data, data.bodyBlend, overlayKeep)
       data.overlayBlend = this.stepBlend(data, data.overlayBlend, bodyKeep)
-      const posed = bodyPoseOf(id)
-      if (posed !== undefined && bodyKeep) {
-        bodyKeep.paused = true
-        bodyKeep.enabled = true
-        bodyKeep.time = posed
-        bodyKeep.weight = 1
-      }
       data.mixer.update(dt)
       const action = data.actions?.get(data.activeClip ?? '')
       const overlay = data.actions?.get(data.activeOverlay ?? '')

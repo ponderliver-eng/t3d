@@ -46,6 +46,10 @@ export interface CharacterSpec {
   runClipAssetId: string
   jumpClip: string
   jumpClipAssetId: string
+  airClip: string
+  airClipAssetId: string
+  landClip: string
+  landClipAssetId: string
   dodgeClip: string
   dodgeClipAssetId: string
 }
@@ -84,6 +88,10 @@ export function defaultCharacter(): CharacterSpec {
     runClipAssetId: '',
     jumpClip: '',
     jumpClipAssetId: '',
+    airClip: '',
+    airClipAssetId: '',
+    landClip: '',
+    landClipAssetId: '',
     dodgeClip: '',
     dodgeClipAssetId: '',
   }

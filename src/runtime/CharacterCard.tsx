@@ -160,10 +160,10 @@ export function CharacterCard({ node, disabled }: { node: SceneNode, disabled: b
           <ClipField label={t('character.idle')} assetId={view.idleClipAssetId} name={view.idleClip} disabled={disabled} onChange={clip => write({ idleClip: clip?.name ?? '', idleClipAssetId: clip?.assetId ?? '' })} />
           <ClipField label={t('character.walkClip')} assetId={view.walkClipAssetId} name={view.walkClip} disabled={disabled} onChange={clip => write({ walkClip: clip?.name ?? '', walkClipAssetId: clip?.assetId ?? '' })} />
           <ClipField label={t('character.runClip')} assetId={view.runClipAssetId} name={view.runClip} disabled={disabled} onChange={clip => write({ runClip: clip?.name ?? '', runClipAssetId: clip?.assetId ?? '' })} />
-          <div className="iv2-pair">
-          <ClipField label={t('character.jumpClip')} title={t('character.jumpClipHint')} assetId={view.jumpClipAssetId} name={view.jumpClip} disabled={disabled} onChange={clip => write({ jumpClip: clip?.name ?? '', jumpClipAssetId: clip?.assetId ?? '' })} />
+          <ClipField label={t('character.jumpClip')} assetId={view.jumpClipAssetId} name={view.jumpClip} disabled={disabled} onChange={clip => write({ jumpClip: clip?.name ?? '', jumpClipAssetId: clip?.assetId ?? '' })} />
+          <ClipField label={t('character.airClip')} assetId={view.airClipAssetId} name={view.airClip} disabled={disabled} onChange={clip => write({ airClip: clip?.name ?? '', airClipAssetId: clip?.assetId ?? '' })} />
+          <ClipField label={t('character.landClip')} assetId={view.landClipAssetId} name={view.landClip} disabled={disabled} onChange={clip => write({ landClip: clip?.name ?? '', landClipAssetId: clip?.assetId ?? '' })} />
           <ClipField label={t('character.dodgeClip')} assetId={view.dodgeClipAssetId} name={view.dodgeClip} disabled={disabled} onChange={clip => write({ dodgeClip: clip?.name ?? '', dodgeClipAssetId: clip?.assetId ?? '' })} />
-          </div>
           </Section>
           <Section title={t('camera.title')} color="#7aa2ff">
             <Check label={t('camera.enable')} disabled={disabled} checked={cam.enabled} onChange={enabled => writeCam({ enabled })} />

@@ -5,7 +5,6 @@ import { emitFootstep } from './signals'
 import { carryFor } from './devices'
 import { clipDuration } from '../editor/assets/models'
 import { playBody } from '../editor/animation/director'
-import { clearBodyPose, clearBodyPoses, poseBody } from './bodyPose'
 import { useEditorStore } from '../editor/scene/store'
 import type { Vec3 } from '../editor/scene/types'
 import {
@@ -28,7 +27,7 @@ interface Motion {
   dashZ: number
   invincibleUntil: number
   clip: string
-  /** 跳跃片段被拆成起跳、滞空、落地，不按整段时间播。 */
+  /** 起跳、滞空、落地各用自己的片段。 */
   jumpPhase: 'none' | 'rise' | 'hang' | 'land'
   jumpTime: number
   path: Vec3[]
@@ -115,7 +114,6 @@ function stepCharacters(dt: number, host: SceneRuntimeHost) {
   if (state.playState !== 'playing') {
     motion.clear()
     orders.clear()
-    clearBodyPoses()
     consumeTaps()
     clearJuice()
     return
@@ -245,7 +243,7 @@ function stepCharacters(dt: number, host: SceneRuntimeHost) {
       motion.set(node.id, live)
       continue
     }
-    const clip = pickClip(spec, live.grounded, dodging, Math.hypot(moveX, moveZ) > 0.2, sprint)
+    const clip = pickClip(spec, dodging, Math.hypot(moveX, moveZ) > 0.2, sprint)
     const clipKey = clip.name ? `${clip.assetId}\0${clip.name}` : ''
     if (clipKey && clipKey !== live.clip) {
       live.clip = clipKey
@@ -253,7 +251,7 @@ function stepCharacters(dt: number, host: SceneRuntimeHost) {
       playBody(node.id, {
         clip: clip.name,
         assetId: own ? null : clip.assetId,
-        loop: clip.name !== spec.jumpClip && clip.name !== spec.dodgeClip,
+        loop: clip.name !== spec.dodgeClip && clip.name !== spec.landClip,
         fade: 0.12,
       })
     }
@@ -368,75 +366,52 @@ function steerPoint(x: number, z: number, tx: number, tz: number): { x: number, 
   return { x: dx / len, z: dz / len }
 }
 
-/** 同一段跳跃：前段跟着起跳，到顶点停在中段，着地再播末段。 */
+/** 起跳、滞空、落地各播自己的片段。没填的那一段就跳过。 */
 function stepJumpPose(id: string, ownerAssetId: string, spec: CharacterSpec, live: Motion, dt: number, jumped: boolean, dodging: boolean) {
-  if (dodging || !spec.jumpClip) {
+  const anyJump = spec.jumpClip || spec.airClip || spec.landClip
+  if (dodging || !anyJump) {
     if (live.jumpPhase !== 'none') live.clip = ''
     live.jumpPhase = 'none'
-    clearBodyPose(id)
     return
   }
-  const duration = clipDuration(spec.jumpClipAssetId || ownerAssetId, spec.jumpClip)
-  if (duration <= 0) {
-    if (live.jumpPhase !== 'none') live.clip = ''
-    live.jumpPhase = 'none'
-    clearBodyPose(id)
-    return
-  }
-  const riseEnd = duration * 0.34
-  const hangAt = duration * 0.5
-  const landAt = duration * 0.68
-  if (jumped) {
-    live.jumpPhase = 'rise'
+  const begin = (phase: Motion['jumpPhase']) => {
+    live.jumpPhase = phase
     live.jumpTime = 0
-  } else if (live.jumpPhase === 'rise') {
-    live.jumpTime = Math.min(riseEnd, live.jumpTime + dt)
-    if (live.grounded) {
-      live.jumpPhase = 'land'
-      live.jumpTime = landAt
-    } else if (live.jumpTime >= riseEnd - 1e-4 || live.vy <= 0) {
-      live.jumpPhase = 'hang'
-      live.jumpTime = hangAt
-    }
+    live.clip = ''
+  }
+  if (jumped && (spec.jumpClip || spec.airClip)) begin(spec.jumpClip ? 'rise' : 'hang')
+  else if (live.jumpPhase === 'rise') {
+    live.jumpTime += dt
+    const duration = clipDuration(spec.jumpClipAssetId || ownerAssetId, spec.jumpClip)
+    const finished = duration > 0 && live.jumpTime >= duration - 0.02
+    const falling = live.vy <= 0 && live.jumpTime >= 0.12
+    if (live.grounded) begin(spec.landClip ? 'land' : 'none')
+    else if (finished || falling) begin('hang')
   } else if (live.jumpPhase === 'hang') {
-    live.jumpTime = hangAt
-    if (live.grounded) {
-      live.jumpPhase = 'land'
-      live.jumpTime = landAt
-    }
+    if (live.grounded) begin(spec.landClip ? 'land' : 'none')
   } else if (live.jumpPhase === 'land') {
-    if (!live.grounded) {
-      live.jumpPhase = 'hang'
-      live.jumpTime = hangAt
-    } else {
-      live.jumpTime += dt
-      if (live.jumpTime >= duration) live.jumpPhase = 'none'
-    }
-  } else if (!live.grounded) {
-    live.jumpPhase = 'hang'
-    live.jumpTime = hangAt
-  }
-  if (live.jumpPhase === 'none') {
-    clearBodyPose(id)
-    return
-  }
-  const key = `jump\0${spec.jumpClipAssetId}\0${spec.jumpClip}`
-  if (live.clip !== key) {
-    live.clip = key
-    const own = !spec.jumpClipAssetId || spec.jumpClipAssetId === ownerAssetId
-    playBody(id, {
-      clip: spec.jumpClip,
-      assetId: own ? null : spec.jumpClipAssetId,
-      loop: false,
-      fade: 0.08,
-    })
-  }
-  poseBody(id, Math.min(duration, Math.max(0, live.jumpTime)))
+    live.jumpTime += dt
+    const duration = clipDuration(spec.landClipAssetId || ownerAssetId, spec.landClip)
+    const finished = (duration > 0 && live.jumpTime >= duration - 0.02) || (duration <= 0 && live.jumpTime >= 0.35)
+    if (!live.grounded) begin(spec.airClip ? 'hang' : 'none')
+    else if (finished) begin('none')
+  } else if (!live.grounded && spec.airClip) begin('hang')
+  if (live.jumpPhase === 'rise' && spec.jumpClip) playOwned(id, ownerAssetId, live, spec.jumpClip, spec.jumpClipAssetId, false)
+  else if (live.jumpPhase === 'hang' && spec.airClip) playOwned(id, ownerAssetId, live, spec.airClip, spec.airClipAssetId, true)
+  else if (live.jumpPhase === 'land' && spec.landClip) playOwned(id, ownerAssetId, live, spec.landClip, spec.landClipAssetId, false)
+  if (live.jumpPhase === 'none') live.clip = ''
 }
 
-function pickClip(spec: CharacterSpec, grounded: boolean, dodging: boolean, moving: boolean, sprint: boolean): { name: string, assetId: string } {
+function playOwned(id: string, ownerAssetId: string, live: Motion, name: string, assetId: string, loop: boolean) {
+  const key = `${loop ? 'loop' : 'once'}\0${assetId}\0${name}`
+  if (live.clip === key) return
+  live.clip = key
+  const own = !assetId || assetId === ownerAssetId
+  playBody(id, { clip: name, assetId: own ? null : assetId, loop, fade: 0.1 })
+}
+
+function pickClip(spec: CharacterSpec, dodging: boolean, moving: boolean, sprint: boolean): { name: string, assetId: string } {
   if (dodging && spec.dodgeClip) return { name: spec.dodgeClip, assetId: spec.dodgeClipAssetId }
-  if (!grounded && spec.jumpClip) return { name: spec.jumpClip, assetId: spec.jumpClipAssetId }
   if (moving && sprint && spec.runClip) return { name: spec.runClip, assetId: spec.runClipAssetId }
   if (moving && spec.walkClip) return { name: spec.walkClip, assetId: spec.walkClipAssetId }
   return { name: spec.idleClip, assetId: spec.idleClipAssetId }
