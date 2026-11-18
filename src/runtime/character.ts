@@ -410,7 +410,6 @@ function stepJumpPose(id: string, ownerAssetId: string, spec: CharacterSpec, liv
   if (live.jumpPhase === 'rise' && spec.jumpClip) playOwned(id, ownerAssetId, live, spec.jumpClip, spec.jumpClipAssetId, false)
   else if (live.jumpPhase === 'hang' && spec.airClip) playOwned(id, ownerAssetId, live, spec.airClip, spec.airClipAssetId, true)
   else if (live.jumpPhase === 'land' && spec.landClip) playOwned(id, ownerAssetId, live, spec.landClip, spec.landClipAssetId, false)
-  if (live.jumpPhase === 'none') live.clip = ''
 }
 
 function playOwned(id: string, ownerAssetId: string, live: Motion, name: string, assetId: string, loop: boolean) {

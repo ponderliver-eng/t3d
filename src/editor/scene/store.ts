@@ -177,6 +177,7 @@ export interface EditorState {
     calls: number
     fps: number
     frameMs: number
+    costs: { id: string, ms: number }[]
     camera: [number, number, number]
     orbit: number
   }
@@ -345,7 +346,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   navMeshVisible: true,
   snapStep: 1,
   canPaste: false,
-  viewportStats: { objects: 0, triangles: 0, vertices: 0, materials: 0, textures: 0, calls: 0, fps: 0, frameMs: 0, camera: [0, 0, 0], orbit: 0 },
+  viewportStats: { objects: 0, triangles: 0, vertices: 0, materials: 0, textures: 0, calls: 0, fps: 0, frameMs: 0, costs: [], camera: [0, 0, 0], orbit: 0 },
   playPicture: null,
   prefabSession: null,
 

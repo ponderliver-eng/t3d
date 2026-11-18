@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { CLIP_MIME, readClipDrag } from '../animation/playback'
 import { ASSET_MIME, assignClip, importFiles, placeAsset } from '../assets/import'
+import { subscribeWarmProgress, warmProgress } from '../assets/project'
 import { useI18n, type MessageKey } from '../i18n'
 import type { CameraView } from '../scene/types'
 import { useAssetStore } from '../assets/library'
@@ -39,6 +40,7 @@ export default function ViewportPanel() {
   const snapStep = useEditorStore(state => state.snapStep)
   const stats = useEditorStore(state => state.viewportStats)
   const view = useEditorStore(state => state.cameraView)
+  const warming = useSyncExternalStore(subscribeWarmProgress, warmProgress)
   const origin = useEditorStore(state => state.gizmoOrigin)
   const [menu, setMenu] = useState<'view' | 'gizmo' | null>(null)
   const [statsOpen, setStatsOpen] = useState(false)
@@ -210,6 +212,12 @@ export default function ViewportPanel() {
       >
         <canvas ref={canvasRef} />
         {playState !== 'stopped' && <PlayUiOverlay />}
+        {warming && warming.total > 0 && (
+          <div className="viewport-warm">
+            <span>{t('status.warming', { completed: warming.completed, total: warming.total })}</span>
+            <div className="viewport-warm__bar"><i style={{ width: `${Math.min(100, (warming.completed / warming.total) * 100)}%` }} /></div>
+          </div>
+        )}
         <div className="viewport-stats">{t('view.stats', { objects: stats.objects, triangles: stats.triangles.toLocaleString() })}</div>
         {statsOpen && <ViewportStatsDrawer onClose={() => setStatsOpen(false)} />}
       </div>

@@ -4,6 +4,7 @@ import { tickNavigation } from '../capabilities/navigation/session'
 import { tickParticles } from '../capabilities/particles/session'
 import type { SceneNode, Vec3 } from '../editor/scene/types'
 import { scalePlayDt } from '../gameplay/juiceClock'
+import { measureCost } from './frameProfile'
 
 /**
  * 核心玩法包（Core Pack）与领域包（Domain Packs）在节点上的统一挂载契约。
@@ -623,16 +624,16 @@ export function registerRuntimeSystem(id: string, order: number, step: RuntimeSy
 export function stepSceneRuntime(dt: number, host: SceneRuntimeHost) {
   const scaled = scalePlayDt(dt)
   for (const system of systems) {
-    system.step(scaled, host)
+    measureCost(system.id, () => system.step(scaled, host))
   }
-  tickPhysics(scaled, host.resolveObject)
-  tickNavigation()
+  measureCost('physics', () => tickPhysics(scaled, host.resolveObject))
+  measureCost('navigation', () => tickNavigation())
   if (host.ready) {
-    host.updateAnimations(scaled)
+    measureCost('animation', () => host.updateAnimations(scaled))
     for (const system of postAnimationSystems) {
-      system.step(scaled, host)
+      measureCost(system.id, () => system.step(scaled, host))
     }
-    tickParticles(scaled, host.resolveObject)
+    measureCost('particles', () => tickParticles(scaled, host.resolveObject))
   }
 }
 

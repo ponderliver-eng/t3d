@@ -14,6 +14,7 @@ function fmtNum(n: number): string {
 }
 
 const COLLAPSE_KEY = 't3d-viewport-stats-collapsed'
+const COST_KEY = 't3d-viewport-costs-open'
 
 function readCollapsed(): boolean {
   try {
@@ -23,9 +24,24 @@ function readCollapsed(): boolean {
   }
 }
 
+function readCostsOpen(): boolean {
+  try {
+    return localStorage.getItem(COST_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
+function costName(id: string, t: (key: 'view.costTitle') => string): string {
+  const key = `view.cost.${id}`
+  const label = t(key as 'view.costTitle')
+  return label === key ? id : label
+}
+
 export function ViewportStatsDrawer({ onClose }: { onClose: () => void }) {
   const { t } = useI18n()
   const [collapsed, setCollapsed] = useState(readCollapsed)
+  const [costsOpen, setCostsOpen] = useState(readCostsOpen)
   const stats = useEditorStore(state => state.viewportStats)
   const backend = useEditorStore(state => state.renderBackend)
   const nodes = useEditorStore(state => state.nodes)
@@ -88,6 +104,13 @@ export function ViewportStatsDrawer({ onClose }: { onClose: () => void }) {
         </div>
       </div>
       {!collapsed && <div className="viewport-stats-drawer__body">
+        <CostList open={costsOpen} costs={stats.costs} onToggle={() => {
+          setCostsOpen(value => {
+            const next = !value
+            try { localStorage.setItem(COST_KEY, next ? '1' : '0') } catch { /* 折叠状态写不进去也不影响这次显示 */ }
+            return next
+          })
+        }} />
         <div className="viewport-stats-drawer__section">
           <div className="viewport-stats-drawer__section-title"><BarChart3 size={11} /> {t('view.statsRender')}</div>
           <div className="viewport-stats-drawer__grid">
@@ -118,6 +141,33 @@ export function ViewportStatsDrawer({ onClose }: { onClose: () => void }) {
           </div>
         </div>
       </div>}
+    </div>
+  )
+}
+
+function CostList({ open, costs, onToggle }: { open: boolean, costs: { id: string, ms: number }[], onToggle: () => void }) {
+  const { t } = useI18n()
+  const top = costs[0]?.ms ?? 0
+  return (
+    <div className="viewport-stats-drawer__section">
+      <button type="button" className="viewport-stats-drawer__section-title viewport-stats-drawer__cost-toggle" onClick={onToggle}>
+        {open ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
+        {t('view.costTitle')}
+        <span>{t('view.costHint')}</span>
+      </button>
+      {open && (
+        <div className="viewport-stats-drawer__costs">
+          {top <= 0 && <div className="viewport-stats-drawer__cost-empty">{t('view.statsIdle')}</div>}
+          {costs.map((row, index) => (
+            <div key={row.id} className="viewport-stats-drawer__cost">
+              <span className="viewport-stats-drawer__cost-rank">{index + 1}</span>
+              <span className="viewport-stats-drawer__cost-name">{costName(row.id, t)}</span>
+              <strong>{row.ms.toFixed(1)} ms</strong>
+              <i style={{ width: `${top > 0 ? Math.max(6, (row.ms / top) * 100) : 0}%` }} />
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }

@@ -59,6 +59,7 @@ import { disposeParticles, mountParticles } from '../../capabilities/particles/s
 import { collectNavSurfaces } from '../../capabilities/navigation/collect'
 import { syncNavDebug } from '../../capabilities/navigation/debug'
 import { consumeNavBake, navDebugGeometry } from '../../capabilities/navigation/session'
+import { beginFrameCosts, measureCost, takeCostAverages } from '../../runtime/frameProfile'
 import { stepSceneRuntime } from '../../runtime/sceneRuntime'
 import '../../runtime/character'
 import '../../runtime/camera'
@@ -1272,11 +1273,14 @@ export class EditorViewport {
       this.fpsFrames += 1
       this.fpsAccum += elapsed
     }
+    beginFrameCosts()
     if (this.playCameraLocked()) this.rig.pointerUp()
     // 试玩时 WASD 属于角色。编辑飞行用的是同一组键，相机会跑得比角色快，画面上就像在倒着走。
-    this.rig.update(dt, useEditorStore.getState().playState !== 'playing')
-    this.commitView()
-    this.placeGrid()
+    measureCost('rig', () => {
+      this.rig.update(dt, useEditorStore.getState().playState !== 'playing')
+      this.commitView()
+      this.placeGrid()
+    })
     const bake = consumeNavBake()
     if (bake) {
       const roots = bake.surfaceIds.flatMap(id => {
@@ -1351,25 +1355,29 @@ export class EditorViewport {
       const picture = useEditorStore.getState().picture
       if (!picture.volume) this.volumeMuted = false
       try {
-        this.applyPicture()
-        if (this.volumeMuted) this.volume.mesh.visible = false
-        runBeforeRenderHooks({
-          renderer: this.renderer,
-          scene: this.scene,
-          camera,
-          width: this.width,
-          height: this.height,
-          dt,
+        measureCost('picture', () => {
+          this.applyPicture()
+          if (this.volumeMuted) this.volume.mesh.visible = false
+          runBeforeRenderHooks({
+            renderer: this.renderer,
+            scene: this.scene,
+            camera,
+            width: this.width,
+            height: this.height,
+            dt,
+          })
         })
         this.renderer.info.reset()
         const outlineTargets = editor.playState === 'stopped' ? this.selectionRoots : []
         const flashTarget = editor.playState === 'stopped' ? this.partFlashTarget : null
         const hasOutline = outlineTargets.length > 0 || flashTarget !== null
-        if (!this.picture.usesEffects(picture, hasOutline)) {
-          this.renderer.render(this.scene, camera)
-        } else {
-          this.picture.render(this.scene, camera, picture, this.width, this.height, outlineTargets, flashTarget)
-        }
+        measureCost('render', () => {
+          if (!this.picture?.usesEffects(picture, hasOutline)) {
+            this.renderer.render(this.scene, camera)
+          } else {
+            this.picture?.render(this.scene, camera, picture, this.width, this.height, outlineTargets, flashTarget)
+          }
+        })
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error)
         console.error(error)
@@ -1646,6 +1654,7 @@ export class EditorViewport {
       calls: info.drawCalls,
       fps: Math.round(fps * 10) / 10,
       frameMs: Math.round(frameMs * 10) / 10,
+      costs: takeCostAverages().map(row => ({ id: row.id, ms: Math.round(row.ms * 10) / 10 })),
       camera: [camera.x, camera.y, camera.z],
       orbit: this.rig.orbitDistance,
     })

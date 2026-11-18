@@ -1,4 +1,4 @@
-import { AnimationClip, Group, Mesh, MeshStandardMaterial, Object3D, Vector3, type BufferGeometry, type Material } from 'three'
+import { AnimationClip, Group, Mesh, MeshStandardMaterial, Object3D, Vector3, type BufferGeometry, type Material, type Skeleton } from 'three'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js'
 import { OBJLoader } from 'three/addons/loaders/OBJLoader.js'
@@ -375,6 +375,7 @@ export function instantiateModel(assetId: string): { object: Object3D, clips: An
   const template = getModelTemplate(assetId)
   if (!template) return null
   const object = cloneSkinned(template.scene)
+  shareSkeletons(object)
   object.traverse(child => {
     const mesh = child as Mesh
     if (!mesh.isMesh) return
@@ -585,7 +586,25 @@ function templateFromObject(object: Object3D, clips: AnimationClip[]): ModelTemp
     }
   })
   const slots = readSlots(scene)
+  for (const clip of clips) {
+    if (clip.tracks.length > 64) clip.optimize()
+  }
   return { scene, clips, slots, humanoid: describeHumanoid(scene, clips), tree: describeModelTree(scene) }
+}
+
+/** 多块蒙皮网格如果绑的是同一套骨骼，只留一份骨架。否则每帧会按网格数量重复上传骨骼矩阵。 */
+function shareSkeletons(root: Object3D) {
+  const shared = new Map<string, Skeleton>()
+  root.traverse(child => {
+    const mesh = child as Mesh & { isSkinnedMesh?: boolean, skeleton?: Skeleton }
+    const skeleton = mesh.skeleton
+    if (!mesh.isSkinnedMesh || !skeleton || skeleton.bones.length === 0) return
+    let key = String(skeleton.bones.length)
+    for (let i = 0; i < skeleton.bones.length; i += 1) key += `|${skeleton.bones[i].uuid}`
+    const existing = shared.get(key)
+    if (existing) mesh.skeleton = existing
+    else shared.set(key, skeleton)
+  })
 }
 
 function rememberClipCatalog(assetId: string, clips: AnimationClip[]) {
