@@ -59,6 +59,7 @@ import { disposeParticles, mountParticles } from '../../capabilities/particles/s
 import { collectNavSurfaces } from '../../capabilities/navigation/collect'
 import { syncNavDebug } from '../../capabilities/navigation/debug'
 import { consumeNavBake, navDebugGeometry } from '../../capabilities/navigation/session'
+import { bodyPoseOf } from '../../runtime/bodyPose'
 import { stepSceneRuntime } from '../../runtime/sceneRuntime'
 import '../../runtime/character'
 import '../../runtime/camera'
@@ -192,6 +193,7 @@ export class EditorViewport {
   private clickPoints: { left: [number, number, number] | null, right: [number, number, number] | null } = { left: null, right: null }
   private clickHits: { left: { nodeId: string | null, point: [number, number, number] } | null, right: { nodeId: string | null, point: [number, number, number] } | null } = { left: null, right: null }
   private pointerDelta = { x: 0, y: 0 }
+  private lookLockRequested = false
   private pointerNorm = { x: 0, y: 0 }
   private playMarqueeEnabled = false
   private playMarqueeResult: { ids: string[], additive: boolean } | null = null
@@ -282,6 +284,7 @@ export class EditorViewport {
     this.canvas.addEventListener('dblclick', this.onDoubleClick)
     this.canvas.addEventListener('wheel', this.onWheel, { passive: false })
     this.canvas.addEventListener('contextmenu', this.onContext)
+    document.addEventListener('pointerlockchange', this.onPointerLockChange)
 
     this.resizeObserver = new ResizeObserver(() => this.resize())
     this.resizeObserver.observe(stage)
@@ -331,6 +334,8 @@ export class EditorViewport {
     this.clearPartFlash()
     this.canvas.removeEventListener('wheel', this.onWheel)
     this.canvas.removeEventListener('contextmenu', this.onContext)
+    document.removeEventListener('pointerlockchange', this.onPointerLockChange)
+    if (document.pointerLockElement === this.canvas) document.exitPointerLock()
     disposeParticles()
     this.volume.dispose()
     this.picture?.dispose()
@@ -374,6 +379,7 @@ export class EditorViewport {
       }
     }
     this.sync()
+    this.syncPointerLock(false)
   }
 
   private sync() {
@@ -866,7 +872,40 @@ export class EditorViewport {
     this.rig.focus(center, radius)
   }
 
+  private onPointerLockChange = () => {
+    if (document.pointerLockElement === this.canvas) {
+      this.pointerDelta = { x: 0, y: 0 }
+      this.lookLockRequested = true
+      return
+    }
+    this.lookLockRequested = false
+  }
+
+  /** 第一人称试玩时把光标锁在视口里，避免鼠标顶到窗口边缘就转不动。Esc 或停止试玩会放开。 */
+  private wantsCursorLock(): boolean {
+    const state = useEditorStore.getState()
+    if (state.playState !== 'playing') return false
+    return Object.values(state.nodes).some(node => {
+      const character = node.gameplay?.character
+      return character?.enabled === true && character.mode === 'firstPerson' && node.gameplay?.cameraFollow?.enabled !== false
+    })
+  }
+
+  private syncPointerLock(gesture: boolean) {
+    if (!this.wantsCursorLock()) {
+      this.lookLockRequested = false
+      if (document.pointerLockElement === this.canvas) document.exitPointerLock()
+      return
+    }
+    if (document.pointerLockElement === this.canvas) return
+    if (this.lookLockRequested && !gesture) return
+    this.lookLockRequested = true
+    const pending = this.canvas.requestPointerLock()
+    void Promise.resolve(pending).catch(() => { this.lookLockRequested = false })
+  }
+
   private onPointerDown = (event: PointerEvent) => {
+    this.syncPointerLock(true)
     const active = document.activeElement as HTMLElement | null
     if (active && active !== this.canvas && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA')) active.blur()
     const gizmo = this.transform.axis !== null && event.button === 0 && !event.altKey
@@ -1933,6 +1972,13 @@ export class EditorViewport {
       const bodyKeep = node.clipPlaying ? data.actions?.get(data.activeClip ?? '') : undefined
       data.bodyBlend = this.stepBlend(data, data.bodyBlend, overlayKeep)
       data.overlayBlend = this.stepBlend(data, data.overlayBlend, bodyKeep)
+      const posed = bodyPoseOf(id)
+      if (posed !== undefined && bodyKeep) {
+        bodyKeep.paused = true
+        bodyKeep.enabled = true
+        bodyKeep.time = posed
+        bodyKeep.weight = 1
+      }
       data.mixer.update(dt)
       const action = data.actions?.get(data.activeClip ?? '')
       const overlay = data.actions?.get(data.activeOverlay ?? '')

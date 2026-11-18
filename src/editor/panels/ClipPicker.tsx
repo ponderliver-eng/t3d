@@ -15,12 +15,14 @@ export function ClipField({
   assetId,
   name,
   disabled,
+  title,
   onChange,
 }: {
   label?: string
   assetId: string
   name: string
   disabled?: boolean
+  title?: string
   onChange: (next: ClipSelection | null) => void
 }) {
   const { t } = useI18n()
@@ -35,7 +37,7 @@ export function ClipField({
     ? (current ? `${current.assetName} / ${current.name}` : name)
     : t('picker.none')
   const button = (
-    <button type="button" className="asset-ref" disabled={disabled} onClick={() => setOpen(true)}>
+    <button type="button" className="asset-ref" disabled={disabled} title={title} onClick={() => setOpen(true)}>
       <span>{shown}</span>
       <Search size={12} />
     </button>

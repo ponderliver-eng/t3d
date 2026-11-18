@@ -161,7 +161,7 @@ export function CharacterCard({ node, disabled }: { node: SceneNode, disabled: b
           <ClipField label={t('character.walkClip')} assetId={view.walkClipAssetId} name={view.walkClip} disabled={disabled} onChange={clip => write({ walkClip: clip?.name ?? '', walkClipAssetId: clip?.assetId ?? '' })} />
           <ClipField label={t('character.runClip')} assetId={view.runClipAssetId} name={view.runClip} disabled={disabled} onChange={clip => write({ runClip: clip?.name ?? '', runClipAssetId: clip?.assetId ?? '' })} />
           <div className="iv2-pair">
-          <ClipField label={t('character.jumpClip')} assetId={view.jumpClipAssetId} name={view.jumpClip} disabled={disabled} onChange={clip => write({ jumpClip: clip?.name ?? '', jumpClipAssetId: clip?.assetId ?? '' })} />
+          <ClipField label={t('character.jumpClip')} title={t('character.jumpClipHint')} assetId={view.jumpClipAssetId} name={view.jumpClip} disabled={disabled} onChange={clip => write({ jumpClip: clip?.name ?? '', jumpClipAssetId: clip?.assetId ?? '' })} />
           <ClipField label={t('character.dodgeClip')} assetId={view.dodgeClipAssetId} name={view.dodgeClip} disabled={disabled} onChange={clip => write({ dodgeClip: clip?.name ?? '', dodgeClipAssetId: clip?.assetId ?? '' })} />
           </div>
           </Section>

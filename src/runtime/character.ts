@@ -3,7 +3,9 @@ import { addRuntimeTag } from '../gameplay/runtimeTags'
 import { clearJuice } from '../gameplay/juiceClock'
 import { emitFootstep } from './signals'
 import { carryFor } from './devices'
+import { clipDuration } from '../editor/assets/models'
 import { playBody } from '../editor/animation/director'
+import { clearBodyPose, clearBodyPoses, poseBody } from './bodyPose'
 import { useEditorStore } from '../editor/scene/store'
 import type { Vec3 } from '../editor/scene/types'
 import {
@@ -26,6 +28,9 @@ interface Motion {
   dashZ: number
   invincibleUntil: number
   clip: string
+  /** 跳跃片段被拆成起跳、滞空、落地，不按整段时间播。 */
+  jumpPhase: 'none' | 'rise' | 'hang' | 'land'
+  jumpTime: number
   path: Vec3[]
   pathIndex: number
   footstep: number
@@ -110,6 +115,7 @@ function stepCharacters(dt: number, host: SceneRuntimeHost) {
   if (state.playState !== 'playing') {
     motion.clear()
     orders.clear()
+    clearBodyPoses()
     consumeTaps()
     clearJuice()
     return
@@ -192,11 +198,13 @@ function stepCharacters(dt: number, host: SceneRuntimeHost) {
     if (tapped('Space')) live.jumpBufferUntil = now + spec.jumpBuffer
     if (onGround && live.vy <= 0) live.jumpsUsed = 0
     const canJump = (coyote && live.jumpsUsed === 0) || (!onGround && live.jumpsUsed > 0 && live.jumpsUsed < spec.maxJumps) || (onGround && live.jumpsUsed < spec.maxJumps)
+    let jumped = false
     if (now <= live.jumpBufferUntil && canJump && !dodging) {
       live.vy = spec.jumpSpeed
       live.jumpsUsed += 1
       live.jumpBufferUntil = 0
       live.lastGrounded = -999
+      jumped = true
     }
     live.grounded = onGround && live.vy <= 0
     if (live.grounded) live.vy = 0
@@ -232,6 +240,11 @@ function stepCharacters(dt: number, host: SceneRuntimeHost) {
       live.yaw = stepYaw(live.yaw, face, rate * dt)
     }
     object.quaternion.set(0, Math.sin(live.yaw / 2), 0, Math.cos(live.yaw / 2))
+    stepJumpPose(node.id, node.assetId ?? '', spec, live, dt, jumped, dodging)
+    if (live.jumpPhase !== 'none') {
+      motion.set(node.id, live)
+      continue
+    }
     const clip = pickClip(spec, live.grounded, dodging, Math.hypot(moveX, moveZ) > 0.2, sprint)
     const clipKey = clip.name ? `${clip.assetId}\0${clip.name}` : ''
     if (clipKey && clipKey !== live.clip) {
@@ -253,7 +266,7 @@ function freshMotion(yaw: number): Motion {
   return {
     yaw, vy: 0, grounded: false, lastGrounded: 0, jumpBufferUntil: 0, jumpsUsed: 0,
     dashUntil: 0, dashReady: 0, dashX: 0, dashZ: 1, invincibleUntil: 0,
-    clip: '', path: [], pathIndex: 0, footstep: 0, footsteps: 0,
+    clip: '', jumpPhase: 'none', jumpTime: 0, path: [], pathIndex: 0, footstep: 0, footsteps: 0,
   }
 }
 
@@ -293,7 +306,8 @@ function facingBasis(
     }
   }
   if (spec.mode === 'strafe' || spec.mode === 'firstPerson' || spec.mode === 'lockOn') {
-    return { moveYaw: cameraYaw, faceYaw: cameraYaw, lock: true }
+    // 镜头朝向是视线的 -Z；角色正面是模型的 +Z，同一个角会让脸和镜头相反。
+    return { moveYaw: cameraYaw, faceYaw: cameraYaw + Math.PI, lock: true }
   }
   return { moveYaw: cameraYaw, faceYaw: cameraYaw, lock: false }
 }
@@ -352,6 +366,72 @@ function steerPoint(x: number, z: number, tx: number, tz: number): { x: number, 
   const dz = tz - z
   const len = Math.hypot(dx, dz) || 1
   return { x: dx / len, z: dz / len }
+}
+
+/** 同一段跳跃：前段跟着起跳，到顶点停在中段，着地再播末段。 */
+function stepJumpPose(id: string, ownerAssetId: string, spec: CharacterSpec, live: Motion, dt: number, jumped: boolean, dodging: boolean) {
+  if (dodging || !spec.jumpClip) {
+    if (live.jumpPhase !== 'none') live.clip = ''
+    live.jumpPhase = 'none'
+    clearBodyPose(id)
+    return
+  }
+  const duration = clipDuration(spec.jumpClipAssetId || ownerAssetId, spec.jumpClip)
+  if (duration <= 0) {
+    if (live.jumpPhase !== 'none') live.clip = ''
+    live.jumpPhase = 'none'
+    clearBodyPose(id)
+    return
+  }
+  const riseEnd = duration * 0.34
+  const hangAt = duration * 0.5
+  const landAt = duration * 0.68
+  if (jumped) {
+    live.jumpPhase = 'rise'
+    live.jumpTime = 0
+  } else if (live.jumpPhase === 'rise') {
+    live.jumpTime = Math.min(riseEnd, live.jumpTime + dt)
+    if (live.grounded) {
+      live.jumpPhase = 'land'
+      live.jumpTime = landAt
+    } else if (live.jumpTime >= riseEnd - 1e-4 || live.vy <= 0) {
+      live.jumpPhase = 'hang'
+      live.jumpTime = hangAt
+    }
+  } else if (live.jumpPhase === 'hang') {
+    live.jumpTime = hangAt
+    if (live.grounded) {
+      live.jumpPhase = 'land'
+      live.jumpTime = landAt
+    }
+  } else if (live.jumpPhase === 'land') {
+    if (!live.grounded) {
+      live.jumpPhase = 'hang'
+      live.jumpTime = hangAt
+    } else {
+      live.jumpTime += dt
+      if (live.jumpTime >= duration) live.jumpPhase = 'none'
+    }
+  } else if (!live.grounded) {
+    live.jumpPhase = 'hang'
+    live.jumpTime = hangAt
+  }
+  if (live.jumpPhase === 'none') {
+    clearBodyPose(id)
+    return
+  }
+  const key = `jump\0${spec.jumpClipAssetId}\0${spec.jumpClip}`
+  if (live.clip !== key) {
+    live.clip = key
+    const own = !spec.jumpClipAssetId || spec.jumpClipAssetId === ownerAssetId
+    playBody(id, {
+      clip: spec.jumpClip,
+      assetId: own ? null : spec.jumpClipAssetId,
+      loop: false,
+      fade: 0.08,
+    })
+  }
+  poseBody(id, Math.min(duration, Math.max(0, live.jumpTime)))
 }
 
 function pickClip(spec: CharacterSpec, grounded: boolean, dodging: boolean, moving: boolean, sprint: boolean): { name: string, assetId: string } {
