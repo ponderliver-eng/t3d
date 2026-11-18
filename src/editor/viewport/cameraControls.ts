@@ -210,7 +210,7 @@ export class EditorCameraRig {
   focus(center: Vector3, radius: number, flat = false) {
     this.pivot.copy(center)
     if (this.view !== 'persp') {
-      this.orthoSize = Math.max(radius * 1.8, 1.4)
+      this.orthoSize = Math.max(radius * 1.45, 1.1)
       const direction = new Vector3()
       this.ortho.getWorldDirection(direction)
       this.ortho.position.copy(center).addScaledVector(direction, -16)
@@ -222,7 +222,7 @@ export class EditorCameraRig {
       this.pitch = -0.55
       this.writeYawPitch()
     }
-    this.orbitDistance = Math.max(radius * 4.4, 3.6)
+    this.orbitDistance = Math.max(radius * 3.2, 2.6)
     this.persp.position.copy(center).addScaledVector(this.forward(), -this.orbitDistance)
   }
 
