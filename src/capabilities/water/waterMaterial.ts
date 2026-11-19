@@ -12,6 +12,7 @@ import {
   length,
   linearDepth,
   max,
+  min,
   mix,
   normalize,
   positionLocal,
@@ -32,20 +33,39 @@ import {
   viewportSharedTexture,
 } from 'three/tsl'
 import type { WaterSpec } from './defaults'
-import { defaultWaterFoamTexture, defaultWaterNormalTexture } from './proceduralTextures'
+import { defaultWaterCausticsTexture, defaultWaterFoamTexture, defaultWaterNormalTexture } from './proceduralTextures'
+
+export interface WaterMaterialOptions {
+  /** 是否开启真实平面反射（关闭时不创建 reflector，真正省掉整趟离屏反射渲染）。 */
+  planar: boolean
+  /** 是否开启屏幕空间折射与水底采样。 */
+  refraction: boolean
+  /** 是否开启浅水焦散光斑。 */
+  caustics: boolean
+  /** 是否使用 4 层高细节法线（关闭时降为 2 层以节省纹理采样）。 */
+  highDetail: boolean
+  /** 顶点波浪位移的局部轴：自带旋转 -90° 的平面用 'z'，普通未旋转模型用 'y'。 */
+  upAxis: 'y' | 'z'
+}
 
 export interface WaterMaterialHandle {
+  variantKey: string
   material: MeshBasicNodeMaterial
-  reflectionTarget: Object3D
+  reflectionTarget: Object3D | null
   setSpec: (spec: WaterSpec, customNormal: Texture | null, customFoam: Texture | null) => void
   setTime: (time: number) => void
-  setSun: (direction: Vector3, color: Color, intensity: number) => void
+  setSun: (direction: Vector3, color: Color, intensity: number, skyHorizon?: Color, skyTop?: Color) => void
   dispose: () => void
 }
 
-export function createWaterMaterial(): WaterMaterialHandle {
+export function waterVariantKey(opts: WaterMaterialOptions): string {
+  return `${opts.planar ? 1 : 0}|${opts.refraction ? 1 : 0}|${opts.caustics ? 1 : 0}|${opts.highDetail ? 1 : 0}|${opts.upAxis}`
+}
+
+export function createWaterMaterial(options: WaterMaterialOptions): WaterMaterialHandle {
   const defaultNormal = defaultWaterNormalTexture()
   const defaultFoam = defaultWaterFoamTexture()
+  const defaultCaustics = defaultWaterCausticsTexture()
 
   const uTime = uniform(0)
   const uShallowColor = uniform(new Color('#14b8a6'))
@@ -70,13 +90,17 @@ export function createWaterMaterial(): WaterMaterialHandle {
   const uFoamWidth = uniform(0.28)
   const uFoamIntensity = uniform(0.9)
   const uCrestFoam = uniform(0.65)
+  const uShoreFoamOn = uniform(1)
+  const uSoftEdge = uniform(0.08)
+  const uCausticsStrength = uniform(0.7)
+  const uCausticsScale = uniform(0.22)
   const uWaveHeight = uniform(0)
-  const uUsePlanar = uniform(1)
 
   const normalTexNode = texture(defaultNormal)
   const foamTexNode = texture(defaultFoam)
+  const causticsTexNode = texture(defaultCaustics)
 
-  // 1. 4 组主风向扇区 Gerstner 浪（非正交、非整数倍波长，形成自然长条浪脊而非圆形蛋托）
+  // 1. 4 组主风向扇区波浪（兼容局部 Z 轴朝上平面与普通 Y 轴朝上模型）
   const dir1 = uFlowDir
   const dir2 = normalize(vec2(uFlowDir.x.mul(0.92).sub(uFlowDir.y.mul(0.39)), uFlowDir.x.mul(0.39).add(uFlowDir.y.mul(0.92))))
   const dir3 = normalize(vec2(uFlowDir.x.mul(0.88).add(uFlowDir.y.mul(0.47)), uFlowDir.y.mul(0.88).sub(uFlowDir.x.mul(0.47))))
@@ -98,11 +122,9 @@ export function createWaterMaterial(): WaterMaterialHandle {
   const s4 = sin(p4)
   const waveNorm = s1.mul(0.46).add(s2.mul(0.28)).add(s3.mul(0.16)).add(s4.mul(0.10))
   const waveOffset = waveNorm.mul(uWaveHeight)
-  const displacedLocal = vec3(
-    positionLocal.x,
-    positionLocal.y,
-    positionLocal.z.add(waveOffset),
-  )
+  const displacedLocal = options.upAxis === 'z'
+    ? vec3(positionLocal.x, positionLocal.y, positionLocal.z.add(waveOffset))
+    : vec3(positionLocal.x, positionLocal.y.add(waveOffset), positionLocal.z)
 
   const dWaveDxz = dir1.mul(cos(p1).mul(k1).mul(0.46))
     .add(dir2.mul(cos(p2).mul(k2).mul(0.28)))
@@ -110,24 +132,27 @@ export function createWaterMaterial(): WaterMaterialHandle {
     .add(dir4.mul(cos(p4).mul(k4).mul(0.10)))
     .mul(uWaveHeight)
 
-  // 2. Water Pro 核心：4 层非整数倍缩放、多向流动的高频细腻法线（保持远景平滑、近景碎波丰富）
+  // 2. 多向流动法线（highDetail 时 4 层精细叠加，轻量模式下 2 层省采样）
   const baseUv = positionWorld.xz.mul(uWaveScale)
   const flow = uFlowDir.mul(uTime.mul(uFlowSpeed.mul(0.05)))
   const flowOrtho = vec2(uFlowDir.y.negate(), uFlowDir.x).mul(uTime.mul(uFlowSpeed.mul(0.038)))
 
   const n1 = normalTexNode.sample(baseUv.mul(0.37).add(flow.mul(0.7))).xyz.mul(2.0).sub(1.0)
   const n2 = normalTexNode.sample(baseUv.mul(0.91).sub(flowOrtho.mul(0.9))).xyz.mul(2.0).sub(1.0)
-  const n3 = normalTexNode.sample(baseUv.mul(2.13).add(flow.mul(1.3).add(flowOrtho.mul(0.4)))).xyz.mul(2.0).sub(1.0)
-  const n4 = normalTexNode.sample(baseUv.mul(4.71).sub(flow.mul(0.8).sub(flowOrtho.mul(1.2)))).xyz.mul(2.0).sub(1.0)
+  let nAvg = n1.mul(0.54).add(n2.mul(0.46))
+  let nCrisp = n2
+  if (options.highDetail) {
+    const n3 = normalTexNode.sample(baseUv.mul(2.13).add(flow.mul(1.3).add(flowOrtho.mul(0.4)))).xyz.mul(2.0).sub(1.0)
+    const n4 = normalTexNode.sample(baseUv.mul(4.71).sub(flow.mul(0.8).sub(flowOrtho.mul(1.2)))).xyz.mul(2.0).sub(1.0)
+    nAvg = n1.mul(0.32).add(n2.mul(0.28)).add(n3.mul(0.24)).add(n4.mul(0.16))
+    nCrisp = n2.mul(0.25).add(n3.mul(0.4)).add(n4.mul(0.35))
+  }
 
-  const nAvg = n1.mul(0.32).add(n2.mul(0.28)).add(n3.mul(0.24)).add(n4.mul(0.16))
   const surfaceNormal = normalize(vec3(
     nAvg.x.mul(uNormalScale).sub(dWaveDxz.x.mul(1.2)),
     float(1.0),
     nAvg.y.mul(uNormalScale).sub(dWaveDxz.y.mul(1.2)),
   ))
-  // 高光专用更锐利的高频微法线，切出细碎尖锐的波光闪点
-  const nCrisp = n2.mul(0.25).add(n3.mul(0.4)).add(n4.mul(0.35))
   const crispNormal = normalize(vec3(
     nCrisp.x.mul(uNormalScale).mul(1.45).sub(dWaveDxz.x.mul(1.1)),
     float(1.0),
@@ -146,37 +171,69 @@ export function createWaterMaterial(): WaterMaterialHandle {
     float(1.0),
   )
 
-  // 4. Three.js 原生 TSL reflector() 平面反射 + 距离自适应法线扰动
+  // 4. 反射：仅当 planar === true 时创建 reflector()，关闭时真正零反射渲染开销
   const distortion = surfaceNormal.xz.mul(float(0.008).add(float(0.18).div(max(eyeDist, float(1.0))))).mul(uNormalScale)
-  const mirrorSampler = reflector({ resolutionScale: 0.5 })
-  if (mirrorSampler.uvNode) mirrorSampler.uvNode = mirrorSampler.uvNode.add(distortion)
-
   const reflDir = normalize(reflect(viewVec.negate(), surfaceNormal))
   const skyGrad = smoothstep(float(0.0), float(0.5), max(reflDir.y, float(0.0)))
   const fallbackReflection = mix(uSkyHorizonColor, uSkyTopColor, skyGrad)
-  const reflectionColor = mix(fallbackReflection, mirrorSampler.rgb, uUsePlanar)
 
-  // 5. 水深计算 + 屏幕空间折射（防面上方物体边缘鬼影）
+  let reflectionTarget: Object3D | null = null
+  let mirrorReflector: ReturnType<typeof reflector> | null = null
+  let reflectionColor = fallbackReflection
+  if (options.planar) {
+    mirrorReflector = reflector({ resolutionScale: 0.5 })
+    if (mirrorReflector.uvNode) {
+      mirrorReflector.uvNode = clamp(mirrorReflector.uvNode.add(distortion) as never, vec2(0.002, 0.002), vec2(0.998, 0.998))
+    }
+    reflectionTarget = mirrorReflector.target
+    reflectionColor = mirrorReflector.rgb
+  }
+
+  // 5. 水深、屏幕空间折射、岸边软羽化与浅水焦散
   const depthScale = cameraFar.sub(cameraNear)
   const waterDepth = max(viewportLinearDepth.sub(linearDepth()).mul(depthScale), float(0.0))
-
-  const refractUv = clamp(screenUV.add(distortion.mul(0.6)), vec2(0.002, 0.002), vec2(0.998, 0.998))
-  const refractDepth = linearDepth(viewportDepthTexture(refractUv)).sub(linearDepth()).mul(depthScale)
-  const safeRefractUv = select(refractDepth.greaterThan(float(0.0)), refractUv, screenUV)
-  const underWaterColor = viewportSharedTexture(safeRefractUv).rgb
-
-  // Beer-Lambert 指数吸收：浅水清澈透出折射水底，深水过渡到深海色
   const absorb = float(1.0).sub(exp(waterDepth.negate().div(max(uDepthAbsorption, float(0.1)))))
   const waterTint = mix(uShallowColor, uDeepColor, clamp(absorb, float(0.0), float(1.0)))
-  const transmit = clamp(float(1.0).sub(absorb).mul(float(1.0).sub(uOpacity.mul(0.55))), float(0.0), float(1.0))
-  const refractedBody = mix(waterTint, underWaterColor.mul(mix(vec3(1.0), uShallowColor, float(0.42))), transmit)
 
-  // 6. 围绕接触水线的窄带镂空泡沫 + 波浪顶端浪花（仅基于真实水深差，绝不外扩到水上剪影）
+  let refractedBody = waterTint
+  if (options.refraction) {
+    const refractUv = clamp(screenUV.add(distortion.mul(0.6)), vec2(0.002, 0.002), vec2(0.998, 0.998))
+    const refractDepth = linearDepth(viewportDepthTexture(refractUv)).sub(linearDepth()).mul(depthScale)
+    const safeRefractUv = select(refractDepth.greaterThan(float(0.0)), refractUv, screenUV)
+    let underWaterColor = viewportSharedTexture(safeRefractUv).rgb
+
+    if (options.caustics) {
+      const causticsCoord = positionWorld.xz.add(surfaceNormal.xz.mul(clamp(waterDepth.mul(0.22), float(0.0), float(0.8))))
+      const cUv1 = causticsCoord.mul(uCausticsScale).add(flow.mul(0.85))
+      const cUv2 = causticsCoord.mul(uCausticsScale.mul(1.37)).sub(flowOrtho.mul(1.15))
+      const c1 = causticsTexNode.sample(cUv1).r
+      const c2 = causticsTexNode.sample(cUv2).r
+      const causticMask = min(c1, c2).mul(1.6).add(c1.mul(c2)).mul(0.55)
+      const shallowFade = exp(waterDepth.negate().mul(0.45)).mul(smoothstep(float(0.0), float(0.18), waterDepth))
+      underWaterColor = underWaterColor.add(uSunColor.mul(causticMask).mul(shallowFade).mul(uCausticsStrength))
+    }
+
+    const transmit = clamp(float(1.0).sub(absorb).mul(float(1.0).sub(uOpacity.mul(0.55))), float(0.0), float(1.0))
+    refractedBody = mix(waterTint, underWaterColor.mul(mix(vec3(1.0), uShallowColor, float(0.42))), transmit)
+  }
+
+  // 6. 岸边软过渡（消除交界硬切锯齿）+ 周期性拍岸浪花
+  const edgeOpacity = select(
+    uSoftEdge.greaterThan(float(0.002)),
+    smoothstep(float(0.0), max(uSoftEdge, float(0.005)), waterDepth),
+    float(1.0),
+  )
+  const finalAlpha = options.refraction ? edgeOpacity : clamp(absorb.mul(0.4).add(uOpacity).mul(edgeOpacity), float(0.12), float(1.0))
+
   const foamNoise1 = foamTexNode.sample(baseUv.mul(2.8).add(flow.mul(1.4))).r
   const foamNoise2 = foamTexNode.sample(baseUv.mul(5.9).sub(flowOrtho.mul(1.7))).r
   const foamCell = foamNoise1.mul(0.55).add(foamNoise2.mul(0.45))
 
-  const shoreBand = float(1.0).sub(smoothstep(float(0.0), max(uFoamWidth, float(0.01)), waterDepth))
+  const shoreRatio = clamp(waterDepth.div(max(uFoamWidth, float(0.01))), float(0.0), float(1.0))
+  const shoreBase = float(1.0).sub(smoothstep(float(0.0), max(uFoamWidth, float(0.01)), waterDepth))
+  const lapRipple = sin(shoreRatio.mul(12.0).sub(uTime.mul(2.2))).mul(0.5).add(0.5)
+  const shoreBand = shoreBase.mul(float(0.62).add(lapRipple.mul(0.38))).mul(uShoreFoamOn)
+
   const crestActive = smoothstep(float(0.004), float(0.025), uWaveHeight)
   const crestBreakup = smoothstep(float(0.38), float(0.75), foamTexNode.sample(baseUv.mul(0.35).add(flow.mul(0.5))).r)
   const crestBand = smoothstep(float(0.36), float(0.88), waveNorm).mul(crestActive).mul(crestBreakup).mul(uCrestFoam)
@@ -184,7 +241,7 @@ export function createWaterMaterial(): WaterMaterialHandle {
   const foamCut = smoothstep(float(0.58).sub(foamMask.mul(0.38)), float(0.82), foamCell)
   const foamAlpha = clamp(foamMask.mul(foamCut).mul(uFoamIntensity), float(0.0), float(1.0))
 
-  // 7. 太阳碎金高光（可调光斑大小：由高光锐度映射）+ 次表面散射
+  // 7. 太阳碎金高光 + 次表面散射
   const sunDir = normalize(uSunDir)
   const sunRefl = normalize(reflect(sunDir.negate(), crispNormal))
   const specDot = max(dot(viewVec, sunRefl), float(0.0))
@@ -196,21 +253,22 @@ export function createWaterMaterial(): WaterMaterialHandle {
     .mul(uSssStrength)
   const sssColor = uShallowColor.mul(sunScatter).mul(0.55)
 
-  // 8. 最终合成：水下折射吸收 + 平面反射 + 碎金高光 + 极窄水线白沫
+  // 8. 最终合成
   const waterSurface = mix(refractedBody.add(sssColor), reflectionColor, fresnel).add(uSunColor.mul(sunSparkle))
   const finalColor = mix(waterSurface, uFoamColor, foamAlpha)
 
   const material = new MeshBasicNodeMaterial()
   material.positionNode = displacedLocal
   material.colorNode = finalColor
-  material.opacityNode = float(1.0)
+  material.opacityNode = max(finalAlpha, foamAlpha)
   material.transparent = true
   material.depthWrite = false
   material.side = DoubleSide
 
   return {
+    variantKey: waterVariantKey(options),
     material,
-    reflectionTarget: mirrorSampler.target,
+    reflectionTarget,
     setSpec(spec, customNormal, customFoam) {
       uShallowColor.value.set(spec.shallowColor)
       uDeepColor.value.set(spec.deepColor)
@@ -231,20 +289,26 @@ export function createWaterMaterial(): WaterMaterialHandle {
       uFoamWidth.value = spec.foamWidth
       uFoamIntensity.value = spec.foamIntensity
       uCrestFoam.value = spec.crestFoam
+      uShoreFoamOn.value = spec.shoreFoam ? 1 : 0
+      uSoftEdge.value = spec.softEdge
+      uCausticsStrength.value = spec.causticsStrength
+      uCausticsScale.value = spec.causticsScale
       uWaveHeight.value = spec.quality === 'fast' ? 0 : spec.waveHeight
-      const planar = spec.quality !== 'fast' && spec.reflectionScale > 0
-      uUsePlanar.value = planar ? 1 : 0
-      mirrorSampler.reflector.resolutionScale = planar ? spec.reflectionScale : 0.25
+      if (mirrorReflector) {
+        mirrorReflector.reflector.resolutionScale = Math.max(0.25, spec.reflectionScale)
+      }
       normalTexNode.value = customNormal ?? defaultNormal
       foamTexNode.value = customFoam ?? defaultFoam
     },
     setTime(time) {
       uTime.value = time
     },
-    setSun(direction, color, intensity) {
+    setSun(direction, color, intensity, skyHorizon, skyTop) {
       uSunDir.value.copy(direction).normalize()
       const boost = Math.min(2.0, Math.max(0.2, intensity))
       uSunColor.value.copy(color).multiplyScalar(boost)
+      if (skyHorizon) uSkyHorizonColor.value.copy(skyHorizon)
+      if (skyTop) uSkyTopColor.value.copy(skyTop)
     },
     dispose() {
       material.dispose()

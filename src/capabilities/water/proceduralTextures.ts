@@ -2,6 +2,7 @@ import { DataTexture, LinearFilter, LinearMipmapLinearFilter, NoColorSpace, Repe
 
 let cachedNormal: DataTexture | null = null
 let cachedFoam: DataTexture | null = null
+let cachedCaustics: DataTexture | null = null
 
 function hash2(ix: number, iy: number, period: number): [number, number] {
   const px = ((ix % period) + period) % period
@@ -130,5 +131,68 @@ export function defaultWaterFoamTexture(): DataTexture {
   texture.generateMipmaps = true
   texture.needsUpdate = true
   cachedFoam = texture
+  return texture
+}
+
+/** 生成 256x256 无缝水底焦散光网纹理（Cellular Ridge）。 */
+export function defaultWaterCausticsTexture(): DataTexture {
+  if (cachedCaustics) return cachedCaustics
+  const size = 256
+  const period = 8
+  const pts: Array<[number, number]> = []
+  for (let gy = 0; gy < period; gy += 1) {
+    for (let gx = 0; gx < period; gx += 1) {
+      const [rx, ry] = hash2(gx, gy, period)
+      pts.push([(gx + 0.5 + rx * 0.38) / period, (gy + 0.5 + ry * 0.38) / period])
+    }
+  }
+  const data = new Uint8Array(size * size * 4)
+  for (let y = 0; y < size; y += 1) {
+    const v = y / size
+    for (let x = 0; x < size; x += 1) {
+      const u = x / size
+      const gx = Math.floor(u * period)
+      const gy = Math.floor(v * period)
+      let d1 = 9
+      let d2 = 9
+      for (let oy = -1; oy <= 1; oy += 1) {
+        for (let ox = -1; ox <= 1; ox += 1) {
+          const cx = ((gx + ox) % period + period) % period
+          const cy = ((gy + oy) % period + period) % period
+          const [px, py] = pts[cy * period + cx]!
+          let dx = px - u
+          let dy = py - v
+          if (dx > 0.5) dx -= 1
+          if (dx < -0.5) dx += 1
+          if (dy > 0.5) dy -= 1
+          if (dy < -0.5) dy += 1
+          const d = Math.hypot(dx, dy) * period
+          if (d < d1) {
+            d2 = d1
+            d1 = d
+          } else if (d < d2) {
+            d2 = d
+          }
+        }
+      }
+      const edge = Math.max(0, 1 - Math.abs(d2 - d1) * 4.5)
+      const ridge = Math.pow(edge, 2.2)
+      const byte = Math.min(255, Math.round(ridge * 255))
+      const o = (y * size + x) * 4
+      data[o] = byte
+      data[o + 1] = byte
+      data[o + 2] = byte
+      data[o + 3] = 255
+    }
+  }
+  const texture = new DataTexture(data, size, size, RGBAFormat, UnsignedByteType)
+  texture.colorSpace = NoColorSpace
+  texture.wrapS = RepeatWrapping
+  texture.wrapT = RepeatWrapping
+  texture.minFilter = LinearMipmapLinearFilter
+  texture.magFilter = LinearFilter
+  texture.generateMipmaps = true
+  texture.needsUpdate = true
+  cachedCaustics = texture
   return texture
 }

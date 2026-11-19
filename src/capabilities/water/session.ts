@@ -7,13 +7,15 @@ import {
   type BufferGeometry,
   type Material,
   type Object3D,
+  type Scene,
 } from 'three'
 import { textureFor } from '../../editor/assets/textures'
 import { useEditorStore } from '../../editor/scene/store'
+import type { SceneNode } from '../../editor/scene/types'
 import { registerBeforeRenderHook, type ViewportRenderContext } from '../../editor/viewport/renderHooks'
 import { capabilityEnabled, type CapabilityRuntimeModule } from '../registry'
-import { WATER_CAPABILITY_ID, normalizeWater, type WaterSpec } from './defaults'
-import { createWaterMaterial, type WaterMaterialHandle } from './waterMaterial'
+import { WATER_CAPABILITY_ID, normalizeWater, type WaterQuality, type WaterSpec } from './defaults'
+import { createWaterMaterial, waterVariantKey, type WaterMaterialHandle, type WaterMaterialOptions } from './waterMaterial'
 
 interface BoundMesh {
   kind: 'owned' | 'hosted'
@@ -23,29 +25,82 @@ interface BoundMesh {
   originalGeometry?: BufferGeometry
   isPlane?: boolean
   handle: WaterMaterialHandle
+  specRef?: unknown
+  normalId?: string | null
+  foamId?: string | null
+  normalTex?: ReturnType<typeof textureFor>
+  foamTex?: ReturnType<typeof textureFor>
 }
 
 const boundMeshes = new Map<string, BoundMesh>()
-let sharedPlaneGeo: PlaneGeometry | null = null
+const planeGeos: Record<WaterQuality, PlaneGeometry | null> = { fast: null, balanced: null, ultra: null }
+const SEGMENTS: Record<WaterQuality, number> = { fast: 32, balanced: 64, ultra: 96 }
+
 let removeBeforeRender: (() => void) | null = null
 let waterTime = 0
+
+let cachedNodesRef: Record<string, SceneNode> | null = null
+let cachedActiveIds: string[] = []
+let cachedSunId: string | null = null
+const cachedNodeObjects = new Map<string, Object3D>()
+let cachedSceneRef: Scene | null = null
+let cachedChildCount = -1
 
 const tmpToCam = new Vector3()
 const tmpSunDir = new Vector3(0.45, 0.72, 0.52).normalize()
 const tmpSunColor = new Color('#fff7e0')
+const tmpSkyHorizon = new Color('#e0f2fe')
+const tmpSkyTop = new Color('#7dd3fc')
+const tmpBgColor = new Color('#141414')
+const DAY_HORIZON = new Color('#e0f2fe')
+const DAY_TOP = new Color('#7dd3fc')
+const DUSK_HORIZON = new Color('#fed7aa')
+const DUSK_TOP = new Color('#475569')
+const NIGHT_HORIZON = new Color('#1e293b')
+const NIGHT_TOP = new Color('#020617')
 
-function getSharedPlaneGeometry(): PlaneGeometry {
-  if (!sharedPlaneGeo) sharedPlaneGeo = new PlaneGeometry(1, 1, 96, 96)
-  return sharedPlaneGeo
+function getSharedPlaneGeometry(quality: WaterQuality): PlaneGeometry {
+  if (!planeGeos[quality]) {
+    const seg = SEGMENTS[quality]
+    planeGeos[quality] = new PlaneGeometry(1, 1, seg, seg)
+  }
+  return planeGeos[quality]!
 }
 
-function findNodeObjects(scene: Object3D): Map<string, Object3D> {
-  const out = new Map<string, Object3D>()
+function refreshActiveNodes(nodes: Record<string, SceneNode>) {
+  if (nodes === cachedNodesRef) return
+  cachedNodesRef = nodes
+  cachedActiveIds = []
+  cachedSunId = null
+  for (const node of Object.values(nodes)) {
+    if (!cachedSunId && node.kind === 'directional-light' && node.visible) {
+      cachedSunId = node.id
+    }
+    const raw = node.capabilities?.[WATER_CAPABILITY_ID]
+    if (!raw || typeof raw !== 'object') continue
+    if ((raw as { enabled?: boolean }).enabled !== true) continue
+    if (node.kind !== 'empty' && node.kind !== 'plane' && node.kind !== 'model') continue
+    cachedActiveIds.push(node.id)
+  }
+}
+
+function resolveNodeObject(scene: Scene, id: string): Object3D | null {
+  const hit = cachedNodeObjects.get(id)
+  if (hit && hit.parent) return hit
+  if (cachedSceneRef !== scene || scene.children.length !== cachedChildCount) {
+    cachedSceneRef = scene
+    cachedChildCount = scene.children.length
+  }
+  let found: Object3D | null = null
   scene.traverse(child => {
-    const id = child.userData?.nodeId
-    if (typeof id === 'string' && !child.userData?.t3dWaterMesh && !out.has(id)) out.set(id, child)
+    if (child.userData?.t3dWaterMesh) return
+    const nid = child.userData?.nodeId
+    if (typeof nid === 'string' && !cachedNodeObjects.has(nid)) {
+      cachedNodeObjects.set(nid, child)
+    }
+    if (!found && nid === id) found = child
   })
-  return out
+  return found
 }
 
 function firstMeshOf(root: Object3D): Mesh | null {
@@ -62,7 +117,7 @@ function firstMeshOf(root: Object3D): Mesh | null {
 function releaseBound(id: string) {
   const entry = boundMeshes.get(id)
   if (!entry) return
-  entry.handle.reflectionTarget.removeFromParent()
+  entry.handle.reflectionTarget?.removeFromParent()
   if (entry.kind === 'owned') {
     entry.mesh.removeFromParent()
   } else {
@@ -73,68 +128,110 @@ function releaseBound(id: string) {
   boundMeshes.delete(id)
 }
 
-function updateSunFromScene(scene: Object3D) {
-  let lightFound: DirectionalLight | null = null
-  scene.traverse(child => {
-    if (lightFound) return
-    if ((child as DirectionalLight).isDirectionalLight) lightFound = child as DirectionalLight
-  })
-  if (lightFound) {
-    const dirLight = lightFound as DirectionalLight
-    dirLight.getWorldPosition(tmpSunDir)
-    dirLight.target.getWorldPosition(tmpToCam)
+function updateSunAndSky(scene: Scene, backgroundHex: string): number {
+  let intensity = 1.0
+  const sunGroup = cachedSunId ? resolveNodeObject(scene, cachedSunId) : null
+  let dirLight: DirectionalLight | null = null
+  if (sunGroup) {
+    sunGroup.traverse(child => {
+      if (!dirLight && (child as DirectionalLight).isDirectionalLight) dirLight = child as DirectionalLight
+    })
+  }
+  if (dirLight) {
+    const light = dirLight as DirectionalLight
+    light.getWorldPosition(tmpSunDir)
+    light.target.getWorldPosition(tmpToCam)
     tmpSunDir.sub(tmpToCam).normalize()
     if (tmpSunDir.lengthSq() < 1e-4) tmpSunDir.set(0.45, 0.72, 0.52).normalize()
-    tmpSunColor.copy(dirLight.color)
-    return dirLight.intensity
+    tmpSunColor.copy(light.color)
+    intensity = light.intensity
+  } else {
+    tmpSunDir.set(0.45, 0.72, 0.52).normalize()
+    tmpSunColor.set('#fff7e0')
   }
-  tmpSunDir.set(0.45, 0.72, 0.52).normalize()
-  tmpSunColor.set('#fff7e0')
-  return 1.0
+
+  // 根据方向光仰角 + 场景背景色自适应兜底天空反射，确保黄昏/夜景或无平面反射时色调一致
+  const elev = tmpSunDir.y
+  if (elev <= 0.02) {
+    tmpSkyHorizon.copy(NIGHT_HORIZON)
+    tmpSkyTop.copy(NIGHT_TOP)
+  } else if (elev < 0.28) {
+    const t = Math.min(1, Math.max(0, (elev - 0.02) / 0.26))
+    tmpSkyHorizon.copy(DUSK_HORIZON).lerp(DAY_HORIZON, t)
+    tmpSkyTop.copy(DUSK_TOP).lerp(DAY_TOP, t)
+  } else {
+    tmpSkyHorizon.copy(DAY_HORIZON)
+    tmpSkyTop.copy(DAY_TOP)
+  }
+  if (scene.background instanceof Color) {
+    tmpSkyHorizon.lerp(scene.background, 0.35)
+    tmpSkyTop.lerp(scene.background, 0.25)
+  } else {
+    tmpBgColor.set(backgroundHex || '#141414')
+    if (tmpBgColor.r + tmpBgColor.g + tmpBgColor.b > 0.25) {
+      tmpSkyHorizon.lerp(tmpBgColor, 0.25)
+    }
+  }
+  return intensity
+}
+
+function optionsFor(spec: WaterSpec, upAxis: 'y' | 'z'): WaterMaterialOptions {
+  return {
+    planar: spec.quality !== 'fast' && spec.planarReflection && spec.reflectionScale > 0,
+    refraction: spec.refraction,
+    caustics: spec.refraction && spec.caustics,
+    highDetail: spec.quality !== 'fast',
+    upAxis,
+  }
 }
 
 function onBeforeRender(ctx: ViewportRenderContext) {
   const editor = useEditorStore.getState()
   if (!capabilityEnabled(editor.capabilities, WATER_CAPABILITY_ID)) {
     for (const id of [...boundMeshes.keys()]) releaseBound(id)
+    cachedNodesRef = null
+    cachedActiveIds = []
     return
   }
 
-  waterTime += Math.min(0.05, Math.max(0, ctx.dt))
+  refreshActiveNodes(editor.nodes)
+  const activeSet = new Set(cachedActiveIds)
+  for (const id of [...boundMeshes.keys()]) {
+    if (!activeSet.has(id)) releaseBound(id)
+  }
+  if (cachedActiveIds.length === 0) return
 
-  const activeSpecs = new Map<string, WaterSpec>()
-  for (const node of Object.values(editor.nodes)) {
+  waterTime += Math.min(0.05, Math.max(0, ctx.dt))
+  const sunIntensity = updateSunAndSky(ctx.scene, editor.picture.background)
+
+  for (const id of cachedActiveIds) {
+    const node = editor.nodes[id]
+    if (!node) continue
     const raw = node.capabilities?.[WATER_CAPABILITY_ID]
-    if (!raw || typeof raw !== 'object') continue
     const spec = normalizeWater(raw)
     if (!spec.enabled) continue
-    if (node.kind !== 'empty' && node.kind !== 'plane' && node.kind !== 'model') continue
-    activeSpecs.set(node.id, spec)
-  }
 
-  for (const id of [...boundMeshes.keys()]) {
-    if (!activeSpecs.has(id)) releaseBound(id)
-  }
+    const root = resolveNodeObject(ctx.scene, id)
+    if (!root) continue
 
-  if (activeSpecs.size === 0) return
-
-  const nodeObjects = findNodeObjects(ctx.scene)
-  const sunIntensity = updateSunFromScene(ctx.scene)
-
-  for (const [id, spec] of activeSpecs) {
-    const root = nodeObjects.get(id)
-    const node = editor.nodes[id]
-    if (!root || !node) continue
+    const upAxis: 'y' | 'z' = node.kind === 'model' ? 'y' : 'z'
+    const opts = optionsFor(spec, upAxis)
+    const nextVariant = waterVariantKey(opts)
 
     let entry = boundMeshes.get(id)
+    if (entry && entry.handle.variantKey !== nextVariant) {
+      releaseBound(id)
+      entry = undefined
+    }
+
     if (node.kind === 'empty') {
       if (entry && (entry.kind !== 'owned' || entry.parent !== root)) {
         releaseBound(id)
         entry = undefined
       }
       if (!entry) {
-        const handle = createWaterMaterial()
-        const mesh = new Mesh(getSharedPlaneGeometry(), handle.material)
+        const handle = createWaterMaterial(opts)
+        const mesh = new Mesh(getSharedPlaneGeometry(spec.quality), handle.material)
         mesh.name = 'water-surface'
         mesh.rotation.x = -Math.PI / 2
         mesh.frustumCulled = false
@@ -142,11 +239,13 @@ function onBeforeRender(ctx: ViewportRenderContext) {
         mesh.receiveShadow = false
         mesh.userData.nodeId = id
         mesh.userData.t3dWaterMesh = true
-        mesh.add(handle.reflectionTarget)
+        if (handle.reflectionTarget) mesh.add(handle.reflectionTarget)
         root.add(mesh)
         entry = { kind: 'owned', mesh, parent: root, handle }
         boundMeshes.set(id, entry)
       }
+      const targetGeo = getSharedPlaneGeometry(spec.quality)
+      if (entry.mesh.geometry !== targetGeo) entry.mesh.geometry = targetGeo
     } else {
       const hostMesh = firstMeshOf(root)
       if (!hostMesh) continue
@@ -156,8 +255,8 @@ function onBeforeRender(ctx: ViewportRenderContext) {
       }
       if (!entry) {
         const isPlane = node.kind === 'plane'
-        const handle = createWaterMaterial()
-        hostMesh.add(handle.reflectionTarget)
+        const handle = createWaterMaterial(opts)
+        if (handle.reflectionTarget) hostMesh.add(handle.reflectionTarget)
         entry = {
           kind: 'hosted',
           mesh: hostMesh,
@@ -168,8 +267,9 @@ function onBeforeRender(ctx: ViewportRenderContext) {
         }
         boundMeshes.set(id, entry)
       }
-      if (entry.isPlane && hostMesh.geometry !== getSharedPlaneGeometry()) {
-        hostMesh.geometry = getSharedPlaneGeometry()
+      if (entry.isPlane) {
+        const targetGeo = getSharedPlaneGeometry(spec.quality)
+        if (hostMesh.geometry !== targetGeo) hostMesh.geometry = targetGeo
       }
       if (hostMesh.material !== entry.handle.material) {
         hostMesh.material = entry.handle.material
@@ -180,9 +280,22 @@ function onBeforeRender(ctx: ViewportRenderContext) {
 
     const customNormal = spec.normalMapAssetId ? textureFor(spec.normalMapAssetId, false) : null
     const customFoam = spec.foamMapAssetId ? textureFor(spec.foamMapAssetId, false) : null
-    entry.handle.setSpec(spec, customNormal, customFoam)
+    if (
+      entry.specRef !== raw
+      || entry.normalId !== spec.normalMapAssetId
+      || entry.foamId !== spec.foamMapAssetId
+      || entry.normalTex !== customNormal
+      || entry.foamTex !== customFoam
+    ) {
+      entry.handle.setSpec(spec, customNormal, customFoam)
+      entry.specRef = raw
+      entry.normalId = spec.normalMapAssetId
+      entry.foamId = spec.foamMapAssetId
+      entry.normalTex = customNormal
+      entry.foamTex = customFoam
+    }
     entry.handle.setTime(waterTime)
-    entry.handle.setSun(tmpSunDir, tmpSunColor, sunIntensity)
+    entry.handle.setSun(tmpSunDir, tmpSunColor, sunIntensity, tmpSkyHorizon, tmpSkyTop)
   }
 }
 
@@ -199,8 +312,14 @@ export function dispose() {
     removeBeforeRender = null
   }
   for (const id of [...boundMeshes.keys()]) releaseBound(id)
-  sharedPlaneGeo?.dispose()
-  sharedPlaneGeo = null
+  for (const key of ['fast', 'balanced', 'ultra'] as const) {
+    planeGeos[key]?.dispose()
+    planeGeos[key] = null
+  }
+  cachedNodeObjects.clear()
+  cachedNodesRef = null
+  cachedActiveIds = []
+  cachedSunId = null
 }
 
 const waterRuntimeModule: CapabilityRuntimeModule = { mount, dispose }

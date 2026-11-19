@@ -1,5 +1,8 @@
-import { ChevronDown, ChevronRight, Trash2 } from 'lucide-react'
+import { useState } from 'react'
+import { ChevronDown, ChevronRight, Search, Trash2 } from 'lucide-react'
+import { useAssetStore } from '../../editor/assets/library'
 import { useI18n } from '../../editor/i18n'
+import { AssetPicker } from '../../editor/panels/AssetPicker'
 import { CardReset } from '../../editor/panels/CardReset'
 import { useInspectorCardOpen } from '../../editor/panels/inspectorMemory'
 import { useEditorStore } from '../../editor/scene/store'
@@ -59,6 +62,10 @@ export function WaterCard({ node, disabled }: { node: SceneNode, disabled: boole
     write({
       quality,
       reflectionScale: qual.reflectionScale,
+      planarReflection: qual.planarReflection,
+      refraction: qual.refraction,
+      caustics: qual.caustics,
+      shoreFoam: qual.shoreFoam,
       waveHeight: quality === 'fast' ? 0 : style.waveHeight,
     })
   }
@@ -104,40 +111,123 @@ export function WaterCard({ node, disabled }: { node: SceneNode, disabled: boole
           </section>
 
           <section className="iv2-section">
+            <div className="iv2-section__title" style={{ color: '#38bdf8' }}><i /><span>{t('water.groupSwitches')}</span></div>
+            <div className="iv2-pair">
+              <label className="field field--check">
+                <span>{t('water.planar')}</span>
+                <input type="checkbox" checked={spec.planarReflection} disabled={disabled || spec.quality === 'fast'} onChange={event => write({ planarReflection: event.target.checked })} />
+              </label>
+              <label className="field field--check">
+                <span>{t('water.refraction')}</span>
+                <input type="checkbox" checked={spec.refraction} disabled={disabled} onChange={event => write({ refraction: event.target.checked })} />
+              </label>
+              <label className="field field--check">
+                <span>{t('water.caustics')}</span>
+                <input type="checkbox" checked={spec.caustics} disabled={disabled || !spec.refraction} onChange={event => write({ caustics: event.target.checked })} />
+              </label>
+              <label className="field field--check">
+                <span>{t('water.shoreFoam')}</span>
+                <input type="checkbox" checked={spec.shoreFoam} disabled={disabled} onChange={event => write({ shoreFoam: event.target.checked })} />
+              </label>
+            </div>
+          </section>
+
+          <section className="iv2-section">
             <div className="iv2-section__title" style={{ color: '#38bdf8' }}><i /><span>{t('water.groupColor')}</span></div>
-            <label className="field">
-              <span>{t('water.shallow')}</span>
-              <input type="color" value={spec.shallowColor} disabled={disabled} onChange={event => write({ shallowColor: event.target.value })} />
-            </label>
-            <label className="field">
-              <span>{t('water.deep')}</span>
-              <input type="color" value={spec.deepColor} disabled={disabled} onChange={event => write({ deepColor: event.target.value })} />
-            </label>
+            <div className="iv2-pair">
+              <label className="field">
+                <span>{t('water.shallow')}</span>
+                <input type="color" value={spec.shallowColor} disabled={disabled} onChange={event => write({ shallowColor: event.target.value })} />
+              </label>
+              <label className="field">
+                <span>{t('water.deep')}</span>
+                <input type="color" value={spec.deepColor} disabled={disabled} onChange={event => write({ deepColor: event.target.value })} />
+              </label>
+            </div>
             <RangeField label={t('water.absorption')} value={spec.depthAbsorption} min={0.2} max={15} step={0.1} disabled={disabled} onChange={depthAbsorption => write({ depthAbsorption })} />
             <RangeField label={t('water.opacity')} value={spec.opacity} min={0.05} max={1} step={0.02} disabled={disabled} onChange={opacity => write({ opacity })} />
+            <RangeField label={t('water.softEdge')} value={spec.softEdge} min={0} max={0.5} step={0.01} disabled={disabled} onChange={softEdge => write({ softEdge })} />
           </section>
 
           <section className="iv2-section">
             <div className="iv2-section__title" style={{ color: '#38bdf8' }}><i /><span>{t('water.groupWaves')}</span></div>
             <RangeField label={t('water.waveScale')} value={spec.waveScale} min={0.04} max={2} step={0.02} disabled={disabled} onChange={waveScale => write({ waveScale })} />
             <RangeField label={t('water.flowSpeed')} value={spec.flowSpeed} min={0} max={3} step={0.05} disabled={disabled} onChange={flowSpeed => write({ flowSpeed })} />
+            <RangeField label={t('water.flowDir')} value={spec.flowDirection} min={0} max={360} step={1} disabled={disabled} onChange={flowDirection => write({ flowDirection })} />
             <RangeField label={t('water.normalScale')} value={spec.normalScale} min={0} max={2} step={0.05} disabled={disabled} onChange={normalScale => write({ normalScale })} />
             <RangeField label={t('water.waveHeight')} value={spec.waveHeight} min={0} max={0.8} step={0.01} disabled={disabled} onChange={waveHeight => write({ waveHeight })} />
+            <TextureField label={t('water.normalMap')} value={spec.normalMapAssetId} disabled={disabled} onChange={normalMapAssetId => write({ normalMapAssetId })} />
           </section>
 
           <section className="iv2-section">
             <div className="iv2-section__title" style={{ color: '#38bdf8' }}><i /><span>{t('water.groupOptics')}</span></div>
             <RangeField label={t('water.reflectivity')} value={spec.reflectivity} min={0} max={1} step={0.02} disabled={disabled} onChange={reflectivity => write({ reflectivity })} />
+            <RangeField label={t('water.fresnel')} value={spec.fresnelPower} min={1} max={10} step={0.1} disabled={disabled} onChange={fresnelPower => write({ fresnelPower })} />
             <RangeField label={t('water.specular')} value={spec.specularStrength} min={0} max={4} step={0.05} disabled={disabled} onChange={specularStrength => write({ specularStrength })} />
             <RangeField label={t('water.specularSize')} value={spec.specularSize} min={0.02} max={1} step={0.02} disabled={disabled} onChange={specularSize => write({ specularSize })} />
             <RangeField label={t('water.sss')} value={spec.sssStrength} min={0} max={2} step={0.05} disabled={disabled} onChange={sssStrength => write({ sssStrength })} />
-            <RangeField label={t('water.foamWidth')} value={spec.foamWidth} min={0} max={2} step={0.05} disabled={disabled} onChange={foamWidth => write({ foamWidth })} />
-            <RangeField label={t('water.foamIntensity')} value={spec.foamIntensity} min={0} max={2} step={0.05} disabled={disabled} onChange={foamIntensity => write({ foamIntensity })} />
-            <RangeField label={t('water.crestFoam')} value={spec.crestFoam} min={0} max={2} step={0.05} disabled={disabled} onChange={crestFoam => write({ crestFoam })} />
+            {spec.refraction && spec.caustics && (
+              <>
+                <RangeField label={t('water.causticsStrength')} value={spec.causticsStrength} min={0} max={2} step={0.05} disabled={disabled} onChange={causticsStrength => write({ causticsStrength })} />
+                <RangeField label={t('water.causticsScale')} value={spec.causticsScale} min={0.04} max={1} step={0.02} disabled={disabled} onChange={causticsScale => write({ causticsScale })} />
+              </>
+            )}
+            {spec.shoreFoam && (
+              <>
+                <div className="iv2-pair">
+                  <label className="field">
+                    <span>{t('water.foamColor')}</span>
+                    <input type="color" value={spec.foamColor} disabled={disabled} onChange={event => write({ foamColor: event.target.value })} />
+                  </label>
+                  <label className="field">
+                    <span>{t('water.sunColor')}</span>
+                    <input type="color" value={spec.sunColor} disabled={disabled} onChange={event => write({ sunColor: event.target.value })} />
+                  </label>
+                </div>
+                <RangeField label={t('water.foamWidth')} value={spec.foamWidth} min={0} max={2} step={0.05} disabled={disabled} onChange={foamWidth => write({ foamWidth })} />
+                <RangeField label={t('water.foamIntensity')} value={spec.foamIntensity} min={0} max={2} step={0.05} disabled={disabled} onChange={foamIntensity => write({ foamIntensity })} />
+                <RangeField label={t('water.crestFoam')} value={spec.crestFoam} min={0} max={2} step={0.05} disabled={disabled} onChange={crestFoam => write({ crestFoam })} />
+                <TextureField label={t('water.foamMap')} value={spec.foamMapAssetId} disabled={disabled} onChange={foamMapAssetId => write({ foamMapAssetId })} />
+              </>
+            )}
           </section>
         </div>
       )}
     </section>
+  )
+}
+
+function TextureField({
+  label,
+  value,
+  disabled,
+  onChange,
+}: {
+  label: string
+  value: string | null
+  disabled: boolean
+  onChange: (id: string | null) => void
+}) {
+  const { t } = useI18n()
+  const [open, setOpen] = useState(false)
+  const asset = useAssetStore(state => value ? state.assets[value] : undefined)
+  return (
+    <label className="field">
+      <span>{label}</span>
+      <button type="button" className="asset-ref" disabled={disabled} onClick={() => setOpen(true)}>
+        <span>{asset?.name ?? t('picker.none')}</span>
+        <Search size={12} />
+      </button>
+      {open && (
+        <AssetPicker
+          title={t('picker.texture')}
+          kinds={['texture']}
+          selectedId={value}
+          onSelect={id => { onChange(id); setOpen(false) }}
+          onClose={() => setOpen(false)}
+        />
+      )}
+    </label>
   )
 }
 
