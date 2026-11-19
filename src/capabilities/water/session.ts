@@ -25,6 +25,7 @@ interface BoundMesh {
   originalGeometry?: BufferGeometry
   isPlane?: boolean
   handle: WaterMaterialHandle
+  waveTime: number
   specRef?: unknown
   normalId?: string | null
   foamId?: string | null
@@ -33,8 +34,8 @@ interface BoundMesh {
 }
 
 const boundMeshes = new Map<string, BoundMesh>()
-const planeGeos: Record<WaterQuality, PlaneGeometry | null> = { fast: null, balanced: null, ultra: null }
-const SEGMENTS: Record<WaterQuality, number> = { fast: 32, balanced: 64, ultra: 96 }
+const planeGeos: Record<'flat' | WaterQuality, PlaneGeometry | null> = { flat: null, fast: null, balanced: null, ultra: null }
+const SEGMENTS: Record<'flat' | WaterQuality, number> = { flat: 1, fast: 32, balanced: 64, ultra: 96 }
 
 let removeBeforeRender: (() => void) | null = null
 let waterTime = 0
@@ -47,6 +48,7 @@ let cachedSceneRef: Scene | null = null
 let cachedChildCount = -1
 
 const tmpToCam = new Vector3()
+const tmpWorldScale = new Vector3(1, 1, 1)
 const tmpSunDir = new Vector3(0.45, 0.72, 0.52).normalize()
 const tmpSunColor = new Color('#fff7e0')
 const tmpSkyHorizon = new Color('#e0f2fe')
@@ -59,12 +61,14 @@ const DUSK_TOP = new Color('#475569')
 const NIGHT_HORIZON = new Color('#1e293b')
 const NIGHT_TOP = new Color('#020617')
 
-function getSharedPlaneGeometry(quality: WaterQuality): PlaneGeometry {
-  if (!planeGeos[quality]) {
-    const seg = SEGMENTS[quality]
-    planeGeos[quality] = new PlaneGeometry(1, 1, seg, seg)
+function getSharedPlaneGeometry(spec: WaterSpec): PlaneGeometry {
+  // 无波浪时只需 2 个三角形（1x1），有波浪时按画质切换细分网格
+  const tier: 'flat' | WaterQuality = spec.quality === 'fast' || spec.waveHeight <= 0.001 ? 'flat' : spec.quality
+  if (!planeGeos[tier]) {
+    const seg = SEGMENTS[tier]
+    planeGeos[tier] = new PlaneGeometry(1, 1, seg, seg)
   }
-  return planeGeos[quality]!
+  return planeGeos[tier]!
 }
 
 function refreshActiveNodes(nodes: Record<string, SceneNode>) {
@@ -202,6 +206,7 @@ function onBeforeRender(ctx: ViewportRenderContext) {
   if (cachedActiveIds.length === 0) return
 
   waterTime += Math.min(0.05, Math.max(0, ctx.dt))
+  const dt = Math.min(0.05, Math.max(0, ctx.dt))
   const sunIntensity = updateSunAndSky(ctx.scene, editor.picture.background)
 
   for (const id of cachedActiveIds) {
@@ -231,7 +236,7 @@ function onBeforeRender(ctx: ViewportRenderContext) {
       }
       if (!entry) {
         const handle = createWaterMaterial(opts)
-        const mesh = new Mesh(getSharedPlaneGeometry(spec.quality), handle.material)
+        const mesh = new Mesh(getSharedPlaneGeometry(spec), handle.material)
         mesh.name = 'water-surface'
         mesh.rotation.x = -Math.PI / 2
         mesh.frustumCulled = false
@@ -241,10 +246,10 @@ function onBeforeRender(ctx: ViewportRenderContext) {
         mesh.userData.t3dWaterMesh = true
         if (handle.reflectionTarget) mesh.add(handle.reflectionTarget)
         root.add(mesh)
-        entry = { kind: 'owned', mesh, parent: root, handle }
+        entry = { kind: 'owned', mesh, parent: root, handle, waveTime: waterTime }
         boundMeshes.set(id, entry)
       }
-      const targetGeo = getSharedPlaneGeometry(spec.quality)
+      const targetGeo = getSharedPlaneGeometry(spec)
       if (entry.mesh.geometry !== targetGeo) entry.mesh.geometry = targetGeo
     } else {
       const hostMesh = firstMeshOf(root)
@@ -264,11 +269,12 @@ function onBeforeRender(ctx: ViewportRenderContext) {
           originalGeometry: hostMesh.geometry,
           isPlane,
           handle,
+          waveTime: waterTime,
         }
         boundMeshes.set(id, entry)
       }
       if (entry.isPlane) {
-        const targetGeo = getSharedPlaneGeometry(spec.quality)
+        const targetGeo = getSharedPlaneGeometry(spec)
         if (hostMesh.geometry !== targetGeo) hostMesh.geometry = targetGeo
       }
       if (hostMesh.material !== entry.handle.material) {
@@ -294,7 +300,10 @@ function onBeforeRender(ctx: ViewportRenderContext) {
       entry.normalTex = customNormal
       entry.foamTex = customFoam
     }
-    entry.handle.setTime(waterTime)
+    entry.waveTime += dt * spec.waveSpeed
+    root.getWorldScale(tmpWorldScale)
+    entry.handle.setInvScale(tmpWorldScale)
+    entry.handle.setTime(waterTime, entry.waveTime)
     entry.handle.setSun(tmpSunDir, tmpSunColor, sunIntensity, tmpSkyHorizon, tmpSkyTop)
   }
 }
@@ -312,7 +321,7 @@ export function dispose() {
     removeBeforeRender = null
   }
   for (const id of [...boundMeshes.keys()]) releaseBound(id)
-  for (const key of ['fast', 'balanced', 'ultra'] as const) {
+  for (const key of ['flat', 'fast', 'balanced', 'ultra'] as const) {
     planeGeos[key]?.dispose()
     planeGeos[key] = null
   }
