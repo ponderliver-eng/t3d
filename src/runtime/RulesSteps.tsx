@@ -8,7 +8,7 @@ import {
   listEnabledPackActions,
   listEnabledPackConditions,
 } from '../gameplay/registry'
-import { JuiceField, NodeField, PrefabField, TagField } from './RulePickers'
+import { AudioField, JuiceField, NodeField, PrefabField, TagField } from './RulePickers'
 import {
   emptyCondition,
   emptyStep,
@@ -27,7 +27,7 @@ export const STEP_KINDS: RuleStepKind[] = [
   'message', 'setVar', 'addTag', 'removeTag', 'wait', 'waitFrame', 'waitUpper', 'waitMark',
   'playClip', 'playUpper', 'stance',
   'if', 'gather', 'each', 'switchState',
-  'showUi', 'hideUi', 'lock', 'camera', 'moveTo', 'spawn', 'hide', 'score', 'juice', 'log',
+  'showUi', 'hideUi', 'lock', 'camera', 'moveTo', 'spawn', 'hide', 'score', 'juice', 'sound', 'log',
 ]
 export const OPS = ['==', '!=', '>', '<', '>=', '<=']
 const NEST = 3
@@ -57,6 +57,7 @@ const TONE: Record<RuleStepKind, string> = {
   hide: '#f87171',
   score: '#facc15',
   juice: '#fb7185',
+  sound: '#34d399',
   log: '#94a3b8',
 }
 
@@ -241,6 +242,18 @@ function StepFields({
   }
   if (step.do === 'score') return <input disabled={disabled} value={step.value} placeholder={t('rule.amount')} onChange={event => onChange({ value: event.target.value })} />
   if (step.do === 'juice') return <JuiceField value={step.name} disabled={disabled} onChange={name => onChange({ name })} />
+  if (step.do === 'sound') {
+    return (
+      <span className="rules-step__compare rules-step__compare--pick">
+        <AudioField value={step.clipAssetId || step.name} disabled={disabled} onChange={clipAssetId => onChange({ clipAssetId, name: '' })} />
+        <select disabled={disabled} value={step.tag === 'music' ? 'music' : 'sfx'} onChange={event => onChange({ tag: event.target.value === 'music' ? 'music' : '' })}>
+          <option value="sfx">{t('rule.sound.sfx')}</option>
+          <option value="music">{t('rule.sound.music')}</option>
+        </select>
+        <input disabled={disabled} value={step.value} placeholder={t('audio.volume')} onChange={event => onChange({ value: event.target.value })} />
+      </span>
+    )
+  }
   if (step.do === 'gather') {
     return (
       <span className="rules-step__compare">

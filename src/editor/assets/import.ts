@@ -13,6 +13,7 @@ import { readQuarksDocument } from '../../capabilities/particles/readQuarks'
 import { assetDirectory, assetName, useAssetStore, type FileAsset, type FileKind, type ProjectAsset } from './library'
 import { selectTab } from '../layout/events'
 import { createScoreDocument } from '../../runtime/ui/spec'
+import { playSound } from '../../runtime/audio'
 import { collectUiImageIds } from '../../runtime/ui/tree'
 import { openUiEditor } from '../ui/session'
 import type { PbrSlot, SceneNode, Vec3 } from '../scene/types'
@@ -387,7 +388,7 @@ export function placeAsset(assetId: string, point: Vec3, hitId: string | null) {
     return
   }
   if (asset.kind === 'audio') {
-    void ensureAssetUrl(asset.id).then(url => new Audio(url).play()).catch(() => undefined)
+    playSound({ assetId: asset.id, bus: 'sfx', volume: 1 })
     return
   }
   if (asset.kind === 'effect') {
@@ -540,7 +541,7 @@ export function reportAssetUsers(id: string) {
 
 export function previewAudio(asset: ProjectAsset) {
   if (asset.kind !== 'audio') return
-  void ensureAssetUrl(asset.id).then(url => new Audio(url).play()).catch(() => undefined)
+  playSound({ assetId: asset.id, bus: 'sfx', volume: 1 })
 }
 
 async function importEffectJson(file: File, dir: string): Promise<string | null> {

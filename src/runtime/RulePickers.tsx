@@ -16,6 +16,27 @@ export function JuiceField({ value, disabled, onChange }: { value: string, disab
   return <DatabaseField tableId="juice" value={value} disabled={disabled} titleKey="rule.pickJuice" onChange={onChange} />
 }
 
+export function AudioField({ value, disabled, onChange }: { value: string, disabled: boolean, onChange: (id: string) => void }) {
+  const { t } = useI18n()
+  const asset = useAssetStore(state => value ? state.assets[value] : undefined)
+  const [open, setOpen] = useState(false)
+  const label = asset && 'name' in asset ? asset.name : (value ? t('picker.missing') : t('picker.none'))
+  return (
+    <>
+      <PickButton disabled={disabled} label={label} onClick={() => setOpen(true)} />
+      {open && (
+        <AssetPicker
+          title={t('audio.pick')}
+          kinds={['audio']}
+          selectedId={value || null}
+          onSelect={id => { onChange(id ?? ''); setOpen(false) }}
+          onClose={() => setOpen(false)}
+        />
+      )}
+    </>
+  )
+}
+
 function DatabaseField({
   tableId,
   value,

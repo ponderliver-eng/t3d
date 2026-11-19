@@ -9,6 +9,7 @@ import { useEditorStore } from '../editor/scene/store'
 import { useI18n, type MessageKey } from '../editor/i18n'
 import type { SceneNode, Vec3 } from '../editor/scene/types'
 import { characterOrDefault } from './character'
+import { JuiceField } from './RulePickers'
 import {
   cameraPresetForMode,
   defaultCameraFollow,
@@ -143,6 +144,10 @@ export function CharacterCard({ node, disabled }: { node: SceneNode, disabled: b
           <Num label={t('character.jumps')} value={view.maxJumps} disabled={disabled} step={1} min={1} onChange={maxJumps => write({ maxJumps: Math.max(1, Math.round(maxJumps)) })} />
           <Num label={t('character.gravity')} value={view.gravity} disabled={disabled} step={0.5} min={0} onChange={gravity => write({ gravity })} />
           <Num label={t('character.footstep')} value={view.footstepDistance} disabled={disabled} step={0.1} min={0.2} onChange={footstepDistance => write({ footstepDistance })} />
+          <label className="field">
+            <span>{t('character.footstepJuice')}</span>
+            <JuiceField value={view.footstepJuice ?? ''} disabled={disabled} onChange={footstepJuice => write({ footstepJuice })} />
+          </label>
           <Num label={t('character.coyote')} value={view.coyoteTime} disabled={disabled} step={0.01} min={0} onChange={coyoteTime => write({ coyoteTime })} />
           <Num label={t('character.buffer')} value={view.jumpBuffer} disabled={disabled} step={0.01} min={0} onChange={jumpBuffer => write({ jumpBuffer })} />
           </div>

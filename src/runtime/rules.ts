@@ -10,6 +10,7 @@ import { onFootstep } from './signals'
 import { addRuleScore } from './devices'
 import { findPackAction, findPackCondition, findPackTrigger, findRow, listEnabledPackTriggers } from '../gameplay/registry'
 import { playJuice } from '../gameplay/juice'
+import { playSound, stopMusic } from './audio'
 import { addRuntimeTag, clearRuntimeTags, nodeHasTag, removeRuntimeTag, tickRuntimeTags } from '../gameplay/runtimeTags'
 import { setScreenVisible } from './ui/values'
 import {
@@ -401,6 +402,24 @@ function run(node: SceneNode, step: RuleStep, job: Job, host: SceneRuntimeHost, 
   }
   if (step.do === 'juice') {
     playJuice(step.name, actor.id, host)
+    return
+  }
+  if (step.do === 'sound') {
+    const assetId = step.clipAssetId || step.name
+    const music = step.tag === 'music'
+    if (!assetId) {
+      if (music) stopMusic()
+      return
+    }
+    const volume = step.value.trim() ? evaluate(step.value) : 1
+    lastValue = volume
+    playSound({
+      assetId,
+      bus: music ? 'music' : 'sfx',
+      loop: music,
+      volume,
+      parent: music ? null : host.resolveObject(actor.id),
+    })
     return
   }
   if (step.do === 'gather') {

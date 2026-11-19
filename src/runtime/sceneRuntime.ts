@@ -39,6 +39,8 @@ export interface CharacterSpec {
   dashInvincible: number
   dashCooldown: number
   footstepDistance: number
+  /** 走过脚步间隔时播放的打击感。空着只发脚步消息。 */
+  footstepJuice: string
   lockTargetId?: string
   lockTargetName: string
   idleClip: string
@@ -82,6 +84,7 @@ export function defaultCharacter(): CharacterSpec {
     dashInvincible: 0.35,
     dashCooldown: 0.8,
     footstepDistance: 1.6,
+    footstepJuice: '',
     lockTargetId: '',
     lockTargetName: '',
     idleClip: '',
@@ -325,7 +328,7 @@ export type CoreRuleStepKind =
   | 'message' | 'setVar' | 'addTag' | 'removeTag' | 'wait' | 'waitFrame' | 'waitUpper' | 'waitMark'
   | 'playClip' | 'playUpper' | 'stance'
   | 'if' | 'gather' | 'each' | 'switchState'
-  | 'showUi' | 'hideUi' | 'lock' | 'camera' | 'moveTo' | 'spawn' | 'hide' | 'score' | 'juice' | 'log'
+  | 'showUi' | 'hideUi' | 'lock' | 'camera' | 'moveTo' | 'spawn' | 'hide' | 'score' | 'juice' | 'sound' | 'log'
 
 export type RuleTriggerKind = CoreRuleTriggerKind | (string & {})
 export type RuleCondKind = CoreRuleCondKind | (string & {})
@@ -392,7 +395,7 @@ const STEPS: CoreRuleStepKind[] = [
   'message', 'setVar', 'addTag', 'removeTag', 'wait', 'waitFrame', 'waitUpper', 'waitMark',
   'playClip', 'playUpper', 'stance',
   'if', 'gather', 'each', 'switchState',
-  'showUi', 'hideUi', 'lock', 'camera', 'moveTo', 'spawn', 'hide', 'score', 'juice', 'log',
+  'showUi', 'hideUi', 'lock', 'camera', 'moveTo', 'spawn', 'hide', 'score', 'juice', 'sound', 'log',
 ]
 
 export function isCoreTrigger(kind: string): kind is CoreRuleTriggerKind {

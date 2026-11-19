@@ -46,6 +46,8 @@ registerGameplayPack({
         { key: 'cameraShake', label: '镜头震动', type: 'number', defaultValue: 0.3 },
         { key: 'rimFlashColor', label: '受击闪光', type: 'color', defaultValue: '#ffffff' },
         { key: 'knockbackMeters', label: '击退米数', type: 'number', defaultValue: 0.45 },
+        { key: 'sound', label: '音效', type: 'string', defaultValue: '' },
+        { key: 'soundVolume', label: '音量', type: 'number', defaultValue: 1 },
       ],
       defaultRows: juice,
     },

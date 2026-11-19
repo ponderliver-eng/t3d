@@ -64,6 +64,7 @@ import { syncNavDebug } from '../../capabilities/navigation/debug'
 import { consumeNavBake, navDebugGeometry } from '../../capabilities/navigation/session'
 import { beginFrameCosts, measureCost, takeCostAverages } from '../../runtime/frameProfile'
 import { stepSceneRuntime } from '../../runtime/sceneRuntime'
+import { attachAudioListener } from '../../runtime/audio'
 import '../../runtime/character'
 import '../../runtime/camera'
 import '../../runtime/devices'
@@ -1298,6 +1299,7 @@ export class EditorViewport {
       bake.finish(collectNavSurfaces(roots))
     }
     this.frameCamera = this.activeCamera()
+    attachAudioListener(this.viewCamera())
     stepSceneRuntime(dt, {
       ready: this.ready && Boolean(this.picture) && this.width > 1 && this.height > 1,
       resolveObject: id => this.objects.get(id) ?? null,

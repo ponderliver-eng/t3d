@@ -34,6 +34,7 @@ import {
 import { EffectCard } from '../../capabilities/particles/EffectCard'
 import { NavigationCard, SceneNavigationCard } from '../../capabilities/navigation/NavigationCards'
 import { SkyCard } from '../../capabilities/sky/SkyCard'
+import { audioMixPatch, readAudioMix } from '../../runtime/audio'
 import {
   InspectorFrame,
   useInspectorCardOpen,
@@ -661,6 +662,16 @@ function SceneSettings() {
             <NumberRow label={t('inspector.hue')} value={picture.hue} min={-1} max={1} step={0.01} gesture={t('gesture.picture')} onChange={hue => set({ hue })} />
             <NumberRow label={t('inspector.saturation')} value={picture.saturation} min={0} max={2} step={0.01} gesture={t('gesture.picture')} onChange={saturation => set({ saturation })} />
           </div>
+        </Section>
+      </Card>
+      <Card id="scene-audio" title={t('audio.title')} color="#26a69a">
+        <Section title={t('audio.title')} color="#26a69a">
+          <div className="iv2-pair">
+            <NumberRow label={t('audio.master')} value={readAudioMix(picture).master} min={0} max={1} step={0.01} gesture={t('gesture.picture')} onChange={master => set(audioMixPatch(picture, { master }))} />
+            <NumberRow label={t('audio.music')} value={readAudioMix(picture).music} min={0} max={1} step={0.01} gesture={t('gesture.picture')} onChange={music => set(audioMixPatch(picture, { music }))} />
+            <NumberRow label={t('audio.sfx')} value={readAudioMix(picture).sfx} min={0} max={1} step={0.01} gesture={t('gesture.picture')} onChange={sfx => set(audioMixPatch(picture, { sfx }))} />
+          </div>
+          <p className="settings-note">{t('audio.hint')}</p>
         </Section>
       </Card>
       </SceneColumn>

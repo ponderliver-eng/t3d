@@ -11,6 +11,7 @@ const RENDERER_DIST = path.join(__dirname, '../dist')
 
 app.commandLine.appendSwitch('enable-unsafe-webgpu')
 app.commandLine.appendSwitch('ignore-gpu-blocklist')
+app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required')
 
 let mainWindow: electron.BrowserWindow | null = null
 

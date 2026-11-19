@@ -1,4 +1,5 @@
 import type { SceneRuntimeHost } from '../runtime/sceneRuntime'
+import { playSound } from '../runtime/audio'
 import { useEditorStore } from '../editor/scene/store'
 import { armJuice } from './juiceClock'
 import { findRow } from './registry'
@@ -13,6 +14,14 @@ export function playJuice(id: string, nodeId: string, host: SceneRuntimeHost): b
   const now = performance.now() / 1000
   const color = typeof fields.rimFlashColor === 'string' ? fields.rimFlashColor : ''
   armJuice(numberField(fields.hitStopSec), numberField(fields.cameraShake), color, now)
+  const sound = typeof fields.sound === 'string' ? fields.sound.trim() : ''
+  if (sound) {
+    playSound({
+      assetId: sound,
+      volume: fields.soundVolume === undefined ? 1 : numberField(fields.soundVolume),
+      parent: host.resolveObject(nodeId),
+    })
+  }
   const knock = numberField(fields.knockbackMeters)
   if (knock > 0) knockBack(nodeId, host, knock)
   return true

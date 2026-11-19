@@ -3,6 +3,7 @@ import { moveCharacters } from '../capabilities/physics/session'
 import { addRuntimeTag } from '../gameplay/runtimeTags'
 import { clearJuice } from '../gameplay/juiceClock'
 import { emitFootstep } from './signals'
+import { playJuice } from '../gameplay/juice'
 import { carryFor } from './devices'
 import { clipDuration } from '../editor/assets/models'
 import { playBody } from '../editor/animation/director'
@@ -255,6 +256,7 @@ function stepCharacters(dt: number, host: SceneRuntimeHost) {
         live.footstep = 0
         live.footsteps += 1
         emitFootstep(node.id)
+        if (spec.footstepJuice) playJuice(spec.footstepJuice, node.id, host)
       }
     }
     object.position.set(nextX, nextY, nextZ)

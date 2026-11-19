@@ -80,6 +80,7 @@
    - **核心包（Core Pack）**常驻开启，提供成品级组件（角色移动 `character`、跟随相机 `cameraFollow`、触发器 `trigger`、互动点、移动机关、复活点、计分、标签与同一种“当……就……”律令表 `rules`）。
    - **领域包（Domain Packs：属性、战斗、感知、背包、对话）与品类专包（如策略/RTS、塔防、载具竞速等）**按需开启，数据存放在 `node.gameplay.packs[packId][componentId]`；通过 `src/gameplay/registry.ts` 的 `GameplayPackManifest` 统一声明数据表（`tables`）、节点组件（`components`）与律令词条（`triggers / conditions / actions`），**严禁**将新玩法包的组件卡片硬编码进 `InspectorPanel.tsx` 或将词条硬编码进核心 `rules.ts`。关闭玩法包时不清除节点上已填写的配置数据，律令编辑器自动标出缺失并安全跳过。
    - 需要试玩态视口交互（如边缘滚屏、点选区分单位/空地、拉框选人、群体编队）时，统一通过 `SceneRuntimeHost`（`pointerNormalized`、`consumeNodeClick`、`setPlayMarqueeEnabled`、`consumePlayMarquee`）与导航包的 `computeFormationTargets` 接入。
+   - **系统功能不进扩展包栏。** 界面、音效这类始终开启的系统，检查器放在场景属性的**系统**栏，不放**扩展包**栏，也不登记进 `src/capabilities`。场景级系统数据写在 `ScenePicture` 自己的字段上（音效是 `picture.audio`：总音量、音乐、音效）。`picture.capabilities` 只给可关闭的场景能力包，例如天空。
    - **官方库与游戏数据分开。** 库窗口（工具栏「官方库」、菜单 **文件 → 官方库**）只做货架和工程开关，四栏是：能力（`src/capabilities`，含水体与天气）、玩法（核心包以外的领域包）、专项（RTS、RPG 等专属包；模板单独标明，不是包）、素材（现成模型、动画、粒子预设，用到时再导入，不是运行时开关）。核心包始终开启，不进库。游戏数据窗口只编辑表，不再放玩法包开关。关掉的包从数据表目录消失，已写的行留在工程里。现在只做官方包，不实现安装器；以后的安装或导入仍走现有登记，不另做第三套开关。
 
 ---

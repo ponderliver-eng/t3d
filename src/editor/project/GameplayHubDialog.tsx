@@ -7,6 +7,7 @@ import {
   type GameDatabaseRow,
 } from '../../gameplay/types'
 import { defaultRows, listEnabledTableSchemas, tableRows } from '../../gameplay/registry'
+import { AudioField } from '../../runtime/RulePickers'
 import './GameplayHubDialog.css'
 import '../prefs/SettingsDialog.css'
 
@@ -178,6 +179,14 @@ function ColumnField({
   onChange: (value: unknown) => void
 }) {
   const { t } = useI18n()
+  if (column.key === 'sound') {
+    return (
+      <label className="hub-field">
+        <span>{column.label}</span>
+        <AudioField value={typeof value === 'string' ? value : ''} disabled={false} onChange={onChange} />
+      </label>
+    )
+  }
   if (column.type === 'boolean') {
     return (
       <label className="hub-field hub-check">

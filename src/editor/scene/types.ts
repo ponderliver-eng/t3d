@@ -173,11 +173,21 @@ export interface ScenePicture {
   envAssetId: string | null
   /** 场景重力，米/秒²。物理能力包读取。 */
   gravity: Vec3
+  /** 系统音效。总音量、音乐、音效。不是能力包。 */
+  audio: PictureAudio
   /** 导航烘焙参数。关掉能力包不会清掉它。 */
   navigation: NavSettings
   /** 场景级扩展能力包（如体积云 clouds、大气天象等）按能力包 id 挂载的数据槽，关闭能力包时不清除数据。 */
   capabilities?: Record<string, unknown>
 }
+
+export interface PictureAudio {
+  master: number
+  music: number
+  sfx: number
+}
+
+export const DEFAULT_PICTURE_AUDIO: PictureAudio = { master: 1, music: 0.8, sfx: 1 }
 
 export const DEFAULT_PICTURE: ScenePicture = {
   background: '#141414',
@@ -219,20 +229,39 @@ export const DEFAULT_PICTURE: ScenePicture = {
   saturation: 1,
   envAssetId: null,
   gravity: [0, -9.81, 0],
+  audio: { ...DEFAULT_PICTURE_AUDIO },
   navigation: { ...DEFAULT_NAV },
 }
 
 export function normalizePicture(picture?: Partial<ScenePicture> | null): ScenePicture {
   const gravity = picture?.gravity
+  const legacyAudio = picture?.capabilities && typeof picture.capabilities === 'object'
+    ? picture.capabilities.audio
+    : undefined
+  const capabilities = picture?.capabilities && typeof picture.capabilities === 'object'
+    ? { ...picture.capabilities }
+    : undefined
+  if (capabilities) delete capabilities.audio
   return {
     ...DEFAULT_PICTURE,
     ...picture,
     toneMapping: toneMapOf(picture?.toneMapping),
     ssgiDenoise: picture?.ssgiDenoise === true,
     gravity: gravity?.length === 3 ? gravity : DEFAULT_PICTURE.gravity,
+    audio: { ...DEFAULT_PICTURE_AUDIO, ...pictureAudio(picture?.audio), ...pictureAudio(legacyAudio) },
     navigation: { ...DEFAULT_NAV, ...picture?.navigation },
-    ...(picture?.capabilities && typeof picture.capabilities === 'object' ? { capabilities: { ...picture.capabilities } } : {}),
+    ...(capabilities && Object.keys(capabilities).length > 0 ? { capabilities } : {}),
   }
+}
+
+function pictureAudio(value: unknown): Partial<PictureAudio> {
+  if (!value || typeof value !== 'object') return {}
+  const row = value as Partial<PictureAudio>
+  const next: Partial<PictureAudio> = {}
+  if (typeof row.master === 'number') next.master = row.master
+  if (typeof row.music === 'number') next.music = row.music
+  if (typeof row.sfx === 'number') next.sfx = row.sfx
+  return next
 }
 
 export type GizmoMode = 'translate' | 'rotate' | 'scale'
