@@ -15,7 +15,7 @@ import {
   WebGLRenderer,
 } from 'three'
 import { useI18n } from '../i18n'
-import { environmentFor } from '../assets/textures'
+import { ensureAssetUrl, environmentFor, loadEnvironmentAsset } from '../assets/textures'
 import { canResizeTextureFile, readCurrentBytes, renderTextureToPng, saveOverwrittenTexture } from '../assets/textureResize'
 import { isNormalTextureName } from '../assets/models'
 import { assetDirectory, useAssetStore } from '../assets/library'
@@ -146,6 +146,12 @@ export function TexturePreview({ assetId, environment = false, standalone = fals
     camera.position.z = environment ? 2.6 : 1
     let map: Texture | null = environment ? environmentFor(assetId) : null
     let owned = false
+    if (environment && !map && 'fileName' in asset) {
+      void loadEnvironmentAsset(asset).catch(() => undefined)
+    }
+    if (!map && !environment && !asset.url) {
+      void ensureAssetUrl(assetId).catch(() => undefined)
+    }
     if (!map && !environment && asset.url) {
       map = new TextureLoader().load(asset.url)
       map.colorSpace = NoColorSpace
