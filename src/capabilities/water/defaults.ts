@@ -25,6 +25,8 @@ export interface WaterSpec {
   foamWidth: number
   foamIntensity: number
   crestFoam: number
+  /** 波峰泡沫出现阈值（越高越少，只留最高浪尖；越低越多）。 */
+  crestFoamThreshold: number
   waveHeight: number
   /** 大浪推进速度倍率（0 可定格波浪）。 */
   waveSpeed: number
@@ -87,7 +89,8 @@ export const WATER_STYLE_PRESETS: Record<WaterPresetId, StylePresetFields> = {
     foamWidth: 0.4,
     foamIntensity: 0.75,
     crestFoam: 0.55,
-    waveHeight: 0.2,
+    crestFoamThreshold: 0.42,
+    waveHeight: 0.35,
     waveSpeed: 1.0,
     waveSteepness: 0.65,
     softEdge: 0.08,
@@ -113,7 +116,8 @@ export const WATER_STYLE_PRESETS: Record<WaterPresetId, StylePresetFields> = {
     foamWidth: 0.35,
     foamIntensity: 0.55,
     crestFoam: 0.85,
-    waveHeight: 0.75,
+    crestFoamThreshold: 0.42,
+    waveHeight: 1.2,
     waveSpeed: 1.1,
     waveSteepness: 0.82,
     softEdge: 0.1,
@@ -139,6 +143,7 @@ export const WATER_STYLE_PRESETS: Record<WaterPresetId, StylePresetFields> = {
     foamWidth: 0.15,
     foamIntensity: 0.4,
     crestFoam: 0.2,
+    crestFoamThreshold: 0.5,
     waveHeight: 0.04,
     waveSpeed: 0.65,
     waveSteepness: 0.35,
@@ -165,6 +170,7 @@ export const WATER_STYLE_PRESETS: Record<WaterPresetId, StylePresetFields> = {
     foamWidth: 0.1,
     foamIntensity: 0,
     crestFoam: 0,
+    crestFoamThreshold: 0.5,
     waveHeight: 0,
     waveSpeed: 0.5,
     waveSteepness: 0.2,
@@ -191,7 +197,8 @@ export const WATER_STYLE_PRESETS: Record<WaterPresetId, StylePresetFields> = {
     foamWidth: 0.32,
     foamIntensity: 1.2,
     crestFoam: 0.7,
-    waveHeight: 0.43,
+    crestFoamThreshold: 0.42,
+    waveHeight: 0.65,
     waveSpeed: 0.9,
     waveSteepness: 0.7,
     softEdge: 0.06,
@@ -241,7 +248,8 @@ export function normalizeWater(raw: unknown): WaterSpec {
     foamWidth: finite(record.foamWidth, base.foamWidth, 0, 4),
     foamIntensity: finite(record.foamIntensity, base.foamIntensity, 0, 3),
     crestFoam: finite(record.crestFoam, base.crestFoam, 0, 2),
-    waveHeight: finite(record.waveHeight, base.waveHeight, 0, 2),
+    crestFoamThreshold: finite(record.crestFoamThreshold, base.crestFoamThreshold, 0, 0.9),
+    waveHeight: finite(record.waveHeight, base.waveHeight, 0, 3),
     waveSpeed: finite(record.waveSpeed, base.waveSpeed, 0, 4),
     waveSteepness: finite(record.waveSteepness, base.waveSteepness, 0, 1),
     reflectionScale: finite(record.reflectionScale, qualPreset.reflectionScale, 0, 1),

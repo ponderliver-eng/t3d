@@ -154,8 +154,8 @@ export function WaterCard({ node, disabled }: { node: SceneNode, disabled: boole
             <RangeField label={t('water.waveScale')} value={spec.waveScale} min={0.04} max={2} step={0.02} disabled={disabled} onChange={waveScale => write({ waveScale })} />
             <RangeField label={t('water.flowSpeed')} value={spec.flowSpeed} min={0} max={3} step={0.05} disabled={disabled} onChange={flowSpeed => write({ flowSpeed })} />
             <RangeField label={t('water.flowDir')} value={spec.flowDirection} min={0} max={360} step={1} disabled={disabled} onChange={flowDirection => write({ flowDirection })} />
-            <RangeField label={t('water.normalScale')} value={spec.normalScale} min={0} max={2} step={0.05} disabled={disabled} onChange={normalScale => write({ normalScale })} />
-            <RangeField label={t('water.waveHeight')} value={spec.waveHeight} min={0} max={0.8} step={0.01} disabled={disabled} onChange={waveHeight => write({ waveHeight })} />
+            <RangeField label={t('water.normalScale')} value={spec.normalScale} min={0} max={3} step={0.05} disabled={disabled} onChange={normalScale => write({ normalScale })} />
+            <RangeField label={t('water.waveHeight')} value={spec.waveHeight} min={0} max={2.5} step={0.02} disabled={disabled} onChange={waveHeight => write({ waveHeight })} />
             <RangeField label={t('water.waveSpeed')} value={spec.waveSpeed} min={0} max={3} step={0.05} disabled={disabled} onChange={waveSpeed => write({ waveSpeed })} />
             <RangeField label={t('water.waveSteepness')} value={spec.waveSteepness} min={0} max={1} step={0.02} disabled={disabled} onChange={waveSteepness => write({ waveSteepness })} />
             <TextureField label={t('water.normalMap')} value={spec.normalMapAssetId} disabled={disabled} onChange={normalMapAssetId => write({ normalMapAssetId })} />
@@ -189,6 +189,7 @@ export function WaterCard({ node, disabled }: { node: SceneNode, disabled: boole
                 <RangeField label={t('water.foamWidth')} value={spec.foamWidth} min={0} max={2} step={0.05} disabled={disabled} onChange={foamWidth => write({ foamWidth })} />
                 <RangeField label={t('water.foamIntensity')} value={spec.foamIntensity} min={0} max={2} step={0.05} disabled={disabled} onChange={foamIntensity => write({ foamIntensity })} />
                 <RangeField label={t('water.crestFoam')} value={spec.crestFoam} min={0} max={2} step={0.05} disabled={disabled} onChange={crestFoam => write({ crestFoam })} />
+                <RangeField label={t('water.crestThreshold')} value={spec.crestFoamThreshold} min={0} max={0.85} step={0.02} disabled={disabled} onChange={crestFoamThreshold => write({ crestFoamThreshold })} />
                 <TextureField label={t('water.foamMap')} value={spec.foamMapAssetId} disabled={disabled} onChange={foamMapAssetId => write({ foamMapAssetId })} />
               </>
             )}

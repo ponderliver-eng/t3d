@@ -94,6 +94,7 @@ export function createWaterMaterial(options: WaterMaterialOptions): WaterMateria
   const uFoamWidth = uniform(0.28)
   const uFoamIntensity = uniform(0.9)
   const uCrestFoam = uniform(0.65)
+  const uCrestFoamThreshold = uniform(0.42)
   const uShoreFoamOn = uniform(1)
   const uSoftEdge = uniform(0.08)
   const uCausticsStrength = uniform(0.7)
@@ -105,21 +106,29 @@ export function createWaterMaterial(options: WaterMaterialOptions): WaterMateria
   const foamTexNode = texture(defaultFoam)
   const causticsTexNode = texture(defaultCaustics)
 
-  // 1. 4 组主风向扇区 3D Gerstner 波浪（水平波峰聚拢 + 垂直起伏，兼容局部 Z/Y 轴朝上）
+  // 1. 物理色散 Gerstner 长浪脊：86% 能量集中在主风向 ±18° 扇区形成连绵浪脊，杜绝圆形小山丘
   const dir1 = uFlowDir
-  const dir2 = normalize(vec2(uFlowDir.x.mul(0.92).sub(uFlowDir.y.mul(0.39)), uFlowDir.x.mul(0.39).add(uFlowDir.y.mul(0.92))))
-  const dir3 = normalize(vec2(uFlowDir.x.mul(0.88).add(uFlowDir.y.mul(0.47)), uFlowDir.y.mul(0.88).sub(uFlowDir.x.mul(0.47))))
-  const dir4 = normalize(vec2(uFlowDir.x.mul(0.97).sub(uFlowDir.y.mul(0.24)), uFlowDir.x.mul(0.24).add(uFlowDir.y.mul(0.97))))
+  const dir2 = normalize(vec2(uFlowDir.x.mul(0.97).sub(uFlowDir.y.mul(0.24)), uFlowDir.x.mul(0.24).add(uFlowDir.y.mul(0.97))))
+  const dir3 = normalize(vec2(uFlowDir.x.mul(0.95).add(uFlowDir.y.mul(0.31)), uFlowDir.y.mul(0.95).sub(uFlowDir.x.mul(0.31))))
+  const dir4 = normalize(vec2(uFlowDir.x.mul(0.79).sub(uFlowDir.y.mul(0.61)), uFlowDir.x.mul(0.61).add(uFlowDir.y.mul(0.79))))
 
-  const k1 = float(0.42)
-  const k2 = float(0.73)
-  const k3 = float(1.31)
-  const k4 = float(2.17)
+  const k1 = float(0.22)
+  const k2 = float(0.37)
+  const k3 = float(0.61)
+  const k4 = float(0.96)
 
-  const p1 = dot(positionWorld.xz, dir1).mul(k1).add(uWaveTime.mul(1.15))
-  const p2 = dot(positionWorld.xz, dir2).mul(k2).add(uWaveTime.mul(1.52))
-  const p3 = dot(positionWorld.xz, dir3).mul(k3).add(uWaveTime.mul(2.04))
-  const p4 = dot(positionWorld.xz, dir4).mul(k4).add(uWaveTime.mul(2.61))
+  // 真实水波色散：波长越长推进越快，短波相对慢
+  const p1 = dot(positionWorld.xz, dir1).mul(k1).sub(uWaveTime.mul(1.85))
+  const p2 = dot(positionWorld.xz, dir2).mul(k2).sub(uWaveTime.mul(1.42))
+  const p3 = dot(positionWorld.xz, dir3).mul(k3).sub(uWaveTime.mul(1.08))
+  const p4 = dot(positionWorld.xz, dir4).mul(k4).sub(uWaveTime.mul(0.82))
+
+  // 柔和波群包络（沿主浪脊方向缓慢聚散）
+  const groupEnv = clamp(
+    float(0.92).add(sin(dot(positionWorld.xz, dir2).mul(0.05).sub(uWaveTime.mul(0.32))).mul(0.22)),
+    float(0.7),
+    float(1.18),
+  )
 
   const s1 = sin(p1)
   const s2 = sin(p2)
@@ -129,14 +138,17 @@ export function createWaterMaterial(options: WaterMaterialOptions): WaterMateria
   const c2w = cos(p2)
   const c3w = cos(p3)
   const c4w = cos(p4)
-  const waveNorm = s1.mul(0.46).add(s2.mul(0.28)).add(s3.mul(0.16)).add(s4.mul(0.10))
-  const waveOffset = waveNorm.mul(uWaveHeight)
 
-  // 严格雅可比限幅的 3D Gerstner 水平挤压：总压缩率 Σ(k_i * Q_i) <= 0.88 < 1，保证波峰尖锐聚拢且永不自交
-  const q1 = min(uWaveHeight.mul(0.46).mul(2.2), float(0.22).div(k1)).mul(uWaveSteepness)
-  const q2 = min(uWaveHeight.mul(0.28).mul(2.2), float(0.22).div(k2)).mul(uWaveSteepness)
-  const q3 = min(uWaveHeight.mul(0.16).mul(2.2), float(0.22).div(k3)).mul(uWaveSteepness)
-  const q4 = min(uWaveHeight.mul(0.10).mul(2.2), float(0.22).div(k4)).mul(uWaveSteepness)
+  const rawWave = s1.mul(0.46).add(s2.mul(0.26)).add(s3.mul(0.16)).add(s4.mul(0.12))
+  const effHeight = uWaveHeight.mul(groupEnv)
+  const waveNorm = rawWave.mul(groupEnv)
+  const waveOffset = rawWave.mul(effHeight)
+
+  // 严格雅可比限幅的 3D Gerstner 水平挤压：总压缩率 Σ(k_i * Q_i) <= 0.84 < 1，保证永不自交
+  const q1 = min(effHeight.mul(0.46).mul(2.1), float(0.21).div(k1)).mul(uWaveSteepness)
+  const q2 = min(effHeight.mul(0.26).mul(2.1), float(0.21).div(k2)).mul(uWaveSteepness)
+  const q3 = min(effHeight.mul(0.16).mul(2.1), float(0.21).div(k3)).mul(uWaveSteepness)
+  const q4 = min(effHeight.mul(0.12).mul(2.1), float(0.21).div(k4)).mul(uWaveSteepness)
   const horizOffset = dir1.mul(c1w.mul(q1))
     .add(dir2.mul(c2w.mul(q2)))
     .add(dir3.mul(c3w.mul(q3)))
@@ -156,11 +168,11 @@ export function createWaterMaterial(options: WaterMaterialOptions): WaterMateria
     )
 
   const dWaveDxz = dir1.mul(c1w.mul(k1).mul(0.46))
-    .add(dir2.mul(c2w.mul(k2).mul(0.28)))
+    .add(dir2.mul(c2w.mul(k2).mul(0.26)))
     .add(dir3.mul(c3w.mul(k3).mul(0.16)))
-    .add(dir4.mul(c4w.mul(k4).mul(0.10)))
-    .mul(uWaveHeight)
-    .mul(float(1.0).add(uWaveSteepness.mul(0.45)))
+    .add(dir4.mul(c4w.mul(k4).mul(0.12)))
+    .mul(effHeight)
+    .mul(float(1.0).add(uWaveSteepness.mul(0.65)))
 
   // 视距抗锯齿衰减（远景逐步平滑高频碎波法线，消除低角度像素闪烁噪点）
   const worldToEye = cameraPosition.sub(positionWorld)
@@ -186,14 +198,19 @@ export function createWaterMaterial(options: WaterMaterialOptions): WaterMateria
   }
 
   const surfaceNormal = normalize(vec3(
-    nAvg.x.mul(uNormalScale).sub(dWaveDxz.x.mul(1.2)),
+    nAvg.x.mul(uNormalScale).sub(dWaveDxz.x.mul(1.4)),
     float(1.0),
-    nAvg.y.mul(uNormalScale).sub(dWaveDxz.y.mul(1.2)),
+    nAvg.y.mul(uNormalScale).sub(dWaveDxz.y.mul(1.4)),
+  ))
+  const waveMacroNormal = normalize(vec3(
+    dWaveDxz.x.negate().mul(1.6),
+    float(1.0),
+    dWaveDxz.y.negate().mul(1.6),
   ))
   const crispNormal = normalize(vec3(
-    nCrisp.x.mul(uNormalScale).mul(1.45).sub(dWaveDxz.x.mul(1.1)),
+    nCrisp.x.mul(uNormalScale).mul(1.45).sub(dWaveDxz.x.mul(1.2)),
     float(1.0),
-    nCrisp.y.mul(uNormalScale).mul(1.45).sub(dWaveDxz.y.mul(1.1)),
+    nCrisp.y.mul(uNormalScale).mul(1.45).sub(dWaveDxz.y.mul(1.2)),
   ))
 
   // 3. 视线与 Schlick 菲涅尔
@@ -281,14 +298,18 @@ export function createWaterMaterial(options: WaterMaterialOptions): WaterMateria
   const shoreBand = shoreBase.mul(float(0.62).add(lapRipple.mul(0.38))).mul(uShoreFoamOn)
 
   const crestActive = smoothstep(float(0.004), float(0.025), uWaveHeight)
-  const crestBreakup = smoothstep(float(0.38), float(0.75), foamTexNode.sample(baseUv.mul(0.35).add(flow.mul(0.5))).r)
-  const crestBand = smoothstep(float(0.36), float(0.88), waveNorm).mul(crestActive).mul(crestBreakup).mul(uCrestFoam)
+  const crestBreakup = smoothstep(float(0.28), float(0.70), foamTexNode.sample(baseUv.mul(vec2(0.55, 0.25)).add(flow.mul(0.5))).r)
+  const crestStart = uCrestFoamThreshold
+  const crestEnd = min(uCrestFoamThreshold.add(0.45), float(1.05))
+  const crestBand = smoothstep(crestStart, crestEnd, waveNorm).mul(crestActive).mul(crestBreakup).mul(uCrestFoam)
   const foamMask = max(shoreBand, crestBand)
-  const foamCut = smoothstep(float(0.58).sub(foamMask.mul(0.38)), float(0.82), foamCell)
+  const foamCut = smoothstep(float(0.56).sub(foamMask.mul(0.40)), float(0.82), foamCell)
   const foamAlpha = clamp(foamMask.mul(foamCut).mul(uFoamIntensity), float(0.0), float(1.0))
 
-  // 7. 太阳碎金高光（高光也吃远景防闪烁淡出）+ 波峰透光次表面散射
+  // 7. 太阳碎金高光（高光也吃远景防闪烁淡出）+ 大浪坡面体积明暗 + 波峰透光次表面散射
   const sunDir = normalize(uSunDir)
+  const sunSlope = max(dot(waveMacroNormal, sunDir), float(0.0))
+  const waveShade = mix(float(0.72), float(1.18), sunSlope)
   const sunRefl = normalize(reflect(sunDir.negate(), crispNormal))
   const specDot = max(dot(viewVec, sunRefl), float(0.0))
   const specPower = mix(float(2200.0), float(120.0), clamp(uSpecularSize, float(0.0), float(1.0)))
@@ -301,8 +322,9 @@ export function createWaterMaterial(options: WaterMaterialOptions): WaterMateria
     .mul(uSssStrength)
   const sssColor = uShallowColor.mul(sunScatter).mul(0.55)
 
-  // 8. 最终合成（泡沫底部微暗边增加漂浮厚度感）
-  const waterSurface = mix(refractedBody.add(sssColor), reflectionColor, fresnel).add(uSunColor.mul(sunSparkle))
+  // 8. 最终合成（波浪迎光亮背光暗 + 泡沫底部微暗边增加漂浮厚度感）
+  const litBody = refractedBody.mul(waveShade).add(sssColor)
+  const waterSurface = mix(litBody, reflectionColor, fresnel).add(uSunColor.mul(sunSparkle))
   const foamShadow = smoothstep(float(0.05), float(0.35), foamAlpha).mul(float(1.0).sub(foamAlpha))
   const shadedWater = waterSurface.mul(float(1.0).sub(foamShadow.mul(0.18)))
   const finalColor = mix(shadedWater, uFoamColor, foamAlpha)
@@ -339,6 +361,7 @@ export function createWaterMaterial(options: WaterMaterialOptions): WaterMateria
       uFoamWidth.value = spec.foamWidth
       uFoamIntensity.value = spec.foamIntensity
       uCrestFoam.value = spec.crestFoam
+      uCrestFoamThreshold.value = spec.crestFoamThreshold
       uShoreFoamOn.value = spec.shoreFoam ? 1 : 0
       uSoftEdge.value = spec.softEdge
       uCausticsStrength.value = spec.causticsStrength
