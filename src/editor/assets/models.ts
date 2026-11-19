@@ -1,4 +1,4 @@
-import { AnimationClip, Group, Mesh, MeshStandardMaterial, Object3D, Vector3, type BufferGeometry, type Material, type Skeleton } from 'three'
+import { AnimationClip, BufferAttribute, Group, IntType, Mesh, MeshStandardMaterial, Object3D, Vector3, type BufferGeometry, type Material, type Skeleton } from 'three'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js'
 import { OBJLoader } from 'three/addons/loaders/OBJLoader.js'
@@ -373,6 +373,7 @@ export function applyModelMaterialBindings(assetId: string, hint?: ModelMaterial
 export function instantiateModel(assetId: string): { object: Object3D, clips: AnimationClip[] } | null {
   const template = getModelTemplate(assetId)
   if (!template) return null
+  normalizeSkinIndex(template.scene)
   const object = cloneSkinned(template.scene)
   shareSkeletons(object)
   object.traverse(child => {
@@ -564,6 +565,25 @@ async function loadFbxWithUfbx(asset: FileAsset): Promise<ModelTemplate> {
   return template
 }
 
+function normalizeSkinIndex(root: Object3D) {
+  root.traverse(child => {
+    const mesh = child as Mesh
+    if (!mesh.isMesh) return
+    const geometry = mesh.geometry as BufferGeometry | undefined
+    const skinIndex = geometry?.attributes.skinIndex as (BufferAttribute & { gpuType?: number, isInterleavedBufferAttribute?: boolean }) | undefined
+    if (geometry && skinIndex && (skinIndex.array instanceof Uint32Array || skinIndex.array instanceof Int32Array || skinIndex.gpuType === IntType || skinIndex.isInterleavedBufferAttribute)) {
+      const next = new Uint16Array(skinIndex.count * 4)
+      for (let i = 0; i < skinIndex.count; i += 1) {
+        next[i * 4] = skinIndex.getX(i)
+        next[i * 4 + 1] = skinIndex.getY(i)
+        next[i * 4 + 2] = skinIndex.getZ(i)
+        next[i * 4 + 3] = skinIndex.getW(i)
+      }
+      geometry.setAttribute('skinIndex', new BufferAttribute(next, 4))
+    }
+  })
+}
+
 function templateFromObject(object: Object3D, clips: AnimationClip[]): ModelTemplate {
   let scene: Group
   if (object instanceof Group) scene = object
@@ -571,6 +591,7 @@ function templateFromObject(object: Object3D, clips: AnimationClip[]): ModelTemp
     scene = new Group()
     scene.add(object)
   }
+  normalizeSkinIndex(scene)
   // 模板阶段预计算切线一次，后续克隆实例共享同一 BufferGeometry，不再在主线程重算
   scene.traverse(child => {
     const mesh = child as Mesh

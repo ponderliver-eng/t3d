@@ -3,9 +3,11 @@ import { Pause, Play, Repeat } from 'lucide-react'
 import {
   AmbientLight,
   AnimationMixer,
+  BufferAttribute,
   Color,
   DirectionalLight,
   GridHelper,
+  IntType,
   LoopOnce,
   LoopRepeat,
   Mesh,
@@ -98,6 +100,7 @@ export function AnimationPreview({ assetId, standalone = false }: { assetId: str
       target.traverse(child => {
         const mesh = child as Mesh
         if (!mesh.isMesh) return
+        if (mesh.userData.previewGeometryCloned) mesh.geometry?.dispose()
         const list = Array.isArray(mesh.material) ? mesh.material : [mesh.material]
         for (const item of list) item?.dispose()
       })
@@ -145,8 +148,25 @@ export function AnimationPreview({ assetId, standalone = false }: { assetId: str
       const scale = actorAsset && 'importScale' in actorAsset && typeof actorAsset.importScale === 'number' && actorAsset.importScale > 0 ? actorAsset.importScale : 1
       root.scale.setScalar(scale)
       root.traverse(child => {
+        child.visible = true
         const mesh = child as SkinnedMesh
         if (mesh.isSkinnedMesh) mesh.frustumCulled = false
+        if (mesh.isMesh && mesh.geometry) {
+          const skinIndex = mesh.geometry.attributes.skinIndex as (BufferAttribute & { gpuType?: number, isInterleavedBufferAttribute?: boolean }) | undefined
+          if (skinIndex && (skinIndex.array instanceof Uint32Array || skinIndex.array instanceof Int32Array || skinIndex.array instanceof Uint16Array || skinIndex.gpuType === IntType || skinIndex.isInterleavedBufferAttribute)) {
+            const cloned = mesh.geometry.clone()
+            const next = new Float32Array(skinIndex.count * 4)
+            for (let i = 0; i < skinIndex.count; i += 1) {
+              next[i * 4] = skinIndex.getX(i)
+              next[i * 4 + 1] = skinIndex.getY(i)
+              next[i * 4 + 2] = skinIndex.getZ(i)
+              next[i * 4 + 3] = skinIndex.getW(i)
+            }
+            cloned.setAttribute('skinIndex', new BufferAttribute(next, 4, false))
+            mesh.geometry = cloned
+            mesh.userData.previewGeometryCloned = true
+          }
+        }
       })
       scene.add(root)
       prepareSkinnedPickBounds(root)

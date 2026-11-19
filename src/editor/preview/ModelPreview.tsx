@@ -4,9 +4,11 @@ import {
   AnimationMixer,
   AxesHelper,
   BoxHelper,
+  BufferAttribute,
   Color,
   DirectionalLight,
   GridHelper,
+  IntType,
   LoopOnce,
   LoopRepeat,
   Mesh,
@@ -184,11 +186,12 @@ export function ModelPreview({ assetId, standalone = false }: { assetId: string,
     }
     let soloName: string | null = null
     let requested = false
-    const disposePreviewMaterials = (target: Object3D | null) => {
+    const disposePreviewResources = (target: Object3D | null) => {
       if (!target) return
       target.traverse(child => {
         const mesh = child as Mesh
         if (!mesh.isMesh) return
+        if (mesh.userData.previewGeometryCloned) mesh.geometry?.dispose()
         const seen = new Set<Material>()
         const collect = (mat: unknown) => {
           if (!mat) return
@@ -216,7 +219,7 @@ export function ModelPreview({ assetId, standalone = false }: { assetId: string,
       }
       if (root) {
         scene.remove(root)
-        disposePreviewMaterials(root)
+        disposePreviewResources(root)
       }
       box?.removeFromParent()
       axes?.removeFromParent()
@@ -229,6 +232,22 @@ export function ModelPreview({ assetId, standalone = false }: { assetId: string,
         child.visible = true
         const mesh = child as SkinnedMesh
         if (mesh.isSkinnedMesh) mesh.frustumCulled = false
+        if (mesh.isMesh && mesh.geometry) {
+          const skinIndex = mesh.geometry.attributes.skinIndex as (BufferAttribute & { gpuType?: number, isInterleavedBufferAttribute?: boolean }) | undefined
+          if (skinIndex && (skinIndex.array instanceof Uint32Array || skinIndex.array instanceof Int32Array || skinIndex.array instanceof Uint16Array || skinIndex.gpuType === IntType || skinIndex.isInterleavedBufferAttribute)) {
+            const cloned = mesh.geometry.clone()
+            const next = new Float32Array(skinIndex.count * 4)
+            for (let i = 0; i < skinIndex.count; i += 1) {
+              next[i * 4] = skinIndex.getX(i)
+              next[i * 4 + 1] = skinIndex.getY(i)
+              next[i * 4 + 2] = skinIndex.getZ(i)
+              next[i * 4 + 3] = skinIndex.getW(i)
+            }
+            cloned.setAttribute('skinIndex', new BufferAttribute(next, 4, false))
+            mesh.geometry = cloned
+            mesh.userData.previewGeometryCloned = true
+          }
+        }
       })
       scene.add(root)
       prepareSkinnedPickBounds(root)
@@ -344,7 +363,7 @@ export function ModelPreview({ assetId, standalone = false }: { assetId: string,
       observer.disconnect()
       canvas.removeEventListener('pointerdown', onClick)
       mixer?.stopAllAction()
-      disposePreviewMaterials(root)
+      disposePreviewResources(root)
       box?.dispose()
       axes?.dispose()
       gridHelper.dispose()
