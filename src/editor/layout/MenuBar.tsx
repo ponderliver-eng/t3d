@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import {
-  ArrowDown, ArrowDownToLine, ArrowLeft, ArrowRight, ArrowUp, Axis3d, Box, Boxes, Camera, ChevronRight, Circle, ClipboardPaste, Clock, Cone, Copy, CopyPlus, Cylinder, Database, Eye, FilePlus, Flashlight, Focus, Folder, FolderCog, FolderOpen, FolderPlus, Grid3x3, Group, Layers, LayoutDashboard, Library, Lightbulb, Magnet, Music, Package, PackageOpen, PanelsTopLeft, Pill, Redo2, Save, SaveAll, Scan, Settings, SlidersHorizontal, Sparkles, Square, Sun, Sunrise, Tag, Trash2, Undo2, Upload,
+  ArrowDown, ArrowDownToLine, ArrowLeft, ArrowRight, ArrowUp, Axis3d, Box, Boxes, Camera, ChevronRight, Circle, ClipboardPaste, Clock, Cone, Copy, CopyPlus, Cylinder, Database, Eye, FilePlus, Flashlight, Focus, Folder, FolderCog, FolderOpen, FolderPlus, Grid3x3, Group, Layers, LayoutDashboard, Library, Lightbulb, Magnet, Music, Package, PackageOpen, PanelsTopLeft, Pill, Redo2, Save, SaveAll, Scan, Settings, SlidersHorizontal, Sparkles, Square, Sun, Sunrise, Tag, Trash2, Undo2, Upload, Waves,
 } from 'lucide-react'
+import { capabilityEnabled } from '../../capabilities/registry'
+import { createWaterNode } from '../../capabilities/water/create'
 import { askNewScene, useEditorStore, type DeviceKind } from '../scene/store'
 import { redoActive, undoActive, useUiEditor } from '../ui/session'
 import { LIGHT_KINDS, MESH_KINDS } from '../scene/kinds'
@@ -21,6 +23,7 @@ import './MenuBar.css'
 
 export default function MenuBar() {
   const playing = useEditorStore(state => state.playState !== 'stopped')
+  const waterEnabled = useEditorStore(state => capabilityEnabled(state.capabilities, 'water'))
   const grid = useEditorStore(state => state.gridVisible)
   const snap = useEditorStore(state => state.snap)
   const sceneUndo = useEditorStore(state => state.past.length > 0 || state.gesture !== null)
@@ -163,6 +166,7 @@ export default function MenuBar() {
           <Item icon={<Camera size={13} />} disabled={playing} onClick={() => create('camera')}>{t('menu.camera')}</Item>
           <Item icon={<Sparkles size={13} />} disabled={playing} onClick={() => create('effect')}>{t('menu.effect')}</Item>
           <Item icon={<PanelsTopLeft size={13} />} disabled={playing} onClick={() => create('screen')}>{t('menu.screen')}</Item>
+          {waterEnabled && <Item icon={<Waves size={13} />} disabled={playing} onClick={() => { createWaterNode() }}>{t('water.title')}</Item>}
         </Dropdown>
         <Dropdown label={t('menu.view')}>
           <Item icon={<Focus size={13} />} disabled={!hasSelection} onClick={() => useEditorStore.getState().requestFocus()}>{t('menu.focus')}<span className="menubar__hint">F</span></Item>

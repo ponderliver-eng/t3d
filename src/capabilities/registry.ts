@@ -23,6 +23,7 @@ export const CAPABILITIES = [
   { id: 'navigation', defaultEnabled: true, category: 'physics' },
   { id: 'particles', defaultEnabled: false, category: 'scene-object' },
   { id: 'sky', defaultEnabled: false, category: 'environment', loadRuntime: () => import('./sky/session') },
+  { id: 'water', defaultEnabled: false, category: 'environment', loadRuntime: () => import('./water/session') },
 ] as const satisfies readonly CapabilityManifest[]
 
 export type CapabilityId = (typeof CAPABILITIES)[number]['id']

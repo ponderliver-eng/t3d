@@ -35,6 +35,7 @@ import {
 import { EffectCard } from '../../capabilities/particles/EffectCard'
 import { NavigationCard, SceneNavigationCard } from '../../capabilities/navigation/NavigationCards'
 import { SkyCard } from '../../capabilities/sky/SkyCard'
+import { WaterCard } from '../../capabilities/water/WaterCard'
 import { audioMixPatch, readAudioMix } from '../../runtime/audio'
 import {
   InspectorFrame,
@@ -368,6 +369,7 @@ export default function InspectorPanel() {
       <PackComponentCards node={node} disabled={locked} />
       <PhysicsCard node={node} disabled={locked} />
       <NavigationCard node={node} disabled={locked} />
+      <WaterCard node={node} disabled={locked} />
 
       <AddComponentPicker node={node} disabled={locked} />
     </InspectorFrame>

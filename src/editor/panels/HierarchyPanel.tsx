@@ -2,8 +2,10 @@ import { useEffect, useMemo, useRef, useState, type DragEvent, type KeyboardEven
 import { createPortal } from 'react-dom'
 import {
   ArrowDown, ArrowDownToLine, ArrowUp, Axis3d, Bone, Box, Boxes, Camera, Check, ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, Circle, ClipboardPaste, Component, Cone, Copy, CopyPlus, Cylinder, ExternalLink, Eye, EyeOff, Music,
-  Flashlight, Focus, Group, Lightbulb, Lock, MapPin, Package, PanelsTopLeft, Pencil, Pill, Plus, Search, Sparkles, Square, Sun, Sunrise, Trash2, Undo2, Ungroup, Unlink, Unlock, Upload, X,
+  Flashlight, Focus, Group, Lightbulb, Lock, MapPin, Package, PanelsTopLeft, Pencil, Pill, Plus, Search, Sparkles, Square, Sun, Sunrise, Trash2, Undo2, Ungroup, Unlink, Unlock, Upload, Waves, X,
 } from 'lucide-react'
+import { capabilityEnabled } from '../../capabilities/registry'
+import { createWaterNode } from '../../capabilities/water/create'
 import { readClipDrag } from '../animation/playback'
 import { assignClip, isNodeDrag, NODE_MIME } from '../assets/import'
 import { assetDirectory, useAssetStore } from '../assets/library'
@@ -380,6 +382,12 @@ export default function HierarchyPanel() {
     setMenu(null)
   }
 
+  const createWater = (parentId: string | null = null) => {
+    createWaterNode(parentId)
+    setCreateOpen(false)
+    setMenu(null)
+  }
+
   const startNodeDrag = (event: DragEvent, id: string) => {
     if (playing || (event.target as HTMLElement).closest('button, input')) {
       event.preventDefault()
@@ -505,7 +513,7 @@ export default function HierarchyPanel() {
         </button>
         {createOpen && (
           <div className="scene-panel__popover" onPointerDown={event => event.stopPropagation()}>
-            <CreateList onCreate={create} onCreateDevice={createDevice} />
+            <CreateList onCreate={create} onCreateDevice={createDevice} onCreateWater={() => createWater()} />
           </div>
         )}
       </div>
@@ -830,7 +838,7 @@ export default function HierarchyPanel() {
             <button type="button" disabled={playing}><span><Plus size={12} />{menu.id ? t('hierarchy.createChild') : t('hierarchy.create')}</span><ChevronRight size={12} /></button>
             {!playing && (
               <div className="scene-panel__submenu-pop">
-                <CreateList onCreate={kind => create(kind, menu.id)} onCreateDevice={device => createDevice(device, menu.id)} />
+                <CreateList onCreate={kind => create(kind, menu.id)} onCreateDevice={device => createDevice(device, menu.id)} onCreateWater={() => createWater(menu.id)} />
               </div>
             )}
           </div>
@@ -954,8 +962,9 @@ function shiftNode(id: string, zone: 'before' | 'after') {
   useEditorStore.getState().placeNodes([id], node.parentId, zone, anchor.id)
 }
 
-function CreateList({ onCreate, onCreateDevice }: { onCreate: (kind: NodeKind) => void, onCreateDevice: (device: DeviceKind) => void }) {
+function CreateList({ onCreate, onCreateDevice, onCreateWater }: { onCreate: (kind: NodeKind) => void, onCreateDevice: (device: DeviceKind) => void, onCreateWater: () => void }) {
   const { t } = useI18n()
+  const waterEnabled = useEditorStore(state => capabilityEnabled(state.capabilities, 'water'))
   const kindName = (kind: NodeKind) => t(`kind.${kind}` as MessageKey)
   return (
     <>
@@ -994,6 +1003,7 @@ function CreateList({ onCreate, onCreateDevice }: { onCreate: (kind: NodeKind) =
       <button type="button" onClick={() => onCreate('camera')}><Camera size={12} />{t('menu.camera')}</button>
       <button type="button" onClick={() => onCreate('effect')}><Sparkles size={12} />{t('menu.effect')}</button>
       <button type="button" onClick={() => onCreate('screen')}><PanelsTopLeft size={12} />{t('menu.screen')}</button>
+      {waterEnabled && <button type="button" onClick={onCreateWater}><Waves size={12} />{t('water.title')}</button>}
     </>
   )
 }
