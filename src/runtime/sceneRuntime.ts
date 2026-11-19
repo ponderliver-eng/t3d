@@ -310,6 +310,27 @@ export interface ScoreSpec {
   defeatMessage: string
 }
 
+export interface SoundSourceSpec {
+  enabled: boolean
+  assetId: string
+  loop: boolean
+  volume: number
+  /** 声音保持原音量的距离，米。 */
+  refDistance: number
+  rolloff: number
+}
+
+export function defaultSoundSource(): SoundSourceSpec {
+  return {
+    enabled: true,
+    assetId: '',
+    loop: true,
+    volume: 1,
+    refDistance: 3,
+    rolloff: 1,
+  }
+}
+
 export function defaultScore(): ScoreSpec {
   return {
     enabled: true,
@@ -554,6 +575,7 @@ export interface NodeGameplay {
   mover?: MoverSpec | null
   checkpoint?: CheckpointSpec | null
   score?: ScoreSpec | null
+  soundSource?: SoundSourceSpec | null
   rules?: RuleEntry[]
   ruleStates?: RuleStateNode[]
   /** 领域包（属性、战斗、感知、背包、对话）按包 id 挂载的数据槽，关闭领域包时不清除数据。 */

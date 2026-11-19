@@ -85,7 +85,7 @@
 
 ## 音效
 
-音效不是能力包，没有开关，也不出现在扩展包栏。运行时在 `src/runtime/audio.ts`，用 Web Audio 和 Three.js 的 `PositionalAudio`。场景音量写在 `picture.audio`（总音量、音乐、音效），检查器放在场景属性的**系统**栏。打击感表的音效、角色脚步打击感、律令「播放声音」都走这一套。不要把音量写进 `picture.capabilities`。
+音效不是能力包，没有开关，也不出现在扩展包栏。运行时在 `src/runtime/audio.ts`，用 Web Audio 和 Three.js 的 `PositionalAudio`。场景音量写在 `picture.audio`（总音量、音乐、音效），检查器放在场景属性的**系统**栏。打击感表的音效、角色脚步打击感、律令「播放声音」都走这一套。一直跟着物体响的三维声音用核心组件「声源」（`node.gameplay.soundSource`），从添加组件或创建菜单的玩法装置里挂上，不要做成能力包。不要把音量写进 `picture.capabilities`。
 
 ## 标签和层
 

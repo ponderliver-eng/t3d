@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type DragEvent, type KeyboardEvent, type MouseEvent } from 'react'
 import { createPortal } from 'react-dom'
 import {
-  ArrowDown, ArrowDownToLine, ArrowUp, Axis3d, Bone, Box, Boxes, Camera, Check, ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, Circle, ClipboardPaste, Component, Cone, Copy, CopyPlus, Cylinder, ExternalLink, Eye, EyeOff,
+  ArrowDown, ArrowDownToLine, ArrowUp, Axis3d, Bone, Box, Boxes, Camera, Check, ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, Circle, ClipboardPaste, Component, Cone, Copy, CopyPlus, Cylinder, ExternalLink, Eye, EyeOff, Music,
   Flashlight, Focus, Group, Lightbulb, Lock, MapPin, Package, PanelsTopLeft, Pencil, Pill, Plus, Search, Sparkles, Square, Sun, Sunrise, Trash2, Undo2, Ungroup, Unlink, Unlock, Upload, X,
 } from 'lucide-react'
 import { readClipDrag } from '../animation/playback'
@@ -987,6 +987,7 @@ function CreateList({ onCreate, onCreateDevice }: { onCreate: (kind: NodeKind) =
           <button type="button" onClick={() => onCreateDevice('mover')}><Boxes size={12} />{t('mover.title')}</button>
           <button type="button" onClick={() => onCreateDevice('checkpoint')}><MapPin size={12} />{t('checkpoint.title')}</button>
           <button type="button" onClick={() => onCreateDevice('score')}><Sparkles size={12} />{t('score.title')}</button>
+          <button type="button" onClick={() => onCreateDevice('sound')}><Music size={12} />{t('soundSource.title')}</button>
         </div>
       </div>
       <div className="scene-panel__sep" />

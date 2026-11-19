@@ -5,7 +5,78 @@ import { useInspectorCardOpen } from '../editor/panels/inspectorMemory'
 import { useEditorStore } from '../editor/scene/store'
 import { useI18n } from '../editor/i18n'
 import type { SceneNode, Vec3 } from '../editor/scene/types'
-import { defaultInteract, defaultTrigger, defaultMover, defaultCheckpoint, defaultScore, type InteractSpec, type TriggerZoneSpec, type MoverSpec, type CheckpointSpec, type ScoreSpec } from './sceneRuntime'
+import { AudioField } from './RulePickers'
+import { defaultInteract, defaultTrigger, defaultMover, defaultCheckpoint, defaultScore, defaultSoundSource, type InteractSpec, type TriggerZoneSpec, type MoverSpec, type CheckpointSpec, type ScoreSpec, type SoundSourceSpec } from './sceneRuntime'
+
+export function SoundSourceCard({ node, disabled }: { node: SceneNode, disabled: boolean }) {
+  const { t } = useI18n()
+  const [open, setOpen] = useInspectorCardOpen('soundSource')
+  const spec = node.gameplay?.soundSource
+  if (!spec) return null
+  const view = { ...defaultSoundSource(), ...spec }
+  const write = (patch: Partial<SoundSourceSpec> | null) => {
+    const store = useEditorStore.getState()
+    store.beginGesture(t('soundSource.title'))
+    if (!patch) {
+      const gameplay = { ...node.gameplay }
+      delete gameplay.soundSource
+      store.updateNode(node.id, { gameplay: Object.keys(gameplay).length ? gameplay : null })
+      store.endGesture()
+      return
+    }
+    store.updateNode(node.id, { gameplay: { ...node.gameplay, soundSource: { ...view, ...patch } } })
+    store.endGesture()
+  }
+  return (
+    <section className="iv2-card iv2-card--wide">
+      <header className="iv2-card__header" onClick={() => setOpen(!open)}>
+        <span className="iv2-card__dot" style={{ background: '#26a69a' }} />
+        <span>{t('soundSource.title')}</span>
+        <span className="iv2-card__actions" onClick={event => event.stopPropagation()}>
+          <input
+            type="checkbox"
+            title={t('soundSource.enable')}
+            disabled={disabled}
+            checked={spec.enabled !== false}
+            onChange={event => write({ enabled: event.target.checked })}
+          />
+          <CardReset disabled={disabled} onReset={() => write(defaultSoundSource())} />
+          <button
+            type="button"
+            className="iv2-card__remove"
+            title={t('component.remove')}
+            disabled={disabled}
+            onClick={() => write(null)}
+          >
+            <Trash2 size={12} />
+          </button>
+        </span>
+        {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+      </header>
+      {open && (
+        <div className="iv2-card__body">
+          <section className="iv2-section">
+            <div className="iv2-section__title" style={{ color: '#26a69a' }}><i /><span>{t('soundSource.clip')}</span></div>
+            <label className="field">
+              <span>{t('soundSource.clip')}</span>
+              <AudioField value={view.assetId} disabled={disabled} onChange={assetId => write({ assetId })} />
+            </label>
+            <label className="field">
+              <span>{t('soundSource.loop')}</span>
+              <input type="checkbox" disabled={disabled} checked={view.loop} onChange={event => write({ loop: event.target.checked })} />
+            </label>
+            <div className="iv2-pair">
+              <SoundNumber label={t('audio.volume')} value={view.volume} disabled={disabled} min={0} max={4} step={0.05} onChange={volume => write({ volume })} />
+              <SoundNumber label={t('soundSource.distance')} value={view.refDistance} disabled={disabled} min={0.1} step={0.1} onChange={refDistance => write({ refDistance })} />
+              <SoundNumber label={t('soundSource.rolloff')} value={view.rolloff} disabled={disabled} min={0} step={0.1} onChange={rolloff => write({ rolloff })} />
+            </div>
+            <p className="settings-note">{t('soundSource.hint')}</p>
+          </section>
+        </div>
+      )}
+    </section>
+  )
+}
 
 export function InteractCard({ node, disabled }: { node: SceneNode, disabled: boolean }) {
   const { t } = useI18n()
@@ -367,6 +438,15 @@ function Check({ label, checked, disabled, onChange }: { label: string, checked:
     <label className="field">
       <span>{label}</span>
       <input type="checkbox" disabled={disabled} checked={checked} onChange={event => onChange(event.target.checked)} />
+    </label>
+  )
+}
+
+function SoundNumber({ label, value, disabled, min, max, step, onChange }: { label: string, value: number, disabled: boolean, min: number, max?: number, step: number, onChange: (value: number) => void }) {
+  return (
+    <label className="field">
+      <span>{label}</span>
+      <input type="number" min={min} max={max} step={step} disabled={disabled} value={Number.isFinite(value) ? value : 0} onChange={event => { const next = Number(event.target.value); if (Number.isFinite(next)) onChange(next) }} />
     </label>
   )
 }

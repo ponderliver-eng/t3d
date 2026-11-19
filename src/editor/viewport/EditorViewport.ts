@@ -65,6 +65,7 @@ import { consumeNavBake, navDebugGeometry } from '../../capabilities/navigation/
 import { beginFrameCosts, measureCost, takeCostAverages } from '../../runtime/frameProfile'
 import { stepSceneRuntime } from '../../runtime/sceneRuntime'
 import { attachAudioListener } from '../../runtime/audio'
+import '../../runtime/soundSource'
 import '../../runtime/character'
 import '../../runtime/camera'
 import '../../runtime/devices'

@@ -19,7 +19,7 @@ import { CharacterCard } from '../../runtime/CharacterCard'
 import { RulesCard } from '../../runtime/RulesCard'
 import { emptyRule } from '../../runtime/sceneRuntime'
 import { CameraCard } from '../../runtime/CameraCard'
-import { InteractCard, TriggerCard, MoverCard, CheckpointCard, ScoreCard } from '../../runtime/DeviceCards'
+import { InteractCard, TriggerCard, MoverCard, CheckpointCard, ScoreCard, SoundSourceCard } from '../../runtime/DeviceCards'
 import { listEnabledPackComponents } from '../../gameplay/registry'
 import {
   cameraPresetForMode,
@@ -29,6 +29,7 @@ import {
   defaultInteract,
   defaultMover,
   defaultScore,
+  defaultSoundSource,
   defaultTrigger,
 } from '../../runtime/sceneRuntime'
 import { EffectCard } from '../../capabilities/particles/EffectCard'
@@ -362,6 +363,7 @@ export default function InspectorPanel() {
       <MoverCard node={node} disabled={locked} />
       <CheckpointCard node={node} disabled={locked} />
       <ScoreCard node={node} disabled={locked} />
+      <SoundSourceCard node={node} disabled={locked} />
       <RulesCard node={node} disabled={locked} />
       <PackComponentCards node={node} disabled={locked} />
       <PhysicsCard node={node} disabled={locked} />
@@ -1984,6 +1986,20 @@ function AddComponentPicker({ node, disabled }: { node: SceneNode, disabled: boo
             gameplay: { ...node.gameplay, checkpoint: defaultCheckpoint() },
           })
           useInspectorMemory.getState().setOpen(`node:${node.id}`, 'checkpoint', true)
+        },
+      },
+      {
+        id: 'soundSource',
+        cardId: 'soundSource',
+        group: 'devices',
+        label: t('soundSource.title'),
+        color: '#26a69a',
+        added: Boolean(node.gameplay?.soundSource),
+        apply: () => {
+          commitNode(node.id, t('soundSource.title'), {
+            gameplay: { ...node.gameplay, soundSource: defaultSoundSource() },
+          })
+          useInspectorMemory.getState().setOpen(`node:${node.id}`, 'soundSource', true)
         },
       },
       {

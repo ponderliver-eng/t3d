@@ -31,11 +31,11 @@ import '../../gameplay/corePack'
 import { createDefaultGameDatabase, ensureGameDatabase, resolveEnabledPackIds } from '../../gameplay/registry'
 import type { GameDatabase } from '../../gameplay/types'
 import { defaultNodePhysics } from '../../capabilities/physics/defaults'
-import { defaultCameraFollow, defaultCharacter, defaultCheckpoint, defaultInteract, defaultMover, defaultScore, defaultTrigger, resolveCharacterCamera, type CameraFollowSpec, type NodeGameplay } from '../../runtime/sceneRuntime'
+import { defaultCameraFollow, defaultCharacter, defaultCheckpoint, defaultInteract, defaultMover, defaultScore, defaultSoundSource, defaultTrigger, resolveCharacterCamera, type CameraFollowSpec, type NodeGameplay } from '../../runtime/sceneRuntime'
 import { cameraArmOf, settleCameraArm } from '../../runtime/camera'
 import { resetUiValues } from '../../runtime/ui/values'
 
-export type DeviceKind = 'interact' | 'trigger' | 'mover' | 'checkpoint' | 'score'
+export type DeviceKind = 'interact' | 'trigger' | 'mover' | 'checkpoint' | 'score' | 'sound'
 import {
   ALL_LAYERS_VISIBLE_MASK,
   LAYER_ID_DEFAULT,
@@ -528,6 +528,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       mover: 'mover.title',
       checkpoint: 'checkpoint.title',
       score: 'score.title',
+      sound: 'soundSource.title',
     }
     const label = translate(labelKey[device])
     const ok = mutate(set, get, translate('gesture.create', { name: label }), draft => {
@@ -543,6 +544,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       else if (device === 'mover') gameplay.mover = defaultMover()
       else if (device === 'checkpoint') gameplay.checkpoint = defaultCheckpoint()
       else if (device === 'score') gameplay.score = defaultScore()
+      else if (device === 'sound') gameplay.soundSource = defaultSoundSource()
       draft.nodes[id] = makeNode({
         id,
         name,

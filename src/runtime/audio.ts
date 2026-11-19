@@ -90,6 +90,27 @@ export function stopMusic() {
 export function stopAllSounds() {
   for (const voice of [...voices]) stopVoice(voice)
   musicId = 0
+  emitters.clear()
+}
+
+const emitters = new Map<string, { voice: number, key: string }>()
+
+export function syncSoundSources(items: Array<PlaySoundOptions & { nodeId: string }>) {
+  const live = new Set<string>()
+  for (const item of items) {
+    if (!item.parent) continue
+    live.add(item.nodeId)
+    const key = `${item.assetId}|${item.loop ? 1 : 0}|${item.volume ?? 1}|${item.refDistance ?? 2}|${item.rolloff ?? 1}`
+    const current = emitters.get(item.nodeId)
+    if (current?.key === key) continue
+    if (current) stopSound(current.voice)
+    emitters.set(item.nodeId, { voice: playSound(item), key })
+  }
+  for (const [nodeId, current] of emitters) {
+    if (live.has(nodeId)) continue
+    stopSound(current.voice)
+    emitters.delete(nodeId)
+  }
 }
 
 function ensureListener(): AudioListener {
