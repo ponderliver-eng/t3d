@@ -10,10 +10,12 @@ import type { SceneNode } from '../../editor/scene/types'
 import { capabilityEnabled } from '../registry'
 import {
   WATER_CAPABILITY_ID,
+  WATER_DEBUG_VIEWS,
   WATER_QUALITY_PRESETS,
   WATER_STYLE_PRESETS,
   defaultWater,
   normalizeWater,
+  type WaterDebugView,
   type WaterPresetId,
   type WaterQuality,
   type WaterSpec,
@@ -190,9 +192,16 @@ export function WaterCard({ node, disabled }: { node: SceneNode, disabled: boole
                 <RangeField label={t('water.foamIntensity')} value={spec.foamIntensity} min={0} max={2} step={0.05} disabled={disabled} onChange={foamIntensity => write({ foamIntensity })} />
                 <RangeField label={t('water.crestFoam')} value={spec.crestFoam} min={0} max={2} step={0.05} disabled={disabled} onChange={crestFoam => write({ crestFoam })} />
                 <RangeField label={t('water.crestThreshold')} value={spec.crestFoamThreshold} min={0} max={0.85} step={0.02} disabled={disabled} onChange={crestFoamThreshold => write({ crestFoamThreshold })} />
+                <RangeField label={t('water.foamTrail')} value={spec.foamTrail} min={0} max={1.5} step={0.05} disabled={disabled} onChange={foamTrail => write({ foamTrail })} />
                 <TextureField label={t('water.foamMap')} value={spec.foamMapAssetId} disabled={disabled} onChange={foamMapAssetId => write({ foamMapAssetId })} />
               </>
             )}
+            <label className="field">
+              <span>{t('water.debugView')}</span>
+              <select value={spec.debugView} disabled={disabled} onChange={event => write({ debugView: event.target.value as WaterDebugView })}>
+                {WATER_DEBUG_VIEWS.map(key => <option key={key} value={key}>{t(`water.debug.${key}` as 'water.title')}</option>)}
+              </select>
+            </label>
           </section>
         </div>
       )}

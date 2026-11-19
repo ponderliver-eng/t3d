@@ -15,7 +15,9 @@ import {
   max,
   min,
   mix,
+  modelWorldMatrix,
   normalize,
+  positionGeometry,
   positionLocal,
   positionWorld,
   pow,
@@ -27,8 +29,10 @@ import {
   smoothstep,
   texture,
   uniform,
+  varying,
   vec2,
   vec3,
+  vec4,
   viewportDepthTexture,
   viewportLinearDepth,
   viewportSharedTexture,
@@ -47,7 +51,65 @@ export interface WaterMaterialOptions {
   highDetail: boolean
   /** 顶点波浪位移的局部轴：自带旋转 -90° 的平面用 'z'，普通未旋转模型用 'y'。 */
   upAxis: 'y' | 'z'
+  /** 是否有大浪（关闭时整段波谱、挤压值与浪峰泡沫都不进着色器）。 */
+  waves: boolean
 }
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type TslNode = any
+
+interface WaveDef {
+  /** 波长 (m)。 */
+  length: number
+  /** 相对主风向的偏角 (度)。 */
+  angle: number
+  /** 占浪高的比例。 */
+  weight: number
+  /** 该波可占用的水平压缩份额（所有顶点波之和必须 < 1）。 */
+  share: number
+  phase: number
+}
+
+const GRAVITY = 9.81
+/** 多道波很少同相叠加，整体补偿一点振幅，让「浪高」参数的观感与之前接近。 */
+const AMP_GAIN = 1.25
+const PINCH_GAIN = 2.2
+
+/**
+ * 位移顶点的长波。波长两两接近（41/33、22/17），靠自然拍频形成一组一组的涌浪，
+ * 方向围绕主风向散开，越短的波散得越开，浪脊因此自然断成段。速度按深水色散 ω = √(g·k)。
+ */
+const VERTEX_WAVES: WaveDef[] = [
+  { length: 41, angle: -8, weight: 0.26, share: 0.10, phase: 0.0 },
+  { length: 33, angle: 7, weight: 0.22, share: 0.11, phase: 1.7 },
+  { length: 22, angle: -19, weight: 0.17, share: 0.14, phase: 4.1 },
+  { length: 17, angle: 16, weight: 0.14, share: 0.15, phase: 2.9 },
+  { length: 11, angle: -31, weight: 0.12, share: 0.19, phase: 5.3 },
+  { length: 7.5, angle: 27, weight: 0.09, share: 0.21, phase: 0.8 },
+]
+
+/** 只在片元里参与法线与泡沫的短波，填补顶点长波与法线贴图之间的尺度空档。 */
+const DETAIL_WAVES: WaveDef[] = [
+  { length: 4.9, angle: -44, weight: 0.055, share: 0, phase: 3.6 },
+  { length: 3.3, angle: 39, weight: 0.038, share: 0, phase: 1.1 },
+  { length: 2.2, angle: -58, weight: 0.026, share: 0, phase: 5.9 },
+  { length: 1.5, angle: 12, weight: 0.018, share: 0, phase: 2.4 },
+]
+
+/** 泡沫拖尾回看：time 为回看秒数（再乘「泡沫拖尾」参数），keep 为那一刻泡沫剩余的比例。 */
+const FOAM_TRAIL_TAPS = [
+  { time: 0.45, keep: 0.85 },
+  { time: 0.9, keep: 0.65 },
+  { time: 1.4, keep: 0.45 },
+  { time: 2.0, keep: 0.25 },
+]
+
+/** 参与生成浪峰泡沫的长波数量（取 VERTEX_WAVES 前几道，方向都在主风向 ±20° 内）。 */
+const BREAKER_WAVE_COUNT = 4
+/** 浪群移动速度 (m/s)，约为主要长波浪峰速度的一半。 */
+const GROUP_SPEED = 3.4
+
+const DEBUG_VIEW_INDEX: Record<WaterSpec['debugView'], number> = { off: 0, height: 1, squeeze: 2, foam: 3 }
 
 export interface WaterMaterialHandle {
   variantKey: string
@@ -61,7 +123,7 @@ export interface WaterMaterialHandle {
 }
 
 export function waterVariantKey(opts: WaterMaterialOptions): string {
-  return `${opts.planar ? 1 : 0}|${opts.refraction ? 1 : 0}|${opts.caustics ? 1 : 0}|${opts.highDetail ? 1 : 0}|${opts.upAxis}`
+  return `${opts.planar ? 1 : 0}|${opts.refraction ? 1 : 0}|${opts.caustics ? 1 : 0}|${opts.highDetail ? 1 : 0}|${opts.upAxis}|${opts.waves ? 1 : 0}`
 }
 
 export function createWaterMaterial(options: WaterMaterialOptions): WaterMaterialHandle {
@@ -101,78 +163,12 @@ export function createWaterMaterial(options: WaterMaterialOptions): WaterMateria
   const uCausticsScale = uniform(0.22)
   const uWaveHeight = uniform(0)
   const uWaveSteepness = uniform(0.65)
+  const uFoamTrail = uniform(1)
+  const uDebugView = uniform(0)
 
   const normalTexNode = texture(defaultNormal)
   const foamTexNode = texture(defaultFoam)
   const causticsTexNode = texture(defaultCaustics)
-
-  // 1. 物理色散 Gerstner 长浪脊：86% 能量集中在主风向 ±18° 扇区形成连绵浪脊，杜绝圆形小山丘
-  const dir1 = uFlowDir
-  const dir2 = normalize(vec2(uFlowDir.x.mul(0.97).sub(uFlowDir.y.mul(0.24)), uFlowDir.x.mul(0.24).add(uFlowDir.y.mul(0.97))))
-  const dir3 = normalize(vec2(uFlowDir.x.mul(0.95).add(uFlowDir.y.mul(0.31)), uFlowDir.y.mul(0.95).sub(uFlowDir.x.mul(0.31))))
-  const dir4 = normalize(vec2(uFlowDir.x.mul(0.79).sub(uFlowDir.y.mul(0.61)), uFlowDir.x.mul(0.61).add(uFlowDir.y.mul(0.79))))
-
-  const k1 = float(0.22)
-  const k2 = float(0.37)
-  const k3 = float(0.61)
-  const k4 = float(0.96)
-
-  // 真实水波色散：波长越长推进越快，短波相对慢
-  const p1 = dot(positionWorld.xz, dir1).mul(k1).sub(uWaveTime.mul(1.85))
-  const p2 = dot(positionWorld.xz, dir2).mul(k2).sub(uWaveTime.mul(1.42))
-  const p3 = dot(positionWorld.xz, dir3).mul(k3).sub(uWaveTime.mul(1.08))
-  const p4 = dot(positionWorld.xz, dir4).mul(k4).sub(uWaveTime.mul(0.82))
-
-  // 柔和波群包络（沿主浪脊方向缓慢聚散）
-  const groupEnv = clamp(
-    float(0.92).add(sin(dot(positionWorld.xz, dir2).mul(0.05).sub(uWaveTime.mul(0.32))).mul(0.22)),
-    float(0.7),
-    float(1.18),
-  )
-
-  const s1 = sin(p1)
-  const s2 = sin(p2)
-  const s3 = sin(p3)
-  const s4 = sin(p4)
-  const c1w = cos(p1)
-  const c2w = cos(p2)
-  const c3w = cos(p3)
-  const c4w = cos(p4)
-
-  const rawWave = s1.mul(0.46).add(s2.mul(0.26)).add(s3.mul(0.16)).add(s4.mul(0.12))
-  const effHeight = uWaveHeight.mul(groupEnv)
-  const waveNorm = rawWave.mul(groupEnv)
-  const waveOffset = rawWave.mul(effHeight)
-
-  // 严格雅可比限幅的 3D Gerstner 水平挤压：总压缩率 Σ(k_i * Q_i) <= 0.84 < 1，保证永不自交
-  const q1 = min(effHeight.mul(0.46).mul(2.1), float(0.21).div(k1)).mul(uWaveSteepness)
-  const q2 = min(effHeight.mul(0.26).mul(2.1), float(0.21).div(k2)).mul(uWaveSteepness)
-  const q3 = min(effHeight.mul(0.16).mul(2.1), float(0.21).div(k3)).mul(uWaveSteepness)
-  const q4 = min(effHeight.mul(0.12).mul(2.1), float(0.21).div(k4)).mul(uWaveSteepness)
-  const horizOffset = dir1.mul(c1w.mul(q1))
-    .add(dir2.mul(c2w.mul(q2)))
-    .add(dir3.mul(c3w.mul(q3)))
-    .add(dir4.mul(c4w.mul(q4)))
-
-  // 用节点世界缩放的倒数把世界米数转回局部坐标，确保任意 scale 下都不撕裂
-  const displacedLocal = options.upAxis === 'z'
-    ? vec3(
-      positionLocal.x.add(horizOffset.x.mul(uInvScale.x)),
-      positionLocal.y.sub(horizOffset.y.mul(uInvScale.z)),
-      positionLocal.z.add(waveOffset.mul(uInvScale.y)),
-    )
-    : vec3(
-      positionLocal.x.add(horizOffset.x.mul(uInvScale.x)),
-      positionLocal.y.add(waveOffset.mul(uInvScale.y)),
-      positionLocal.z.add(horizOffset.y.mul(uInvScale.z)),
-    )
-
-  const dWaveDxz = dir1.mul(c1w.mul(k1).mul(0.46))
-    .add(dir2.mul(c2w.mul(k2).mul(0.26)))
-    .add(dir3.mul(c3w.mul(k3).mul(0.16)))
-    .add(dir4.mul(c4w.mul(k4).mul(0.12)))
-    .mul(effHeight)
-    .mul(float(1.0).add(uWaveSteepness.mul(0.65)))
 
   // 视距抗锯齿衰减（远景逐步平滑高频碎波法线，消除低角度像素闪烁噪点）
   const worldToEye = cameraPosition.sub(positionWorld)
@@ -180,8 +176,134 @@ export function createWaterMaterial(options: WaterMaterialOptions): WaterMateria
   const viewVec = normalize(worldToEye)
   const highFreqFade = float(1.0).sub(smoothstep(float(18.0), float(110.0), eyeDist))
 
+  // 1. 波谱：所有波的相位都基于「未位移」的静止世界坐标，顶点与片元严格一致
+  const restVertexXZ = modelWorldMatrix.mul(vec4(positionGeometry, 1.0)).xz
+  const surfXZ = varying(restVertexXZ)
+
+  const rotatedDir = (deg: number) => {
+    const rad = (deg * Math.PI) / 180
+    const c = Math.cos(rad)
+    const s = Math.sin(rad)
+    return vec2(uFlowDir.x.mul(c).sub(uFlowDir.y.mul(s)), uFlowDir.x.mul(s).add(uFlowDir.y.mul(c)))
+  }
+
+  // 与位置无关的每道波常量（方向、振幅、水平聚拢量），顶点/片元共用
+  const vertexWaves = VERTEX_WAVES.map(def => {
+    const k = (Math.PI * 2) / def.length
+    const amp = uWaveHeight.mul(def.weight * AMP_GAIN)
+    // 雅可比限幅：每道波的 k·Q 不超过自己的份额，份额总和 0.9 < 1，保证永不自交
+    const pinch = min(amp.mul(PINCH_GAIN), float(def.share / k))
+    return { def, k, omega: Math.sqrt(GRAVITY * k), dir: rotatedDir(def.angle), amp, pinch, foamWeight: pinch.mul(k) }
+  })
+  const detailWaves = (options.highDetail ? DETAIL_WAVES : DETAIL_WAVES.slice(0, 2)).map(def => {
+    const k = (Math.PI * 2) / def.length
+    const amp = uWaveHeight.mul(def.weight * AMP_GAIN)
+    // 短波只在片元里算，远处按波长淡出防闪烁
+    const fade = float(1.0).sub(smoothstep(float(def.length * 30), float(def.length * 110), eyeDist))
+    return { def, k, omega: Math.sqrt(GRAVITY * k), dir: rotatedDir(def.angle), amp, fade, foamWeight: min(amp.mul(PINCH_GAIN * k), float(0.18)).mul(fade) }
+  })
+
+  let displacedLocal: TslNode = positionLocal
+  let waveSlope: TslNode = vec2(0.0, 0.0)
+  let macroSlope: TslNode = vec2(0.0, 0.0)
+  let waveCompress: TslNode = float(0.0)
+  let waveNorm: TslNode = float(0.0)
+  let squeezeNow: TslNode = float(0.0)
+  let crestField: TslNode = float(0.0)
+  let crestActive: TslNode = float(0.0)
+
+  if (options.waves) {
+    // 顶点阶段：长波位移（高度 + Gerstner 水平聚拢）
+    let vHeight: TslNode = float(0.0)
+    let vHoriz: TslNode = vec2(0.0, 0.0)
+    for (const wave of vertexWaves) {
+      const theta = dot(restVertexXZ, wave.dir).mul(wave.k).add(wave.def.phase).sub(uWaveTime.mul(wave.omega))
+      vHeight = vHeight.add(sin(theta).mul(wave.amp))
+      vHoriz = vHoriz.add(wave.dir.mul(cos(theta).mul(wave.pinch).mul(uWaveSteepness)))
+    }
+    // 用节点世界缩放的倒数把世界米数转回局部坐标，确保任意 scale 下都不撕裂
+    displacedLocal = options.upAxis === 'z'
+      ? vec3(
+        positionLocal.x.add(vHoriz.x.mul(uInvScale.x)),
+        positionLocal.y.sub(vHoriz.y.mul(uInvScale.z)),
+        positionLocal.z.add(vHeight.mul(uInvScale.y)),
+      )
+      : vec3(
+        positionLocal.x.add(vHoriz.x.mul(uInvScale.x)),
+        positionLocal.y.add(vHeight.mul(uInvScale.y)),
+        positionLocal.z.add(vHoriz.y.mul(uInvScale.z)),
+      )
+
+    // 片元阶段：逐像素解析法线（长波 + 只参与着色的短波）
+    const vertexBase = vertexWaves.map(wave => dot(surfXZ, wave.dir).mul(wave.k).add(wave.def.phase))
+    const detailBase = detailWaves.map(wave => dot(surfXZ, wave.dir).mul(wave.k).add(wave.def.phase))
+    let vertexFoamWeight: TslNode = float(0.0)
+    vertexWaves.forEach((wave, i) => {
+      const theta = vertexBase[i].sub(uWaveTime.mul(wave.omega))
+      const s = sin(theta)
+      const slope = wave.dir.mul(cos(theta).mul(wave.amp).mul(wave.k))
+      macroSlope = macroSlope.add(slope)
+      waveCompress = waveCompress.add(s.mul(wave.pinch).mul(wave.k).mul(uWaveSteepness))
+      waveNorm = waveNorm.add(s.mul(wave.def.weight))
+      vertexFoamWeight = vertexFoamWeight.add(wave.foamWeight)
+    })
+    waveSlope = macroSlope
+    detailWaves.forEach((wave, i) => {
+      const theta = detailBase[i].sub(uWaveTime.mul(wave.omega))
+      waveSlope = waveSlope.add(wave.dir.mul(cos(theta).mul(wave.amp).mul(wave.k).mul(wave.fade)))
+    })
+    // 破碎浪场：只取方向接近主风向的几道长波（短波、斜向波会把泡沫打散成碎点）。
+    // 方向相近的长波叠加出的峰是「沿浪脊拉得很长」的带状区域，泡沫才会聚成一长条。
+    // lookBack > 0 时回看过去某一刻同一块水面，用来生成浪峰走过后留在身后的拖尾。
+    const breakerWeightSum = vertexWaves.slice(0, BREAKER_WAVE_COUNT).reduce((sum, wave) => sum + wave.def.weight, 0)
+    const squeezeAt = (lookBack: number): TslNode => {
+      const time = lookBack > 0 ? uWaveTime.sub(uFoamTrail.mul(lookBack)) : uWaveTime
+      let acc: TslNode = float(0.0)
+      vertexWaves.slice(0, BREAKER_WAVE_COUNT).forEach((wave, i) => {
+        acc = acc.add(sin(vertexBase[i].sub(time.mul(wave.omega))).mul(wave.def.weight / breakerWeightSum))
+      })
+      return acc
+    }
+
+    // 破碎包络：两层十几米尺度的噪波朝不同方向漂移，叠出「此起彼伏」的破碎区。
+    // 它不是乘在泡沫上，而是直接加到浪峰值里再过阈值：同一道浪脊只有一段段会破碎，
+    // 每段持续几秒后随包络移走而消散，边缘也跟着噪波变得不规则。
+    const flowOrthoDir = vec2(uFlowDir.y.negate(), uFlowDir.x)
+    const envA = foamTexNode.sample(surfXZ.mul(0.011).sub(uFlowDir.mul(uWaveTime.mul(0.021)))).g
+    const envB = foamTexNode.sample(surfXZ.mul(0.017).add(flowOrthoDir.mul(uWaveTime.mul(0.027))).add(uFlowDir.mul(uWaveTime.mul(0.012)))).g
+    const edgeNoise = envA.mul(0.55).add(envB.mul(0.45)).sub(0.5).mul(0.8)
+
+    // 浪群包络：一块块「浪正在涨起来」的区域，以群速度（约为浪峰速度的一半）顺风移动。
+    // 浪峰比浪群快，所以每道浪峰追上一个浪群时涨起并起沫，穿过去之后回落、泡沫随拖尾慢慢散掉，
+    // 而不是一条白线跟着浪峰走到头。
+    const alongWind = dot(surfXZ, uFlowDir)
+    const acrossWind = dot(surfXZ, flowOrthoDir)
+    const groupAt = (lookBack: number): TslNode => {
+      const time = lookBack > 0 ? uWaveTime.sub(uFoamTrail.mul(lookBack)) : uWaveTime
+      const u = alongWind.sub(time.mul(GROUP_SPEED))
+      const e1 = sin(u.mul(0.224).add(sin(acrossWind.mul(0.114)).mul(1.7)))
+      // 横向（沿浪脊方向）尺度约为顺风方向的 3 倍：破碎段是沿浪脊拉开的长条，而不是圆团
+      const e2 = sin(acrossWind.mul(0.07).add(sin(u.mul(0.09)).mul(1.1)).add(time.mul(0.15)))
+      return e1.mul(e2).mul(0.5).sub(0.2)
+    }
+
+    squeezeNow = squeezeAt(0).add(groupAt(0)).add(edgeNoise)
+    // 过渡区间拉宽到 0.6：遮罩从边缘到核心是一段很长的缓坡，而不是窄窄一圈
+    const crestStart = mix(float(0.0), float(0.6), clamp(uCrestFoamThreshold, float(0.0), float(1.0)))
+    const crestEnd = crestStart.add(0.6)
+    crestField = smoothstep(crestStart, crestEnd, squeezeNow)
+    const taps = options.highDetail ? FOAM_TRAIL_TAPS : FOAM_TRAIL_TAPS.slice(0, 3)
+    taps.forEach((tap, i) => {
+      const past = squeezeAt(tap.time).add(groupAt(tap.time)).add(edgeNoise)
+      const aged = smoothstep(crestStart.sub(0.03 * (i + 1)), crestEnd, past).mul(tap.keep)
+      crestField = max(crestField, aged)
+    })
+    // 浪太平缓时不产生白沫（平静湖面不该有浪花）
+    crestActive = smoothstep(float(0.03), float(0.2), vertexFoamWeight)
+  }
+
   // 2. 多向流动法线（highDetail 时 4 层精细叠加，轻量模式下 2 层省采样）
-  const baseUv = positionWorld.xz.mul(uWaveScale)
+  const baseUv = surfXZ.mul(uWaveScale)
   const flow = uFlowDir.mul(uTime.mul(uFlowSpeed.mul(0.05)))
   const flowOrtho = vec2(uFlowDir.y.negate(), uFlowDir.x).mul(uTime.mul(uFlowSpeed.mul(0.038)))
 
@@ -197,20 +319,22 @@ export function createWaterMaterial(options: WaterMaterialOptions): WaterMateria
     nCrisp = n2.mul(0.25).add(n3.mul(0.4).add(n4.mul(0.35)).mul(highFreqFade))
   }
 
+  // Gerstner 解析法线：浪峰处竖直分量被压缩（1 - Σk·Q·sin），浪脊自然变尖、浪谷变平
+  const crestPinchY = max(float(1.0).sub(waveCompress), float(0.15))
   const surfaceNormal = normalize(vec3(
-    nAvg.x.mul(uNormalScale).sub(dWaveDxz.x.mul(1.4)),
-    float(1.0),
-    nAvg.y.mul(uNormalScale).sub(dWaveDxz.y.mul(1.4)),
+    nAvg.x.mul(uNormalScale).sub(waveSlope.x.mul(1.2)),
+    crestPinchY,
+    nAvg.y.mul(uNormalScale).sub(waveSlope.y.mul(1.2)),
   ))
   const waveMacroNormal = normalize(vec3(
-    dWaveDxz.x.negate().mul(1.6),
-    float(1.0),
-    dWaveDxz.y.negate().mul(1.6),
+    macroSlope.x.negate().mul(1.6),
+    crestPinchY,
+    macroSlope.y.negate().mul(1.6),
   ))
   const crispNormal = normalize(vec3(
-    nCrisp.x.mul(uNormalScale).mul(1.45).sub(dWaveDxz.x.mul(1.2)),
-    float(1.0),
-    nCrisp.y.mul(uNormalScale).mul(1.45).sub(dWaveDxz.y.mul(1.2)),
+    nCrisp.x.mul(uNormalScale).mul(1.45).sub(waveSlope.x.mul(1.2)),
+    crestPinchY,
+    nCrisp.y.mul(uNormalScale).mul(1.45).sub(waveSlope.y.mul(1.2)),
   ))
 
   // 3. 视线与 Schlick 菲涅尔
@@ -288,39 +412,50 @@ export function createWaterMaterial(options: WaterMaterialOptions): WaterMateria
     : float(1.0)
   const finalAlpha = options.refraction ? edgeOpacity : clamp(uOpacity.add(0.25), float(0.35), float(1.0))
 
-  const foamNoise1 = foamTexNode.sample(baseUv.mul(2.8).add(flow.mul(1.4))).r
-  const foamNoise2 = foamTexNode.sample(baseUv.mul(5.9).sub(flowOrtho.mul(1.7))).r
-  const foamCell = foamNoise1.mul(0.55).add(foamNoise2.mul(0.45))
+  // 双层海沫：R 通道是 512px 絮状多尺度气泡网丝，G 通道是门控噪波
+  const foamSampleA = foamTexNode.sample(baseUv.mul(1.85).add(flow.mul(1.25)))
+  const foamSampleB = foamTexNode.sample(baseUv.mul(4.1).sub(flowOrtho.mul(1.45)))
+  const foamWeb = foamSampleA.r.mul(0.62).add(foamSampleB.r.mul(0.38))
+  const foamErode = foamSampleA.g.mul(0.55).add(foamSampleB.g.mul(0.45))
 
   const shoreRatio = clamp(waterDepth.div(max(uFoamWidth, float(0.01))), float(0.0), float(1.0))
   const shoreBase = float(1.0).sub(smoothstep(float(0.0), max(uFoamWidth, float(0.01)), waterDepth))
   const lapRipple = sin(shoreRatio.mul(12.0).sub(uTime.mul(2.2))).mul(0.5).add(0.5)
   const shoreBand = shoreBase.mul(float(0.62).add(lapRipple.mul(0.38))).mul(uShoreFoamOn)
 
-  const crestActive = smoothstep(float(0.004), float(0.025), uWaveHeight)
-  const crestBreakup = smoothstep(float(0.28), float(0.70), foamTexNode.sample(baseUv.mul(vec2(0.55, 0.25)).add(flow.mul(0.5))).r)
-  const crestStart = uCrestFoamThreshold
-  const crestEnd = min(uCrestFoamThreshold.add(0.45), float(1.05))
-  const crestBand = smoothstep(crestStart, crestEnd, waveNorm).mul(crestActive).mul(crestBreakup).mul(uCrestFoam)
-  const foamMask = max(shoreBand, crestBand)
-  const foamCut = smoothstep(float(0.56).sub(foamMask.mul(0.40)), float(0.82), foamCell)
-  const foamAlpha = clamp(foamMask.mul(foamCut).mul(uFoamIntensity), float(0.0), float(1.0))
+  // 浪峰泡沫：由「挤压值 + 拖尾」得到的遮罩，再用大尺度错速噪波打断成一段一段
+  let crestBand: TslNode = float(0.0)
+  if (options.waves) {
+    crestBand = crestField.mul(crestActive).mul(uCrestFoam)
+  }
 
-  // 7. 太阳碎金高光（高光也吃远景防闪烁淡出）+ 大浪坡面体积明暗 + 波峰透光次表面散射
+  const foamMask = clamp(max(shoreBand, crestBand), float(0.0), float(1.0))
+  // 米级的大尺度絮状层：让泡沫先有「一团团云絮」的结构，细丝只是叠在上面的细节，避免满屏等大的颗粒点
+  const foamCloud = foamTexNode.sample(surfXZ.mul(0.07).add(flow.mul(0.4))).r
+  const detail = foamCloud.mul(0.4).add(foamWeb.mul(0.45)).add(foamErode.mul(0.15))
+  // 线性叠加而不是阈值切割：遮罩 = 1 时整片发白（浪脊核心），0.5 时原样露出柔和的絮状纹理，
+  // 0.3 以下只剩最亮的几缕并且是半透明的，全程没有硬边
+  const foamBody = clamp(detail.mul(1.1).add(foamMask.mul(1.9)).sub(1.0), float(0.0), float(1.0))
+  const foamAlpha = clamp(
+    foamBody.mul(smoothstep(float(0.0), float(0.2), foamMask)).mul(uFoamIntensity).mul(1.2),
+    float(0.0),
+    float(1.0),
+  )
+
+  // 7. 太阳碎金高光（高光也吃远景防闪烁淡出）+ 大浪坡面体积明暗 + 三段式翡翠透光 SSS
   const sunDir = normalize(uSunDir)
   const sunSlope = max(dot(waveMacroNormal, sunDir), float(0.0))
-  const waveShade = mix(float(0.72), float(1.18), sunSlope)
+  const waveShade = mix(float(0.68), float(1.18), sunSlope)
   const sunRefl = normalize(reflect(sunDir.negate(), crispNormal))
   const specDot = max(dot(viewVec, sunRefl), float(0.0))
   const specPower = mix(float(2200.0), float(120.0), clamp(uSpecularSize, float(0.0), float(1.0)))
   const specGain = mix(float(3.2), float(1.1), clamp(uSpecularSize, float(0.0), float(1.0)))
   const sunSparkle = pow(specDot, specPower).mul(uSpecularStrength).mul(specGain).mul(float(0.35).add(highFreqFade.mul(0.65)))
-  const crestThin = mix(float(0.55), float(1.35), smoothstep(float(-0.2), float(0.8), waveNorm))
-  const sunScatter = pow(max(dot(viewVec, sunDir.negate()), float(0.0)), float(5.0))
-    .mul(max(float(1.0).sub(nDotV), float(0.1)))
-    .mul(crestThin)
-    .mul(uSssStrength)
-  const sssColor = uShallowColor.mul(sunScatter).mul(0.55)
+  // 波腰到波顶（浪体较薄区）叠加透光翡翠青，波谷保持深蓝，形成“深蓝 -> 翡翠青 -> 白沫”三段立体层次
+  const waveUpperMask = smoothstep(float(0.05), float(0.72), waveNorm).mul(smoothstep(float(0.01), float(0.08), uWaveHeight))
+  const viewSss = pow(max(dot(viewVec, sunDir.negate()), float(0.0)), float(4.0)).mul(0.65).add(0.35)
+  const sssFactor = waveUpperMask.mul(viewSss).mul(max(float(1.0).sub(nDotV.mul(0.65)), float(0.25))).mul(uSssStrength)
+  const sssColor = mix(uShallowColor, vec3(0.22, 0.92, 0.86), float(0.35)).mul(sssFactor).mul(0.68)
 
   // 8. 最终合成（波浪迎光亮背光暗 + 泡沫底部微暗边增加漂浮厚度感）
   const litBody = refractedBody.mul(waveShade).add(sssColor)
@@ -329,10 +464,25 @@ export function createWaterMaterial(options: WaterMaterialOptions): WaterMateria
   const shadedWater = waterSurface.mul(float(1.0).sub(foamShadow.mul(0.18)))
   const finalColor = mix(shadedWater, uFoamColor, foamAlpha)
 
+  // 调试视图：1 = 波高（灰度），2 = 挤压值（红 = 被压缩的浪峰，蓝 = 被拉伸的浪谷），3 = 泡沫遮罩（未叠贴图）
+  const debugHeight = vec3(clamp(waveNorm.mul(0.5).add(0.5), float(0.0), float(1.0)))
+  const debugSqueeze = vec3(
+    clamp(squeezeNow, float(0.0), float(1.0)),
+    float(0.0),
+    clamp(squeezeNow.negate(), float(0.0), float(1.0)),
+  )
+  const debugFoam = vec3(foamMask)
+  const debugColor = select(
+    uDebugView.lessThan(float(1.5)),
+    debugHeight,
+    select(uDebugView.lessThan(float(2.5)), debugSqueeze, debugFoam),
+  )
+  const debugOn = uDebugView.greaterThan(float(0.5))
+
   const material = new MeshBasicNodeMaterial()
-  material.positionNode = displacedLocal
-  material.colorNode = finalColor
-  material.opacityNode = max(finalAlpha, foamAlpha)
+  if (options.waves) material.positionNode = displacedLocal
+  material.colorNode = select(debugOn, debugColor, finalColor)
+  material.opacityNode = select(debugOn, float(1.0), max(finalAlpha, foamAlpha))
   material.transparent = true
   material.depthWrite = false
   material.side = DoubleSide
@@ -368,6 +518,8 @@ export function createWaterMaterial(options: WaterMaterialOptions): WaterMateria
       uCausticsScale.value = spec.causticsScale
       uWaveHeight.value = spec.quality === 'fast' ? 0 : spec.waveHeight
       uWaveSteepness.value = spec.quality === 'fast' ? 0 : spec.waveSteepness
+      uFoamTrail.value = spec.foamTrail
+      uDebugView.value = DEBUG_VIEW_INDEX[spec.debugView]
       if (mirrorReflector) {
         mirrorReflector.reflector.resolutionScale = Math.max(0.25, spec.reflectionScale)
       }

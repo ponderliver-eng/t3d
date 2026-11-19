@@ -35,7 +35,7 @@ interface BoundMesh {
 
 const boundMeshes = new Map<string, BoundMesh>()
 const planeGeos: Record<'flat' | WaterQuality, PlaneGeometry | null> = { flat: null, fast: null, balanced: null, ultra: null }
-const SEGMENTS: Record<'flat' | WaterQuality, number> = { flat: 1, fast: 32, balanced: 64, ultra: 96 }
+const SEGMENTS: Record<'flat' | WaterQuality, number> = { flat: 1, fast: 32, balanced: 128, ultra: 160 }
 
 let removeBeforeRender: (() => void) | null = null
 let waterTime = 0
@@ -186,6 +186,7 @@ function optionsFor(spec: WaterSpec, upAxis: 'y' | 'z'): WaterMaterialOptions {
     caustics: spec.refraction && spec.caustics,
     highDetail: spec.quality !== 'fast',
     upAxis,
+    waves: spec.quality !== 'fast' && spec.waveHeight > 0.001,
   }
 }
 

@@ -2,6 +2,8 @@ export const WATER_CAPABILITY_ID = 'water'
 
 export type WaterQuality = 'fast' | 'balanced' | 'ultra'
 export type WaterPresetId = 'tropical' | 'ocean' | 'lake' | 'pool' | 'stylized'
+export type WaterDebugView = 'off' | 'height' | 'squeeze' | 'foam'
+export const WATER_DEBUG_VIEWS: WaterDebugView[] = ['off', 'height', 'squeeze', 'foam']
 
 export interface WaterSpec {
   enabled: boolean
@@ -27,6 +29,10 @@ export interface WaterSpec {
   crestFoam: number
   /** 波峰泡沫出现阈值（越高越少，只留最高浪尖；越低越多）。 */
   crestFoamThreshold: number
+  /** 浪峰泡沫拖尾时长倍率（0 = 泡沫只贴在浪峰上，越大浪峰走过后留得越久）。 */
+  foamTrail: number
+  /** 调试视图：只看波高 / 挤压值 / 泡沫遮罩，用于调参，不影响性能档位。 */
+  debugView: WaterDebugView
   waveHeight: number
   /** 大浪推进速度倍率（0 可定格波浪）。 */
   waveSpeed: number
@@ -66,7 +72,7 @@ type StylePresetFields = Omit<
   WaterSpec,
   | 'enabled' | 'preset' | 'quality' | 'reflectionScale'
   | 'planarReflection' | 'refraction' | 'caustics' | 'shoreFoam'
-  | 'normalMapAssetId' | 'foamMapAssetId'
+  | 'normalMapAssetId' | 'foamMapAssetId' | 'foamTrail' | 'debugView'
 >
 
 export const WATER_STYLE_PRESETS: Record<WaterPresetId, StylePresetFields> = {
@@ -214,6 +220,8 @@ export function defaultWater(): WaterSpec {
     quality: 'balanced',
     ...WATER_STYLE_PRESETS.tropical,
     ...WATER_QUALITY_PRESETS.balanced,
+    foamTrail: 1,
+    debugView: 'off',
     normalMapAssetId: null,
     foamMapAssetId: null,
   }
@@ -249,6 +257,8 @@ export function normalizeWater(raw: unknown): WaterSpec {
     foamIntensity: finite(record.foamIntensity, base.foamIntensity, 0, 3),
     crestFoam: finite(record.crestFoam, base.crestFoam, 0, 2),
     crestFoamThreshold: finite(record.crestFoamThreshold, base.crestFoamThreshold, 0, 0.9),
+    foamTrail: finite(record.foamTrail, base.foamTrail, 0, 1.5),
+    debugView: record.debugView && WATER_DEBUG_VIEWS.includes(record.debugView) ? record.debugView : 'off',
     waveHeight: finite(record.waveHeight, base.waveHeight, 0, 3),
     waveSpeed: finite(record.waveSpeed, base.waveSpeed, 0, 4),
     waveSteepness: finite(record.waveSteepness, base.waveSteepness, 0, 1),

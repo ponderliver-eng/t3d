@@ -100,25 +100,94 @@ export function defaultWaterNormalTexture(): DataTexture {
   return texture
 }
 
-/** 生成 256x256 无缝自然碎沫噪波贴图。 */
+function cellularWeb(u: number, v: number, period: number, pts: ReadonlyArray<[number, number]>, thickness: number): number {
+  const gx = Math.floor(u * period)
+  const gy = Math.floor(v * period)
+  let d1 = 9
+  let d2 = 9
+  for (let oy = -1; oy <= 1; oy += 1) {
+    for (let ox = -1; ox <= 1; ox += 1) {
+      const cx = ((gx + ox) % period + period) % period
+      const cy = ((gy + oy) % period + period) % period
+      const [px, py] = pts[cy * period + cx]!
+      let dx = px - u
+      let dy = py - v
+      if (dx > 0.5) dx -= 1
+      if (dx < -0.5) dx += 1
+      if (dy > 0.5) dy -= 1
+      if (dy < -0.5) dy += 1
+      const d = Math.hypot(dx, dy) * period
+      if (d < d1) {
+        d2 = d1
+        d1 = d
+      } else if (d < d2) {
+        d2 = d
+      }
+    }
+  }
+  const edge = Math.max(0, 1 - Math.abs(d2 - d1) * thickness)
+  return Math.pow(edge, 1.65)
+}
+
+function buildCellGrid(period: number, seedOffset: number): Array<[number, number]> {
+  const pts: Array<[number, number]> = []
+  for (let gy = 0; gy < period; gy += 1) {
+    for (let gx = 0; gx < period; gx += 1) {
+      const [rx, ry] = hash2(gx + seedOffset, gy + seedOffset * 3, period)
+      pts.push([(gx + 0.5 + rx * 0.4) / period, (gy + 0.5 + ry * 0.4) / period])
+    }
+  }
+  return pts
+}
+
+/**
+ * 生成 512x512 无缝真实海沫纹理（多尺度气泡洞 + 强流场扭曲絮状丝缕）：
+ * - R 通道：强域翘曲的三尺度气泡网丝（大洞 + 密小泡 + 絮状毛边），接近真实海面浮沫照片质感
+ * - G 通道：中低频门控与碎泡调制噪波
+ */
 export function defaultWaterFoamTexture(): DataTexture {
   if (cachedFoam) return cachedFoam
-  const size = 256
+  const size = 512
+  const ptsLarge = buildCellGrid(8, 3)
+  const ptsMid = buildCellGrid(18, 19)
+  const ptsFine = buildCellGrid(38, 41)
   const data = new Uint8Array(size * size * 4)
   for (let y = 0; y < size; y += 1) {
     const v = y / size
     for (let x = 0; x < size; x += 1) {
       const u = x / size
-      const n1 = periodicPerlin(u, v, 8) * 0.5 + 0.5
-      const n2 = periodicPerlin(u + 0.41, v + 0.23, 16) * 0.5 + 0.5
-      const n3 = periodicPerlin(u + 0.17, v + 0.67, 32) * 0.5 + 0.5
-      const ridge = 1 - Math.abs(n1 * 2 - 1)
-      const val = Math.min(1, Math.max(0, ridge * 0.45 + n2 * 0.35 + n3 * 0.25))
-      const byte = Math.round(Math.pow(val, 1.4) * 255)
+      // 两级强流场域翘曲：把直边气泡网格撕扯弯曲成自然絮状丝缕
+      const w1x = periodicPerlin(u, v, 4) * 0.085 + periodicPerlin(u + 0.19, v + 0.61, 10) * 0.028
+      const w1y = periodicPerlin(u + 0.53, v + 0.31, 4) * 0.085 + periodicPerlin(u + 0.71, v + 0.13, 10) * 0.028
+      const wu = ((u + w1x) % 1 + 1) % 1
+      const wv = ((v + w1y) % 1 + 1) % 1
+
+      const w2x = periodicPerlin(wu + 0.27, wv + 0.43, 8) * 0.032
+      const w2y = periodicPerlin(wu + 0.63, wv + 0.17, 8) * 0.032
+      const wu2 = ((wu + w2x) % 1 + 1) % 1
+      const wv2 = ((wv + w2y) % 1 + 1) % 1
+
+      const webLarge = cellularWeb(wu, wv, 8, ptsLarge, 2.2)
+      const webMid = cellularWeb(wu2, wv2, 18, ptsMid, 2.6)
+      const webFine = cellularWeb(wu2, wv2, 38, ptsFine, 3.0)
+
+      // 絮状 FBM 纹理，用来调制丝缕粗细与半透明雾边
+      const fbmA = Math.min(1, Math.max(0, periodicPerlin(wu, wv, 12) * 1.3 + 0.5))
+      const fbmB = Math.min(1, Math.max(0, periodicPerlin(u + 0.37, v + 0.79, 28) * 1.4 + 0.5))
+      const fbmC = Math.min(1, Math.max(0, periodicPerlin(u + 0.11, v + 0.47, 56) * 1.4 + 0.5))
+      const wisp = fbmA * 0.42 + fbmB * 0.36 + fbmC * 0.22
+
+      // 大小气泡丝交织 + 絮状雾感连接
+      const webMix = webLarge * 0.52 + webMid * 0.42 + webFine * 0.26
+      const foam = Math.min(1, Math.max(0, webMix * (0.45 + wisp * 0.75) + Math.pow(wisp, 2.2) * 0.38))
+
+      const gateMid = Math.min(1, Math.max(0, periodicPerlin(u + 0.41, v + 0.23, 8) * 1.5 + 0.5))
+      const breakup = Math.min(1, Math.max(0, gateMid * 0.6 + fbmB * 0.4))
+
       const o = (y * size + x) * 4
-      data[o] = byte
-      data[o + 1] = byte
-      data[o + 2] = byte
+      data[o] = Math.round(foam * 255)
+      data[o + 1] = Math.round(breakup * 255)
+      data[o + 2] = Math.round(Math.min(1, foam * 0.8 + breakup * 0.2) * 255)
       data[o + 3] = 255
     }
   }
