@@ -89,6 +89,8 @@
 
 .scene-panel__context { position: fixed; z-index: 60; }
 
+.scene-panel__create { z-index: 70; }
+
 .scene-panel__popover button,
 .scene-panel__context button {
   display: flex;

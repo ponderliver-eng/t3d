@@ -93,6 +93,8 @@ export default function HierarchyPanel() {
   const [unpackId, setUnpackId] = useState<string | null>(null)
   const listRef = useRef<HTMLDivElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
+  const createButtonRef = useRef<HTMLButtonElement>(null)
+  const createMenuRef = useRef<HTMLDivElement>(null)
   const renameTimer = useRef<number | null>(null)
   const dragged = useRef(false)
   const dragChip = useRef<HTMLDivElement | null>(null)
@@ -199,7 +201,7 @@ export default function HierarchyPanel() {
     if (!menu && !createOpen) return
     const close = (event: Event) => {
       const target = event.target as Node | null
-      if (target && menuRef.current?.contains(target)) return
+      if (target && (menuRef.current?.contains(target) || createMenuRef.current?.contains(target) || createButtonRef.current?.contains(target))) return
       setMenu(null)
       setCreateOpen(false)
     }
@@ -209,6 +211,28 @@ export default function HierarchyPanel() {
       window.removeEventListener('pointerdown', close)
     }
   }, [menu, createOpen])
+
+  useEffect(() => {
+    if (!createOpen) return
+    const anchor = createButtonRef.current
+    const menuEl = createMenuRef.current
+    if (!anchor || !menuEl) return
+    const place = () => {
+      const rect = anchor.getBoundingClientRect()
+      const width = menuEl.offsetWidth
+      const height = menuEl.offsetHeight
+      let left = rect.right - width
+      let top = rect.bottom + 4
+      if (left < 8) left = 8
+      if (left + width > window.innerWidth - 8) left = window.innerWidth - width - 8
+      if (top + height > window.innerHeight - 8) top = Math.max(8, rect.top - height - 4)
+      menuEl.style.left = `${left}px`
+      menuEl.style.top = `${top}px`
+    }
+    place()
+    window.addEventListener('resize', place)
+    return () => window.removeEventListener('resize', place)
+  }, [createOpen])
 
   useEffect(() => () => {
     if (renameTimer.current != null) window.clearTimeout(renameTimer.current)
@@ -502,6 +526,7 @@ export default function HierarchyPanel() {
           <ChevronsDownUp size={14} />
         </button>
         <button
+          ref={createButtonRef}
           type="button"
           className="scene-panel__icon"
           title={t('hierarchy.create')}
@@ -511,10 +536,11 @@ export default function HierarchyPanel() {
         >
           <Plus size={14} />
         </button>
-        {createOpen && (
-          <div className="scene-panel__popover" onPointerDown={event => event.stopPropagation()}>
+        {createOpen && createPortal(
+          <div ref={createMenuRef} className="scene-panel__context scene-panel__create" onPointerDown={event => event.stopPropagation()}>
             <CreateList onCreate={create} onCreateDevice={createDevice} onCreateWater={() => createWater()} />
-          </div>
+          </div>,
+          document.body,
         )}
       </div>
       <div

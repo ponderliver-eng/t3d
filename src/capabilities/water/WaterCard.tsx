@@ -45,12 +45,11 @@ export function WaterCard({ node, disabled }: { node: SceneNode, disabled: boole
 
   const applyPreset = (preset: WaterPresetId) => {
     const style = WATER_STYLE_PRESETS[preset]
-    const qual = WATER_QUALITY_PRESETS[spec.quality]
     write({
       enabled: true,
       preset,
       ...style,
-      waveHeight: spec.quality === 'fast' ? 0 : (spec.quality === 'ultra' ? Math.max(style.waveHeight, qual.waveHeight) : style.waveHeight),
+      waveHeight: spec.quality === 'fast' ? 0 : style.waveHeight,
     })
   }
 
@@ -60,7 +59,7 @@ export function WaterCard({ node, disabled }: { node: SceneNode, disabled: boole
     write({
       quality,
       reflectionScale: qual.reflectionScale,
-      waveHeight: quality === 'fast' ? 0 : (quality === 'ultra' ? Math.max(style.waveHeight, qual.waveHeight) : style.waveHeight),
+      waveHeight: quality === 'fast' ? 0 : style.waveHeight,
     })
   }
 
