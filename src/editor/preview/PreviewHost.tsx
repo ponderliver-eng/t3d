@@ -1,6 +1,8 @@
 import { useState, type PointerEvent } from 'react'
 import { useI18n } from '../i18n'
 import { useAssetStore } from '../assets/library'
+import { AnimationPreview } from './AnimationPreview'
+import { AudioPreview } from './AudioPreview'
 import { MaterialPreview } from './MaterialPreview'
 import { ModelPreview } from './ModelPreview'
 import { TexturePreview } from './TexturePreview'
@@ -36,7 +38,7 @@ function PreviewFrame({ item }: { item: PreviewWindow }) {
   }
   return (
     <section
-      className={`preview-window${item.kind === 'model' ? ' preview-window--model' : ''}`}
+      className={`preview-window${item.kind === 'model' ? ' preview-window--model' : item.kind === 'audio' ? ' preview-window--audio' : ''}`}
       style={{ left: item.x, top: item.y, zIndex: item.z }}
       onPointerDown={() => usePreviewStore.getState().bringToFront(item.id)}
     >
@@ -59,6 +61,8 @@ function PreviewFrame({ item }: { item: PreviewWindow }) {
 
 function PreviewBody({ kind, assetId, standalone = false }: { kind: PreviewKind, assetId: string, standalone?: boolean }) {
   if (kind === 'model') return <ModelPreview assetId={assetId} standalone={standalone} />
+  if (kind === 'animation') return <AnimationPreview assetId={assetId} standalone={standalone} />
+  if (kind === 'audio') return <AudioPreview assetId={assetId} standalone={standalone} />
   if (kind === 'texture') return <TexturePreview assetId={assetId} standalone={standalone} />
   if (kind === 'environment') return <TexturePreview assetId={assetId} environment standalone={standalone} />
   return <MaterialPreview assetId={assetId} kind={kind} standalone={standalone} />

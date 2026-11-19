@@ -27,7 +27,7 @@ import { reimportModel, setModelImportScale, setModelSockets } from '../assets/i
 import { useAssetStore, type ModelSocket } from '../assets/library'
 import { MaterialBall } from '../assets/materialBall'
 import { applyModelMaterials } from '../assets/materials'
-import { getModelTemplate, instantiateModel, subscribeModels } from '../assets/models'
+import { getModelTemplate, instantiateModel, loadModelTemplate, subscribeModels } from '../assets/models'
 import { boundsOf, prepareSkinnedPickBounds } from '../scene/bounds'
 import { useI18n } from '../i18n'
 import { popPreviewWindow } from './previewStore'
@@ -183,13 +183,41 @@ export function ModelPreview({ assetId, standalone = false }: { assetId: string,
       })
     }
     let soloName: string | null = null
+    let requested = false
+    const disposePreviewMaterials = (target: Object3D | null) => {
+      if (!target) return
+      target.traverse(child => {
+        const mesh = child as Mesh
+        if (!mesh.isMesh) return
+        const seen = new Set<Material>()
+        const collect = (mat: unknown) => {
+          if (!mat) return
+          if (Array.isArray(mat)) mat.forEach(collect)
+          else seen.add(mat as Material)
+        }
+        collect(mesh.material)
+        collect(mesh.userData.previewLit)
+        collect(mesh.userData.previewBasic)
+        for (const mat of seen) mat.dispose()
+      })
+    }
     const mount = () => {
       const instance = instantiateModel(assetId)
       if (!instance) {
         setReady(false)
+        if (!requested) {
+          requested = true
+          const fileAsset = useAssetStore.getState().assets[assetId]
+          if (fileAsset && 'fileName' in fileAsset) {
+            void loadModelTemplate(fileAsset).catch(() => undefined)
+          }
+        }
         return
       }
-      if (root) scene.remove(root)
+      if (root) {
+        scene.remove(root)
+        disposePreviewMaterials(root)
+      }
       box?.removeFromParent()
       axes?.removeFromParent()
       mixer?.stopAllAction()
@@ -198,6 +226,7 @@ export function ModelPreview({ assetId, standalone = false }: { assetId: string,
       const scale = currentScale && 'importScale' in currentScale && typeof currentScale.importScale === 'number' && currentScale.importScale > 0 ? currentScale.importScale : 1
       root.scale.setScalar(scale)
       root.traverse(child => {
+        child.visible = true
         const mesh = child as SkinnedMesh
         if (mesh.isSkinnedMesh) mesh.frustumCulled = false
       })
@@ -314,6 +343,11 @@ export function ModelPreview({ assetId, standalone = false }: { assetId: string,
       stopAssets()
       observer.disconnect()
       canvas.removeEventListener('pointerdown', onClick)
+      mixer?.stopAllAction()
+      disposePreviewMaterials(root)
+      box?.dispose()
+      axes?.dispose()
+      gridHelper.dispose()
       controls.dispose()
       renderer.dispose()
       api.current = null

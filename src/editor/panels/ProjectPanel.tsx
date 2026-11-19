@@ -701,7 +701,7 @@ function detailOf(asset: ProjectAsset, used: boolean): string {
 }
 
 function previewKind(kind: string): PreviewKind | null {
-  if (kind === 'model' || kind === 'texture' || kind === 'material' || kind === 'environment') return kind
+  if (kind === 'model' || kind === 'texture' || kind === 'material' || kind === 'environment' || kind === 'animation' || kind === 'audio') return kind
   return null
 }
 

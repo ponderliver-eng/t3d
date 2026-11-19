@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 
-export type PreviewKind = 'model' | 'texture' | 'material' | 'environment' | 'node-material'
+export type PreviewKind = 'model' | 'texture' | 'material' | 'environment' | 'node-material' | 'animation' | 'audio'
 
 export interface PreviewWindow {
   id: string
@@ -60,7 +60,7 @@ export function popPreviewWindow(kind: PreviewKind, assetId: string) {
 }
 
 export function readPreviewHash(): { kind: PreviewKind, assetId: string } | null {
-  const match = location.hash.match(/^#preview\/(model|texture|material|environment|node-material)\/(.+)$/)
+  const match = location.hash.match(/^#preview\/(model|texture|material|environment|node-material|animation|audio)\/(.+)$/)
   if (!match) return null
   return { kind: match[1] as PreviewKind, assetId: decodeURIComponent(match[2]) }
 }
