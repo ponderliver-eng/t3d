@@ -1,6 +1,18 @@
 import { useEditorStore } from '../editor/scene/store'
+import type { SceneNode } from '../editor/scene/types'
 import { syncSoundSources } from './audio'
-import { defaultSoundSource, registerRuntimeSystem, RUNTIME_STAGE, type SceneRuntimeHost } from './sceneRuntime'
+import { defaultSoundSource, registerRuntimeSystem, type SceneRuntimeHost } from './sceneRuntime'
+
+function shown(nodes: ReturnType<typeof useEditorStore.getState>['nodes'], id: string) {
+  let current: SceneNode | undefined = nodes[id]
+  const seen = new Set<string>()
+  while (current && !seen.has(current.id)) {
+    if (!current.visible) return false
+    seen.add(current.id)
+    current = current.parentId ? nodes[current.parentId] : undefined
+  }
+  return true
+}
 
 function stepSoundSources(_dt: number, host: SceneRuntimeHost) {
   const state = useEditorStore.getState()
@@ -8,7 +20,8 @@ function stepSoundSources(_dt: number, host: SceneRuntimeHost) {
   const items = []
   for (const node of Object.values(state.nodes)) {
     const spec = node.gameplay?.soundSource
-    if (!spec?.enabled || !spec.assetId) continue
+    if (!spec || spec.enabled === false || !spec.assetId) continue
+    if (!shown(state.nodes, node.id)) continue
     const view = { ...defaultSoundSource(), ...spec }
     const parent = host.resolveObject(node.id)
     if (!parent) continue
@@ -26,4 +39,4 @@ function stepSoundSources(_dt: number, host: SceneRuntimeHost) {
   syncSoundSources(items)
 }
 
-registerRuntimeSystem('core.soundSource', RUNTIME_STAGE.PRE_RENDER, stepSoundSources)
+registerRuntimeSystem('core.soundSource', 45, stepSoundSources)

@@ -1894,7 +1894,20 @@ function AddComponentPicker({ node, disabled }: { node: SceneNode, disabled: boo
   const physicsEnabled = capabilityEnabled(capabilities, 'physics')
   const navEnabled = capabilityEnabled(capabilities, 'navigation')
 
-  const options: ComponentOption[] = []
+  const options: ComponentOption[] = [{
+    id: 'soundSource',
+    cardId: 'soundSource',
+    group: 'devices',
+    label: t('soundSource.title'),
+    color: '#26a69a',
+    added: Boolean(node.gameplay?.soundSource),
+    apply: () => {
+      commitNode(node.id, t('soundSource.title'), {
+        gameplay: { ...node.gameplay, soundSource: defaultSoundSource() },
+      })
+      useInspectorMemory.getState().setOpen(`node:${node.id}`, 'soundSource', true)
+    },
+  }]
   if (canGameplay) {
     options.push({
       id: 'character',
@@ -1986,20 +1999,6 @@ function AddComponentPicker({ node, disabled }: { node: SceneNode, disabled: boo
             gameplay: { ...node.gameplay, checkpoint: defaultCheckpoint() },
           })
           useInspectorMemory.getState().setOpen(`node:${node.id}`, 'checkpoint', true)
-        },
-      },
-      {
-        id: 'soundSource',
-        cardId: 'soundSource',
-        group: 'devices',
-        label: t('soundSource.title'),
-        color: '#26a69a',
-        added: Boolean(node.gameplay?.soundSource),
-        apply: () => {
-          commitNode(node.id, t('soundSource.title'), {
-            gameplay: { ...node.gameplay, soundSource: defaultSoundSource() },
-          })
-          useInspectorMemory.getState().setOpen(`node:${node.id}`, 'soundSource', true)
         },
       },
       {

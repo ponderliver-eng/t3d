@@ -3,7 +3,7 @@ import { ensureAssetUrl } from '../editor/assets/textures'
 import { useAssetStore } from '../editor/assets/library'
 import { useEditorStore } from '../editor/scene/store'
 import type { ScenePicture } from '../editor/scene/types'
-import { registerRuntimeSystem, RUNTIME_STAGE } from './sceneRuntime'
+import { registerRuntimeSystem } from './sceneRuntime'
 
 const MAX_SFX = 32
 
@@ -62,6 +62,7 @@ export function attachAudioListener(camera: Camera) {
 }
 
 export function unlockAudio() {
+  if (holdContext) return
   const ctx = ensureListener().context
   if (ctx.state === 'suspended') void ctx.resume()
 }
@@ -69,9 +70,10 @@ export function unlockAudio() {
 export function playSound(options: PlaySoundOptions): number {
   installUnlock()
   const id = nextId++
+  const ticket = playTicket
   const ear = ensureListener()
-  const run = () => { void start(id, options) }
-  if (ear.context.state === 'suspended') void ear.context.resume().then(run)
+  const run = () => { void start(id, options, ticket) }
+  if (ear.context.state === 'suspended' && !holdContext) void ear.context.resume().then(run)
   else run()
   return id
 }
@@ -88,29 +90,67 @@ export function stopMusic() {
 }
 
 export function stopAllSounds() {
+  playTicket += 1
   for (const voice of [...voices]) stopVoice(voice)
   musicId = 0
   emitters.clear()
+  managed.clear()
 }
 
-const emitters = new Map<string, { voice: number, key: string }>()
+const emitters = new Map<string, { voice: number, key: string, tune: string }>()
+const managed = new Set<number>()
+let playTicket = 0
+let holdContext = false
 
 export function syncSoundSources(items: Array<PlaySoundOptions & { nodeId: string }>) {
   const live = new Set<string>()
   for (const item of items) {
     if (!item.parent) continue
     live.add(item.nodeId)
-    const key = `${item.assetId}|${item.loop ? 1 : 0}|${item.volume ?? 1}|${item.refDistance ?? 2}|${item.rolloff ?? 1}`
+    const key = `${item.assetId}|${item.loop ? 1 : 0}`
+    const tune = tuneKey(item)
     const current = emitters.get(item.nodeId)
-    if (current?.key === key) continue
-    if (current) stopSound(current.voice)
-    emitters.set(item.nodeId, { voice: playSound(item), key })
+    if (current?.key === key) {
+      if (current.tune !== tune && retuneEmitter(current.voice, item)) current.tune = tune
+      continue
+    }
+    if (current) releaseManaged(current.voice)
+    const voice = playSound(item)
+    managed.add(voice)
+    emitters.set(item.nodeId, { voice, key, tune })
   }
   for (const [nodeId, current] of emitters) {
     if (live.has(nodeId)) continue
-    stopSound(current.voice)
+    releaseManaged(current.voice)
     emitters.delete(nodeId)
   }
+}
+
+function tuneKey(options: PlaySoundOptions) {
+  return `${options.volume ?? 1}|${options.refDistance ?? 2}|${options.rolloff ?? 1}`
+}
+
+function retuneEmitter(id: number, options: PlaySoundOptions) {
+  const voice = voices.find(item => item.id === id)
+  if (!voice) return false
+  const mix = readAudioMix(useEditorStore.getState().picture)
+  voice.local = clamp(options.volume ?? 1, 0, 4)
+  voice.audio.setVolume(voice.local * (voice.bus === 'music' ? mix.music : mix.sfx))
+  if (voice.audio instanceof PositionalAudio) {
+    voice.audio.setRefDistance(Math.max(0.05, options.refDistance ?? 2))
+    voice.audio.setRolloffFactor(Math.max(0, options.rolloff ?? 1))
+  }
+  return true
+}
+
+function ownsEmitter(id: number) {
+  for (const current of emitters.values()) if (current.voice === id) return true
+  return false
+}
+
+function releaseManaged(id: number) {
+  managed.delete(id)
+  stopSound(id)
 }
 
 function ensureListener(): AudioListener {
@@ -129,13 +169,22 @@ function installUnlock() {
   window.addEventListener('keydown', once, { capture: true })
 }
 
-async function start(id: number, options: PlaySoundOptions) {
+async function start(id: number, options: PlaySoundOptions, ticket: number) {
   const assetId = options.assetId.trim()
   if (!assetId) return
   const asset = useAssetStore.getState().assets[assetId]
   if (!asset || asset.kind !== 'audio') return
   const buffer = await bufferFor(assetId, 'hash' in asset ? asset.hash : assetId)
   if (!buffer) return
+  if (managed.has(id) && (ticket !== playTicket || !ownsEmitter(id))) {
+    managed.delete(id)
+    return
+  }
+  if (managed.has(id) && options.parent && !options.parent.parent) {
+    emitters.forEach((current, nodeId) => { if (current.voice === id) emitters.delete(nodeId) })
+    managed.delete(id)
+    return
+  }
   const state = useEditorStore.getState()
   if (options.bus === 'music' && state.playState !== 'playing') return
   const mix = readAudioMix(state.picture)
@@ -150,8 +199,8 @@ async function start(id: number, options: PlaySoundOptions) {
   audio.setVolume(local * (bus === 'music' ? mix.music : mix.sfx))
   if (options.playbackRate && options.playbackRate > 0) audio.setPlaybackRate(options.playbackRate)
   if (audio instanceof PositionalAudio && options.parent) {
-    audio.setRefDistance(options.refDistance ?? 2)
-    audio.setRolloffFactor(options.rolloff ?? 1)
+    audio.setRefDistance(Math.max(0.05, options.refDistance ?? 2))
+    audio.setRolloffFactor(Math.max(0, options.rolloff ?? 1))
     audio.setDistanceModel('inverse')
     options.parent.add(audio)
   }
@@ -188,7 +237,7 @@ async function bufferFor(assetId: string, hash: string): Promise<AudioBuffer | n
 }
 
 function trimSfx() {
-  const live = voices.filter(item => item.bus === 'sfx' && !item.loop)
+  const live = voices.filter(item => item.bus === 'sfx' && !item.loop && !managed.has(item.id))
   while (live.length >= MAX_SFX) {
     const oldest = live.shift()
     if (oldest) stopVoice(oldest)
@@ -244,9 +293,33 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value))
 }
 
-registerRuntimeSystem('core.audio', RUNTIME_STAGE.PRE_RENDER, () => {
+let contextChain: Promise<void> = Promise.resolve()
+
+function settleContext(paused: boolean) {
+  const ctx = listener?.context
+  if (!ctx) return
+  contextChain = contextChain.then(async () => {
+    if (paused !== holdContext) return
+    if (paused && ctx.state === 'running') await ctx.suspend()
+    if (!paused && ctx.state === 'suspended') await ctx.resume()
+  }).catch(() => undefined)
+}
+
+registerRuntimeSystem('core.audio', 44, () => {
   const state = useEditorStore.getState()
   applyMix(readAudioMix(state.picture))
+  if (state.playState === 'paused') {
+    heardPlay = true
+    if (!holdContext) {
+      holdContext = true
+      settleContext(true)
+    }
+    return
+  }
+  if (holdContext) {
+    holdContext = false
+    settleContext(false)
+  }
   if (state.playState === 'playing') {
     heardPlay = true
     return
