@@ -12,7 +12,6 @@ import {
   length,
   linearDepth,
   max,
-  min,
   mix,
   normalize,
   positionLocal,
@@ -97,13 +96,11 @@ export function createWaterMaterial(): WaterMaterialHandle {
   const s2 = sin(p2)
   const s3 = sin(p3)
   const s4 = sin(p4)
-  // 用陡峭度微调让波峰更窄长、波谷更平缓
   const waveNorm = s1.mul(0.46).add(s2.mul(0.28)).add(s3.mul(0.16)).add(s4.mul(0.10))
   const waveOffset = waveNorm.mul(uWaveHeight)
-  const horizPush = cos(p1).mul(0.35).add(cos(p2).mul(0.2)).mul(uWaveHeight).mul(0.8)
   const displacedLocal = vec3(
-    positionLocal.x.add(dir1.x.mul(horizPush)),
-    positionLocal.y.sub(dir1.y.mul(horizPush)),
+    positionLocal.x,
+    positionLocal.y,
     positionLocal.z.add(waveOffset),
   )
 
@@ -174,20 +171,12 @@ export function createWaterMaterial(): WaterMaterialHandle {
   const transmit = clamp(float(1.0).sub(absorb).mul(float(1.0).sub(uOpacity.mul(0.55))), float(0.0), float(1.0))
   const refractedBody = mix(waterTint, underWaterColor.mul(mix(vec3(1.0), uShallowColor, float(0.42))), transmit)
 
-  // 6. 围绕物体的水线外扩泡沫（4-tap 邻域深度膨胀）+ 波浪顶端浪花
+  // 6. 围绕接触水线的窄带镂空泡沫 + 波浪顶端浪花（仅基于真实水深差，绝不外扩到水上剪影）
   const foamNoise1 = foamTexNode.sample(baseUv.mul(2.8).add(flow.mul(1.4))).r
   const foamNoise2 = foamTexNode.sample(baseUv.mul(5.9).sub(flowOrtho.mul(1.7))).r
   const foamCell = foamNoise1.mul(0.55).add(foamNoise2.mul(0.45))
 
-  const ringRadius = clamp(uFoamWidth.div(max(eyeDist, float(1.2))).mul(0.06), float(0.0), float(0.035))
-  const curLin = linearDepth()
-  const dL = max(linearDepth(viewportDepthTexture(clamp(screenUV.sub(vec2(ringRadius, float(0.0))), vec2(0.002), vec2(0.998)))).sub(curLin).mul(depthScale), float(0.0))
-  const dR = max(linearDepth(viewportDepthTexture(clamp(screenUV.add(vec2(ringRadius, float(0.0))), vec2(0.002), vec2(0.998)))).sub(curLin).mul(depthScale), float(0.0))
-  const dU = max(linearDepth(viewportDepthTexture(clamp(screenUV.add(vec2(float(0.0), ringRadius)), vec2(0.002), vec2(0.998)))).sub(curLin).mul(depthScale), float(0.0))
-  const dD = max(linearDepth(viewportDepthTexture(clamp(screenUV.sub(vec2(float(0.0), ringRadius)), vec2(0.002), vec2(0.998)))).sub(curLin).mul(depthScale), float(0.0))
-  const expandedDepth = min(waterDepth, min(min(dL, dR), min(dU, dD)))
-
-  const shoreBand = float(1.0).sub(smoothstep(float(0.0), max(uFoamWidth, float(0.01)), expandedDepth))
+  const shoreBand = float(1.0).sub(smoothstep(float(0.0), max(uFoamWidth, float(0.01)), waterDepth))
   const crestActive = smoothstep(float(0.004), float(0.025), uWaveHeight)
   const crestBreakup = smoothstep(float(0.38), float(0.75), foamTexNode.sample(baseUv.mul(0.35).add(flow.mul(0.5))).r)
   const crestBand = smoothstep(float(0.36), float(0.88), waveNorm).mul(crestActive).mul(crestBreakup).mul(uCrestFoam)
