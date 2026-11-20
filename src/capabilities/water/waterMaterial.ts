@@ -76,8 +76,8 @@ const AMP_GAIN = 1.25
 const PINCH_GAIN = 2.2
 
 /**
- * 位移顶点的长波。波长两两接近（41/33、22/17），靠自然拍频形成一组一组的涌浪，
- * 方向围绕主风向散开，越短的波散得越开，浪脊因此自然断成段。速度按深水色散 ω = √(g·k)。
+ * 位移顶点的长波。方向围绕主风向散开，越短的波散得越开。速度按深水色散 ω = √(g·k)。
+ * 每两道为一对，共用一个起落包络（见 SWELL_GROUPS）。
  */
 const VERTEX_WAVES: WaveDef[] = [
   { length: 41, angle: -8, weight: 0.26, share: 0.10, phase: 0.0 },
@@ -86,6 +86,16 @@ const VERTEX_WAVES: WaveDef[] = [
   { length: 17, angle: 16, weight: 0.14, share: 0.15, phase: 2.9 },
   { length: 11, angle: -31, weight: 0.12, share: 0.19, phase: 5.3 },
   { length: 7.5, angle: 27, weight: 0.09, share: 0.21, phase: 0.8 },
+]
+
+/**
+ * 起落包络（每对顶点波一组）：ka/kb 决定「涨落先后」相位图的空间尺度（越小，同涨同落的区域越大），
+ * omega 是涨落的快慢（弧度/秒，周期 = 2π / omega），low/high 是振幅倍率的最低和最高。
+ */
+const SWELL_GROUPS = [
+  { ka: 0.075, kb: 0.05, omega: 0.95, offset: 0.0, low: 0.2, high: 1.4 },
+  { ka: 0.11, kb: 0.07, omega: 1.25, offset: 2.1, low: 0.25, high: 1.35 },
+  { ka: 0.16, kb: 0.1, omega: 1.6, offset: 4.4, low: 0.5, high: 1.2 },
 ]
 
 /** 只在片元里参与法线与泡沫的短波，填补顶点长波与法线贴图之间的尺度空档。 */
@@ -211,14 +221,33 @@ export function createWaterMaterial(options: WaterMaterialOptions): WaterMateria
   let crestActive: TslNode = float(0.0)
 
   if (options.waves) {
+    // 起落包络：每一对波的振幅在原地随时间涨落（周期 4 ~ 7 秒），各处涨落的先后由一张缓慢变化的相位图错开。
+    // 浪峰以自己的速度往前走，走进「正在落」的区域就矮下去变平，走进「正在涨」的区域又鼓起来，
+    // 所以看到的是浪走一段、平掉、前面又起来，而不是同一道浪脊一路平移到头。
+    // 三对波用三张不同的相位图和节奏，避免整片水面同涨同落。
+    const flowOrthoDir = vec2(uFlowDir.y.negate(), uFlowDir.x)
+    const swellAt = (xz: TslNode, group: number): TslNode => {
+      const cfg = SWELL_GROUPS[group]
+      const u = dot(xz, uFlowDir)
+      const v = dot(xz, flowOrthoDir)
+      const phi = sin(u.mul(cfg.ka).add(sin(v.mul(cfg.kb).add(cfg.offset)).mul(1.4))).mul(2.2)
+        .add(sin(v.mul(cfg.ka * 0.7).sub(u.mul(cfg.kb * 0.6)).add(cfg.offset * 2)).mul(1.6))
+      const pulse = smoothstep(float(-0.75), float(0.75), sin(uWaveTime.mul(cfg.omega).sub(phi).add(cfg.offset)))
+      return mix(float(cfg.low), float(cfg.high), pulse)
+    }
+    const groupOf = (i: number) => Math.min(SWELL_GROUPS.length - 1, Math.floor(i / 2))
+
     // 顶点阶段：长波位移（高度 + Gerstner 水平聚拢）
+    const vSwell = SWELL_GROUPS.map((_, g) => swellAt(restVertexXZ, g))
     let vHeight: TslNode = float(0.0)
     let vHoriz: TslNode = vec2(0.0, 0.0)
-    for (const wave of vertexWaves) {
+    vertexWaves.forEach((wave, i) => {
+      const mod = vSwell[groupOf(i)]
       const theta = dot(restVertexXZ, wave.dir).mul(wave.k).add(wave.def.phase).sub(uWaveTime.mul(wave.omega))
-      vHeight = vHeight.add(sin(theta).mul(wave.amp))
-      vHoriz = vHoriz.add(wave.dir.mul(cos(theta).mul(wave.pinch).mul(uWaveSteepness)))
-    }
+      vHeight = vHeight.add(sin(theta).mul(wave.amp).mul(mod))
+      // 水平聚拢的放大上限 1.1：压缩份额总和 0.9 × 1.1 < 1，仍然不会自交
+      vHoriz = vHoriz.add(wave.dir.mul(cos(theta).mul(wave.pinch).mul(uWaveSteepness).mul(min(mod, float(1.1)))))
+    })
     // 用节点世界缩放的倒数把世界米数转回局部坐标，确保任意 scale 下都不撕裂
     displacedLocal = options.upAxis === 'z'
       ? vec3(
@@ -235,14 +264,16 @@ export function createWaterMaterial(options: WaterMaterialOptions): WaterMateria
     // 片元阶段：逐像素解析法线（长波 + 只参与着色的短波）
     const vertexBase = vertexWaves.map(wave => dot(surfXZ, wave.dir).mul(wave.k).add(wave.def.phase))
     const detailBase = detailWaves.map(wave => dot(surfXZ, wave.dir).mul(wave.k).add(wave.def.phase))
+    const fSwell = SWELL_GROUPS.map((_, g) => swellAt(surfXZ, g))
     let vertexFoamWeight: TslNode = float(0.0)
     vertexWaves.forEach((wave, i) => {
+      const mod = fSwell[groupOf(i)]
       const theta = vertexBase[i].sub(uWaveTime.mul(wave.omega))
       const s = sin(theta)
-      const slope = wave.dir.mul(cos(theta).mul(wave.amp).mul(wave.k))
+      const slope = wave.dir.mul(cos(theta).mul(wave.amp).mul(wave.k).mul(mod))
       macroSlope = macroSlope.add(slope)
-      waveCompress = waveCompress.add(s.mul(wave.pinch).mul(wave.k).mul(uWaveSteepness))
-      waveNorm = waveNorm.add(s.mul(wave.def.weight))
+      waveCompress = waveCompress.add(s.mul(wave.pinch).mul(wave.k).mul(uWaveSteepness).mul(min(mod, float(1.1))))
+      waveNorm = waveNorm.add(s.mul(wave.def.weight).mul(mod))
       vertexFoamWeight = vertexFoamWeight.add(wave.foamWeight)
     })
     waveSlope = macroSlope
@@ -259,7 +290,8 @@ export function createWaterMaterial(options: WaterMaterialOptions): WaterMateria
       const time = uWaveTime.sub(uFoamTrail.mul(lookBack))
       let acc: TslNode = float(0.0)
       vertexWaves.forEach((wave, i) => {
-        acc = acc.add(sin(vertexBase[i].sub(time.mul(wave.omega))).mul(wave.def.weight))
+        // 回看只有 2 秒以内，直接沿用当前的起落包络（省掉每个回看点重算一遍）
+        acc = acc.add(sin(vertexBase[i].sub(time.mul(wave.omega))).mul(wave.def.weight).mul(fSwell[groupOf(i)]))
       })
       return acc.mul(CREST_GAIN)
     }
