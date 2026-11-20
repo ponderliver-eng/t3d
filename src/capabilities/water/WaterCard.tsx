@@ -55,6 +55,7 @@ export function WaterCard({ node, disabled }: { node: SceneNode, disabled: boole
       preset,
       ...style,
       waveHeight: spec.quality === 'fast' ? 0 : style.waveHeight,
+      ...(preset === 'ocean' ? { foamTrail: 0.75, swellRate: 1.65 } : {}),
     })
   }
 
