@@ -208,6 +208,11 @@ function stepCharacters(dt: number, host: SceneRuntimeHost) {
     const targetSubmerged = Math.max(0.1, spec.height * 0.68 - swimOffset)
     const enterDepth = spec.height * 0.62
     const exitDepth = Math.max(0.05, Math.min(spec.height * 0.48, targetSubmerged - 0.18))
+    const ground = useCapsule && live.grounded
+      ? feet
+      : groundUnder(host, useCapsule ? footX : object.position.x, useCapsule ? feet : object.position.y, useCapsule ? footZ : object.position.z, node.id, spec)
+    const touchingFloor = ground !== null && feet <= ground + 0.12
+    const swimJumping = now <= live.swimJumpUntil
     if (water && submerged >= enterDepth) {
       if (!live.swimming) {
         live.swimming = true
@@ -215,16 +220,14 @@ function stepCharacters(dt: number, host: SceneRuntimeHost) {
         live.jumpPhase = 'none'
         live.clip = ''
       }
-    } else if (!water || submerged < exitDepth) {
+    } else if (!water || (submerged < exitDepth && (touchingFloor || swimJumping || submerged < -0.2))) {
       if (live.swimming) {
         live.swimming = false
         live.clip = ''
+        if (!swimJumping) live.lastGrounded = now
       }
     }
 
-    const ground = useCapsule && live.grounded
-      ? feet
-      : groundUnder(host, useCapsule ? footX : object.position.x, useCapsule ? feet : object.position.y, useCapsule ? footZ : object.position.z, node.id, spec)
     const onGround = !live.swimming && (live.grounded || (ground !== null && feet <= ground + 0.08 && live.vy <= 0.1))
     if (onGround) live.lastGrounded = now
     const coyote = now - live.lastGrounded <= spec.coyoteTime
