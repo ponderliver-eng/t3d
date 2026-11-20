@@ -484,7 +484,7 @@ export function createWaterMaterial(options: WaterMaterialOptions): WaterMateria
   material.colorNode = select(debugOn, debugColor, finalColor)
   material.opacityNode = select(debugOn, float(1.0), max(finalAlpha, foamAlpha))
   material.transparent = true
-  material.depthWrite = false
+  material.depthWrite = true
   material.side = DoubleSide
 
   return {
