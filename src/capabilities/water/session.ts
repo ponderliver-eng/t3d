@@ -246,6 +246,18 @@ function updateSunAndSky(scene: Scene, backgroundHex: string): number {
   return intensity
 }
 
+/** 规范化后的参数按原始数据的引用缓存：数据没改时每帧不再重新校验、分配一份新对象。 */
+const specCache = new WeakMap<object, WaterSpec>()
+function specOf(raw: unknown): WaterSpec {
+  if (!raw || typeof raw !== 'object') return normalizeWater(raw)
+  let spec = specCache.get(raw)
+  if (!spec) {
+    spec = normalizeWater(raw)
+    specCache.set(raw, spec)
+  }
+  return spec
+}
+
 function optionsFor(spec: WaterSpec, upAxis: 'y' | 'z', followGrid: boolean): WaterMaterialOptions {
   return {
     followGrid,
@@ -283,7 +295,7 @@ function onBeforeRender(ctx: ViewportRenderContext) {
     const node = editor.nodes[id]
     if (!node) continue
     const raw = node.capabilities?.[WATER_CAPABILITY_ID]
-    const spec = normalizeWater(raw)
+    const spec = specOf(raw)
     if (!spec.enabled) continue
 
     const root = resolveNodeObject(ctx.scene, id)

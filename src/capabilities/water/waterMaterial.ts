@@ -109,14 +109,19 @@ const VERTEX_WAVES: WaveDef[] = [
 
 /**
  * 压缩份额预算：长波 0.72 + 中尺度波 0.08 = 0.80。
- * 包络放大上限 1.1、浪脊弯曲带来的顺波向相位梯度上限约 1.1，0.80 × 1.1 × 1.1 < 1，所以水面永不自交。
+ * 包络放大上限 1.1、浪脊弯曲带来的顺波向相位梯度上限约 1.1，0.80 × 1.1 × 1.1 < 1，所以聚拢本身永不自交。
+ * 「浪尖卷曲」的水平位移不在这个预算内：调大后，几道大浪同相叠加的地方允许前脸翻过去（那正是钩形）。
  */
 
 /** 浪脊弯曲：相位扰动的最大幅度（弧度）与沿浪脊方向的周期（波长的倍数）。 */
 const BEND_PRIMARY = { amount: 1.3, amountSolo: 1.6, span: 3.1 }
-const BEND_SECONDARY = { amount: 0.7, span: 1.7, along: 0.25 }
-/** 浪尖前倾：参数 1 对应的二次谐波系数（必须 < 1，否则波形会出现第二个鼓包）。 */
-const LEAN_GAIN = 0.75
+const BEND_SECONDARY = { amount: 0.7, span: 1.7, along: 0.25, waves: 4 }
+/**
+ * 浪尖卷曲（单道波的剖面形状）由两部分组成，共用一个参数：
+ * LEAN_GAIN 是高度剖面的前倾系数；CURL_GAIN 是把浪峰上半部往前推的水平位移倍率（相对该波的聚拢量）。
+ */
+const LEAN_GAIN = 0.4
+const CURL_GAIN = 1.3
 
 /**
  * 起落包络（每对顶点波一组）：ka/kb 决定「涨落先后」相位图的空间尺度（越小，同涨同落的区域越大），
@@ -212,9 +217,14 @@ export function createWaterMaterial(options: WaterMaterialOptions): WaterMateria
   const uWaveSteepness = uniform(0.65)
   const uWaveBend = uniform(0.6)
   const uWaveLean = uniform(0.2)
+  const uWaveCurl = uniform(0.6)
+  const uCrestPower = uniform(0.75)
+  const uCrestLift = uniform(0.14)
   const uCellSize = uniform(0)
   const uGridCenter = uniform(new Vector2(0, 0))
-  const uFoamTrail = uniform(1)
+  // 泡沫拖尾每个回看点、每道长波的 (cos, sin)(ω·回看时长)，在 setSpec 里随「泡沫拖尾」参数更新
+  const trailOmegas = VERTEX_WAVES.map(def => Math.sqrt(GRAVITY * ((Math.PI * 2) / def.length)))
+  const uTrailTurns = FOAM_TRAIL_TAPS.map(() => trailOmegas.map(() => uniform(new Vector2(1, 0))))
   const uDebugView = uniform(0)
 
   const normalTexNode = texture(defaultNormal)
@@ -288,6 +298,8 @@ export function createWaterMaterial(options: WaterMaterialOptions): WaterMateria
   // 而不是一条贯穿水面的直线。扰动几乎不沿波的前进方向变化，所以不会额外挤压水面。
   // 返回相位偏移，以及（片元求法线用的）相位梯度在浪脊方向与前进方向上的分量。
   const bendOf = (xz: TslNode, wave: VertexWave, index: number, withGradient: boolean) => {
+    // 中尺度波只有三五米长，弯不弯看不出来，直接跳过
+    if (wave.isMid) return { phase: float(0.0), gradAcross: float(0.0), gradAlong: float(0.0) }
     const along = dot(xz, wave.dir)
     const across = dot(xz, wave.perp)
     const q1 = wave.k / BEND_PRIMARY.span
@@ -296,7 +308,8 @@ export function createWaterMaterial(options: WaterMaterialOptions): WaterMateria
     let phase: TslNode = sin(a1).mul(amount1)
     let gradAcross: TslNode = withGradient ? cos(a1).mul(amount1).mul(q1) : float(0.0)
     let gradAlong: TslNode = float(0.0)
-    if (rich) {
+    // 第二层扰动只给最长的几道波（它们的浪脊最显眼），其余的波一层就够
+    if (rich && index < BEND_SECONDARY.waves) {
       const q2 = wave.k / BEND_SECONDARY.span
       const amount2 = uWaveBend.mul(BEND_SECONDARY.amount)
       const a2 = across.mul(q2).add(along.mul(q2 * BEND_SECONDARY.along)).add(index * 2.7 + 1.3)
@@ -309,6 +322,24 @@ export function createWaterMaterial(options: WaterMaterialOptions): WaterMateria
       }
     }
     return { phase, gradAcross, gradAlong }
+  }
+
+  // 单道波的剖面（s = sin θ，c = cos θ，浪尖在 θ = π/2）：
+  //   山脊剖面 1 - 2·m^p，其中 m = (1 - s) / 2 是「离浪尖多远」(浪尖 0，浪谷 1)：
+  //     p = 1 就是正弦；p 越小浪尖越尖、浪谷越宽越平；p = 0.5 时浪尖是一道折线山脊（两侧坡度不连续）。
+  //     p 不能小于 0.5，否则浪尖处坡度无穷大。uCrestLift 把平均水位补回原处。
+  //   + 前倾（-λ·s·c：迎着前进方向的一面变陡、背面变缓）
+  // 每道波只多一次 pow，不需要额外的三角函数。
+  // 返回剖面高度，以及（片元求法线用的）高度对相位 θ 的导数；两者共用同一个 pow 结果。
+  const profileOf = (s: TslNode, c: TslNode, withSlope: boolean) => {
+    const m = max(float(1.0).sub(s).mul(0.5), float(1e-4))
+    // w = m^(p-1)：高度用 m·w，坡度用 p·w
+    const w = pow(m, uCrestPower.sub(1.0))
+    const height: TslNode = float(1.0).add(uCrestLift).sub(m.mul(w).mul(2.0)).sub(s.mul(c).mul(uWaveLean))
+    const slope: TslNode = withSlope
+      ? c.mul(w).mul(uCrestPower).sub(c.mul(c).mul(2.0).sub(1.0).mul(uWaveLean))
+      : float(0.0)
+    return { height, slope }
   }
 
   const detailWaves = detailDefs.map(def => {
@@ -356,10 +387,12 @@ export function createWaterMaterial(options: WaterMaterialOptions): WaterMateria
         .sub(uWaveTime.mul(wave.omega))
       const s = sin(theta)
       const c = cos(theta)
-      // 浪尖前倾：sin θ·(1 - λ·cos θ) 让迎着前进方向的一面变陡、背面变缓（不需要额外的三角函数）
-      vHeight = vHeight.add(s.mul(float(1.0).sub(uWaveLean.mul(c))).mul(wave.amp).mul(mod).mul(wave.geoFade))
-      // 水平聚拢的放大上限 1.1，仍在压缩份额预算内，不会自交
-      vHoriz = vHoriz.add(wave.dir.mul(c.mul(wave.pinch).mul(uWaveSteepness).mul(min(mod, float(1.1))).mul(wave.geoFade)))
+      vHeight = vHeight.add(profileOf(s, c, false).height.mul(wave.amp).mul(mod).mul(wave.geoFade))
+      // 水平位移 = 向浪峰聚拢（上限 1.1 倍，在压缩份额预算内）+ 浪尖卷曲（浪峰上半部整体往前进方向推，
+      // 越靠近浪尖推得越多，于是前脸变陡、浪尖探出去形成钩形；多道大浪叠在一起时允许轻微翻卷）
+      const crestUp = max(s, float(0.0))
+      const gather = c.mul(uWaveSteepness).add(crestUp.mul(crestUp).mul(uWaveCurl))
+      vHoriz = vHoriz.add(wave.dir.mul(gather.mul(wave.pinch).mul(min(mod, float(1.1))).mul(wave.geoFade)))
     })
     // 用节点世界缩放的倒数把世界米数转回局部坐标，确保任意 scale 下都不撕裂
     displacedLocal = options.upAxis === 'z'
@@ -378,7 +411,11 @@ export function createWaterMaterial(options: WaterMaterialOptions): WaterMateria
     const vertexBend = vertexWaves.map((wave, i) => bendOf(surfXZ, wave, i, true))
     const vertexBase = vertexWaves.map((wave, i) => dot(surfXZ, wave.dir).mul(wave.k).add(wave.def.phase).add(vertexBend[i].phase))
     const detailBase = detailWaves.map(wave => dot(surfXZ, wave.dir).mul(wave.k).add(wave.def.phase))
-    const fSwell = SWELL_GROUPS.map((_, g) => swellAt(surfXZ, g))
+    // 起落包络是几十米尺度的缓变量，在顶点算好插值过来即可，片元不再逐像素重算
+    const swellVarying = varying(vec3(vSwell[0], vSwell[1], vSwell[2]))
+    const fSwell: TslNode[] = [swellVarying.x, swellVarying.y, swellVarying.z]
+    const waveSin: TslNode[] = []
+    const waveCos: TslNode[] = []
     let vertexFoamWeight: TslNode = float(0.0)
     let midSlope: TslNode = vec2(0.0, 0.0)
     vertexWaves.forEach((wave, i) => {
@@ -386,9 +423,13 @@ export function createWaterMaterial(options: WaterMaterialOptions): WaterMateria
       const theta = vertexBase[i].sub(uWaveTime.mul(wave.omega))
       const s = sin(theta)
       const c = cos(theta)
-      // 与顶点一致的前倾波形及其导数：d/dθ [s·(1 - λc)] = c - λ·(2c² - 1)
-      const leanHeight = s.mul(float(1.0).sub(uWaveLean.mul(c)))
-      const leanSlope = c.sub(uWaveLean.mul(c.mul(c).mul(2.0).sub(1.0)))
+      waveSin.push(s)
+      waveCos.push(c)
+      // 与顶点一致的单波剖面及其对相位的导数（共用一次 pow）
+      const profile = profileOf(s, c, true)
+      const leanHeight = profile.height
+      const leanSlope = profile.slope
+      const crestUp = max(s, float(0.0))
       // 相位梯度 = k·前进方向 + 浪脊弯曲带来的偏转
       const bend = vertexBend[i]
       const phaseGrad = wave.dir.mul(bend.gradAlong.add(wave.k)).add(wave.perp.mul(bend.gradAcross))
@@ -400,7 +441,9 @@ export function createWaterMaterial(options: WaterMaterialOptions): WaterMateria
       } else {
         macroSlope = macroSlope.add(slope)
       }
-      waveCompress = waveCompress.add(s.mul(wave.pinch).mul(wave.k).mul(uWaveSteepness).mul(min(mod, float(1.1))))
+      // 水平位移造成的压缩量：聚拢项在浪尖最大，卷曲项在浪尖前脸最大（cos θ < 0 的一侧），法线据此在前脸变陡
+      const squeeze = s.mul(uWaveSteepness).sub(crestUp.mul(c).mul(uWaveCurl).mul(2.0))
+      waveCompress = waveCompress.add(squeeze.mul(wave.pinch).mul(wave.k).mul(min(mod, float(1.1))))
       waveNorm = waveNorm.add(leanHeight.mul(wave.def.weight).mul(mod))
       vertexFoamWeight = vertexFoamWeight.add(wave.foamWeight)
     })
@@ -414,14 +457,16 @@ export function createWaterMaterial(options: WaterMaterialOptions): WaterMateria
     })
     // 浪峰值 = 实际的归一化浪高（与顶点位移、次表面散射用的是同一个量），所以泡沫严格落在看得见的波峰上。
     // lookBack 回看过去某一刻同一块水面的浪高，用来生成浪峰走过后留在身后的淡拖尾。
-    const crestAt = (lookBack: number): TslNode => {
-      const time = uWaveTime.sub(uFoamTrail.mul(lookBack))
+    // 回看时刻的相位 = 当前相位 + ω·回看时长，回看时长只取决于「泡沫拖尾」参数，
+    // 所以 cos/sin(ω·回看时长) 在 CPU 上算好传进来，这里用和角公式展开，每个回看点不再有三角函数。
+    const crestAt = (tap: number): TslNode => {
       let acc: TslNode = float(0.0)
       vertexWaves.forEach((wave, i) => {
-        // 拖尾只看长波（中尺度波太短，拖尾里看不出来），并省略前倾修正
+        // 拖尾只看长波（中尺度波太短，拖尾里看不出来），并省略剖面修正
         if (wave.isMid) return
+        const turn = uTrailTurns[tap][i]
         // 回看只有 2 秒以内，直接沿用当前的起落包络（省掉每个回看点重算一遍）
-        acc = acc.add(sin(vertexBase[i].sub(time.mul(wave.omega))).mul(wave.def.weight).mul(fSwell[groupOf(i)]))
+        acc = acc.add(waveSin[i].mul(turn.x).add(waveCos[i].mul(turn.y)).mul(wave.def.weight).mul(fSwell[groupOf(i)]))
       })
       return acc.mul(CREST_GAIN)
     }
@@ -433,8 +478,8 @@ export function createWaterMaterial(options: WaterMaterialOptions): WaterMateria
     const crestEnd = crestStart.add(0.55)
     crestField = smoothstep(crestStart, crestEnd, squeezeNow)
     const taps = options.highDetail ? FOAM_TRAIL_TAPS : FOAM_TRAIL_TAPS.slice(0, 3)
-    taps.forEach(tap => {
-      crestField = max(crestField, smoothstep(crestStart, crestEnd, crestAt(tap.time)).mul(tap.keep * 0.6))
+    taps.forEach((tap, index) => {
+      crestField = max(crestField, smoothstep(crestStart, crestEnd, crestAt(index)).mul(tap.keep * 0.6))
     })
     // 浪太平缓时不产生白沫（平静湖面不该有浪花）
     crestActive = smoothstep(float(0.03), float(0.2), vertexFoamWeight)
@@ -664,7 +709,17 @@ export function createWaterMaterial(options: WaterMaterialOptions): WaterMateria
       uWaveSteepness.value = spec.quality === 'fast' ? 0 : spec.waveSteepness
       uWaveBend.value = spec.waveBend
       uWaveLean.value = spec.waveLean * LEAN_GAIN
-      uFoamTrail.value = spec.foamTrail
+      uWaveCurl.value = spec.waveLean * CURL_GAIN
+      // 浪尖锐度 0 ~ 1 对应剖面指数 1（正弦）~ 0.5（折线山脊）；尖剖面的平均高度偏低，按比例抬回去
+      const ridge = Math.min(1, Math.max(0, spec.crestSharpness))
+      uCrestPower.value = 1 - ridge * 0.5
+      uCrestLift.value = ridge * 0.274
+      FOAM_TRAIL_TAPS.forEach((tap, t) => {
+        const lookBack = spec.foamTrail * tap.time
+        trailOmegas.forEach((omega, i) => {
+          uTrailTurns[t][i].value.set(Math.cos(omega * lookBack), Math.sin(omega * lookBack))
+        })
+      })
       uDebugView.value = DEBUG_VIEW_INDEX[spec.debugView]
       if (mirrorReflector) {
         mirrorReflector.reflector.resolutionScale = Math.max(0.25, spec.reflectionScale)

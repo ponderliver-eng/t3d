@@ -40,10 +40,12 @@ export interface WaterSpec {
   waveSpeed: number
   /** 3D Gerstner 波峰聚拢度 (0 = 柔和正弦，1 = 尖锐浪脊)。 */
   waveSteepness: number
-  /** 浪脊弯曲 (0 = 笔直的平行浪脊，1 = 明显弯曲、错开成一段段)。 */
+  /** 浪线蜿蜒：俯视看浪脊的走向 (0 = 笔直的平行浪脊，1 = 明显弯曲、错开成一段段)。改变的是浪的分布，不是单个浪的形状。 */
   waveBend: number
-  /** 浪尖前倾 (0 = 前后对称，1 = 迎着前进方向的一面明显更陡)。 */
+  /** 浪尖卷曲：单个浪的剖面 (0 = 前后对称，1 = 浪尖往前进方向探出、前脸陡立成钩形)。 */
   waveLean: number
+  /** 浪尖锐度：单个浪的剖面 (0 = 圆润的正弦，1 = 浪尖是一道折线山脊、浪谷宽而平)。 */
+  crestSharpness: number
   reflectionScale: number
   /** 岸边透明过渡羽化深度 (m)，消除水岸锯齿硬边。 */
   softEdge: number
@@ -108,6 +110,7 @@ export const WATER_STYLE_PRESETS: Record<WaterPresetId, StylePresetFields> = {
     waveSteepness: 0.65,
     waveBend: 0.6,
     waveLean: 0.5,
+    crestSharpness: 0.5,
     softEdge: 0.08,
     causticsStrength: 0.7,
     causticsScale: 0.22,
@@ -138,6 +141,7 @@ export const WATER_STYLE_PRESETS: Record<WaterPresetId, StylePresetFields> = {
     waveSteepness: 0.82,
     waveBend: 0.7,
     waveLean: 0.6,
+    crestSharpness: 0.7,
     softEdge: 0.1,
     causticsStrength: 0.25,
     causticsScale: 0.16,
@@ -168,6 +172,7 @@ export const WATER_STYLE_PRESETS: Record<WaterPresetId, StylePresetFields> = {
     waveSteepness: 0.35,
     waveBend: 0.5,
     waveLean: 0.3,
+    crestSharpness: 0.3,
     softEdge: 0.08,
     causticsStrength: 0.35,
     causticsScale: 0.24,
@@ -198,6 +203,7 @@ export const WATER_STYLE_PRESETS: Record<WaterPresetId, StylePresetFields> = {
     waveSteepness: 0.2,
     waveBend: 0.4,
     waveLean: 0.2,
+    crestSharpness: 0.2,
     softEdge: 0.03,
     causticsStrength: 0.95,
     causticsScale: 0.36,
@@ -228,6 +234,7 @@ export const WATER_STYLE_PRESETS: Record<WaterPresetId, StylePresetFields> = {
     waveSteepness: 0.7,
     waveBend: 0.55,
     waveLean: 0.5,
+    crestSharpness: 0.5,
     softEdge: 0.06,
     causticsStrength: 0.5,
     causticsScale: 0.28,
@@ -286,6 +293,7 @@ export function normalizeWater(raw: unknown): WaterSpec {
     waveSteepness: finite(record.waveSteepness, base.waveSteepness, 0, 1),
     waveBend: finite(record.waveBend, base.waveBend, 0, 1),
     waveLean: finite(record.waveLean, base.waveLean, 0, 1),
+    crestSharpness: finite(record.crestSharpness, base.crestSharpness, 0, 1),
     reflectionScale: finite(record.reflectionScale, qualPreset.reflectionScale, 0, 1),
     softEdge: finite(record.softEdge, base.softEdge, 0, 1),
     planarReflection: typeof record.planarReflection === 'boolean' ? record.planarReflection : qualPreset.planarReflection,
