@@ -459,7 +459,7 @@ export class EditorViewport {
       const nodeChanged = data.syncedNode !== node
       if (nodeChanged || ancestorChanged) changed.add(id)
       // 试玩时游戏逻辑直接改物体。只有检查器改了位姿，或父级位姿变了，才从场景数据写回。
-      const transformEdited = Boolean(data.syncedNode) && poseChanged(data.syncedNode, node)
+      const transformEdited = data.syncedNode ? poseChanged(data.syncedNode, node) : false
       const parentMoved = Boolean(node.parentId && moved.has(node.parentId))
       if (transformEdited || parentMoved || (!data.syncedNode && nodeChanged)) moved.add(id)
       const skipTransform = playing
