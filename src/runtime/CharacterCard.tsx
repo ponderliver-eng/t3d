@@ -160,6 +160,10 @@ export function CharacterCard({ node, disabled }: { node: SceneNode, disabled: b
           <Num label={t('character.coyote')} value={view.coyoteTime} disabled={disabled} step={0.01} min={0} onChange={coyoteTime => write({ coyoteTime })} />
           <Num label={t('character.buffer')} value={view.jumpBuffer} disabled={disabled} step={0.01} min={0} onChange={jumpBuffer => write({ jumpBuffer })} />
           </div>
+          <Check label={t('character.swim')} disabled={disabled} checked={view.swim !== false} onChange={swim => write({ swim })} />
+          {view.swim !== false && (
+            <Num label={t('character.swimSpeed')} value={view.swimSpeedMultiplier ?? 0.65} disabled={disabled} step={0.05} min={0.1} onChange={swimSpeedMultiplier => write({ swimSpeedMultiplier })} />
+          )}
           </Section>
           <Section title={t('character.dash')} color="#e0a15a">
           <Check label={t('character.dash')} disabled={disabled} checked={view.dash} onChange={dash => write({ dash })} />
@@ -181,6 +185,12 @@ export function CharacterCard({ node, disabled }: { node: SceneNode, disabled: b
           <ClipField label={t('character.airClip')} assetId={view.airClipAssetId} name={view.airClip} disabled={disabled} onChange={clip => write({ airClip: clip?.name ?? '', airClipAssetId: clip?.assetId ?? '' })} />
           <ClipField label={t('character.landClip')} assetId={view.landClipAssetId} name={view.landClip} disabled={disabled} onChange={clip => write({ landClip: clip?.name ?? '', landClipAssetId: clip?.assetId ?? '' })} />
           <ClipField label={t('character.dodgeClip')} assetId={view.dodgeClipAssetId} name={view.dodgeClip} disabled={disabled} onChange={clip => write({ dodgeClip: clip?.name ?? '', dodgeClipAssetId: clip?.assetId ?? '' })} />
+          {view.swim !== false && (
+            <>
+              <ClipField label={t('character.swimIdleClip')} assetId={view.swimIdleClipAssetId ?? ''} name={view.swimIdleClip ?? ''} disabled={disabled} onChange={clip => write({ swimIdleClip: clip?.name ?? '', swimIdleClipAssetId: clip?.assetId ?? '' })} />
+              <ClipField label={t('character.swimClip')} assetId={view.swimClipAssetId ?? ''} name={view.swimClip ?? ''} disabled={disabled} onChange={clip => write({ swimClip: clip?.name ?? '', swimClipAssetId: clip?.assetId ?? '' })} />
+            </>
+          )}
           </Section>
           <Section title={t('camera.title')} color="#7aa2ff">
             <Check label={t('camera.enable')} disabled={disabled} checked={cam.enabled} onChange={enabled => writeCam({ enabled })} />

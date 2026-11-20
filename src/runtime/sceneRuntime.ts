@@ -38,6 +38,10 @@ export interface CharacterSpec {
   mass?: number
   /** 推开动态物理体的力度倍率。 */
   pushStrength?: number
+  /** 遇水是否自动浮起并切换游泳状态。 */
+  swim?: boolean
+  /** 水中移动速度倍率（相对行走速度）。 */
+  swimSpeedMultiplier?: number
   dash: boolean
   dashKey: string
   dashDistance: number
@@ -63,6 +67,10 @@ export interface CharacterSpec {
   landClipAssetId: string
   dodgeClip: string
   dodgeClipAssetId: string
+  swimIdleClip?: string
+  swimIdleClipAssetId?: string
+  swimClip?: string
+  swimClipAssetId?: string
 }
 
 export function defaultCharacter(): CharacterSpec {
@@ -86,6 +94,8 @@ export function defaultCharacter(): CharacterSpec {
     physicsInteract: false,
     mass: 65,
     pushStrength: 1,
+    swim: true,
+    swimSpeedMultiplier: 0.65,
     dash: true,
     dashKey: 'KeyC',
     dashDistance: 4,
@@ -110,6 +120,10 @@ export function defaultCharacter(): CharacterSpec {
     landClipAssetId: '',
     dodgeClip: '',
     dodgeClipAssetId: '',
+    swimIdleClip: '',
+    swimIdleClipAssetId: '',
+    swimClip: '',
+    swimClipAssetId: '',
   }
 }
 

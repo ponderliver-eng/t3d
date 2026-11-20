@@ -1,5 +1,6 @@
 import { findNavigationPath } from '../capabilities/navigation/session'
 import { moveCharacters } from '../capabilities/physics/session'
+import { sampleWaterSurface } from '../capabilities/water/session'
 import { addRuntimeTag } from '../gameplay/runtimeTags'
 import { clearJuice } from '../gameplay/juiceClock'
 import { emitFootstep } from './signals'
@@ -24,6 +25,8 @@ interface Motion {
   extVy: number
   extVz: number
   grounded: boolean
+  swimming: boolean
+  swimJumpUntil: number
   lastGrounded: number
   jumpBufferUntil: number
   jumpsUsed: number
@@ -199,25 +202,65 @@ function stepCharacters(dt: number, host: SceneRuntimeHost) {
     const feet = object.position.y + shift.y
     const footX = object.position.x + shift.x
     const footZ = object.position.z + shift.z
+    const water = spec.swim !== false ? sampleWaterSurface(footX, footZ) : null
+    const submerged = water ? water.height - feet : -999
+    const enterDepth = spec.height * 0.62
+    const exitDepth = spec.height * 0.48
+    if (water && submerged >= enterDepth) {
+      if (!live.swimming) {
+        live.swimming = true
+        live.jumpsUsed = 0
+        live.jumpPhase = 'none'
+        live.clip = ''
+      }
+    } else if (!water || submerged < exitDepth) {
+      if (live.swimming) {
+        live.swimming = false
+        live.clip = ''
+      }
+    }
+
     const ground = useCapsule && live.grounded
       ? feet
       : groundUnder(host, useCapsule ? footX : object.position.x, useCapsule ? feet : object.position.y, useCapsule ? footZ : object.position.z, node.id, spec)
-    const onGround = live.grounded || (ground !== null && feet <= ground + 0.08 && live.vy <= 0.1)
+    const onGround = !live.swimming && (live.grounded || (ground !== null && feet <= ground + 0.08 && live.vy <= 0.1))
     if (onGround) live.lastGrounded = now
     const coyote = now - live.lastGrounded <= spec.coyoteTime
     if (tapped('Space')) live.jumpBufferUntil = now + spec.jumpBuffer
     if (onGround && live.vy <= 0) live.jumpsUsed = 0
-    const canJump = (coyote && live.jumpsUsed === 0) || (!onGround && live.jumpsUsed > 0 && live.jumpsUsed < spec.maxJumps) || (onGround && live.jumpsUsed < spec.maxJumps)
+    const canJump = live.swimming || (coyote && live.jumpsUsed === 0) || (!onGround && live.jumpsUsed > 0 && live.jumpsUsed < spec.maxJumps) || (onGround && live.jumpsUsed < spec.maxJumps)
     let jumped = false
     if (now <= live.jumpBufferUntil && canJump && !dodging) {
-      live.vy = spec.jumpSpeed
-      live.jumpsUsed += 1
+      if (live.swimming) {
+        live.vy = Math.max(live.vy, spec.jumpSpeed * 0.85)
+        live.swimJumpUntil = now + 0.28
+      } else {
+        live.vy = spec.jumpSpeed
+        live.jumpsUsed += 1
+      }
       live.jumpBufferUntil = 0
       live.lastGrounded = -999
       jumped = true
     }
-    const supported = onGround || live.grounded
-    if (!(supported && live.vy <= 0)) live.vy -= spec.gravity * dt
+    if (live.swimming && water) {
+      const swimScale = Math.max(0.1, spec.swimSpeedMultiplier ?? 0.65)
+      if (!dodging) {
+        moveX *= swimScale
+        moveZ *= swimScale
+      }
+      if (now <= live.swimJumpUntil) {
+        live.vy -= spec.gravity * dt
+      } else {
+        // 弹簧-阻尼浮力：让角色随实时浪高柔和起伏，并叠加轻微的随浪斜坡漂流
+        const targetFeetY = water.height - spec.height * 0.68
+        live.vy += ((targetFeetY - feet) * 18 - live.vy * 6) * dt
+        moveX += water.normal[0] * 0.45
+        moveZ += water.normal[2] * 0.45
+      }
+    } else {
+      const supported = onGround || live.grounded
+      if (!(supported && live.vy <= 0)) live.vy -= spec.gravity * dt
+    }
     const damp = Math.exp(-(live.grounded ? 10 : 2.5) * dt)
     live.extVx *= damp
     live.extVy *= damp
@@ -269,7 +312,7 @@ function stepCharacters(dt: number, host: SceneRuntimeHost) {
       nextY = ground
       landed = true
     }
-    if (landed) {
+    if (landed && !live.swimming) {
       live.vy = 0
       live.grounded = true
       live.lastGrounded = now
@@ -278,7 +321,7 @@ function stepCharacters(dt: number, host: SceneRuntimeHost) {
       live.grounded = false
     }
     const traveled = Math.hypot(nextX - object.position.x, nextZ - object.position.z)
-    if (live.grounded && traveled > 0) {
+    if (live.grounded && !live.swimming && traveled > 0) {
       live.footstep += traveled
       if (live.footstep >= spec.footstepDistance) {
         live.footstep = 0
@@ -297,12 +340,16 @@ function stepCharacters(dt: number, host: SceneRuntimeHost) {
       live.yaw = stepYaw(live.yaw, face, rate * dt)
     }
     object.quaternion.set(0, Math.sin(live.yaw / 2), 0, Math.cos(live.yaw / 2))
-    stepJumpPose(node.id, node.assetId ?? '', spec, live, dt, now, jumped, dodging, wish.amount > 0.1 || Math.hypot(moveX, moveZ) > 0.2)
+    if (live.swimming) {
+      live.jumpPhase = 'none'
+    } else {
+      stepJumpPose(node.id, node.assetId ?? '', spec, live, dt, now, jumped, dodging, wish.amount > 0.1 || Math.hypot(moveX, moveZ) > 0.2)
+    }
     if (live.jumpPhase !== 'none') {
       motion.set(node.id, live)
       continue
     }
-    const clip = pickClip(spec, dodging, Math.hypot(moveX, moveZ) > 0.2, sprint)
+    const clip = pickClip(spec, dodging, wish.amount > 0.1 || Math.hypot(moveX, moveZ) > 0.2, sprint, live.swimming)
     const clipKey = clip.name ? `${clip.assetId}\0${clip.name}` : ''
     if (clipKey && clipKey !== live.clip) {
       live.clip = clipKey
@@ -321,7 +368,7 @@ function stepCharacters(dt: number, host: SceneRuntimeHost) {
 
 function freshMotion(yaw: number): Motion {
   return {
-    yaw, vy: 0, extVx: 0, extVy: 0, extVz: 0, grounded: false, lastGrounded: 0, jumpBufferUntil: 0, jumpsUsed: 0,
+    yaw, vy: 0, extVx: 0, extVy: 0, extVz: 0, grounded: false, swimming: false, swimJumpUntil: 0, lastGrounded: 0, jumpBufferUntil: 0, jumpsUsed: 0,
     dashUntil: 0, dashReady: 0, dashX: 0, dashZ: 1, invincibleUntil: 0,
     clip: '', jumpPhase: 'none', jumpTime: 0, path: [], pathIndex: 0, footstep: 0, footsteps: 0,
   }
@@ -487,8 +534,13 @@ function playOwned(id: string, ownerAssetId: string, live: Motion, name: string,
   playBody(id, { clip: name, assetId: own ? null : assetId, loop, fade: 0.1 })
 }
 
-function pickClip(spec: CharacterSpec, dodging: boolean, moving: boolean, sprint: boolean): { name: string, assetId: string } {
+function pickClip(spec: CharacterSpec, dodging: boolean, moving: boolean, sprint: boolean, swimming: boolean): { name: string, assetId: string } {
   if (dodging && spec.dodgeClip) return { name: spec.dodgeClip, assetId: spec.dodgeClipAssetId }
+  if (swimming) {
+    if (moving && spec.swimClip) return { name: spec.swimClip, assetId: spec.swimClipAssetId ?? '' }
+    if (spec.swimIdleClip) return { name: spec.swimIdleClip, assetId: spec.swimIdleClipAssetId ?? '' }
+    if (spec.swimClip) return { name: spec.swimClip, assetId: spec.swimClipAssetId ?? '' }
+  }
   if (moving && sprint && spec.runClip) return { name: spec.runClip, assetId: spec.runClipAssetId }
   if (moving && spec.walkClip) return { name: spec.walkClip, assetId: spec.walkClipAssetId }
   return { name: spec.idleClip, assetId: spec.idleClipAssetId }
