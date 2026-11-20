@@ -187,6 +187,7 @@ function optionsFor(spec: WaterSpec, upAxis: 'y' | 'z'): WaterMaterialOptions {
     highDetail: spec.quality !== 'fast',
     upAxis,
     waves: spec.quality !== 'fast' && spec.waveHeight > 0.001,
+    richWaves: spec.quality === 'ultra',
   }
 }
 
@@ -304,6 +305,11 @@ function onBeforeRender(ctx: ViewportRenderContext) {
     entry.waveTime += dt * spec.waveSpeed
     root.getWorldScale(tmpWorldScale)
     entry.handle.setInvScale(tmpWorldScale)
+    // 自带的细分平面知道一格有多大；模型网格的密度未知，传 0 表示不做淡出
+    const usesSharedPlane = entry.kind === 'owned' || entry.isPlane === true
+    entry.handle.setCellSize(usesSharedPlane
+      ? Math.max(Math.abs(tmpWorldScale.x), Math.abs(tmpWorldScale.z)) / SEGMENTS[spec.quality]
+      : 0)
     entry.handle.setTime(waterTime, entry.waveTime)
     entry.handle.setSun(tmpSunDir, tmpSunColor, sunIntensity, tmpSkyHorizon, tmpSkyTop)
   }

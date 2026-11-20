@@ -160,6 +160,8 @@ export function WaterCard({ node, disabled }: { node: SceneNode, disabled: boole
             <RangeField label={t('water.waveHeight')} value={spec.waveHeight} min={0} max={2.5} step={0.02} disabled={disabled} onChange={waveHeight => write({ waveHeight })} />
             <RangeField label={t('water.waveSpeed')} value={spec.waveSpeed} min={0} max={3} step={0.05} disabled={disabled} onChange={waveSpeed => write({ waveSpeed })} />
             <RangeField label={t('water.waveSteepness')} value={spec.waveSteepness} min={0} max={1} step={0.02} disabled={disabled} onChange={waveSteepness => write({ waveSteepness })} />
+            <RangeField label={t('water.waveBend')} value={spec.waveBend} min={0} max={1} step={0.05} disabled={disabled} onChange={waveBend => write({ waveBend })} />
+            <RangeField label={t('water.waveLean')} value={spec.waveLean} min={0} max={1} step={0.05} disabled={disabled} onChange={waveLean => write({ waveLean })} />
             <TextureField label={t('water.normalMap')} value={spec.normalMapAssetId} disabled={disabled} onChange={normalMapAssetId => write({ normalMapAssetId })} />
           </section>
 

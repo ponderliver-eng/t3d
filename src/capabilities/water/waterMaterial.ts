@@ -53,6 +53,8 @@ export interface WaterMaterialOptions {
   upAxis: 'y' | 'z'
   /** 是否有大浪（关闭时整段波谱、挤压值与浪峰泡沫都不进着色器）。 */
   waves: boolean
+  /** 极致档波形：浪脊弯曲用两层扰动，并把 3 ~ 5 米的中尺度波也加入顶点位移。 */
+  richWaves: boolean
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -80,13 +82,24 @@ const PINCH_GAIN = 2.2
  * 每两道为一对，共用一个起落包络（见 SWELL_GROUPS）。
  */
 const VERTEX_WAVES: WaveDef[] = [
-  { length: 41, angle: -8, weight: 0.26, share: 0.10, phase: 0.0 },
-  { length: 33, angle: 7, weight: 0.22, share: 0.11, phase: 1.7 },
-  { length: 22, angle: -19, weight: 0.17, share: 0.14, phase: 4.1 },
-  { length: 17, angle: 16, weight: 0.14, share: 0.15, phase: 2.9 },
-  { length: 11, angle: -31, weight: 0.12, share: 0.19, phase: 5.3 },
-  { length: 7.5, angle: 27, weight: 0.09, share: 0.21, phase: 0.8 },
+  { length: 41, angle: -8, weight: 0.26, share: 0.09, phase: 0.0 },
+  { length: 33, angle: 7, weight: 0.22, share: 0.10, phase: 1.7 },
+  { length: 22, angle: -19, weight: 0.17, share: 0.12, phase: 4.1 },
+  { length: 17, angle: 16, weight: 0.14, share: 0.13, phase: 2.9 },
+  { length: 11, angle: -31, weight: 0.12, share: 0.14, phase: 5.3 },
+  { length: 7.5, angle: 27, weight: 0.09, share: 0.14, phase: 0.8 },
 ]
+
+/**
+ * 压缩份额预算：长波 0.72 + 中尺度波 0.08 = 0.80。
+ * 包络放大上限 1.1、浪脊弯曲带来的顺波向相位梯度上限约 1.1，0.80 × 1.1 × 1.1 < 1，所以水面永不自交。
+ */
+
+/** 浪脊弯曲：相位扰动的最大幅度（弧度）与沿浪脊方向的周期（波长的倍数）。 */
+const BEND_PRIMARY = { amount: 1.3, amountSolo: 1.6, span: 3.1 }
+const BEND_SECONDARY = { amount: 0.7, span: 1.7, along: 0.25 }
+/** 浪尖前倾：参数 1 对应的二次谐波系数（必须 < 1，否则波形会出现第二个鼓包）。 */
+const LEAN_GAIN = 0.45
 
 /**
  * 起落包络（每对顶点波一组）：ka/kb 决定「涨落先后」相位图的空间尺度（越小，同涨同落的区域越大），
@@ -98,10 +111,14 @@ const SWELL_GROUPS = [
   { ka: 0.16, kb: 0.1, omega: 1.6, offset: 4.4, low: 0.5, high: 1.2 },
 ]
 
-/** 只在片元里参与法线与泡沫的短波，填补顶点长波与法线贴图之间的尺度空档。 */
+/**
+ * 短波，填补顶点长波与法线贴图之间的尺度空档。默认只在片元里参与法线与泡沫；
+ * 极致档把前两道（MID_WAVE_COUNT）也加入顶点位移，让近处的浪体轮廓有中尺度起伏。
+ */
+const MID_WAVE_COUNT = 2
 const DETAIL_WAVES: WaveDef[] = [
-  { length: 4.9, angle: -44, weight: 0.055, share: 0, phase: 3.6 },
-  { length: 3.3, angle: 39, weight: 0.038, share: 0, phase: 1.1 },
+  { length: 4.9, angle: -44, weight: 0.055, share: 0.04, phase: 3.6 },
+  { length: 3.3, angle: 39, weight: 0.038, share: 0.04, phase: 1.1 },
   { length: 2.2, angle: -58, weight: 0.026, share: 0, phase: 5.9 },
   { length: 1.5, angle: 12, weight: 0.018, share: 0, phase: 2.4 },
 ]
@@ -126,12 +143,14 @@ export interface WaterMaterialHandle {
   setSpec: (spec: WaterSpec, customNormal: Texture | null, customFoam: Texture | null) => void
   setTime: (time: number, waveTime: number) => void
   setInvScale: (worldScale: Vector3) => void
+  /** 网格一格的世界尺寸 (m)；采样不足的波会在顶点位移里淡出。未知时传 0。 */
+  setCellSize: (meters: number) => void
   setSun: (direction: Vector3, color: Color, intensity: number, skyHorizon?: Color, skyTop?: Color) => void
   dispose: () => void
 }
 
 export function waterVariantKey(opts: WaterMaterialOptions): string {
-  return `${opts.planar ? 1 : 0}|${opts.refraction ? 1 : 0}|${opts.caustics ? 1 : 0}|${opts.highDetail ? 1 : 0}|${opts.upAxis}|${opts.waves ? 1 : 0}`
+  return `${opts.planar ? 1 : 0}|${opts.refraction ? 1 : 0}|${opts.caustics ? 1 : 0}|${opts.highDetail ? 1 : 0}|${opts.upAxis}|${opts.waves ? 1 : 0}|${opts.richWaves ? 1 : 0}`
 }
 
 export function createWaterMaterial(options: WaterMaterialOptions): WaterMaterialHandle {
@@ -172,6 +191,9 @@ export function createWaterMaterial(options: WaterMaterialOptions): WaterMateria
   const uCausticsScale = uniform(0.22)
   const uWaveHeight = uniform(0)
   const uWaveSteepness = uniform(0.65)
+  const uWaveBend = uniform(0.6)
+  const uWaveLean = uniform(0.2)
+  const uCellSize = uniform(0)
   const uFoamTrail = uniform(1)
   const uDebugView = uniform(0)
 
@@ -197,14 +219,62 @@ export function createWaterMaterial(options: WaterMaterialOptions): WaterMateria
   }
 
   // 与位置无关的每道波常量（方向、振幅、水平聚拢量），顶点/片元共用
-  const vertexWaves = VERTEX_WAVES.map(def => {
+  const rich = options.richWaves
+  const vertexDefs = rich ? [...VERTEX_WAVES, ...DETAIL_WAVES.slice(0, MID_WAVE_COUNT)] : VERTEX_WAVES
+  const detailDefs = rich
+    ? DETAIL_WAVES.slice(MID_WAVE_COUNT)
+    : options.highDetail ? DETAIL_WAVES : DETAIL_WAVES.slice(0, 2)
+  const vertexWaves = vertexDefs.map((def, index) => {
     const k = (Math.PI * 2) / def.length
     const amp = uWaveHeight.mul(def.weight * AMP_GAIN)
-    // 雅可比限幅：每道波的 k·Q 不超过自己的份额，份额总和 0.9 < 1，保证永不自交
+    // 雅可比限幅：每道波的 k·Q 不超过自己的份额（预算见 VERTEX_WAVES 下方的说明），保证永不自交
     const pinch = min(amp.mul(PINCH_GAIN), float(def.share / k))
-    return { def, k, omega: Math.sqrt(GRAVITY * k), dir: rotatedDir(def.angle), amp, pinch, foamWeight: pinch.mul(k) }
+    const dir = rotatedDir(def.angle)
+    const isMid = index >= VERTEX_WAVES.length
+    return {
+      def,
+      k,
+      omega: Math.sqrt(GRAVITY * k),
+      dir,
+      perp: vec2(dir.y.negate(), dir.x),
+      amp,
+      pinch,
+      foamWeight: pinch.mul(k),
+      isMid,
+      // 网格太稀（一个波长不足 3 ~ 6 格）时，这道波不再位移顶点，只留在片元法线里，避免大水面上折线化
+      geoFade: float(1.0).sub(smoothstep(float(def.length / 6), float(def.length / 3), uCellSize)),
+    }
   })
-  const detailWaves = (options.highDetail ? DETAIL_WAVES : DETAIL_WAVES.slice(0, 2)).map(def => {
+  type VertexWave = (typeof vertexWaves)[number]
+
+  // 浪脊弯曲：给每道波的相位叠加一个主要沿浪脊方向变化的低频扰动，让浪脊弯曲、错开、断成一段段，
+  // 而不是一条贯穿水面的直线。扰动几乎不沿波的前进方向变化，所以不会额外挤压水面。
+  // 返回相位偏移，以及（片元求法线用的）相位梯度在浪脊方向与前进方向上的分量。
+  const bendOf = (xz: TslNode, wave: VertexWave, index: number, withGradient: boolean) => {
+    const along = dot(xz, wave.dir)
+    const across = dot(xz, wave.perp)
+    const q1 = wave.k / BEND_PRIMARY.span
+    const amount1 = uWaveBend.mul(rich ? BEND_PRIMARY.amount : BEND_PRIMARY.amountSolo)
+    const a1 = across.mul(q1).add(index * 1.9 + 0.7).add(uWaveTime.mul(0.11 + index * 0.013))
+    let phase: TslNode = sin(a1).mul(amount1)
+    let gradAcross: TslNode = withGradient ? cos(a1).mul(amount1).mul(q1) : float(0.0)
+    let gradAlong: TslNode = float(0.0)
+    if (rich) {
+      const q2 = wave.k / BEND_SECONDARY.span
+      const amount2 = uWaveBend.mul(BEND_SECONDARY.amount)
+      const a2 = across.mul(q2).add(along.mul(q2 * BEND_SECONDARY.along)).add(index * 2.7 + 1.3)
+        .sub(uWaveTime.mul(0.17 + index * 0.011))
+      phase = phase.add(sin(a2).mul(amount2))
+      if (withGradient) {
+        const g2 = cos(a2).mul(amount2).mul(q2)
+        gradAcross = gradAcross.add(g2)
+        gradAlong = g2.mul(BEND_SECONDARY.along)
+      }
+    }
+    return { phase, gradAcross, gradAlong }
+  }
+
+  const detailWaves = detailDefs.map(def => {
     const k = (Math.PI * 2) / def.length
     const amp = uWaveHeight.mul(def.weight * AMP_GAIN)
     // 短波只在片元里算，远处按波长淡出防闪烁
@@ -244,10 +314,15 @@ export function createWaterMaterial(options: WaterMaterialOptions): WaterMateria
     let vHoriz: TslNode = vec2(0.0, 0.0)
     vertexWaves.forEach((wave, i) => {
       const mod = vSwell[groupOf(i)]
-      const theta = dot(restVertexXZ, wave.dir).mul(wave.k).add(wave.def.phase).sub(uWaveTime.mul(wave.omega))
-      vHeight = vHeight.add(sin(theta).mul(wave.amp).mul(mod))
-      // 水平聚拢的放大上限 1.1：压缩份额总和 0.9 × 1.1 < 1，仍然不会自交
-      vHoriz = vHoriz.add(wave.dir.mul(cos(theta).mul(wave.pinch).mul(uWaveSteepness).mul(min(mod, float(1.1)))))
+      const theta = dot(restVertexXZ, wave.dir).mul(wave.k).add(wave.def.phase)
+        .add(bendOf(restVertexXZ, wave, i, false).phase)
+        .sub(uWaveTime.mul(wave.omega))
+      const s = sin(theta)
+      const c = cos(theta)
+      // 浪尖前倾：sin θ·(1 - λ·cos θ) 让迎着前进方向的一面变陡、背面变缓（不需要额外的三角函数）
+      vHeight = vHeight.add(s.mul(float(1.0).sub(uWaveLean.mul(c))).mul(wave.amp).mul(mod).mul(wave.geoFade))
+      // 水平聚拢的放大上限 1.1，仍在压缩份额预算内，不会自交
+      vHoriz = vHoriz.add(wave.dir.mul(c.mul(wave.pinch).mul(uWaveSteepness).mul(min(mod, float(1.1))).mul(wave.geoFade)))
     })
     // 用节点世界缩放的倒数把世界米数转回局部坐标，确保任意 scale 下都不撕裂
     displacedLocal = options.upAxis === 'z'
@@ -263,21 +338,36 @@ export function createWaterMaterial(options: WaterMaterialOptions): WaterMateria
       )
 
     // 片元阶段：逐像素解析法线（长波 + 只参与着色的短波）
-    const vertexBase = vertexWaves.map(wave => dot(surfXZ, wave.dir).mul(wave.k).add(wave.def.phase))
+    const vertexBend = vertexWaves.map((wave, i) => bendOf(surfXZ, wave, i, true))
+    const vertexBase = vertexWaves.map((wave, i) => dot(surfXZ, wave.dir).mul(wave.k).add(wave.def.phase).add(vertexBend[i].phase))
     const detailBase = detailWaves.map(wave => dot(surfXZ, wave.dir).mul(wave.k).add(wave.def.phase))
     const fSwell = SWELL_GROUPS.map((_, g) => swellAt(surfXZ, g))
     let vertexFoamWeight: TslNode = float(0.0)
+    let midSlope: TslNode = vec2(0.0, 0.0)
     vertexWaves.forEach((wave, i) => {
       const mod = fSwell[groupOf(i)]
       const theta = vertexBase[i].sub(uWaveTime.mul(wave.omega))
       const s = sin(theta)
-      const slope = wave.dir.mul(cos(theta).mul(wave.amp).mul(wave.k).mul(mod))
-      macroSlope = macroSlope.add(slope)
+      const c = cos(theta)
+      // 与顶点一致的前倾波形及其导数：d/dθ [s·(1 - λc)] = c - λ·(2c² - 1)
+      const leanHeight = s.mul(float(1.0).sub(uWaveLean.mul(c)))
+      const leanSlope = c.sub(uWaveLean.mul(c.mul(c).mul(2.0).sub(1.0)))
+      // 相位梯度 = k·前进方向 + 浪脊弯曲带来的偏转
+      const bend = vertexBend[i]
+      const phaseGrad = wave.dir.mul(bend.gradAlong.add(wave.k)).add(wave.perp.mul(bend.gradAcross))
+      const slope = phaseGrad.mul(leanSlope.mul(wave.amp).mul(mod))
+      if (wave.isMid) {
+        // 中尺度波在远处淡出法线贡献，防止低角度闪烁
+        const fade = float(1.0).sub(smoothstep(float(wave.def.length * 30), float(wave.def.length * 110), eyeDist))
+        midSlope = midSlope.add(slope.mul(fade))
+      } else {
+        macroSlope = macroSlope.add(slope)
+      }
       waveCompress = waveCompress.add(s.mul(wave.pinch).mul(wave.k).mul(uWaveSteepness).mul(min(mod, float(1.1))))
-      waveNorm = waveNorm.add(s.mul(wave.def.weight).mul(mod))
+      waveNorm = waveNorm.add(leanHeight.mul(wave.def.weight).mul(mod))
       vertexFoamWeight = vertexFoamWeight.add(wave.foamWeight)
     })
-    waveSlope = macroSlope
+    waveSlope = macroSlope.add(midSlope)
     // 短波的高度：只用于让小波峰也能起沫（不位移顶点）
     let detailNorm: TslNode = float(0.0)
     detailWaves.forEach((wave, i) => {
@@ -291,6 +381,8 @@ export function createWaterMaterial(options: WaterMaterialOptions): WaterMateria
       const time = uWaveTime.sub(uFoamTrail.mul(lookBack))
       let acc: TslNode = float(0.0)
       vertexWaves.forEach((wave, i) => {
+        // 拖尾只看长波（中尺度波太短，拖尾里看不出来），并省略前倾修正
+        if (wave.isMid) return
         // 回看只有 2 秒以内，直接沿用当前的起落包络（省掉每个回看点重算一遍）
         acc = acc.add(sin(vertexBase[i].sub(time.mul(wave.omega))).mul(wave.def.weight).mul(fSwell[groupOf(i)]))
       })
@@ -533,6 +625,8 @@ export function createWaterMaterial(options: WaterMaterialOptions): WaterMateria
       uCausticsScale.value = spec.causticsScale
       uWaveHeight.value = spec.quality === 'fast' ? 0 : spec.waveHeight
       uWaveSteepness.value = spec.quality === 'fast' ? 0 : spec.waveSteepness
+      uWaveBend.value = spec.waveBend
+      uWaveLean.value = spec.waveLean * LEAN_GAIN
       uFoamTrail.value = spec.foamTrail
       uDebugView.value = DEBUG_VIEW_INDEX[spec.debugView]
       if (mirrorReflector) {
@@ -551,6 +645,9 @@ export function createWaterMaterial(options: WaterMaterialOptions): WaterMateria
         1 / Math.max(0.001, Math.abs(worldScale.y)),
         1 / Math.max(0.001, Math.abs(worldScale.z)),
       )
+    },
+    setCellSize(meters) {
+      uCellSize.value = Math.max(0, meters)
     },
     setSun(direction, color, intensity, skyHorizon, skyTop) {
       uSunDir.value.copy(direction).normalize()
