@@ -104,10 +104,8 @@ const FOAM_TRAIL_TAPS = [
   { time: 2.0, keep: 0.25 },
 ]
 
-/** 参与生成浪峰泡沫的长波数量（取 VERTEX_WAVES 前几道，方向都在主风向 ±20° 内）。 */
-const BREAKER_WAVE_COUNT = 4
-/** 浪群移动速度 (m/s)，约为主要长波浪峰速度的一半。 */
-const GROUP_SPEED = 3.4
+/** 多道不同方向的波很少同时到峰值，实际浪尖的归一化高度约 0.5 ~ 0.75，乘此系数后浪尖接近 1。 */
+const CREST_GAIN = 1.4
 
 const DEBUG_VIEW_INDEX: Record<WaterSpec['debugView'], number> = { off: 0, height: 1, squeeze: 2, foam: 3 }
 
@@ -248,55 +246,33 @@ export function createWaterMaterial(options: WaterMaterialOptions): WaterMateria
       vertexFoamWeight = vertexFoamWeight.add(wave.foamWeight)
     })
     waveSlope = macroSlope
+    // 短波的高度：只用于让小波峰也能起沫（不位移顶点）
+    let detailNorm: TslNode = float(0.0)
     detailWaves.forEach((wave, i) => {
       const theta = detailBase[i].sub(uWaveTime.mul(wave.omega))
       waveSlope = waveSlope.add(wave.dir.mul(cos(theta).mul(wave.amp).mul(wave.k).mul(wave.fade)))
+      detailNorm = detailNorm.add(sin(theta).mul(wave.def.weight).mul(wave.fade))
     })
-    // 破碎浪场：只取方向接近主风向的几道长波（短波、斜向波会把泡沫打散成碎点）。
-    // 方向相近的长波叠加出的峰是「沿浪脊拉得很长」的带状区域，泡沫才会聚成一长条。
-    // lookBack > 0 时回看过去某一刻同一块水面，用来生成浪峰走过后留在身后的拖尾。
-    const breakerWeightSum = vertexWaves.slice(0, BREAKER_WAVE_COUNT).reduce((sum, wave) => sum + wave.def.weight, 0)
-    const squeezeAt = (lookBack: number): TslNode => {
-      const time = lookBack > 0 ? uWaveTime.sub(uFoamTrail.mul(lookBack)) : uWaveTime
+    // 浪峰值 = 实际的归一化浪高（与顶点位移、次表面散射用的是同一个量），所以泡沫严格落在看得见的波峰上。
+    // lookBack 回看过去某一刻同一块水面的浪高，用来生成浪峰走过后留在身后的淡拖尾。
+    const crestAt = (lookBack: number): TslNode => {
+      const time = uWaveTime.sub(uFoamTrail.mul(lookBack))
       let acc: TslNode = float(0.0)
-      vertexWaves.slice(0, BREAKER_WAVE_COUNT).forEach((wave, i) => {
-        acc = acc.add(sin(vertexBase[i].sub(time.mul(wave.omega))).mul(wave.def.weight / breakerWeightSum))
+      vertexWaves.forEach((wave, i) => {
+        acc = acc.add(sin(vertexBase[i].sub(time.mul(wave.omega))).mul(wave.def.weight))
       })
-      return acc
+      return acc.mul(CREST_GAIN)
     }
 
-    // 破碎包络：两层十几米尺度的噪波朝不同方向漂移，叠出「此起彼伏」的破碎区。
-    // 它不是乘在泡沫上，而是直接加到浪峰值里再过阈值：同一道浪脊只有一段段会破碎，
-    // 每段持续几秒后随包络移走而消散，边缘也跟着噪波变得不规则。
-    const flowOrthoDir = vec2(uFlowDir.y.negate(), uFlowDir.x)
-    const envA = foamTexNode.sample(surfXZ.mul(0.011).sub(uFlowDir.mul(uWaveTime.mul(0.021)))).g
-    const envB = foamTexNode.sample(surfXZ.mul(0.017).add(flowOrthoDir.mul(uWaveTime.mul(0.027))).add(uFlowDir.mul(uWaveTime.mul(0.012)))).g
-    const edgeNoise = envA.mul(0.55).add(envB.mul(0.45)).sub(0.5).mul(0.8)
-
-    // 浪群包络：一块块「浪正在涨起来」的区域，以群速度（约为浪峰速度的一半）顺风移动。
-    // 浪峰比浪群快，所以每道浪峰追上一个浪群时涨起并起沫，穿过去之后回落、泡沫随拖尾慢慢散掉，
-    // 而不是一条白线跟着浪峰走到头。
-    const alongWind = dot(surfXZ, uFlowDir)
-    const acrossWind = dot(surfXZ, flowOrthoDir)
-    const groupAt = (lookBack: number): TslNode => {
-      const time = lookBack > 0 ? uWaveTime.sub(uFoamTrail.mul(lookBack)) : uWaveTime
-      const u = alongWind.sub(time.mul(GROUP_SPEED))
-      const e1 = sin(u.mul(0.224).add(sin(acrossWind.mul(0.114)).mul(1.7)))
-      // 横向（沿浪脊方向）尺度约为顺风方向的 3 倍：破碎段是沿浪脊拉开的长条，而不是圆团
-      const e2 = sin(acrossWind.mul(0.07).add(sin(u.mul(0.09)).mul(1.1)).add(time.mul(0.15)))
-      return e1.mul(e2).mul(0.5).sub(0.2)
-    }
-
-    squeezeNow = squeezeAt(0).add(groupAt(0)).add(edgeNoise)
-    // 过渡区间拉宽到 0.6：遮罩从边缘到核心是一段很长的缓坡，而不是窄窄一圈
-    const crestStart = mix(float(0.0), float(0.6), clamp(uCrestFoamThreshold, float(0.0), float(1.0)))
-    const crestEnd = crestStart.add(0.6)
+    // 当前时刻直接复用上面算好的浪高，并叠加短波高度，让小波峰在阈值调低时也能起沫
+    squeezeNow = waveNorm.add(detailNorm.mul(1.6)).mul(CREST_GAIN)
+    // 阈值 = 开始起沫的浪高；从阈值到浪尖是一段 0.55 宽的缓坡，只有最高的浪尖才到 1
+    const crestStart = mix(float(0.0), float(0.8), clamp(uCrestFoamThreshold, float(0.0), float(1.0)))
+    const crestEnd = crestStart.add(0.55)
     crestField = smoothstep(crestStart, crestEnd, squeezeNow)
     const taps = options.highDetail ? FOAM_TRAIL_TAPS : FOAM_TRAIL_TAPS.slice(0, 3)
-    taps.forEach((tap, i) => {
-      const past = squeezeAt(tap.time).add(groupAt(tap.time)).add(edgeNoise)
-      const aged = smoothstep(crestStart.sub(0.03 * (i + 1)), crestEnd, past).mul(tap.keep)
-      crestField = max(crestField, aged)
+    taps.forEach(tap => {
+      crestField = max(crestField, smoothstep(crestStart, crestEnd, crestAt(tap.time)).mul(tap.keep * 0.6))
     })
     // 浪太平缓时不产生白沫（平静湖面不该有浪花）
     crestActive = smoothstep(float(0.03), float(0.2), vertexFoamWeight)
@@ -423,21 +399,25 @@ export function createWaterMaterial(options: WaterMaterialOptions): WaterMateria
   const lapRipple = sin(shoreRatio.mul(12.0).sub(uTime.mul(2.2))).mul(0.5).add(0.5)
   const shoreBand = shoreBase.mul(float(0.62).add(lapRipple.mul(0.38))).mul(uShoreFoamOn)
 
-  // 浪峰泡沫：由「挤压值 + 拖尾」得到的遮罩，再用大尺度错速噪波打断成一段一段
+  // 浪峰泡沫：遮罩 = 浪高超过阈值的程度（浪尖 1 -> 阈值处 0）。
+  // 「波峰浪花」超过 1 的部分不再把遮罩整体顶满（那样会抹平渐变变成实心），只按比例放大最终不透明度
   let crestBand: TslNode = float(0.0)
   if (options.waves) {
-    crestBand = crestField.mul(crestActive).mul(uCrestFoam)
+    crestBand = crestField.mul(crestActive).mul(min(uCrestFoam, float(1.0)))
   }
+  const crestBoost = max(uCrestFoam, float(1.0))
 
   const foamMask = clamp(max(shoreBand, crestBand), float(0.0), float(1.0))
   // 米级的大尺度絮状层：让泡沫先有「一团团云絮」的结构，细丝只是叠在上面的细节，避免满屏等大的颗粒点
   const foamCloud = foamTexNode.sample(surfXZ.mul(0.07).add(flow.mul(0.4))).r
   const detail = foamCloud.mul(0.4).add(foamWeb.mul(0.45)).add(foamErode.mul(0.15))
-  // 线性叠加而不是阈值切割：遮罩 = 1 时整片发白（浪脊核心），0.5 时原样露出柔和的絮状纹理，
-  // 0.3 以下只剩最亮的几缕并且是半透明的，全程没有硬边
-  const foamBody = clamp(detail.mul(1.1).add(foamMask.mul(1.9)).sub(1.0), float(0.0), float(1.0))
+  // 不透明度整体跟着遮罩走（浪尖最实 -> 边缘透明），贴图只决定「镂空多少」：
+  // 边缘几乎全靠贴图丝缕且本身很淡，越靠近浪尖镂空越少，只有浪尖处接近不透明
+  const webThreshold = mix(float(0.7), float(0.0), foamMask)
+  const webPattern = smoothstep(webThreshold, webThreshold.add(0.45), detail)
+  const tipFill = smoothstep(float(0.6), float(1.0), foamMask).mul(0.85)
   const foamAlpha = clamp(
-    foamBody.mul(smoothstep(float(0.0), float(0.2), foamMask)).mul(uFoamIntensity).mul(1.2),
+    pow(foamMask, float(1.2)).mul(mix(webPattern, float(1.0), tipFill)).mul(uFoamIntensity).mul(crestBoost).mul(1.2),
     float(0.0),
     float(1.0),
   )
