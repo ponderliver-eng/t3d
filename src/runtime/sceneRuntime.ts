@@ -32,6 +32,12 @@ export interface CharacterSpec {
   height: number
   /** 胶囊脚底相对模型原点的偏移。Y 用来把胶囊抬到网格脚底。 */
   capsuleOffset: Vec3
+  /** 是否与场景动态物理体双向交互（推箱子、踩压浮力物、随平台移动、被撞退）。 */
+  physicsInteract?: boolean
+  /** 角色体重 (kg)，决定踩压浮力物、推重物与抗撞击能力。 */
+  mass?: number
+  /** 推开动态物理体的力度倍率。 */
+  pushStrength?: number
   dash: boolean
   dashKey: string
   dashDistance: number
@@ -77,6 +83,9 @@ export function defaultCharacter(): CharacterSpec {
     radius: 0.35,
     height: 1.7,
     capsuleOffset: [0, 0, 0],
+    physicsInteract: false,
+    mass: 65,
+    pushStrength: 1,
     dash: true,
     dashKey: 'KeyC',
     dashDistance: 4,
@@ -609,16 +618,18 @@ export interface SceneRuntimeHost {
 }
 
 /**
- * 五阶段帧流水线顺序常量（供核心系统与社区扩展能力包对齐挂载阶段）：
- * - PrePhysics (0~49): 输入、移动平台、角色意图、跟随镜头、交互机关、律令、载具输入
+ * 帧流水线顺序常量（供核心系统与社区扩展能力包对齐挂载阶段）：
+ * - PrePhysics (0~49): 输入、移动平台、交互机关、律令、载具输入
  * - Physics & Nav (50): Rapier 物理世界与载具悬挂步进、Recast 导航网格步进
+ * - PostPhysics (50~59): 角色移动。要读到刚体这一帧的新位姿，才能和脚下、身前的刚体同帧对齐
  * - Animation (60): AnimationMixer 关键帧骨骼动画推进
- * - PostAnimation (70): 骨骼后处理能力包（LookAt、Foot IK、SpringBone 头发衣物摆动、布娃娃混合）
+ * - PostAnimation (70): 骨骼后处理能力包（LookAt、Foot IK、SpringBone 头发衣物摆动、布娃娃混合）、跟随镜头
  * - PreRender (80): 粒子系统、水体波浪与反射相机更新、体积云噪声推进
  */
 export const RUNTIME_STAGE = {
   PRE_PHYSICS: 10,
   PHYSICS_NAV: 50,
+  POST_PHYSICS: 55,
   ANIMATION: 60,
   POST_ANIMATION: 70,
   PRE_RENDER: 80,
@@ -626,11 +637,16 @@ export const RUNTIME_STAGE = {
 
 export type RuntimeSystemStep = (dt: number, host: SceneRuntimeHost) => void
 
-const systems: Array<{ id: string, order: number, step: RuntimeSystemStep }> = []
-const postAnimationSystems: Array<{ id: string, order: number, step: RuntimeSystemStep }> = []
+type RuntimeSystem = { id: string, order: number, step: RuntimeSystemStep }
+
+const systems: RuntimeSystem[] = []
+const postPhysicsSystems: RuntimeSystem[] = []
+const postAnimationSystems: RuntimeSystem[] = []
 
 export function registerRuntimeSystem(id: string, order: number, step: RuntimeSystemStep): () => void {
-  const target = order >= RUNTIME_STAGE.POST_ANIMATION ? postAnimationSystems : systems
+  const target = order >= RUNTIME_STAGE.POST_ANIMATION
+    ? postAnimationSystems
+    : order >= RUNTIME_STAGE.PHYSICS_NAV ? postPhysicsSystems : systems
   const index = target.findIndex(item => item.id === id)
   if (index >= 0) target.splice(index, 1)
   target.push({ id, order, step })
@@ -642,12 +658,13 @@ export function registerRuntimeSystem(id: string, order: number, step: RuntimeSy
 }
 
 /**
- * 统一场景运行时五阶段步进：
- * 1. PrePhysics：已注册的输入、角色、跟随相机、机关、律令与物理前能力包（order < 70）
+ * 统一场景运行时步进：
+ * 1. PrePhysics：移动平台、机关、律令等物理前系统（order < 50）
  * 2. Physics & Nav：物理世界步进（Rapier + 物理扩展）与导航网格同步（Recast）
- * 3. Animation：骨骼关键帧动画混合器推进（AnimationMixer）
- * 4. PostAnimation：骨骼后处理与渲染前能力包（IK / SpringBone / LookAt / 水体更新，order >= 70）
- * 5. PreRender VFX：粒子系统模拟（Quarks）
+ * 3. PostPhysics：角色移动（50 <= order < 70）
+ * 4. Animation：骨骼关键帧动画混合器推进（AnimationMixer）
+ * 5. PostAnimation：骨骼后处理、跟随镜头与渲染前能力包（order >= 70）
+ * 6. PreRender VFX：粒子系统模拟（Quarks）
  */
 export function stepSceneRuntime(dt: number, host: SceneRuntimeHost) {
   const scaled = scalePlayDt(dt)
@@ -656,6 +673,9 @@ export function stepSceneRuntime(dt: number, host: SceneRuntimeHost) {
   }
   measureCost('physics', () => tickPhysics(scaled, host.resolveObject))
   measureCost('navigation', () => tickNavigation())
+  for (const system of postPhysicsSystems) {
+    measureCost(system.id, () => system.step(scaled, host))
+  }
   if (host.ready) {
     measureCost('animation', () => host.updateAnimations(scaled))
     for (const system of postAnimationSystems) {

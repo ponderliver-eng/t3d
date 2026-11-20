@@ -246,4 +246,4 @@ function spring(host: SceneRuntimeHost, focus: Vec3, desired: Vec3, ignoreId: st
   return [focus[0] + dx / dist * safe, focus[1] + dy / dist * safe, focus[2] + dz / dist * safe]
 }
 
-registerRuntimeSystem('core.camera', 20, stepCameras)
+registerRuntimeSystem('core.camera', 75, stepCameras)

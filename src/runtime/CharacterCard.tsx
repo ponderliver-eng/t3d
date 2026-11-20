@@ -132,7 +132,16 @@ export function CharacterCard({ node, disabled }: { node: SceneNode, disabled: b
           <Num label={t('character.height')} value={view.height} disabled={disabled} step={0.01} min={0.2} onChange={height => write({ height })} />
           </div>
           {view.driver !== 'nav' && (
-            <Vec3Field label={t('character.capsuleOffset')} value={view.capsuleOffset ?? [0, 0, 0]} disabled={disabled} onChange={capsuleOffset => write({ capsuleOffset })} />
+            <>
+              <Vec3Field label={t('character.capsuleOffset')} value={view.capsuleOffset ?? [0, 0, 0]} disabled={disabled} onChange={capsuleOffset => write({ capsuleOffset })} />
+              <Check label={t('character.physicsInteract')} disabled={disabled} checked={view.physicsInteract ?? false} onChange={physicsInteract => write({ physicsInteract })} />
+              {(view.physicsInteract ?? false) && (
+                <div className="iv2-pair">
+                  <Num label={t('character.mass')} value={view.mass ?? 65} disabled={disabled} step={5} min={1} onChange={mass => write({ mass })} />
+                  <Num label={t('character.pushStrength')} value={view.pushStrength ?? 1} disabled={disabled} step={0.1} min={0} onChange={pushStrength => write({ pushStrength })} />
+                </div>
+              )}
+            </>
           )}
           </Section>
           <Section title={t('character.section.move')} color="#7eb6ff">

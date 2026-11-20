@@ -41,12 +41,26 @@ export interface CharacterMove {
   displacement: Vec3
   radius: number
   height: number
+  dt?: number
+  /**
+   * 是否与动态刚体双向交互（推开、踩压、随平台移动）。默认 false。
+   * 只要有角色开着，物理世界就改为按渲染帧时长推进，否则用固定 1/60 步长。
+   */
+  interact?: boolean
+  /** 角色质量 (kg)，用于踩重、推力与抗撞击。 */
+  mass?: number
+  /** 推力倍率。 */
+  pushStrength?: number
 }
 
 export interface CharacterMoveResult {
   id: string
   position: Vec3
   grounded: boolean
+  /** 站在旋转动态平台（如浮力木筏）上带动的偏航角变化 (rad)。 */
+  yawDelta?: number
+  /** 被动态刚体撞击产生的瞬时速度增量 (m/s)。 */
+  impulse?: Vec3
 }
 
 /** 试玩循环只依赖这个接口。具体库留在各自的实现文件里。 */

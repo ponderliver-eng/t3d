@@ -12,6 +12,7 @@ import type { Vec3 } from '../editor/scene/types'
 import {
   defaultCharacter,
   registerRuntimeSystem,
+  RUNTIME_STAGE,
   type CharacterSpec,
   type SceneRuntimeHost,
 } from './sceneRuntime'
@@ -19,6 +20,9 @@ import {
 interface Motion {
   yaw: number
   vy: number
+  extVx: number
+  extVy: number
+  extVz: number
   grounded: boolean
   lastGrounded: number
   jumpBufferUntil: number
@@ -195,8 +199,10 @@ function stepCharacters(dt: number, host: SceneRuntimeHost) {
     const feet = object.position.y + shift.y
     const footX = object.position.x + shift.x
     const footZ = object.position.z + shift.z
-    const ground = groundUnder(host, useCapsule ? footX : object.position.x, useCapsule ? feet : object.position.y, useCapsule ? footZ : object.position.z, node.id, spec)
-    const onGround = ground !== null && feet <= ground + 0.08 && live.vy <= 0.1
+    const ground = useCapsule && live.grounded
+      ? feet
+      : groundUnder(host, useCapsule ? footX : object.position.x, useCapsule ? feet : object.position.y, useCapsule ? footZ : object.position.z, node.id, spec)
+    const onGround = live.grounded || (ground !== null && feet <= ground + 0.08 && live.vy <= 0.1)
     if (onGround) live.lastGrounded = now
     const coyote = now - live.lastGrounded <= spec.coyoteTime
     if (tapped('Space')) live.jumpBufferUntil = now + spec.jumpBuffer
@@ -212,26 +218,48 @@ function stepCharacters(dt: number, host: SceneRuntimeHost) {
     }
     const supported = onGround || live.grounded
     if (!(supported && live.vy <= 0)) live.vy -= spec.gravity * dt
-    let nextX = object.position.x + moveX * dt
-    let nextY = object.position.y + live.vy * dt
-    let nextZ = object.position.z + moveZ * dt
+    const damp = Math.exp(-(live.grounded ? 10 : 2.5) * dt)
+    live.extVx *= damp
+    live.extVy *= damp
+    live.extVz *= damp
+    if (Math.abs(live.extVx) < 0.01) live.extVx = 0
+    if (Math.abs(live.extVy) < 0.01) live.extVy = 0
+    if (Math.abs(live.extVz) < 0.01) live.extVz = 0
+    const dispX = (moveX + live.extVx) * dt
+    const dispY = (live.vy + live.extVy) * dt
+    const dispZ = (moveZ + live.extVz) * dt
+    let nextX = object.position.x + dispX
+    let nextY = object.position.y + dispY
+    let nextZ = object.position.z + dispZ
     let landed = false
+    let platformYaw = 0
     if (spec.driver !== 'nav') {
       const solved = moveCharacters([{
         id: node.id,
         position: [footX, feet, footZ],
-        displacement: [moveX * dt, live.vy * dt, moveZ * dt],
+        displacement: [dispX, dispY, dispZ],
         radius: spec.radius,
         height: spec.height,
+        dt,
+        interact: spec.physicsInteract ?? false,
+        mass: spec.mass ?? 65,
+        pushStrength: spec.pushStrength ?? 1,
       }])
       const step = solved?.[0]
       if (step) {
         nextX = step.position[0] - shift.x
         nextY = step.position[1] - shift.y
         nextZ = step.position[2] - shift.z
-        landed = step.grounded && live.vy <= 0.35
+        if (step.yawDelta) platformYaw = step.yawDelta
+        if (step.impulse) {
+          live.extVx += step.impulse[0]
+          live.extVy += step.impulse[1]
+          live.extVz += step.impulse[2]
+          if (step.impulse[1] > 0.6) live.vy = Math.max(live.vy, step.impulse[1])
+        }
+        landed = step.grounded && live.vy <= 0.35 && live.extVy <= 0.6
       } else {
-        const blocked = slide(host, footX, feet + spec.height * 0.45, footZ, footX + moveX * dt, footZ + moveZ * dt, node.id, spec.radius)
+        const blocked = slide(host, footX, feet + spec.height * 0.45, footZ, footX + dispX, footZ + dispZ, node.id, spec.radius)
         nextX = blocked.x - shift.x
         nextZ = blocked.z - shift.z
         landed = ground !== null && live.vy <= 0 && nextY <= ground + 0.08
@@ -262,6 +290,7 @@ function stepCharacters(dt: number, host: SceneRuntimeHost) {
     object.position.set(nextX, nextY, nextZ)
     const carry = carryFor(nextX, nextY, nextZ)
     if (carry && live.grounded) object.position.set(nextX + carry.dx, nextY + carry.dy, nextZ + carry.dz)
+    if (platformYaw) live.yaw += platformYaw
     const face = faceYaw(spec, basis, wish, moveX, moveZ, dodging, live)
     if (face !== null) {
       const rate = Math.max(30, spec.turnSpeed) * Math.PI / 180 * (basis.lock ? 1.5 : 1)
@@ -292,7 +321,7 @@ function stepCharacters(dt: number, host: SceneRuntimeHost) {
 
 function freshMotion(yaw: number): Motion {
   return {
-    yaw, vy: 0, grounded: false, lastGrounded: 0, jumpBufferUntil: 0, jumpsUsed: 0,
+    yaw, vy: 0, extVx: 0, extVy: 0, extVz: 0, grounded: false, lastGrounded: 0, jumpBufferUntil: 0, jumpsUsed: 0,
     dashUntil: 0, dashReady: 0, dashX: 0, dashZ: 1, invincibleUntil: 0,
     clip: '', jumpPhase: 'none', jumpTime: 0, path: [], pathIndex: 0, footstep: 0, footsteps: 0,
   }
@@ -486,4 +515,5 @@ export function characterOrDefault(spec: Partial<CharacterSpec> | null | undefin
   return { ...defaultCharacter(), ...spec, enabled: spec?.enabled === true }
 }
 
-registerRuntimeSystem('core.character', 10, stepCharacters)
+// 排在物理步进之后：脚下、身前的刚体这一帧已经动完，角色跟着它们的新位姿走，同帧不错位。
+registerRuntimeSystem('core.character', RUNTIME_STAGE.POST_PHYSICS, stepCharacters)
