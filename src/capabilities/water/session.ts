@@ -81,46 +81,60 @@ const FOLLOW_GRID_MIN_SIZE = 64
 let followGeo: BufferGeometry | null = null
 
 /**
- * 跟随相机的环形网格：xy 是相对相机落点的米数。中心一个小圆盘等间距分圈，往外每圈半径等比放大，
- * 所以格子大小与距离成正比（近处十几厘米，百米外三四米），屏幕上的密度大致恒定。
- * 最外面再加一圈极远的顶点，着色器把它收到水面边界上，保证水面铺满。约 3.9 万顶点。
+ * 跟随相机的近密远疏网格：xy 是相对网格中心的米数，z 存该顶点处的格子大小（着色器用它判断哪些浪采样不足）。
+ * 形状见 FOLLOW_GRID 的说明：中心 ±7m 内 0.25m 一格，往外每段间距翻倍，最后用一圈极远的顶点铺到水面边界。
+ * 每条轴 197 个坐标，共约 3.9 万顶点。
  */
 function getFollowGeometry(): BufferGeometry {
   if (followGeo) return followGeo
-  const { angular, innerRadius, innerRings, outerRadius, farRadius } = FOLLOW_GRID
-  const radii: number[] = []
-  for (let i = 1; i <= innerRings; i += 1) radii.push((innerRadius * i) / innerRings)
-  const ratio = 1 + (Math.PI * 2) / angular
-  for (let r = innerRadius * ratio; r < outerRadius; r *= ratio) radii.push(r)
-  radii.push(farRadius)
-
-  const positions = new Float32Array((1 + radii.length * angular) * 3)
-  radii.forEach((radius, ring) => {
-    // 相邻两圈错开半格，三角形更接近等边
-    const twist = ring % 2 === 0 ? 0 : Math.PI / angular
-    for (let a = 0; a < angular; a += 1) {
-      const angle = (a / angular) * Math.PI * 2 + twist
-      const at = (1 + ring * angular + a) * 3
-      positions[at] = Math.cos(angle) * radius
-      positions[at + 1] = Math.sin(angle) * radius
+  // 半条轴上的坐标与「到达这个坐标的那一格」的间距
+  const half: Array<{ at: number, step: number }> = []
+  let at = 0
+  let lastStep = 0
+  for (const [step, count] of FOLLOW_GRID.bands) {
+    for (let i = 0; i < count; i += 1) {
+      at += step
+      half.push({ at, step })
     }
-  })
+    lastStep = step
+  }
+  for (let i = 0; i < FOLLOW_GRID.doublingSteps; i += 1) {
+    lastStep *= 2
+    at += lastStep
+    half.push({ at, step: lastStep })
+  }
+  half.push({ at: FOLLOW_GRID.farRadius, step: FOLLOW_GRID.farRadius })
 
+  // 整条轴：负半轴 + 0 + 正半轴。每个坐标处的格子大小取它两侧间距里较大的那个
+  const axis: number[] = [...half.map(entry => -entry.at).reverse(), 0, ...half.map(entry => entry.at)]
+  const halfCell = half.map((entry, i) => Math.max(entry.step, half[i + 1]?.step ?? entry.step))
+  const axisCell: number[] = [...[...halfCell].reverse(), FOLLOW_GRID.bands[0][0], ...halfCell]
+
+  const count = axis.length
+  const positions = new Float32Array(count * count * 3)
+  for (let j = 0; j < count; j += 1) {
+    for (let i = 0; i < count; i += 1) {
+      const slot = (j * count + i) * 3
+      positions[slot] = axis[i]
+      positions[slot + 1] = axis[j]
+      positions[slot + 2] = Math.max(axisCell[i], axisCell[j])
+    }
+  }
   const indices: number[] = []
-  for (let a = 0; a < angular; a += 1) indices.push(0, 1 + a, 1 + ((a + 1) % angular))
-  for (let ring = 0; ring < radii.length - 1; ring += 1) {
-    const inner = 1 + ring * angular
-    const outer = inner + angular
-    for (let a = 0; a < angular; a += 1) {
-      const next = (a + 1) % angular
-      indices.push(inner + a, outer + a, outer + next, inner + a, outer + next, inner + next)
+  for (let j = 0; j < count - 1; j += 1) {
+    for (let i = 0; i < count - 1; i += 1) {
+      const a = j * count + i
+      const b = a + 1
+      const c = a + count
+      const d = c + 1
+      indices.push(a, b, d, a, d, c)
     }
   }
 
   const geo = new BufferGeometry()
   geo.setAttribute('position', new BufferAttribute(positions, 3))
   geo.setAttribute('normal', new BufferAttribute(new Float32Array(positions.length).map((_, i) => (i % 3 === 2 ? 1 : 0)), 3))
-  geo.setAttribute('uv', new BufferAttribute(new Float32Array((positions.length / 3) * 2), 2))
+  geo.setAttribute('uv', new BufferAttribute(new Float32Array(count * count * 2), 2))
   geo.setIndex(indices)
   // 顶点的真实位置由着色器决定（收在单位平面内），包围体按单位平面给，避免编辑器按米数算出巨大的包围盒
   geo.boundingBox = new Box3(new Vector3(-0.5, -0.5, 0), new Vector3(0.5, 0.5, 0))
@@ -340,11 +354,18 @@ function onBeforeRender(ctx: ViewportRenderContext) {
       const targetGeo = followGrid ? getFollowGeometry() : getSharedPlaneGeometry(spec)
       if (entry.mesh.geometry !== targetGeo) entry.mesh.geometry = targetGeo
       if (followGrid) {
-        // 网格中心 = 相机在水面局部坐标系里的落点
+        // 网格中心 = 相机在水面局部坐标系里的落点，按固定步长（米）对齐：
+        // 相机在一个步长内移动或旋转时网格完全不动，跨过步长时整体挪一步，顶点落回原有的格点上
         entry.mesh.updateWorldMatrix(true, false)
         ctx.camera.getWorldPosition(tmpToCam)
         entry.mesh.worldToLocal(tmpToCam)
-        entry.handle.setGridCenter(tmpToCam.x, tmpToCam.y)
+        const sizeX = Math.max(0.001, Math.abs(tmpWorldScale.x))
+        const sizeY = Math.max(0.001, Math.abs(tmpWorldScale.z))
+        const snap = FOLLOW_GRID.snap
+        entry.handle.setGridCenter(
+          (Math.round((tmpToCam.x * sizeX) / snap) * snap) / sizeX,
+          (Math.round((tmpToCam.y * sizeY) / snap) * snap) / sizeY,
+        )
       }
     } else {
       const hostMesh = firstMeshOf(root)

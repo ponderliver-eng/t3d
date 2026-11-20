@@ -56,21 +56,26 @@ export interface WaterMaterialOptions {
   /** 极致档波形：浪脊弯曲用两层扰动，并把 3 ~ 5 米的中尺度波也加入顶点位移。 */
   richWaves: boolean
   /**
-   * 跟随相机的环形网格（大水面用）：几何体的 xy 是相对相机落点的米数，近处密、远处稀，
+   * 跟随相机的近密远疏网格（大水面用）：几何体的 xy 是相对网格中心的米数，z 是该顶点处的格子大小，
    * 顶点在着色器里换算回水面局部坐标并收在水面范围内。只支持 upAxis = 'z' 的自带平面。
    */
   followGrid: boolean
 }
 
-/** 跟随网格的形状参数：session 用它生成几何体，材质用它估算每个顶点处的格子大小。 */
+/**
+ * 跟随网格的形状参数（session 用它生成几何体）。
+ * 每条轴上的坐标由若干段等间距组成，越往外间距越大（每段翻倍），两条轴做乘积得到整张网格，天然没有裂缝。
+ * 网格不是连续跟着相机滑动，而是每次整体挪 snap 米：间距不超过 snap 的顶点挪完后正好落在原来就有顶点的位置上，
+ * 所以相机移动、旋转时它们在世界里的位置不变，浪不会跟着镜头抖。
+ */
 export const FOLLOW_GRID = {
-  /** 一圈的分段数。格子的大小约等于「到相机落点的距离 × 2π / angular」。 */
-  angular: 176,
-  /** 中心圆盘半径 (m)，圆盘内按等间距分 innerRings 圈。 */
-  innerRadius: 2,
-  innerRings: 12,
-  /** 等比外扩到这个半径 (m)，再往外用一圈极远的顶点铺到水面边界。 */
-  outerRadius: 3000,
+  /** 网格整体对齐的步长 (m)，必须是 bands 里各个间距的整数倍。 */
+  snap: 4,
+  /** 从中心往外的各段：[间距 (m), 格数]。 */
+  bands: [[0.25, 28], [0.5, 16], [1, 16], [2, 16], [4, 12]] as Array<[number, number]>,
+  /** 再往外每格间距翻倍的格数（远处只需要铺满，不需要细节）。 */
+  doublingSteps: 9,
+  /** 最外一圈极远的顶点，着色器把它收到水面边界上。 */
   farRadius: 100000,
 }
 
@@ -167,7 +172,7 @@ export interface WaterMaterialHandle {
   setInvScale: (worldScale: Vector3) => void
   /** 网格一格的世界尺寸 (m)；采样不足的波会在顶点位移里淡出。未知时传 0。 */
   setCellSize: (meters: number) => void
-  /** 跟随网格的中心：相机在水面网格局部坐标系里的 xy。 */
+  /** 跟随网格的中心：水面网格局部坐标系里的 xy（调用方负责按 FOLLOW_GRID.snap 对齐）。 */
   setGridCenter: (localX: number, localY: number) => void
   setSun: (direction: Vector3, color: Color, intensity: number, skyHorizon?: Color, skyTop?: Color) => void
   dispose: () => void
@@ -239,7 +244,7 @@ export function createWaterMaterial(options: WaterMaterialOptions): WaterMateria
 
   // 1. 波谱：所有波的相位都基于「未位移」的静止世界坐标，顶点与片元严格一致
   const follow = options.followGrid && options.upAxis === 'z'
-  // 跟随网格：几何体里存的是相对相机落点的米数，这里换算成水面局部坐标，并收在水面范围 [-0.5, 0.5] 内
+  // 跟随网格：几何体里存的是相对网格中心的米数，这里换算成水面局部坐标，并收在水面范围 [-0.5, 0.5] 内
   const restLocal: TslNode = follow
     ? vec3(
       clamp(
@@ -250,10 +255,8 @@ export function createWaterMaterial(options: WaterMaterialOptions): WaterMateria
       0.0,
     )
     : positionLocal
-  // 每个顶点处的格子大小 (m)：跟随网格随距离等比变大，普通平面是固定值
-  const cellSize: TslNode = follow
-    ? max(length(positionGeometry.xy).mul((Math.PI * 2) / FOLLOW_GRID.angular), float(FOLLOW_GRID.innerRadius / FOLLOW_GRID.innerRings))
-    : uCellSize
+  // 每个顶点处的格子大小 (m)：跟随网格存在几何体的 z 里，普通平面是固定值
+  const cellSize: TslNode = follow ? positionGeometry.z : uCellSize
   const restVertexXZ = modelWorldMatrix.mul(vec4(follow ? restLocal : positionGeometry, 1.0)).xz
   const surfXZ = varying(restVertexXZ)
 
