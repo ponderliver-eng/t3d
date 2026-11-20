@@ -27,7 +27,8 @@ import { normalizePicture, type SceneNode } from '../scene/types'
 import { serializeNavMeshes } from '../../capabilities/navigation/archive'
 import { collectUiImageIds } from '../../runtime/ui/tree'
 import { releaseModel } from './models'
-import { releaseTexture, setWarmBumpDeferred, textureLoadBytes, textureLoadSource, textureReadMs, warmUnityMetallicRoughness } from './textures'
+import { compareShadersWithLastRun, gpuCounters, pipelineRecordCount, pipelineRecordsSince, startCostCapture, stopCostCapture, type PipelineRecord } from '../../runtime/frameProfile'
+import { releaseTexture, rendererInitMs, rendererReadyAt, setWarmBumpDeferred, textureLoadBytes, textureLoadSource, textureReadMs, unityMrLoadInfo, warmUnityMetallicRoughness } from './textures'
 import { ASSETS_ROOT, normalizeDir } from './folders'
 import {
   adoptAsset,
@@ -351,7 +352,10 @@ export async function openRecentProject(id: string): Promise<void> {
 }
 
 async function openSource(source: FileSystemDirectoryHandle | string, announce: boolean): Promise<boolean> {
+  const timeline = startOpenTimeline()
   const parsed = await readDirectoryFile(source)
+  timeline.mark('read')
+  if (typeof parsed === 'string') timeline.stop()
   if (parsed === 'missing') {
     useEditorStore.getState().log('warn', translate('log.projectMissing'))
     return false
@@ -374,32 +378,44 @@ async function openSource(source: FileSystemDirectoryHandle | string, announce: 
       await begin(source, parsed.name, parsed.assets, parsed.document)
       await RecentProjectService.add(source, parsed.name)
     }
+    timeline.mark('session')
     const folders = mergeFolders(parsed.document.folders ?? [], await listAssetDirectories())
+    timeline.mark('scan')
     document = { ...parsed.document, folders }
     replaceSession(document)
+    timeline.mark('session')
     const adopted = await reconcileLooseAssets()
+    timeline.mark('scan')
     metas = [...parsed.assets, ...adopted]
     useEditorStore.getState().ensureSceneAsset()
+  } catch (error) {
+    timeline.stop()
+    throw error
   } finally {
     setDirectoryFlushEnabled(true)
     await resumeLayout()
   }
+  timeline.mark('session')
   await saveProjectNow()
+  timeline.mark('save')
   const sceneMs = performance.now() - started
   if (announce) useEditorStore.getState().log('info', translate('log.projectOpened', { name: parsed.name }))
   if (metas.length === 0) {
+    timeline.stop()
     useEditorStore.getState().log('info', translate('log.opened', { ms: Math.round(sceneMs) }))
     return true
   }
-  void warmAssets(token, metas, document, started, sceneMs)
+  void warmAssets(token, metas, document, started, sceneMs, timeline)
   return true
 }
 
 async function openNow() {
   const started = performance.now()
+  const timeline = startOpenTimeline()
   const token = nextWarmToken()
   await migrateLegacyFilesToMeta()
   const [metas, stored] = await Promise.all([readAssetMetas(), readSceneDocument<ProjectDocument>()])
+  timeline.mark('read')
   const document = validDocument(stored)
   if (document) {
     useAssetStore.getState().loadCatalog(document.folders ?? [], document.assetDirs ?? {})
@@ -414,16 +430,22 @@ async function openNow() {
     useEditorStore.getState().loadDocument(document)
   }
   useEditorStore.getState().ensureSceneAsset()
+  timeline.mark('session')
   const sceneMs = performance.now() - started
   if (metas.length === 0) {
+    timeline.stop()
     useEditorStore.getState().log('info', translate('log.opened', { ms: Math.round(sceneMs) }))
     return
   }
-  void warmAssets(token, metas, document, started, sceneMs)
+  void warmAssets(token, metas, document, started, sceneMs, timeline)
 }
 
-async function warmAssets(token: number, metas: AssetMeta[], document: ProjectDocument | null, started: number, sceneMs: number) {
-  const { ids: referenced, unityMrIds } = referencedAssetIds(document)
+async function warmAssets(token: number, metas: AssetMeta[], document: ProjectDocument | null, started: number, sceneMs: number, timeline: OpenTimeline) {
+  const { ids: referenced, unityMrIds, plainIds } = referencedAssetIds(document)
+  const warmStart = performance.now()
+  const modelSpan = wallSpan()
+  const textureSpan = wallSpan()
+  let mrDirectHits = 0
   const ordered = [...metas].sort((a, b) => rank(a, referenced) - rank(b, referenced))
   const initialAssets: FileAsset[] = []
   const warmQueue: { meta: AssetMeta, asset: FileAsset }[] = []
@@ -457,20 +479,49 @@ async function warmAssets(token: number, metas: AssetMeta[], document: ProjectDo
         await materialize(cleanMeta, true, asset)
         if (!warmCurrent(token)) return
         const stepStart = performance.now()
-        const ok = await warmCachedAsset(asset)
-        if (ok && cleanMeta.kind === 'texture' && unityMrIds.has(cleanMeta.id)) {
+        // 只被当作 Unity 金属光滑图使用的贴图：直接读重排成品，不加载原图
+        const mrOnly = cleanMeta.kind === 'texture' && Boolean(asset.thumb)
+          && unityMrIds.has(cleanMeta.id) && !plainIds.has(cleanMeta.id)
+        let ok = true
+        if (mrOnly) {
           await warmUnityMetallicRoughness(cleanMeta.id)
+        } else {
+          ok = await warmCachedAsset(asset)
+          if (ok && cleanMeta.kind === 'texture' && unityMrIds.has(cleanMeta.id)) {
+            await warmUnityMetallicRoughness(cleanMeta.id)
+          }
         }
-        const stepElapsed = performance.now() - stepStart
-        if (cleanMeta.kind === 'model' || cleanMeta.kind === 'animation') modelMs += stepElapsed
-        else if (cleanMeta.kind === 'texture' || cleanMeta.kind === 'environment') textureMs += stepElapsed
+        const stepEnd = performance.now()
+        const stepElapsed = stepEnd - stepStart
+        if (cleanMeta.kind === 'model' || cleanMeta.kind === 'animation') {
+          modelMs += stepElapsed
+          modelSpan.add(stepStart, stepEnd)
+        } else if (cleanMeta.kind === 'texture' || cleanMeta.kind === 'environment') {
+          textureMs += stepElapsed
+          textureSpan.add(stepStart, stepEnd)
+        }
         if (!warmCurrent(token)) {
           releaseRuntimeAsset(asset.id, asset.url)
           useAssetStore.getState().remove(asset.id)
           return
         }
+        const mrInfo = cleanMeta.kind === 'texture' ? unityMrLoadInfo(cleanMeta.id) : null
+        if (mrInfo) {
+          texBytes += mrInfo.bytes
+          texReadMs += mrInfo.readMs
+          mrDirectHits += 1
+        }
         if (!ok) failed += 1
         else if ((cleanMeta.kind === 'model' || cleanMeta.kind === 'animation') && cleanMeta.artifactReady) hits += 1
+        else if (mrOnly) {
+          if (mrInfo) {
+            hits += 1
+            if (mrInfo.source === 'bc7') bc7Hits += 1
+            else baseHits += 1
+          } else {
+            parsed += 1
+          }
+        }
         else if (cleanMeta.kind === 'texture') {
           const src = textureLoadSource(asset.id)
           if (src === 'bc7') { hits += 1; bc7Hits += 1; texBytes += textureLoadBytes(asset.id); texReadMs += textureReadMs(asset.id) }
@@ -491,7 +542,10 @@ async function warmAssets(token: number, metas: AssetMeta[], document: ProjectDo
   } finally {
     setWarmBumpDeferred(false)
   }
-  if (!warmCurrent(token)) return
+  if (!warmCurrent(token)) {
+    timeline.stop()
+    return
+  }
   setWarmProgress(null)
   if (isDirectoryProject()) {
     const validKeys = new Set<string>()
@@ -513,9 +567,278 @@ async function warmAssets(token: number, metas: AssetMeta[], document: ProjectDo
       hits,
       parsed,
       failed,
-    })} [BC7 ${bc7Hits} · 裸像素 ${baseHits} · ${(texBytes / (1024 * 1024)).toFixed(1)}MB · 读盘累计 ${Math.round(texReadMs)}ms]`,
+    })} [BC7 ${bc7Hits} · 裸像素 ${baseHits} · 金属光滑图直读 ${mrDirectHits} · ${(texBytes / (1024 * 1024)).toFixed(1)}MB · 读盘累计 ${Math.round(texReadMs)}ms]`,
   )
+  const warmMs = performance.now() - warmStart
+  const gpuBefore = gpuCounters()
+  const pipelineMark = pipelineRecordCount()
+  startCostCapture()
+  const precompiled = waitForPrecompile()
   window.dispatchEvent(new CustomEvent('t3d:warm-complete'))
+  // 贴图到齐后材质才换上贴图：这之后的着色器编译与贴图上传不在上面的统计里，单独量到画面稳定为止
+  const warmDoneAt = performance.now()
+  const readyAt = await waitForRenderer()
+  await precompiled
+  const compileMs = Math.max(0, performance.now() - readyAt)
+  const settle = await waitForSmoothFrames()
+  const busy = timeline.stop()
+  const costs = stopCostCapture()
+  const gpuAfter = gpuCounters()
+  if (!warmCurrent(token)) return
+  const costText = costs.filter(row => row.ms >= 1).slice(0, 6).map(row => `${row.id} ${Math.round(row.ms)}ms`).join(' · ')
+  useEditorStore.getState().log('info', translate('log.openProfile', {
+    costs: costText || '-',
+    shaders: gpuAfter.shaders - gpuBefore.shaders,
+    pipelines: gpuAfter.pipelines - gpuBefore.pipelines,
+    asyncPipelines: gpuAfter.asyncPipelines - gpuBefore.asyncPipelines,
+    asyncMs: Math.round(gpuAfter.asyncMs - gpuBefore.asyncMs),
+    asyncWorst: Math.round(gpuAfter.asyncWorst),
+    earlyShaders: gpuBefore.shaders,
+    earlyPipelines: gpuBefore.pipelines + gpuBefore.asyncPipelines,
+  }))
+  const pipelineRecords = pipelineRecordsSince(pipelineMark)
+  const pipelineText = describePipelines(pipelineRecords)
+  if (pipelineText) useEditorStore.getState().log('info', pipelineText)
+  for (const line of describePipelineDiffs(pipelineRecords)) useEditorStore.getState().log('info', `管线差异：${line}`)
+  const shaderRun = compareShadersWithLastRun()
+  if (shaderRun.unique > 0) {
+    useEditorStore.getState().log('info', shaderRun.hadPrevious
+      ? `着色器文本：本次启动以来共 ${shaderRun.unique} 份不同文本，其中 ${shaderRun.same} 份与上次记录一字不差（一样才可能命中显卡磁盘缓存）`
+      : `着色器文本：本次启动以来共 ${shaderRun.unique} 份不同文本，还没有上次的记录可比，下次打开时给出对比`)
+  }
+  useEditorStore.getState().log('info', translate('log.openTimeline', {
+    read: Math.round(timeline.phase('read')),
+    session: Math.round(timeline.phase('session')),
+    scan: Math.round(timeline.phase('scan')),
+    save: Math.round(timeline.phase('save')),
+    warm: Math.round(warmMs),
+    model: Math.round(modelSpan.length()),
+    texture: Math.round(textureSpan.length()),
+    init: Math.round(rendererInitMs()),
+    wait: Math.round(Math.max(0, readyAt - warmDoneAt)),
+    compile: Math.round(compileMs),
+    settle: Math.round(settle.total),
+    frames: settle.frames,
+    slow: settle.slow,
+    worst: Math.round(settle.worst),
+    tasks: busy.count,
+    busy: Math.round(busy.total),
+    longest: Math.round(busy.longest),
+  }))
+}
+
+/** 打开工程的墙上时钟时间线：各阶段耗时，外加主线程被长任务（超过 50ms）占用的情况。 */
+interface OpenTimeline {
+  /** 记下「从上一次 mark 到现在」这一段属于哪个阶段。 */
+  mark: (phase: string) => void
+  phase: (phase: string) => number
+  stop: () => { count: number, total: number, longest: number }
+}
+
+function startOpenTimeline(): OpenTimeline {
+  const phases = new Map<string, number>()
+  let last = performance.now()
+  const busy = { count: 0, total: 0, longest: 0 }
+  let observer: PerformanceObserver | null = null
+  try {
+    observer = new PerformanceObserver(list => {
+      for (const entry of list.getEntries()) {
+        busy.count += 1
+        busy.total += entry.duration
+        busy.longest = Math.max(busy.longest, entry.duration)
+      }
+    })
+    observer.observe({ entryTypes: ['longtask'] })
+  } catch {
+    observer = null
+  }
+  return {
+    mark(phase) {
+      const now = performance.now()
+      phases.set(phase, (phases.get(phase) ?? 0) + now - last)
+      last = now
+    },
+    phase: phase => phases.get(phase) ?? 0,
+    stop() {
+      observer?.disconnect()
+      observer = null
+      return busy
+    },
+  }
+}
+
+/** 一类资源从第一个开始到最后一个结束的墙上时钟跨度（并发加载时，累计耗时会远大于它）。 */
+function wallSpan() {
+  let first = Infinity
+  let last = -Infinity
+  return {
+    add(start: number, end: number) {
+      first = Math.min(first, start)
+      last = Math.max(last, end)
+    },
+    length: () => (last > first ? last - first : 0),
+  }
+}
+
+/** 把打开期间新建的渲染管线按绘制目标、按材质归类，写成一行日志（完整清单另打到控制台）。 */
+function describePipelines(records: PipelineRecord[]): string {
+  if (!records.length) return ''
+  const tally = (key: (record: PipelineRecord) => string, only?: (record: PipelineRecord) => boolean) => {
+    const map = new Map<string, { live: number, pre: number }>()
+    for (const record of records) {
+      if (only && !only(record)) continue
+      const row = map.get(key(record)) ?? { live: 0, pre: 0 }
+      if (record.precompiled) row.pre += 1
+      else row.live += 1
+      map.set(key(record), row)
+    }
+    return [...map.entries()].sort((a, b) => (b[1].live + b[1].pre) - (a[1].live + a[1].pre))
+  }
+  const targets = tally(record => record.target)
+    .map(([target, row]) => `[${target}] 现编 ${row.live} 预编 ${row.pre}`)
+    .join(' ; ')
+  const materials = tally(record => record.material, record => !record.precompiled)
+    .slice(0, 12)
+    .map(([material, row]) => `${material}×${row.live}`)
+    .join(' · ')
+  // 同一材质、同一目标既被预编译又被现编译：说明预编译出的那条没对上，白编了
+  const preKeys = new Set(records.filter(record => record.precompiled).map(record => `${record.id}|${record.target}`))
+  const wasted = records.filter(record => !record.precompiled && preKeys.has(`${record.id}|${record.target}`)).length
+  const liveIds = new Set(records.filter(record => !record.precompiled).map(record => record.id)).size
+  const preIds = new Set(records.filter(record => record.precompiled).map(record => record.id)).size
+  console.table(records.map(({ material, id, target, precompiled }) => ({ material, id, target, precompiled })))
+  return `管线明细：按绘制目标 ${targets} ｜ 现编译的材质 ${materials || '-'} ｜ 现编译涉及 ${liveIds} 个材质，预编译涉及 ${preIds} 个材质，预编译后同目标又现编 ${wasted} 条`
+}
+
+/** 两段文本第一处不同在哪一行、共有多少行不同。完全相同返回 null。 */
+function firstDifference(a: string, b: string): string | null {
+  if (a === b) return null
+  const left = a.split('\n')
+  const right = b.split('\n')
+  const length = Math.max(left.length, right.length)
+  let first = -1
+  let count = 0
+  for (let i = 0; i < length; i++) {
+    if (left[i] === right[i]) continue
+    count += 1
+    if (first < 0) first = i
+  }
+  const clip = (text: string | undefined) => (text ?? '（无）').trim().slice(0, 150)
+  // 行数不同时逐行对比会整体错位，另外列出只在乙里出现的几行，才看得出多了什么
+  const known = new Set(left.map(line => line.trim()))
+  const extra = left.length === right.length ? [] : right.map(line => line.trim())
+    .filter(line => line.length > 12 && !known.has(line))
+    .filter(line => !/^(@binding|nodeUniform\d+ : |var nodeVar|nodeVar\d+ = )/.test(line) || /shadow|Shadow|env|fog|light/i.test(line))
+    .slice(0, 6)
+    .map(line => line.slice(0, 110))
+  const extraText = extra.length ? `；乙独有的行举例：${extra.map(line => `「${line}」`).join(' ')}` : ''
+  return `${left.length}/${right.length} 行，${count} 行不同，第 ${first + 1} 行：甲「${clip(left[first])}」乙「${clip(right[first])}」${extraText}`
+}
+
+function compareRecords(title: string, a: PipelineRecord, b: PipelineRecord): string {
+  const parts: string[] = []
+  const vertex = firstDifference(a.vertex, b.vertex)
+  const fragment = firstDifference(a.fragment, b.fragment)
+  const state = a.state === b.state ? null : (() => {
+    let i = 0
+    while (i < a.state.length && a.state[i] === b.state[i]) i += 1
+    const from = Math.max(0, i - 40)
+    return `甲「${a.state.slice(from, i + 80)}」乙「${b.state.slice(from, i + 80)}」`
+  })()
+  parts.push(vertex ? `顶点着色器 ${vertex}` : '顶点着色器相同')
+  parts.push(fragment ? `片元着色器 ${fragment}` : '片元着色器相同')
+  parts.push(state ? `管线状态不同 ${state}` : '管线状态相同')
+  return `${title}（${a.material}）：${parts.join(' ｜ ')}`
+}
+
+/**
+ * 找出三类「本该共用却各编一条」的管线，各取一对比较差在哪：
+ * 预编译后又现编的同一材质、同一材质现编的多条、阴影材质的多条。
+ */
+function describePipelineDiffs(records: PipelineRecord[]): string[] {
+  const lines: string[] = []
+  const live = records.filter(record => !record.precompiled)
+  const pre = records.filter(record => record.precompiled)
+  for (const record of pre) {
+    const twin = live.find(item => item.id === record.id && item.target === record.target)
+    if (!twin) continue
+    lines.push(compareRecords('预编译(甲)与现编译(乙)对不上', record, twin))
+    break
+  }
+  const groups = new Map<string, PipelineRecord[]>()
+  for (const record of live) {
+    const key = `${record.id}|${record.target}`
+    groups.set(key, [...(groups.get(key) ?? []), record])
+  }
+  const ranked = [...groups.values()].filter(group => group.length > 1).sort((a, b) => b.length - a.length)
+  const shadow = ranked.find(group => group[0].material === 'ShadowMaterial')
+  const other = ranked.find(group => group[0].material !== 'ShadowMaterial')
+  if (other) lines.push(compareRecords(`同一材质现编 ${other.length} 条，取前两条`, other[0], other[1]))
+  if (shadow) lines.push(compareRecords(`阴影现编 ${shadow.length} 条，取前两条`, shadow[0], shadow[1]))
+  return lines
+}
+
+/** 等主视口的着色器预编译结束（最多等 20 秒）。要在发出 t3d:warm-complete 之前调用。 */
+function waitForPrecompile(): Promise<void> {
+  return new Promise(resolve => {
+    const done = () => {
+      window.removeEventListener('t3d:precompile-done', done)
+      window.clearTimeout(timer)
+      resolve()
+    }
+    const timer = window.setTimeout(done, 20000)
+    window.addEventListener('t3d:precompile-done', done)
+  })
+}
+
+/** 等主视口渲染器初始化完成，返回它就绪的时刻（最多等 10 秒）。 */
+function waitForRenderer(): Promise<number> {
+  const started = performance.now()
+  return new Promise(resolve => {
+    const step = () => {
+      const readyAt = rendererReadyAt()
+      if (readyAt !== null || performance.now() - started > 10000) {
+        resolve(readyAt ?? performance.now())
+        return
+      }
+      requestAnimationFrame(step)
+    }
+    step()
+  })
+}
+
+/**
+ * 等到连续 3 帧都在 34ms 以内（最多等 20 秒），用来量资源到齐、渲染器就绪之后的着色器编译与贴图上传卡顿。
+ * 返回总时长、期间的帧数、其中超过 34ms 的帧数、最长一帧的时长。
+ */
+function waitForSmoothFrames(): Promise<{ total: number, frames: number, slow: number, worst: number }> {
+  const started = performance.now()
+  return new Promise(resolve => {
+    let previous = started
+    let smooth = 0
+    let frames = 0
+    let slow = 0
+    let worst = 0
+    const step = () => {
+      const now = performance.now()
+      const frame = now - previous
+      previous = now
+      frames += 1
+      worst = Math.max(worst, frame)
+      if (frame <= 34) {
+        smooth += 1
+      } else {
+        smooth = 0
+        slow += 1
+      }
+      if (smooth >= 3 || now - started > 20000) {
+        resolve({ total: now - started, frames, slow, worst })
+        return
+      }
+      requestAnimationFrame(step)
+    }
+    requestAnimationFrame(step)
+  })
 }
 
 function stripRedundantThumb(meta: AssetMeta): AssetMeta {
@@ -571,11 +894,17 @@ function rank(meta: AssetMeta, referenced: Set<string>): number {
   return used + ready
 }
 
-function referencedAssetIds(document: ProjectDocument | null): { ids: Set<string>, unityMrIds: Set<string> } {
+/**
+ * ids：当前场景用到的全部资源；unityMrIds：被当作 Unity 金属光滑图使用的贴图；
+ * plainIds：以普通方式（颜色、法线等，或非 Unity 着色器的金属粗糙度）使用的贴图。
+ * 只在 unityMrIds 里、不在 plainIds 里的贴图，打开时只需要重排后的成品，不需要原图。
+ */
+function referencedAssetIds(document: ProjectDocument | null): { ids: Set<string>, unityMrIds: Set<string>, plainIds: Set<string> } {
   const ids = new Set<string>()
   const unityMrIds = new Set<string>()
-  if (!document) return { ids, unityMrIds }
-  collectNodeAssets(document.nodes, ids, unityMrIds)
+  const plainIds = new Set<string>()
+  if (!document) return { ids, unityMrIds, plainIds }
+  collectNodeAssets(document.nodes, ids, unityMrIds, plainIds)
   if (document.picture.envAssetId) ids.add(document.picture.envAssetId)
 
   // 只展开当前激活场景用到的特效、UI 与材质球，不预热未上场的其他材质/预制体/非激活场景
@@ -589,19 +918,28 @@ function referencedAssetIds(document: ProjectDocument | null): { ids: Set<string
   }
   for (const record of document.library) {
     if (record.kind === 'material' && ids.has(record.id)) {
-      for (const key of MAP_KEYS) {
-        const value = record.slot[key]
-        if (value) ids.add(value)
-      }
-      if (record.slot.shader === 'unity-standard' && record.slot.metallicRoughnessAssetId) {
-        unityMrIds.add(record.slot.metallicRoughnessAssetId)
-      }
+      collectMapAssets(record.slot, ids, unityMrIds, plainIds)
     }
   }
-  return { ids, unityMrIds }
+  return { ids, unityMrIds, plainIds }
 }
 
-function collectNodeAssets(nodes: Record<string, SceneNode>, ids: Set<string>, unityMrIds?: Set<string>) {
+function collectMapAssets(
+  source: { shader?: string } & Partial<Record<(typeof MAP_KEYS)[number], string | null>>,
+  ids: Set<string>,
+  unityMrIds?: Set<string>,
+  plainIds?: Set<string>,
+) {
+  for (const key of MAP_KEYS) {
+    const value = source[key]
+    if (!value) continue
+    ids.add(value)
+    if (key === 'metallicRoughnessAssetId' && source.shader === 'unity-standard') unityMrIds?.add(value)
+    else plainIds?.add(value)
+  }
+}
+
+function collectNodeAssets(nodes: Record<string, SceneNode>, ids: Set<string>, unityMrIds?: Set<string>, plainIds?: Set<string>) {
   for (const node of Object.values(nodes)) {
     if (node.assetId) ids.add(node.assetId)
     if (node.clipAssetId) ids.add(node.clipAssetId)
@@ -620,22 +958,10 @@ function collectNodeAssets(nodes: Record<string, SceneNode>, ids: Set<string>, u
         if (override.materialAssetId) ids.add(override.materialAssetId)
       }
     }
-    for (const key of MAP_KEYS) {
-      const value = node[key]
-      if (value) ids.add(value)
-    }
-    if (node.shader === 'unity-standard' && node.metallicRoughnessAssetId) {
-      unityMrIds?.add(node.metallicRoughnessAssetId)
-    }
+    collectMapAssets(node, ids, unityMrIds, plainIds)
     for (const slot of node.slots) {
       if (slot.materialAssetId) ids.add(slot.materialAssetId)
-      for (const key of MAP_KEYS) {
-        const value = slot[key]
-        if (value) ids.add(value)
-      }
-      if (slot.shader === 'unity-standard' && slot.metallicRoughnessAssetId) {
-        unityMrIds?.add(slot.metallicRoughnessAssetId)
-      }
+      collectMapAssets(slot, ids, unityMrIds, plainIds)
     }
   }
 }

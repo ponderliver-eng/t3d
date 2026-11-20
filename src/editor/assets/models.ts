@@ -376,6 +376,7 @@ export function instantiateModel(assetId: string): { object: Object3D, clips: An
   normalizeSkinIndex(template.scene)
   const object = cloneSkinned(template.scene)
   shareSkeletons(object)
+  padSkeletons(object)
   object.traverse(child => {
     const mesh = child as Mesh
     if (!mesh.isMesh) return
@@ -624,6 +625,36 @@ function shareSkeletons(root: Object3D) {
     const existing = shared.get(key)
     if (existing) mesh.skeleton = existing
     else shared.set(key, skeleton)
+  })
+}
+
+const BONE_BUCKETS = [16, 32, 64, 128, 256, 512, 1024]
+
+/**
+ * 把每副骨架的骨骼数补齐到固定档位（16、32、64…）。
+ * 骨骼矩阵数组的长度会写进着色器，骨骼数不同的蒙皮网格就各要一份着色器和管线；
+ * 一个角色拆成十几个部件、每个部件骨骼数都不一样时，同一个材质会被编译十几遍，阴影同理。
+ * 补的是第 0 根骨骼的重复项，没有顶点引用它们，不影响蒙皮结果。
+ */
+function padSkeletons(root: Object3D) {
+  const done = new Set<Skeleton>()
+  root.traverse(child => {
+    const mesh = child as Mesh & { isSkinnedMesh?: boolean, skeleton?: Skeleton }
+    const skeleton = mesh.skeleton
+    if (!mesh.isSkinnedMesh || !skeleton || done.has(skeleton)) return
+    done.add(skeleton)
+    const count = skeleton.bones.length
+    if (count === 0 || skeleton.boneInverses.length !== count) return
+    const target = BONE_BUCKETS.find(size => size >= count)
+    if (!target || target === count) return
+    const bone = skeleton.bones[0]
+    const inverse = skeleton.boneInverses[0]
+    for (let i = count; i < target; i += 1) {
+      skeleton.bones.push(bone)
+      skeleton.boneInverses.push(inverse.clone())
+    }
+    skeleton.boneMatrices = new Float32Array(target * 16)
+    skeleton.update()
   })
 }
 

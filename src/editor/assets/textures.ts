@@ -7,6 +7,7 @@ import { compressRgbaToBc7Mips, ensureBc7Readable, initBc7Compressor, isBc7Suppo
 import { readFileBytes, readTextureArtifact, writeTextureArtifact } from './cache'
 import { type FileAsset, useAssetStore } from './library'
 import { readUnpremultipliedRgba } from './textureResize'
+import { watchGpuDevice } from '../../runtime/frameProfile'
 
 const images = new Map<string, Texture>()
 const imageHashes = new Map<string, string>()
@@ -16,6 +17,11 @@ const imageReadMs = new Map<string, number>()
 const linearImages = new Map<string, Texture>()
 const unityMrImages = new Map<string, Texture>()
 const unityMrPending = new Set<string>()
+/** 正在直接读取重排成品（不经过原图）的贴图。 */
+const unityMrDirect = new Set<string>()
+/** 直接读取没命中的贴图：之后改走「先加载原图再重排」的老路，不再重复尝试。 */
+const unityMrDirectMiss = new Set<string>()
+const unityMrInfo = new Map<string, { source: 'bc7' | 'base', bytes: number, readMs: number, hash: string }>()
 const pendingImages = new Map<string, Promise<void>>()
 const environments = new Map<string, Texture>()
 const pendingEnvironments = new Map<string, Promise<void>>()
@@ -32,7 +38,12 @@ export function setWarmBumpDeferred(deferred: boolean) {
   warmBumpDeferred = deferred
   if (!deferred && warmBumpPending) {
     warmBumpPending = false
-    scheduleBump()
+    // 立刻同步：材质要先换上贴图，紧接着的着色器预编译才编得对
+    if (bumpTimer) {
+      window.clearTimeout(bumpTimer)
+      bumpTimer = 0
+    }
+    useAssetStore.getState().bump()
   }
 }
 
@@ -59,7 +70,7 @@ export function warmUnityMetallicRoughness(assetId: string): Promise<void> {
   if (unityMrImages.has(assetId)) return Promise.resolve()
   const tex = unityMetallicRoughnessTextureFor(assetId)
   if (tex) return Promise.resolve()
-  if (!unityMrPending.has(assetId)) return Promise.resolve()
+  if (!unityMrPending.has(assetId) && !unityMrDirect.has(assetId)) return Promise.resolve()
   return new Promise<void>(resolve => {
     const list = unityMrWaiters.get(assetId) ?? []
     list.push(resolve)
@@ -67,8 +78,25 @@ export function warmUnityMetallicRoughness(assetId: string): Promise<void> {
   })
 }
 
-export function bindTextureRenderer(renderer: WebGPURenderer) {
-  initBc7Compressor((renderer.backend as { device?: WebGpuDeviceLike } | undefined)?.device)
+let rendererReadyTime: number | null = null
+let rendererInitDuration = 0
+
+/** 主视口渲染器初始化完成的时刻（performance.now()），还没完成时为 null。 */
+export function rendererReadyAt(): number | null {
+  return rendererReadyTime
+}
+
+/** 主视口渲染器初始化花了多久 (ms)。 */
+export function rendererInitMs(): number {
+  return rendererInitDuration
+}
+
+export function bindTextureRenderer(renderer: WebGPURenderer, initMs = 0) {
+  rendererReadyTime = performance.now()
+  rendererInitDuration = initMs
+  const device = (renderer.backend as { device?: WebGpuDeviceLike } | undefined)?.device
+  watchGpuDevice(device)
+  initBc7Compressor(device)
   if (ktx2) return
   ktx2 = new KTX2Loader()
   ktx2.setTranscoderPath('/basis/')
@@ -380,6 +408,65 @@ function scheduleUnityRepack(
   runCompute()
 }
 
+/** 不加载原图，直接读取重排成品；没命中时回到老路（加载原图 -> 重排 -> 写成品）。 */
+function loadUnityMrDirect(asset: FileAsset) {
+  const assetId = asset.id
+  unityMrDirect.add(assetId)
+  void (async () => {
+    const started = performance.now()
+    let texture: Texture | null = null
+    let source: 'bc7' | 'base' = 'base'
+    let bytes = 0
+    if (await ensureBc7Readable()) {
+      const bc7 = await readTextureArtifact(asset.hash, 'unity-mr-bc7').catch(() => null)
+      const unpacked = bc7 ? unpackBc7Artifact(bc7) : null
+      if (unpacked) {
+        texture = buildBc7Texture(unpacked.width, unpacked.height, unpacked.mips)
+        source = 'bc7'
+        bytes = bc7!.byteLength
+      }
+    }
+    if (!texture) {
+      const cached = await readTextureArtifact(asset.hash, 'unity-mr').catch(() => null)
+      const unpacked = cached ? unpackTextureArtifact(cached) : null
+      if (unpacked) {
+        texture = buildDataTexture(unpacked.width, unpacked.height, unpacked.rgba)
+        bytes = cached!.byteLength
+      }
+    }
+    // 读取期间资源被释放或换了内容：丢弃结果
+    const current = useAssetStore.getState().assets[assetId]
+    const stale = !unityMrDirect.has(assetId) || !current || !('hash' in current) || current.hash !== asset.hash
+    unityMrDirect.delete(assetId)
+    if (stale) {
+      texture?.dispose()
+      notifyUnityMrReady(assetId)
+      return
+    }
+    if (texture) {
+      texture.colorSpace = NoColorSpace
+      unityMrImages.set(assetId, texture)
+      unityMrInfo.set(assetId, { source, bytes, readMs: performance.now() - started, hash: asset.hash })
+      notifyUnityMrReady(assetId)
+      scheduleBump()
+      return
+    }
+    // 没有成品（第一次导入）：加载原图后重排，重排完成时会通知等待方并写入成品
+    unityMrDirectMiss.add(assetId)
+    await loadTextureAsset(asset)
+    if (unityMetallicRoughnessTextureFor(assetId) || !unityMrPending.has(assetId)) notifyUnityMrReady(assetId)
+  })().catch(() => {
+    unityMrDirect.delete(assetId)
+    unityMrDirectMiss.add(assetId)
+    notifyUnityMrReady(assetId)
+  })
+}
+
+/** 重排成品的加载来源与大小（只有直接读成品命中时才有），供打开工程的统计用。 */
+export function unityMrLoadInfo(assetId: string): { source: 'bc7' | 'base', bytes: number, readMs: number } | null {
+  return unityMrInfo.get(assetId) ?? null
+}
+
 /**
  * Unity Standard / URP MaskMap 金属光滑图重排为 Three.js / glTF ORM 贴图：
  * - Unity 输入：R = Metallic，G = AO（或 R 副本），A = Smoothness（1 - Roughness）
@@ -388,7 +475,22 @@ function scheduleUnityRepack(
 export function unityMetallicRoughnessTextureFor(assetId: string | null): Texture | null {
   if (!assetId) return null
   const packed = unityMrImages.get(assetId)
-  if (packed) return packed
+  if (packed) {
+    // 直接读成品得到的贴图没有原图帮忙发现内容变化，这里自己比对一次
+    const info = unityMrInfo.get(assetId)
+    const live = info ? useAssetStore.getState().assets[assetId] : undefined
+    if (!info || !live || !('hash' in live) || !live.hash || live.hash === info.hash) return packed
+    releaseTexture(assetId)
+  }
+  // 原图还没加载时，先直接读重排好的成品：命中就完全不需要原图（少读一个文件、少占一份显存）
+  if (!images.has(assetId) && !unityMrDirectMiss.has(assetId)) {
+    if (unityMrDirect.has(assetId)) return null
+    const asset = useAssetStore.getState().assets[assetId]
+    if (asset && asset.kind === 'texture' && asset.hash) {
+      loadUnityMrDirect(asset)
+      return null
+    }
+  }
   const base = textureFor(assetId, false)
   if (!base) return null
   if ((base as { isCompressedTexture?: boolean }).isCompressedTexture) {
@@ -445,6 +547,9 @@ export function releaseTexture(assetId: string) {
   unityMrImages.get(assetId)?.dispose()
   unityMrImages.delete(assetId)
   unityMrPending.delete(assetId)
+  unityMrDirect.delete(assetId)
+  unityMrDirectMiss.delete(assetId)
+  unityMrInfo.delete(assetId)
   pendingImages.delete(assetId)
   environments.get(assetId)?.dispose()
   environments.delete(assetId)
@@ -489,9 +594,13 @@ export function loadTextureAsset(asset: FileAsset): Promise<void> {
     images.set(asset.id, texture)
     imageHashes.set(asset.id, asset.hash)
     linearImages.delete(asset.id)
-    unityMrImages.get(asset.id)?.dispose()
-    unityMrImages.delete(asset.id)
-    unityMrPending.delete(asset.id)
+    // 已经从同一份内容的成品直接读到重排贴图时保留它，不必因为原图后到而重做
+    if (unityMrInfo.get(asset.id)?.hash !== asset.hash || !asset.hash) {
+      unityMrImages.get(asset.id)?.dispose()
+      unityMrImages.delete(asset.id)
+      unityMrInfo.delete(asset.id)
+      unityMrPending.delete(asset.id)
+    }
     pendingImages.delete(asset.id)
     scheduleBump()
   }

@@ -314,11 +314,47 @@ export class EditorViewport {
     this.raf = requestAnimationFrame(this.tick)
   }
 
+  /** 资源到齐后的着色器预编译：pending = 等渲染器就绪后的下一帧发起；running = 编译中，主绘制让路。 */
+  private precompileState: 'idle' | 'pending' | 'running' = 'idle'
+  private precompileRun = 0
+
   private onWarmComplete = () => {
-    if (!this.ready || this.disposed) return
-    const compiler = this.renderer as WebGPURenderer & { compileAsync?: (scene: Scene, camera: PerspectiveCamera) => Promise<void> }
-    if (typeof compiler.compileAsync !== 'function') return
-    void compiler.compileAsync(this.scene, this.activeCamera() as PerspectiveCamera).catch(() => undefined)
+    if (this.disposed || this.precompileState === 'running') return
+    this.precompileState = 'pending'
+  }
+
+  /**
+   * 先把场景内容藏起来画一帧（只有网格、天空这些，很快），让后期管线和离屏图就位；
+   * 再并行预编译全部材质，期间不画场景，编译完才出第一帧完整画面。
+   */
+  private beginPrecompile(drawFrame: () => void, camera: Parameters<ScenePicturePipeline['precompile']>[1], usedEffects: boolean) {
+    const pipeline = this.picture
+    if (!pipeline) {
+      this.precompileState = 'idle'
+      window.dispatchEvent(new CustomEvent('t3d:precompile-done'))
+      return
+    }
+    this.precompileState = 'running'
+    const run = ++this.precompileRun
+    const wasVisible = this.world.visible
+    this.world.visible = false
+    try {
+      drawFrame()
+    } finally {
+      this.world.visible = wasVisible
+    }
+    const finish = () => {
+      if (run !== this.precompileRun) return
+      this.precompileRun += 1
+      window.clearTimeout(guard)
+      if (this.precompileState === 'running') this.precompileState = 'idle'
+      window.dispatchEvent(new CustomEvent('t3d:precompile-done'))
+    }
+    // 编译万一卡住，不能让视口一直黑着
+    const guard = window.setTimeout(finish, 15000)
+    pipeline.precompile(this.scene, camera, usedEffects)
+      .catch(error => console.warn('[viewport] 着色器预编译失败', error))
+      .finally(finish)
   }
 
   dispose() {
@@ -387,7 +423,7 @@ export class EditorViewport {
         else this.rig.setView(state.cameraView)
       }
     }
-    this.sync()
+    measureCost('sync', () => this.sync())
     this.syncPointerLock(false)
   }
 
@@ -1251,10 +1287,11 @@ export class EditorViewport {
 
   private boot = async () => {
     try {
+      const initStart = performance.now()
       await this.renderer.init()
       if (this.disposed) return
       this.renderer.info.autoReset = false
-      bindTextureRenderer(this.renderer)
+      bindTextureRenderer(this.renderer, performance.now() - initStart)
       const backend = this.renderer.backend as { isWebGPUBackend?: boolean }
       const label = translate(backend.isWebGPUBackend ? 'log.webgpu' : 'log.webgl2')
       useEditorStore.getState().setRenderBackend(label)
@@ -1384,13 +1421,19 @@ export class EditorViewport {
         const outlineTargets = editor.playState === 'stopped' ? this.selectionRoots : []
         const flashTarget = editor.playState === 'stopped' ? this.partFlashTarget : null
         const hasOutline = outlineTargets.length > 0 || flashTarget !== null
-        measureCost('render', () => {
-          if (!this.picture?.usesEffects(picture, hasOutline)) {
+        const usesEffects = Boolean(this.picture?.usesEffects(picture, hasOutline))
+        const drawFrame = () => {
+          if (!usesEffects) {
             this.renderer.render(this.scene, camera)
           } else {
             this.picture?.render(this.scene, camera, picture, this.width, this.height, outlineTargets, flashTarget)
           }
-        })
+        }
+        if (this.precompileState === 'pending') {
+          measureCost('precompile', () => this.beginPrecompile(drawFrame, camera, usesEffects))
+        } else if (this.precompileState !== 'running') {
+          measureCost('render', drawFrame)
+        }
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error)
         console.error(error)

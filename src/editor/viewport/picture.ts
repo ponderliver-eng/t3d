@@ -44,6 +44,7 @@ interface SsgiUniforms {
 
 export class ScenePicturePipeline {
   private pipeline: RenderPipeline | null = null
+  private scenePass: ReturnType<typeof pass> | null = null
   private bloomNode: BloomUniforms | null = null
   private dofNode: DofUniforms | null = null
   private ssrNode: SsrUniforms | null = null
@@ -108,12 +109,28 @@ export class ScenePicturePipeline {
     }
   }
 
+  /**
+   * 预编译场景里所有材质的着色器管线（并行、不阻塞主线程），避免首次绘制时逐条现编译。
+   * 必须在按同一组画面设置绘制过一帧之后调用：离屏图的格式要等那一帧才定下来，管线才对得上。
+   */
+  async precompile(scene: Scene, camera: Camera, usedEffects: boolean): Promise<void> {
+    const target = usedEffects && !this.failed
+      ? this.scenePass as unknown as { compileAsync?: (renderer: WebGPURenderer) => Promise<void> } | null
+      : null
+    if (target && typeof target.compileAsync === 'function') {
+      await target.compileAsync(this.renderer)
+      return
+    }
+    await this.renderer.compileAsync(scene, camera)
+  }
+
   dispose() {
     this.outlineNode?.dispose()
     this.outlineNode = null
     this.clearDenoise()
     this.pipeline?.dispose()
     this.pipeline = null
+    this.scenePass = null
   }
 
   private rebuild(scene: Scene, camera: Camera, picture: ScenePicture, key: string) {
@@ -123,6 +140,7 @@ export class ScenePicturePipeline {
     this.pipeline?.dispose()
     // 画布开了 4 倍采样。这张离屏图若跟着多重采样，深度不能再被反射读取，射线没有落点。抗锯齿由后面的 SMAA 负责。
     const scenePass = pass(scene, camera, { samples: 0 })
+    this.scenePass = scenePass
     const needsBuffers = picture.ao || picture.ssr || picture.ssgi
     if (needsBuffers) {
       // 编辑器网格等半透明辅助物没有金属度和粗糙度，默认不混合会把整张地面覆写成 0。
