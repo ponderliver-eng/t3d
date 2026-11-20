@@ -586,7 +586,8 @@ async function warmAssets(token: number, metas: AssetMeta[], document: ProjectDo
   const gpuAfter = gpuCounters()
   if (!warmCurrent(token)) return
   const costText = costs.filter(row => row.ms >= 1).slice(0, 6).map(row => `${row.id} ${Math.round(row.ms)}ms`).join(' · ')
-  useEditorStore.getState().log('info', translate('log.openProfile', {
+  // 细节只进开发者工具控制台，日志面板只留一行时间线
+  console.debug(translate('log.openProfile', {
     costs: costText || '-',
     shaders: gpuAfter.shaders - gpuBefore.shaders,
     pipelines: gpuAfter.pipelines - gpuBefore.pipelines,
@@ -596,15 +597,13 @@ async function warmAssets(token: number, metas: AssetMeta[], document: ProjectDo
     earlyShaders: gpuBefore.shaders,
     earlyPipelines: gpuBefore.pipelines + gpuBefore.asyncPipelines,
   }))
-  const pipelineRecords = pipelineRecordsSince(pipelineMark)
-  const pipelineText = describePipelines(pipelineRecords)
-  if (pipelineText) useEditorStore.getState().log('info', pipelineText)
-  for (const line of describePipelineDiffs(pipelineRecords)) useEditorStore.getState().log('info', `管线差异：${line}`)
-  const shaderRun = compareShadersWithLastRun()
-  if (shaderRun.unique > 0) {
-    useEditorStore.getState().log('info', shaderRun.hadPrevious
-      ? `着色器文本：本次启动以来共 ${shaderRun.unique} 份不同文本，其中 ${shaderRun.same} 份与上次记录一字不差（一样才可能命中显卡磁盘缓存）`
-      : `着色器文本：本次启动以来共 ${shaderRun.unique} 份不同文本，还没有上次的记录可比，下次打开时给出对比`)
+  if (import.meta.env.DEV) {
+    const pipelineRecords = pipelineRecordsSince(pipelineMark)
+    const pipelineText = describePipelines(pipelineRecords)
+    if (pipelineText) console.debug(pipelineText)
+    for (const line of describePipelineDiffs(pipelineRecords)) console.debug(`管线差异：${line}`)
+    const shaderRun = compareShadersWithLastRun()
+    if (shaderRun.unique > 0) console.debug(`着色器文本：共 ${shaderRun.unique} 份不同文本，其中 ${shaderRun.same} 份与上次记录相同`)
   }
   useEditorStore.getState().log('info', translate('log.openTimeline', {
     read: Math.round(timeline.phase('read')),
