@@ -174,7 +174,8 @@ export function clipNamesFor(assetId: string | null): string[] {
   const template = templates.get(assetId)
   if (template) return template.clips.map(clip => clip.name)
   const asset = useAssetStore.getState().assets[assetId]
-  if (asset && 'clipCatalog' in asset && asset.clipCatalog?.length) {
+  // 目录已记录过（哪怕是空的）就以它为准，不为了列片段去加载整个文件
+  if (asset && 'clipCatalog' in asset && asset.clipCatalog) {
     return asset.clipCatalog.map(entry => entry.name)
   }
   if (asset && (asset.kind === 'model' || asset.kind === 'animation')) {
@@ -398,8 +399,22 @@ function cloneMaterialWithSlotToken(material: Material): Material {
   return next
 }
 
+const artifactLoaded = new Set<string>()
+
+/** 这份模板是不是直接读成品得到的。打开工程时用它把漏记的 artifactReady 补上。 */
+export function modelLoadedFromArtifact(assetId: string): boolean {
+  return artifactLoaded.has(assetId)
+}
+
 function loadCachedOrSource(asset: FileAsset): Promise<ModelTemplate> {
-  return loadArtifact(asset).then(template => template ?? loadFromSource(asset))
+  return loadArtifact(asset).then(template => {
+    if (template) {
+      artifactLoaded.add(asset.id)
+      return template
+    }
+    artifactLoaded.delete(asset.id)
+    return loadFromSource(asset)
+  })
 }
 
 function loadFromSource(asset: FileAsset): Promise<ModelTemplate> {
@@ -663,7 +678,7 @@ function rememberClipCatalog(assetId: string, clips: AnimationClip[]) {
     name: clip.name || `Animation_${index + 1}`,
     duration: clip.duration,
   })).filter(entry => entry.name)
-  if (catalog.length === 0) return
+  // 没有片段也要记一份空目录，否则每次列片段都会把这个文件重新加载一遍
   for (let index = 0; index < clips.length; index += 1) {
     if (!clips[index]?.name) clips[index]!.name = catalog[index]?.name ?? clips[index]!.name
   }

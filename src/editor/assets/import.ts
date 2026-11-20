@@ -231,10 +231,18 @@ export async function warmCachedAsset(asset: FileAsset): Promise<boolean> {
     if (!useAssetStore.getState().assets[asset.id]) {
       useAssetStore.getState().add(asset)
     }
-    if (asset.kind === 'model' || asset.kind === 'animation') await loadModelTemplate(asset)
+    if (asset.kind === 'model' || asset.kind === 'animation') {
+      const template = await loadModelTemplate(asset)
+      // 直接拷进工程目录的纯动画文件一开始按模型登记，这里改回动画，之后打开工程就不再为它出缩略图
+      if (asset.kind === 'model' && !hasMesh(template.scene) && template.clips.length > 0) {
+        useAssetStore.getState().patch(asset.id, { kind: 'animation' })
+        void patchAssetMeta(asset.id, { kind: 'animation' })
+        return true
+      }
+    }
     if (asset.kind === 'texture') await loadTextureAsset(asset)
     if (asset.kind === 'environment') await loadEnvironmentAsset(asset)
-    if (!asset.thumb) await attachThumb(asset.id)
+    if (asset.thumb == null) await attachThumb(asset.id)
     return true
   } catch (error) {
     useAssetStore.getState().remove(asset.id)
@@ -332,7 +340,14 @@ async function attachThumb(id: string, force = false) {
   }
   if (asset.kind === 'model') {
     const template = getModelTemplate(id)
-    if (template) thumb = renderModelThumb(template.scene)
+    if (template) {
+      thumb = renderModelThumb(template.scene)
+      // 出图失败记成空串，表示试过了：打开工程时不再为了补缩略图反复加载这个模型
+      if (!thumb && asset.thumb == null) {
+        useAssetStore.getState().patch(id, { thumb: '' })
+        await updateCachedThumb(id, '').catch(() => undefined)
+      }
+    }
   }
   if (!thumb) return
   useAssetStore.getState().patch(id, { thumb })

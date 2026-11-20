@@ -72,6 +72,8 @@ export function renderModelThumb(root: Object3D): string | null {
   } catch {
     return null
   } finally {
+    // 浏览器同时只留十几个上下文，批量出图时不主动释放会导致后面的缩略图全部失败
+    renderer?.forceContextLoss()
     renderer?.dispose()
   }
 }

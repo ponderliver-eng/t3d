@@ -26,7 +26,7 @@ import { ALL_LAYERS_VISIBLE_MASK, ensureLayers, ensureTags } from '../project/ta
 import { normalizePicture, type SceneNode } from '../scene/types'
 import { serializeNavMeshes } from '../../capabilities/navigation/archive'
 import { collectUiImageIds } from '../../runtime/ui/tree'
-import { releaseModel } from './models'
+import { modelLoadedFromArtifact, releaseModel } from './models'
 import { compareShadersWithLastRun, gpuCounters, pipelineRecordCount, pipelineRecordsSince, startCostCapture, stopCostCapture, type PipelineRecord } from '../../runtime/frameProfile'
 import { releaseTexture, rendererInitMs, rendererReadyAt, setWarmBumpDeferred, textureLoadBytes, textureLoadSource, textureReadMs, unityMrLoadInfo, warmUnityMetallicRoughness } from './textures'
 import { ASSETS_ROOT, normalizeDir } from './folders'
@@ -449,13 +449,23 @@ async function warmAssets(token: number, metas: AssetMeta[], document: ProjectDo
   const ordered = [...metas].sort((a, b) => rank(a, referenced) - rank(b, referenced))
   const initialAssets: FileAsset[] = []
   const warmQueue: { meta: AssetMeta, asset: FileAsset }[] = []
+  const unreferencedWarm: string[] = []
   for (const rawMeta of ordered) {
     const cleanMeta = stripRedundantThumb(rawMeta)
     const asset = createFileAssetFromMeta(cleanMeta)
     initialAssets.push(asset)
-    if (referenced.has(cleanMeta.id) || needsMetadataDiscovery(cleanMeta)) {
+    if (referenced.has(cleanMeta.id)) {
       warmQueue.push({ meta: cleanMeta, asset })
+    } else if (needsMetadataDiscovery(cleanMeta)) {
+      warmQueue.push({ meta: cleanMeta, asset })
+      unreferencedWarm.push(`${cleanMeta.name}（${discoveryReason(cleanMeta)}）`)
     }
+  }
+  // 场景没用到却要加载的资源：正常只在导入后第一次打开出现，反复出现说明登记信息没存住
+  if (unreferencedWarm.length > 0) {
+    const shown = unreferencedWarm.slice(0, 8).join('、')
+    const more = unreferencedWarm.length > 8 ? ` 等 ${unreferencedWarm.length} 个` : ''
+    useEditorStore.getState().log('info', `打开时补登记了场景未引用的资源：${shown}${more}`)
   }
   setWarmBumpDeferred(true)
   useAssetStore.getState().addMany(initialAssets)
@@ -490,6 +500,10 @@ async function warmAssets(token: number, metas: AssetMeta[], document: ProjectDo
           if (ok && cleanMeta.kind === 'texture' && unityMrIds.has(cleanMeta.id)) {
             await warmUnityMetallicRoughness(cleanMeta.id)
           }
+        }
+        // 成品在盘上、登记却写着没有：补上，否则这个文件每次打开都会被重新加载
+        if (ok && !cleanMeta.artifactReady && (cleanMeta.kind === 'model' || cleanMeta.kind === 'animation') && modelLoadedFromArtifact(cleanMeta.id)) {
+          void patchAssetMeta(cleanMeta.id, { artifactReady: true }).catch(() => undefined)
         }
         const stepEnd = performance.now()
         const stepElapsed = stepEnd - stepStart
@@ -849,10 +863,17 @@ function stripRedundantThumb(meta: AssetMeta): AssetMeta {
 }
 
 function needsMetadataDiscovery(meta: AssetMeta): boolean {
-  if (meta.kind === 'model') return !meta.artifactReady || !meta.thumb
+  // 缩略图为 null 才算没出过；空串表示出图失败过，不再每次打开都重试
+  if (meta.kind === 'model') return !meta.artifactReady || meta.thumb == null
   if (meta.kind === 'animation') return !meta.artifactReady || !meta.clipCatalog?.length
   if (meta.kind === 'texture') return false
   return false
+}
+
+function discoveryReason(meta: AssetMeta): string {
+  if (!meta.artifactReady) return '缺成品'
+  if (meta.kind === 'animation') return '缺片段目录'
+  return '缺缩略图'
 }
 
 function createFileAssetFromMeta(meta: AssetMeta): FileAsset {
@@ -866,7 +887,7 @@ function createFileAssetFromMeta(meta: AssetMeta): FileAsset {
     url: '',
     ...(meta.humanoidAvatar ? { humanoidAvatar: meta.humanoidAvatar } : {}),
     ...(meta.humanoidRetarget ? { humanoidRetarget: meta.humanoidRetarget } : {}),
-    ...(meta.clipCatalog?.length ? { clipCatalog: meta.clipCatalog } : {}),
+    ...(meta.clipCatalog ? { clipCatalog: meta.clipCatalog } : {}),
     ...(typeof meta.importScale === 'number' ? { importScale: meta.importScale } : {}),
     ...(meta.sockets?.length ? { sockets: meta.sockets } : {}),
     ...(meta.materialHint ? { materialHint: meta.materialHint } : {}),
