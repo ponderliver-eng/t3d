@@ -131,14 +131,40 @@ const LEAN_GAIN = 0.4
 const CURL_GAIN = 1.3
 
 /**
- * 起落包络（每对顶点波一组）：ka/kb 决定「涨落先后」相位图的空间尺度（越小，同涨同落的区域越大），
- * omega 是涨落的快慢（弧度/秒，周期 = 2π / omega），low/high 是振幅倍率的最低和最高。
+ * 浪群包络（每对顶点波一组）：一个个顺风移动的「能量团」，low/high 是团外/团内的振幅倍率。
+ * 团的尺度和速度由这一对波自己的平均波长算出（见 swellGroupInfo），这里只放每组的随机偏移和幅度。
  */
 const SWELL_GROUPS = [
-  { ka: 0.075, kb: 0.05, omega: 0.95, offset: 0.0, low: 0.2, high: 1.4 },
-  { ka: 0.11, kb: 0.07, omega: 1.25, offset: 2.1, low: 0.25, high: 1.35 },
-  { ka: 0.16, kb: 0.1, omega: 1.6, offset: 4.4, low: 0.5, high: 1.2 },
+  { offset: 0.0, low: 0.2, high: 1.4 },
+  { offset: 2.1, low: 0.25, high: 1.35 },
+  { offset: 4.4, low: 0.5, high: 1.2 },
 ]
+
+/** 能量团顺风方向的间距（以波长计）：1.6 表示团内大约同时只有一道明显的浪峰。 */
+const PACKET_SPACING = 1.6
+/** 能量团沿浪脊方向的尺度（以波长计）。 */
+const PACKET_WIDTH = 3.5
+/**
+ * 浪峰相对能量团的超越速度（以浪峰速度计）。真实深水波是 0.5（能量以浪峰一半的速度前进）；
+ * 取 0.65 让一道浪的完整过程稍短一些。再乘「起落频率」参数。
+ */
+const PACKET_OVERTAKE = 0.65
+/** 团的前后不对称：浪峰从团后缘进入时慢慢涨起，到前缘较快地塌下去（破碎后能量迅速散掉）。0 = 对称。 */
+const PACKET_SKEW = 0.55
+
+function swellGroupInfo(group: number) {
+  const a = VERTEX_WAVES[group * 2]
+  const b = VERTEX_WAVES[group * 2 + 1] ?? a
+  const length = (a.length + b.length) / 2
+  const k = (Math.PI * 2) / length
+  const speed = Math.sqrt(GRAVITY / k)
+  return {
+    crestSpeed: speed,
+    overtake: speed * PACKET_OVERTAKE,
+    kAlong: (Math.PI * 2) / (length * PACKET_SPACING),
+    kAcross: (Math.PI * 2) / (length * PACKET_WIDTH),
+  }
+}
 
 /**
  * 短波，填补顶点长波与法线贴图之间的尺度空档。默认只在片元里参与法线与泡沫；
@@ -371,18 +397,25 @@ export function createWaterMaterial(options: WaterMaterialOptions): WaterMateria
   let crestActive: TslNode = float(0.0)
 
   if (options.waves) {
-    // 起落包络：每一对波的振幅在原地随时间涨落（周期 4 ~ 7 秒），各处涨落的先后由一张缓慢变化的相位图错开。
-    // 浪峰以自己的速度往前走，走进「正在落」的区域就矮下去变平，走进「正在涨」的区域又鼓起来，
-    // 所以看到的是浪走一段、平掉、前面又起来，而不是同一道浪脊一路平移到头。
-    // 三对波用三张不同的相位图和节奏，避免整片水面同涨同落。
+    // 浪群包络：振幅不是在原地随机涨落，而是一个个「能量团」顺风往前走，速度比浪峰慢。
+    // 浪峰从团的后缘追进来 -> 慢慢涨高变陡 -> 在团中间到顶（起沫）-> 从前缘穿出去时较快地塌平，
+    // 所以盯着一道浪能看到「涨起、推进、破碎、消散」的完整过程；而能量团本身在持续往前移动，
+    // 后面的浪峰接着追进来，重复这个过程，这就是推进感。
+    // 团的位置 = 跟着浪峰走（uWaveTime）再按超越速度往后退（uSwellTime，已含「起落频率」）：
+    // 起落频率为 0 时团和浪峰同速，浪高不再变化；越大浪峰穿过一个团越快。
+    // 三对波各有自己的团（尺度、速度随波长变），不会整片水面同涨同落。
     const flowOrthoDir = vec2(uFlowDir.y.negate(), uFlowDir.x)
     const swellAt = (xz: TslNode, group: number): TslNode => {
       const cfg = SWELL_GROUPS[group]
-      const u = dot(xz, uFlowDir)
-      const v = dot(xz, flowOrthoDir)
-      const phi = sin(u.mul(cfg.ka).add(sin(v.mul(cfg.kb).add(cfg.offset)).mul(1.4))).mul(2.2)
-        .add(sin(v.mul(cfg.ka * 0.7).sub(u.mul(cfg.kb * 0.6)).add(cfg.offset * 2)).mul(1.6))
-      const pulse = smoothstep(float(-0.75), float(0.75), sin(uSwellTime.mul(cfg.omega).sub(phi).add(cfg.offset)))
+      const info = swellGroupInfo(group)
+      const along = dot(xz, uFlowDir).sub(uWaveTime.mul(info.crestSpeed)).add(uSwellTime.mul(info.overtake))
+      const across = dot(xz, flowOrthoDir)
+      // 沿浪脊方向把团错开、弯曲，避免排成整齐的横条
+      const stagger = sin(across.mul(info.kAcross).add(cfg.offset)).mul(1.5)
+        .add(sin(across.mul(info.kAcross * 0.43).sub(along.mul(info.kAlong * 0.21)).add(cfg.offset * 2)).mul(1.0))
+      const psi = along.mul(info.kAlong).add(stagger)
+      // 浪峰相对团是往前走的（对同一道浪峰，psi 随时间增大），减去 skew·sin(psi) 让包络沿 psi 增大方向「慢涨快落」
+      const pulse = smoothstep(float(-0.75), float(0.75), sin(psi.sub(sin(psi).mul(PACKET_SKEW))))
       return mix(float(cfg.low), float(cfg.high), pulse)
     }
     const groupOf = (i: number) => Math.min(SWELL_GROUPS.length - 1, Math.floor(i / 2))

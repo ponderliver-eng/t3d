@@ -33,7 +33,7 @@ export interface WaterSpec {
   crestFoamThreshold: number
   /** 浪峰泡沫拖尾时长倍率（0 = 泡沫只贴在浪峰上，越大浪峰走过后留得越久）。 */
   foamTrail: number
-  /** 浪的起落频率倍率（1 = 一个浪从涨起到平掉约 4 ~ 7 秒；越大起落越快，0 = 浪高不随时间变化）。 */
+  /** 浪的起落频率倍率：浪峰穿过一个浪群能量团的快慢（越大一道浪从涨起到平掉越快，0 = 浪高不随时间变化）。 */
   swellRate: number
   /** 调试视图：只看波高 / 挤压值 / 泡沫遮罩，用于调参，不影响性能档位。 */
   debugView: WaterDebugView
