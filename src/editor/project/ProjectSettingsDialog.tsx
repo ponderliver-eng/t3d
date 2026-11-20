@@ -25,6 +25,7 @@ export function openProjectSettings() {
 
 const COPY: Record<CapabilityId, { name: MessageKey, detail: MessageKey }> = {
   physics: { name: 'physics.enable', detail: 'projectSettings.physicsDetail' },
+  buoyancy: { name: 'buoyancy.title', detail: 'projectSettings.buoyancyDetail' },
   navigation: { name: 'navigation.enable', detail: 'projectSettings.navigationDetail' },
   particles: { name: 'particles.enable', detail: 'projectSettings.particlesDetail' },
   sky: { name: 'sky.enable', detail: 'projectSettings.skyDetail' },

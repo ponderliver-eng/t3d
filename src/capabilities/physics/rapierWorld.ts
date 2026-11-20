@@ -1,5 +1,5 @@
 import RAPIER from '@dimforge/rapier3d-compat'
-import type { CharacterMove, CharacterMoveResult, PhysicsBodyDesc, PhysicsPose, PhysicsWorld } from './world'
+import type { CharacterMove, CharacterMoveResult, PhysicsBodyDesc, PhysicsDynamicBodyState, PhysicsPose, PhysicsWorld } from './world'
 
 const STEP = 1 / 60
 const CLIMB = 46 * Math.PI / 180
@@ -78,9 +78,17 @@ export async function createRapierWorld(): Promise<PhysicsWorld> {
         bodies.delete(id)
       }
     },
-    step(dt) {
+    step(dt, beforeSubstep) {
       accumulator = Math.min(accumulator + dt, STEP * 4)
       while (accumulator >= STEP) {
+        // Rapier 的 addForce / addForceAtPoint / addTorque 是持久力，step() 不会自动清零；
+        // 每个子步前必须先清空，否则每帧叠加且离开水面后依然受力飞走。
+        for (const live of bodies.values()) {
+          if (live.kind !== 'dynamic') continue
+          live.body.resetForces(false)
+          live.body.resetTorques(false)
+        }
+        beforeSubstep?.(STEP)
         world.step()
         accumulator -= STEP
       }
@@ -147,6 +155,36 @@ export async function createRapierWorld(): Promise<PhysicsWorld> {
         })
       }
       return poses
+    },
+    bodyState(id): PhysicsDynamicBodyState | null {
+      const live = bodies.get(id)
+      if (!live || live.kind !== 'dynamic') return null
+      const position = live.body.translation()
+      const rotation = live.body.rotation()
+      const linvel = live.body.linvel()
+      const angvel = live.body.angvel()
+      return {
+        id,
+        position: [position.x, position.y, position.z],
+        rotation: [rotation.x, rotation.y, rotation.z, rotation.w],
+        linvel: [linvel.x, linvel.y, linvel.z],
+        angvel: [angvel.x, angvel.y, angvel.z],
+        mass: live.body.mass(),
+      }
+    },
+    applyForceAtPoint(id, force, worldPoint) {
+      const live = bodies.get(id)
+      if (!live || live.kind !== 'dynamic') return
+      live.body.addForceAtPoint(
+        { x: force[0], y: force[1], z: force[2] },
+        { x: worldPoint[0], y: worldPoint[1], z: worldPoint[2] },
+        true,
+      )
+    },
+    applyTorque(id, torque) {
+      const live = bodies.get(id)
+      if (!live || live.kind !== 'dynamic') return
+      live.body.addTorque({ x: torque[0], y: torque[1], z: torque[2] }, true)
     },
     dispose() {
       controller.free()

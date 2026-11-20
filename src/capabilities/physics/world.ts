@@ -28,6 +28,12 @@ export interface PhysicsPose {
   rotation: [number, number, number, number]
 }
 
+export interface PhysicsDynamicBodyState extends PhysicsPose {
+  linvel: Vec3
+  angvel: Vec3
+  mass: number
+}
+
 /** 胶囊角色这一帧想走的位移。position 是脚底。 */
 export interface CharacterMove {
   id: string
@@ -47,8 +53,14 @@ export interface CharacterMoveResult {
 export interface PhysicsWorld {
   setGravity(gravity: Vec3): void
   sync(bodies: PhysicsBodyDesc[]): void
-  step(dt: number): void
+  step(dt: number, beforeSubstep?: (subDt: number) => void): void
   dynamicPoses(): PhysicsPose[]
+  /** 读取动态刚体的当前位姿、线速度、角速度与总质量（不存在或非动态刚体返回 null）。 */
+  bodyState(id: string): PhysicsDynamicBodyState | null
+  /** 在世界坐标 point 处对动态刚体施加持续力（牛顿），会产生浮力与倾斜力矩。 */
+  applyForceAtPoint(id: string, force: Vec3, worldPoint: Vec3): void
+  /** 对动态刚体施加力矩（牛顿·米），用于水中角阻尼。 */
+  applyTorque(id: string, torque: Vec3): void
   /** 运动学胶囊贴着碰撞体走。陡坡会滑下，站在运动学平台上会跟着平台。 */
   moveCharacters(moves: CharacterMove[]): CharacterMoveResult[]
   dispose(): void

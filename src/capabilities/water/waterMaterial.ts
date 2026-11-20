@@ -39,6 +39,22 @@ import {
 } from 'three/tsl'
 import type { WaterSpec } from './defaults'
 import { defaultWaterCausticsTexture, defaultWaterFoamTexture, defaultWaterNormalTexture } from './proceduralTextures'
+import {
+  AMP_GAIN,
+  BEND_PRIMARY,
+  BEND_SECONDARY,
+  CREST_ROUND,
+  CURL_GAIN,
+  DETAIL_WAVES,
+  GRAVITY,
+  LEAN_GAIN,
+  MID_WAVE_COUNT,
+  PACKET_SKEW,
+  PINCH_GAIN,
+  SWELL_GROUPS,
+  VERTEX_WAVES,
+  swellGroupInfo,
+} from './waves'
 
 export interface WaterMaterialOptions {
   /** 是否开启真实平面反射（关闭时不创建 reflector，真正省掉整趟离屏反射渲染）。 */
@@ -82,101 +98,16 @@ export const FOLLOW_GRID = {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type TslNode = any
 
-interface WaveDef {
-  /** 波长 (m)。 */
-  length: number
-  /** 相对主风向的偏角 (度)。 */
-  angle: number
-  /** 占浪高的比例。 */
-  weight: number
-  /** 该波可占用的水平压缩份额（所有顶点波之和必须 < 1）。 */
-  share: number
-  phase: number
-}
-
-const GRAVITY = 9.81
-/** 浪尖圆角量 ε（见 profileOf）：越大浪尖越圆。0.03 对应浪尖两侧各约 0.35 弧度相位的圆弧。 */
-const CREST_ROUND = 0.03
-/** 多道波很少同相叠加，整体补偿一点振幅，让「浪高」参数的观感与之前接近。 */
-const AMP_GAIN = 1.25
-const PINCH_GAIN = 2.2
-
-/**
- * 位移顶点的长波。方向围绕主风向散开，越短的波散得越开。速度按深水色散 ω = √(g·k)。
- * 每两道为一对，共用一个起落包络（见 SWELL_GROUPS）。
- */
-const VERTEX_WAVES: WaveDef[] = [
-  { length: 41, angle: -8, weight: 0.26, share: 0.09, phase: 0.0 },
-  { length: 33, angle: 7, weight: 0.22, share: 0.10, phase: 1.7 },
-  { length: 22, angle: -19, weight: 0.17, share: 0.12, phase: 4.1 },
-  { length: 17, angle: 16, weight: 0.14, share: 0.13, phase: 2.9 },
-  { length: 11, angle: -31, weight: 0.12, share: 0.14, phase: 5.3 },
-  { length: 7.5, angle: 27, weight: 0.09, share: 0.14, phase: 0.8 },
-]
-
 /**
  * 压缩份额预算：长波 0.72 + 中尺度波 0.08 = 0.80。
  * 包络放大上限 1.1、浪脊弯曲带来的顺波向相位梯度上限约 1.1，0.80 × 1.1 × 1.1 < 1，所以聚拢本身永不自交。
  * 「浪尖卷曲」的水平位移不在这个预算内：调大后，几道大浪同相叠加的地方允许前脸翻过去（那正是钩形）。
  */
 
-/** 浪脊弯曲：相位扰动的最大幅度（弧度）与沿浪脊方向的周期（波长的倍数）。 */
-const BEND_PRIMARY = { amount: 1.3, amountSolo: 1.6, span: 3.1 }
-const BEND_SECONDARY = { amount: 0.7, span: 1.7, along: 0.25, waves: 4 }
-/**
- * 浪尖卷曲（单道波的剖面形状）由两部分组成，共用一个参数：
- * LEAN_GAIN 是高度剖面的前倾系数；CURL_GAIN 是把浪峰上半部往前推的水平位移倍率（相对该波的聚拢量）。
- */
-const LEAN_GAIN = 0.4
-const CURL_GAIN = 1.3
-
-/**
- * 浪群包络（每对顶点波一组）：一个个顺风移动的「能量团」，low/high 是团外/团内的振幅倍率。
- * 团的尺度和速度由这一对波自己的平均波长算出（见 swellGroupInfo），这里只放每组的随机偏移和幅度。
- */
-const SWELL_GROUPS = [
-  { offset: 0.0, low: 0.2, high: 1.4 },
-  { offset: 2.1, low: 0.25, high: 1.35 },
-  { offset: 4.4, low: 0.5, high: 1.2 },
-]
-
-/** 能量团顺风方向的间距（以波长计）：1.6 表示团内大约同时只有一道明显的浪峰。 */
-const PACKET_SPACING = 1.6
-/** 能量团沿浪脊方向的尺度（以波长计）。 */
-const PACKET_WIDTH = 3.5
-/**
- * 浪峰相对能量团的超越速度（以浪峰速度计）。真实深水波是 0.5（能量以浪峰一半的速度前进）；
- * 取 0.65 让一道浪的完整过程稍短一些。再乘「起落频率」参数。
- */
-const PACKET_OVERTAKE = 0.65
-/** 团的前后不对称：浪峰从团后缘进入时慢慢涨起，到前缘较快地塌下去（破碎后能量迅速散掉）。0 = 对称。 */
-const PACKET_SKEW = 0.55
-
-function swellGroupInfo(group: number) {
-  const a = VERTEX_WAVES[group * 2]
-  const b = VERTEX_WAVES[group * 2 + 1] ?? a
-  const length = (a.length + b.length) / 2
-  const k = (Math.PI * 2) / length
-  const speed = Math.sqrt(GRAVITY / k)
-  return {
-    crestSpeed: speed,
-    overtake: speed * PACKET_OVERTAKE,
-    kAlong: (Math.PI * 2) / (length * PACKET_SPACING),
-    kAcross: (Math.PI * 2) / (length * PACKET_WIDTH),
-  }
-}
-
 /**
  * 短波，填补顶点长波与法线贴图之间的尺度空档。默认只在片元里参与法线与泡沫；
  * 极致档把前两道（MID_WAVE_COUNT）也加入顶点位移，让近处的浪体轮廓有中尺度起伏。
  */
-const MID_WAVE_COUNT = 2
-const DETAIL_WAVES: WaveDef[] = [
-  { length: 4.9, angle: -44, weight: 0.055, share: 0.04, phase: 3.6 },
-  { length: 3.3, angle: 39, weight: 0.038, share: 0.04, phase: 1.1 },
-  { length: 2.2, angle: -58, weight: 0.026, share: 0, phase: 5.9 },
-  { length: 1.5, angle: 12, weight: 0.018, share: 0, phase: 2.4 },
-]
 
 /** 泡沫拖尾回看：time 为回看秒数（再乘「泡沫拖尾」参数），keep 为那一刻泡沫剩余的比例。 */
 const FOAM_TRAIL_TAPS = [

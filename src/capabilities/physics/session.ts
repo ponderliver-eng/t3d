@@ -54,12 +54,14 @@ export function tickPhysics(dt: number, resolveObject?: (id: string) => Object3D
     boot()
     return
   }
-  world.setGravity(state.picture.gravity ?? [0, -9.81, 0])
-  world.sync(collectBodies(resolveObject))
-  for (const ext of extensions) {
-    ext.step({ dt, world, resolveObject })
-  }
-  world.step(dt)
+  const currentWorld = world
+  currentWorld.setGravity(state.picture.gravity ?? [0, -9.81, 0])
+  currentWorld.sync(collectBodies(resolveObject))
+  currentWorld.step(dt, subDt => {
+    for (const ext of extensions) {
+      ext.step({ dt: subDt, world: currentWorld, resolveObject })
+    }
+  })
   const poses = world.dynamicPoses()
   if (resolveObject) {
     for (const pose of poses) {

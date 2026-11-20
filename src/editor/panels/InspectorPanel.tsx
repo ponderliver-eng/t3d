@@ -35,6 +35,8 @@ import {
 import { EffectCard } from '../../capabilities/particles/EffectCard'
 import { NavigationCard, SceneNavigationCard } from '../../capabilities/navigation/NavigationCards'
 import { SkyCard } from '../../capabilities/sky/SkyCard'
+import { BuoyancyCard } from '../../capabilities/buoyancy/BuoyancyCard'
+import { BUOYANCY_CAPABILITY_ID, defaultBuoyancy } from '../../capabilities/buoyancy/defaults'
 import { WaterCard } from '../../capabilities/water/WaterCard'
 import { audioMixPatch, readAudioMix } from '../../runtime/audio'
 import {
@@ -368,6 +370,7 @@ export default function InspectorPanel() {
       <RulesCard node={node} disabled={locked} />
       <PackComponentCards node={node} disabled={locked} />
       <PhysicsCard node={node} disabled={locked} />
+      <BuoyancyCard node={node} disabled={locked} />
       <NavigationCard node={node} disabled={locked} />
       <WaterCard node={node} disabled={locked} />
 
@@ -2047,6 +2050,27 @@ function AddComponentPicker({ node, disabled }: { node: SceneNode, disabled: boo
           useInspectorMemory.getState().setOpen(`node:${node.id}`, 'physics', true)
         },
       })
+      if (capabilityEnabled(capabilities, BUOYANCY_CAPABILITY_ID)) {
+        options.push({
+          id: BUOYANCY_CAPABILITY_ID,
+          cardId: BUOYANCY_CAPABILITY_ID,
+          group: 'world',
+          label: t('buoyancy.title'),
+          color: '#29b6f6',
+          added: Boolean(node.capabilities?.[BUOYANCY_CAPABILITY_ID]),
+          apply: () => {
+            const nextCapabilities = { ...(node.capabilities ?? {}), [BUOYANCY_CAPABILITY_ID]: defaultBuoyancy() }
+            const nextPhysics = node.physics
+              ? { ...node.physics, body: 'dynamic' as const }
+              : { ...defaultNodePhysics(node.kind), body: 'dynamic' as const }
+            commitNode(node.id, t('buoyancy.title'), {
+              physics: nextPhysics,
+              capabilities: nextCapabilities,
+            })
+            useInspectorMemory.getState().setOpen(`node:${node.id}`, BUOYANCY_CAPABILITY_ID, true)
+          },
+        })
+      }
     }
     if (navEnabled) {
       options.push({

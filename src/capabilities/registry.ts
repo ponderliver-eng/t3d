@@ -20,6 +20,7 @@ export interface CapabilityManifest {
 /** 官方能力包清单。新增一项就在这里登记，并在 src/capabilities/<id>/ 下放数据和实现。 */
 export const CAPABILITIES = [
   { id: 'physics', defaultEnabled: true, category: 'physics' },
+  { id: 'buoyancy', defaultEnabled: true, category: 'physics', dependencies: ['physics'], loadRuntime: () => import('./buoyancy/session') },
   { id: 'navigation', defaultEnabled: true, category: 'physics' },
   { id: 'particles', defaultEnabled: false, category: 'scene-object' },
   { id: 'sky', defaultEnabled: false, category: 'environment', loadRuntime: () => import('./sky/session') },

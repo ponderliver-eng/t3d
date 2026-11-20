@@ -21,6 +21,13 @@ import { registerBeforeRenderHook, type ViewportRenderContext } from '../../edit
 import { capabilityEnabled, type CapabilityRuntimeModule } from '../registry'
 import { WATER_CAPABILITY_ID, normalizeWater, type WaterQuality, type WaterSpec } from './defaults'
 import { FOLLOW_GRID, createWaterMaterial, waterVariantKey, type WaterMaterialHandle, type WaterMaterialOptions } from './waterMaterial'
+import { evaluateWaterWave } from './waves'
+
+export interface WaterSurfaceSample {
+  height: number
+  normal: [number, number, number]
+  waterNodeId: string
+}
 
 interface BoundMesh {
   kind: 'owned' | 'hosted'
@@ -33,6 +40,9 @@ interface BoundMesh {
   waveTime: number
   swellTime?: number
   specRef?: unknown
+  spec?: WaterSpec
+  worldPos?: Vector3
+  worldScale?: Vector3
   normalId?: string | null
   foamId?: string | null
   normalTex?: ReturnType<typeof textureFor>
@@ -55,6 +65,7 @@ let cachedChildCount = -1
 
 const tmpToCam = new Vector3()
 const tmpWorldScale = new Vector3(1, 1, 1)
+const tmpSamplePoint = new Vector3()
 const tmpSunDir = new Vector3(0.45, 0.72, 0.52).normalize()
 const tmpSunColor = new Color('#fff7e0')
 const tmpSkyHorizon = new Color('#e0f2fe')
@@ -421,6 +432,11 @@ function onBeforeRender(ctx: ViewportRenderContext) {
     // 起落节奏单独累计时间：拖动「起落频率」时只改变之后的快慢，不会让相位突跳
     entry.swellTime = (entry.swellTime ?? entry.waveTime) + dt * spec.waveSpeed * spec.swellRate
     root.getWorldScale(tmpWorldScale)
+    entry.spec = spec
+    if (!entry.worldPos) entry.worldPos = new Vector3()
+    if (!entry.worldScale) entry.worldScale = new Vector3(1, 1, 1)
+    root.getWorldPosition(entry.worldPos)
+    entry.worldScale.copy(tmpWorldScale)
     entry.handle.setInvScale(tmpWorldScale)
     // 自带的细分平面知道一格有多大；模型网格的密度未知，传 0 表示不做淡出
     const usesSharedPlane = entry.kind === 'owned' || entry.isPlane === true
@@ -430,6 +446,40 @@ function onBeforeRender(ctx: ViewportRenderContext) {
     entry.handle.setTime(waterTime, entry.waveTime, entry.swellTime)
     entry.handle.setSun(tmpSunDir, tmpSunColor, sunIntensity, tmpSkyHorizon, tmpSkyTop)
   }
+}
+
+/**
+ * 在世界坐标 (worldX, worldZ) 处查询当前激活水体的波面高度与法线。
+ * 若该位置不在任何水体水平覆盖范围内，返回 null。
+ */
+export function sampleWaterSurface(worldX: number, worldZ: number): WaterSurfaceSample | null {
+  if (boundMeshes.size === 0) return null
+  let best: WaterSurfaceSample | null = null
+  for (const [id, entry] of boundMeshes) {
+    const spec = entry.spec
+    const worldPos = entry.worldPos
+    const worldScale = entry.worldScale
+    if (!spec || !spec.enabled || !worldPos || !worldScale) continue
+    if (entry.kind === 'owned') {
+      const parent = entry.parent
+      if (parent) {
+        tmpSamplePoint.set(worldX, worldPos.y, worldZ)
+        parent.worldToLocal(tmpSamplePoint)
+        if (Math.abs(tmpSamplePoint.x) > 0.5 || Math.abs(tmpSamplePoint.z) > 0.5) continue
+      } else {
+        if (
+          Math.abs(worldX - worldPos.x) > Math.abs(worldScale.x) * 0.5
+          || Math.abs(worldZ - worldPos.z) > Math.abs(worldScale.z) * 0.5
+        ) continue
+      }
+    }
+    const wave = evaluateWaterWave(worldX, worldZ, spec, entry.waveTime, entry.swellTime ?? entry.waveTime)
+    const height = worldPos.y + wave.dy
+    if (!best || height > best.height) {
+      best = { height, normal: wave.normal, waterNodeId: id }
+    }
+  }
+  return best
 }
 
 export function mount(): () => void {
