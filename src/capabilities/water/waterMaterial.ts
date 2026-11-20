@@ -163,6 +163,7 @@ export function createWaterMaterial(options: WaterMaterialOptions): WaterMateria
   const uSssStrength = uniform(0.45)
   const uFoamWidth = uniform(0.28)
   const uFoamIntensity = uniform(0.9)
+  const uFoamScale = uniform(0.1)
   const uCrestFoam = uniform(0.65)
   const uCrestFoamThreshold = uniform(0.42)
   const uShoreFoamOn = uniform(1)
@@ -420,9 +421,10 @@ export function createWaterMaterial(options: WaterMaterialOptions): WaterMateria
     : float(1.0)
   const finalAlpha = options.refraction ? edgeOpacity : clamp(uOpacity.add(0.25), float(0.35), float(1.0))
 
-  // 双层海沫：R 通道是 512px 絮状多尺度气泡网丝，G 通道是门控噪波
-  const foamSampleA = foamTexNode.sample(baseUv.mul(1.85).add(flow.mul(1.25)))
-  const foamSampleB = foamTexNode.sample(baseUv.mul(4.1).sub(flowOrtho.mul(1.45)))
+  // 双层海沫：R 通道是 512px 絮状多尺度气泡网丝，G 通道是门控噪波（使用独立的泡沫尺度 uFoamScale）
+  const foamUv = surfXZ.mul(uFoamScale)
+  const foamSampleA = foamTexNode.sample(foamUv.mul(1.85).add(flow.mul(1.25)))
+  const foamSampleB = foamTexNode.sample(foamUv.mul(4.1).sub(flowOrtho.mul(1.45)))
   const foamWeb = foamSampleA.r.mul(0.62).add(foamSampleB.r.mul(0.38))
   const foamErode = foamSampleA.g.mul(0.55).add(foamSampleB.g.mul(0.45))
 
@@ -441,7 +443,7 @@ export function createWaterMaterial(options: WaterMaterialOptions): WaterMateria
 
   const foamMask = clamp(max(shoreBand, crestBand), float(0.0), float(1.0))
   // 米级的大尺度絮状层：让泡沫先有「一团团云絮」的结构，细丝只是叠在上面的细节，避免满屏等大的颗粒点
-  const foamCloud = foamTexNode.sample(surfXZ.mul(0.07).add(flow.mul(0.4))).r
+  const foamCloud = foamTexNode.sample(foamUv.mul(0.45).add(flow.mul(0.4))).r
   const detail = foamCloud.mul(0.4).add(foamWeb.mul(0.45)).add(foamErode.mul(0.15))
   // 不透明度整体跟着遮罩走（浪尖最实 -> 边缘透明），贴图只决定「镂空多少」：
   // 边缘几乎全靠贴图丝缕且本身很淡，越靠近浪尖镂空越少，只有浪尖处接近不透明
@@ -522,6 +524,7 @@ export function createWaterMaterial(options: WaterMaterialOptions): WaterMateria
       uSssStrength.value = spec.sssStrength
       uFoamWidth.value = spec.foamWidth
       uFoamIntensity.value = spec.foamIntensity
+      uFoamScale.value = spec.foamScale
       uCrestFoam.value = spec.crestFoam
       uCrestFoamThreshold.value = spec.crestFoamThreshold
       uShoreFoamOn.value = spec.shoreFoam ? 1 : 0

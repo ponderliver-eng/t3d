@@ -26,6 +26,8 @@ export interface WaterSpec {
   sssStrength: number
   foamWidth: number
   foamIntensity: number
+  /** 泡沫贴图平铺尺度（独立于波纹尺度）。 */
+  foamScale: number
   crestFoam: number
   /** 波峰泡沫出现阈值（越高越少，只留最高浪尖；越低越多）。 */
   crestFoamThreshold: number
@@ -94,6 +96,7 @@ export const WATER_STYLE_PRESETS: Record<WaterPresetId, StylePresetFields> = {
     sssStrength: 1.5,
     foamWidth: 0.4,
     foamIntensity: 0.75,
+    foamScale: 0.1,
     crestFoam: 0.55,
     crestFoamThreshold: 0.42,
     waveHeight: 0.35,
@@ -121,6 +124,7 @@ export const WATER_STYLE_PRESETS: Record<WaterPresetId, StylePresetFields> = {
     sssStrength: 1.6,
     foamWidth: 0.35,
     foamIntensity: 0.55,
+    foamScale: 0.16,
     crestFoam: 0.85,
     crestFoamThreshold: 0.42,
     waveHeight: 1.2,
@@ -148,6 +152,7 @@ export const WATER_STYLE_PRESETS: Record<WaterPresetId, StylePresetFields> = {
     sssStrength: 0.55,
     foamWidth: 0.15,
     foamIntensity: 0.4,
+    foamScale: 0.08,
     crestFoam: 0.2,
     crestFoamThreshold: 0.5,
     waveHeight: 0.04,
@@ -175,6 +180,7 @@ export const WATER_STYLE_PRESETS: Record<WaterPresetId, StylePresetFields> = {
     sssStrength: 0.2,
     foamWidth: 0.1,
     foamIntensity: 0,
+    foamScale: 0.1,
     crestFoam: 0,
     crestFoamThreshold: 0.5,
     waveHeight: 0,
@@ -202,6 +208,7 @@ export const WATER_STYLE_PRESETS: Record<WaterPresetId, StylePresetFields> = {
     sssStrength: 0.55,
     foamWidth: 0.32,
     foamIntensity: 1.2,
+    foamScale: 0.15,
     crestFoam: 0.7,
     crestFoamThreshold: 0.42,
     waveHeight: 0.65,
@@ -245,7 +252,7 @@ export function normalizeWater(raw: unknown): WaterSpec {
     depthAbsorption: finite(record.depthAbsorption, base.depthAbsorption, 0.1, 30),
     opacity: finite(record.opacity, base.opacity, 0.05, 1),
     normalScale: finite(record.normalScale, base.normalScale, 0, 3),
-    waveScale: finite(record.waveScale, base.waveScale, 0.02, 4),
+    waveScale: finite(record.waveScale, base.waveScale, 0.01, 1),
     flowSpeed: finite(record.flowSpeed, base.flowSpeed, 0, 5),
     flowDirection: finite(record.flowDirection, base.flowDirection, 0, 360),
     fresnelPower: finite(record.fresnelPower, base.fresnelPower, 0.5, 10),
@@ -255,6 +262,7 @@ export function normalizeWater(raw: unknown): WaterSpec {
     sssStrength: finite(record.sssStrength, base.sssStrength, 0, 3),
     foamWidth: finite(record.foamWidth, base.foamWidth, 0, 4),
     foamIntensity: finite(record.foamIntensity, base.foamIntensity, 0, 3),
+    foamScale: finite(record.foamScale, base.foamScale, 0.01, 2),
     crestFoam: finite(record.crestFoam, base.crestFoam, 0, 2),
     crestFoamThreshold: finite(record.crestFoamThreshold, base.crestFoamThreshold, 0, 0.9),
     foamTrail: finite(record.foamTrail, base.foamTrail, 0, 1.5),
