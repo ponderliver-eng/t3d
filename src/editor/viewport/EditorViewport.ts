@@ -444,6 +444,8 @@ export class EditorViewport {
     }
 
     const changed = new Set<string>()
+    const moved = new Set<string>()
+    const playing = state.playState === 'playing'
     for (const id of orderedIds(state.nodes)) {
       const node = state.nodes[id]
       let group = this.objects.get(id)
@@ -456,10 +458,15 @@ export class EditorViewport {
       const ancestorChanged = Boolean(node.parentId && changed.has(node.parentId))
       const nodeChanged = data.syncedNode !== node
       if (nodeChanged || ancestorChanged) changed.add(id)
-      const skipTransform = state.playState === 'playing'
-        || Boolean(node.socketBone && node.parentId)
-        || (this.driving && (this.singleId === id || this.baselines.some(item => item.id === id)))
-      if (!skipTransform && (nodeChanged || ancestorChanged)) {
+      // 试玩时游戏逻辑直接改物体。只有检查器改了位姿，或父级位姿变了，才从场景数据写回。
+      const transformEdited = Boolean(data.syncedNode) && poseChanged(data.syncedNode, node)
+      const parentMoved = Boolean(node.parentId && moved.has(node.parentId))
+      if (transformEdited || parentMoved || (!data.syncedNode && nodeChanged)) moved.add(id)
+      const skipTransform = playing
+        ? !moved.has(id)
+        : Boolean(node.socketBone && node.parentId)
+          || (this.driving && (this.singleId === id || this.baselines.some(item => item.id === id)))
+      if (!skipTransform && (nodeChanged || ancestorChanged || moved.has(id))) {
         const pose = worldPose(state.nodes, id)
         group.position.copy(pose.position)
         group.quaternion.copy(pose.quaternion)
@@ -2213,6 +2220,16 @@ function applyPartAttributes(
     for (const child of object.children) walk(child, path, isHidden)
   }
   for (const child of root.children) walk(child, '', false)
+}
+
+function poseChanged(prev: SceneNode, next: SceneNode) {
+  return !sameVec(prev.position, next.position)
+    || !sameVec(prev.rotation, next.rotation)
+    || !sameVec(prev.scale, next.scale)
+}
+
+function sameVec(a: readonly number[], b: readonly number[]) {
+  return a.length === b.length && a.every((value, index) => value === b[index])
 }
 
 function orderedIds(nodes: Record<string, SceneNode>): string[] {
