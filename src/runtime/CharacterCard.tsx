@@ -162,7 +162,10 @@ export function CharacterCard({ node, disabled }: { node: SceneNode, disabled: b
           </div>
           <Check label={t('character.swim')} disabled={disabled} checked={view.swim !== false} onChange={swim => write({ swim })} />
           {view.swim !== false && (
-            <Num label={t('character.swimSpeed')} value={view.swimSpeedMultiplier ?? 0.65} disabled={disabled} step={0.05} min={0.1} onChange={swimSpeedMultiplier => write({ swimSpeedMultiplier })} />
+            <div className="iv2-pair">
+              <Num label={t('character.swimSpeed')} value={view.swimSpeedMultiplier ?? 0.65} disabled={disabled} step={0.05} min={0.1} onChange={swimSpeedMultiplier => write({ swimSpeedMultiplier })} />
+              <Num label={t('character.swimHeightOffset')} value={view.swimHeightOffset ?? 0} disabled={disabled} step={0.05} min={-2} onChange={swimHeightOffset => write({ swimHeightOffset })} />
+            </div>
           )}
           </Section>
           <Section title={t('character.dash')} color="#e0a15a">

@@ -42,6 +42,8 @@ export interface CharacterSpec {
   swim?: boolean
   /** 水中移动速度倍率（相对行走速度）。 */
   swimSpeedMultiplier?: number
+  /** 水中浮起高度偏移（米），正值向上抬高，负值向下沉。 */
+  swimHeightOffset?: number
   dash: boolean
   dashKey: string
   dashDistance: number
@@ -96,6 +98,7 @@ export function defaultCharacter(): CharacterSpec {
     pushStrength: 1,
     swim: true,
     swimSpeedMultiplier: 0.65,
+    swimHeightOffset: 0,
     dash: true,
     dashKey: 'KeyC',
     dashDistance: 4,

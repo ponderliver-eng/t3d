@@ -204,8 +204,10 @@ function stepCharacters(dt: number, host: SceneRuntimeHost) {
     const footZ = object.position.z + shift.z
     const water = spec.swim !== false ? sampleWaterSurface(footX, footZ) : null
     const submerged = water ? water.height - feet : -999
+    const swimOffset = spec.swimHeightOffset ?? 0
+    const targetSubmerged = Math.max(0.1, spec.height * 0.68 - swimOffset)
     const enterDepth = spec.height * 0.62
-    const exitDepth = spec.height * 0.48
+    const exitDepth = Math.max(0.05, Math.min(spec.height * 0.48, targetSubmerged - 0.18))
     if (water && submerged >= enterDepth) {
       if (!live.swimming) {
         live.swimming = true
@@ -252,7 +254,7 @@ function stepCharacters(dt: number, host: SceneRuntimeHost) {
         live.vy -= spec.gravity * dt
       } else {
         // 弹簧-阻尼浮力：让角色随实时浪高柔和起伏，并叠加轻微的随浪斜坡漂流
-        const targetFeetY = water.height - spec.height * 0.68
+        const targetFeetY = water.height - targetSubmerged
         live.vy += ((targetFeetY - feet) * 18 - live.vy * 6) * dt
         moveX += water.normal[0] * 0.45
         moveZ += water.normal[2] * 0.45
