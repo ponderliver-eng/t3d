@@ -55,6 +55,23 @@ export interface WaterMaterialOptions {
   waves: boolean
   /** 极致档波形：浪脊弯曲用两层扰动，并把 3 ~ 5 米的中尺度波也加入顶点位移。 */
   richWaves: boolean
+  /**
+   * 跟随相机的环形网格（大水面用）：几何体的 xy 是相对相机落点的米数，近处密、远处稀，
+   * 顶点在着色器里换算回水面局部坐标并收在水面范围内。只支持 upAxis = 'z' 的自带平面。
+   */
+  followGrid: boolean
+}
+
+/** 跟随网格的形状参数：session 用它生成几何体，材质用它估算每个顶点处的格子大小。 */
+export const FOLLOW_GRID = {
+  /** 一圈的分段数。格子的大小约等于「到相机落点的距离 × 2π / angular」。 */
+  angular: 176,
+  /** 中心圆盘半径 (m)，圆盘内按等间距分 innerRings 圈。 */
+  innerRadius: 2,
+  innerRings: 12,
+  /** 等比外扩到这个半径 (m)，再往外用一圈极远的顶点铺到水面边界。 */
+  outerRadius: 3000,
+  farRadius: 100000,
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -99,7 +116,7 @@ const VERTEX_WAVES: WaveDef[] = [
 const BEND_PRIMARY = { amount: 1.3, amountSolo: 1.6, span: 3.1 }
 const BEND_SECONDARY = { amount: 0.7, span: 1.7, along: 0.25 }
 /** 浪尖前倾：参数 1 对应的二次谐波系数（必须 < 1，否则波形会出现第二个鼓包）。 */
-const LEAN_GAIN = 0.45
+const LEAN_GAIN = 0.75
 
 /**
  * 起落包络（每对顶点波一组）：ka/kb 决定「涨落先后」相位图的空间尺度（越小，同涨同落的区域越大），
@@ -145,12 +162,14 @@ export interface WaterMaterialHandle {
   setInvScale: (worldScale: Vector3) => void
   /** 网格一格的世界尺寸 (m)；采样不足的波会在顶点位移里淡出。未知时传 0。 */
   setCellSize: (meters: number) => void
+  /** 跟随网格的中心：相机在水面网格局部坐标系里的 xy。 */
+  setGridCenter: (localX: number, localY: number) => void
   setSun: (direction: Vector3, color: Color, intensity: number, skyHorizon?: Color, skyTop?: Color) => void
   dispose: () => void
 }
 
 export function waterVariantKey(opts: WaterMaterialOptions): string {
-  return `${opts.planar ? 1 : 0}|${opts.refraction ? 1 : 0}|${opts.caustics ? 1 : 0}|${opts.highDetail ? 1 : 0}|${opts.upAxis}|${opts.waves ? 1 : 0}|${opts.richWaves ? 1 : 0}`
+  return `${opts.planar ? 1 : 0}|${opts.refraction ? 1 : 0}|${opts.caustics ? 1 : 0}|${opts.highDetail ? 1 : 0}|${opts.upAxis}|${opts.waves ? 1 : 0}|${opts.richWaves ? 1 : 0}|${opts.followGrid ? 1 : 0}`
 }
 
 export function createWaterMaterial(options: WaterMaterialOptions): WaterMaterialHandle {
@@ -194,6 +213,7 @@ export function createWaterMaterial(options: WaterMaterialOptions): WaterMateria
   const uWaveBend = uniform(0.6)
   const uWaveLean = uniform(0.2)
   const uCellSize = uniform(0)
+  const uGridCenter = uniform(new Vector2(0, 0))
   const uFoamTrail = uniform(1)
   const uDebugView = uniform(0)
 
@@ -208,7 +228,23 @@ export function createWaterMaterial(options: WaterMaterialOptions): WaterMateria
   const highFreqFade = float(1.0).sub(smoothstep(float(18.0), float(110.0), eyeDist))
 
   // 1. 波谱：所有波的相位都基于「未位移」的静止世界坐标，顶点与片元严格一致
-  const restVertexXZ = modelWorldMatrix.mul(vec4(positionGeometry, 1.0)).xz
+  const follow = options.followGrid && options.upAxis === 'z'
+  // 跟随网格：几何体里存的是相对相机落点的米数，这里换算成水面局部坐标，并收在水面范围 [-0.5, 0.5] 内
+  const restLocal: TslNode = follow
+    ? vec3(
+      clamp(
+        positionGeometry.xy.mul(vec2(uInvScale.x, uInvScale.z)).add(uGridCenter),
+        vec2(-0.5, -0.5),
+        vec2(0.5, 0.5),
+      ),
+      0.0,
+    )
+    : positionLocal
+  // 每个顶点处的格子大小 (m)：跟随网格随距离等比变大，普通平面是固定值
+  const cellSize: TslNode = follow
+    ? max(length(positionGeometry.xy).mul((Math.PI * 2) / FOLLOW_GRID.angular), float(FOLLOW_GRID.innerRadius / FOLLOW_GRID.innerRings))
+    : uCellSize
+  const restVertexXZ = modelWorldMatrix.mul(vec4(follow ? restLocal : positionGeometry, 1.0)).xz
   const surfXZ = varying(restVertexXZ)
 
   const rotatedDir = (deg: number) => {
@@ -241,8 +277,9 @@ export function createWaterMaterial(options: WaterMaterialOptions): WaterMateria
       pinch,
       foamWeight: pinch.mul(k),
       isMid,
-      // 网格太稀（一个波长不足 3 ~ 6 格）时，这道波不再位移顶点，只留在片元法线里，避免大水面上折线化
-      geoFade: float(1.0).sub(smoothstep(float(def.length / 6), float(def.length / 3), uCellSize)),
+      // 网格太稀（一个波长不足 2.5 ~ 5 格）时，这道波不再位移顶点，只留在片元法线里，
+      // 避免折线化，也避免跟随网格移动时顶点在采样不足的波上「游动」。只能用在顶点阶段。
+      geoFade: float(1.0).sub(smoothstep(float(def.length / 5), float(def.length / 2.5), cellSize)),
     }
   })
   type VertexWave = (typeof vertexWaves)[number]
@@ -282,7 +319,7 @@ export function createWaterMaterial(options: WaterMaterialOptions): WaterMateria
     return { def, k, omega: Math.sqrt(GRAVITY * k), dir: rotatedDir(def.angle), amp, fade, foamWeight: min(amp.mul(PINCH_GAIN * k), float(0.18)).mul(fade) }
   })
 
-  let displacedLocal: TslNode = positionLocal
+  let displacedLocal: TslNode = restLocal
   let waveSlope: TslNode = vec2(0.0, 0.0)
   let macroSlope: TslNode = vec2(0.0, 0.0)
   let waveCompress: TslNode = float(0.0)
@@ -327,14 +364,14 @@ export function createWaterMaterial(options: WaterMaterialOptions): WaterMateria
     // 用节点世界缩放的倒数把世界米数转回局部坐标，确保任意 scale 下都不撕裂
     displacedLocal = options.upAxis === 'z'
       ? vec3(
-        positionLocal.x.add(vHoriz.x.mul(uInvScale.x)),
-        positionLocal.y.sub(vHoriz.y.mul(uInvScale.z)),
-        positionLocal.z.add(vHeight.mul(uInvScale.y)),
+        restLocal.x.add(vHoriz.x.mul(uInvScale.x)),
+        restLocal.y.sub(vHoriz.y.mul(uInvScale.z)),
+        restLocal.z.add(vHeight.mul(uInvScale.y)),
       )
       : vec3(
-        positionLocal.x.add(vHoriz.x.mul(uInvScale.x)),
-        positionLocal.y.add(vHeight.mul(uInvScale.y)),
-        positionLocal.z.add(vHoriz.y.mul(uInvScale.z)),
+        restLocal.x.add(vHoriz.x.mul(uInvScale.x)),
+        restLocal.y.add(vHeight.mul(uInvScale.y)),
+        restLocal.z.add(vHoriz.y.mul(uInvScale.z)),
       )
 
     // 片元阶段：逐像素解析法线（长波 + 只参与着色的短波）
@@ -586,7 +623,7 @@ export function createWaterMaterial(options: WaterMaterialOptions): WaterMateria
   const debugOn = uDebugView.greaterThan(float(0.5))
 
   const material = new MeshBasicNodeMaterial()
-  if (options.waves) material.positionNode = displacedLocal
+  if (options.waves || follow) material.positionNode = displacedLocal
   material.colorNode = select(debugOn, debugColor, finalColor)
   material.opacityNode = select(debugOn, float(1.0), max(finalAlpha, foamAlpha))
   material.transparent = true
@@ -648,6 +685,9 @@ export function createWaterMaterial(options: WaterMaterialOptions): WaterMateria
     },
     setCellSize(meters) {
       uCellSize.value = Math.max(0, meters)
+    },
+    setGridCenter(localX, localY) {
+      uGridCenter.value.set(localX, localY)
     },
     setSun(direction, color, intensity, skyHorizon, skyTop) {
       uSunDir.value.copy(direction).normalize()

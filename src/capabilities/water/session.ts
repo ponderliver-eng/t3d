@@ -1,11 +1,16 @@
 import {
+  Box3,
+  BufferAttribute,
+  BufferGeometry,
   Color,
   DirectionalLight,
   Mesh,
   PlaneGeometry,
+  Sphere,
   Vector3,
-  type BufferGeometry,
+  type Intersection,
   type Material,
+  type Raycaster,
   type Object3D,
   type Scene,
 } from 'three'
@@ -15,7 +20,7 @@ import type { SceneNode } from '../../editor/scene/types'
 import { registerBeforeRenderHook, type ViewportRenderContext } from '../../editor/viewport/renderHooks'
 import { capabilityEnabled, type CapabilityRuntimeModule } from '../registry'
 import { WATER_CAPABILITY_ID, normalizeWater, type WaterQuality, type WaterSpec } from './defaults'
-import { createWaterMaterial, waterVariantKey, type WaterMaterialHandle, type WaterMaterialOptions } from './waterMaterial'
+import { FOLLOW_GRID, createWaterMaterial, waterVariantKey, type WaterMaterialHandle, type WaterMaterialOptions } from './waterMaterial'
 
 interface BoundMesh {
   kind: 'owned' | 'hosted'
@@ -69,6 +74,68 @@ function getSharedPlaneGeometry(spec: WaterSpec): PlaneGeometry {
     planeGeos[tier] = new PlaneGeometry(1, 1, seg, seg)
   }
   return planeGeos[tier]!
+}
+
+/** 水面边长超过这个值 (m) 时，固定细分的平面一格会大于半米，改用跟随相机的环形网格。 */
+const FOLLOW_GRID_MIN_SIZE = 64
+let followGeo: BufferGeometry | null = null
+
+/**
+ * 跟随相机的环形网格：xy 是相对相机落点的米数。中心一个小圆盘等间距分圈，往外每圈半径等比放大，
+ * 所以格子大小与距离成正比（近处十几厘米，百米外三四米），屏幕上的密度大致恒定。
+ * 最外面再加一圈极远的顶点，着色器把它收到水面边界上，保证水面铺满。约 3.9 万顶点。
+ */
+function getFollowGeometry(): BufferGeometry {
+  if (followGeo) return followGeo
+  const { angular, innerRadius, innerRings, outerRadius, farRadius } = FOLLOW_GRID
+  const radii: number[] = []
+  for (let i = 1; i <= innerRings; i += 1) radii.push((innerRadius * i) / innerRings)
+  const ratio = 1 + (Math.PI * 2) / angular
+  for (let r = innerRadius * ratio; r < outerRadius; r *= ratio) radii.push(r)
+  radii.push(farRadius)
+
+  const positions = new Float32Array((1 + radii.length * angular) * 3)
+  radii.forEach((radius, ring) => {
+    // 相邻两圈错开半格，三角形更接近等边
+    const twist = ring % 2 === 0 ? 0 : Math.PI / angular
+    for (let a = 0; a < angular; a += 1) {
+      const angle = (a / angular) * Math.PI * 2 + twist
+      const at = (1 + ring * angular + a) * 3
+      positions[at] = Math.cos(angle) * radius
+      positions[at + 1] = Math.sin(angle) * radius
+    }
+  })
+
+  const indices: number[] = []
+  for (let a = 0; a < angular; a += 1) indices.push(0, 1 + a, 1 + ((a + 1) % angular))
+  for (let ring = 0; ring < radii.length - 1; ring += 1) {
+    const inner = 1 + ring * angular
+    const outer = inner + angular
+    for (let a = 0; a < angular; a += 1) {
+      const next = (a + 1) % angular
+      indices.push(inner + a, outer + a, outer + next, inner + a, outer + next, inner + next)
+    }
+  }
+
+  const geo = new BufferGeometry()
+  geo.setAttribute('position', new BufferAttribute(positions, 3))
+  geo.setAttribute('normal', new BufferAttribute(new Float32Array(positions.length).map((_, i) => (i % 3 === 2 ? 1 : 0)), 3))
+  geo.setAttribute('uv', new BufferAttribute(new Float32Array((positions.length / 3) * 2), 2))
+  geo.setIndex(indices)
+  // 顶点的真实位置由着色器决定（收在单位平面内），包围体按单位平面给，避免编辑器按米数算出巨大的包围盒
+  geo.boundingBox = new Box3(new Vector3(-0.5, -0.5, 0), new Vector3(0.5, 0.5, 0))
+  geo.boundingSphere = new Sphere(new Vector3(0, 0, 0), Math.SQRT1_2)
+  followGeo = geo
+  return geo
+}
+
+/** 跟随网格的顶点不在真实位置上，点选时按一块完整的单位平面来求交。 */
+function raycastAsUnitPlane(this: Mesh, raycaster: Raycaster, intersects: Intersection[]) {
+  const geometry = this.geometry
+  if (!planeGeos.flat) planeGeos.flat = new PlaneGeometry(1, 1, 1, 1)
+  this.geometry = planeGeos.flat
+  Mesh.prototype.raycast.call(this, raycaster, intersects)
+  this.geometry = geometry
 }
 
 function refreshActiveNodes(nodes: Record<string, SceneNode>) {
@@ -179,8 +246,9 @@ function updateSunAndSky(scene: Scene, backgroundHex: string): number {
   return intensity
 }
 
-function optionsFor(spec: WaterSpec, upAxis: 'y' | 'z'): WaterMaterialOptions {
+function optionsFor(spec: WaterSpec, upAxis: 'y' | 'z', followGrid: boolean): WaterMaterialOptions {
   return {
+    followGrid,
     planar: spec.quality !== 'fast' && spec.planarReflection && spec.reflectionScale > 0,
     refraction: spec.refraction,
     caustics: spec.refraction && spec.caustics,
@@ -222,7 +290,12 @@ function onBeforeRender(ctx: ViewportRenderContext) {
     if (!root) continue
 
     const upAxis: 'y' | 'z' = node.kind === 'model' ? 'y' : 'z'
-    const opts = optionsFor(spec, upAxis)
+    root.getWorldScale(tmpWorldScale)
+    const hasWaves = spec.quality !== 'fast' && spec.waveHeight > 0.001
+    // 只有自带网格的水体物体、有大浪、且水面足够大时才用跟随相机的网格；小水面固定细分已经够密
+    const followGrid = node.kind === 'empty' && hasWaves
+      && Math.max(Math.abs(tmpWorldScale.x), Math.abs(tmpWorldScale.z)) > FOLLOW_GRID_MIN_SIZE
+    const opts = optionsFor(spec, upAxis, followGrid)
     const nextVariant = waterVariantKey(opts)
 
     let entry = boundMeshes.get(id)
@@ -238,7 +311,8 @@ function onBeforeRender(ctx: ViewportRenderContext) {
       }
       if (!entry) {
         const handle = createWaterMaterial(opts)
-        const mesh = new Mesh(getSharedPlaneGeometry(spec), handle.material)
+        const mesh = new Mesh(followGrid ? getFollowGeometry() : getSharedPlaneGeometry(spec), handle.material)
+        if (followGrid) mesh.raycast = raycastAsUnitPlane
         mesh.name = 'water-surface'
         mesh.rotation.x = -Math.PI / 2
         mesh.frustumCulled = false
@@ -251,8 +325,15 @@ function onBeforeRender(ctx: ViewportRenderContext) {
         entry = { kind: 'owned', mesh, parent: root, handle, waveTime: waterTime }
         boundMeshes.set(id, entry)
       }
-      const targetGeo = getSharedPlaneGeometry(spec)
+      const targetGeo = followGrid ? getFollowGeometry() : getSharedPlaneGeometry(spec)
       if (entry.mesh.geometry !== targetGeo) entry.mesh.geometry = targetGeo
+      if (followGrid) {
+        // 网格中心 = 相机在水面局部坐标系里的落点
+        entry.mesh.updateWorldMatrix(true, false)
+        ctx.camera.getWorldPosition(tmpToCam)
+        entry.mesh.worldToLocal(tmpToCam)
+        entry.handle.setGridCenter(tmpToCam.x, tmpToCam.y)
+      }
     } else {
       const hostMesh = firstMeshOf(root)
       if (!hostMesh) continue
@@ -332,6 +413,8 @@ export function dispose() {
     planeGeos[key]?.dispose()
     planeGeos[key] = null
   }
+  followGeo?.dispose()
+  followGeo = null
   cachedNodeObjects.clear()
   cachedNodesRef = null
   cachedActiveIds = []
