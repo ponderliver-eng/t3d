@@ -71,8 +71,8 @@ export interface WaterSpec {
   underwaterFogStart: number
   /** 水下近景染色强度 (0 ~ 1)。 */
   underwaterTint: number
-  /** 水下边缘暗角强度 (0 ~ 0.8)。 */
-  underwaterVignette: number
+  /** 水下抬头看水面背面的亮度倍率。 */
+  underwaterSurfaceBrightness: number
   normalMapAssetId: string | null
   foamMapAssetId: string | null
 }
@@ -94,7 +94,7 @@ type StylePresetFields = Omit<
   WaterSpec,
   | 'enabled' | 'preset' | 'quality' | 'reflectionScale'
   | 'planarReflection' | 'refraction' | 'caustics' | 'shoreFoam'
-  | 'underwaterEffect' | 'underwaterColor' | 'underwaterFogDensity' | 'underwaterFogStart' | 'underwaterTint' | 'underwaterVignette'
+  | 'underwaterEffect' | 'underwaterColor' | 'underwaterFogDensity' | 'underwaterFogStart' | 'underwaterTint' | 'underwaterSurfaceBrightness'
   | 'normalMapAssetId' | 'foamMapAssetId' | 'foamTrail' | 'swellRate' | 'debugView'
 >
 
@@ -271,7 +271,7 @@ export function defaultWater(): WaterSpec {
     underwaterFogDensity: 0.25,
     underwaterFogStart: 0.5,
     underwaterTint: 0.15,
-    underwaterVignette: 0.22,
+    underwaterSurfaceBrightness: 0.45,
     normalMapAssetId: null,
     foamMapAssetId: null,
   }
@@ -330,7 +330,7 @@ export function normalizeWater(raw: unknown): WaterSpec {
     underwaterFogDensity: finite(record.underwaterFogDensity, base.underwaterFogDensity, 0.01, 2),
     underwaterFogStart: finite(record.underwaterFogStart, base.underwaterFogStart, 0, 20),
     underwaterTint: finite(record.underwaterTint, base.underwaterTint, 0, 1),
-    underwaterVignette: finite(record.underwaterVignette, base.underwaterVignette, 0, 0.8),
+    underwaterSurfaceBrightness: finite(record.underwaterSurfaceBrightness, base.underwaterSurfaceBrightness, 0.05, 2),
     normalMapAssetId: typeof record.normalMapAssetId === 'string' ? record.normalMapAssetId : null,
     foamMapAssetId: typeof record.foamMapAssetId === 'string' ? record.foamMapAssetId : null,
   }

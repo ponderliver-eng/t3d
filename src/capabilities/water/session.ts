@@ -488,7 +488,6 @@ export interface UnderwaterViewSample {
   fogDensity: number
   fogStart: number
   tint: number
-  vignette: number
 }
 
 /** 是否有激活水体开启了水下效果（默认全关，避免无谓触发后期管线）。 */
@@ -540,7 +539,6 @@ export function sampleUnderwaterView(worldX: number, worldY: number, worldZ: num
     fogDensity: bestSpec.underwaterFogDensity,
     fogStart: bestSpec.underwaterFogStart,
     tint: bestSpec.underwaterTint,
-    vignette: bestSpec.underwaterVignette,
   }
 }
 

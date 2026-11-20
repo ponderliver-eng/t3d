@@ -145,7 +145,7 @@ export function WaterCard({ node, disabled }: { node: SceneNode, disabled: boole
                 <RangeField label={t('water.underwaterFogDensity')} value={spec.underwaterFogDensity} min={0.01} max={1.5} step={0.01} disabled={disabled} onChange={underwaterFogDensity => write({ underwaterFogDensity })} />
                 <RangeField label={t('water.underwaterFogStart')} value={spec.underwaterFogStart} min={0} max={10} step={0.1} disabled={disabled} onChange={underwaterFogStart => write({ underwaterFogStart })} />
                 <RangeField label={t('water.underwaterTint')} value={spec.underwaterTint} min={0} max={1} step={0.02} disabled={disabled} onChange={underwaterTint => write({ underwaterTint })} />
-                <RangeField label={t('water.underwaterVignette')} value={spec.underwaterVignette} min={0} max={0.8} step={0.02} disabled={disabled} onChange={underwaterVignette => write({ underwaterVignette })} />
+                <RangeField label={t('water.underwaterSurfaceBrightness')} value={spec.underwaterSurfaceBrightness} min={0.05} max={1.5} step={0.05} disabled={disabled} onChange={underwaterSurfaceBrightness => write({ underwaterSurfaceBrightness })} />
               </>
             )}
           </section>

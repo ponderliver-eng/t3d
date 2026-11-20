@@ -10,6 +10,7 @@ import {
   dot,
   exp,
   float,
+  frontFacing,
   length,
   linearDepth,
   max,
@@ -175,6 +176,7 @@ export function createWaterMaterial(options: WaterMaterialOptions): WaterMateria
   const uCrestFoam = uniform(0.65)
   const uCrestFoamThreshold = uniform(0.42)
   const uShoreFoamOn = uniform(1)
+  const uUnderwaterSurfaceBrightness = uniform(0.45)
   const uSoftEdge = uniform(0.08)
   const uCausticsStrength = uniform(0.7)
   const uCausticsScale = uniform(0.22)
@@ -629,6 +631,15 @@ export function createWaterMaterial(options: WaterMaterialOptions): WaterMateria
   const shadedWater = waterSurface.mul(float(1.0).sub(foamShadow.mul(0.18)))
   const finalColor = mix(shadedWater, uFoamColor, foamAlpha)
 
+  // 水下往上看水面（背面）：斯涅尔亮窗透出明亮天空与太阳光晕，四周呈全内反射波纹，不影响水上正面表现
+  const upCos = clamp(dot(crispNormal, viewVec.negate()), float(0.0), float(1.0))
+  const snellWindow = smoothstep(float(0.28), float(0.72), upCos)
+  const skyWindowColor = mix(uShallowColor, vec3(0.75, 0.96, 1.0), float(0.65))
+  const sunThrough = pow(max(dot(viewVec.negate(), sunDir), float(0.0)), float(12.0)).mul(0.85)
+  const tirColor = mix(uDeepColor, uShallowColor, clamp(float(0.45).add(crispNormal.x.mul(0.15)), float(0.2), float(0.8)))
+  const underwaterBackColor = mix(tirColor, skyWindowColor, snellWindow).add(uSunColor.mul(sunThrough)).mul(uUnderwaterSurfaceBrightness)
+  const underwaterBackAlpha = mix(float(0.88), float(0.32), snellWindow)
+
   // 调试视图：1 = 波高（灰度），2 = 挤压值（红 = 被压缩的浪峰，蓝 = 被拉伸的浪谷），3 = 泡沫遮罩（未叠贴图）
   const debugHeight = vec3(clamp(waveNorm.mul(0.5).add(0.5), float(0.0), float(1.0)))
   const debugSqueeze = vec3(
@@ -646,8 +657,8 @@ export function createWaterMaterial(options: WaterMaterialOptions): WaterMateria
 
   const material = new MeshBasicNodeMaterial()
   if (options.waves || follow) material.positionNode = displacedLocal
-  material.colorNode = select(debugOn, debugColor, finalColor)
-  material.opacityNode = select(debugOn, float(1.0), max(finalAlpha, foamAlpha))
+  material.colorNode = select(debugOn, debugColor, select(frontFacing, finalColor, underwaterBackColor))
+  material.opacityNode = select(debugOn, float(1.0), select(frontFacing, max(finalAlpha, foamAlpha), underwaterBackAlpha))
   material.transparent = true
   material.depthWrite = true
   material.side = DoubleSide
@@ -679,6 +690,7 @@ export function createWaterMaterial(options: WaterMaterialOptions): WaterMateria
       uCrestFoam.value = spec.crestFoam
       uCrestFoamThreshold.value = spec.crestFoamThreshold
       uShoreFoamOn.value = spec.shoreFoam ? 1 : 0
+      uUnderwaterSurfaceBrightness.value = spec.underwaterSurfaceBrightness
       uSoftEdge.value = spec.softEdge
       uCausticsStrength.value = spec.causticsStrength
       uCausticsScale.value = spec.causticsScale
