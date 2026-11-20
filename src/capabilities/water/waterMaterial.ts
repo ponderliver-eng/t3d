@@ -451,11 +451,12 @@ export function createWaterMaterial(options: WaterMaterialOptions): WaterMateria
       vertexFoamWeight = vertexFoamWeight.add(wave.foamWeight)
     })
     waveSlope = macroSlope.add(midSlope)
-    // 短波的高度：只用于让小波峰也能起沫（不位移顶点）
+    // 短波只提供高度，用于让小波峰也能起沫；不再参与法线。
+    // 纯正弦短波在法线里会形成一排排等间距的平行条纹（反射里特别明显），
+    // 这个尺度（1 ~ 15 m）的细节交给多层法线贴图，它是不规则的。
     let detailNorm: TslNode = float(0.0)
     detailWaves.forEach((wave, i) => {
       const theta = detailBase[i].sub(uWaveTime.mul(wave.omega))
-      waveSlope = waveSlope.add(wave.dir.mul(cos(theta).mul(wave.amp).mul(wave.k).mul(wave.fade)))
       detailNorm = detailNorm.add(sin(theta).mul(wave.def.weight).mul(wave.fade))
     })
     // 浪峰值 = 实际的归一化浪高（与顶点位移、次表面散射用的是同一个量），所以泡沫严格落在看得见的波峰上。
