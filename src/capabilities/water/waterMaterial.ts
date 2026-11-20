@@ -95,6 +95,8 @@ interface WaveDef {
 }
 
 const GRAVITY = 9.81
+/** 浪尖圆角量 ε（见 profileOf）：越大浪尖越圆。0.03 对应浪尖两侧各约 0.35 弧度相位的圆弧。 */
+const CREST_ROUND = 0.03
 /** 多道波很少同相叠加，整体补偿一点振幅，让「浪高」参数的观感与之前接近。 */
 const AMP_GAIN = 1.25
 const PINCH_GAIN = 2.2
@@ -225,6 +227,8 @@ export function createWaterMaterial(options: WaterMaterialOptions): WaterMateria
   const uWaveCurl = uniform(0.6)
   const uCrestPower = uniform(0.75)
   const uCrestLift = uniform(0.14)
+  /** ε^p，随「浪尖锐度」在 CPU 上算好。 */
+  const uCrestRoundPow = uniform(Math.pow(CREST_ROUND, 0.75))
   const uCellSize = uniform(0)
   const uGridCenter = uniform(new Vector2(0, 0))
   // 泡沫拖尾每个回看点、每道长波的 (cos, sin)(ω·回看时长)，在 setSpec 里随「泡沫拖尾」参数更新
@@ -335,10 +339,13 @@ export function createWaterMaterial(options: WaterMaterialOptions): WaterMateria
   // 每道波只多一次 pow，不需要额外的三角函数。
   // 返回剖面高度，以及（片元求法线用的）高度对相位 θ 的导数；两者共用同一个 pow 结果。
   const profileOf = (s: TslNode, c: TslNode, withSlope: boolean) => {
-    const m = max(float(1.0).sub(s).mul(0.5), float(1e-4))
+    // 浪尖圆角：直接用 m^p 时，只要 p < 1，浪尖处的曲率就是无穷大（p = 0.5 时坡度直接跳变），
+    // 等于一条没有宽度的折痕：网格表示不出来，法线在一个像素内翻转，水面上就出现一道硬边。
+    // 改用 (m + ε)^p - ε^p：离浪尖稍远处形状不变，浪尖本身是一段有限宽度的圆弧（约占波长的 5%），坡度连续过渡。
+    const m = max(float(1.0).sub(s).mul(0.5), float(0.0)).add(CREST_ROUND)
     // w = m^(p-1)：高度用 m·w，坡度用 p·w
     const w = pow(m, uCrestPower.sub(1.0))
-    const height: TslNode = float(1.0).add(uCrestLift).sub(m.mul(w).mul(2.0)).sub(s.mul(c).mul(uWaveLean))
+    const height: TslNode = float(1.0).add(uCrestLift).sub(m.mul(w).sub(uCrestRoundPow).mul(2.0)).sub(s.mul(c).mul(uWaveLean))
     const slope: TslNode = withSlope
       ? c.mul(w).mul(uCrestPower).sub(c.mul(c).mul(2.0).sub(1.0).mul(uWaveLean))
       : float(0.0)
@@ -507,7 +514,8 @@ export function createWaterMaterial(options: WaterMaterialOptions): WaterMateria
   }
 
   // Gerstner 解析法线：浪峰处竖直分量被压缩（1 - Σk·Q·sin），浪脊自然变尖、浪谷变平
-  const crestPinchY = max(float(1.0).sub(waveCompress), float(0.15))
+  // 下限 0.4：剖面本身已经把浪尖削尖了，这里再把竖直分量压到很小等于重复放大坡度，法线会在浪尖两侧突然翻转
+  const crestPinchY = max(float(1.0).sub(waveCompress), float(0.4))
   const surfaceNormal = normalize(vec3(
     nAvg.x.mul(uNormalScale).sub(waveSlope.x.mul(1.2)),
     crestPinchY,
@@ -717,6 +725,7 @@ export function createWaterMaterial(options: WaterMaterialOptions): WaterMateria
       // 浪尖锐度 0 ~ 1 对应剖面指数 1（正弦）~ 0.5（折线山脊）；尖剖面的平均高度偏低，按比例抬回去
       const ridge = Math.min(1, Math.max(0, spec.crestSharpness))
       uCrestPower.value = 1 - ridge * 0.5
+      uCrestRoundPow.value = Math.pow(CREST_ROUND, uCrestPower.value)
       uCrestLift.value = ridge * 0.274
       FOAM_TRAIL_TAPS.forEach((tap, t) => {
         const lookBack = spec.foamTrail * tap.time
