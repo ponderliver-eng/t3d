@@ -482,6 +482,68 @@ export function sampleWaterSurface(worldX: number, worldZ: number): WaterSurface
   return best
 }
 
+export interface UnderwaterViewSample {
+  weight: number
+  color: string
+  fogDensity: number
+  fogStart: number
+  tint: number
+  vignette: number
+}
+
+/** 是否有激活水体开启了水下效果（默认全关，避免无谓触发后期管线）。 */
+export function anyUnderwaterEffectEnabled(): boolean {
+  for (const entry of boundMeshes.values()) {
+    if (entry.spec?.enabled && entry.spec.underwaterEffect) return true
+  }
+  return false
+}
+
+/**
+ * 在相机世界坐标处采样水下后期参数。
+ * 仅检查开启了 underwaterEffect 的激活水体，不在水下则返回 null。
+ */
+export function sampleUnderwaterView(worldX: number, worldY: number, worldZ: number): UnderwaterViewSample | null {
+  if (boundMeshes.size === 0) return null
+  let bestHeight = -Infinity
+  let bestSpec: WaterSpec | null = null
+  for (const entry of boundMeshes.values()) {
+    const spec = entry.spec
+    const worldPos = entry.worldPos
+    const worldScale = entry.worldScale
+    if (!spec || !spec.enabled || !spec.underwaterEffect || !worldPos || !worldScale) continue
+    if (entry.kind === 'owned') {
+      const parent = entry.parent
+      if (parent) {
+        tmpSamplePoint.set(worldX, worldPos.y, worldZ)
+        parent.worldToLocal(tmpSamplePoint)
+        if (Math.abs(tmpSamplePoint.x) > 0.5 || Math.abs(tmpSamplePoint.z) > 0.5) continue
+      } else {
+        if (
+          Math.abs(worldX - worldPos.x) > Math.abs(worldScale.x) * 0.5
+          || Math.abs(worldZ - worldPos.z) > Math.abs(worldScale.z) * 0.5
+        ) continue
+      }
+    }
+    const wave = evaluateWaterWave(worldX, worldZ, spec, entry.waveTime, entry.swellTime ?? entry.waveTime)
+    const height = worldPos.y + wave.dy
+    if (worldY < height && height > bestHeight) {
+      bestHeight = height
+      bestSpec = spec
+    }
+  }
+  if (!bestSpec) return null
+  const depth = bestHeight - worldY
+  return {
+    weight: Math.min(1, Math.max(0, depth / 0.15)),
+    color: bestSpec.underwaterColor,
+    fogDensity: bestSpec.underwaterFogDensity,
+    fogStart: bestSpec.underwaterFogStart,
+    tint: bestSpec.underwaterTint,
+    vignette: bestSpec.underwaterVignette,
+  }
+}
+
 export function mount(): () => void {
   if (!removeBeforeRender) {
     removeBeforeRender = registerBeforeRenderHook('water', 30, onBeforeRender)

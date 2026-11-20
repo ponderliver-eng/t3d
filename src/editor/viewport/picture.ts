@@ -1,6 +1,6 @@
-import { UnsignedByteType, type Camera, type Object3D, type Scene, type WebGPURenderer } from 'three/webgpu'
+import { Color, UnsignedByteType, Vector3, type Camera, type Object3D, type Scene, type WebGPURenderer } from 'three/webgpu'
 import { RenderPipeline } from 'three/webgpu'
-import { abs, diffuseColor, hue, metalness, mix, mrt, normalView, output, packNormalToRGB, pass, roughness, sample, saturation, smoothstep, uniform, unpackRGBToNormal, vec4 } from 'three/tsl'
+import { abs, clamp, diffuseColor, dot, exp, float, hue, max, metalness, mix, mrt, normalView, output, packNormalToRGB, pass, roughness, sample, saturation, screenUV, smoothstep, uniform, unpackRGBToNormal, vec3, vec4 } from 'three/tsl'
 import { useEditorStore } from '../scene/store'
 import { bloom } from 'three/addons/tsl/display/BloomNode.js'
 import { ssao } from 'three/addons/tsl/display/SSAONode.js'
@@ -12,6 +12,7 @@ import { smaa } from 'three/addons/tsl/display/SMAANode.js'
 import type { ScenePicture } from '../scene/types'
 import { SelectionOutlineNode } from './selectionOutline'
 import { composeSkyFog, skyFogActive, skyFogRevision } from '../../capabilities/sky/session'
+import { anyUnderwaterEffectEnabled, sampleUnderwaterView } from '../../capabilities/water/session'
 
 interface BloomUniforms {
   strength: { value: number }
@@ -42,6 +43,15 @@ interface SsgiUniforms {
   getGINode: () => { rgb: unknown }
 }
 
+interface UnderwaterUniforms {
+  weight: { value: number }
+  density: { value: number }
+  fogStart: { value: number }
+  tint: { value: number }
+  vignette: { value: number }
+  color: { value: Color }
+}
+
 export class ScenePicturePipeline {
   private pipeline: RenderPipeline | null = null
   private scenePass: ReturnType<typeof pass> | null = null
@@ -49,6 +59,8 @@ export class ScenePicturePipeline {
   private dofNode: DofUniforms | null = null
   private ssrNode: SsrUniforms | null = null
   private ssgiNode: SsgiUniforms | null = null
+  private underwaterNode: UnderwaterUniforms | null = null
+  private readonly camWorldPos = new Vector3()
   private denoiseNodes: Array<{ dispose: () => void }> = []
   private outlineNode: SelectionOutlineNode | null = null
   private key = ''
@@ -57,11 +69,12 @@ export class ScenePicturePipeline {
   constructor(private readonly renderer: WebGPURenderer) {}
 
   usesEffects(picture: ScenePicture, hasOutline = false): boolean {
-    return hasOutline || picture.bloom || picture.ssr || picture.ssgi || picture.aa !== false || picture.ao || picture.dof || picture.hue !== 0 || picture.saturation !== 1 || skyFogActive()
+    return hasOutline || picture.bloom || picture.ssr || picture.ssgi || picture.aa !== false || picture.ao || picture.dof || picture.hue !== 0 || picture.saturation !== 1 || skyFogActive() || anyUnderwaterEffectEnabled()
   }
 
   render(scene: Scene, camera: Camera, picture: ScenePicture, width: number, height: number, outlineTargets: readonly Object3D[] = [], flashTarget: Object3D | null = null) {
-    const key = [camera.uuid, picture.toneMapping, picture.bloom, picture.ssr, picture.ssgi, picture.ssgi && picture.ssgiDenoise, picture.aa !== false, picture.ao, picture.dof, picture.hue !== 0 || picture.saturation !== 1, skyFogRevision(), width, height].join('|')
+    const underwaterEnabled = anyUnderwaterEffectEnabled()
+    const key = [camera.uuid, picture.toneMapping, picture.bloom, picture.ssr, picture.ssgi, picture.ssgi && picture.ssgiDenoise, picture.aa !== false, picture.ao, picture.dof, picture.hue !== 0 || picture.saturation !== 1, skyFogRevision(), underwaterEnabled, width, height].join('|')
     if (this.failed && this.key === key) {
       this.renderer.render(scene, camera)
       return
@@ -97,6 +110,20 @@ export class ScenePicturePipeline {
       this.ssgiNode.radius.value = picture.ssgiRadius
       this.ssgiNode.giIntensity.value = picture.ssgiIntensity
       this.ssgiNode.aoIntensity.value = picture.ssgiOcclusion
+    }
+    if (this.underwaterNode) {
+      camera.getWorldPosition(this.camWorldPos)
+      const underwater = sampleUnderwaterView(this.camWorldPos.x, this.camWorldPos.y, this.camWorldPos.z)
+      if (underwater) {
+        this.underwaterNode.weight.value = underwater.weight
+        this.underwaterNode.density.value = underwater.fogDensity
+        this.underwaterNode.fogStart.value = underwater.fogStart
+        this.underwaterNode.tint.value = underwater.tint
+        this.underwaterNode.vignette.value = underwater.vignette
+        this.underwaterNode.color.value.set(underwater.color)
+      } else {
+        this.underwaterNode.weight.value = 0
+      }
     }
     try {
       this.pipeline?.render()
@@ -217,6 +244,26 @@ export class ScenePicturePipeline {
       this.dofNode = null
     }
     if (skyFogActive()) current = composeSkyFog(current, scenePass) as typeof current
+    if (anyUnderwaterEffectEnabled()) {
+      const weight = uniform(0)
+      const density = uniform(0.25)
+      const fogStart = uniform(0.5)
+      const tint = uniform(0.15)
+      const vignette = uniform(0.22)
+      const color = uniform(new Color('#0d5c75'))
+      this.underwaterNode = { weight, density, fogStart, tint, vignette, color }
+      const viewDist = abs(scenePass.getViewZNode())
+      const fogDist = max(float(0), viewDist.sub(fogStart))
+      const fogFactor = clamp(float(1).sub(exp(fogDist.negate().mul(density))), 0, 1)
+      const nearTint = mix(current.rgb as never, (current.rgb as { mul: (v: unknown) => never }).mul(mix(vec3(1, 1, 1), color as never, float(0.65))), tint as never)
+      const fogged = mix(nearTint as never, color as never, fogFactor)
+      const offset = screenUV.sub(0.5)
+      const vigMask = float(1).sub(smoothstep(0.2, 0.8, dot(offset, offset)).mul(vignette))
+      const underwaterRgb = fogged.mul(vigMask)
+      current = vec4(mix(current.rgb as never, underwaterRgb as never, weight as never), current.a as never) as unknown as typeof current
+    } else {
+      this.underwaterNode = null
+    }
     const graded = picture.hue !== 0 || picture.saturation !== 1
       ? vec4(saturation(hue(current.rgb as never, picture.hue), picture.saturation), current.a as never)
       : current

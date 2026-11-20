@@ -131,7 +131,23 @@ export function WaterCard({ node, disabled }: { node: SceneNode, disabled: boole
                 <span>{t('water.shoreFoam')}</span>
                 <input type="checkbox" checked={spec.shoreFoam} disabled={disabled} onChange={event => write({ shoreFoam: event.target.checked })} />
               </label>
+              <label className="field field--check">
+                <span>{t('water.underwaterEffect')}</span>
+                <input type="checkbox" checked={spec.underwaterEffect} disabled={disabled} onChange={event => write({ underwaterEffect: event.target.checked })} />
+              </label>
             </div>
+            {spec.underwaterEffect && (
+              <>
+                <label className="field">
+                  <span>{t('water.underwaterColor')}</span>
+                  <input type="color" value={spec.underwaterColor} disabled={disabled} onChange={event => write({ underwaterColor: event.target.value })} />
+                </label>
+                <RangeField label={t('water.underwaterFogDensity')} value={spec.underwaterFogDensity} min={0.01} max={1.5} step={0.01} disabled={disabled} onChange={underwaterFogDensity => write({ underwaterFogDensity })} />
+                <RangeField label={t('water.underwaterFogStart')} value={spec.underwaterFogStart} min={0} max={10} step={0.1} disabled={disabled} onChange={underwaterFogStart => write({ underwaterFogStart })} />
+                <RangeField label={t('water.underwaterTint')} value={spec.underwaterTint} min={0} max={1} step={0.02} disabled={disabled} onChange={underwaterTint => write({ underwaterTint })} />
+                <RangeField label={t('water.underwaterVignette')} value={spec.underwaterVignette} min={0} max={0.8} step={0.02} disabled={disabled} onChange={underwaterVignette => write({ underwaterVignette })} />
+              </>
+            )}
           </section>
 
           <section className="iv2-section">

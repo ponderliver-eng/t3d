@@ -61,6 +61,18 @@ export interface WaterSpec {
   causticsScale: number
   /** 开关：岸边泡沫与拍岸波纹。 */
   shoreFoam: boolean
+  /** 开关：镜头潜入水下时的水底氛围后期（默认关）。 */
+  underwaterEffect: boolean
+  /** 水下雾颜色。 */
+  underwaterColor: string
+  /** 水下雾浓度（越大能见度越低）。 */
+  underwaterFogDensity: number
+  /** 水下起雾距离 (m)。 */
+  underwaterFogStart: number
+  /** 水下近景染色强度 (0 ~ 1)。 */
+  underwaterTint: number
+  /** 水下边缘暗角强度 (0 ~ 0.8)。 */
+  underwaterVignette: number
   normalMapAssetId: string | null
   foamMapAssetId: string | null
 }
@@ -82,6 +94,7 @@ type StylePresetFields = Omit<
   WaterSpec,
   | 'enabled' | 'preset' | 'quality' | 'reflectionScale'
   | 'planarReflection' | 'refraction' | 'caustics' | 'shoreFoam'
+  | 'underwaterEffect' | 'underwaterColor' | 'underwaterFogDensity' | 'underwaterFogStart' | 'underwaterTint' | 'underwaterVignette'
   | 'normalMapAssetId' | 'foamMapAssetId' | 'foamTrail' | 'swellRate' | 'debugView'
 >
 
@@ -253,6 +266,12 @@ export function defaultWater(): WaterSpec {
     foamTrail: 1,
     swellRate: 1,
     debugView: 'off',
+    underwaterEffect: false,
+    underwaterColor: '#0d5c75',
+    underwaterFogDensity: 0.25,
+    underwaterFogStart: 0.5,
+    underwaterTint: 0.15,
+    underwaterVignette: 0.22,
     normalMapAssetId: null,
     foamMapAssetId: null,
   }
@@ -306,6 +325,12 @@ export function normalizeWater(raw: unknown): WaterSpec {
     causticsStrength: finite(record.causticsStrength, base.causticsStrength, 0, 2),
     causticsScale: finite(record.causticsScale, base.causticsScale, 0.04, 2),
     shoreFoam: typeof record.shoreFoam === 'boolean' ? record.shoreFoam : qualPreset.shoreFoam,
+    underwaterEffect: record.underwaterEffect === true,
+    underwaterColor: typeof record.underwaterColor === 'string' ? record.underwaterColor : base.underwaterColor,
+    underwaterFogDensity: finite(record.underwaterFogDensity, base.underwaterFogDensity, 0.01, 2),
+    underwaterFogStart: finite(record.underwaterFogStart, base.underwaterFogStart, 0, 20),
+    underwaterTint: finite(record.underwaterTint, base.underwaterTint, 0, 1),
+    underwaterVignette: finite(record.underwaterVignette, base.underwaterVignette, 0, 0.8),
     normalMapAssetId: typeof record.normalMapAssetId === 'string' ? record.normalMapAssetId : null,
     foamMapAssetId: typeof record.foamMapAssetId === 'string' ? record.foamMapAssetId : null,
   }
