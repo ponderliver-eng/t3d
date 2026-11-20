@@ -509,7 +509,8 @@ export function createWaterMaterial(options: WaterMaterialOptions): WaterMateria
   )
 
   // 4. 反射：仅当 planar === true 时创建 reflector(bounces: false)；否则使用太阳仰角 + 背景色天空渐变
-  const distortion = surfaceNormal.xz.mul(float(0.008).add(float(0.18).div(max(eyeDist, float(1.0))))).mul(uNormalScale)
+  const grazingFade = smoothstep(float(0.04), float(0.32), nDotV)
+  const distortion = surfaceNormal.xz.mul(float(0.008).add(float(0.18).div(max(eyeDist, float(1.0))))).mul(uNormalScale).mul(float(0.35).add(grazingFade.mul(0.65)))
   const reflDir = normalize(reflect(viewVec.negate(), surfaceNormal))
   const skyGrad = smoothstep(float(0.0), float(0.5), max(reflDir.y, float(0.0)))
   const fallbackReflection = mix(uSkyHorizonColor, uSkyTopColor, skyGrad)
@@ -523,7 +524,8 @@ export function createWaterMaterial(options: WaterMaterialOptions): WaterMateria
       mirrorReflector.uvNode = clamp(mirrorReflector.uvNode.add(distortion) as never, vec2(0.002, 0.002), vec2(0.998, 0.998))
     }
     reflectionTarget = mirrorReflector.target
-    reflectionColor = mirrorReflector.rgb
+    // 贴图未覆盖或被清空（如低角度/接近静水面时）用天空渐变兜底，避免反射突然变黑
+    reflectionColor = mix(fallbackReflection, mirrorReflector.rgb, mirrorReflector.a)
   }
 
   // 5. 垂直水深修正：仅在开启 refraction（具备屏幕深度采样）时读取 viewportLinearDepth，关闭折射时彻底解耦深度拷贝
