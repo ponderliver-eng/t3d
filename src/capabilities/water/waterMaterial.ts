@@ -170,7 +170,7 @@ export interface WaterMaterialHandle {
   material: MeshBasicNodeMaterial
   reflectionTarget: Object3D | null
   setSpec: (spec: WaterSpec, customNormal: Texture | null, customFoam: Texture | null) => void
-  setTime: (time: number, waveTime: number) => void
+  setTime: (time: number, waveTime: number, swellTime: number) => void
   setInvScale: (worldScale: Vector3) => void
   /** 网格一格的世界尺寸 (m)；采样不足的波会在顶点位移里淡出。未知时传 0。 */
   setCellSize: (meters: number) => void
@@ -191,6 +191,7 @@ export function createWaterMaterial(options: WaterMaterialOptions): WaterMateria
 
   const uTime = uniform(0)
   const uWaveTime = uniform(0)
+  const uSwellTime = uniform(0)
   const uInvScale = uniform(new Vector3(1, 1, 1))
   const uShallowColor = uniform(new Color('#14b8a6'))
   const uDeepColor = uniform(new Color('#063354'))
@@ -381,7 +382,7 @@ export function createWaterMaterial(options: WaterMaterialOptions): WaterMateria
       const v = dot(xz, flowOrthoDir)
       const phi = sin(u.mul(cfg.ka).add(sin(v.mul(cfg.kb).add(cfg.offset)).mul(1.4))).mul(2.2)
         .add(sin(v.mul(cfg.ka * 0.7).sub(u.mul(cfg.kb * 0.6)).add(cfg.offset * 2)).mul(1.6))
-      const pulse = smoothstep(float(-0.75), float(0.75), sin(uWaveTime.mul(cfg.omega).sub(phi).add(cfg.offset)))
+      const pulse = smoothstep(float(-0.75), float(0.75), sin(uSwellTime.mul(cfg.omega).sub(phi).add(cfg.offset)))
       return mix(float(cfg.low), float(cfg.high), pulse)
     }
     const groupOf = (i: number) => Math.min(SWELL_GROUPS.length - 1, Math.floor(i / 2))
@@ -740,7 +741,8 @@ export function createWaterMaterial(options: WaterMaterialOptions): WaterMateria
       normalTexNode.value = customNormal ?? defaultNormal
       foamTexNode.value = customFoam ?? defaultFoam
     },
-    setTime(time, waveTime) {
+    setTime(time, waveTime, swellTime) {
+      uSwellTime.value = swellTime
       uTime.value = time
       uWaveTime.value = waveTime
     },

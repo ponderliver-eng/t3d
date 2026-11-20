@@ -31,6 +31,7 @@ interface BoundMesh {
   isPlane?: boolean
   handle: WaterMaterialHandle
   waveTime: number
+  swellTime?: number
   specRef?: unknown
   normalId?: string | null
   foamId?: string | null
@@ -417,6 +418,8 @@ function onBeforeRender(ctx: ViewportRenderContext) {
       entry.foamTex = customFoam
     }
     entry.waveTime += dt * spec.waveSpeed
+    // 起落节奏单独累计时间：拖动「起落频率」时只改变之后的快慢，不会让相位突跳
+    entry.swellTime = (entry.swellTime ?? entry.waveTime) + dt * spec.waveSpeed * spec.swellRate
     root.getWorldScale(tmpWorldScale)
     entry.handle.setInvScale(tmpWorldScale)
     // 自带的细分平面知道一格有多大；模型网格的密度未知，传 0 表示不做淡出
@@ -424,7 +427,7 @@ function onBeforeRender(ctx: ViewportRenderContext) {
     entry.handle.setCellSize(usesSharedPlane
       ? Math.max(Math.abs(tmpWorldScale.x), Math.abs(tmpWorldScale.z)) / SEGMENTS[spec.quality]
       : 0)
-    entry.handle.setTime(waterTime, entry.waveTime)
+    entry.handle.setTime(waterTime, entry.waveTime, entry.swellTime)
     entry.handle.setSun(tmpSunDir, tmpSunColor, sunIntensity, tmpSkyHorizon, tmpSkyTop)
   }
 }

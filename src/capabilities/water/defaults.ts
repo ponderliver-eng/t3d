@@ -33,6 +33,8 @@ export interface WaterSpec {
   crestFoamThreshold: number
   /** 浪峰泡沫拖尾时长倍率（0 = 泡沫只贴在浪峰上，越大浪峰走过后留得越久）。 */
   foamTrail: number
+  /** 浪的起落频率倍率（1 = 一个浪从涨起到平掉约 4 ~ 7 秒；越大起落越快，0 = 浪高不随时间变化）。 */
+  swellRate: number
   /** 调试视图：只看波高 / 挤压值 / 泡沫遮罩，用于调参，不影响性能档位。 */
   debugView: WaterDebugView
   waveHeight: number
@@ -80,7 +82,7 @@ type StylePresetFields = Omit<
   WaterSpec,
   | 'enabled' | 'preset' | 'quality' | 'reflectionScale'
   | 'planarReflection' | 'refraction' | 'caustics' | 'shoreFoam'
-  | 'normalMapAssetId' | 'foamMapAssetId' | 'foamTrail' | 'debugView'
+  | 'normalMapAssetId' | 'foamMapAssetId' | 'foamTrail' | 'swellRate' | 'debugView'
 >
 
 export const WATER_STYLE_PRESETS: Record<WaterPresetId, StylePresetFields> = {
@@ -249,6 +251,7 @@ export function defaultWater(): WaterSpec {
     ...WATER_STYLE_PRESETS.tropical,
     ...WATER_QUALITY_PRESETS.balanced,
     foamTrail: 1,
+    swellRate: 1,
     debugView: 'off',
     normalMapAssetId: null,
     foamMapAssetId: null,
@@ -287,6 +290,7 @@ export function normalizeWater(raw: unknown): WaterSpec {
     crestFoam: finite(record.crestFoam, base.crestFoam, 0, 2),
     crestFoamThreshold: finite(record.crestFoamThreshold, base.crestFoamThreshold, 0, 0.9),
     foamTrail: finite(record.foamTrail, base.foamTrail, 0, 1.5),
+    swellRate: finite(record.swellRate, base.swellRate, 0, 4),
     debugView: record.debugView && WATER_DEBUG_VIEWS.includes(record.debugView) ? record.debugView : 'off',
     waveHeight: finite(record.waveHeight, base.waveHeight, 0, 3),
     waveSpeed: finite(record.waveSpeed, base.waveSpeed, 0, 4),
