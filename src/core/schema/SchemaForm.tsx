@@ -271,6 +271,27 @@ function SchemaControl({
           />
         )
       }
+      if (field.target === 'clip') {
+        return (
+          <ClipRefControl
+            value={typeof value === 'string' ? value : null}
+            disabled={disabled}
+            title={field.label}
+            onChange={(next) => onChange(next)}
+          />
+        )
+      }
+      if (field.target === 'tableRow') {
+        return (
+          <TableRowRefControl
+            value={typeof value === 'string' ? value : null}
+            tableId={field.tableId}
+            disabled={disabled}
+            title={field.label}
+            onChange={(next) => onChange(next)}
+          />
+        )
+      }
       return (
         <input
           type="text"
@@ -546,6 +567,196 @@ function AssetRefControl({
           title={`选择${title}`}
           selectedId={value}
           items={filteredAssets.map((a) => ({ id: a.id, name: a.name, badge: a.kind }))}
+          onSelect={(id) => {
+            onChange(id)
+            setPickerOpen(false)
+          }}
+          onClose={() => setPickerOpen(false)}
+        />
+      )}
+    </>
+  )
+}
+
+function ClipRefControl({
+  value,
+  disabled,
+  title,
+  onChange,
+}: {
+  value: string | null
+  disabled: boolean
+  title: string
+  onChange: (next: string | null) => void
+}) {
+  const [dropping, setDropping] = useState(false)
+  const [pickerOpen, setPickerOpen] = useState(false)
+  const clips = projectClips()
+  const matched = value ? clips.find((c) => c.name === value) : undefined
+
+  const acceptsDrop = (e: DragEvent) =>
+    !disabled && (e.dataTransfer.types.includes(CLIP_MIME) || e.dataTransfer.types.includes(ASSET_MIME))
+
+  const handleDrop = (e: DragEvent) => {
+    setDropping(false)
+    if (disabled) return
+    const clipData = readClipDrag(e.dataTransfer.getData(CLIP_MIME))
+    if (clipData?.clip) {
+      e.preventDefault()
+      onChange(clipData.clip)
+      return
+    }
+    const assetId = e.dataTransfer.getData(ASSET_MIME)
+    if (assetId) {
+      const firstClip = clipNamesFor(assetId)[0]
+      if (firstClip) {
+        e.preventDefault()
+        onChange(firstClip)
+      }
+    }
+  }
+
+  return (
+    <>
+      <div
+        style={refSlotStyle(dropping, disabled)}
+        title={value ? `${value}${matched ? ` (${matched.assetName})` : ''} — 拖放动画片段或点击右侧选择` : '从资源面板拖放动画片段到此处，或点击右侧放大镜选择'}
+        onDragEnter={(e) => {
+          if (!acceptsDrop(e)) return
+          e.preventDefault()
+          setDropping(true)
+        }}
+        onDragOver={(e) => {
+          if (!acceptsDrop(e)) return
+          e.preventDefault()
+          e.dataTransfer.dropEffect = 'copy'
+          if (!dropping) setDropping(true)
+        }}
+        onDragLeave={(e) => {
+          if (e.currentTarget.contains(e.relatedTarget as Node | null)) return
+          setDropping(false)
+        }}
+        onDrop={handleDrop}
+      >
+        <button
+          type="button"
+          style={refNameBtnStyle(Boolean(value), false)}
+          onClick={() => { if (!disabled) setPickerOpen(true) }}
+        >
+          <Film size={12} style={{ color: value ? '#fbbf24' : '#71717a', flexShrink: 0 }} />
+          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {dropping ? '松开以引用动画' : value ? (matched ? `${matched.assetName} / ${value}` : value) : '无 (拖放动画或选择)'}
+          </span>
+        </button>
+        {!disabled && (
+          <button
+            type="button"
+            style={refActionBtnStyle}
+            title={`选择${title}`}
+            onClick={(e) => { e.preventDefault(); setPickerOpen(true) }}
+          >
+            <Search size={12} />
+          </button>
+        )}
+        {!disabled && value && (
+          <button
+            type="button"
+            style={refActionBtnStyle}
+            title="清空引用"
+            onClick={(e) => { e.preventDefault(); onChange(null) }}
+          >
+            <X size={12} />
+          </button>
+        )}
+      </div>
+
+      {pickerOpen && (
+        <RefPickerModal
+          title={`选择${title}`}
+          selectedId={value}
+          items={clips.map((c) => ({
+            id: c.name,
+            name: c.name,
+            badge: `${c.assetName} · ${c.duration.toFixed(2)}s`,
+          }))}
+          onSelect={(id) => {
+            onChange(id)
+            setPickerOpen(false)
+          }}
+          onClose={() => setPickerOpen(false)}
+        />
+      )}
+    </>
+  )
+}
+
+function TableRowRefControl({
+  value,
+  tableId,
+  disabled,
+  title,
+  onChange,
+}: {
+  value: string | null
+  tableId?: string
+  disabled: boolean
+  title: string
+  onChange: (next: string | null) => void
+}) {
+  const gameDatabase = useEditorStore((s) => s.gameDatabase)
+  const [pickerOpen, setPickerOpen] = useState(false)
+
+  const rows = tableId
+    ? (gameDatabase.tables[tableId] ?? []).map((r) => ({ id: r.id, name: r.name, badge: r.category ?? tableId }))
+    : Object.entries(gameDatabase.tables).flatMap(([tid, list]) =>
+        list.map((r) => ({ id: r.id, name: r.name, badge: `${tid}${r.category ? `/${r.category}` : ''}` })),
+      )
+  const matched = value ? rows.find((r) => r.id === value) : undefined
+  const missing = Boolean(value && !matched)
+
+  return (
+    <>
+      <div
+        style={refSlotStyle(false, disabled)}
+        title={matched ? `${matched.name} (${matched.id})` : '点击选择策划表条目'}
+      >
+        <button
+          type="button"
+          style={refNameBtnStyle(Boolean(value), missing)}
+          onClick={() => { if (!disabled) setPickerOpen(true) }}
+        >
+          <Database size={12} style={{ color: matched ? '#c084fc' : '#71717a', flexShrink: 0 }} />
+          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {matched ? matched.name : missing ? `已丢失 (${value?.slice(0, 8)})` : '无 (点击选择)'}
+          </span>
+        </button>
+        {!disabled && (
+          <button
+            type="button"
+            style={refActionBtnStyle}
+            title={`选择${title}`}
+            onClick={(e) => { e.preventDefault(); setPickerOpen(true) }}
+          >
+            <Search size={12} />
+          </button>
+        )}
+        {!disabled && value && (
+          <button
+            type="button"
+            style={refActionBtnStyle}
+            title="清空引用"
+            onClick={(e) => { e.preventDefault(); onChange(null) }}
+          >
+            <X size={12} />
+          </button>
+        )}
+      </div>
+
+      {pickerOpen && (
+        <RefPickerModal
+          title={`选择${title}`}
+          selectedId={value}
+          items={rows}
           onSelect={(id) => {
             onChange(id)
             setPickerOpen(false)

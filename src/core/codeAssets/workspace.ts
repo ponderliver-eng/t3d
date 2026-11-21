@@ -79,7 +79,8 @@ export type ScriptParamSchema =
   | { type: 'vec2'; default: readonly [number, number]; label: string; description?: string }
   | { type: 'vec3'; default: readonly [number, number, number]; label: string; description?: string }
   | { type: 'enum'; options: ReadonlyArray<{ value: string; label: string }>; default: string; label: string; description?: string }
-  | { type: 'ref'; target: 'node' | 'asset'; kinds?: readonly string[]; default?: string | null; label: string; description?: string }
+  | { type: 'texture'; default?: string | null; label: string; description?: string }
+  | { type: 'ref'; target: 'node' | 'asset' | 'clip' | 'tableRow'; kinds?: readonly string[]; tableId?: string; default?: string | null; label: string; description?: string }
   | Record<string, unknown>
 export type ScriptParamMap = Record<string, ScriptParamSchema>
 export interface NodeHandle {
