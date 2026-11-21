@@ -10,6 +10,7 @@ import {
   type ObjectFieldSchema,
 } from '../src/core/schema/fieldSchema.ts'
 import { PathGuard } from '../electron/services/pathGuard.ts'
+import { formatDesignMarkdown, parseDesignMarkdown } from '../src/core/project/designMemory.ts'
 
 test('FieldSchema: 默认值、校验、可选字段与 JSON Schema 转换', () => {
   const schema: ObjectFieldSchema = {
@@ -140,4 +141,25 @@ test('PathGuard: 仅允许已授权工程与用户库目录', () => {
   assert.equal(guard.isAllowed(path.join(projectDir, '../OtherProject/secret.txt')), false)
   assert.equal(guard.isAllowed(path.resolve('C:/Windows/System32/drivers/etc/hosts')), false)
   assert.throws(() => guard.assertAllowed(path.resolve('C:/Windows/win.ini')))
+})
+
+test('design.md 序列化与反序列化往返一致', () => {
+  const md = formatDesignMarkdown({
+    title: '遗迹跳跃者',
+    genre: '3D 平台跳跃',
+    perspective: '第三人称追尾',
+    coreLoop: '跳跃过障 → 收集晶体 → 抵达传送门',
+    winLose: '到达终点获胜，掉落深渊复活',
+    artStyle: '低多边形遗迹 + 暖阳水体',
+    colorPalette: ['#2dd4bf', '#f59e0b'],
+    controls: 'WASD 移动，Space 跳跃',
+    namingRules: '中文场景节点名',
+    notes: '第一关先做 4 个平台',
+    updatedAt: '2026-11-21T00:00:00.000Z',
+  })
+  const parsed = parseDesignMarkdown(md)
+  assert.equal(parsed.title, '遗迹跳跃者')
+  assert.equal(parsed.genre, '3D 平台跳跃')
+  assert.deepEqual(parsed.colorPalette, ['#2dd4bf', '#f59e0b'])
+  assert.equal(parsed.notes, '第一关先做 4 个平台')
 })

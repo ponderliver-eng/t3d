@@ -3,6 +3,8 @@ import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import fs from 'node:fs/promises'
 import { PathGuard } from './services/pathGuard'
+import { SecretStore } from './services/secretStore'
+import { invokeModelChat, type ChatRequest } from './services/modelProviders'
 
 const { app, BrowserWindow, ipcMain, dialog, shell } = electron
 
@@ -54,6 +56,49 @@ app.on('window-all-closed', () => {
 function registerIpc() {
   const userLibraryRoot = path.join(app.getPath('userData'), 'T3D')
   const pathGuard = new PathGuard([userLibraryRoot])
+  const secretStore = new SecretStore(app.getPath('userData'))
+  const inflightChats = new Map<string, AbortController>()
+
+  ipcMain.handle('ai:listProviders', () => secretStore.listPublic())
+  ipcMain.handle('ai:saveProvider', (_event, input) => secretStore.saveProvider(input))
+  ipcMain.handle('ai:setActiveProvider', (_event, id: string) => secretStore.setActiveProvider(id))
+  ipcMain.handle('ai:abort', (_event, requestId: string) => {
+    const controller = inflightChats.get(requestId)
+    if (controller) {
+      controller.abort()
+      inflightChats.delete(requestId)
+    }
+  })
+  ipcMain.handle('ai:chat', async (event, requestId: string, request: ChatRequest) => {
+    const controller = new AbortController()
+    inflightChats.set(requestId, controller)
+    try {
+      const { config, apiKey } = await secretStore.resolveCredentials(request.providerId)
+      return await invokeModelChat(
+        config,
+        apiKey,
+        request,
+        (delta) => {
+          if (!event.sender.isDestroyed()) {
+            event.sender.send('ai:delta', delta)
+          }
+        },
+        requestId,
+        controller.signal,
+      )
+    } catch (error) {
+      if (!event.sender.isDestroyed()) {
+        event.sender.send('ai:delta', {
+          requestId,
+          type: 'error',
+          error: error instanceof Error ? error.message : String(error),
+        })
+      }
+      throw error
+    } finally {
+      inflightChats.delete(requestId)
+    }
+  })
 
   ipcMain.handle('fs:authorizeRoot', (_event, dirPath: string) => {
     return pathGuard.authorizeRoot(dirPath)

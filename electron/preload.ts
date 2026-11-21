@@ -23,4 +23,16 @@ contextBridge.exposeInMainWorld('__electron', {
   dialog: {
     showOpenDirectoryDialog: () => ipcRenderer.invoke('dialog:showOpenDirectoryDialog'),
   },
+  ai: {
+    listProviders: () => ipcRenderer.invoke('ai:listProviders'),
+    saveProvider: (input: unknown) => ipcRenderer.invoke('ai:saveProvider', input),
+    setActiveProvider: (id: string) => ipcRenderer.invoke('ai:setActiveProvider', id),
+    chat: (requestId: string, request: unknown) => ipcRenderer.invoke('ai:chat', requestId, request),
+    abort: (requestId: string) => ipcRenderer.invoke('ai:abort', requestId),
+    onDelta: (handler: (delta: unknown) => void) => {
+      const listener = (_event: unknown, delta: unknown) => handler(delta)
+      ipcRenderer.on('ai:delta', listener)
+      return () => ipcRenderer.removeListener('ai:delta', listener)
+    },
+  },
 })

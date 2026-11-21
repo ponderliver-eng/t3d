@@ -1,4 +1,5 @@
-import { ArrowDownToLine, Axis3d, BoxSelect, Check, Crosshair, FilePlus, Globe, Grid3x3, History, Library, Magnet, Move3d, Pause, Play, Redo2, RotateCcw, Save, Scaling, Square, Undo2 } from 'lucide-react'
+import { ArrowDownToLine, Axis3d, BoxSelect, Check, Crosshair, FilePlus, Globe, Grid3x3, History, Library, Magnet, Move3d, Pause, Play, Redo2, RotateCcw, Save, Scaling, Sparkles, Square, Undo2 } from 'lucide-react'
+import { useAgentStore } from '../../ai/agentLoop'
 import { saveProjectNow } from '../assets/project'
 import { translate, useI18n } from '../i18n'
 import { askNewScene, useEditorStore } from '../scene/store'
@@ -15,6 +16,8 @@ export default function Toolbar() {
   const playState = useEditorStore(state => state.playState)
   const playDirty = useEditorStore(state => state.playDirty)
   const sidePanel = useEditorStore(state => state.sidePanel)
+  const aiPanelOpen = useAgentStore(state => state.panelOpen)
+  const toggleAiPanel = () => useAgentStore.getState().setPanelOpen(!aiPanelOpen)
   const sceneUndo = useEditorStore(state => (state.past.length > 0 || state.gesture !== null) && state.playState === 'stopped')
   const sceneRedo = useEditorStore(state => state.future.length > 0 && state.gesture === null && state.playState === 'stopped')
   const uiUndo = useUiEditor(state => state.assetId !== null && state.past.length > 0)
@@ -138,6 +141,15 @@ export default function Toolbar() {
         )}
       </div>
       <div className="toolbar__spacer" />
+      <button
+        type="button"
+        className={`toolbar__btn ${aiPanelOpen ? 'toolbar__btn--active' : ''}`}
+        title="AI 指挥台"
+        onClick={toggleAiPanel}
+      >
+        <Sparkles size={14} />
+        <span>AI 助手</span>
+      </button>
       <button
         type="button"
         className="toolbar__btn toolbar__btn--library"

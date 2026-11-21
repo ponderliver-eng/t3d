@@ -24,6 +24,42 @@ export interface ElectronBridge {
   dialog: {
     showOpenDirectoryDialog: () => Promise<string | null>
   }
+  ai?: {
+    listProviders: () => Promise<{
+      activeProviderId: string
+      providers: Array<{
+        id: string
+        providerType: 'openai-compatible' | 'openai' | 'anthropic' | 'gemini'
+        label: string
+        baseUrl: string
+        model: string
+        hasApiKey: boolean
+      }>
+    }>
+    saveProvider: (input: {
+      id: string
+      providerType?: 'openai-compatible' | 'openai' | 'anthropic' | 'gemini'
+      label?: string
+      baseUrl?: string
+      model?: string
+      apiKey?: string
+      setActive?: boolean
+    }) => Promise<{ activeProviderId: string; providers: unknown[] }>
+    setActiveProvider: (id: string) => Promise<string>
+    chat: (requestId: string, request: unknown) => Promise<{
+      text: string
+      toolCalls: Array<{ id: string; name: string; arguments: Record<string, unknown> }>
+      usage?: { inputTokens?: number; outputTokens?: number }
+      model: string
+    }>
+    abort: (requestId: string) => Promise<void>
+    onDelta: (handler: (delta: {
+      requestId: string
+      type: 'text' | 'done' | 'error'
+      text?: string
+      error?: string
+    }) => void) => () => void
+  }
 }
 
 export function electronBridge(): ElectronBridge | null {

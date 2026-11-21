@@ -17,6 +17,7 @@ import { PreviewHost } from './editor/preview/PreviewHost'
 import { UiEditor } from './editor/ui/UiEditor'
 import { isUiEditorOpen, redoActive, undoActive, useUiEditor } from './editor/ui/session'
 import { isViewportNavigating } from './editor/viewport/cameraControls'
+import AiWorkbenchPanel from './ai/AiWorkbenchPanel'
 import './App.css'
 
 export default function App() {
@@ -177,6 +178,7 @@ export default function App() {
       )}
       <div className="app__workspace">
         <IDELayout />
+        <AiWorkbenchPanel />
         <UiEditor />
       </div>
       <StatusBar />

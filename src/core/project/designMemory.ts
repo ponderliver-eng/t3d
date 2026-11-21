@@ -116,9 +116,10 @@ export function parseDesignMarkdown(md: string): ProjectDesignDoc {
   if (heading) doc.title = heading.slice(2).trim()
 
   const readField = (prefix: string): string | null => {
-    const line = lines.find((l) => l.startsWith(`- **${prefix}**：`))
+    const marker = `- **${prefix}**：`
+    const line = lines.find((l) => l.startsWith(marker))
     if (!line) return null
-    const val = line.slice(prefix.length + 6).trim()
+    const val = line.slice(marker.length).trim()
     return val === '待定' ? '' : val
   }
 
