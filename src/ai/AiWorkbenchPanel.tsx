@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
-import { Bot, Check, RotateCcw, Send, Settings, Sparkles, Square, Trash2, X } from 'lucide-react'
+import { Bot, Check, Download, RotateCcw, Send, Settings, Sparkles, Square, Trash2, Upload, X } from 'lucide-react'
 import { createCheckpoint } from '../core/project/checkpoints'
 import { useManagerModalStore } from '../core/project/ProjectManagerModal'
 import { useCodeAssetStore } from '../core/codeAssets/workspace'
 import { useEditorStore } from '../editor/scene/store'
 import { useAgentStore } from './agentLoop'
+import { parseImportedAiHistory, serializeAiHistoryForExport } from './historyStorage'
 
 export default function AiWorkbenchPanel() {
   const panelOpen = useAgentStore((s) => s.panelOpen)
@@ -24,6 +25,7 @@ export default function AiWorkbenchPanel() {
   const abort = useAgentStore((s) => s.abort)
   const rollbackTurn = useAgentStore((s) => s.rollbackTurn)
   const clearTurns = useAgentStore((s) => s.clearTurns)
+  const importTurns = useAgentStore((s) => s.importTurns)
 
   const selection = useEditorStore((s) => s.selection)
   const nodes = useEditorStore((s) => s.nodes)
@@ -35,6 +37,23 @@ export default function AiWorkbenchPanel() {
   const [editModel, setEditModel] = useState('')
   const [editApiKey, setEditApiKey] = useState('')
   const scrollRef = useRef<HTMLDivElement | null>(null)
+  const importInputRef = useRef<HTMLInputElement | null>(null)
+
+  const handleExportHistory = () => {
+    if (turns.length === 0) {
+      useEditorStore.getState().notify('当前没有可导出的对话记录')
+      return
+    }
+    const content = serializeAiHistoryForExport(turns)
+    const blob = new Blob([content], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `t3d-ai-history-${new Date().toISOString().slice(0, 10)}.json`
+    a.click()
+    URL.revokeObjectURL(url)
+    useEditorStore.getState().notify(`已导出 ${turns.length} 条对话记录`)
+  }
 
   useEffect(() => {
     if (panelOpen) {
@@ -150,6 +169,42 @@ export default function AiWorkbenchPanel() {
         >
           {activeProvider ? (activeProvider.hasApiKey ? activeProvider.model : '未设密钥') : '桌面端可用'}
         </span>
+        <input
+          ref={importInputRef}
+          type="file"
+          accept=".json"
+          style={{ display: 'none' }}
+          onChange={async (e) => {
+            const file = e.target.files?.[0]
+            e.currentTarget.value = ''
+            if (!file) return
+            try {
+              const imported = parseImportedAiHistory(await file.text())
+              importTurns(imported, 'merge')
+              useEditorStore.getState().notify(`已导入合并 ${imported.length} 条对话记录`)
+            } catch (err) {
+              useEditorStore.getState().notify(`导入失败：${err instanceof Error ? err.message : String(err)}`)
+            }
+          }}
+        />
+        <button
+          type="button"
+          title="导入 / 迁移对话记录 (.json)"
+          onClick={() => importInputRef.current?.click()}
+          disabled={status !== 'idle'}
+          style={iconBtnStyle}
+        >
+          <Upload size={13} />
+        </button>
+        <button
+          type="button"
+          title="导出对话记录 (.json)"
+          onClick={handleExportHistory}
+          disabled={turns.length === 0}
+          style={iconBtnStyle}
+        >
+          <Download size={13} />
+        </button>
         <button
           type="button"
           title="模型与 API 设置"

@@ -4,6 +4,7 @@ import { createCheckpoint, formatDesignMarkdown, getDesignDoc, restoreCheckpoint
 import { queryProjectOverview } from '../core/query'
 import { electronBridge } from '../editor/project/electronBridge'
 import { useEditorStore } from '../editor/scene/store'
+import { initAiHistorySync, saveAiHistory } from './historyStorage'
 import { buildAiToolSpecs, executeAiTool, isConfirmRequiredTool } from './tools'
 
 export interface AiActionPill {
@@ -74,6 +75,7 @@ interface AgentState {
   abort: () => Promise<void>
   rollbackTurn: (checkpointId: string) => void
   clearTurns: () => void
+  importTurns: (imported: AiTurnItem[], mode?: 'merge' | 'replace') => void
 }
 
 const MAX_TOOL_STEPS = 16
@@ -144,7 +146,22 @@ export const useAgentStore = create<AgentState>((set, get) => ({
     useEditorStore.getState().notify(`已回退到「${res.summary?.label ?? checkpointId}」`)
   },
 
-  clearTurns: () => set({ turns: [], streamingText: '' }),
+  clearTurns: () => {
+    set({ turns: [], streamingText: '' })
+    void saveAiHistory([])
+  },
+
+  importTurns: (imported, mode = 'merge') => {
+    const next = mode === 'replace'
+      ? imported
+      : (() => {
+          const existing = get().turns
+          const seen = new Set(existing.map((t) => t.id))
+          return [...existing, ...imported.filter((t) => !seen.has(t.id))]
+        })()
+    set({ turns: next })
+    void saveAiHistory(next)
+  },
 
   sendPrompt: async (rawText) => {
     const text = rawText.trim()
@@ -164,6 +181,7 @@ export const useAgentStore = create<AgentState>((set, get) => ({
           },
         ],
       }))
+      void saveAiHistory(get().turns)
       return
     }
 
@@ -333,6 +351,7 @@ export const useAgentStore = create<AgentState>((set, get) => ({
             : t,
         ),
       }))
+      void saveAiHistory(get().turns)
     } catch (error) {
       if (!txCommitted && commandBus.hasActiveTransaction()) {
         await commandBus.rollbackTransaction()
@@ -346,9 +365,15 @@ export const useAgentStore = create<AgentState>((set, get) => ({
           t.id === assistantId ? { ...t, text: finalText, actions, error: msg } : t,
         ),
       }))
+      void saveAiHistory(get().turns)
     }
   },
 }))
+
+initAiHistorySync(
+  () => useAgentStore.getState().turns,
+  (turns) => useAgentStore.setState({ turns }),
+)
 
 function buildSystemPrompt(selectedRefs: Array<{ id: string; label: string }>): string {
   const designMd = formatDesignMarkdown(getDesignDoc())
@@ -364,6 +389,10 @@ function buildSystemPrompt(selectedRefs: Array<{ id: string; label: string }>): 
     '2. 搭完或修改完场景后，务必调用 query__project_diagnose 做一次工程体检并修正错误。',
     '3. 若是新建游戏项目或需求发生方向变化，先用 project__design__update 维护 design.md 全局规范。',
     '4. 放置模型或物体到地面时，优先开启 snapToGround: true。',
+    '5. 编写节点行为脚本（script__create / script__update）时，必须从 "t3d/runtime" 导入 defineBehavior，并严格使用：',
+    '   export default defineBehavior({ name: "简短中文标题", description: "一句话介绍脚本作用（将展示在组件卡片下方）", params: { ... }, onUpdate(self, dt) { ... } })',
+    '   注意：修改位置/旋转/缩放必须整体赋值（如 self.position = { x, y, z }），不要写 self.position.x = ...。',
+    '6. 编写自定义着色器后，可用 shader__bind 绑定到指定材质或节点。',
     '',
     '当前工程设计规范（design.md）：',
     designMd,

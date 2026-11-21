@@ -2162,6 +2162,11 @@ function ProjectScriptCards({ node, disabled }: { node: SceneNode, disabled: boo
               </div>
             )}
           >
+            {def?.description && (
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.45, marginBottom: 4 }}>
+                {def.description}
+              </div>
+            )}
             {Object.keys(schemaFields).length > 0 ? (
               <SchemaForm
                 schema={{ type: 'object', fields: schemaFields }}

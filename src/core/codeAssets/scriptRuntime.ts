@@ -356,7 +356,7 @@ export function compileAndRegisterScript(
     return { ok: false, diagnostics: evaluated.diagnostics }
   }
 
-  const exp = evaluated.exports
+  const exp = evaluated.exports as Record<string, unknown> & { __t3dKind?: string }
   if (exp.__t3dKind === 'system') {
     const def = exp as unknown as SystemDefinition
     const prev = compiledSystems.get(id)
@@ -385,7 +385,7 @@ export function compileAndRegisterScript(
   }
 
   const def = exp as unknown as BehaviorDefinition
-  if (typeof def.name !== 'string') {
+  if (exp.__t3dKind !== 'behavior' || typeof def.name !== 'string' || !def.name.trim()) {
     return {
       ok: false,
       diagnostics: [
@@ -394,8 +394,8 @@ export function compileAndRegisterScript(
           line: 1,
           column: 1,
           severity: 'error',
-          message: '脚本必须通过 export default defineBehavior(...) 或 defineSystem(...) 导出',
-          hint: '请检查默认导出是否为有效的行为或系统定义',
+          message: '脚本必须通过 export default defineBehavior({ name, description, params, onUpdate }) 或 defineSystem(...) 导出',
+          hint: '请从 "t3d/runtime" 导入 defineBehavior，并提供 name（中文标题）、description（作用说明）和 onUpdate(self, dt) 回调；修改位置请整体赋值 self.position = { x, y, z }',
         },
       ],
     }

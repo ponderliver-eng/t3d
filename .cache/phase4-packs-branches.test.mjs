@@ -12388,7 +12388,7 @@ function compileAndRegisterScript(id, fileName, source) {
     };
   }
   const def = exp2;
-  if (typeof def.name !== "string") {
+  if (exp2.__t3dKind !== "behavior" || typeof def.name !== "string" || !def.name.trim()) {
     return {
       ok: false,
       diagnostics: [
@@ -12397,8 +12397,8 @@ function compileAndRegisterScript(id, fileName, source) {
           line: 1,
           column: 1,
           severity: "error",
-          message: "\u811A\u672C\u5FC5\u987B\u901A\u8FC7 export default defineBehavior(...) \u6216 defineSystem(...) \u5BFC\u51FA",
-          hint: "\u8BF7\u68C0\u67E5\u9ED8\u8BA4\u5BFC\u51FA\u662F\u5426\u4E3A\u6709\u6548\u7684\u884C\u4E3A\u6216\u7CFB\u7EDF\u5B9A\u4E49"
+          message: "\u811A\u672C\u5FC5\u987B\u901A\u8FC7 export default defineBehavior({ name, description, params, onUpdate }) \u6216 defineSystem(...) \u5BFC\u51FA",
+          hint: '\u8BF7\u4ECE "t3d/runtime" \u5BFC\u5165 defineBehavior\uFF0C\u5E76\u63D0\u4F9B name\uFF08\u4E2D\u6587\u6807\u9898\uFF09\u3001description\uFF08\u4F5C\u7528\u8BF4\u660E\uFF09\u548C onUpdate(self, dt) \u56DE\u8C03\uFF1B\u4FEE\u6539\u4F4D\u7F6E\u8BF7\u6574\u4F53\u8D4B\u503C self.position = { x, y, z }'
         }
       ]
     };
