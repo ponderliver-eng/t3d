@@ -292,7 +292,7 @@ export class EditorViewport {
     this.unregisterViewportBridge = registerViewportBridge({
       captureDataUrl: (options) => snapshotCanvasToDataUrl(this.canvas, options),
       getRenderMetrics: () => ({
-        drawCalls: this.renderer.info.render.calls,
+        drawCalls: this.renderer.info.render.drawCalls,
         triangles: this.renderer.info.render.triangles,
         points: this.renderer.info.render.points,
         lines: this.renderer.info.render.lines,

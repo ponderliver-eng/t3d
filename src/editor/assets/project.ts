@@ -294,6 +294,7 @@ async function restorePath(last: RecentProject): Promise<boolean> {
   if (!last.path) return false
   const bridge = electronBridge()
   if (!bridge) return false
+  await bridge.fs.authorizeRoot?.(last.path)
   const exists = await bridge.fs.exists(joinProjectPath(last.path, 'project.t3d'))
     || await bridge.fs.exists(joinProjectPath(last.path, 'project.t3d.tmp'))
   if (!exists) {
@@ -320,10 +321,12 @@ export async function openRecentProject(id: string): Promise<void> {
     return
   }
   if (known.path) {
-    if (!electronBridge()) {
+    const bridge = electronBridge()
+    if (!bridge) {
       useEditorStore.getState().log('info', translate('log.projectPermission'))
       return
     }
+    await bridge.fs.authorizeRoot?.(known.path)
     try {
       const opened = await openSource(known.path, true)
       if (!opened) RecentProjectService.remove(id)

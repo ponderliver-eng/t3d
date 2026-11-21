@@ -25,8 +25,8 @@ export function withReferencedTextures(
   const materialByKey = new Map<string, PackageAssetScannerEntry>()
   for (const entry of all) {
     if (entry.kind === 'texture') {
-      const guid = guidOf(entry.metaBytes)
-      if (guid) textureByGuid.set(guid, entry)
+    const guid = guidOf(entry.metaBytes)
+    if (guid) textureByGuid.set(guid, entry)
     } else if (entry.kind === 'material') {
       const guid = guidOf(entry.metaBytes)
       if (guid) materialByGuid.set(guid, entry)

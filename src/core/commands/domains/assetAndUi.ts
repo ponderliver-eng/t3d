@@ -10,12 +10,13 @@ interface CreateMaterialParams {
   color: string
   roughness: number
   metalness: number
+  shaderId?: string
 }
 
 const createMaterialCmd: CommandDef<CreateMaterialParams, { assetId: string; name: string }> = {
   id: 'asset.createMaterial',
   title: '新建材质资产',
-  description: '创建一个新的 PBR 材质资产并加入资产库',
+  description: '创建一个新的 PBR 材质资产并加入资产库（可选直接绑定自定义着色器 shaderId）',
   risk: 'safe',
   params: {
     type: 'object',
@@ -24,10 +25,12 @@ const createMaterialCmd: CommandDef<CreateMaterialParams, { assetId: string; nam
       color: { type: 'color', default: '#cccccc', label: '基础颜色' },
       roughness: { type: 'number', default: 0.65, min: 0, max: 1, label: '粗糙度' },
       metalness: { type: 'number', default: 0.04, min: 0, max: 1, label: '金属度' },
+      shaderId: { type: 'string', default: '', label: '自定义着色器 ID（可选）', optional: true },
     },
   },
   run(_ctx, p) {
     const assetId = crypto.randomUUID()
+    const cleanShaderId = typeof p.shaderId === 'string' ? p.shaderId.trim() : ''
     const slot: PbrSlot = {
       name: p.name,
       color: p.color,
@@ -42,6 +45,7 @@ const createMaterialCmd: CommandDef<CreateMaterialParams, { assetId: string; nam
       metallicRoughnessAssetId: null,
       emissiveAssetId: null,
       aoAssetId: null,
+      ...(cleanShaderId ? { shader: `custom:${cleanShaderId}` as const } : {}),
     }
     useAssetStore.getState().add({
       id: assetId,

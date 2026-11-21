@@ -1,3 +1,4 @@
+import { useAssetStore } from '../../../editor/assets/library'
 import { projectDirectoryPath } from '../../../editor/project/disk'
 import { electronBridge, joinProjectPath } from '../../../editor/project/electronBridge'
 import { useEditorStore } from '../../../editor/scene/store'
@@ -21,6 +22,12 @@ interface AttachScriptParams {
   nodeId: string
   scriptId: string
   params?: Record<string, unknown>
+}
+
+interface BindShaderParams {
+  shaderId: string
+  materialId?: string
+  nodeId?: string
 }
 
 interface OpenExternalParams {
@@ -318,10 +325,69 @@ export function registerCodeAssetCommands(): () => void {
     },
   }
 
+  const shaderBindCmd: CommandDef<BindShaderParams> = {
+    id: 'shader.bind',
+    title: '将着色器绑定到材质或节点',
+    description: '将已创建的工程着色器（shaders/<id>.shader.ts）绑定到指定材质资产或场景节点',
+    params: {
+      type: 'object',
+      fields: {
+        shaderId: { type: 'string', default: '', label: '着色器 ID' },
+        materialId: { type: 'ref', target: 'asset', kinds: ['material'], label: '材质资产 ID（可选）', optional: true },
+        nodeId: { type: 'ref', target: 'node', label: '节点 ID（可选）', optional: true },
+      },
+    },
+    risk: 'safe',
+    async run(_ctx, params) {
+      const shaderId = normalizeCodeAssetId('shader', String(params.shaderId || ''))
+      if (!shaderId) return { ok: false, code: 'INVALID_ARGS', message: '着色器 ID 不能为空' }
+      const codeRecord = useCodeAssetStore.getState().assets[shaderId]
+      if (!codeRecord || codeRecord.kind !== 'shader') {
+        return { ok: false, code: 'NOT_FOUND', message: `着色器 "${shaderId}" 不存在` }
+      }
+      const shaderRef = `custom:${shaderId}` as const
+      const updatedTargets: string[] = []
+
+      if (params.materialId) {
+        const asset = useAssetStore.getState().assets[params.materialId]
+        if (!asset || asset.kind !== 'material') {
+          return { ok: false, code: 'NOT_FOUND', message: `材质资产 "${params.materialId}" 不存在` }
+        }
+        useAssetStore.getState().updateMaterial(params.materialId, {
+          ...asset.slot,
+          shader: shaderRef,
+        })
+        updatedTargets.push(`材质 ${asset.name}`)
+      }
+
+      if (params.nodeId) {
+        const node = useEditorStore.getState().nodes[params.nodeId]
+        if (!node) {
+          return { ok: false, code: 'NOT_FOUND', message: `节点 "${params.nodeId}" 不存在` }
+        }
+        useEditorStore.getState().updateNode(params.nodeId, { shader: shaderRef })
+        updatedTargets.push(`节点 ${node.name}`)
+      }
+
+      if (updatedTargets.length === 0) {
+        return { ok: false, code: 'INVALID_ARGS', message: '请至少指定 materialId 或 nodeId 其中之一' }
+      }
+
+      return {
+        ok: true,
+        value: { shaderId, shader: shaderRef, targets: updatedTargets },
+        changed: {
+          summary: `已将着色器 ${shaderId} 绑定到 ${updatedTargets.join('、')}`,
+        },
+      }
+    },
+  }
+
   const unsubs = [
     commandBus.register(shaderCreateCmd),
     commandBus.register(shaderUpdateCmd),
     commandBus.register(shaderCheckCmd),
+    commandBus.register(shaderBindCmd),
     commandBus.register(scriptCreateCmd),
     commandBus.register(scriptUpdateCmd),
     commandBus.register(scriptCheckCmd),

@@ -13661,7 +13661,7 @@ function bindCommandBusToEditor() {
 var createMaterialCmd = {
   id: "asset.createMaterial",
   title: "\u65B0\u5EFA\u6750\u8D28\u8D44\u4EA7",
-  description: "\u521B\u5EFA\u4E00\u4E2A\u65B0\u7684 PBR \u6750\u8D28\u8D44\u4EA7\u5E76\u52A0\u5165\u8D44\u4EA7\u5E93",
+  description: "\u521B\u5EFA\u4E00\u4E2A\u65B0\u7684 PBR \u6750\u8D28\u8D44\u4EA7\u5E76\u52A0\u5165\u8D44\u4EA7\u5E93\uFF08\u53EF\u9009\u76F4\u63A5\u7ED1\u5B9A\u81EA\u5B9A\u4E49\u7740\u8272\u5668 shaderId\uFF09",
   risk: "safe",
   params: {
     type: "object",
@@ -13669,11 +13669,13 @@ var createMaterialCmd = {
       name: { type: "string", minLength: 1, default: "\u65B0\u6750\u8D28", label: "\u6750\u8D28\u540D\u79F0" },
       color: { type: "color", default: "#cccccc", label: "\u57FA\u7840\u989C\u8272" },
       roughness: { type: "number", default: 0.65, min: 0, max: 1, label: "\u7C97\u7CD9\u5EA6" },
-      metalness: { type: "number", default: 0.04, min: 0, max: 1, label: "\u91D1\u5C5E\u5EA6" }
+      metalness: { type: "number", default: 0.04, min: 0, max: 1, label: "\u91D1\u5C5E\u5EA6" },
+      shaderId: { type: "string", default: "", label: "\u81EA\u5B9A\u4E49\u7740\u8272\u5668 ID\uFF08\u53EF\u9009\uFF09", optional: true }
     }
   },
   run(_ctx, p) {
     const assetId = crypto.randomUUID();
+    const cleanShaderId = typeof p.shaderId === "string" ? p.shaderId.trim() : "";
     const slot = {
       name: p.name,
       color: p.color,
@@ -13687,7 +13689,8 @@ var createMaterialCmd = {
       normalAssetId: null,
       metallicRoughnessAssetId: null,
       emissiveAssetId: null,
-      aoAssetId: null
+      aoAssetId: null,
+      ...cleanShaderId ? { shader: `custom:${cleanShaderId}` } : {}
     };
     useAssetStore.getState().add({
       id: assetId,
@@ -14218,10 +14221,64 @@ function registerCodeAssetCommands() {
       };
     }
   };
+  const shaderBindCmd = {
+    id: "shader.bind",
+    title: "\u5C06\u7740\u8272\u5668\u7ED1\u5B9A\u5230\u6750\u8D28\u6216\u8282\u70B9",
+    description: "\u5C06\u5DF2\u521B\u5EFA\u7684\u5DE5\u7A0B\u7740\u8272\u5668\uFF08shaders/<id>.shader.ts\uFF09\u7ED1\u5B9A\u5230\u6307\u5B9A\u6750\u8D28\u8D44\u4EA7\u6216\u573A\u666F\u8282\u70B9",
+    params: {
+      type: "object",
+      fields: {
+        shaderId: { type: "string", default: "", label: "\u7740\u8272\u5668 ID" },
+        materialId: { type: "ref", target: "asset", kinds: ["material"], label: "\u6750\u8D28\u8D44\u4EA7 ID\uFF08\u53EF\u9009\uFF09", optional: true },
+        nodeId: { type: "ref", target: "node", label: "\u8282\u70B9 ID\uFF08\u53EF\u9009\uFF09", optional: true }
+      }
+    },
+    risk: "safe",
+    async run(_ctx, params) {
+      const shaderId = normalizeCodeAssetId("shader", String(params.shaderId || ""));
+      if (!shaderId) return { ok: false, code: "INVALID_ARGS", message: "\u7740\u8272\u5668 ID \u4E0D\u80FD\u4E3A\u7A7A" };
+      const codeRecord = useCodeAssetStore.getState().assets[shaderId];
+      if (!codeRecord || codeRecord.kind !== "shader") {
+        return { ok: false, code: "NOT_FOUND", message: `\u7740\u8272\u5668 "${shaderId}" \u4E0D\u5B58\u5728` };
+      }
+      const shaderRef = `custom:${shaderId}`;
+      const updatedTargets = [];
+      if (params.materialId) {
+        const asset = useAssetStore.getState().assets[params.materialId];
+        if (!asset || asset.kind !== "material") {
+          return { ok: false, code: "NOT_FOUND", message: `\u6750\u8D28\u8D44\u4EA7 "${params.materialId}" \u4E0D\u5B58\u5728` };
+        }
+        useAssetStore.getState().updateMaterial(params.materialId, {
+          ...asset.slot,
+          shader: shaderRef
+        });
+        updatedTargets.push(`\u6750\u8D28 ${asset.name}`);
+      }
+      if (params.nodeId) {
+        const node = useEditorStore.getState().nodes[params.nodeId];
+        if (!node) {
+          return { ok: false, code: "NOT_FOUND", message: `\u8282\u70B9 "${params.nodeId}" \u4E0D\u5B58\u5728` };
+        }
+        useEditorStore.getState().updateNode(params.nodeId, { shader: shaderRef });
+        updatedTargets.push(`\u8282\u70B9 ${node.name}`);
+      }
+      if (updatedTargets.length === 0) {
+        return { ok: false, code: "INVALID_ARGS", message: "\u8BF7\u81F3\u5C11\u6307\u5B9A materialId \u6216 nodeId \u5176\u4E2D\u4E4B\u4E00" };
+      }
+      return {
+        ok: true,
+        value: { shaderId, shader: shaderRef, targets: updatedTargets },
+        changed: {
+          summary: `\u5DF2\u5C06\u7740\u8272\u5668 ${shaderId} \u7ED1\u5B9A\u5230 ${updatedTargets.join("\u3001")}`
+        }
+      };
+    }
+  };
   const unsubs = [
     commandBus.register(shaderCreateCmd),
     commandBus.register(shaderUpdateCmd),
     commandBus.register(shaderCheckCmd),
+    commandBus.register(shaderBindCmd),
     commandBus.register(scriptCreateCmd),
     commandBus.register(scriptUpdateCmd),
     commandBus.register(scriptCheckCmd),
