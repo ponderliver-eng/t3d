@@ -618,9 +618,12 @@ export interface SceneRuntimeHost {
   pitch?: () => number
   poseCamera?: (position: Vec3, lookAt: Vec3, fov: number) => void
   pointerDelta?: () => { x: number, y: number }
+  peekPointerDelta?: () => { x: number, y: number }
   rightHeld?: () => boolean
+  mouseButtons?: () => number
   /** 自上次读取后积累的滚轮像素。读一次即清零。正值是向下滚。 */
   wheel?: () => number
+  peekWheel?: () => number
   /** 从起点沿方向探测场景，返回最近交点距离。忽略 ignoreId。 */
   probe?: (origin: Vec3, direction: Vec3, max: number, ignoreId: string) => number | null
   /** 取走一次地面点击。没有则返回 null。 */

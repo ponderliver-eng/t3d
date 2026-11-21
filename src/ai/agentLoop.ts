@@ -541,6 +541,7 @@ function buildSystemPrompt(selectedRefs: Array<{ id: string; label: string }>): 
     '   脚本内置 API（严禁自己编造 window.__t3dKeys 等全局变量）：',
     '   - 移动/旋转/缩放：必须整体赋值（如 self.position = { x, y, z }，self.rotation = { x, y, z }），不要写 self.position.x = ...。',
     '   - 输入（WASD/方向键/手柄/触控）：用 const move = self.input.axis2D("Move")（返回 { x, y }，W/↑ 为 y=+1，D/→ 为 x=+1）；也可用 self.input.isPressed("Jump" | "KeyW" | "Space") / self.input.justPressed(...) / self.input.isKeyPressed("KeyW")。',
+    '   - 鼠标与滚轮输入：用 self.input.pointerDelta() 获取本帧鼠标移动增量 { x, y }，self.input.pointerPosition() 获取视口归一化坐标 { x, y }（[-1, 1]），self.input.wheelDelta() 获取滚轮增量（正值拉远/向下，负值拉近/向上），self.input.isMouseButtonPressed(0 | 1 | 2) / justPressedMouseButton(0 | 1 | 2) 检测左/中/右键（0=左键, 1=中键, 2=右键）。',
     '   - 节点/资产引用参数：若脚本参数需要引用场景节点或资产，必须声明为 { type: "ref", target: "node", label: "目标节点", default: null }（运行时 self.params.xxx 自动解析为 NodeHandle | null），不要用 type: "string" 存节点 ID。',
     '   - 节点查找与跟随：self.findNodeById(id)、self.findNodesByTag(tag)、self.moveToward(target, maxDist)、self.lookAt(target)。',
     '6. 编写自定义着色器后，可用 shader__bind 绑定到指定材质或节点。',

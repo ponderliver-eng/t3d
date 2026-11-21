@@ -99,7 +99,18 @@ export interface ScriptContext<P = Record<string, unknown>, S = Record<string, u
   findNodeById(id: string): NodeHandle | null
   findNodesByTag(tag: string): readonly NodeHandle[]
   findNodesInRadius(center: Vec3, radius: number, tag?: string): readonly NodeHandle[]
-  readonly input: { isPressed(a: string): boolean; justPressed(a: string): boolean; axis2D(a: string): Vec2 }
+  readonly input: {
+    isPressed(a: string): boolean
+    justPressed(a: string): boolean
+    isKeyPressed(code: string): boolean
+    axis2D(a: string): Vec2
+    pointerDelta(): Vec2
+    pointerPosition(): Vec2
+    wheelDelta(): number
+    isMouseButtonPressed(button: 0 | 1 | 2): boolean
+    justPressedMouseButton(button: 0 | 1 | 2): boolean
+    justReleasedMouseButton(button: 0 | 1 | 2): boolean
+  }
   readonly ui: { getVar(k: string): unknown; setVar(k: string, v: unknown): void }
   readonly audio: { playSfx(id: string, opts?: { volume?: number }): void; playBgm(id: string): void; stopBgm(): void }
   log(...args: unknown[]): void

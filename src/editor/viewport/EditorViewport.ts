@@ -210,6 +210,7 @@ export class EditorViewport {
   private playMarqueeResult: { ids: string[], additive: boolean } | null = null
   private wheelDelta = 0
   private rightButton = false
+  private mouseButtonsMask = 0
   private appliedViewNonce = 0
   private readonly unsubscribe: () => void
   private readonly unsubscribeAssets: () => void
@@ -424,12 +425,15 @@ export class EditorViewport {
         this.pointerDelta = { x: 0, y: 0 }
         return delta
       },
+      peekPointerDelta: () => ({ ...this.pointerDelta }),
       rightHeld: () => this.rightButton,
+      mouseButtons: () => this.mouseButtonsMask,
       wheel: () => {
         const delta = this.wheelDelta
         this.wheelDelta = 0
         return delta
       },
+      peekWheel: () => this.wheelDelta,
       probe: (origin, direction, max, ignoreId) => this.probeScene(origin, direction, max, ignoreId),
       consumeClick: button => {
         const point = this.clickPoints[button]
@@ -1067,6 +1071,7 @@ export class EditorViewport {
     const gizmo = this.transform.axis !== null && event.button === 0 && !event.altKey
     this.press = null
     if (event.button === 0 && !event.altKey && !this.playCameraLocked() && this.beginDeviceDrag(event)) return
+    this.mouseButtonsMask = event.buttons
     this.rightButton = (event.buttons & 2) !== 0
     if (gizmo || this.playCameraLocked() || event.button !== 0 || event.altKey || event.shiftKey || event.ctrlKey || event.metaKey) {
       this.ignoreDoubleClick = true
@@ -1100,6 +1105,7 @@ export class EditorViewport {
       this.pointerNorm.x = ((event.clientX - rect.left) / rect.width) * 2 - 1
       this.pointerNorm.y = -((event.clientY - rect.top) / rect.height) * 2 + 1
     }
+    this.mouseButtonsMask = event.buttons
     this.rightButton = (event.buttons & 2) !== 0
     if (this.deviceDrag) {
       this.dragDevice(event)
@@ -1139,7 +1145,8 @@ export class EditorViewport {
     }
     const press = this.press
     this.press = null
-    this.rightButton = false
+    this.mouseButtonsMask = event.buttons
+    this.rightButton = (event.buttons & 2) !== 0
     this.rig.pointerUp()
     this.commitView()
     const playState = useEditorStore.getState().playState
@@ -1449,6 +1456,8 @@ export class EditorViewport {
     this.frameCamera = this.activeCamera()
     attachAudioListener(this.viewCamera())
     stepSceneRuntime(dt, this.buildRuntimeHost())
+    this.pointerDelta = { x: 0, y: 0 }
+    this.wheelDelta = 0
     this.followSimulatedParents()
     this.poseSockets()
     const editor = useEditorStore.getState()

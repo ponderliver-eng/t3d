@@ -74,6 +74,23 @@ T3D 的 AI 系统横跨「主进程代理 → 渲染进程状态循环 → 核�
    - 支持从层级树/资源面板**拖放赋值**、点击放大镜**弹窗搜索选择（`RefPickerModal`）**、点击名称在视口/属性面板定位、一键清空。
    - 运行时 `scriptRuntime.ts` 会自动将 `target: 'node'` 的参数 ID 解析为 `NodeHandle | null` 注入 `self.params`。
 
+### 4.1 如何给 AI 扩展新的脚本运行时能力（标准 5 步清单）
+
+当遇到「AI 想写某个功能但运行时缺少对应 API」（例如刚补齐的鼠标增量、滚轮、右键检测，或未来的射线检测/物理施力/动画事件）时，按以下 5 步同步扩展，避免“代码实现了但 AI 不知道、或外部编辑器报错”：
+
+1. **视口 / 宿主采集（如涉及底层输入或渲染状态）**：在 `src/runtime/sceneRuntime.ts` 的 `SceneRuntimeHost` 声明接口，并在 `src/editor/viewport/EditorViewport.ts`（以及独立播放器宿主）实现采样。注意若多脚本同帧读取，提供无副作用的 `peek*` 接口并在帧末清零，避免抢占消费。
+2. **脚本运行时实现**：在 `src/core/codeAssets/scriptRuntime.ts` 的 `buildScriptContext` 中将能力挂载到 `self.*`（如 `self.input`、`self.physics`、`self.audio`）。
+3. **公共契约同步**：更新 `contracts/t3d/runtime.d.ts` 与 `src/core/codeAssets/workspace.ts` 中的 `RUNTIME_DTS_SUMMARY`（生成工程 `.t3d/runtime.d.ts` 给外部 Cursor / VS Code 类型提示）。
+4. **告知 AI（System Prompt）**：在 `src/ai/agentLoop.ts` 的 `buildSystemPrompt` 中用简洁明确的一行示例说明该 API 的签名与返回值，确保模型直接使用而不再自行编造。
+5. **契约与依赖校验**：运行 `npm run check:contracts` 与 `npm run check:player-deps`，确保 `src/core/` 与 `src/runtime/` 不反向引入 `src/editor/`。
+
+### 4.2 如何给 AI 扩展新的编辑器操作工具（CommandBus）
+
+若需要让 AI 操作新的编辑器能力（如导入资产、批量修改材质、打包导出等）：
+1. 在 `src/core/commands/domains/` 对应域注册 `CommandDef`（参数使用 `FieldSchema` 描述）。
+2. `src/ai/tools.ts` 的 `buildAiToolSpecs()` 会自动将其映射为 `domain__action` 工具暴露给大模型；仅需在 `toolPhaseLabel()`（`src/ai/agentLoop.ts`）补充一句中文状态提示即可。
+3. 若属于只读查询或独立工作流（无需撤销栈），直接加在 `src/ai/tools.ts` 的 `QUERY_TOOLS` 与 `executeAiTool` `switch` 分支中。
+
 ---
 
 ## 5. UI 状态反馈与对话持久化

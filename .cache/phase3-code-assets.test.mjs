@@ -4781,6 +4781,17 @@ var messageQueue = [];
 var globalMemory = /* @__PURE__ */ new Map();
 var persistentMemory = /* @__PURE__ */ new Map();
 var simElapsed = 0;
+var framePointerDelta = { x: 0, y: 0 };
+var framePointerPos = { x: 0, y: 0 };
+var frameWheelDelta = 0;
+var prevMouseButtons = 0;
+var currMouseButtons = 0;
+function mouseButtonMask(button) {
+  if (button === 0) return 1;
+  if (button === 1) return 4;
+  if (button === 2) return 2;
+  return 0;
+}
 function instanceKey2(nodeId, scriptId) {
   return `${nodeId}::${scriptId}`;
 }
@@ -5024,7 +5035,13 @@ function buildScriptContext(node, scriptId, rawParams, stateObj, host) {
       isKeyPressed: (code) => isKeyHeld(code) || isKeyHeld(`Key${code.toUpperCase()}`),
       justReleased: () => false,
       axis1D: (action) => isActionPressed(action) ? 1 : 0,
-      axis2D: (action) => getActionAxis2D(action)
+      axis2D: (action) => getActionAxis2D(action),
+      pointerDelta: () => ({ ...framePointerDelta }),
+      pointerPosition: () => ({ ...framePointerPos }),
+      wheelDelta: () => frameWheelDelta,
+      isMouseButtonPressed: (button) => (currMouseButtons & mouseButtonMask(button)) !== 0,
+      justPressedMouseButton: (button) => (currMouseButtons & mouseButtonMask(button)) !== 0 && (prevMouseButtons & mouseButtonMask(button)) === 0,
+      justReleasedMouseButton: (button) => (currMouseButtons & mouseButtonMask(button)) === 0 && (prevMouseButtons & mouseButtonMask(button)) !== 0
     },
     ui: {
       getVar: (key) => uiValues().variables[key],
@@ -5130,6 +5147,11 @@ function clearScriptRuntimeState() {
   messageQueue.length = 0;
   globalMemory.clear();
   simElapsed = 0;
+  framePointerDelta = { x: 0, y: 0 };
+  framePointerPos = { x: 0, y: 0 };
+  frameWheelDelta = 0;
+  prevMouseButtons = 0;
+  currMouseButtons = 0;
 }
 function stepProjectScripts(dt, host) {
   const world3 = getRuntimeWorld();
@@ -5138,6 +5160,11 @@ function stepProjectScripts(dt, host) {
     return;
   }
   simElapsed += Math.max(0, dt);
+  framePointerDelta = host.peekPointerDelta?.() ?? host.pointerDelta?.() ?? { x: 0, y: 0 };
+  framePointerPos = host.pointerNormalized?.() ?? { x: 0, y: 0 };
+  frameWheelDelta = host.peekWheel?.() ?? host.wheel?.() ?? 0;
+  prevMouseButtons = currMouseButtons;
+  currMouseButtons = host.mouseButtons ? host.mouseButtons() : host.rightHeld?.() ? 2 : 0;
   const nodes = world3.getNodes();
   const activeKeys = /* @__PURE__ */ new Set();
   for (const node of Object.values(nodes)) {

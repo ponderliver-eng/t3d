@@ -134,9 +134,16 @@ export interface FxApi {
 export interface InputApi {
   isPressed(action: string): boolean
   justPressed(action: string): boolean
+  isKeyPressed(code: string): boolean
   justReleased(action: string): boolean
   axis1D(action: string): number
   axis2D(action: string): Vec2
+  pointerDelta(): Vec2
+  pointerPosition(): Vec2
+  wheelDelta(): number
+  isMouseButtonPressed(button: 0 | 1 | 2): boolean
+  justPressedMouseButton(button: 0 | 1 | 2): boolean
+  justReleasedMouseButton(button: 0 | 1 | 2): boolean
 }
 
 export interface UiApi {
