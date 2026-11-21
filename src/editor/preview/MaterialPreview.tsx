@@ -11,13 +11,14 @@ import {
   Scene,
   SphereGeometry,
   TorusGeometry,
-  WebGLRenderer,
+  type Material,
 } from 'three'
+import { WebGPURenderer } from 'three/webgpu'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
-import { applySlot } from '../assets/materials'
+import { applySlot, slotFromNode } from '../assets/materials'
 import { useAssetStore } from '../assets/library'
 import { useEditorStore } from '../scene/store'
-import { slotFromNode } from '../assets/materials'
+import { useCodeAssetStore } from '../../core/codeAssets/workspace'
 import type { PbrSlot } from '../scene/types'
 import { useI18n } from '../i18n'
 import { popPreviewWindow, type PreviewKind } from './previewStore'
@@ -46,6 +47,7 @@ export function MaterialPreview({ assetId, kind, standalone = false }: { assetId
   turnRef.current = turntable
   const assets = useAssetStore(state => state.assets)
   const nodes = useEditorStore(state => state.nodes)
+  useCodeAssetStore(state => state.revision)
   const asset = assets[assetId]
   const node = nodes[assetId]
   const slot = kind === 'node-material'
@@ -56,8 +58,9 @@ export function MaterialPreview({ assetId, kind, standalone = false }: { assetId
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
-    const renderer = new WebGLRenderer({ canvas, antialias: true, alpha: true })
-    renderer.setPixelRatio(Math.min(devicePixelRatio, 2))
+    let disposed = false
+    let renderer: WebGPURenderer | null = null
+    let ready = false
     const scene = new Scene()
     scene.background = new Color(LIGHTS.studio.clear)
     const camera = new PerspectiveCamera(40, 1, 0.05, 50)
@@ -76,7 +79,9 @@ export function MaterialPreview({ assetId, kind, standalone = false }: { assetId
     shareOcclusionUv(mesh)
     scene.add(mesh)
     let frame = 0
+
     const resize = () => {
+      if (!renderer || !ready) return
       const rect = canvas.parentElement?.getBoundingClientRect()
       if (!rect || rect.width < 2) return
       renderer.setSize(rect.width, rect.height, false)
@@ -85,12 +90,17 @@ export function MaterialPreview({ assetId, kind, standalone = false }: { assetId
     }
     const observer = new ResizeObserver(resize)
     if (canvas.parentElement) observer.observe(canvas.parentElement)
-    resize()
+
     const tick = () => {
+      if (disposed || !renderer || !ready) return
       const slot = slotRef.current
       if (slot) {
-        const next = applySlot(mesh.material as MeshStandardMaterial, slot)
-        if (mesh.material !== next) mesh.material = next
+        const currentMat = mesh.material as Material
+        const next = applySlot(currentMat, slot)
+        if (currentMat !== next) {
+          currentMat.dispose()
+          mesh.material = next
+        }
       }
       const nextShape = shapeRef.current
       if (mesh.userData.shape !== nextShape) {
@@ -109,8 +119,29 @@ export function MaterialPreview({ assetId, kind, standalone = false }: { assetId
       renderer.render(scene, camera)
       frame = requestAnimationFrame(tick)
     }
-    frame = requestAnimationFrame(tick)
+
+    const start = async () => {
+      let created = new WebGPURenderer({ canvas, antialias: true, alpha: true })
+      try {
+        await created.init()
+      } catch {
+        created = new WebGPURenderer({ canvas, antialias: true, alpha: true, forceWebGL: true })
+        await created.init()
+      }
+      if (disposed) {
+        created.dispose()
+        return
+      }
+      renderer = created
+      renderer.setPixelRatio(Math.min(devicePixelRatio, 2))
+      ready = true
+      resize()
+      frame = requestAnimationFrame(tick)
+    }
+    void start()
+
     return () => {
+      disposed = true
       cancelAnimationFrame(frame)
       observer.disconnect()
       controls.dispose()
@@ -119,7 +150,7 @@ export function MaterialPreview({ assetId, kind, standalone = false }: { assetId
       if (Array.isArray(current)) current.forEach(item => item.dispose())
       else current.dispose()
       if (current !== material) material.dispose()
-      renderer.dispose()
+      if (ready && renderer) renderer.dispose()
     }
   }, [])
 

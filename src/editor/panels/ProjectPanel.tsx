@@ -84,7 +84,7 @@ export default function ProjectPanel() {
   const [over, setOver] = useState(false)
   const [dropPath, setDropPath] = useState<string | null>(null)
   const [clipOpen, setClipOpen] = useState<Record<string, boolean>>({})
-  const [pending, setPending] = useState<{ kind: 'asset', id: string } | { kind: 'folder', path: string } | null>(null)
+  const [pending, setPending] = useState<{ kind: 'asset', id: string } | { kind: 'folder', path: string } | { kind: 'code', id: string } | null>(null)
   const [resizeTargets, setResizeTargets] = useState<string[] | null>(null)
   const renameTimer = useRef<number | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -207,14 +207,21 @@ export default function ProjectPanel() {
       if (!root || !target || !root.contains(target)) return
       const tag = target.tagName
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable) return
-      if (!inspectedAssetId || !useAssetStore.getState().assets[inspectedAssetId]) return
-      event.preventDefault()
-      event.stopPropagation()
-      setPending({ kind: 'asset', id: inspectedAssetId })
+      if (inspectedAssetId && useAssetStore.getState().assets[inspectedAssetId]) {
+        event.preventDefault()
+        event.stopPropagation()
+        setPending({ kind: 'asset', id: inspectedAssetId })
+        return
+      }
+      if (selectedCodeId && useCodeAssetStore.getState().assets[selectedCodeId]) {
+        event.preventDefault()
+        event.stopPropagation()
+        setPending({ kind: 'code', id: selectedCodeId })
+      }
     }
     window.addEventListener('keydown', onKey, true)
     return () => window.removeEventListener('keydown', onKey, true)
-  }, [inspectedAssetId])
+  }, [inspectedAssetId, selectedCodeId])
 
   useEffect(() => {
     if (!pending) return
@@ -231,6 +238,11 @@ export default function ProjectPanel() {
   const askAsset = (id: string) => {
     if (!useAssetStore.getState().assets[id]) return
     setPending({ kind: 'asset', id })
+  }
+
+  const askCodeAsset = (id: string) => {
+    if (!useCodeAssetStore.getState().assets[id]) return
+    setPending({ kind: 'code', id })
   }
 
   return (
@@ -510,7 +522,7 @@ export default function ProjectPanel() {
                       title="移除代码资产"
                       onClick={event => {
                         event.stopPropagation()
-                        useCodeAssetStore.getState().removeAsset(item.id)
+                        askCodeAsset(item.id)
                       }}
                     >
                       <Trash2 size={12} />
@@ -597,8 +609,7 @@ export default function ProjectPanel() {
             </button>
             <div className="project-panel__sep" />
             <button type="button" onClick={() => {
-              useCodeAssetStore.getState().removeAsset(codeItem.id)
-              if (selectedCodeId === codeItem.id) setSelectedCodeId(null)
+              askCodeAsset(codeItem.id)
               setMenu(null)
             }}>
               <Trash2 size={12} />{t('project.delete')}
@@ -639,12 +650,15 @@ export default function ProjectPanel() {
         <div className="project-confirm__backdrop" onMouseDown={() => setPending(null)}>
           <div className="project-confirm" role="dialog" aria-modal="true" onMouseDown={event => event.stopPropagation()}>
             <h2>{t('project.delete')}</h2>
-            <p>{pendingMessage(pending, assets, t)}</p>
+            <p>{pendingMessage(pending, assets, codeAssets, nodes, activeSceneId, t)}</p>
             <div>
               <button type="button" onClick={() => setPending(null)}>{t('project.cancel')}</button>
               <button type="button" onClick={() => {
                 if (pending.kind === 'asset') deleteAsset(pending.id)
-                else {
+                else if (pending.kind === 'code') {
+                  useCodeAssetStore.getState().removeAsset(pending.id)
+                  if (selectedCodeId === pending.id) setSelectedCodeId(null)
+                } else {
                   const store = useAssetStore.getState()
                   const ids = Object.keys(store.assets).filter(id => isWithin(assetDirectory(id, store.assetDirs), pending.path))
                   for (const id of ids) deleteAsset(id)
@@ -666,14 +680,65 @@ export default function ProjectPanel() {
   )
 }
 
-function pendingMessage(
-  pending: { kind: 'asset', id: string } | { kind: 'folder', path: string },
+function countCodeAssetReferences(
+  item: import('../../core/codeAssets/workspace').CodeAssetRecord,
   assets: Record<string, ProjectAsset>,
+  nodes: Record<string, import('../scene/types').SceneNode>,
+  activeSceneId: string,
+): number {
+  let count = 0
+  if (item.kind === 'shader') {
+    const target = `custom:${item.id}`
+    for (const node of Object.values(nodes)) {
+      if (node.shader === target || node.slots?.some(slot => slot.shader === target)) count += 1
+    }
+    for (const asset of Object.values(assets)) {
+      if (asset.kind === 'material' && asset.slot.shader === target) {
+        count += 1
+      } else if ((asset.kind === 'scene' && asset.id !== activeSceneId) || asset.kind === 'prefab') {
+        for (const node of Object.values(asset.nodes)) {
+          if (node.shader === target || node.slots?.some(slot => slot.shader === target)) count += 1
+        }
+      }
+    }
+    return count
+  }
+
+  for (const node of Object.values(nodes)) {
+    const projectScripts = node.gameplay?.packs?.__project__ as Record<string, unknown> | undefined
+    if (projectScripts?.[item.id] !== undefined) count += 1
+  }
+  for (const asset of Object.values(assets)) {
+    if ((asset.kind === 'scene' && asset.id !== activeSceneId) || asset.kind === 'prefab') {
+      for (const node of Object.values(asset.nodes)) {
+        const projectScripts = node.gameplay?.packs?.__project__ as Record<string, unknown> | undefined
+        if (projectScripts?.[item.id] !== undefined) count += 1
+      }
+    }
+  }
+  return count
+}
+
+function pendingMessage(
+  pending: { kind: 'asset', id: string } | { kind: 'folder', path: string } | { kind: 'code', id: string },
+  assets: Record<string, ProjectAsset>,
+  codeAssets: Record<string, import('../../core/codeAssets/workspace').CodeAssetRecord>,
+  nodes: Record<string, import('../scene/types').SceneNode>,
+  activeSceneId: string,
   t: (key: MessageKey, vars?: Record<string, string | number>) => string,
 ) {
   if (pending.kind === 'folder') {
     const name = pending.path.slice(pending.path.lastIndexOf('/') + 1)
     return t('project.deleteFolder', { name })
+  }
+  if (pending.kind === 'code') {
+    const item = codeAssets[pending.id]
+    if (!item) return ''
+    const kindLabel = item.kind === 'shader' ? '着色器' : '脚本'
+    const refs = countCodeAssetReferences(item, assets, nodes, activeSceneId)
+    return refs > 0
+      ? `确定删除${kindLabel}“${item.name}”吗？当前有 ${refs} 处引用正在使用它。`
+      : `确定删除${kindLabel}“${item.name}”吗？`
   }
   const asset = assets[pending.id]
   if (!asset) return ''
