@@ -24,6 +24,14 @@ export interface ElectronBridge {
   dialog: {
     showOpenDirectoryDialog: () => Promise<string | null>
   }
+  player?: {
+    copyShell: (targetDir: string) => Promise<{ ok: boolean; copiedFiles: string[]; message: string }>
+  }
+  codeAssets?: {
+    watchProject: (projectDir: string) => Promise<boolean>
+    openInEditor: (filePath: string, preferred?: 'cursor' | 'code') => Promise<{ ok: boolean; launcher: string }>
+    onChanged: (handler: (payload: { relativePath: string }) => void) => () => void
+  }
   ai?: {
     listProviders: () => Promise<{
       activeProviderId: string

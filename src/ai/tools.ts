@@ -9,6 +9,7 @@ import {
   querySceneOutline,
 } from '../core/query'
 import { fieldSchemaToJsonSchema } from '../core/schema/fieldSchema'
+import { useCodeAssetStore } from '../core/codeAssets/workspace'
 import { getInputActionMap, saveProjectInputMap, setInputActionMap, type ActionBinding } from '../core/input/actionMap'
 import { captureMainViewport } from '../core/preview/offscreenPreview'
 import { projectDirectoryPath } from '../editor/project/disk'
@@ -112,6 +113,11 @@ const QUERY_TOOLS: AiToolSpec[] = [
   {
     name: 'query__project_diagnose',
     description: '对当前工程做引用完整性、可玩性、能力包与性能预算体检',
+    parameters: { type: 'object', properties: {}, additionalProperties: false },
+  },
+  {
+    name: 'query__code_assets',
+    description: '列出当前工程已编译的脚本与着色器资产（含编译状态与诊断信息）',
     parameters: { type: 'object', properties: {}, additionalProperties: false },
   },
   {
@@ -260,6 +266,22 @@ export async function executeAiTool(
         toolName,
         displayLabel: `工程体检（${report.errorCount} 错误，${report.warningCount} 警告）`,
         data: report,
+      }
+    }
+    case 'query__code_assets': {
+      const items = Object.values(useCodeAssetStore.getState().assets).map((item) => ({
+        id: item.id,
+        kind: item.kind,
+        name: item.name,
+        relativePath: item.relativePath,
+        ok: item.ok,
+        diagnostics: item.diagnostics,
+      }))
+      return {
+        ok: true,
+        toolName,
+        displayLabel: `代码资产列表（${items.length} 个）`,
+        data: items,
       }
     }
     case 'playtest__run_smoke': {

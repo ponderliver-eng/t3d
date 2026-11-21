@@ -11,6 +11,7 @@ import { useI18n, translate, type MessageKey } from '../i18n'
 import { usePrefsStore } from '../prefs/store'
 import { openImport } from '../assets/import'
 import { createDirectoryProject, notifyProjectSaved, openDirectoryProject, openRecentProject, saveCacheAsDirectoryProject, saveProjectNow } from '../assets/project'
+import { exportWebPlayerInteractive } from '../../player/exporter'
 import { useProjectDirectory } from '../project/disk'
 import { RecentProjectService, type RecentProject } from '../project/recents'
 import { bindPackagePicker, openPackagePicker, usePackageImportStore } from '../assets/packageImportStore'
@@ -112,6 +113,7 @@ export default function MenuBar() {
           <Sep />
           <Item icon={<Upload size={13} />} onClick={openImport}>{t('menu.import')}</Item>
           <Item icon={<PackageOpen size={13} />} onClick={openPackagePicker}>{t('menu.extractPackage')}</Item>
+          <Item icon={<Package size={13} />} disabled={playing} onClick={() => { void exportWebPlayerInteractive() }}>导出 Web 播放包…</Item>
           <Sep />
           <Item icon={<Database size={13} />} onClick={() => useEditorStore.getState().setGameplayHubOpen(true)}>{t('menu.database')}</Item>
           <Item icon={<Library size={13} />} onClick={() => useEditorStore.getState().setLibraryOpen(true)}>{t('menu.library')}</Item>

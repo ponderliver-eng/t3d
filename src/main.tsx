@@ -2,6 +2,7 @@ import { createRoot } from 'react-dom/client'
 import { Cache } from 'three'
 import App from './App'
 import { ensureCoreCommandsRegistered } from './core/commands'
+import { bindCodeAssetHotReload } from './core/codeAssets/workspace'
 import { openCachedProject } from './editor/assets/project'
 import { PreviewStandalone } from './editor/preview/PreviewHost'
 import { readPreviewHash } from './editor/preview/previewStore'
@@ -11,6 +12,7 @@ import './styles/global.css'
 Cache.enabled = true
 bindEditorRuntimeWorld()
 ensureCoreCommandsRegistered()
+bindCodeAssetHotReload()
 
 const splash = document.getElementById('boot-splash')
 const standalone = readPreviewHash()

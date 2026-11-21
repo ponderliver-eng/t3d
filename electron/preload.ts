@@ -23,6 +23,18 @@ contextBridge.exposeInMainWorld('__electron', {
   dialog: {
     showOpenDirectoryDialog: () => ipcRenderer.invoke('dialog:showOpenDirectoryDialog'),
   },
+  player: {
+    copyShell: (targetDir: string) => ipcRenderer.invoke('player:copyShell', targetDir),
+  },
+  codeAssets: {
+    watchProject: (projectDir: string) => ipcRenderer.invoke('codeAssets:watchProject', projectDir),
+    openInEditor: (filePath: string, preferred?: string) => ipcRenderer.invoke('codeAssets:openInEditor', filePath, preferred),
+    onChanged: (handler: (payload: { relativePath: string }) => void) => {
+      const listener = (_event: unknown, payload: { relativePath: string }) => handler(payload)
+      ipcRenderer.on('codeAsset:changed', listener)
+      return () => ipcRenderer.removeListener('codeAsset:changed', listener)
+    },
+  },
   ai: {
     listProviders: () => ipcRenderer.invoke('ai:listProviders'),
     saveProvider: (input: unknown) => ipcRenderer.invoke('ai:saveProvider', input),

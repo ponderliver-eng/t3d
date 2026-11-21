@@ -2,6 +2,8 @@ import * as electron from 'electron'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import fs from 'node:fs/promises'
+import fsSync from 'node:fs'
+import { spawn } from 'node:child_process'
 import { PathGuard } from './services/pathGuard'
 import { SecretStore } from './services/secretStore'
 import { invokeModelChat, type ChatRequest } from './services/modelProviders'
@@ -52,6 +54,45 @@ app.whenReady().then(() => {
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()
 })
+
+let projectWatchers: fsSync.FSWatcher[] = []
+let watchedProjectRoot = ''
+
+function stopProjectWatchers() {
+  for (const watcher of projectWatchers) {
+    try { watcher.close() } catch { /* ignore */ }
+  }
+  projectWatchers = []
+  watchedProjectRoot = ''
+}
+
+async function startProjectCodeWatchers(projectDir: string) {
+  if (watchedProjectRoot === projectDir && projectWatchers.length > 0) return
+  stopProjectWatchers()
+  watchedProjectRoot = projectDir
+  const pendingTimers = new Map<string, NodeJS.Timeout>()
+
+  for (const subDir of ['scripts', 'shaders']) {
+    const absSub = path.join(projectDir, subDir)
+    try {
+      await fs.mkdir(absSub, { recursive: true })
+      const watcher = fsSync.watch(absSub, (_eventType, fileName) => {
+        if (!fileName || !fileName.endsWith('.ts')) return
+        const rel = `${subDir}/${fileName.replace(/\\/g, '/')}`
+        const prev = pendingTimers.get(rel)
+        if (prev) clearTimeout(prev)
+        const timer = setTimeout(() => {
+          pendingTimers.delete(rel)
+          mainWindow?.webContents.send('codeAsset:changed', { relativePath: rel })
+        }, 120)
+        pendingTimers.set(rel, timer)
+      })
+      projectWatchers.push(watcher)
+    } catch {
+      // ignore watcher setup failures
+    }
+  }
+}
 
 function registerIpc() {
   const userLibraryRoot = path.join(app.getPath('userData'), 'T3D')
@@ -186,5 +227,49 @@ function registerIpc() {
     const result = await dialog.showOpenDialog(win ?? undefined, { properties: ['openDirectory'] })
     if (result.canceled || !result.filePaths[0]) return null
     return pathGuard.authorizeRoot(result.filePaths[0])
+  })
+  ipcMain.handle('player:copyShell', async (_event, targetDir: string) => {
+    const safeTarget = pathGuard.assertAllowed(targetDir, '复制 Web 播放包外壳')
+    const candidates = [
+      path.join(__dirname, '../dist-player'),
+      path.join(app.getAppPath(), 'dist-player'),
+      path.join(process.cwd(), 'dist-player'),
+    ]
+    let shellDir: string | null = null
+    for (const candidate of candidates) {
+      try {
+        await fs.access(path.join(candidate, 'player.html'))
+        shellDir = candidate
+        break
+      } catch {
+        // try next
+      }
+    }
+    if (!shellDir) {
+      return { ok: false, copiedFiles: [], message: '未找到 dist-player 构建产物，请先运行 npm run build:player' }
+    }
+    await fs.cp(shellDir, safeTarget, { recursive: true, force: true })
+    const playerHtml = path.join(safeTarget, 'player.html')
+    const indexHtml = path.join(safeTarget, 'index.html')
+    await fs.copyFile(playerHtml, indexHtml)
+    return { ok: true, copiedFiles: [playerHtml, indexHtml], message: '已复制 Web 播放包外壳' }
+  })
+  ipcMain.handle('codeAssets:watchProject', async (_event, projectDir: string) => {
+    const safe = pathGuard.assertAllowed(projectDir, '监听代码资产目录')
+    await startProjectCodeWatchers(safe)
+    return true
+  })
+  ipcMain.handle('codeAssets:openInEditor', async (_event, filePath: string, preferred?: string) => {
+    const safe = pathGuard.assertAllowed(filePath, '在外部编辑器打开代码资产')
+    const cmd = preferred === 'code' ? 'code' : 'cursor'
+    try {
+      const child = spawn(cmd, [safe], { detached: true, stdio: 'ignore', shell: process.platform === 'win32' })
+      child.unref()
+      return { ok: true, launcher: cmd }
+    } catch {
+      const err = await shell.openPath(safe)
+      if (err) throw new Error(err)
+      return { ok: true, launcher: 'system' }
+    }
   })
 }

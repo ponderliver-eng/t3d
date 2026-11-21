@@ -19,6 +19,7 @@ import {
 } from 'three'
 import { WebGPURenderer } from 'three/webgpu'
 import { syncCapabilityRuntimes } from '../capabilities/registry'
+import { compileAndRegisterScript } from '../core/codeAssets/scriptRuntime'
 import {
   bindGlobalInputListeners,
   injectVirtualInput,
@@ -46,6 +47,8 @@ interface ExportedProjectPayload {
   gameplayPacks?: string[]
   gameDatabase?: GameDatabase
   assets?: Record<string, RuntimeAssetSummary>
+  scripts?: Array<{ id: string; relativePath: string; source: string }>
+  shaders?: Array<{ id: string; relativePath: string; source: string }>
   inputMap?: unknown
 }
 
@@ -223,6 +226,9 @@ async function boot() {
   const { world, beforeRenderHooks } = buildStandaloneWorld(payload)
   setRuntimeWorld(world)
   syncCapabilityRuntimes(world.getCapabilities())
+  for (const script of payload.scripts ?? []) {
+    compileAndRegisterScript(script.id, script.relativePath, script.source)
+  }
 
   const renderer = await createRenderer(canvas)
   const scene = new Scene()

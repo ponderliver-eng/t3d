@@ -18,6 +18,7 @@ import { UiEditor } from './editor/ui/UiEditor'
 import { isUiEditorOpen, redoActive, undoActive, useUiEditor } from './editor/ui/session'
 import { isViewportNavigating } from './editor/viewport/cameraControls'
 import AiWorkbenchPanel from './ai/AiWorkbenchPanel'
+import { CodeAssetModalHost } from './core/codeAssets/CodeAssetModal'
 import './App.css'
 
 export default function App() {
@@ -188,6 +189,7 @@ export default function App() {
       <TaxonomyDialogs />
       <GameplayHubDialog />
       <LibraryDialog />
+      <CodeAssetModalHost />
     </div>
   )
 }
