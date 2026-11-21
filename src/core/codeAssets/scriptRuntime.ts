@@ -81,6 +81,21 @@ function instanceKey(nodeId: string, scriptId: string): string {
   return `${nodeId}::${scriptId}`
 }
 
+function resolveVec3Input(target: unknown): Vec3Obj | null {
+  if (!target || typeof target !== 'object') return null
+  const rec = target as { x?: unknown; y?: unknown; z?: unknown; position?: unknown }
+  if (typeof rec.x === 'number' && typeof rec.y === 'number' && typeof rec.z === 'number') {
+    return { x: rec.x, y: rec.y, z: rec.z }
+  }
+  if (rec.position && typeof rec.position === 'object') {
+    const pos = rec.position as { x?: unknown; y?: unknown; z?: unknown }
+    if (typeof pos.x === 'number' && typeof pos.y === 'number' && typeof pos.z === 'number') {
+      return { x: pos.x, y: pos.y, z: pos.z }
+    }
+  }
+  return null
+}
+
 function toVec3Obj(tuple: TupleVec3): Vec3Obj {
   return { x: tuple[0], y: tuple[1], z: tuple[2] }
 }
@@ -197,13 +212,15 @@ function buildScriptContext(
     get visible() { return handle.visible },
     set visible(v: boolean) { handle.visible = v },
     moveToward(target: Vec3Obj, maxDistance: number): boolean {
+      const vec = resolveVec3Input(target)
+      if (!vec) return false
       const cur = handle.position
-      const dx = target.x - cur.x
-      const dy = target.y - cur.y
-      const dz = target.z - cur.z
+      const dx = vec.x - cur.x
+      const dy = vec.y - cur.y
+      const dz = vec.z - cur.z
       const dist = Math.hypot(dx, dy, dz)
       if (dist <= 1e-4 || dist <= maxDistance) {
-        handle.position = { x: target.x, y: target.y, z: target.z }
+        handle.position = { x: vec.x, y: vec.y, z: vec.z }
         return true
       }
       const ratio = maxDistance / dist
@@ -215,7 +232,10 @@ function buildScriptContext(
       return false
     },
     lookAt(target: Vec3Obj) {
-      if (obj) obj.lookAt(target.x, target.y, target.z)
+      const vec = resolveVec3Input(target)
+      if (obj && vec && Number.isFinite(vec.x) && Number.isFinite(vec.y) && Number.isFinite(vec.z)) {
+        obj.lookAt(vec.x, vec.y, vec.z)
+      }
     },
     sendMessage(name: string, payload?: unknown) {
       messageQueue.push({ targetNodeId: node.id, name, payload, senderId: node.id })

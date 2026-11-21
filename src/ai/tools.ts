@@ -457,6 +457,19 @@ function resolveNodeIdFuzzy(raw: string): string {
       if (byPrefix.length === 1) return byPrefix[0].id
     }
   }
+
+  // 3. UUID 局部容错：大模型常在抄写 36 位 UUID 时漏写/错写中间某几位，若首段(前8位)或末段(后12位)唯一匹配则自动纠偏
+  const uuidHead = trimmed.match(/^([0-9a-fA-F]{8})-[0-9a-fA-F-]*/)?.[1]
+  if (uuidHead) {
+    const byHead = all.filter((n) => n.id.toLowerCase().startsWith(uuidHead.toLowerCase() + '-'))
+    if (byHead.length === 1) return byHead[0].id
+  }
+  const uuidTail = trimmed.match(/([0-9a-fA-F]{12})$/)?.[1]
+  if (uuidTail) {
+    const byTail = all.filter((n) => n.id.toLowerCase().endsWith('-' + uuidTail.toLowerCase()))
+    if (byTail.length === 1) return byTail[0].id
+  }
+
   return raw
 }
 
