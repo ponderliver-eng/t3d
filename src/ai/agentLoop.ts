@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { commandBus } from '../core/commands/bus'
 import { createCheckpoint, formatDesignMarkdown, getDesignDoc, restoreCheckpoint } from '../core/project'
-import { queryProjectOverview } from '../core/query'
+import { queryNodeInspect, queryProjectOverview } from '../core/query'
 import { electronBridge } from '../editor/project/electronBridge'
 import { useEditorStore } from '../editor/scene/store'
 import { initAiHistorySync, saveAiHistory } from './historyStorage'
@@ -228,12 +228,7 @@ export const useAgentStore = create<AgentState>((set, get) => ({
       | { role: 'user'; text: string }
       | { role: 'assistant'; text: string; toolCalls?: Array<{ id: string; name: string; arguments: Record<string, unknown> }> }
       | { role: 'tool'; toolCallId: string; name: string; content: string }
-    > = [
-      ...get().turns
-        .filter((t) => t.id !== assistantId && !t.error && t.text)
-        .slice(-8)
-        .map((t) => ({ role: t.role, text: t.text })),
-    ]
+    > = buildHistoryMessages(get().turns, assistantId)
 
     commandBus.beginTransaction(`AI：${text.slice(0, 32)}`)
     const actions: AiActionPill[] = []
@@ -268,7 +263,7 @@ export const useAgentStore = create<AgentState>((set, get) => ({
           result = await ai.chat(reqId, {
             providerId: get().activeProviderId,
             system: systemPrompt,
-            messages: chatMessages,
+            messages: compactMessagesForStep(chatMessages),
             tools,
           })
         } finally {
@@ -430,17 +425,107 @@ function toolPhaseLabel(toolName: string): string {
   return `正在执行 ${toolName.replace(/__/g, '.')}…`
 }
 
+function buildHistoryMessages(
+  turns: AiTurnItem[],
+  excludeId: string,
+): Array<{ role: 'user' | 'assistant'; text: string }> {
+  const MAX_TURNS = 24
+  const MAX_CHARS = 18000
+  const MIN_KEEP = 4
+
+  const candidates = turns.filter(
+    (t) => t.id !== excludeId && !t.error && (t.text.trim() || (t.actions && t.actions.length > 0)),
+  )
+
+  const picked: Array<{ role: 'user' | 'assistant'; text: string }> = []
+  let totalChars = 0
+
+  for (let i = candidates.length - 1; i >= 0 && picked.length < MAX_TURNS; i -= 1) {
+    const t = candidates[i]
+    let content = t.text.trim()
+    if (t.role === 'user' && t.refs && t.refs.length > 0) {
+      const refNote = t.refs.map((r) => `@${r.label}(${r.id})`).join(', ')
+      content = `${content}\n[已选中节点: ${refNote}]`.trim()
+    }
+    if (t.role === 'assistant' && t.actions && t.actions.length > 0) {
+      const actionSummary = t.actions
+        .map((a) => `${a.ok ? '✓' : '✕'} ${a.label}${a.targetNodeId ? ` [${a.targetNodeId}]` : ''}`)
+        .join('；')
+      content = `${content}\n[本轮已执行操作: ${actionSummary}]`.trim()
+    }
+    if (!content) continue
+
+    if (picked.length >= MIN_KEEP && totalChars + content.length > MAX_CHARS) {
+      break
+    }
+    totalChars += content.length
+    picked.push({ role: t.role, text: content })
+  }
+
+  return picked.reverse()
+}
+
+function compactMessagesForStep<
+  T extends
+    | { role: 'user'; text: string }
+    | { role: 'assistant'; text: string; toolCalls?: Array<{ id: string; name: string; arguments: Record<string, unknown> }> }
+    | { role: 'tool'; toolCallId: string; name: string; content: string },
+>(messages: T[]): T[] {
+  // 保留最近两轮助手工具调用的完整返回，更早步骤的超长工具 JSON 做折叠以控制 Token 消耗
+  let assistantWithToolsSeen = 0
+  let cutoffIndex = 0
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    const m = messages[i]
+    if (m.role === 'assistant' && m.toolCalls && m.toolCalls.length > 0) {
+      assistantWithToolsSeen += 1
+      if (assistantWithToolsSeen >= 2) {
+        cutoffIndex = i
+        break
+      }
+    }
+  }
+  if (cutoffIndex === 0) return messages
+
+  return messages.map((m, idx) => {
+    if (idx < cutoffIndex && m.role === 'tool' && m.content.length > 800) {
+      return {
+        ...m,
+        content: `[早先工具 ${m.name} 返回已折叠（原长 ${m.content.length} 字符），如需细节可重新查询]`,
+      }
+    }
+    return m
+  })
+}
+
 function buildSystemPrompt(selectedRefs: Array<{ id: string; label: string }>): string {
   const designMd = formatDesignMarkdown(getDesignDoc())
   const overview = JSON.stringify(queryProjectOverview())
   const selectedText = selectedRefs.length > 0
-    ? `\n当前用户在视口中选中的节点：\n${selectedRefs.map((r) => `- ${r.label} (id: ${r.id})`).join('\n')}`
+    ? `\n当前用户在视口中选中的节点（精简快照，无需重复 inspect 基础字段）：\n${selectedRefs
+        .map((r) => {
+          const info = queryNodeInspect(r.id)
+          if (!info) return `- ${r.label} (id: ${r.id})`
+          const compact = {
+            id: info.id,
+            name: info.name,
+            kind: info.kind,
+            parentId: info.parentId,
+            position: info.transform.position,
+            assetId: info.assetId,
+            packs: Object.keys(info.gameplay.packs ?? {}),
+            capabilities: Object.keys(info.capabilities ?? {}),
+            hasPhysics: Boolean(info.physics),
+            hasCameraFollow: Boolean(info.gameplay.cameraFollow),
+          }
+          return `- ${JSON.stringify(compact)}`
+        })
+        .join('\n')}`
     : ''
 
   return [
     '你是 T3D 游戏工程管理器的内置 AI 创作助手。',
     '核心原则：',
-    '1. 只能通过提供的工具读取或修改工程数据，不要编造不存在的节点 ID 或资产 ID。',
+    '1. 只能通过提供的工具读取或修改工程数据，不要编造不存在的节点 ID 或资产 ID；如需查询登记清单，优先按具体 category 查询（避免不必要的全量 all）。',
     '2. 搭完或修改完场景后，务必调用 query__project_diagnose 做一次工程体检并修正错误。',
     '3. 若是新建游戏项目或需求发生方向变化，先用 project__design__update 维护 design.md 全局规范。',
     '4. 放置模型或物体到地面时，优先开启 snapToGround: true。',
