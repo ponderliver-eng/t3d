@@ -12,6 +12,7 @@ export interface AiActionPill {
   toolName: string
   label: string
   ok: boolean
+  pending?: boolean
   targetNodeId?: string
   detail?: unknown
 }
@@ -49,6 +50,8 @@ interface AgentState {
   quickPromptOpen: boolean
   pendingAttachmentImage: string | null
   status: 'idle' | 'running' | 'awaiting-confirm'
+  phaseText: string
+  startedAt: number | null
   activeRequestId: string | null
   streamingText: string
   turns: AiTurnItem[]
@@ -85,6 +88,8 @@ export const useAgentStore = create<AgentState>((set, get) => ({
   quickPromptOpen: false,
   pendingAttachmentImage: null,
   status: 'idle',
+  phaseText: '',
+  startedAt: null,
   activeRequestId: null,
   streamingText: '',
   turns: [],
@@ -134,7 +139,7 @@ export const useAgentStore = create<AgentState>((set, get) => ({
     if (reqId) {
       await electronBridge()?.ai?.abort(reqId)
     }
-    set({ status: 'idle', activeRequestId: null, activeNodeIds: [] })
+    set({ status: 'idle', phaseText: '', startedAt: null, activeRequestId: null, activeNodeIds: [] })
   },
 
   rollbackTurn: (checkpointId) => {
@@ -207,6 +212,8 @@ export const useAgentStore = create<AgentState>((set, get) => ({
 
     set((s) => ({
       status: 'running',
+      phaseText: '正在分析需求与工程上下文…',
+      startedAt: Date.now(),
       streamingText: '',
       turns: [
         ...s.turns,
@@ -240,12 +247,19 @@ export const useAgentStore = create<AgentState>((set, get) => ({
       for (let step = 0; step < MAX_TOOL_STEPS; step += 1) {
         if (get().status === 'idle') break
         const reqId = `req_${Date.now()}_${step}`
-        set({ activeRequestId: reqId, streamingText: '' })
+        set({
+          activeRequestId: reqId,
+          streamingText: '',
+          phaseText: step === 0 ? '正在思考方案…' : `正在思考下一步（第 ${step + 1} 轮）…`,
+        })
 
         const unsub = ai.onDelta((delta) => {
           if (delta.requestId !== reqId) return
           if (delta.type === 'text' && delta.text) {
-            set((s) => ({ streamingText: s.streamingText + delta.text }))
+            set((s) => ({
+              phaseText: '正在输出思路与说明…',
+              streamingText: s.streamingText + delta.text,
+            }))
           }
         })
 
@@ -267,6 +281,11 @@ export const useAgentStore = create<AgentState>((set, get) => ({
         totalOut += result.usage?.outputTokens ?? 0
         if (result.text) {
           finalText = finalText ? `${finalText}\n${result.text}` : result.text
+          set((s) => ({
+            turns: s.turns.map((t) =>
+              t.id === assistantId ? { ...t, text: finalText } : t,
+            ),
+          }))
         }
 
         if (result.toolCalls.length === 0) {
@@ -284,6 +303,7 @@ export const useAgentStore = create<AgentState>((set, get) => ({
             const approved = await new Promise<boolean>((resolve) => {
               set({
                 status: 'awaiting-confirm',
+                phaseText: `等待确认：${tc.name.replace(/__/g, '.')}`,
                 pendingConfirm: {
                   toolName: tc.name,
                   label: `允许执行高风险指令 ${tc.name.replace(/__/g, '.')}？`,
@@ -304,6 +324,21 @@ export const useAgentStore = create<AgentState>((set, get) => ({
             }
           }
 
+          const phase = toolPhaseLabel(tc.name)
+          set({ phaseText: phase })
+          const pendingPill: AiActionPill = {
+            id: tc.id,
+            toolName: tc.name,
+            label: phase,
+            ok: true,
+            pending: true,
+          }
+          set((s) => ({
+            turns: s.turns.map((t) =>
+              t.id === assistantId ? { ...t, actions: [...actions, pendingPill] } : t,
+            ),
+          }))
+
           const execRes = await executeAiTool(tc.name, tc.arguments)
           if (execRes.targetNodeId) {
             set({ activeNodeIds: [execRes.targetNodeId] })
@@ -313,6 +348,7 @@ export const useAgentStore = create<AgentState>((set, get) => ({
             toolName: tc.name,
             label: execRes.displayLabel,
             ok: execRes.ok,
+            pending: false,
             targetNodeId: execRes.targetNodeId,
             detail: execRes.data,
           })
@@ -338,6 +374,8 @@ export const useAgentStore = create<AgentState>((set, get) => ({
       txCommitted = true
       set((s) => ({
         status: 'idle',
+        phaseText: '',
+        startedAt: null,
         streamingText: '',
         activeNodeIds: [],
         turns: s.turns.map((t) =>
@@ -359,6 +397,8 @@ export const useAgentStore = create<AgentState>((set, get) => ({
       const msg = error instanceof Error ? error.message : String(error)
       set((s) => ({
         status: 'idle',
+        phaseText: '',
+        startedAt: null,
         streamingText: '',
         activeNodeIds: [],
         turns: s.turns.map((t) =>
@@ -374,6 +414,21 @@ initAiHistorySync(
   () => useAgentStore.getState().turns,
   (turns) => useAgentStore.setState({ turns }),
 )
+
+function toolPhaseLabel(toolName: string): string {
+  if (toolName.startsWith('script__')) return '正在生成 / 编译脚本…'
+  if (toolName.startsWith('shader__')) return '正在生成 / 编译着色器…'
+  if (toolName.startsWith('scene__')) return '正在搭建 / 修改场景节点…'
+  if (toolName.startsWith('asset__')) return '正在处理材质与资产…'
+  if (toolName.startsWith('gameplay__') || toolName.startsWith('capability__')) return '正在配置玩法与能力包…'
+  if (toolName === 'query__project_diagnose') return '正在执行工程体检与性能预算检查…'
+  if (toolName.startsWith('query__')) return '正在读取工程信息…'
+  if (toolName.startsWith('playtest__')) return '正在执行试玩冒烟验证…'
+  if (toolName.startsWith('pack__')) return '正在处理能力包…'
+  if (toolName.startsWith('branch__')) return '正在切换 / 管理实验分支…'
+  if (toolName.startsWith('project__')) return '正在更新工程配置…'
+  return `正在执行 ${toolName.replace(/__/g, '.')}…`
+}
 
 function buildSystemPrompt(selectedRefs: Array<{ id: string; label: string }>): string {
   const designMd = formatDesignMarkdown(getDesignDoc())
@@ -391,7 +446,10 @@ function buildSystemPrompt(selectedRefs: Array<{ id: string; label: string }>): 
     '4. 放置模型或物体到地面时，优先开启 snapToGround: true。',
     '5. 编写节点行为脚本（script__create / script__update）时，必须从 "t3d/runtime" 导入 defineBehavior，并严格使用：',
     '   export default defineBehavior({ name: "简短中文标题", description: "一句话介绍脚本作用（将展示在组件卡片下方）", params: { ... }, onUpdate(self, dt) { ... } })',
-    '   注意：修改位置/旋转/缩放必须整体赋值（如 self.position = { x, y, z }），不要写 self.position.x = ...。',
+    '   脚本内置 API（严禁自己编造 window.__t3dKeys 等全局变量）：',
+    '   - 移动/旋转/缩放：必须整体赋值（如 self.position = { x, y, z }，self.rotation = { x, y, z }），不要写 self.position.x = ...。',
+    '   - 输入（WASD/方向键/手柄/触控）：用 const move = self.input.axis2D("Move")（返回 { x, y }，W/↑ 为 y=+1，D/→ 为 x=+1）；也可用 self.input.isPressed("Jump" | "KeyW" | "Space") / self.input.justPressed(...) / self.input.isKeyPressed("KeyW")。',
+    '   - 节点查找与跟随：self.findNodeById(id)、self.findNodesByTag(tag)、self.moveToward(target, maxDist)、self.lookAt(target)。',
     '6. 编写自定义着色器后，可用 shader__bind 绑定到指定材质或节点。',
     '',
     '当前工程设计规范（design.md）：',

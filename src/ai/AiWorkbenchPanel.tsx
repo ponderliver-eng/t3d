@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Bot, Check, Download, RotateCcw, Send, Settings, Sparkles, Square, Trash2, Upload, X } from 'lucide-react'
+import { Bot, Check, Download, Loader2, RotateCcw, Send, Settings, Sparkles, Square, Trash2, Upload, X } from 'lucide-react'
 import { createCheckpoint } from '../core/project/checkpoints'
 import { useManagerModalStore } from '../core/project/ProjectManagerModal'
 import { useCodeAssetStore } from '../core/codeAssets/workspace'
@@ -11,6 +11,8 @@ export default function AiWorkbenchPanel() {
   const panelOpen = useAgentStore((s) => s.panelOpen)
   const setPanelOpen = useAgentStore((s) => s.setPanelOpen)
   const status = useAgentStore((s) => s.status)
+  const phaseText = useAgentStore((s) => s.phaseText)
+  const startedAt = useAgentStore((s) => s.startedAt)
   const turns = useAgentStore((s) => s.turns)
   const pendingAttachmentImage = useAgentStore((s) => s.pendingAttachmentImage)
   const setPendingAttachmentImage = useAgentStore((s) => s.setPendingAttachmentImage)
@@ -38,6 +40,19 @@ export default function AiWorkbenchPanel() {
   const [editApiKey, setEditApiKey] = useState('')
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const importInputRef = useRef<HTMLInputElement | null>(null)
+  const [elapsedMs, setElapsedMs] = useState(0)
+
+  useEffect(() => {
+    if (status === 'idle' || !startedAt) {
+      setElapsedMs(0)
+      return
+    }
+    setElapsedMs(Date.now() - startedAt)
+    const timer = window.setInterval(() => {
+      setElapsedMs(Date.now() - startedAt)
+    }, 200)
+    return () => window.clearInterval(timer)
+  }, [status, startedAt])
 
   const handleExportHistory = () => {
     if (turns.length === 0) {
@@ -142,6 +157,7 @@ export default function AiWorkbenchPanel() {
         zIndex: 20,
       }}
     >
+      <style>{'@keyframes t3d-ai-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }'}</style>
       {/* 头部 */}
       <div
         style={{
@@ -320,7 +336,9 @@ export default function AiWorkbenchPanel() {
           </div>
         )}
 
-        {turns.map((turn) => (
+        {turns.map((turn, idx) => {
+          const isActiveTurn = status !== 'idle' && idx === turns.length - 1 && turn.role === 'assistant'
+          return (
           <div
             key={turn.id}
             style={{
@@ -332,9 +350,34 @@ export default function AiWorkbenchPanel() {
               background: turn.role === 'user' ? 'rgba(59,130,246,0.12)' : 'rgba(255,255,255,0.03)',
               border: turn.role === 'user'
                 ? '1px solid rgba(59,130,246,0.28)'
-                : '1px solid rgba(255,255,255,0.06)',
+                : isActiveTurn
+                  ? '1px solid rgba(96,165,250,0.4)'
+                  : '1px solid rgba(255,255,255,0.06)',
             }}
           >
+            {isActiveTurn && (
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  padding: '4px 8px',
+                  borderRadius: '4px',
+                  background: 'rgba(59,130,246,0.14)',
+                  color: '#93c5fd',
+                  fontSize: '11px',
+                }}
+              >
+                <Loader2 size={12} style={{ animation: 't3d-ai-spin 1s linear infinite', flexShrink: 0 }} />
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {phaseText || '正在处理中…'}
+                </span>
+                <span style={{ marginLeft: 'auto', color: '#a1a1aa', fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>
+                  {(elapsedMs / 1000).toFixed(1)}s
+                </span>
+              </div>
+            )}
+
             {turn.refs && turn.refs.length > 0 && (
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
                 {turn.refs.map((r) => (
@@ -353,6 +396,12 @@ export default function AiWorkbenchPanel() {
 
             {turn.text && (
               <div style={{ whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>{turn.text}</div>
+            )}
+
+            {isActiveTurn && streamingText && (
+              <div style={{ whiteSpace: 'pre-wrap', lineHeight: 1.5, color: '#d4d4d8', opacity: 0.9 }}>
+                {streamingText}
+              </div>
             )}
 
             {turn.actions && turn.actions.length > 0 && (
@@ -375,16 +424,22 @@ export default function AiWorkbenchPanel() {
                       textAlign: 'left',
                       padding: '4px 7px',
                       borderRadius: '4px',
-                      border: '1px solid rgba(255,255,255,0.08)',
-                      background: 'rgba(0,0,0,0.25)',
-                      color: act.ok ? '#d4d4d8' : '#fca5a5',
+                      border: act.pending
+                        ? '1px solid rgba(96,165,250,0.35)'
+                        : '1px solid rgba(255,255,255,0.08)',
+                      background: act.pending ? 'rgba(59,130,246,0.1)' : 'rgba(0,0,0,0.25)',
+                      color: act.pending ? '#93c5fd' : act.ok ? '#d4d4d8' : '#fca5a5',
                       fontSize: '11px',
                       cursor: act.targetNodeId ? 'pointer' : 'default',
                     }}
                   >
-                    <span style={{ color: act.ok ? '#4ade80' : '#f87171', fontWeight: 700 }}>
-                      {act.ok ? '✓' : '✕'}
-                    </span>
+                    {act.pending ? (
+                      <Loader2 size={11} style={{ animation: 't3d-ai-spin 1s linear infinite', flexShrink: 0 }} />
+                    ) : (
+                      <span style={{ color: act.ok ? '#4ade80' : '#f87171', fontWeight: 700 }}>
+                        {act.ok ? '✓' : '✕'}
+                      </span>
+                    )}
                     <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {act.label}
                     </span>
@@ -397,7 +452,7 @@ export default function AiWorkbenchPanel() {
               <div style={{ color: '#fca5a5', fontSize: '11px', lineHeight: 1.4 }}>{turn.error}</div>
             )}
 
-            {turn.role === 'assistant' && (turn.usage?.model || turn.checkpointId) && (
+            {turn.role === 'assistant' && !isActiveTurn && (turn.usage?.model || turn.checkpointId) && (
               <div
                 style={{
                   display: 'flex',
@@ -438,13 +493,8 @@ export default function AiWorkbenchPanel() {
               </div>
             )}
           </div>
-        ))}
-
-        {status !== 'idle' && streamingText && (
-          <div style={{ padding: '8px 10px', color: '#d4d4d8', whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>
-            {streamingText}
-          </div>
-        )}
+          )
+        })}
       </div>
 
       {/* 高风险确认栏 */}

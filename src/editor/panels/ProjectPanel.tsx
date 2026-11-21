@@ -20,6 +20,10 @@ import { openCodeAssetModal } from '../../core/codeAssets/CodeAssetModal'
 import { defaultTemplateFor, normalizeCodeAssetId, saveAndCompileCodeAsset, useCodeAssetStore } from '../../core/codeAssets/workspace'
 import './ProjectPanel.css'
 
+function codeAssetDirKey(kind: 'script' | 'shader', id: string): string {
+  return `code:${kind}:${id}`
+}
+
 const PILLS = [
   { id: 'all', icon: Layers },
   { id: 'model', icon: Box },
@@ -106,13 +110,27 @@ export default function ProjectPanel() {
   useEffect(() => subscribeModels(() => setModelVersion(value => value + 1)), [])
   const nodes = useEditorStore(state => state.nodes)
   const q = query.trim().toLowerCase()
-  const filteredCodeAssets = useMemo(() => {
-    if (pill !== 'all') return []
-    return Object.values(codeAssets).filter(item =>
-      !q || item.name.toLowerCase().includes(q) || item.relativePath.toLowerCase().includes(q),
-    )
-  }, [codeAssets, pill, q])
   const referenced = useMemo(() => referencedIds(nodes, assets), [nodes, assets])
+  const filteredCodeAssets = useMemo(() => {
+    return Object.values(codeAssets)
+      .filter(item => {
+        const dir = assetDirectory(codeAssetDirKey(item.kind, item.id), assetDirs)
+        if (q) {
+          const matchText = item.name.toLowerCase().includes(q) || item.relativePath.toLowerCase().includes(q)
+          if (!matchText) return false
+        } else {
+          if (pill === 'all') {
+            if (dir !== browseDir) return false
+          } else if (!isWithin(dir, browseDir)) {
+            return false
+          }
+        }
+        if (pill === 'used') return countCodeAssetReferences(item, assets, nodes, activeSceneId) > 0
+        if (pill === 'unused') return countCodeAssetReferences(item, assets, nodes, activeSceneId) === 0
+        return pill === 'all'
+      })
+      .sort((a, b) => a.name.localeCompare(b.name, 'zh'))
+  }, [activeSceneId, assetDirs, assets, browseDir, codeAssets, nodes, pill, q])
   const tree = useMemo(() => directoryTree(folders, assetDirs), [folders, assetDirs])
   const items = useMemo(() => {
     const matchesPill = (asset: ProjectAsset) => {
@@ -355,7 +373,7 @@ export default function ProjectPanel() {
               </button>
             )
           })}
-          <span title={t('project.count', { count: items.length })}>{items.length}</span>
+          <span title={t('project.count', { count: items.length + filteredCodeAssets.length })}>{items.length + filteredCodeAssets.length}</span>
           <button type="button" className={view === 'list' ? 'is-on' : ''} title={t('project.list')} onClick={() => setView('list')}><List size={13} /></button>
           <button type="button" className={view === 'details' ? 'is-on' : ''} title={t('project.details')} onClick={() => setView('details')}><Rows3 size={13} /></button>
           <button type="button" className={view === 'grid' ? 'is-on' : ''} title={t('project.grid')} onClick={() => setView('grid')}><LayoutGrid size={13} /></button>
@@ -491,6 +509,11 @@ export default function ProjectPanel() {
                 <div
                   className={`project-asset ${view === 'grid' ? 'project-asset--grid' : ''} ${view === 'details' ? 'project-asset--details' : ''} ${selectedCodeId === item.id ? 'project-asset--picked' : ''}`}
                   title={`${item.name} (${item.relativePath})`}
+                  draggable
+                  onDragStart={event => {
+                    event.dataTransfer.setData(ASSET_MIME, codeAssetDirKey(item.kind, item.id))
+                    event.dataTransfer.effectAllowed = 'move'
+                  }}
                   onClick={() => {
                     useEditorStore.setState({ selection: [], inspectedAssetId: null })
                     setSelectedCodeId(item.id)
@@ -589,7 +612,7 @@ export default function ProjectPanel() {
         }
         return (
           <div className="project-panel__menu" style={{ left: menu.x, top: menu.y }} onPointerDown={event => event.stopPropagation()}>
-            <CreateMenu dir={browseDir} onDone={() => setMenu(null)} onNewFolder={path => setRenamePath(path)} />
+            <CreateMenu dir={assetDirectory(codeAssetDirKey(codeItem.kind, codeItem.id), assetDirs)} onDone={() => setMenu(null)} onNewFolder={path => setRenamePath(path)} />
             <div className="project-panel__sep" />
             <button type="button" onClick={() => { openCodeAssetModal(codeItem.kind, codeItem.id); setMenu(null) }}>
               <FolderOpen size={12} />{t('project.open')}
@@ -768,6 +791,7 @@ function CreateMenu({ dir, onDone, onNewFolder }: { dir: string, onDone: () => v
               onClick={() => {
                 const count = Object.values(useCodeAssetStore.getState().assets).filter(a => a.kind === 'script').length + 1
                 const id = normalizeCodeAssetId('script', `behavior_${count}`)
+                useAssetStore.getState().place(codeAssetDirKey('script', id), dir)
                 void saveAndCompileCodeAsset('script', id, defaultTemplateFor('script', id)).then(() => {
                   openCodeAssetModal('script', id)
                 })
@@ -781,6 +805,7 @@ function CreateMenu({ dir, onDone, onNewFolder }: { dir: string, onDone: () => v
               onClick={() => {
                 const count = Object.values(useCodeAssetStore.getState().assets).filter(a => a.kind === 'shader').length + 1
                 const id = normalizeCodeAssetId('shader', `surface_${count}`)
+                useAssetStore.getState().place(codeAssetDirKey('shader', id), dir)
                 void saveAndCompileCodeAsset('shader', id, defaultTemplateFor('shader', id)).then(() => {
                   openCodeAssetModal('shader', id)
                 })

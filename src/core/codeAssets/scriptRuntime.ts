@@ -6,7 +6,7 @@ import { measureCost } from '../../runtime/frameProfile'
 import { registerRuntimeSystem, RUNTIME_STAGE, type SceneRuntimeHost } from '../../runtime/sceneRuntime'
 import { uiValues, writeUiVariable } from '../../runtime/ui/values'
 import { getRuntimeWorld } from '../../runtime/world'
-import { getActionAxis2D, isActionPressed, wasActionTapped } from '../input/actionMap'
+import { getActionAxis2D, isActionPressed, isKeyHeld, wasActionTapped, wasKeyTapped } from '../input/actionMap'
 import { defaultForSchema, type FieldSchema } from '../schema/fieldSchema'
 import { checkAndTranspileTs, evaluateTranspiledModule, type CompileResult } from './compiler'
 
@@ -300,8 +300,9 @@ function buildScriptContext(
     },
     fx: { spawn: () => {} },
     input: {
-      isPressed: (action: string) => isActionPressed(action),
-      justPressed: (action: string) => wasActionTapped(action),
+      isPressed: (actionOrKey: string) => isActionPressed(actionOrKey) || isKeyHeld(actionOrKey) || isKeyHeld(`Key${actionOrKey.toUpperCase()}`),
+      justPressed: (actionOrKey: string) => wasActionTapped(actionOrKey) || wasKeyTapped(actionOrKey) || wasKeyTapped(`Key${actionOrKey.toUpperCase()}`),
+      isKeyPressed: (code: string) => isKeyHeld(code) || isKeyHeld(`Key${code.toUpperCase()}`),
       justReleased: () => false,
       axis1D: (action: string) => (isActionPressed(action) ? 1 : 0),
       axis2D: (action: string) => getActionAxis2D(action),
