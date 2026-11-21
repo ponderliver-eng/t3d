@@ -1,8 +1,10 @@
 import { useEffect, useState, type CSSProperties, type DragEvent } from 'react'
 import { createPortal } from 'react-dom'
-import { Box, FileBox, Search, X } from 'lucide-react'
+import { Box, Database, FileBox, Film, Search, X } from 'lucide-react'
+import { CLIP_MIME, readClipDrag } from '../../editor/animation/playback'
 import { ASSET_MIME, NODE_MIME } from '../../editor/assets/import'
 import { useAssetStore } from '../../editor/assets/library'
+import { clipNamesFor, projectClips } from '../../editor/assets/models'
 import { useEditorStore } from '../../editor/scene/store'
 import { defaultForSchema, type FieldSchema, type ObjectFieldSchema, type RefFieldSchema } from './fieldSchema'
 

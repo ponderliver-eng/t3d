@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Check, ExternalLink, FileCode2, Play, Wand2, X } from 'lucide-react'
 import { projectDirectoryPath } from '../../editor/project/disk'
 import { electronBridge, joinProjectPath } from '../../editor/project/electronBridge'
 import { defaultForSchema } from '../schema/fieldSchema'
 import { SchemaForm } from '../schema/SchemaForm'
+import { tokenizeCode } from './highlight'
 import {
   saveAndCompileCodeAsset,
   useCodeAssetStore,
@@ -36,6 +37,9 @@ export function CodeAssetModalHost() {
   const [draft, setDraft] = useState('')
   const [busy, setBusy] = useState(false)
   const [previewParams, setPreviewParams] = useState<Record<string, unknown>>({})
+  const highlightRef = useRef<HTMLPreElement | null>(null)
+  const gutterRef = useRef<HTMLDivElement | null>(null)
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null)
 
   useEffect(() => {
     const sync = () => setTarget(activeModalTarget)
@@ -64,6 +68,21 @@ export function CodeAssetModalHost() {
     }
     setPreviewParams(defaults)
   }, [record?.id, schemaFields])
+
+  const tokens = useMemo(() => tokenizeCode(draft), [draft])
+  const lineCount = useMemo(() => Math.max(1, draft.split('\n').length), [draft])
+
+  const syncScroll = () => {
+    const ta = textareaRef.current
+    if (!ta) return
+    if (highlightRef.current) {
+      highlightRef.current.scrollTop = ta.scrollTop
+      highlightRef.current.scrollLeft = ta.scrollLeft
+    }
+    if (gutterRef.current) {
+      gutterRef.current.scrollTop = ta.scrollTop
+    }
+  }
 
   if (!target || !record) return null
 
@@ -132,12 +151,53 @@ export function CodeAssetModalHost() {
         </div>
 
         <div className="code-modal__body">
-          <textarea
-            className="code-modal__editor"
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            spellCheck={false}
-          />
+          <div className="code-modal__editor-wrap">
+            <div ref={gutterRef} className="code-modal__gutter" aria-hidden="true">
+              {Array.from({ length: lineCount }, (_, idx) => (
+                <div key={idx} className="code-modal__line-num">{idx + 1}</div>
+              ))}
+            </div>
+            <div className="code-modal__code-stage">
+              <pre ref={highlightRef} className="code-modal__highlight" aria-hidden="true">
+                {tokens.map((tok, idx) => (
+                  tok.kind === 'plain'
+                    ? tok.text
+                    : <span key={idx} className={`tok-${tok.kind}`}>{tok.text}</span>
+                ))}
+                {draft.endsWith('\n') ? ' ' : ''}
+              </pre>
+              <textarea
+                ref={textareaRef}
+                className="code-modal__editor"
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                onScroll={syncScroll}
+                onKeyDown={(e) => {
+                  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 's') {
+                    e.preventDefault()
+                    void save()
+                    return
+                  }
+                  if (e.key === 'Tab') {
+                    e.preventDefault()
+                    const el = e.currentTarget
+                    const start = el.selectionStart
+                    const end = el.selectionEnd
+                    const next = `${draft.slice(0, start)}  ${draft.slice(end)}`
+                    setDraft(next)
+                    requestAnimationFrame(() => {
+                      el.selectionStart = el.selectionEnd = start + 2
+                      syncScroll()
+                    })
+                  }
+                }}
+                spellCheck={false}
+                autoCapitalize="off"
+                autoComplete="off"
+                autoCorrect="off"
+              />
+            </div>
+          </div>
           <aside className="code-modal__side">
             {record.kind === 'shader' && (
               <div>

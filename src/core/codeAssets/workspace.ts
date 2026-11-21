@@ -116,12 +116,23 @@ export interface ScriptContext<P = Record<string, unknown>, S = Record<string, u
   log(...args: unknown[]): void
   warn(...args: unknown[]): void
 }
+export interface GizmosApi {
+  readonly isSelected: boolean
+  line(from: Vec3 | NodeHandle, to: Vec3 | NodeHandle, opts?: { color?: string }): void
+  arrow(from: Vec3 | NodeHandle, dir: Vec3, length?: number, opts?: { color?: string }): void
+  wireSphere(center: Vec3 | NodeHandle, radius: number, opts?: { color?: string }): void
+  wireBox(center: Vec3 | NodeHandle, size: Vec3, opts?: { color?: string }): void
+  disc(center: Vec3 | NodeHandle, radius: number, opts?: { normal?: Vec3; color?: string }): void
+  radiusHandle(paramKey: string, opts?: { center?: Vec3 | NodeHandle; axis?: 'x' | 'y' | 'z'; color?: string }): void
+  positionHandle(paramKey: string, opts?: { color?: string }): void
+}
 export function defineBehavior<P extends ScriptParamMap, S extends Record<string, unknown>>(def: {
   name: string; description?: string; params?: P; state?: () => S
   onStart?: (self: ScriptContext<Record<string, any>, S>) => void
   onUpdate?: (self: ScriptContext<Record<string, any>, S>, dt: number) => void
   onDestroy?: (self: ScriptContext<Record<string, any>, S>) => void
   onMessage?: (self: ScriptContext<Record<string, any>, S>, msg: { name: string; payload?: unknown }) => void
+  onDrawGizmos?: (self: ScriptContext<Record<string, any>, S>, gizmos: GizmosApi) => void
 }): unknown
 export function defineSystem(def: {
   name: string; stage?: 'prePhysics' | 'postPhysics' | 'postAnimation'; order?: number

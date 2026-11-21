@@ -86,6 +86,7 @@ import { viewCubePose } from './viewCubeBridge'
 import { createEditorGrid, gridStepForDistance } from './editorGrid'
 import { createSceneGuide, type SceneGuide } from './lightCameraGizmo'
 import { createDeviceGuide, deviceHandlePatch, hasDeviceShape, type DeviceGuide, type DeviceHandleRole } from './deviceGizmo'
+import { createScriptGizmoManager, scriptGizmoHandlePatch, type ScriptGizmoHandleMeta, type ScriptGizmoManager } from './scriptGizmos'
 import { ScenePicturePipeline } from './picture'
 import { runBeforeRenderHooks } from './renderHooks'
 import { createVolumeLight } from './volumeLight'
@@ -178,6 +179,7 @@ export class EditorViewport {
   private readonly cubeQuat = new Quaternion()
   private press: Press | null = null
   private deviceDrag: { id: string, role: DeviceHandleRole } | null = null
+  private scriptGizmoDrag: ScriptGizmoHandleMeta | null = null
   private deviceGesture = false
   private marquee: HTMLDivElement | null = null
   private centerAttached = false
@@ -196,6 +198,7 @@ export class EditorViewport {
   private readonly volume = createVolumeLight()
   private volumeMuted = false
   private readonly navDebug = new Group()
+  private readonly scriptGizmos: ScriptGizmoManager
   private frameCamera: EditorCameraRig['active'] | null = null
   private readonly viewForward = new Vector3()
   private readonly viewUp = new Vector3()
@@ -236,6 +239,7 @@ export class EditorViewport {
     this.scene.add(this.volume.mesh)
     this.navDebug.name = 'nav-debug'
     this.scene.add(this.navDebug)
+    this.scriptGizmos = createScriptGizmoManager(this.scene)
     root.add(this.world)
     mountParticles(this.scene)
     const ambient = new AmbientLight(0xffffff, 0.28)
@@ -487,6 +491,7 @@ export class EditorViewport {
     releaseSkyResources()
     this.volume.dispose()
     this.picture?.dispose()
+    this.scriptGizmos.dispose()
     this.transform.dispose()
     this.rig.dispose()
     this.clearHelpers()
@@ -1107,7 +1112,7 @@ export class EditorViewport {
     }
     this.mouseButtonsMask = event.buttons
     this.rightButton = (event.buttons & 2) !== 0
-    if (this.deviceDrag) {
+    if (this.deviceDrag || this.scriptGizmoDrag) {
       this.dragDevice(event)
       return
     }
@@ -1135,9 +1140,10 @@ export class EditorViewport {
   }
 
   private onPointerUp = (event: PointerEvent) => {
-    if (this.deviceDrag) {
+    if (this.deviceDrag || this.scriptGizmoDrag) {
       if (this.deviceGesture) useEditorStore.getState().endGesture()
       this.deviceDrag = null
+      this.scriptGizmoDrag = null
       this.deviceGesture = false
       this.ignoreDoubleClick = true
       if (this.canvas.hasPointerCapture(event.pointerId)) this.canvas.releasePointerCapture(event.pointerId)
@@ -1662,6 +1668,7 @@ export class EditorViewport {
       )
     }
     this.refreshDeviceGuides(state.nodes, show, state.selection)
+    this.scriptGizmos.refresh(state.nodes, show, state.selection)
   }
 
   private syncColliderGuide(group: Group, node: SceneNode, physics: boolean, characterOn: boolean) {
@@ -1701,7 +1708,20 @@ export class EditorViewport {
   }
 
   private beginDeviceDrag(event: PointerEvent): boolean {
+    if (useEditorStore.getState().playState !== 'stopped') return false
     if (!this.aimPointer(event.clientX, event.clientY)) return false
+
+    const scriptHit = this.raycaster.intersectObjects(this.scriptGizmos.handles, false).find(item => item.object.visible)
+    if (scriptHit) {
+      const meta = scriptHit.object.userData.scriptGizmo as ScriptGizmoHandleMeta | undefined
+      if (meta) {
+        this.scriptGizmoDrag = meta
+        this.ignoreDoubleClick = true
+        this.canvas.setPointerCapture(event.pointerId)
+        return true
+      }
+    }
+
     const handles = [...this.objects.values()].flatMap(group => dataOf(group).device?.handles ?? [])
     const hit = this.raycaster.intersectObjects(handles, false).find(item => item.object.visible)
     if (!hit) return false
@@ -1715,6 +1735,28 @@ export class EditorViewport {
   }
 
   private dragDevice(event: PointerEvent) {
+    if (this.scriptGizmoDrag) {
+      const meta = this.scriptGizmoDrag
+      const node = useEditorStore.getState().nodes[meta.nodeId]
+      if (!node || !this.aimPointer(event.clientX, event.clientY)) return
+      const origin = new Vector3(meta.center.x, meta.center.y, meta.center.z)
+      const normal = this.viewCamera().getWorldPosition(new Vector3()).sub(origin)
+      if (meta.kind === 'radiusHandle' && meta.axis !== 'y') normal.set(0, 1, 0)
+      if (normal.lengthSq() < 1e-6) normal.set(0, 0, 1)
+      normal.normalize()
+      const hit = new Vector3()
+      if (!this.raycaster.ray.intersectPlane(new Plane().setFromNormalAndCoplanarPoint(normal, origin), hit)) return
+      const patch = scriptGizmoHandlePatch(node, meta, hit)
+      if (!patch) return
+      const store = useEditorStore.getState()
+      if (!this.deviceGesture) {
+        store.beginGesture('调整脚本 Gizmo')
+        this.deviceGesture = true
+      }
+      store.updateNode(meta.nodeId, patch)
+      return
+    }
+
     const drag = this.deviceDrag
     const group = drag ? this.objects.get(drag.id) : undefined
     const node = drag ? useEditorStore.getState().nodes[drag.id] : undefined

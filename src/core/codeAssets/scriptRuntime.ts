@@ -31,7 +31,17 @@ export interface BehaviorDefinition {
   onUpdate?: (self: unknown, dt: number) => void
   onDestroy?: (self: unknown) => void
   onMessage?: (self: unknown, msg: { name: string; payload?: unknown; sender?: unknown }) => void
+  onDrawGizmos?: (self: unknown, gizmos: unknown) => void
 }
+
+export type ScriptGizmoCommand =
+  | { kind: 'line'; from: Vec3Obj; to: Vec3Obj; color: string }
+  | { kind: 'arrow'; from: Vec3Obj; dir: Vec3Obj; length: number; color: string }
+  | { kind: 'wireSphere'; center: Vec3Obj; radius: number; color: string }
+  | { kind: 'wireBox'; center: Vec3Obj; size: Vec3Obj; color: string }
+  | { kind: 'disc'; center: Vec3Obj; normal: Vec3Obj; radius: number; color: string }
+  | { kind: 'radiusHandle'; paramKey: string; center: Vec3Obj; radius: number; axis: 'x' | 'y' | 'z'; color: string; min?: number; max?: number }
+  | { kind: 'positionHandle'; paramKey: string; position: Vec3Obj; color: string }
 
 export interface SystemDefinition {
   name: string
@@ -556,6 +566,161 @@ function stepProjectScripts(dt: number, host: SceneRuntimeHost) {
     }
     instanceStates.delete(key)
   }
+}
+
+function resolveGizmoNodePos(node: SceneNode, nodes: Record<string, SceneNode>): Vec3Obj {
+  let x = node.position[0]
+  let y = node.position[1]
+  let z = node.position[2]
+  let curParent = node.parentId ? nodes[node.parentId] : undefined
+  let guard = 0
+  while (curParent && guard < 16) {
+    x += curParent.position[0]
+    y += curParent.position[1]
+    z += curParent.position[2]
+    curParent = curParent.parentId ? nodes[curParent.parentId] : undefined
+    guard += 1
+  }
+  return { x, y, z }
+}
+
+function makeReadonlyNodeHandle(node: SceneNode, nodes: Record<string, SceneNode>) {
+  const tags: string[] = [...(node.tagId ? [node.tagId] : []), ...(node.tagIds ?? [])]
+  return {
+    id: node.id,
+    name: node.name,
+    tags,
+    position: resolveGizmoNodePos(node, nodes),
+    rotation: {
+      x: (node.rotation[0] * Math.PI) / 180,
+      y: (node.rotation[1] * Math.PI) / 180,
+      z: (node.rotation[2] * Math.PI) / 180,
+    },
+    scale: toVec3Obj(node.scale),
+    visible: node.visible,
+    hasTag: (tag: string) => tags.includes(tag) || tags.some((t) => t.startsWith(`${tag}.`)),
+    sendMessage: () => {},
+    destroy: () => {},
+  }
+}
+
+export function collectScriptGizmos(
+  node: SceneNode,
+  scriptId: string,
+  rawParams: unknown,
+  isSelected: boolean,
+  nodes: Record<string, SceneNode>,
+): ScriptGizmoCommand[] {
+  const def = compiledBehaviors.get(scriptId)
+  if (!def?.onDrawGizmos) return []
+  const inputRecord = rawParams && typeof rawParams === 'object' ? (rawParams as Record<string, unknown>) : {}
+  if (inputRecord.__enabled === false) return []
+
+  const resolvedParams: Record<string, unknown> = {}
+  for (const [k, schema] of Object.entries(def.params ?? {})) {
+    const val = k in inputRecord ? inputRecord[k] : defaultForSchema(schema)
+    if (schema.type === 'vec2' && Array.isArray(val)) resolvedParams[k] = { x: Number(val[0]) || 0, y: Number(val[1]) || 0 }
+    else if (schema.type === 'vec3' && Array.isArray(val)) resolvedParams[k] = { x: Number(val[0]) || 0, y: Number(val[1]) || 0, z: Number(val[2]) || 0 }
+    else if (schema.type === 'ref' && schema.target === 'node' && typeof val === 'string') {
+      const targetNode = nodes[val]
+      resolvedParams[k] = targetNode ? makeReadonlyNodeHandle(targetNode, nodes) : null
+    } else resolvedParams[k] = val
+  }
+
+  const handle = makeReadonlyNodeHandle(node, nodes)
+  const selfCtx = {
+    node: handle,
+    params: resolvedParams,
+    state: {},
+    elapsedTime: 0,
+    position: handle.position,
+    rotation: handle.rotation,
+    scale: handle.scale,
+    visible: handle.visible,
+    findNodeById: (id: string) => (nodes[id] ? makeReadonlyNodeHandle(nodes[id], nodes) : null),
+    findNodesByTag: (tag: string) =>
+      Object.values(nodes)
+        .filter((n) => n.tagId === tag || n.tagIds?.includes(tag))
+        .map((n) => makeReadonlyNodeHandle(n, nodes)),
+  }
+
+  const commands: ScriptGizmoCommand[] = []
+  const MAX_COMMANDS = 128
+  const push = (cmd: ScriptGizmoCommand) => {
+    if (commands.length < MAX_COMMANDS) commands.push(cmd)
+  }
+
+  const gizmosApi = {
+    isSelected,
+    line(from: unknown, to: unknown, opts?: { color?: string }) {
+      const a = resolveVec3Input(from)
+      const b = resolveVec3Input(to)
+      if (!a || !b) return
+      push({ kind: 'line', from: a, to: b, color: opts?.color ?? '#38bdf8' })
+    },
+    arrow(from: unknown, dir: unknown, length = 1.5, opts?: { color?: string }) {
+      const a = resolveVec3Input(from)
+      const d = resolveVec3Input(dir)
+      const len = Number(length)
+      if (!a || !d || !Number.isFinite(len) || len <= 0) return
+      push({ kind: 'arrow', from: a, dir: d, length: len, color: opts?.color ?? '#fbbf24' })
+    },
+    wireSphere(center: unknown, radius: number, opts?: { color?: string }) {
+      const c = resolveVec3Input(center)
+      const r = Number(radius)
+      if (!c || !Number.isFinite(r) || r <= 0) return
+      push({ kind: 'wireSphere', center: c, radius: r, color: opts?.color ?? '#38bdf8' })
+    },
+    wireBox(center: unknown, size: unknown, opts?: { color?: string }) {
+      const c = resolveVec3Input(center)
+      const s = resolveVec3Input(size)
+      if (!c || !s) return
+      push({ kind: 'wireBox', center: c, size: s, color: opts?.color ?? '#34d399' })
+    },
+    disc(center: unknown, radius: number, opts?: { normal?: Vec3Obj; color?: string }) {
+      const c = resolveVec3Input(center)
+      const r = Number(radius)
+      if (!c || !Number.isFinite(r) || r <= 0) return
+      const n = resolveVec3Input(opts?.normal) ?? { x: 0, y: 1, z: 0 }
+      push({ kind: 'disc', center: c, normal: n, radius: r, color: opts?.color ?? '#38bdf8' })
+    },
+    radiusHandle(paramKey: string, opts?: { center?: Vec3Obj; axis?: 'x' | 'y' | 'z'; color?: string }) {
+      const schema = def.params?.[paramKey]
+      if (!schema || schema.type !== 'number') return
+      const rawVal = Number(resolvedParams[paramKey])
+      const r = Number.isFinite(rawVal) ? Math.max(0.05, rawVal) : Math.max(0.05, schema.default)
+      const c = resolveVec3Input(opts?.center) ?? handle.position
+      push({
+        kind: 'radiusHandle',
+        paramKey,
+        center: c,
+        radius: r,
+        axis: opts?.axis ?? 'x',
+        color: opts?.color ?? '#38bdf8',
+        min: schema.min,
+        max: schema.max,
+      })
+    },
+    positionHandle(paramKey: string, opts?: { color?: string }) {
+      const schema = def.params?.[paramKey]
+      if (!schema || schema.type !== 'vec3') return
+      const pos = resolveVec3Input(resolvedParams[paramKey])
+      if (!pos) return
+      push({
+        kind: 'positionHandle',
+        paramKey,
+        position: pos,
+        color: opts?.color ?? '#fbbf24',
+      })
+    },
+  }
+
+  try {
+    def.onDrawGizmos(selfCtx, gizmosApi)
+  } catch {
+    // 编辑器绘制 Gizmo 报错时静默兜底，避免影响视口主循环
+  }
+  return commands
 }
 
 registerRuntimeSystem('core.projectScripts', RUNTIME_STAGE.PRE_PHYSICS + 2, stepProjectScripts)

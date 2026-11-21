@@ -231,6 +231,21 @@ export type BehaviorInstance<M extends BehaviorMethodMap<any, any>> = {
     : never
 }
 
+export interface GizmoDrawOptions {
+  color?: string
+}
+
+export interface GizmosApi {
+  readonly isSelected: boolean
+  line(from: Vec3 | NodeHandle, to: Vec3 | NodeHandle, opts?: GizmoDrawOptions): void
+  arrow(from: Vec3 | NodeHandle, dir: Vec3, length?: number, opts?: GizmoDrawOptions): void
+  wireSphere(center: Vec3 | NodeHandle, radius: number, opts?: GizmoDrawOptions): void
+  wireBox(center: Vec3 | NodeHandle, size: Vec3, opts?: GizmoDrawOptions): void
+  disc(center: Vec3 | NodeHandle, radius: number, opts?: GizmoDrawOptions & { normal?: Vec3 }): void
+  radiusHandle(paramKey: string, opts?: GizmoDrawOptions & { center?: Vec3 | NodeHandle; axis?: 'x' | 'y' | 'z' }): void
+  positionHandle(paramKey: string, opts?: GizmoDrawOptions): void
+}
+
 export interface BehaviorDefinition<
   P extends ScriptParamMap = ScriptParamMap,
   S extends BehaviorState = BehaviorState,
@@ -247,6 +262,8 @@ export interface BehaviorDefinition<
   onCollision?(self: ScriptContext<NoInfer<P>, NoInfer<S>>, hit: CollisionInfo): void
   onMessage?(self: ScriptContext<NoInfer<P>, NoInfer<S>>, message: ScriptMessage): void
   onDestroy?(self: ScriptContext<NoInfer<P>, NoInfer<S>>): void
+  /** 仅在编辑器停止状态下绘制辅助线与交互手柄；试玩态及导出包中不执行 */
+  onDrawGizmos?(self: ScriptContext<NoInfer<P>, NoInfer<S>>, gizmos: GizmosApi): void
   methods?: M
 }
 

@@ -544,6 +544,7 @@ function buildSystemPrompt(selectedRefs: Array<{ id: string; label: string }>): 
     '   - 鼠标与滚轮输入：用 self.input.pointerDelta() 获取本帧鼠标移动增量 { x, y }，self.input.pointerPosition() 获取视口归一化坐标 { x, y }（[-1, 1]），self.input.wheelDelta() 获取滚轮增量（正值拉远/向下，负值拉近/向上），self.input.isMouseButtonPressed(0 | 1 | 2) / justPressedMouseButton(0 | 1 | 2) 检测左/中/右键（0=左键, 1=中键, 2=右键）。',
     '   - 节点/资产引用参数：若脚本参数需要引用场景节点或资产，必须声明为 { type: "ref", target: "node", label: "目标节点", default: null }（运行时 self.params.xxx 自动解析为 NodeHandle | null），不要用 type: "string" 存节点 ID。',
     '   - 节点查找与跟随：self.findNodeById(id)、self.findNodesByTag(tag)、self.moveToward(target, maxDist)、self.lookAt(target)。',
+    '   - 编辑器专用 Gizmo（试玩时自动完全隐藏/不执行）：可定义 onDrawGizmos(self, gizmos) 绘制辅助线与交互手柄，例如 gizmos.wireSphere(self.position, self.params.radius, { color: "#38bdf8" })、gizmos.wireBox(center, size)、gizmos.disc(center, radius)、gizmos.line(from, to)、gizmos.arrow(from, dir, len)；选中节点时可用 gizmos.isSelected 判断，并用 gizmos.radiusHandle("radius") 或 gizmos.positionHandle("targetPos") 绑定可拖拽参数手柄。',
     '6. 编写自定义着色器后，可用 shader__bind 绑定到指定材质或节点。',
     '',
     '当前工程设计规范（design.md）：',

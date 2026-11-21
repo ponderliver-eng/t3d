@@ -119,19 +119,85 @@
   display: flex;
 }
 
-.code-modal__editor {
+.code-modal__editor-wrap {
   flex: 1;
   min-width: 0;
+  min-height: 0;
+  display: flex;
+  background: #13161c;
+}
+
+.code-modal__gutter {
+  width: 42px;
+  flex-shrink: 0;
+  padding: 14px 8px 14px 4px;
+  overflow: hidden;
+  border-right: 1px solid rgba(255, 255, 255, 0.06);
+  background: #101318;
+  color: #4b5563;
+  font-family: Consolas, "Fira Code", monospace;
+  font-size: 12.5px;
+  line-height: 1.55;
+  text-align: right;
+  user-select: none;
+  box-sizing: border-box;
+}
+
+.code-modal__line-num {
+  height: 19.375px;
+}
+
+.code-modal__code-stage {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.code-modal__highlight,
+.code-modal__editor {
+  position: absolute;
+  inset: 0;
+  margin: 0;
   padding: 14px;
   border: none;
   outline: none;
   resize: none;
-  background: #13161c;
-  color: #e2e8f0;
   font-family: Consolas, "Fira Code", monospace;
   font-size: 12.5px;
   line-height: 1.55;
+  letter-spacing: 0;
+  tab-size: 2;
+  white-space: pre;
+  overflow: auto;
+  box-sizing: border-box;
 }
+
+.code-modal__highlight {
+  pointer-events: none;
+  color: #e2e8f0;
+  background: transparent;
+}
+
+.code-modal__editor {
+  background: transparent;
+  color: transparent;
+  caret-color: #f8fafc;
+}
+
+.code-modal__editor::selection {
+  background: rgba(59, 130, 246, 0.35);
+}
+
+.tok-comment { color: #64748b; font-style: italic; }
+.tok-string { color: #a5d6a7; }
+.tok-color { color: #fde68a; text-decoration: underline rgba(253, 230, 138, 0.45); }
+.tok-number { color: #f9a8d4; }
+.tok-keyword { color: #c084fc; }
+.tok-api { color: #38bdf8; }
+.tok-type { color: #fbbf24; }
+.tok-fn { color: #93c5fd; }
 
 .code-modal__side {
   width: 290px;
