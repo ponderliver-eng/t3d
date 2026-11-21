@@ -3,7 +3,7 @@ import { Color, OrthographicCamera } from 'three'
 import type { WebGPURenderer } from 'three/webgpu'
 import { mix, uniform, vec4 } from 'three/tsl'
 import { Sky, type SkyMoonlight, type SkyNight, type SkySun } from '@pmndrs/sky'
-import { EDITOR_HELPER_LAYER } from '../../editor/project/taxonomy'
+import { EDITOR_HELPER_LAYER } from '../../core/layers'
 import type { SkySettings } from './defaults'
 import { setSkyViewState } from './session'
 

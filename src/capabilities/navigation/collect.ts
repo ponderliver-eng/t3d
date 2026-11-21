@@ -1,5 +1,5 @@
 import { Vector3, type Mesh, type Object3D } from 'three'
-import { EDITOR_HELPER_LAYER } from '../../editor/project/taxonomy'
+import { EDITOR_HELPER_LAYER } from '../../core/layers'
 
 const HELPER_BIT = 1 << EDITOR_HELPER_LAYER
 

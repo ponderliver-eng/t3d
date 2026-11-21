@@ -1,14 +1,14 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { ChevronDown, ChevronRight, Search, Trash2, X } from 'lucide-react'
-import { CardReset } from '../editor/panels/CardReset'
-import { KeyField } from '../editor/ui/KeyField'
-import { ClipField } from '../editor/panels/ClipPicker'
-import { useInspectorCardOpen } from '../editor/panels/inspectorMemory'
-import { useEditorStore } from '../editor/scene/store'
-import { useI18n, type MessageKey } from '../editor/i18n'
-import type { SceneNode, Vec3 } from '../editor/scene/types'
-import { characterOrDefault } from './character'
+import { CardReset } from '../panels/CardReset'
+import { KeyField } from '../ui/KeyField'
+import { ClipField } from '../panels/ClipPicker'
+import { useInspectorCardOpen } from '../panels/inspectorMemory'
+import { useEditorStore } from '../scene/store'
+import { useI18n, type MessageKey } from '../i18n'
+import type { SceneNode, Vec3 } from '../scene/types'
+import { characterOrDefault } from '../../runtime/character'
 import { JuiceField } from './RulePickers'
 import {
   cameraPresetForMode,
@@ -20,8 +20,8 @@ import {
   type CharacterDriver,
   type CharacterMode,
   type CharacterSpec,
-} from './sceneRuntime'
-import '../editor/panels/AssetPicker.css'
+} from '../../runtime/sceneRuntime'
+import '../panels/AssetPicker.css'
 
 const MODES: CharacterMode[] = ['adventure', 'strafe', 'lockOn', 'pointAndClick', 'topDown', 'side25d', 'firstPerson']
 const DRIVERS: CharacterDriver[] = ['capsule', 'nav', 'hybrid']

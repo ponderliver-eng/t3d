@@ -1,12 +1,12 @@
 import { ChevronDown, ChevronRight, Trash2 } from 'lucide-react'
-import { CardReset } from '../editor/panels/CardReset'
-import { KeyField } from '../editor/ui/KeyField'
-import { useInspectorCardOpen } from '../editor/panels/inspectorMemory'
-import { useEditorStore } from '../editor/scene/store'
-import { useI18n } from '../editor/i18n'
-import type { SceneNode, Vec3 } from '../editor/scene/types'
+import { CardReset } from '../panels/CardReset'
+import { KeyField } from '../ui/KeyField'
+import { useInspectorCardOpen } from '../panels/inspectorMemory'
+import { useEditorStore } from '../scene/store'
+import { useI18n } from '../i18n'
+import type { SceneNode, Vec3 } from '../scene/types'
 import { AudioField } from './RulePickers'
-import { defaultInteract, defaultTrigger, defaultMover, defaultCheckpoint, defaultScore, defaultSoundSource, type InteractSpec, type TriggerZoneSpec, type MoverSpec, type CheckpointSpec, type ScoreSpec, type SoundSourceSpec } from './sceneRuntime'
+import { defaultInteract, defaultTrigger, defaultMover, defaultCheckpoint, defaultScore, defaultSoundSource, type InteractSpec, type TriggerZoneSpec, type MoverSpec, type CheckpointSpec, type ScoreSpec, type SoundSourceSpec } from '../../runtime/sceneRuntime'
 
 export function SoundSourceCard({ node, disabled }: { node: SceneNode, disabled: boolean }) {
   const { t } = useI18n()

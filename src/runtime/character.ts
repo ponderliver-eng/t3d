@@ -6,10 +6,16 @@ import { clearJuice } from '../gameplay/juiceClock'
 import { emitFootstep } from './signals'
 import { playJuice } from '../gameplay/juice'
 import { carryFor } from './devices'
-import { clipDuration } from '../editor/assets/models'
-import { playBody } from '../editor/animation/director'
-import { useEditorStore } from '../editor/scene/store'
 import type { Vec3 } from '../editor/scene/types'
+import { getRuntimeWorld } from './world'
+import {
+  bindGlobalInputListeners,
+  getActionAxis2D,
+  isActionPressed,
+  isKeyHeld,
+  wasActionTapped,
+  wasKeyTapped,
+} from '../core/input/actionMap'
 import {
   defaultCharacter,
   registerRuntimeSystem,
@@ -45,47 +51,22 @@ interface Motion {
   footsteps: number
 }
 
-const keys = new Set<string>()
-const pressed = new Set<string>()
 const motion = new Map<string, Motion>()
-let listening = false
 
 function ensureKeys() {
-  if (listening || typeof window === 'undefined') return
-  listening = true
-  const down = (event: KeyboardEvent) => {
-    if (typing(event.target)) return
-    if (!keys.has(event.code)) pressed.add(event.code)
-    keys.add(event.code)
-  }
-  window.addEventListener('keydown', down)
-  window.addEventListener('keyup', event => {
-    keys.delete(event.code)
-    pressed.delete(event.code)
-  })
-  window.addEventListener('blur', () => {
-    keys.clear()
-    pressed.clear()
-  })
-}
-
-function typing(target: EventTarget | null): boolean {
-  const element = target as HTMLElement | null
-  if (!element) return false
-  const tag = element.tagName
-  return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || element.isContentEditable
+  bindGlobalInputListeners()
 }
 
 function held(code: string): boolean {
-  return keys.has(code)
+  return isKeyHeld(code)
 }
 
 function tapped(code: string): boolean {
-  return pressed.has(code)
+  return wasKeyTapped(code)
 }
 
 function consumeTaps() {
-  pressed.clear()
+  // 帧末由 stepSceneRuntime 统一调用 consumeInputFrame()
 }
 
 export function characterInvincible(nodeId: string, now = performance.now() / 1000): boolean {
@@ -117,19 +98,24 @@ function takeRelocation(id: string): Vec3 | null {
   return next
 }
 
+let simClock = 0
+
 function stepCharacters(dt: number, host: SceneRuntimeHost) {
   ensureKeys()
-  const state = useEditorStore.getState()
-  if (state.playState !== 'playing') {
+  const worldState = getRuntimeWorld()
+  if (worldState.getPlayState() !== 'playing') {
+    simClock = 0
     motion.clear()
     orders.clear()
     consumeTaps()
     clearJuice()
     return
   }
-  const now = performance.now() / 1000
+  simClock += Math.max(0, dt)
+  const now = simClock
+  const nodes = worldState.getNodes()
   const yaw = host.yaw?.() ?? 0
-  for (const node of Object.values(state.nodes)) {
+  for (const node of Object.values(nodes)) {
     const raw = node.gameplay?.character
     if (!raw?.enabled) continue
     const spec = { ...defaultCharacter(), ...raw }
@@ -150,11 +136,11 @@ function stepCharacters(dt: number, host: SceneRuntimeHost) {
       live.grounded = true
     }
     const wish = wishInput(spec)
-    const sprint = held('ShiftLeft') || held('ShiftRight')
+    const sprint = isActionPressed('Sprint') || held('ShiftLeft') || held('ShiftRight')
     const speed = spec.moveSpeed * (sprint && wish.amount > 0 ? spec.sprintMultiplier : 1)
-    const basis = facingBasis(spec, node.id, state.nodes, object.position.x, object.position.z, yaw, host)
+    const basis = facingBasis(spec, node.id, nodes, object.position.x, object.position.z, yaw, host)
     const world = rotate(wish.x, wish.z, basis.moveYaw)
-    const dashPressed = spec.dash && tapped(spec.dashKey || 'KeyC')
+    const dashPressed = spec.dash && (wasActionTapped('Dash') || tapped(spec.dashKey || 'KeyC'))
     if (dashPressed && now >= live.dashReady) {
       const dir = wish.amount > 0.1 ? world : { x: Math.sin(live.yaw), z: Math.cos(live.yaw) }
       const len = Math.hypot(dir.x, dir.z) || 1
@@ -231,7 +217,7 @@ function stepCharacters(dt: number, host: SceneRuntimeHost) {
     const onGround = !live.swimming && (live.grounded || (ground !== null && feet <= ground + 0.08 && live.vy <= 0.1))
     if (onGround) live.lastGrounded = now
     const coyote = now - live.lastGrounded <= spec.coyoteTime
-    if (tapped('Space')) live.jumpBufferUntil = now + spec.jumpBuffer
+    if (wasActionTapped('Jump') || tapped('Space')) live.jumpBufferUntil = now + spec.jumpBuffer
     if (onGround && live.vy <= 0) live.jumpsUsed = 0
     const canJump = live.swimming || (coyote && live.jumpsUsed === 0) || (!onGround && live.jumpsUsed > 0 && live.jumpsUsed < spec.maxJumps) || (onGround && live.jumpsUsed < spec.maxJumps)
     let jumped = false
@@ -359,8 +345,7 @@ function stepCharacters(dt: number, host: SceneRuntimeHost) {
     if (clipKey && clipKey !== live.clip) {
       live.clip = clipKey
       const own = !clip.assetId || clip.assetId === node.assetId
-      playBody(node.id, {
-        clip: clip.name,
+      getRuntimeWorld().playBody?.(node.id, clip.name, {
         assetId: own ? null : clip.assetId,
         loop: clip.name !== spec.dodgeClip && clip.name !== spec.landClip,
         fade: 0.12,
@@ -380,15 +365,10 @@ function freshMotion(yaw: number): Motion {
 }
 
 function wishInput(spec: CharacterSpec): { x: number, z: number, amount: number } {
-  let x = 0
-  let z = 0
-  if (held('KeyW') || held('ArrowUp')) z += 1
-  if (held('KeyS') || held('ArrowDown')) z -= 1
-  if (held('KeyD') || held('ArrowRight')) x += 1
-  if (held('KeyA') || held('ArrowLeft')) x -= 1
-  if (spec.mode === 'side25d') z = 0
+  const axis = getActionAxis2D('Move')
+  const x = axis.x
+  const z = spec.mode === 'side25d' ? 0 : axis.y
   const amount = Math.hypot(x, z)
-  if (amount > 1) { x /= amount; z /= amount }
   return { x, z, amount: amount > 1 ? 1 : amount }
 }
 
@@ -509,7 +489,7 @@ function stepJumpPose(id: string, ownerAssetId: string, spec: CharacterSpec, liv
   if (jumped && (spec.jumpClip || spec.airClip)) begin(spec.jumpClip ? 'rise' : 'hang')
   else if (live.jumpPhase === 'rise') {
     live.jumpTime += dt
-    const duration = clipDuration(spec.jumpClipAssetId || ownerAssetId, spec.jumpClip)
+    const duration = getRuntimeWorld().clipDuration?.(spec.jumpClipAssetId || ownerAssetId, spec.jumpClip) ?? 0
     const finished = duration > 0 && live.jumpTime >= duration - 0.02
     const falling = live.vy <= 0 && live.jumpTime >= 0.12
     if (live.grounded) begin(spec.landClip ? 'land' : 'none')
@@ -519,7 +499,7 @@ function stepJumpPose(id: string, ownerAssetId: string, spec: CharacterSpec, liv
     if (live.grounded) begin(spec.landClip ? 'land' : 'none')
   } else if (live.jumpPhase === 'land') {
     live.jumpTime += dt
-    const duration = clipDuration(spec.landClipAssetId || ownerAssetId, spec.landClip)
+    const duration = getRuntimeWorld().clipDuration?.(spec.landClipAssetId || ownerAssetId, spec.landClip) ?? 0
     const contact = duration > 0 ? Math.min(0.22, Math.max(0.12, duration * 0.4)) : 0.16
     const finished = (duration > 0 && live.jumpTime >= Math.min(duration, 0.5) - 0.02) || (duration <= 0 && live.jumpTime >= 0.28)
     if (!live.grounded && airborne(live, now)) begin(spec.airClip ? 'hang' : 'none')
@@ -536,7 +516,7 @@ function playOwned(id: string, ownerAssetId: string, live: Motion, name: string,
   if (live.clip === key) return
   live.clip = key
   const own = !assetId || assetId === ownerAssetId
-  playBody(id, { clip: name, assetId: own ? null : assetId, loop, fade: 0.1 })
+  getRuntimeWorld().playBody?.(id, name, { assetId: own ? null : assetId, loop, fade: 0.1 })
 }
 
 function pickClip(spec: CharacterSpec, dodging: boolean, moving: boolean, sprint: boolean, swimming: boolean): { name: string, assetId: string } {

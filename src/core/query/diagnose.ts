@@ -1,8 +1,23 @@
 import { capabilityEnabled } from '../../capabilities/registry'
 import { useAssetStore } from '../../editor/assets/library'
 import { useEditorStore } from '../../editor/scene/store'
+import { readMainRenderMetrics } from '../preview/offscreenPreview'
 
 export type DiagnoseSeverity = 'error' | 'warning' | 'info'
+
+export interface PerformanceBudget {
+  maxDrawCalls: number
+  maxTriangles: number
+  maxShadowLights: number
+  maxAssetBytes: number
+}
+
+export const DEFAULT_PERFORMANCE_BUDGET: PerformanceBudget = {
+  maxDrawCalls: 600,
+  maxTriangles: 350_000,
+  maxShadowLights: 3,
+  maxAssetBytes: 120 * 1024 * 1024,
+}
 
 export interface DiagnoseIssue {
   severity: DiagnoseSeverity
@@ -17,9 +32,19 @@ export interface DiagnoseReport {
   errorCount: number
   warningCount: number
   issues: DiagnoseIssue[]
+  metrics?: {
+    nodeCount: number
+    assetCount: number
+    assetBytes: number
+    shadowLights: number
+    drawCalls?: number
+    triangles?: number
+    geometries?: number
+    textures?: number
+  }
 }
 
-export function diagnoseProject(): DiagnoseReport {
+export function diagnoseProject(budget: PerformanceBudget = DEFAULT_PERFORMANCE_BUDGET): DiagnoseReport {
   const state = useEditorStore.getState()
   const assets = useAssetStore.getState().assets
   const nodes = Object.values(state.nodes)
@@ -137,6 +162,60 @@ export function diagnoseProject(): DiagnoseReport {
     })
   }
 
+  let shadowLights = 0
+  for (const node of nodes) {
+    if (
+      (node.kind === 'directional-light' || node.kind === 'spot-light' || node.kind === 'point-light') &&
+      node.castShadow
+    ) {
+      shadowLights += 1
+    }
+  }
+  if (shadowLights > budget.maxShadowLights) {
+    issues.push({
+      severity: 'warning',
+      category: 'budget',
+      message: `实时阴影光源数量过多（当前 ${shadowLights} 个，建议不超过 ${budget.maxShadowLights} 个）`,
+      hint: '关闭次要光源的 castShadow 以降低阴影渲染开销',
+    })
+  }
+
+  const assetList = Object.values(assets)
+  let assetBytes = 0
+  for (const asset of assetList) {
+    if ('byteLength' in asset && typeof asset.byteLength === 'number') {
+      assetBytes += asset.byteLength
+    }
+  }
+  if (assetBytes > budget.maxAssetBytes) {
+    issues.push({
+      severity: 'warning',
+      category: 'budget',
+      message: `工程资产总体积较大（${(assetBytes / (1024 * 1024)).toFixed(1)} MB，预算 ${(budget.maxAssetBytes / (1024 * 1024)).toFixed(0)} MB）`,
+      hint: '建议压缩贴图、开启 Meshopt/KTX2 或清理未引用资产',
+    })
+  }
+
+  const renderMetrics = readMainRenderMetrics()
+  if (renderMetrics) {
+    if (renderMetrics.drawCalls > budget.maxDrawCalls) {
+      issues.push({
+        severity: renderMetrics.drawCalls > budget.maxDrawCalls * 2 ? 'error' : 'warning',
+        category: 'budget',
+        message: `DrawCall 超出预算（当前 ${renderMetrics.drawCalls}，预算 ${budget.maxDrawCalls}）`,
+        hint: '建议合并静态网格、复用材质或减少动态光源数量',
+      })
+    }
+    if (renderMetrics.triangles > budget.maxTriangles) {
+      issues.push({
+        severity: renderMetrics.triangles > budget.maxTriangles * 2 ? 'error' : 'warning',
+        category: 'budget',
+        message: `三角面数超出预算（当前 ${renderMetrics.triangles}，预算 ${budget.maxTriangles}）`,
+        hint: '建议对远景模型减面或替换低模',
+      })
+    }
+  }
+
   const errorCount = issues.filter((i) => i.severity === 'error').length
   const warningCount = issues.filter((i) => i.severity === 'warning').length
   return {
@@ -144,5 +223,15 @@ export function diagnoseProject(): DiagnoseReport {
     errorCount,
     warningCount,
     issues,
+    metrics: {
+      nodeCount: nodes.length,
+      assetCount: assetList.length,
+      assetBytes,
+      shadowLights,
+      drawCalls: renderMetrics?.drawCalls,
+      triangles: renderMetrics?.triangles,
+      geometries: renderMetrics?.geometries,
+      textures: renderMetrics?.textures,
+    },
   }
 }

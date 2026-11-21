@@ -1,7 +1,6 @@
 import { capabilityEnabled } from '../registry'
-import { worldPose } from '../../editor/scene/transform'
-import { rapierCollisionGroups } from '../../editor/project/taxonomy'
-import { useEditorStore } from '../../editor/scene/store'
+import { worldPose } from '../../runtime/transform'
+import { getRuntimeWorld } from '../../runtime/world'
 import type { Object3D } from 'three'
 import { collectMeshCollider, meshColliderKey, type MeshColliderData } from './meshCollect'
 import type { CharacterMove, CharacterMoveResult, PhysicsWorld } from './world'
@@ -43,19 +42,20 @@ export function moveCharacters(moves: CharacterMove[]): CharacterMoveResult[] | 
 }
 
 export function tickPhysics(dt: number, resolveObject?: (id: string) => Object3D | null) {
-  const state = useEditorStore.getState()
-  const enabled = capabilityEnabled(state.capabilities, 'physics')
-  if (!enabled || state.playState === 'stopped') {
+  const runtime = getRuntimeWorld()
+  const enabled = capabilityEnabled(runtime.getCapabilities(), 'physics')
+  const playState = runtime.getPlayState()
+  if (!enabled || playState === 'stopped') {
     disposePhysics()
     return
   }
-  if (state.playState !== 'playing') return
+  if (playState !== 'playing') return
   if (!world) {
     boot()
     return
   }
   const currentWorld = world
-  currentWorld.setGravity(state.picture.gravity ?? [0, -9.81, 0])
+  currentWorld.setGravity(runtime.getPicture().gravity ?? [0, -9.81, 0])
   currentWorld.sync(collectBodies(resolveObject))
   currentWorld.step(dt, subDt => {
     for (const ext of extensions) {
@@ -73,13 +73,13 @@ export function tickPhysics(dt: number, resolveObject?: (id: string) => Object3D
     const now = performance.now()
     if (now - lastInspectorSync >= 120) {
       lastInspectorSync = now
-      const selected = new Set(state.selection)
+      const selected = new Set(runtime.getSelection?.() ?? [])
       const selectedPoses = poses.filter(pose => selected.has(pose.id))
-      if (selectedPoses.length > 0) state.applySimulation(selectedPoses)
+      if (selectedPoses.length > 0) runtime.applySimulation?.(selectedPoses)
     }
     return
   }
-  state.applySimulation(poses)
+  runtime.applySimulation?.(poses)
 }
 
 function boot() {
@@ -102,8 +102,8 @@ function disposePhysics() {
 }
 
 function collectBodies(resolveObject?: (id: string) => Object3D | null) {
-    const state = useEditorStore.getState()
-    const nodes = state.nodes
+    const runtime = getRuntimeWorld()
+    const nodes = runtime.getNodes()
   const bodies = []
   for (const node of Object.values(nodes)) {
     if (!node.physics || !node.visible) continue
@@ -123,12 +123,7 @@ function collectBodies(resolveObject?: (id: string) => Object3D | null) {
       linearDamping: node.physics.linearDamping,
       angularDamping: node.physics.angularDamping,
       gravityScale: node.physics.gravityScale,
-      collisionGroups: rapierCollisionGroups(
-        node.renderLayerId,
-        state.layers,
-        state.physicsCollisionMatrixEnabled,
-        state.physicsCollisionRowMasks,
-      ),
+      collisionGroups: runtime.collisionGroupsForLayer?.(node.renderLayerId) ?? 0xffffffff,
       mesh: node.physics.shape === 'convex' || node.physics.shape === 'trimesh'
         ? meshFor(node.id, resolveObject?.(node.id) ?? null)
         : undefined,

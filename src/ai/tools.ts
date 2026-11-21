@@ -9,6 +9,11 @@ import {
   querySceneOutline,
 } from '../core/query'
 import { fieldSchemaToJsonSchema } from '../core/schema/fieldSchema'
+import { getInputActionMap, saveProjectInputMap, setInputActionMap, type ActionBinding } from '../core/input/actionMap'
+import { captureMainViewport } from '../core/preview/offscreenPreview'
+import { projectDirectoryPath } from '../editor/project/disk'
+import { exportWebPlayerBundle } from '../player/exporter'
+import { PlaytestSession, type SmokeStep } from '../playtest/session'
 
 export interface AiToolSpec {
   name: string
@@ -106,8 +111,67 @@ const QUERY_TOOLS: AiToolSpec[] = [
   },
   {
     name: 'query__project_diagnose',
-    description: '运行工程体检，检查丢失引用、未启用包、缺少相机/灯光/主角等问题',
+    description: '对当前工程做引用完整性、可玩性、能力包与性能预算体检',
     parameters: { type: 'object', properties: {}, additionalProperties: false },
+  },
+  {
+    name: 'playtest__run_smoke',
+    description: '启动自动试玩探针，按定步长推进并注入虚拟输入、断言节点/日志状态，输出报错与性能预算报告',
+    parameters: {
+      type: 'object',
+      properties: {
+        steps: {
+          type: 'array',
+          description: '冒烟测试步骤列表（input/step/waitFor/assert/capture）',
+          items: { type: 'object' },
+        },
+        autoStop: { type: 'boolean', description: '完成后是否自动退出试玩，默认 true' },
+      },
+      required: ['steps'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'playtest__capture',
+    description: '复用主渲染器抓取当前视口截图（PNG DataURL）',
+    parameters: {
+      type: 'object',
+      properties: {
+        width: { type: 'number', description: '可选缩放宽度' },
+        height: { type: 'number', description: '可选缩放高度' },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'input__get_map',
+    description: '读取当前工程的动作输入映射表（input.json）',
+    parameters: { type: 'object', properties: {}, additionalProperties: false },
+  },
+  {
+    name: 'input__set_action',
+    description: '新增或更新动作输入映射表（input.json）中的动作绑定并落盘',
+    parameters: {
+      type: 'object',
+      properties: {
+        action: { type: 'string', description: '动作名，如 Move/Jump/Interact' },
+        binding: { type: 'object', description: '动作绑定配置' },
+      },
+      required: ['action', 'binding'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'project__export_web',
+    description: '将当前工程导出为独立 Web 播放包数据目录（含 project.t3d.json 与 input.json）',
+    parameters: {
+      type: 'object',
+      properties: {
+        outputDir: { type: 'string', description: '目标导出目录路径' },
+      },
+      required: ['outputDir'],
+      additionalProperties: false,
+    },
   },
 ]
 
@@ -196,6 +260,75 @@ export async function executeAiTool(
         toolName,
         displayLabel: `工程体检（${report.errorCount} 错误，${report.warningCount} 警告）`,
         data: report,
+      }
+    }
+    case 'playtest__run_smoke': {
+      const steps = Array.isArray(args.steps) ? (args.steps as SmokeStep[]) : []
+      const session = new PlaytestSession()
+      const report = session.runSmoke(steps, {
+        autoStop: typeof args.autoStop === 'boolean' ? args.autoStop : true,
+      })
+      return {
+        ok: report.ok,
+        toolName,
+        displayLabel: `试玩冒烟：${report.ok ? '通过' : '发现问题'}（${report.stepsSimulated} 步 / ${report.elapsedSec}s）`,
+        data: report,
+      }
+    }
+    case 'playtest__capture': {
+      const dataUrl = captureMainViewport({
+        width: typeof args.width === 'number' ? args.width : undefined,
+        height: typeof args.height === 'number' ? args.height : undefined,
+      })
+      return {
+        ok: Boolean(dataUrl),
+        toolName,
+        displayLabel: dataUrl ? '视口截图成功' : '视口未就绪，无法截图',
+        data: dataUrl ? { dataUrl } : { error: 'viewport not ready' },
+      }
+    }
+    case 'input__get_map': {
+      const map = getInputActionMap()
+      return {
+        ok: true,
+        toolName,
+        displayLabel: `读取输入映射（${Object.keys(map.actions).length} 个动作）`,
+        data: map,
+      }
+    }
+    case 'input__set_action': {
+      const action = String(args.action ?? '').trim()
+      if (!action) {
+        return { ok: false, toolName, displayLabel: '动作名称不能为空', data: { error: 'empty action' } }
+      }
+      const prev = getInputActionMap()
+      const next = {
+        ...prev,
+        actions: {
+          ...prev.actions,
+          [action]: args.binding as ActionBinding,
+        },
+      }
+      setInputActionMap(next)
+      const projectPath = projectDirectoryPath()
+      if (projectPath) {
+        await saveProjectInputMap(projectPath, next)
+      }
+      return {
+        ok: true,
+        toolName,
+        displayLabel: `更新输入动作：${action}`,
+        data: getInputActionMap(),
+      }
+    }
+    case 'project__export_web': {
+      const outputDir = String(args.outputDir ?? '').trim()
+      const res = await exportWebPlayerBundle(outputDir)
+      return {
+        ok: res.ok,
+        toolName,
+        displayLabel: res.message,
+        data: res,
       }
     }
   }

@@ -1,9 +1,12 @@
 import { create } from 'zustand'
 import { capabilityEnabled } from '../registry'
-import { worldPose } from '../../editor/scene/transform'
-import { useEditorStore } from '../../editor/scene/store'
-import { translate } from '../../editor/i18n'
+import { worldPose } from '../../runtime/transform'
+import { getRuntimeWorld } from '../../runtime/world'
 import type { NavSettings, SceneNode, Vec3 } from '../../editor/scene/types'
+
+function tr(key: string, fallback: string): string {
+  return getRuntimeWorld().translate?.(key) ?? fallback
+}
 import {
   decodeBytes,
   encodeBytes,
@@ -54,21 +57,21 @@ export function hydrateNavigation(value: unknown) {
 }
 
 export function requestNavBake() {
-  const state = useEditorStore.getState()
-  if (!capabilityEnabled(state.capabilities, 'navigation') || state.playState !== 'stopped') return
+  const runtime = getRuntimeWorld()
+  if (!capabilityEnabled(runtime.getCapabilities(), 'navigation') || runtime.getPlayState() !== 'stopped') return
   controller?.abort()
   controller = new AbortController()
   const signal = controller.signal
-  const sceneId = state.activeSceneId
-  const settings = navSettingsOf(state.picture.navigation)
-  const surfaceIds = Object.values(state.nodes)
+  const sceneId = runtime.getActiveSceneId()
+  const settings = navSettingsOf(runtime.getPicture().navigation)
+  const surfaceIds = Object.values(runtime.getNodes())
     .filter(node => node.visible && node.navigation?.role === 'surface')
     .map(node => node.id)
   pending = {
     surfaceIds,
     finish: surfaces => { void runBake(sceneId, settings, surfaces, signal) },
   }
-  useNavUi.setState({ phase: 'baking', text: translate('navigation.baking'), sceneId, signature: '', triangles: 0 })
+  useNavUi.setState({ phase: 'baking', text: tr('navigation.baking', 'Baking...'), sceneId, signature: '', triangles: 0 })
 }
 
 export function cancelNavBake() {
@@ -81,9 +84,9 @@ export function cancelNavBake() {
 }
 
 export function clearNavMesh() {
-  const state = useEditorStore.getState()
-  if (!capabilityEnabled(state.capabilities, 'navigation') || state.playState !== 'stopped') return
-  const sceneId = state.activeSceneId
+  const runtime = getRuntimeWorld()
+  if (!capabilityEnabled(runtime.getCapabilities(), 'navigation') || runtime.getPlayState() !== 'stopped') return
+  const sceneId = runtime.getActiveSceneId()
   controller?.abort()
   controller = null
   pending = null
@@ -94,7 +97,7 @@ export function clearNavMesh() {
   loadedScene = sceneId
   seenEpoch = navEpoch()
   useNavUi.setState({ phase: 'idle', text: '', sceneId, signature: '', triangles: 0 })
-  state.log('info', translate('navigation.cleared'))
+  runtime.log('info', tr('navigation.cleared', 'Navigation mesh cleared'))
 }
 
 export function consumeNavBake(): NavBakeJob | null {
@@ -108,18 +111,18 @@ export function navDebugGeometry(): NavDebugMesh | null {
 }
 
 export function findNavigationPath(start: Vec3, end: Vec3): Vec3[] | null {
-  const state = useEditorStore.getState()
-  if (!capabilityEnabled(state.capabilities, 'navigation')) return null
+  const runtime = getRuntimeWorld()
+  if (!capabilityEnabled(runtime.getCapabilities(), 'navigation')) return null
   return instance?.findPath(start, end) ?? null
 }
 
 export function tickNavigation() {
-  const state = useEditorStore.getState()
-  if (!capabilityEnabled(state.capabilities, 'navigation')) {
+  const runtime = getRuntimeWorld()
+  if (!capabilityEnabled(runtime.getCapabilities(), 'navigation')) {
     if (instance || controller || debugMesh || loadedScene) disposeWorld()
     return
   }
-  const sceneId = state.activeSceneId
+  const sceneId = runtime.getActiveSceneId()
   const ui = useNavUi.getState()
   if (ui.phase === 'baking' && ui.sceneId !== sceneId) cancelNavBake()
   if (!activating && (loadedScene !== sceneId || seenEpoch !== navEpoch())) {
@@ -127,7 +130,7 @@ export function tickNavigation() {
     void activate(sceneId).finally(() => { activating = false })
   }
   if (!instance || loadedScene !== sceneId) return
-  applyObstacles(state.playState === 'playing' ? collectObstacles(state.nodes) : [])
+  applyObstacles(runtime.getPlayState() === 'playing' ? collectObstacles(runtime.getNodes()) : [])
 }
 
 async function runBake(
@@ -136,20 +139,20 @@ async function runBake(
   surfaces: { positions: Float32Array, indices: Uint32Array },
   signal: AbortSignal,
 ) {
-  if (signal.aborted || useEditorStore.getState().activeSceneId !== sceneId) return
+  if (signal.aborted || getRuntimeWorld().getActiveSceneId() !== sceneId) return
   if (surfaces.indices.length < 3) {
-    const text = translate('navigation.noSurface')
+    const text = tr('navigation.noSurface', 'No navigation surface')
     useNavUi.setState({ phase: 'error', text, sceneId })
-    useEditorStore.getState().log('warn', text)
+    getRuntimeWorld().log('warn', text)
     return
   }
   loadedScene = sceneId
   seenEpoch = navEpoch()
   try {
     const nav = await world()
-    if (signal.aborted || useEditorStore.getState().activeSceneId !== sceneId) return
+    if (signal.aborted || getRuntimeWorld().getActiveSceneId() !== sceneId) return
     await nav.bake(surfaces.positions, surfaces.indices, recastBakeConfig(settings), signal)
-    if (signal.aborted || useEditorStore.getState().activeSceneId !== sceneId) return
+    if (signal.aborted || getRuntimeWorld().getActiveSceneId() !== sceneId) return
     const exported = nav.exportRecord()
     const signature = navSignature(settings)
     const triangles = Math.floor(surfaces.indices.length / 3)
@@ -163,12 +166,12 @@ async function runBake(
     }
     obstacleKey = ''
     pullDebug()
-    useNavUi.setState({ phase: 'ready', text: translate('navigation.ready'), sceneId, signature, triangles })
+    useNavUi.setState({ phase: 'ready', text: tr('navigation.ready', 'Navigation ready'), sceneId, signature, triangles })
   } catch (error) {
     if (signal.aborted || (error instanceof Error && error.name === 'AbortError')) return
     const text = error instanceof Error ? error.message : String(error)
     useNavUi.setState({ phase: 'error', text, sceneId })
-    useEditorStore.getState().log('error', text)
+    getRuntimeWorld().log('error', text)
   }
 }
 
@@ -192,15 +195,15 @@ async function activate(sceneId: string) {
   }
   try {
     const nav = await world()
-    if (ticket !== life || useEditorStore.getState().activeSceneId !== sceneId) return
+    if (ticket !== life || getRuntimeWorld().getActiveSceneId() !== sceneId) return
     await nav.restore({ bytes: decodeBytes(record.bytes), mode: record.mode })
-    if (ticket !== life || useEditorStore.getState().activeSceneId !== sceneId) return
+    if (ticket !== life || getRuntimeWorld().getActiveSceneId() !== sceneId) return
     loadedScene = sceneId
     obstacleKey = ''
     pullDebug()
     useNavUi.setState({
       phase: 'ready',
-      text: translate('navigation.ready'),
+      text: tr('navigation.ready', 'Navigation ready'),
       sceneId,
       signature: record.signature,
       triangles: record.triangles,
@@ -218,7 +221,7 @@ async function world(): Promise<NavigationWorld> {
   if (!opening) opening = import('./recastNav').then(module => module.createRecastNavigation())
   const created = await opening
   opening = null
-  if (ticket !== life || !capabilityEnabled(useEditorStore.getState().capabilities, 'navigation')) {
+  if (ticket !== life || !capabilityEnabled(getRuntimeWorld().getCapabilities(), 'navigation')) {
     created.dispose()
     throw abortError()
   }

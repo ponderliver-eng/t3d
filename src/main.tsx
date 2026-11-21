@@ -5,9 +5,11 @@ import { ensureCoreCommandsRegistered } from './core/commands'
 import { openCachedProject } from './editor/assets/project'
 import { PreviewStandalone } from './editor/preview/PreviewHost'
 import { readPreviewHash } from './editor/preview/previewStore'
+import { bindEditorRuntimeWorld } from './editor/scene/runtimeWorldAdapter'
 import './styles/global.css'
 
 Cache.enabled = true
+bindEditorRuntimeWorld()
 ensureCoreCommandsRegistered()
 
 const splash = document.getElementById('boot-splash')

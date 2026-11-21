@@ -5,7 +5,8 @@ import { subscribeWarmProgress, warmProgress } from '../assets/project'
 import { useI18n, type MessageKey } from '../i18n'
 import type { CameraView } from '../scene/types'
 import { useAssetStore } from '../assets/library'
-import { ArrowDown, ArrowDownToLine, ArrowLeft, ArrowRight, ArrowUp, Axis3d, BarChart3, Box, BoxSelect, ChevronDown, Crosshair, Focus, Globe, Grid3x3, Lightbulb, Magnet, Maximize, Move3d, Route, RotateCcw, Scaling, Scan, Square } from 'lucide-react'
+import { ArrowDown, ArrowDownToLine, ArrowLeft, ArrowRight, ArrowUp, Axis3d, BarChart3, Box, BoxSelect, ChevronDown, Crosshair, Focus, Globe, Grid3x3, Lightbulb, Magnet, Maximize, Monitor, Move3d, Route, RotateCcw, Scaling, Scan, Smartphone, Square } from 'lucide-react'
+import { injectVirtualInput } from '../../core/input/actionMap'
 import { useEditorStore } from '../scene/store'
 import { EditorViewport } from './EditorViewport'
 import ViewCube from './ViewCube'
@@ -44,6 +45,7 @@ export default function ViewportPanel() {
   const origin = useEditorStore(state => state.gizmoOrigin)
   const [menu, setMenu] = useState<'view' | 'gizmo' | null>(null)
   const [statsOpen, setStatsOpen] = useState(false)
+  const [devicePreset, setDevicePreset] = useState<'full' | 'desktop' | 'mobile-portrait' | 'mobile-landscape'>('full')
   const { t } = useI18n()
   const viewName = (id: CameraView) => t(`view.${id}` as MessageKey)
 
@@ -164,6 +166,34 @@ export default function ViewportPanel() {
           </button>
           <button
             type="button"
+            className={`viewport-tool-btn ${devicePreset !== 'full' ? 'viewport-tool-btn--active' : ''}`}
+            title={
+              devicePreset === 'full'
+                ? '多端比例预览：自适应全屏（点击切换 16:9 / 竖屏 / 横屏）'
+                : devicePreset === 'desktop'
+                  ? '多端比例预览：16:9 桌面'
+                  : devicePreset === 'mobile-portrait'
+                    ? '多端比例预览：9:16 手机竖屏'
+                    : '多端比例预览：16:9 手机横屏'
+            }
+            onClick={() => {
+              const order: Array<'full' | 'desktop' | 'mobile-portrait' | 'mobile-landscape'> = [
+                'full',
+                'desktop',
+                'mobile-portrait',
+                'mobile-landscape',
+              ]
+              setDevicePreset(order[(order.indexOf(devicePreset) + 1) % order.length])
+            }}
+          >
+            {devicePreset === 'mobile-portrait' || devicePreset === 'mobile-landscape' ? (
+              <Smartphone size={12} />
+            ) : (
+              <Monitor size={12} />
+            )}
+          </button>
+          <button
+            type="button"
             className="viewport-tool-btn"
             title={t('view.fullscreen')}
             onClick={() => {
@@ -177,9 +207,11 @@ export default function ViewportPanel() {
           </button>
         </div>
       </div>
-      <div
-        className="viewport-stage"
-        ref={stageRef}
+      <div className={`viewport-stage-wrap viewport-stage-wrap--${devicePreset}`}>
+        <div
+          className="viewport-stage"
+          data-device={devicePreset}
+          ref={stageRef}
         onDragOver={event => {
           const types = [...event.dataTransfer.types]
           if (types.includes(ASSET_MIME) || types.includes(CLIP_MIME) || types.includes('Files')) event.preventDefault()
@@ -212,6 +244,56 @@ export default function ViewportPanel() {
       >
         <canvas ref={canvasRef} />
         {playState !== 'stopped' && <PlayUiOverlay />}
+        {playState !== 'stopped' && (devicePreset === 'mobile-portrait' || devicePreset === 'mobile-landscape') && (
+          <div className="viewport-touch-pad" onPointerDown={e => e.stopPropagation()}>
+            <div className="viewport-touch-pad__dpad">
+              <button
+                type="button"
+                className="viewport-touch-btn"
+                onPointerDown={() => injectVirtualInput({ type: 'axis', action: 'Move', x: 0, y: 1 })}
+                onPointerUp={() => injectVirtualInput({ type: 'axis', action: 'Move', x: 0, y: 0 })}
+                onPointerLeave={() => injectVirtualInput({ type: 'axis', action: 'Move', x: 0, y: 0 })}
+              >▲</button>
+              <div className="viewport-touch-pad__mid">
+                <button
+                  type="button"
+                  className="viewport-touch-btn"
+                  onPointerDown={() => injectVirtualInput({ type: 'axis', action: 'Move', x: -1, y: 0 })}
+                  onPointerUp={() => injectVirtualInput({ type: 'axis', action: 'Move', x: 0, y: 0 })}
+                  onPointerLeave={() => injectVirtualInput({ type: 'axis', action: 'Move', x: 0, y: 0 })}
+                >◀</button>
+                <button
+                  type="button"
+                  className="viewport-touch-btn"
+                  onPointerDown={() => injectVirtualInput({ type: 'axis', action: 'Move', x: 1, y: 0 })}
+                  onPointerUp={() => injectVirtualInput({ type: 'axis', action: 'Move', x: 0, y: 0 })}
+                  onPointerLeave={() => injectVirtualInput({ type: 'axis', action: 'Move', x: 0, y: 0 })}
+                >▶</button>
+              </div>
+              <button
+                type="button"
+                className="viewport-touch-btn"
+                onPointerDown={() => injectVirtualInput({ type: 'axis', action: 'Move', x: 0, y: -1 })}
+                onPointerUp={() => injectVirtualInput({ type: 'axis', action: 'Move', x: 0, y: 0 })}
+                onPointerLeave={() => injectVirtualInput({ type: 'axis', action: 'Move', x: 0, y: 0 })}
+              >▼</button>
+            </div>
+            <div className="viewport-touch-pad__actions">
+              <button
+                type="button"
+                className="viewport-touch-btn viewport-touch-btn--round"
+                onPointerDown={() => injectVirtualInput({ type: 'actionDown', action: 'Interact' })}
+                onPointerUp={() => injectVirtualInput({ type: 'actionUp', action: 'Interact' })}
+              >交互</button>
+              <button
+                type="button"
+                className="viewport-touch-btn viewport-touch-btn--round"
+                onPointerDown={() => injectVirtualInput({ type: 'actionDown', action: 'Jump' })}
+                onPointerUp={() => injectVirtualInput({ type: 'actionUp', action: 'Jump' })}
+              >跳</button>
+            </div>
+          </div>
+        )}
         {warming && warming.total > 0 && (
           <div className="viewport-warm">
             <span>{t('status.warming', { completed: warming.completed, total: warming.total })}</span>
@@ -220,6 +302,7 @@ export default function ViewportPanel() {
         )}
         <div className="viewport-stats">{t('view.stats', { objects: stats.objects, triangles: stats.triangles.toLocaleString() })}</div>
         {statsOpen && <ViewportStatsDrawer onClose={() => setStatsOpen(false)} />}
+        </div>
       </div>
       <ViewCube />
     </div>

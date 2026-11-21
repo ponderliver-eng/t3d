@@ -1,7 +1,7 @@
-import { useEditorStore } from '../editor/scene/store'
 import { juiceShake } from '../gameplay/juiceClock'
 import type { SceneNode, Vec3 } from '../editor/scene/types'
 import { defaultCameraFollow, defaultCharacter, registerRuntimeSystem, resolveCharacterCamera, type CameraFollowSpec, type SceneRuntimeHost } from './sceneRuntime'
+import { getRuntimeWorld } from './world'
 
 interface Arm {
   yaw: number
@@ -25,25 +25,27 @@ export interface CameraArmPose {
 const arms = new Map<string, Arm>()
 
 function stepCameras(dt: number, host: SceneRuntimeHost) {
-  const state = useEditorStore.getState()
-  if (state.playState === 'stopped') {
+  const world = getRuntimeWorld()
+  const playState = world.getPlayState()
+  if (playState === 'stopped') {
     arms.clear()
     return
   }
-  if (state.playState !== 'playing') return
+  if (playState !== 'playing') return
+  const nodes = world.getNodes()
   const wheel = host.wheel?.() ?? 0
-  const active = Object.values(state.nodes).find(node => node.gameplay?.character?.enabled && node.gameplay.cameraFollow?.enabled !== false)
-    ?? Object.values(state.nodes).find(node => node.gameplay?.cameraFollow?.enabled)
+  const active = Object.values(nodes).find(node => node.gameplay?.character?.enabled && node.gameplay.cameraFollow?.enabled !== false)
+    ?? Object.values(nodes).find(node => node.gameplay?.cameraFollow?.enabled)
   if (!active) return
   const character = active.gameplay?.character?.enabled ? { ...defaultCharacter(), ...active.gameplay.character } : null
   const spec = character
     ? resolveCharacterCamera(character, active.gameplay?.cameraFollow)
     : { ...defaultCameraFollow(), ...active.gameplay?.cameraFollow }
   if (!spec.enabled) return
-  const target = character ? active : resolveTarget(spec, active.id, state.nodes)
+  const target = character ? active : resolveTarget(spec, active.id, nodes)
   const targetObject = target ? host.resolveObject(target.id) : null
   if (!targetObject) return
-  const lockNode = character?.mode === 'lockOn' ? resolveLock(character, active.id, state.nodes) : undefined
+  const lockNode = character?.mode === 'lockOn' ? resolveLock(character, active.id, nodes) : undefined
   const lockObject = lockNode ? host.resolveObject(lockNode.id) : null
   const focus: Vec3 = [
     targetObject.position.x + spec.pivot[0],
@@ -91,7 +93,7 @@ function stepCameras(dt: number, host: SceneRuntimeHost) {
   arms.set(active.id, arm)
   if (!arm.noted && armChanged(arm)) {
     arm.noted = true
-    useEditorStore.setState({ playDirty: true })
+    getRuntimeWorld().markPlayDirty()
   }
   host.poseCamera?.(shaken, lookPoint(shaken, lookAt, spec.lookAtTarget), spec.fov)
 }
@@ -113,7 +115,7 @@ function poseFirstPerson(id: string, spec: CameraFollowSpec, arm: Arm, focus: Ve
   arms.set(id, arm)
   if (!arm.noted && armChanged(arm)) {
     arm.noted = true
-    useEditorStore.setState({ playDirty: true })
+    getRuntimeWorld().markPlayDirty()
   }
   const shake = juiceShake()
   host.poseCamera?.(

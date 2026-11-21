@@ -1,5 +1,13 @@
 import type { NavSettings, NodeKind, NodeNavigation } from '../../editor/scene/types'
-import { DEFAULT_NAV } from '../../editor/scene/types'
+
+const DEFAULT_NAV_SETTINGS: NavSettings = {
+  cellSize: 0.2,
+  cellHeight: 0.2,
+  walkableSlopeAngle: 45,
+  agentRadius: 0.35,
+  agentHeight: 1.8,
+  maxObstacles: 32,
+}
 
 export interface RecastBakeConfig {
   mode: 'solo' | 'tileCache'
@@ -48,5 +56,5 @@ export function defaultNodeNavigation(kind: NodeKind): NodeNavigation {
 }
 
 export function navSettingsOf(settings: Partial<NavSettings> | undefined): NavSettings {
-  return { ...DEFAULT_NAV, ...settings }
+  return { ...DEFAULT_NAV_SETTINGS, ...settings }
 }

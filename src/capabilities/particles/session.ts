@@ -1,8 +1,6 @@
 import type { Object3D } from 'three'
 import { capabilityEnabled } from '../registry'
-import { useAssetStore } from '../../editor/assets/library'
-import { particleDescFor } from '../../editor/assets/materials'
-import { useEditorStore } from '../../editor/scene/store'
+import { getRuntimeWorld } from '../../runtime/world'
 import { asSimulation } from './readQuarks'
 import type { ParticleInstanceDesc, ParticleRuntime } from './runtime'
 
@@ -16,8 +14,8 @@ export function mountParticles(root: Object3D) {
 }
 
 export function tickParticles(dt: number, parentOf: (id: string) => Object3D | null) {
-  const state = useEditorStore.getState()
-  if (!capabilityEnabled(state.capabilities, 'particles') || !scene) {
+  const runtimeWorld = getRuntimeWorld()
+  if (!capabilityEnabled(runtimeWorld.getCapabilities(), 'particles') || !scene) {
     disposeParticles()
     return
   }
@@ -26,7 +24,7 @@ export function tickParticles(dt: number, parentOf: (id: string) => Object3D | n
     return
   }
   const instances: ParticleInstanceDesc[] = []
-  for (const node of Object.values(state.nodes)) {
+  for (const node of Object.values(runtimeWorld.getNodes())) {
     if (node.kind !== 'effect' || !node.effect) continue
     const parent = parentOf(node.id)
     if (!parent || !rootedInScene(parent)) continue
@@ -69,18 +67,18 @@ function rootedInScene(object: Object3D): boolean {
 }
 
 function resolveInstance(id: string, effect: NonNullable<import('../../editor/scene/types').SceneNode['effect']>, visible: boolean, parent: Object3D): ParticleInstanceDesc | null {
-  const assets = useAssetStore.getState().assets
+  const runtimeWorld = getRuntimeWorld()
   let simulation = effect.simulation
   let materialId = effect.materialAssetId
   if (effect.assetId) {
-    const asset = assets[effect.assetId]
+    const asset = runtimeWorld.getAsset(effect.assetId)
     if (!asset || asset.kind !== 'effect') return null
     simulation = asset.simulation
-    materialId = effect.materialAssetId ?? asset.materialAssetId
+    materialId = effect.materialAssetId ?? asset.materialAssetId ?? null
   }
   const stored = asSimulation(simulation)
   if (!stored) return null
-  const material = particleDescFor(materialId)
+  const material = (runtimeWorld.resolveParticleDesc?.(materialId) ?? null) as ParticleInstanceDesc['material'] | 'incompatible'
   if (material === 'incompatible') return null
   return {
     id,
@@ -94,7 +92,7 @@ function resolveInstance(id: string, effect: NonNullable<import('../../editor/sc
 
 export function effectVersion(effect: { assetId: string | null, quarksVersion: string }): string {
   if (!effect.assetId) return effect.quarksVersion
-  const asset = useAssetStore.getState().assets[effect.assetId]
+  const asset = getRuntimeWorld().getAsset(effect.assetId)
   if (!asset || asset.kind !== 'effect') return effect.quarksVersion
-  return asset.quarksVersion
+  return typeof asset.quarksVersion === 'string' ? asset.quarksVersion : effect.quarksVersion
 }

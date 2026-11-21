@@ -4,6 +4,7 @@ import { tickNavigation } from '../capabilities/navigation/session'
 import { tickParticles } from '../capabilities/particles/session'
 import type { SceneNode, Vec3 } from '../editor/scene/types'
 import { scalePlayDt } from '../gameplay/juiceClock'
+import { consumeInputFrame } from '../core/input/actionMap'
 import { measureCost } from './frameProfile'
 
 /**
@@ -700,6 +701,7 @@ export function stepSceneRuntime(dt: number, host: SceneRuntimeHost) {
     }
     measureCost('particles', () => tickParticles(scaled, host.resolveObject))
   }
+  consumeInputFrame()
 }
 
 export function hasGameplayComponent(node: SceneNode, key: keyof NodeGameplay): boolean {

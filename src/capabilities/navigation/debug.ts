@@ -1,5 +1,5 @@
 import { BufferAttribute, BufferGeometry, DoubleSide, Group, Mesh, MeshBasicMaterial } from 'three'
-import { EDITOR_HELPER_LAYER } from '../../editor/project/taxonomy'
+import { EDITOR_HELPER_LAYER } from '../../core/layers'
 import type { NavDebugMesh } from './world'
 
 const material = new MeshBasicMaterial({

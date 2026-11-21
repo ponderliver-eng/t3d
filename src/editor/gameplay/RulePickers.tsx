@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { Search, X } from 'lucide-react'
-import { AssetPicker } from '../editor/panels/AssetPicker'
-import { useAssetStore } from '../editor/assets/library'
-import { useEditorStore } from '../editor/scene/store'
-import type { NodeKind } from '../editor/scene/types'
-import { useI18n } from '../editor/i18n'
-import '../editor/panels/AssetPicker.css'
+import { AssetPicker } from '../panels/AssetPicker'
+import { useAssetStore } from '../assets/library'
+import { useEditorStore } from '../scene/store'
+import type { NodeKind } from '../scene/types'
+import { useI18n } from '../i18n'
+import '../panels/AssetPicker.css'
 
 export function TagField({ value, disabled, onChange }: { value: string, disabled: boolean, onChange: (id: string) => void }) {
   return <DatabaseField tableId="tags" value={value} disabled={disabled} titleKey="rule.pickTag" onChange={onChange} />

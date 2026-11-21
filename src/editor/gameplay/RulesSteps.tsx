@@ -1,13 +1,13 @@
 import { Plus, Trash2 } from 'lucide-react'
-import { useI18n, type MessageKey } from '../editor/i18n'
-import { useEditorStore } from '../editor/scene/store'
-import { ClipField } from '../editor/panels/ClipPicker'
+import { useI18n, type MessageKey } from '../i18n'
+import { useEditorStore } from '../scene/store'
+import { ClipField } from '../panels/ClipPicker'
 import {
   findPackAction,
   findPackCondition,
   listEnabledPackActions,
   listEnabledPackConditions,
-} from '../gameplay/registry'
+} from '../../gameplay/registry'
 import { AudioField, JuiceField, NodeField, PrefabField, TagField } from './RulePickers'
 import {
   emptyCondition,
@@ -19,7 +19,7 @@ import {
   type RuleStateNode,
   type RuleStep,
   type RuleStepKind,
-} from './sceneRuntime'
+} from '../../runtime/sceneRuntime'
 
 export const TRIGGERS = ['playStart', 'interact', 'key', 'message', 'enter', 'exit', 'hit'] as const
 export const CONDS: RuleCondKind[] = ['always', 'hasTag', 'missingTag', 'compare', 'formula']
@@ -180,7 +180,7 @@ function StepFields({
   step: RuleStep
   disabled: boolean
   states: { id: string, name: string, depth: number }[]
-  packAction?: import('../gameplay/types').GameplayPackActionDef
+  packAction?: import('../../gameplay/types').GameplayPackActionDef
   onChange: (patch: Partial<RuleStep>) => void
 }) {
   const { t } = useI18n()

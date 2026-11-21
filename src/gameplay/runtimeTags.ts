@@ -1,4 +1,4 @@
-import { useEditorStore } from '../editor/scene/store'
+import { getRuntimeWorld } from '../runtime/world'
 import type { SceneNode } from '../editor/scene/types'
 import { findRow } from './registry'
 
@@ -80,7 +80,7 @@ export function removeRuntimeTag(nodeId: string, tag: string) {
 }
 
 function blockPrefix(tag: string): string {
-  const row = findRow(useEditorStore.getState().gameDatabase, 'tags', tag)
+  const row = findRow(getRuntimeWorld().getGameDatabase(), 'tags', tag)
   const prefix = row?.fields?.blockPrefix
   return typeof prefix === 'string' ? prefix.trim() : ''
 }

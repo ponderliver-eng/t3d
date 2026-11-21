@@ -1,13 +1,14 @@
 import type { SceneRuntimeHost } from '../runtime/sceneRuntime'
 import { playSound } from '../runtime/audio'
-import { useEditorStore } from '../editor/scene/store'
+import { getRuntimeWorld } from '../runtime/world'
 import { armJuice } from './juiceClock'
 import { findRow } from './registry'
 
 export function playJuice(id: string, nodeId: string, host: SceneRuntimeHost): boolean {
-  const row = findRow(useEditorStore.getState().gameDatabase, 'juice', id)
+  const world = getRuntimeWorld()
+  const row = findRow(world.getGameDatabase(), 'juice', id)
   if (!row) {
-    if (id.trim()) useEditorStore.getState().log('warn', `打击感缺少一行：${id}`)
+    if (id.trim()) world.log('warn', `打击感缺少一行：${id}`)
     return false
   }
   const fields = row.fields ?? {}

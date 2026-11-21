@@ -1,8 +1,10 @@
 import { capabilityEnabled } from '../registry'
-import { useEditorStore } from '../../editor/scene/store'
-import { registerBeforeRenderHook, type ViewportRenderContext } from '../../editor/viewport/renderHooks'
+import { getRuntimeWorld, type RuntimeRenderContext } from '../../runtime/world'
 import { SKY_CAPABILITY_ID, normalizeSkySettings, type SkySettings } from './defaults'
-import type { Camera } from 'three'
+import type { Camera, Scene } from 'three'
+import type { WebGPURenderer } from 'three/webgpu'
+
+type ViewportRenderContext = RuntimeRenderContext & { renderer: WebGPURenderer; scene: Scene; camera: Camera }
 
 interface SkyDriver {
   sync: (settings: SkySettings, camera: Camera) => void
@@ -68,7 +70,7 @@ export function releaseSkyResources() {
 
 export function mount() {
   if (removeHook) return () => shutdown()
-  removeHook = registerBeforeRenderHook('sky', 20, onBeforeRender)
+  removeHook = getRuntimeWorld().registerBeforeRenderHook?.('sky', 20, ctx => onBeforeRender(ctx as ViewportRenderContext)) ?? null
   return () => shutdown()
 }
 
@@ -85,12 +87,12 @@ function shutdown() {
 function onBeforeRender(ctx: ViewportRenderContext) {
   pending = ctx
   try {
-    const state = useEditorStore.getState()
-    if (!capabilityEnabled(state.capabilities, SKY_CAPABILITY_ID)) {
+    const runtime = getRuntimeWorld()
+    if (!capabilityEnabled(runtime.getCapabilities(), SKY_CAPABILITY_ID)) {
       if (driver || booting || compiling) releaseSkyResources()
       return
     }
-    const settings = normalizeSkySettings(state.picture.capabilities?.[SKY_CAPABILITY_ID])
+    const settings = normalizeSkySettings(runtime.getPicture().capabilities?.[SKY_CAPABILITY_ID])
     if (!driver) {
       ensure()
       return
@@ -126,8 +128,8 @@ function ensure() {
   void import('./runtime').then(module => {
     if (token !== bootToken) return
     booting = false
-    const state = useEditorStore.getState()
-    if (!capabilityEnabled(state.capabilities, SKY_CAPABILITY_ID) || !pending) return
+    const runtime = getRuntimeWorld()
+    if (!capabilityEnabled(runtime.getCapabilities(), SKY_CAPABILITY_ID) || !pending) return
     let created: SkyDriver
     try {
       created = module.createSkyDriver(ctx.renderer, ctx.scene)
@@ -139,9 +141,9 @@ function ensure() {
     compiling = true
     void created.compile().then(() => {
       if (token !== bootToken || driver !== created || !pending) return
-      const latest = useEditorStore.getState()
-      if (!capabilityEnabled(latest.capabilities, SKY_CAPABILITY_ID)) return
-      created.sync(normalizeSkySettings(latest.picture.capabilities?.[SKY_CAPABILITY_ID]), pending.camera)
+      const latest = getRuntimeWorld()
+      if (!capabilityEnabled(latest.getCapabilities(), SKY_CAPABILITY_ID)) return
+      created.sync(normalizeSkySettings(latest.getPicture().capabilities?.[SKY_CAPABILITY_ID]), pending.camera)
     }).catch(error => {
       console.warn('[sky] 着色器编译失败', error)
     }).finally(() => {

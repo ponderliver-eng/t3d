@@ -1,6 +1,6 @@
 import { Quaternion, Vector3 } from 'three'
-import { useEditorStore } from '../../editor/scene/store'
-import { worldPose } from '../../editor/scene/transform'
+import { worldPose } from '../../runtime/transform'
+import { getRuntimeWorld } from '../../runtime/world'
 import type { SceneNode } from '../../editor/scene/types'
 import type { CapabilityRuntimeModule } from '../registry'
 import { registerPhysicsExtension, type PhysicsExtensionContext } from '../physics/session'
@@ -72,11 +72,12 @@ function halfExtents(nodes: Record<string, SceneNode>, node: SceneNode): [number
 }
 
 function stepBuoyancy(ctx: PhysicsExtensionContext) {
-  const state = useEditorStore.getState()
-  const gravityY = Math.abs(state.picture.gravity?.[1] ?? -9.81)
+  const runtime = getRuntimeWorld()
+  const gravityY = Math.abs(runtime.getPicture().gravity?.[1] ?? -9.81)
   const stepDt = Math.max(ctx.dt, 1 / 120)
+  const nodes = runtime.getNodes()
 
-  for (const node of Object.values(state.nodes)) {
+  for (const node of Object.values(nodes)) {
     const raw = node.capabilities?.[BUOYANCY_CAPABILITY_ID]
     if (!raw || !node.physics || node.physics.body !== 'dynamic') continue
     const spec = specOf(raw)
@@ -85,7 +86,7 @@ function stepBuoyancy(ctx: PhysicsExtensionContext) {
     const body = ctx.world.bodyState(node.id)
     if (!body) continue
 
-    const [hx, hy, hz] = halfExtents(state.nodes, node)
+    const [hx, hy, hz] = halfExtents(nodes, node)
     const points = sampleOffsets(spec.sampleMode, hx, hy, hz)
     const draft = spec.draftDepth > 0.01 ? spec.draftDepth : Math.max(0.15, hy * 1.4)
     const pointMass = body.mass / points.length

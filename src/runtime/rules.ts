@@ -1,9 +1,3 @@
-import { playBody, playUpper, stopUpper, bodyProgress } from '../editor/animation/director'
-import { clipDuration } from '../editor/assets/models'
-import { instantiatePrefab, readPrefab } from '../editor/assets/prefab'
-import { useAssetStore } from '../editor/assets/library'
-import { clearPlayCameraForce, forcePlayCamera } from '../editor/viewport/playCamera'
-import { useEditorStore } from '../editor/scene/store'
 import type { SceneNode, Vec3 } from '../editor/scene/types'
 import { characterTraveling, orderCharacterMove } from './character'
 import { onFootstep } from './signals'
@@ -13,6 +7,7 @@ import { playJuice } from '../gameplay/juice'
 import { playSound, stopMusic } from './audio'
 import { addRuntimeTag, clearRuntimeTags, nodeHasTag, removeRuntimeTag, tickRuntimeTags } from '../gameplay/runtimeTags'
 import { setScreenVisible } from './ui/values'
+import { getRuntimeWorld } from './world'
 import {
   readRuleStates,
   readRules,
@@ -104,10 +99,13 @@ export function postRuleMessage(message: string, nodeId = '', fields?: Record<st
 
 onFootstep(nodeId => postRuleMessage('onFootstep', nodeId))
 
+let rulesSimClock = 0
+
 function stepRules(dt: number, host: SceneRuntimeHost) {
   watchKeys()
-  const state = useEditorStore.getState()
-  if (state.playState !== 'playing') {
+  const world = getRuntimeWorld()
+  if (world.getPlayState() !== 'playing') {
+    rulesSimClock = 0
     jobs.length = 0
     vars.clear()
     texts.clear()
@@ -118,18 +116,20 @@ function stepRules(dt: number, host: SceneRuntimeHost) {
     cursors.clear()
     traces.clear()
     started = false
-    clearPlayCameraForce()
+    world.clearPlayCameraForce?.()
     return
   }
-  const now = performance.now() / 1000
+  rulesSimClock += Math.max(0, dt)
+  const now = rulesSimClock
+  const nodes = world.getNodes()
   tickRuntimeTags(now)
   if (!started) {
     started = true
-    for (const node of Object.values(state.nodes)) fire(node, 'playStart', '')
+    for (const node of Object.values(nodes)) fire(node, 'playStart', '')
   }
   const batch = inbox.splice(0, inbox.length)
   for (const event of batch) {
-    for (const node of Object.values(state.nodes)) {
+    for (const node of Object.values(nodes)) {
       if (event.nodeId && event.nodeId !== node.id) continue
       if (event.trigger === 'message') {
         for (const rule of readRules(node.gameplay?.rules)) {
@@ -140,16 +140,17 @@ function stepRules(dt: number, host: SceneRuntimeHost) {
       fire(node, event.trigger, event.message)
     }
   }
-  for (const node of Object.values(state.nodes)) {
+  for (const node of Object.values(nodes)) {
     for (const rule of readRules(node.gameplay?.rules)) {
       if (rule.trigger === 'key' && keyHit(rule.key, tappedKeys)) arm(node, rule)
     }
   }
-  const packTriggers = listEnabledPackTriggers(state.gameplayPacks)
+  const gameplayPacks = world.getGameplayPacks()
+  const packTriggers = listEnabledPackTriggers(gameplayPacks)
   if (packTriggers.length > 0) {
-    for (const node of Object.values(state.nodes)) {
+    for (const node of Object.values(nodes)) {
       for (const rule of readRules(node.gameplay?.rules)) {
-        const reg = findPackTrigger(rule.trigger, state.gameplayPacks)
+        const reg = findPackTrigger(rule.trigger, gameplayPacks)
         if (reg?.enabled && reg.def.poll?.(node, rule, host)) arm(node, rule)
       }
     }
@@ -194,7 +195,7 @@ function arm(node: SceneNode, rule: RuleEntry) {
 }
 
 function advance(job: Job, dt: number, host: SceneRuntimeHost, now: number): boolean {
-  const node = useEditorStore.getState().nodes[job.nodeId]
+  const node = getRuntimeWorld().getNodes()[job.nodeId]
   if (!node) return true
   let guard = 0
   while (job.index < job.steps.length && guard < 48) {
@@ -254,7 +255,7 @@ function advance(job: Job, dt: number, host: SceneRuntimeHost, now: number): boo
     }
     if (step.do === 'waitMark') {
       const mark = Math.min(1, Math.max(0, evaluate(step.value) || step.seconds))
-      const progress = node.overlayClip ? overlayProgress(node) : bodyProgress(node.id)
+      const progress = node.overlayClip ? overlayProgress(node) : (getRuntimeWorld().bodyProgress?.(node.id) ?? 0)
       lastValue = progress
       if (progress + 0.001 < mark) {
         markTrace(job, step, true)
@@ -326,10 +327,11 @@ function markTrace(job: Job, step: RuleStep | undefined, waiting: boolean) {
 }
 
 function run(node: SceneNode, step: RuleStep, job: Job, host: SceneRuntimeHost, now: number) {
-  const actor = job.target ? useEditorStore.getState().nodes[job.target] ?? node : node
+  const world = getRuntimeWorld()
+  const actor = job.target ? world.getNodes()[job.target] ?? node : node
   if (step.do === 'message') {
     postRuleMessage(step.message)
-    useEditorStore.getState().log('info', `${node.name}：${step.message}`)
+    world.log('info', `${node.name}：${step.message}`)
     return
   }
   if (step.do === 'setVar') {
@@ -339,8 +341,8 @@ function run(node: SceneNode, step: RuleStep, job: Job, host: SceneRuntimeHost, 
     return
   }
   if (step.do === 'addTag') {
-    const row = findRow(useEditorStore.getState().gameDatabase, 'tags', step.tag)
-    if (step.tag.trim() && !row) useEditorStore.getState().log('warn', `玩法标签缺少一行：${step.tag}`)
+    const row = findRow(world.getGameDatabase(), 'tags', step.tag)
+    if (step.tag.trim() && !row) world.log('warn', `玩法标签缺少一行：${step.tag}`)
     const fallback = Number(row?.fields?.defaultDurationSec ?? 0)
     const seconds = step.seconds > 0 ? step.seconds : (Number.isFinite(fallback) ? fallback : 0)
     addRuntimeTag(actor.id, step.tag, seconds, now)
@@ -359,8 +361,8 @@ function run(node: SceneNode, step: RuleStep, job: Job, host: SceneRuntimeHost, 
     return
   }
   if (step.do === 'stance') {
-    if (!step.clip) stopUpper(actor.id)
-    else playUpper(actor.id, { clip: step.clip, assetId: clipAsset(actor, step), loop: true, fade: actor.clipFade ?? 0.15 })
+    if (!step.clip) world.stopUpper?.(actor.id)
+    else world.playUpper?.(actor.id, step.clip, { assetId: clipAsset(actor, step), loop: true, fade: actor.clipFade ?? 0.15 })
     return
   }
   if (step.do === 'showUi' || step.do === 'hideUi') {
@@ -369,29 +371,24 @@ function run(node: SceneNode, step: RuleStep, job: Job, host: SceneRuntimeHost, 
     return
   }
   if (step.do === 'lock') {
-    const target = step.name ? findNamed(step.name) : job.target ? useEditorStore.getState().nodes[job.target] : undefined
+    const target = step.name ? findNamed(step.name) : job.target ? world.getNodes()[job.target] : undefined
     const character = node.gameplay?.character
     if (!character) return
-    useEditorStore.getState().updateNode(node.id, {
+    world.updateNode(node.id, {
       gameplay: { ...node.gameplay, character: { ...character, lockTargetName: target?.name ?? '', lockTargetId: target?.id ?? '' } },
     })
     return
   }
   if (step.do === 'camera') {
     const camera = findNamed(step.name, 'camera')
-    if (camera) forcePlayCamera(camera.id)
+    if (camera) world.forcePlayCamera?.(camera.id)
     return
   }
   if (step.do === 'spawn') spawnPrefab(node, step, host)
   if (step.do === 'hide') {
-    const state = useEditorStore.getState()
-    const nodes = { ...state.nodes }
+    const nodes = { ...world.getNodes() }
     delete nodes[actor.id]
-    useEditorStore.setState({
-      nodes,
-      selection: state.selection.filter(id => id !== actor.id),
-      playDirty: true,
-    })
+    world.setNodes(nodes)
     return
   }
   if (step.do === 'score') {
@@ -428,10 +425,10 @@ function run(node: SceneNode, step: RuleStep, job: Job, host: SceneRuntimeHost, 
     return
   }
   if (step.do === 'log') {
-    useEditorStore.getState().log(step.level, step.message)
+    world.log(step.level, step.message)
     return
   }
-  const packAction = findPackAction(step.do, useEditorStore.getState().gameplayPacks)
+  const packAction = findPackAction(step.do, world.getGameplayPacks())
   if (packAction?.enabled) {
     packAction.def.execute({
       node,
@@ -441,7 +438,7 @@ function run(node: SceneNode, step: RuleStep, job: Job, host: SceneRuntimeHost, 
       now,
       evaluate,
       postMessage: postRuleMessage,
-      log: (level, message) => useEditorStore.getState().log(level, message),
+      log: (level, message) => world.log(level, message),
       orderMove: (id, point) => orderCharacterMove(id, point[0], point[1], point[2]),
     })
   }
@@ -461,7 +458,7 @@ function passes(node: SceneNode, cond: RuleCondition): boolean {
   if (cond.kind === 'hasTag') return hasTag(node, cond.tag)
   if (cond.kind === 'missingTag') return !hasTag(node, cond.tag)
   if (cond.kind !== 'compare') {
-    const packCond = findPackCondition(cond.kind, useEditorStore.getState().gameplayPacks)
+    const packCond = findPackCondition(cond.kind, getRuntimeWorld().getGameplayPacks())
     if (!packCond?.enabled) return false
     return packCond.def.test(node, cond, { hasTag: tag => hasTag(node, tag), evaluate })
   }
@@ -491,7 +488,7 @@ function copyStep(step: RuleStep): RuleStep {
 }
 
 function tickStates(host: SceneRuntimeHost) {
-  for (const node of Object.values(useEditorStore.getState().nodes)) {
+  for (const node of Object.values(getRuntimeWorld().getNodes())) {
     const tree = readRuleStates(node.gameplay?.ruleStates)
     if (tree.length === 0) {
       cursors.delete(node.id)
@@ -588,9 +585,10 @@ let lastValue: number | null = null
 
 function playOn(node: SceneNode, step: RuleStep, upper: boolean) {
   const assetId = clipAsset(node, step)
-  const play = { clip: step.clip, assetId, loop: !upper, fade: node.clipFade ?? 0.15 }
-  if (upper) playUpper(node.id, play)
-  else playBody(node.id, play)
+  const world = getRuntimeWorld()
+  const opts = { assetId, loop: !upper, fade: node.clipFade ?? 0.15 }
+  if (upper) world.playUpper?.(node.id, step.clip, opts)
+  else world.playBody?.(node.id, step.clip, opts)
 }
 
 function clipAsset(node: SceneNode, step: RuleStep): string | null {
@@ -600,7 +598,7 @@ function clipAsset(node: SceneNode, step: RuleStep): string | null {
 
 function overlayProgress(node: SceneNode): number {
   if (!node.overlayClip) return 0
-  const duration = clipDuration(node.overlayAssetId || node.assetId, node.overlayClip)
+  const duration = getRuntimeWorld().clipDuration?.(node.overlayAssetId || node.assetId, node.overlayClip) ?? 0
   if (duration <= 0) return node.overlayPlaying ? 0 : 1
   return Math.min(1, Math.max(0, (node.overlayTime ?? 0) / duration))
 }
@@ -608,11 +606,11 @@ function overlayProgress(node: SceneNode): number {
 function findNamed(name: string, kind?: SceneNode['kind']): SceneNode | undefined {
   const trimmed = name.trim()
   if (!trimmed) return undefined
-  return Object.values(useEditorStore.getState().nodes).find(node => (!kind || node.kind === kind) && (node.id === trimmed || node.name === trimmed))
+  return Object.values(getRuntimeWorld().getNodes()).find(node => (!kind || node.kind === kind) && (node.id === trimmed || node.name === trimmed))
 }
 
 function pointOf(step: RuleStep, job: Job, host: SceneRuntimeHost): Vec3 | null {
-  const named = step.name ? findNamed(step.name) : job.target ? useEditorStore.getState().nodes[job.target] : undefined
+  const named = step.name ? findNamed(step.name) : job.target ? getRuntimeWorld().getNodes()[job.target] : undefined
   if (named) {
     const object = host.resolveObject(named.id)
     if (!object) return null
@@ -631,7 +629,7 @@ function gather(node: SceneNode, step: RuleStep, host: SceneRuntimeHost): string
   const limit = Number.isFinite(angle) && angle > 0 ? angle * Math.PI / 180 : Math.PI * 2
   const forward = { x: -Math.sin(yawOf(self.quaternion)), z: -Math.cos(yawOf(self.quaternion)) }
   const hits: string[] = []
-  for (const other of Object.values(useEditorStore.getState().nodes)) {
+  for (const other of Object.values(getRuntimeWorld().getNodes())) {
     if (other.id === node.id || !other.visible) continue
     if (step.tag && !nodeHasTag(other, step.tag)) continue
     const object = host.resolveObject(other.id)
@@ -654,10 +652,6 @@ function yawOf(quaternion: { y: number, w: number }): number {
 }
 
 function spawnPrefab(node: SceneNode, step: RuleStep, host: SceneRuntimeHost) {
-  const asset = Object.values(useAssetStore.getState().assets).find(item => item.kind === 'prefab' && (item.id === step.name || item.name === step.name))
-  if (!asset || asset.kind !== 'prefab') return
-  const doc = readPrefab(asset)
-  if (!doc.rootId) return
   const self = host.resolveObject(node.id)
   const parts = step.value.split(',').map(item => Number(item.trim()))
   const offset = parts.length >= 3 && parts.every(item => Number.isFinite(item)) ? parts : [1, 0, 0]
@@ -666,17 +660,7 @@ function spawnPrefab(node: SceneNode, step: RuleStep, host: SceneRuntimeHost) {
     (self?.position.y ?? node.position[1]) + offset[1],
     (self?.position.z ?? node.position[2]) + offset[2],
   ]
-  const state = useEditorStore.getState()
-  const nodes = structuredClone(state.nodes)
-  const lookup = (assetId: string) => {
-    const nested = useAssetStore.getState().assets[assetId]
-    if (!nested || nested.kind !== 'prefab') return null
-    const next = readPrefab(nested)
-    return next.rootId ? next : null
-  }
-  const id = instantiatePrefab(nodes, doc, asset.id, node.parentId, position, lookup)
-  if (!id) return
-  useEditorStore.setState({ nodes, playDirty: true })
+  getRuntimeWorld().instantiatePrefab?.(step.name, { parentId: node.parentId, position })
 }
 
 function evaluate(source: string): number {

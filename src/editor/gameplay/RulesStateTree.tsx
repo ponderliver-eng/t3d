@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { Circle, GitBranch, Plus, Trash2 } from 'lucide-react'
-import { useI18n } from '../editor/i18n'
-import { emptyRuleState, emptyStep, type RuleStateNode } from './sceneRuntime'
+import { useI18n } from '../i18n'
+import { emptyRuleState, emptyStep, type RuleStateNode } from '../../runtime/sceneRuntime'
 import { ConditionEditor, StepList, addCondition, flattenStates } from './RulesSteps'
 
 const LANES = ['onEnter', 'onTick', 'onExit'] as const

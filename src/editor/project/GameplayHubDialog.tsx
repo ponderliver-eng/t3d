@@ -7,7 +7,7 @@ import {
   type GameDatabaseRow,
 } from '../../gameplay/types'
 import { defaultRows, listEnabledTableSchemas, tableRows } from '../../gameplay/registry'
-import { AudioField } from '../../runtime/RulePickers'
+import { AudioField } from '../gameplay/RulePickers'
 import './GameplayHubDialog.css'
 import '../prefs/SettingsDialog.css'
 

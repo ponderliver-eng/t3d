@@ -8,8 +8,11 @@
     "dev": "vite",
     "dev:web": "vite --mode web",
     "build": "tsc --noEmit && vite build",
+    "build:player": "vite build --config vite.player.config.ts",
+    "check:player-deps": "node scripts/check-player-deps.mjs",
     "check:contracts": "tsc -p contracts/tsconfig.json",
     "test:core": "node -e \"import('esbuild').then(async ({ build }) => { const fs = await import('node:fs'); fs.mkdirSync('.cache', { recursive: true }); await build({ entryPoints: ['tests/core-foundation.test.ts'], bundle: true, platform: 'node', format: 'esm', outfile: '.cache/core-foundation.test.mjs', packages: 'external' }); const { execFileSync } = await import('node:child_process'); execFileSync(process.execPath, ['--test', '.cache/core-foundation.test.mjs'], { stdio: 'inherit' }); })\"",
+    "test:phase2": "node -e \"import('esbuild').then(async ({ build }) => { const fs = await import('node:fs'); fs.mkdirSync('.cache', { recursive: true }); await build({ entryPoints: ['tests/phase2-runtime.test.ts'], bundle: true, platform: 'node', format: 'esm', outfile: '.cache/phase2-runtime.test.mjs', packages: 'external', banner: { js: 'if(typeof globalThis.localStorage===\\\"undefined\\\"){const m=new Map();globalThis.localStorage={get length(){return m.size},clear:()=>m.clear(),getItem:k=>m.get(k)??null,key:i=>[...m.keys()][i]??null,removeItem:k=>{m.delete(k)},setItem:(k,v)=>{m.set(k,String(v))}};}if(typeof globalThis.document===\\\"undefined\\\"){globalThis.document={documentElement:{style:{}}};}' } }); const { execFileSync } = await import('node:child_process'); execFileSync(process.execPath, ['--test', '.cache/phase2-runtime.test.mjs'], { stdio: 'inherit' }); })\"",
     "preview": "vite preview --port 5180"
   },
   "dependencies": {

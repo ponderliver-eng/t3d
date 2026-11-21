@@ -8,17 +8,19 @@ import {
   PlaneGeometry,
   Sphere,
   Vector3,
+  type Camera,
   type Intersection,
   type Material,
   type Raycaster,
   type Object3D,
   type Scene,
+  type Texture,
 } from 'three'
-import { textureFor } from '../../editor/assets/textures'
-import { useEditorStore } from '../../editor/scene/store'
 import type { SceneNode } from '../../editor/scene/types'
-import { registerBeforeRenderHook, type ViewportRenderContext } from '../../editor/viewport/renderHooks'
+import { getRuntimeWorld, type RuntimeRenderContext } from '../../runtime/world'
 import { capabilityEnabled, type CapabilityRuntimeModule } from '../registry'
+
+type ViewportRenderContext = RuntimeRenderContext & { scene: Scene; camera: Camera }
 import { WATER_CAPABILITY_ID, normalizeWater, type WaterQuality, type WaterSpec } from './defaults'
 import { FOLLOW_GRID, createWaterMaterial, waterVariantKey, type WaterMaterialHandle, type WaterMaterialOptions } from './waterMaterial'
 import { evaluateWaterWave } from './waves'
@@ -45,8 +47,8 @@ interface BoundMesh {
   worldScale?: Vector3
   normalId?: string | null
   foamId?: string | null
-  normalTex?: ReturnType<typeof textureFor>
-  foamTex?: ReturnType<typeof textureFor>
+  normalTex?: Texture | null
+  foamTex?: Texture | null
 }
 
 const boundMeshes = new Map<string, BoundMesh>()
@@ -298,15 +300,16 @@ function optionsFor(spec: WaterSpec, upAxis: 'y' | 'z', followGrid: boolean): Wa
 }
 
 function onBeforeRender(ctx: ViewportRenderContext) {
-  const editor = useEditorStore.getState()
-  if (!capabilityEnabled(editor.capabilities, WATER_CAPABILITY_ID)) {
+  const runtime = getRuntimeWorld()
+  if (!capabilityEnabled(runtime.getCapabilities(), WATER_CAPABILITY_ID)) {
     for (const id of [...boundMeshes.keys()]) releaseBound(id)
     cachedNodesRef = null
     cachedActiveIds = []
     return
   }
 
-  refreshActiveNodes(editor.nodes)
+  const nodes = runtime.getNodes()
+  refreshActiveNodes(nodes)
   const activeSet = new Set(cachedActiveIds)
   for (const id of [...boundMeshes.keys()]) {
     if (!activeSet.has(id)) releaseBound(id)
@@ -315,10 +318,10 @@ function onBeforeRender(ctx: ViewportRenderContext) {
 
   waterTime += Math.min(0.05, Math.max(0, ctx.dt))
   const dt = Math.min(0.05, Math.max(0, ctx.dt))
-  const sunIntensity = updateSunAndSky(ctx.scene, editor.picture.background)
+  const sunIntensity = updateSunAndSky(ctx.scene, runtime.getPicture().background)
 
   for (const id of cachedActiveIds) {
-    const node = editor.nodes[id]
+    const node = nodes[id]
     if (!node) continue
     const raw = node.capabilities?.[WATER_CAPABILITY_ID]
     const spec = specOf(raw)
@@ -412,8 +415,8 @@ function onBeforeRender(ctx: ViewportRenderContext) {
       hostMesh.receiveShadow = false
     }
 
-    const customNormal = spec.normalMapAssetId ? textureFor(spec.normalMapAssetId, false) : null
-    const customFoam = spec.foamMapAssetId ? textureFor(spec.foamMapAssetId, false) : null
+    const customNormal = spec.normalMapAssetId ? (runtime.getTexture?.(spec.normalMapAssetId, false) ?? null) : null
+    const customFoam = spec.foamMapAssetId ? (runtime.getTexture?.(spec.foamMapAssetId, false) ?? null) : null
     if (
       entry.specRef !== raw
       || entry.normalId !== spec.normalMapAssetId
@@ -544,7 +547,7 @@ export function sampleUnderwaterView(worldX: number, worldY: number, worldZ: num
 
 export function mount(): () => void {
   if (!removeBeforeRender) {
-    removeBeforeRender = registerBeforeRenderHook('water', 30, onBeforeRender)
+    removeBeforeRender = getRuntimeWorld().registerBeforeRenderHook?.('water', 30, ctx => onBeforeRender(ctx as ViewportRenderContext)) ?? null
   }
   return dispose
 }

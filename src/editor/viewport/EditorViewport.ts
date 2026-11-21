@@ -63,7 +63,8 @@ import { collectNavSurfaces } from '../../capabilities/navigation/collect'
 import { syncNavDebug } from '../../capabilities/navigation/debug'
 import { consumeNavBake, navDebugGeometry } from '../../capabilities/navigation/session'
 import { beginFrameCosts, measureCost, takeCostAverages } from '../../runtime/frameProfile'
-import { stepSceneRuntime } from '../../runtime/sceneRuntime'
+import { stepSceneRuntime, type SceneRuntimeHost } from '../../runtime/sceneRuntime'
+import { registerViewportBridge, snapshotCanvasToDataUrl } from '../../core/preview/offscreenPreview'
 import { attachAudioListener } from '../../runtime/audio'
 import '../../runtime/soundSource'
 import '../../runtime/character'
@@ -160,6 +161,7 @@ export class EditorViewport {
   private partFlashTimer = 0
   private lastFlashNonce = 0
   private unsubInspectorMemory: () => void
+  private unregisterViewportBridge: (() => void) | null = null
   private ignoreDoubleClick = false
   private selectionKey = ''
   private attachKey = ''
@@ -284,6 +286,49 @@ export class EditorViewport {
       read: () => this.rig.snapshot(),
       apply: view => this.rig.restore(view),
     })
+    this.unregisterViewportBridge = registerViewportBridge({
+      captureDataUrl: (options) => snapshotCanvasToDataUrl(this.canvas, options),
+      getRenderMetrics: () => ({
+        drawCalls: this.renderer.info.render.calls,
+        triangles: this.renderer.info.render.triangles,
+        points: this.renderer.info.render.points,
+        lines: this.renderer.info.render.lines,
+        geometries: this.renderer.info.memory.geometries,
+        textures: this.renderer.info.memory.textures,
+      }),
+      stepRuntime: (fixedDt) => {
+        stepSceneRuntime(fixedDt, this.buildRuntimeHost())
+        this.followSimulatedParents()
+        this.poseSockets()
+      },
+      renderNow: () => {
+        if (!this.ready || !this.picture || this.width <= 1 || this.height <= 1) return
+        const camera = this.viewCamera()
+        const picture = useEditorStore.getState().picture
+        this.applyPicture()
+        runBeforeRenderHooks({
+          renderer: this.renderer,
+          scene: this.scene,
+          camera,
+          width: this.width,
+          height: this.height,
+          dt: 0,
+        })
+        this.renderer.setRenderTarget(null)
+        if (skyBlocksFrame()) return
+        this.renderer.info.reset()
+        const outlineTargets = useEditorStore.getState().playState === 'stopped' ? this.selectionRoots : []
+        const flashTarget = useEditorStore.getState().playState === 'stopped' ? this.partFlashTarget : null
+        const hasOutline = outlineTargets.length > 0 || flashTarget !== null
+        const usesEffects = Boolean(this.picture?.usesEffects(picture, hasOutline))
+        if (!usesEffects) {
+          this.renderer.render(this.scene, camera)
+        } else {
+          this.picture?.render(this.scene, camera, picture, this.width, this.height, outlineTargets, flashTarget)
+        }
+      },
+      resolveObject: (id) => this.objects.get(id) ?? null,
+    })
 
     this.canvas.addEventListener('pointerdown', this.onPointerDown, true)
     this.canvas.addEventListener('pointermove', this.onPointerMove)
@@ -357,6 +402,54 @@ export class EditorViewport {
       .finally(finish)
   }
 
+  private buildRuntimeHost(): SceneRuntimeHost {
+    return {
+      ready: this.ready && Boolean(this.picture) && this.width > 1 && this.height > 1,
+      resolveObject: id => this.objects.get(id) ?? null,
+      updateAnimations: stepDt => this.updateMixers(stepDt),
+      yaw: () => this.viewYaw(),
+      pitch: () => this.rig.snapshot().pitch,
+      poseCamera: (position, lookAt, fov) => {
+        if (this.playCameraLocked()) return
+        const eye = new Vector3(position[0], position[1], position[2])
+        const target = new Vector3(lookAt[0], lookAt[1], lookAt[2])
+        this.rig.place(eye, target, fov)
+      },
+      pointerDelta: () => {
+        const delta = this.pointerDelta
+        this.pointerDelta = { x: 0, y: 0 }
+        return delta
+      },
+      rightHeld: () => this.rightButton,
+      wheel: () => {
+        const delta = this.wheelDelta
+        this.wheelDelta = 0
+        return delta
+      },
+      probe: (origin, direction, max, ignoreId) => this.probeScene(origin, direction, max, ignoreId),
+      consumeClick: button => {
+        const point = this.clickPoints[button]
+        this.clickPoints[button] = null
+        return point
+      },
+      pointerNormalized: () => ({ ...this.pointerNorm }),
+      consumeNodeClick: button => {
+        const hit = this.clickHits[button]
+        this.clickHits[button] = null
+        return hit
+      },
+      setPlayMarqueeEnabled: enabled => {
+        this.playMarqueeEnabled = enabled
+        if (!enabled) this.playMarqueeResult = null
+      },
+      consumePlayMarquee: () => {
+        const next = this.playMarqueeResult
+        this.playMarqueeResult = null
+        return next
+      },
+    }
+  }
+
   dispose() {
     this.disposed = true
     window.removeEventListener('t3d:warm-complete', this.onWarmComplete)
@@ -369,6 +462,8 @@ export class EditorViewport {
     setGroundSnapper(null)
     setViewportAlign(null)
     setEditorViewBridge(null)
+    this.unregisterViewportBridge?.()
+    this.unregisterViewportBridge = null
     this.marquee?.remove()
     this.canvas.removeEventListener('pointerdown', this.onPointerDown, true)
     this.canvas.removeEventListener('pointermove', this.onPointerMove)
@@ -1345,51 +1440,7 @@ export class EditorViewport {
     }
     this.frameCamera = this.activeCamera()
     attachAudioListener(this.viewCamera())
-    stepSceneRuntime(dt, {
-      ready: this.ready && Boolean(this.picture) && this.width > 1 && this.height > 1,
-      resolveObject: id => this.objects.get(id) ?? null,
-      updateAnimations: stepDt => this.updateMixers(stepDt),
-      yaw: () => this.viewYaw(),
-      pitch: () => this.rig.snapshot().pitch,
-      poseCamera: (position, lookAt, fov) => {
-        if (this.playCameraLocked()) return
-        const eye = new Vector3(position[0], position[1], position[2])
-        const target = new Vector3(lookAt[0], lookAt[1], lookAt[2])
-        this.rig.place(eye, target, fov)
-      },
-      pointerDelta: () => {
-        const delta = this.pointerDelta
-        this.pointerDelta = { x: 0, y: 0 }
-        return delta
-      },
-      rightHeld: () => this.rightButton,
-      wheel: () => {
-        const delta = this.wheelDelta
-        this.wheelDelta = 0
-        return delta
-      },
-      probe: (origin, direction, max, ignoreId) => this.probeScene(origin, direction, max, ignoreId),
-      consumeClick: button => {
-        const point = this.clickPoints[button]
-        this.clickPoints[button] = null
-        return point
-      },
-      pointerNormalized: () => ({ ...this.pointerNorm }),
-      consumeNodeClick: button => {
-        const hit = this.clickHits[button]
-        this.clickHits[button] = null
-        return hit
-      },
-      setPlayMarqueeEnabled: enabled => {
-        this.playMarqueeEnabled = enabled
-        if (!enabled) this.playMarqueeResult = null
-      },
-      consumePlayMarquee: () => {
-        const next = this.playMarqueeResult
-        this.playMarqueeResult = null
-        return next
-      },
-    })
+    stepSceneRuntime(dt, this.buildRuntimeHost())
     this.followSimulatedParents()
     this.poseSockets()
     const editor = useEditorStore.getState()

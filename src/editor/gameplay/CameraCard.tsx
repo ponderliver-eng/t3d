@@ -1,13 +1,13 @@
 import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { ChevronDown, ChevronRight, Search, Trash2, X } from 'lucide-react'
-import { CardReset } from '../editor/panels/CardReset'
-import { useInspectorCardOpen } from '../editor/panels/inspectorMemory'
-import { useEditorStore } from '../editor/scene/store'
-import { useI18n, type MessageKey } from '../editor/i18n'
-import type { SceneNode, Vec3 } from '../editor/scene/types'
-import { cameraPresetForMode, defaultCameraFollow, type CameraFollowSpec, type CameraOrbit, type CharacterMode } from './sceneRuntime'
-import '../editor/panels/AssetPicker.css'
+import { CardReset } from '../panels/CardReset'
+import { useInspectorCardOpen } from '../panels/inspectorMemory'
+import { useEditorStore } from '../scene/store'
+import { useI18n, type MessageKey } from '../i18n'
+import type { SceneNode, Vec3 } from '../scene/types'
+import { cameraPresetForMode, defaultCameraFollow, type CameraFollowSpec, type CameraOrbit, type CharacterMode } from '../../runtime/sceneRuntime'
+import '../panels/AssetPicker.css'
 
 const ORBITS: CameraOrbit[] = ['rightDrag', 'mouse', 'none']
 const PRESETS: CharacterMode[] = ['adventure', 'strafe', 'lockOn', 'pointAndClick', 'topDown', 'side25d', 'firstPerson']

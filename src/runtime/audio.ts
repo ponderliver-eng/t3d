@@ -1,9 +1,7 @@
 import { Audio, AudioListener, PositionalAudio, type Camera, type Object3D } from 'three'
-import { ensureAssetUrl } from '../editor/assets/textures'
-import { useAssetStore } from '../editor/assets/library'
-import { useEditorStore } from '../editor/scene/store'
 import type { ScenePicture } from '../editor/scene/types'
 import { registerRuntimeSystem } from './sceneRuntime'
+import { getRuntimeWorld } from './world'
 
 const MAX_SFX = 32
 
@@ -133,7 +131,7 @@ function tuneKey(options: PlaySoundOptions) {
 function retuneEmitter(id: number, options: PlaySoundOptions) {
   const voice = voices.find(item => item.id === id)
   if (!voice) return false
-  const mix = readAudioMix(useEditorStore.getState().picture)
+  const mix = readAudioMix(getRuntimeWorld().getPicture())
   voice.local = clamp(options.volume ?? 1, 0, 4)
   voice.audio.setVolume(voice.local * (voice.bus === 'music' ? mix.music : mix.sfx))
   if (voice.audio instanceof PositionalAudio) {
@@ -172,9 +170,10 @@ function installUnlock() {
 async function start(id: number, options: PlaySoundOptions, ticket: number) {
   const assetId = options.assetId.trim()
   if (!assetId) return
-  const asset = useAssetStore.getState().assets[assetId]
+  const world = getRuntimeWorld()
+  const asset = world.getAsset(assetId)
   if (!asset || asset.kind !== 'audio') return
-  const buffer = await bufferFor(assetId, 'hash' in asset ? asset.hash : assetId)
+  const buffer = await bufferFor(assetId, 'hash' in asset && typeof asset.hash === 'string' ? asset.hash : assetId)
   if (!buffer) return
   if (managed.has(id) && (ticket !== playTicket || !ownsEmitter(id))) {
     managed.delete(id)
@@ -185,9 +184,9 @@ async function start(id: number, options: PlaySoundOptions, ticket: number) {
     managed.delete(id)
     return
   }
-  const state = useEditorStore.getState()
-  if (options.bus === 'music' && state.playState !== 'playing') return
-  const mix = readAudioMix(state.picture)
+  const latestWorld = getRuntimeWorld()
+  if (options.bus === 'music' && latestWorld.getPlayState() !== 'playing') return
+  const mix = readAudioMix(latestWorld.getPicture())
   applyMix(mix)
   const bus = options.bus ?? 'sfx'
   if (bus === 'sfx') trimSfx()
@@ -221,7 +220,9 @@ async function bufferFor(assetId: string, hash: string): Promise<AudioBuffer | n
   let pending = buffers.get(key)
   if (!pending) {
     pending = (async () => {
-      const url = await ensureAssetUrl(assetId)
+      const world = getRuntimeWorld()
+      const url = (await world.resolveAssetUrl?.(assetId)) ?? world.getAsset(assetId)?.url ?? ''
+      if (!url) return null as unknown as AudioBuffer
       const response = await fetch(url)
       const data = await response.arrayBuffer()
       return ensureListener().context.decodeAudioData(data.slice(0))
@@ -306,9 +307,10 @@ function settleContext(paused: boolean) {
 }
 
 registerRuntimeSystem('core.audio', 44, () => {
-  const state = useEditorStore.getState()
-  applyMix(readAudioMix(state.picture))
-  if (state.playState === 'paused') {
+  const world = getRuntimeWorld()
+  applyMix(readAudioMix(world.getPicture()))
+  const playState = world.getPlayState()
+  if (playState === 'paused') {
     heardPlay = true
     if (!holdContext) {
       holdContext = true
@@ -320,7 +322,7 @@ registerRuntimeSystem('core.audio', 44, () => {
     holdContext = false
     settleContext(false)
   }
-  if (state.playState === 'playing') {
+  if (playState === 'playing') {
     heardPlay = true
     return
   }
