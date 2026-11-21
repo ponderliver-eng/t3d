@@ -113,6 +113,12 @@ T3D 的 AI 系统横跨「主进程代理 → 渲染进程状态循环 → 核�
 - **试玩期性能**：`playState === 'playing'` 期间严禁每帧批量写 `useEditorStore.getState().nodes`；文档修改指令在试玩期必须被拒绝。
 - **渲染指标**：`EditorViewport.getRenderMetrics` 统计的是单帧 `drawCalls`，切勿误读 Three.js 累计 `info.render.calls`。
 - **路径授权**：重启应用自动恢复最近工程时，读取文件前必须先调用 `electronBridge.fs.authorizeRoot()`。
+- **相机 `lookAt` 坐标系陷阱**：Three.js 中普通 `Object3D` 的 `lookAt` 让 `+Z` 朝向目标，而 `PerspectiveCamera` 观察方向是 `-Z`。在 `scriptRuntime.ts` 中对 `node.kind === 'camera'` 调用 `self.lookAt` 时必须反向瞄准镜像点，且 `lookAt` / `moveToward` 需通过 `resolveVec3Input` 同时兼容 `{ x, y, z }` 与 `NodeHandle`。
+- **AI 故障排查顺序（遇到“AI 写的脚本跑不通”）**：
+  1. 先查 `src/core/codeAssets/scriptRuntime.ts` 与 `src/editor/viewport/EditorViewport.ts` 的宿主适配层（是不是引擎没提供 API、坐标系/单位不一致、或缺少防呆兼容）。
+  2. 再查 `contracts/t3d/runtime.d.ts` 与 `src/core/codeAssets/workspace.ts`（类型契约是否同步）。
+  3. 最后查 `src/ai/agentLoop.ts` 的 `buildSystemPrompt`（提示词是否明确告知了真实 API 和单位）。
+  4. **每次修复完底层坑，务必回写更新本节避坑清单，保持跨设备记忆一致。**
 - **Shell 命令规范**：Windows PowerShell 环境下多命令用 `;` 分隔，不要用 `&&`。
 
 ---
