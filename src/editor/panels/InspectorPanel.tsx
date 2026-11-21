@@ -24,7 +24,9 @@ import { listEnabledPackComponents } from '../../gameplay/registry'
 import { SchemaForm } from '../../core/schema/SchemaForm'
 import { defaultForSchema } from '../../core/schema/fieldSchema'
 import { openCodeAssetModal } from '../../core/codeAssets/CodeAssetModal'
-import { useCodeAssetStore } from '../../core/codeAssets/workspace'
+import { useCodeAssetStore, type CodeAssetRecord } from '../../core/codeAssets/workspace'
+import { projectDirectoryPath } from '../project/disk'
+import { electronBridge, joinProjectPath } from '../project/electronBridge'
 import {
   cameraPresetForMode,
   defaultCameraFollow,
@@ -80,6 +82,8 @@ export default function InspectorPanel() {
   const assets = useAssetStore(state => state.assets)
   const prefabAssets = useMemo(() => Object.values(assets).filter(item => item.kind === 'prefab'), [assets])
   const asset = useAssetStore(state => inspectedAssetId ? state.assets[inspectedAssetId] : undefined)
+  const selectedCodeId = useCodeAssetStore(state => state.selectedId)
+  const codeAsset = useCodeAssetStore(state => selectedCodeId ? state.assets[selectedCodeId] : undefined)
   const { t } = useI18n()
   const id = primaryId({ selection })
   const node = id ? nodes[id] : undefined
@@ -91,6 +95,14 @@ export default function InspectorPanel() {
     return (
       <InspectorFrame subject={`asset:${asset.id}`}>
         {asset.kind === 'scene' ? <SceneSettings /> : <AssetSettings asset={asset} />}
+      </InspectorFrame>
+    )
+  }
+
+  if (codeAsset && selection.length === 0) {
+    return (
+      <InspectorFrame subject={`code:${codeAsset.id}`}>
+        <CodeAssetSettings asset={codeAsset} />
       </InspectorFrame>
     )
   }
@@ -381,6 +393,92 @@ export default function InspectorPanel() {
 
       <AddComponentPicker node={node} disabled={locked} />
     </InspectorFrame>
+  )
+}
+
+function CodeAssetSettings({ asset }: { asset: CodeAssetRecord }) {
+  const dir = projectDirectoryPath()
+  const bridge = electronBridge()
+  const diskTarget = dir ? joinProjectPath(dir, asset.relativePath) : null
+  const canExternal = Boolean(diskTarget && bridge?.codeAssets?.openInEditor)
+  const isShader = asset.kind === 'shader'
+  const shaderDef = asset.compiledShader?.definition
+  const scriptAsset = asset.compiledScript
+  const scriptParams = scriptAsset?.behavior?.params
+  const params = isShader ? shaderDef?.params : scriptParams
+  const paramEntries = params ? Object.entries(params) : []
+
+  const openExternal = (editor: 'cursor' | 'code') => {
+    if (diskTarget && bridge?.codeAssets?.openInEditor) {
+      void bridge.codeAssets.openInEditor(diskTarget, editor)
+    }
+  }
+
+  return (
+    <>
+      <header className="inspector__header">
+        <div className="inspector__kind">{isShader ? '着色器 (.shader.ts)' : '脚本 (.ts)'}</div>
+        <div className="inspector__multi">{asset.name}</div>
+      </header>
+      <Card id="code-asset" title={isShader ? '着色器资产' : '脚本资产'} color={isShader ? '#c084fc' : '#38bdf8'}>
+        <Section title="基本信息" color={isShader ? '#c084fc' : '#38bdf8'}>
+          <label className="field"><span>标识符</span><span>{asset.id}</span></label>
+          <label className="field"><span>文件路径</span><span title={asset.relativePath}>{asset.relativePath}</span></label>
+          <label className="field">
+            <span>编译状态</span>
+            <span style={{ color: asset.ok ? '#68d391' : '#f87171' }}>
+              {asset.ok ? '编译通过' : `${asset.diagnostics.length} 个编译错误`}
+            </span>
+          </label>
+          {isShader && shaderDef && (
+            <>
+              <label className="field"><span>光照模式</span><span>{shaderDef.mode === 'unlit' ? '无光照 (unlit)' : '标准光照 (lit)'}</span></label>
+              <label className="field"><span>透明 / 双面</span><span>{shaderDef.transparent ? '透明' : '不透明'} · {shaderDef.doubleSided ? '双面' : '单面'}</span></label>
+            </>
+          )}
+          {!isShader && scriptAsset && (
+            <label className="field">
+              <span>脚本类型</span>
+              <span>{scriptAsset.kind === 'system' ? '全局系统 (system)' : '节点行为 (behavior)'}</span>
+            </label>
+          )}
+        </Section>
+        {paramEntries.length > 0 && (
+          <Section title={`暴露参数 (${paramEntries.length})`} color="#9fd6ff">
+            {paramEntries.map(([key, schema]) => (
+              <label key={key} className="field">
+                <span title={schema.label}>{schema.label || key}</span>
+                <span>{schema.type}</span>
+              </label>
+            ))}
+          </Section>
+        )}
+        {!asset.ok && asset.diagnostics.length > 0 && (
+          <Section title="编译诊断" color="#f87171">
+            {asset.diagnostics.slice(0, 5).map((diag, index) => (
+              <div key={index} style={{ fontSize: 11, color: '#fca5a5', lineHeight: 1.4, wordBreak: 'break-word' }}>
+                第 {diag.line}:{diag.column} 行 · {diag.message}
+              </div>
+            ))}
+          </Section>
+        )}
+      </Card>
+      <div className="inspector__header" style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+        <button type="button" className="inspector__action" onClick={() => openCodeAssetModal(asset.kind, asset.id)}>
+          编辑 / 预览
+        </button>
+        {canExternal && (
+          <>
+            <button type="button" className="inspector__action" onClick={() => openExternal('cursor')}>
+              在 Cursor 中打开
+            </button>
+            <button type="button" className="inspector__action" onClick={() => openExternal('code')}>
+              在 VS Code 中打开
+            </button>
+          </>
+        )}
+      </div>
+    </>
   )
 }
 

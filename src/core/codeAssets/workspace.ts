@@ -23,7 +23,9 @@ export interface CodeAssetRecord {
 
 interface CodeAssetState {
   assets: Record<string, CodeAssetRecord>
+  selectedId: string | null
   revision: number
+  selectAsset: (id: string | null) => void
   upsertAsset: (record: CodeAssetRecord) => void
   removeAsset: (id: string) => void
   clear: () => void
@@ -31,16 +33,22 @@ interface CodeAssetState {
 
 export const useCodeAssetStore = create<CodeAssetState>((set) => ({
   assets: {},
+  selectedId: null,
   revision: 0,
+  selectAsset: (id) => set({ selectedId: id }),
   upsertAsset: (record) =>
     set((state) => ({ assets: { ...state.assets, [record.id]: record }, revision: state.revision + 1 })),
   removeAsset: (id) =>
     set((state) => {
       const next = { ...state.assets }
       delete next[id]
-      return { assets: next, revision: state.revision + 1 }
+      return {
+        assets: next,
+        selectedId: state.selectedId === id ? null : state.selectedId,
+        revision: state.revision + 1,
+      }
     }),
-  clear: () => set((state) => ({ assets: {}, revision: state.revision + 1 })),
+  clear: () => set((state) => ({ assets: {}, selectedId: null, revision: state.revision + 1 })),
 }))
 
 const PROJECT_TSCONFIG = `{

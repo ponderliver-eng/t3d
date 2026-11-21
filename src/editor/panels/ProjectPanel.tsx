@@ -76,7 +76,8 @@ export default function ProjectPanel() {
   const [view, setView] = useState<BrowseView>('list')
   const [query, setQuery] = useState('')
   const [menu, setMenu] = useState<BrowseMenu | null>(null)
-  const [selectedCodeId, setSelectedCodeId] = useState<string | null>(null)
+  const selectedCodeId = useCodeAssetStore(state => state.selectedId)
+  const setSelectedCodeId = (id: string | null) => useCodeAssetStore.getState().selectAsset(id)
   const [renameId, setRenameId] = useState<string | null>(null)
   const [renamePath, setRenamePath] = useState<string | null>(null)
   const expanded = useAssetStore(state => state.expanded)
@@ -95,6 +96,10 @@ export default function ProjectPanel() {
   const browseDir = useAssetStore(state => state.browseDir)
   const activeSceneId = useEditorStore(state => state.activeSceneId)
   const inspectedAssetId = useEditorStore(state => state.inspectedAssetId)
+  const selectionLength = useEditorStore(state => state.selection.length)
+  useEffect(() => {
+    if (inspectedAssetId || selectionLength > 0) useCodeAssetStore.getState().selectAsset(null)
+  }, [inspectedAssetId, selectionLength])
   const assetPing = useEditorStore(state => state.assetPing)
   const [pingedId, setPingedId] = useState<string | null>(null)
   const [modelVersion, setModelVersion] = useState(0)
@@ -370,11 +375,13 @@ export default function ProjectPanel() {
           onClick={event => {
             if ((event.target as HTMLElement).closest('.project-asset')) return
             useEditorStore.getState().inspectAsset(null)
+            setSelectedCodeId(null)
           }}
           onContextMenu={event => {
             if ((event.target as HTMLElement).closest('.project-asset')) return
             event.preventDefault()
             useEditorStore.getState().inspectAsset(null)
+            setSelectedCodeId(null)
             setMenu({ x: event.clientX, y: event.clientY, target: 'dir', path: browseDir })
           }}
         >
@@ -419,6 +426,7 @@ export default function ProjectPanel() {
               }}
               onClick={event => {
                 event.stopPropagation()
+                setSelectedCodeId(null)
                 const asset = item.asset
                 const already = inspectedAssetId === asset.id
                 useEditorStore.getState().inspectAsset(asset.id)
@@ -451,6 +459,7 @@ export default function ProjectPanel() {
               onMenu={event => {
                 event.preventDefault()
                 event.stopPropagation()
+                setSelectedCodeId(null)
                 setMenu({ x: event.clientX, y: event.clientY, target: 'asset', id: item.asset.id })
               }}
               onDelete={event => {
@@ -470,11 +479,15 @@ export default function ProjectPanel() {
                 <div
                   className={`project-asset ${view === 'grid' ? 'project-asset--grid' : ''} ${view === 'details' ? 'project-asset--details' : ''} ${selectedCodeId === item.id ? 'project-asset--picked' : ''}`}
                   title={`${item.name} (${item.relativePath})`}
-                  onClick={() => setSelectedCodeId(item.id)}
+                  onClick={() => {
+                    useEditorStore.setState({ selection: [], inspectedAssetId: null })
+                    setSelectedCodeId(item.id)
+                  }}
                   onDoubleClick={() => openCodeAssetModal(item.kind, item.id)}
                   onContextMenu={event => {
                     event.preventDefault()
                     event.stopPropagation()
+                    useEditorStore.setState({ selection: [], inspectedAssetId: null })
                     setSelectedCodeId(item.id)
                     setMenu({ x: event.clientX, y: event.clientY, target: 'code', id: item.id })
                   }}
