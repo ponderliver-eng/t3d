@@ -1,0 +1,21 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "baseUrl": ".",
+    "paths": {
+      "t3d/shader": ["./t3d/shader.d.ts"],
+      "t3d/runtime": ["./t3d/runtime.d.ts"]
+    }
+  },
+  "include": [
+    "t3d/**/*.d.ts",
+    "examples/**/*.ts"
+  ]
+}

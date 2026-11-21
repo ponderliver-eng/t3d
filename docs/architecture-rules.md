@@ -62,6 +62,7 @@
    - 全身动画之间的切换（如走 <-> 跑）必须保持步幅相位对齐（Phase Sync），并由显式的权重插值（`ActionBlend`）控制过渡；过渡结束时必须将淡出的旧 `AnimationAction` 彻底 `stop()`，防止多套全身骨骼动作在 Mixer 中残留叠加。
 3. **不建重型连线图**
    - 坚持基于纯 API（`director.ts`：`playBody`、`playUpper`、`stopUpper`）驱动动画，不构建类似 Unity Animator 的复杂可视化状态机连线编辑器。
+   - **不再新建重型手配工作台或节点连线图编辑器**（包括脚本连线图、动画状态机、着色器节点连线编辑器）。新增能力一律只提供 `FieldSchema`（自动生成参数面板）+ 指令/API + 运行时逻辑。
 
 ---
 
@@ -81,7 +82,27 @@
    - **领域包（Domain Packs：属性、战斗、感知、背包、对话）与品类专包（如策略/RTS、塔防、载具竞速等）**按需开启，数据存放在 `node.gameplay.packs[packId][componentId]`；通过 `src/gameplay/registry.ts` 的 `GameplayPackManifest` 统一声明数据表（`tables`）、节点组件（`components`）与律令词条（`triggers / conditions / actions`），**严禁**将新玩法包的组件卡片硬编码进 `InspectorPanel.tsx` 或将词条硬编码进核心 `rules.ts`。关闭玩法包时不清除节点上已填写的配置数据，律令编辑器自动标出缺失并安全跳过。
    - 需要试玩态视口交互（如边缘滚屏、点选区分单位/空地、拉框选人、群体编队）时，统一通过 `SceneRuntimeHost`（`pointerNormalized`、`consumeNodeClick`、`setPlayMarqueeEnabled`、`consumePlayMarquee`）与导航包的 `computeFormationTargets` 接入。
    - **系统功能不进扩展包栏。** 界面、音效这类始终开启的系统，检查器放在场景属性的**系统**栏，不放**扩展包**栏，也不登记进 `src/capabilities`。场景级系统数据写在 `ScenePicture` 自己的字段上（音效是 `picture.audio`：总音量、音乐、音效）。`picture.capabilities` 只给可关闭的场景能力包，例如天空。
-   - **官方库与游戏数据分开。** 库窗口（工具栏「官方库」、菜单 **文件 → 官方库**）只做货架和工程开关，四栏是：能力（`src/capabilities`，含水体与天气）、玩法（核心包以外的领域包）、专项（RTS、RPG 等专属包；模板单独标明，不是包）、素材（现成模型、动画、粒子预设，用到时再导入，不是运行时开关）。核心包始终开启，不进库。游戏数据窗口只编辑表，不再放玩法包开关。关掉的包从数据表目录消失，已写的行留在工程里。现在只做官方包，不实现安装器；以后的安装或导入仍走现有登记，不另做第三套开关。
+   - **官方库与游戏数据分开。** 库窗口（工具栏「官方库」、菜单 **文件 → 官方库**）只做货架和工程开关，四栏是：能力（`src/capabilities`，含水体与天气）、玩法（核心包以外的领域包）、专项（RTS、RPG 等专属包；模板单独标明，不是包）、素材（现成模型、动画、粒子预设，用到时再导入，不是运行时开关）。核心包始终开启，不进库。游戏数据窗口只编辑表，不再放玩法包开关。关掉的包从数据表目录消失，已写的行留在工程里。用户包与官方包走同一套登记，支持本机用户库安装与能力沉淀，不做在线商店；用户包数据同样只进既有挂载槽（`node.gameplay.packs[packId]` / `node.capabilities[id]` / `picture.capabilities[id]`），未归属包的工程脚本挂在保留包名 `node.gameplay.packs.__project__[scriptId]`。
+
+---
+
+## 7. AI 工程管理器、指令层与代码类资产边界（AI 模式主线准则）
+
+详细规划见 `docs/ai-mode-plan.md`，接口契约见 `contracts/t3d/shader.d.ts` 与 `contracts/t3d/runtime.d.ts`。
+
+1. **工具总定位**
+   - 生产过程以 AI 为核心；T3D 定位为「AI 驱动的游戏工程管理器」（立项与设计中枢、资源/数据与包管理、多端试玩台、调试/体检与性能守门、版本快照与实验对比、验证发布与能力沉淀），手动编辑退居为局部微调辅助。
+   - 不做积木式的简化模式；AI 生产与手动辅助操作同一套工程文件，能力不分叉。
+2. **指令层与运行时隔离**
+   - 工程数据的修改必须经过指令层（`dispatch`）；卡片组件不直接拼数据写 store。试玩期间（`playState === 'playing'`）拒绝文档修改指令。
+   - 运行时代码（`src/runtime`、`src/capabilities/*/session.ts`、`src/gameplay/*/runtime.ts`）不得引用 `src/editor/`。
+3. **工程文件树与参数自描述**
+   - 工程统一为按职责拆分的磁盘文件夹结构（`project.json`、`design.md`、`input.json`、`scenes/`、`prefabs/`、`ui/`、`materials/`、`tables/`、`scripts/`、`shaders/`、`assets/`、`packs/`、`.t3d/`）。
+   - 各类资源（能力包、玩法组件、指令、着色器、脚本、特效预设）的参数说明统一只用 `FieldSchema` 一套。
+4. **着色器与脚本资产边界**
+   - **着色器资产（`shaders/*.shader.ts`）**：AI 与用户编写的着色器走 `defineShader` 表面输出模式（`lit` / `unlit`），只用白名单 TSL（`t3d/shader`），不允许任意 GLSL/WGSL 字符串；`NodeMaterial` 创建、MRT G-Buffer 保护、混合/深度/阴影/雾由 T3D 统一负责。水体等完整效果仍为能力包。
+   - **脚本资产（`scripts/*.ts`）**：AI 写游戏逻辑统一用「已有玩法包组件 + TypeScript 脚本」，律令只留作手动辅助；脚本支持 `defineBehavior`（行为组件）与 `defineSystem`（运行时系统）两种形状，限定只能调用 `t3d/runtime` 公开的 `ScriptApi`（禁止访问 DOM、网络、文件、编辑器 store 或私自开启 `requestAnimationFrame`），状态放在 `self.state`。
+   - **安全与主进程隔离**：模型与第三方生成服务的密钥只存 Electron 主进程，网络请求只从主进程发出；导入他人含脚本或着色器的包需经过信任确认。
 
 ---
 

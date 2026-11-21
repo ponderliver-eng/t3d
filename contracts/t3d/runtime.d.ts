@@ -1,0 +1,299 @@
+/**
+ * T3D 脚本与运行时接口契约（阶段 0 定稿）
+ * 对应工程目录中的 `.t3d/runtime.d.ts`，供 AI、应用内检查器与外部编辑器使用。
+ */
+
+export interface Vec2 {
+  x: number
+  y: number
+}
+
+export interface Vec3 {
+  x: number
+  y: number
+  z: number
+}
+
+export interface Vec4 {
+  x: number
+  y: number
+  z: number
+  w: number
+}
+
+export type ScriptParamSchema =
+  | { type: 'number'; default: number; min?: number; max?: number; step?: number; label: string; unit?: string }
+  | { type: 'boolean'; default: boolean; label: string }
+  | { type: 'string'; default: string; label: string }
+  | { type: 'color'; default: string; label: string }
+  | { type: 'vec2'; default: readonly [number, number]; label: string }
+  | { type: 'vec3'; default: readonly [number, number, number]; label: string }
+  | { type: 'vec4'; default: readonly [number, number, number, number]; label: string }
+  | { type: 'enum'; options: ReadonlyArray<{ value: string; label: string }>; default: string; label: string }
+  | { type: 'texture'; default?: string; label: string }
+  | { type: 'ref'; target: 'asset' | 'node' | 'tableRow' | 'clip'; kinds?: readonly string[]; tableId?: string; label: string }
+  | { type: 'object'; fields: Record<string, ScriptParamSchema>; label?: string }
+  | { type: 'list'; item: ScriptParamSchema; label: string }
+
+export type ScriptParamMap = Record<string, ScriptParamSchema>
+
+export type ScriptParamRuntimeValue<S extends ScriptParamSchema> =
+  S['type'] extends 'number' ? number :
+  S['type'] extends 'boolean' ? boolean :
+  S['type'] extends 'string' ? string :
+  S['type'] extends 'color' ? string :
+  S['type'] extends 'enum' ? string :
+  S['type'] extends 'vec2' ? Vec2 :
+  S['type'] extends 'vec3' ? Vec3 :
+  S['type'] extends 'vec4' ? Vec4 :
+  S['type'] extends 'texture' ? string | null :
+  S extends { type: 'ref'; target: 'node' } ? NodeHandle | null :
+  S['type'] extends 'ref' ? string | null :
+  S extends { type: 'list'; item: infer Item extends ScriptParamSchema } ? ReadonlyArray<ScriptParamRuntimeValue<Item>> :
+  S extends { type: 'object'; fields: infer Fields extends Record<string, ScriptParamSchema> } ? {
+    readonly [K in keyof Fields]: ScriptParamRuntimeValue<Fields[K]>
+  } :
+  unknown
+
+export type ScriptParamValues<P extends ScriptParamMap> = {
+  readonly [K in keyof P]: ScriptParamRuntimeValue<P[K]>
+}
+
+export type BehaviorState = Record<string, unknown>
+
+export interface ScriptMessage {
+  readonly name: string
+  readonly payload?: unknown
+  readonly sender?: NodeHandle
+}
+
+export interface RaycastHit {
+  readonly node: NodeHandle
+  readonly point: Vec3
+  readonly normal: Vec3
+  readonly distance: number
+}
+
+export interface CollisionInfo {
+  readonly other: NodeHandle
+  readonly point: Vec3
+  readonly normal: Vec3
+  readonly relativeSpeed: number
+}
+
+export interface NodeHandle {
+  readonly id: string
+  readonly name: string
+  readonly tags: readonly string[]
+  position: Vec3
+  /** 欧拉角（弧度） */
+  rotation: Vec3
+  scale: Vec3
+  visible: boolean
+  hasTag(tag: string): boolean
+  sendMessage(name: string, payload?: unknown): void
+  getBehavior<
+    P extends ScriptParamMap,
+    S extends BehaviorState,
+    M extends BehaviorMethodMap<P, S>,
+  >(behavior: BehaviorAsset<P, S, M>): BehaviorInstance<M> | null
+  destroy(): void
+}
+
+export interface PhysicsApi {
+  raycast(origin: Vec3, direction: Vec3, maxDistance: number, options?: { ignoreTags?: readonly string[] }): RaycastHit | null
+  sphereCast(center: Vec3, radius: number, options?: { tag?: string }): readonly NodeHandle[]
+  getVelocity(): Vec3
+  setVelocity(velocity: Vec3): void
+  applyImpulse(impulse: Vec3): void
+  applyForce(force: Vec3): void
+}
+
+export interface NavApi {
+  moveTo(target: Vec3, speed?: number): boolean
+  stop(): void
+  readonly isMoving: boolean
+}
+
+export interface AnimApi {
+  playBody(clipName: string, options?: { loop?: boolean; fade?: number; speed?: number }): void
+  playUpper(clipName: string, options?: { loop?: boolean; fade?: number; speed?: number }): void
+  stopUpper(fade?: number): void
+}
+
+export interface AudioApi {
+  playSfx(assetId: string, options?: { volume?: number; pitch?: number; position?: Vec3 }): void
+  playBgm(assetId: string, options?: { volume?: number; loop?: boolean }): void
+  stopBgm(fadeSeconds?: number): void
+}
+
+export interface FxApi {
+  spawn(effectId: string, position: Vec3, options?: { scale?: number }): void
+}
+
+export interface InputApi {
+  isPressed(action: string): boolean
+  justPressed(action: string): boolean
+  justReleased(action: string): boolean
+  axis1D(action: string): number
+  axis2D(action: string): Vec2
+}
+
+export interface UiApi {
+  getVar<T = unknown>(key: string): T | undefined
+  setVar(key: string, value: unknown): void
+  onEvent(eventName: string, handler: (payload?: unknown) => void): () => void
+}
+
+export interface SceneApi {
+  currentId(): string
+  load(sceneId: string, options?: { spawnPoint?: string }): void
+}
+
+export interface KeyValueStoreApi {
+  get<T = unknown>(key: string): T | undefined
+  set(key: string, value: unknown): void
+  remove(key: string): void
+}
+
+export interface TableApi {
+  getRow<T = Record<string, unknown>>(tableId: string, rowId: string): T | null
+}
+
+export interface ScriptContext<
+  P extends ScriptParamMap = ScriptParamMap,
+  S extends BehaviorState = BehaviorState,
+> {
+  readonly node: NodeHandle
+  readonly params: ScriptParamValues<P>
+  readonly state: S
+  readonly elapsedTime: number
+
+  position: Vec3
+  rotation: Vec3
+  scale: Vec3
+  visible: boolean
+
+  moveToward(target: Vec3, maxDistance: number): boolean
+  lookAt(target: Vec3): void
+  sendMessage(name: string, payload?: unknown): void
+  broadcast(name: string, payload?: unknown): void
+  getBehavior<
+    OP extends ScriptParamMap,
+    OS extends BehaviorState,
+    OM extends BehaviorMethodMap<OP, OS>,
+  >(behavior: BehaviorAsset<OP, OS, OM>): BehaviorInstance<OM> | null
+
+  findNodeById(id: string): NodeHandle | null
+  findNodesByTag(tag: string): readonly NodeHandle[]
+  findNodesInRadius(center: Vec3, radius: number, tag?: string): readonly NodeHandle[]
+  spawnPrefab(prefabId: string, options?: { position?: Vec3; rotation?: Vec3; name?: string }): NodeHandle | null
+  destroyNode(node: NodeHandle): void
+
+  readonly physics: PhysicsApi
+  readonly nav: NavApi
+  readonly anim: AnimApi
+  readonly audio: AudioApi
+  readonly fx: FxApi
+  readonly input: InputApi
+  readonly ui: UiApi
+  readonly scene: SceneApi
+  readonly global: KeyValueStoreApi
+  readonly storage: KeyValueStoreApi
+  readonly tables: TableApi
+
+  log(...args: unknown[]): void
+  warn(...args: unknown[]): void
+}
+
+export type BehaviorMethod<
+  P extends ScriptParamMap,
+  S extends BehaviorState,
+  Args extends unknown[] = any[],
+  Ret = any,
+> = (self: ScriptContext<P, S>, ...args: Args) => Ret
+
+export type BehaviorMethodMap<
+  P extends ScriptParamMap = ScriptParamMap,
+  S extends BehaviorState = BehaviorState,
+> = Record<string, BehaviorMethod<P, S, any[], any>>
+
+export type BehaviorInstance<M extends BehaviorMethodMap<any, any>> = {
+  readonly [K in keyof M]: M[K] extends (self: any, ...args: infer Args) => infer Ret
+    ? (...args: Args) => Ret
+    : never
+}
+
+export interface BehaviorDefinition<
+  P extends ScriptParamMap = ScriptParamMap,
+  S extends BehaviorState = BehaviorState,
+  M extends BehaviorMethodMap<NoInfer<P>, NoInfer<S>> = BehaviorMethodMap<NoInfer<P>, NoInfer<S>>,
+> {
+  name: string
+  description?: string
+  params?: P
+  createState?: () => S
+  onStart?(self: ScriptContext<NoInfer<P>, NoInfer<S>>): void
+  onStep?(self: ScriptContext<NoInfer<P>, NoInfer<S>>, dt: number): void
+  onTriggerEnter?(self: ScriptContext<NoInfer<P>, NoInfer<S>>, other: NodeHandle): void
+  onTriggerExit?(self: ScriptContext<NoInfer<P>, NoInfer<S>>, other: NodeHandle): void
+  onCollision?(self: ScriptContext<NoInfer<P>, NoInfer<S>>, hit: CollisionInfo): void
+  onMessage?(self: ScriptContext<NoInfer<P>, NoInfer<S>>, message: ScriptMessage): void
+  onDestroy?(self: ScriptContext<NoInfer<P>, NoInfer<S>>): void
+  methods?: M
+}
+
+export interface BehaviorAsset<
+  P extends ScriptParamMap = ScriptParamMap,
+  S extends BehaviorState = BehaviorState,
+  M extends BehaviorMethodMap<P, S> = BehaviorMethodMap<P, S>,
+> {
+  readonly __t3dKind: 'behavior'
+  readonly definition: BehaviorDefinition<P, S, M>
+}
+
+export function defineBehavior<
+  P extends ScriptParamMap = Record<string, never>,
+  S extends BehaviorState = Record<string, unknown>,
+  M extends BehaviorMethodMap<NoInfer<P>, NoInfer<S>> = BehaviorMethodMap<NoInfer<P>, NoInfer<S>>,
+>(
+  definition: BehaviorDefinition<P, S, M>,
+): BehaviorAsset<P, S, M>
+
+// --- 运行时系统（defineSystem）---
+
+export type RuntimeStageName = 'prePhysics' | 'postAnimation' | 'preRender'
+
+export interface SystemWorldApi {
+  readonly elapsedTime: number
+  findNodeById(id: string): NodeHandle | null
+  findNodesByTag(tag: string): readonly NodeHandle[]
+  broadcast(name: string, payload?: unknown): void
+  readonly input: InputApi
+  readonly ui: UiApi
+  readonly scene: SceneApi
+  readonly global: KeyValueStoreApi
+  readonly storage: KeyValueStoreApi
+  readonly tables: TableApi
+  log(...args: unknown[]): void
+}
+
+export interface SystemDefinition<S extends BehaviorState = BehaviorState> {
+  name: string
+  description?: string
+  stage: RuntimeStageName
+  order?: number
+  createState?: () => S
+  onMount?(world: SystemWorldApi, state: S): void
+  onStep?(world: SystemWorldApi, state: S, dt: number): void
+  onDispose?(world: SystemWorldApi, state: S): void
+}
+
+export interface SystemAsset<S extends BehaviorState = BehaviorState> {
+  readonly __t3dKind: 'system'
+  readonly definition: SystemDefinition<S>
+}
+
+export function defineSystem<S extends BehaviorState = Record<string, unknown>>(
+  definition: SystemDefinition<S>,
+): SystemAsset<S>

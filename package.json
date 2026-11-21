@@ -8,6 +8,8 @@
     "dev": "vite",
     "dev:web": "vite --mode web",
     "build": "tsc --noEmit && vite build",
+    "check:contracts": "tsc -p contracts/tsconfig.json",
+    "test:core": "node -e \"import('esbuild').then(async ({ build }) => { const r = await build({ entryPoints: ['tests/core-foundation.test.ts'], bundle: true, platform: 'node', format: 'esm', write: false, packages: 'external' }); const code = r.outputFiles[0].text; await import('data:text/javascript;base64,' + Buffer.from(code).toString('base64')); })\"",
     "preview": "vite preview --port 5180"
   },
   "dependencies": {

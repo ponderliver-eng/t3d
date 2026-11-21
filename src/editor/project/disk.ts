@@ -180,6 +180,9 @@ export function openProjectDb(): Promise<IDBDatabase> {
 export const RECENT_HANDLE_STORE = RECENT_STORE
 
 export async function readProjectText(source: FileSystemDirectoryHandle | string): Promise<string | null> {
+  if (typeof source === 'string') {
+    await electronBridge()?.fs.authorizeRoot?.(source)
+  }
   const current = asRoot(source)
   return await readText(current, PROJECT_FILE) ?? await readText(current, `${PROJECT_FILE}.tmp`)
 }
@@ -218,6 +221,7 @@ export async function beginPath(
   assets: DirectoryAssetRecord[],
   document: ProjectDocument | null,
 ): Promise<void> {
+  await electronBridge()?.fs.authorizeRoot?.(absPath)
   await beginRoot({ kind: 'path', path: absPath }, name || directoryBaseName(absPath), assets, document)
 }
 

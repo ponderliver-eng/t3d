@@ -2,6 +2,7 @@ import * as electron from 'electron'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import fs from 'node:fs/promises'
+import { PathGuard } from './services/pathGuard'
 
 const { app, BrowserWindow, ipcMain, dialog, shell } = electron
 
@@ -51,25 +52,38 @@ app.on('window-all-closed', () => {
 })
 
 function registerIpc() {
-  ipcMain.handle('fs:readTextFile', async (_event, filePath: string) => fs.readFile(filePath, 'utf-8'))
+  const userLibraryRoot = path.join(app.getPath('userData'), 'T3D')
+  const pathGuard = new PathGuard([userLibraryRoot])
+
+  ipcMain.handle('fs:authorizeRoot', (_event, dirPath: string) => {
+    return pathGuard.authorizeRoot(dirPath)
+  })
+  ipcMain.handle('fs:readTextFile', async (_event, filePath: string) => {
+    const safe = pathGuard.assertAllowed(filePath, '读取文本文件')
+    return fs.readFile(safe, 'utf-8')
+  })
   ipcMain.handle('fs:writeTextFile', async (_event, filePath: string, content: string) => {
-    await fs.mkdir(path.dirname(filePath), { recursive: true })
-    await fs.writeFile(filePath, content, 'utf-8')
+    const safe = pathGuard.assertAllowed(filePath, '写入文本文件')
+    await fs.mkdir(path.dirname(safe), { recursive: true })
+    await fs.writeFile(safe, content, 'utf-8')
   })
   ipcMain.handle('fs:exists', async (_event, filePath: string) => {
+    const safe = pathGuard.assertAllowed(filePath, '检查路径')
     try {
-      await fs.access(filePath)
+      await fs.access(safe)
       return true
     } catch {
       return false
     }
   })
   ipcMain.handle('fs:mkdir', async (_event, dirPath: string) => {
-    await fs.mkdir(dirPath, { recursive: true })
+    const safe = pathGuard.assertAllowed(dirPath, '创建目录')
+    await fs.mkdir(safe, { recursive: true })
   })
   ipcMain.handle('fs:readBinaryFile', async (_event, filePath: string) => {
+    const safe = pathGuard.assertAllowed(filePath, '读取二进制文件')
     try {
-      const buf = await fs.readFile(filePath)
+      const buf = await fs.readFile(safe)
       return buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength)
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null
@@ -77,27 +91,33 @@ function registerIpc() {
     }
   })
   ipcMain.handle('fs:writeBinaryFile', async (_event, filePath: string, data: ArrayBuffer | Uint8Array) => {
-    await fs.mkdir(path.dirname(filePath), { recursive: true })
+    const safe = pathGuard.assertAllowed(filePath, '写入二进制文件')
+    await fs.mkdir(path.dirname(safe), { recursive: true })
     const bytes = data instanceof Uint8Array ? data : Buffer.from(data)
-    await fs.writeFile(filePath, bytes)
+    await fs.writeFile(safe, bytes)
   })
   ipcMain.handle('fs:movePath', async (_event, src: string, dest: string) => {
-    await fs.mkdir(path.dirname(dest), { recursive: true })
-    await fs.rename(src, dest)
+    const safeSrc = pathGuard.assertAllowed(src, '移动源路径')
+    const safeDest = pathGuard.assertAllowed(dest, '移动目标路径')
+    await fs.mkdir(path.dirname(safeDest), { recursive: true })
+    await fs.rename(safeSrc, safeDest)
   })
   ipcMain.handle('fs:unlinkFile', async (_event, filePath: string) => {
-    await fs.unlink(filePath).catch((error: NodeJS.ErrnoException) => {
+    const safe = pathGuard.assertAllowed(filePath, '删除文件')
+    await fs.unlink(safe).catch((error: NodeJS.ErrnoException) => {
       if (error.code !== 'ENOENT') throw error
     })
   })
   ipcMain.handle('fs:removeDir', async (_event, dirPath: string) => {
-    await fs.rmdir(dirPath).catch((error: NodeJS.ErrnoException) => {
+    const safe = pathGuard.assertAllowed(dirPath, '删除目录')
+    await fs.rmdir(safe).catch((error: NodeJS.ErrnoException) => {
       if (error.code !== 'ENOENT') throw error
     })
   })
   ipcMain.handle('fs:list', async (_event, dirPath: string) => {
+    const safe = pathGuard.assertAllowed(dirPath, '列出目录')
     try {
-      const entries = await fs.readdir(dirPath, { withFileTypes: true })
+      const entries = await fs.readdir(safe, { withFileTypes: true })
       return entries.map(entry => ({
         name: entry.name,
         kind: entry.isDirectory() ? 'directory' as const : 'file' as const,
@@ -108,16 +128,18 @@ function registerIpc() {
     }
   })
   ipcMain.handle('shell:showItemInFolder', (_event, filePath: string) => {
-    shell.showItemInFolder(filePath)
+    const safe = pathGuard.assertAllowed(filePath, '在文件夹中显示')
+    shell.showItemInFolder(safe)
   })
   ipcMain.handle('shell:openPath', async (_event, targetPath: string) => {
-    const error = await shell.openPath(targetPath)
+    const safe = pathGuard.assertAllowed(targetPath, '用外部程序打开')
+    const error = await shell.openPath(safe)
     if (error) throw new Error(error)
   })
   ipcMain.handle('dialog:showOpenDirectoryDialog', async () => {
     const win = BrowserWindow.getFocusedWindow() ?? mainWindow
     const result = await dialog.showOpenDialog(win ?? undefined, { properties: ['openDirectory'] })
     if (result.canceled || !result.filePaths[0]) return null
-    return result.filePaths[0]
+    return pathGuard.authorizeRoot(result.filePaths[0])
   })
 }
