@@ -4952,7 +4952,11 @@ function buildScriptContext(node, scriptId, rawParams, stateObj, host) {
     },
     lookAt(target) {
       const vec = resolveVec3Input(target);
-      if (obj && vec && Number.isFinite(vec.x) && Number.isFinite(vec.y) && Number.isFinite(vec.z)) {
+      if (!obj || !vec || !Number.isFinite(vec.x) || !Number.isFinite(vec.y) || !Number.isFinite(vec.z)) return;
+      if (node.kind === "camera") {
+        const p = obj.position;
+        obj.lookAt(2 * p.x - vec.x, 2 * p.y - vec.y, 2 * p.z - vec.z);
+      } else {
         obj.lookAt(vec.x, vec.y, vec.z);
       }
     },
