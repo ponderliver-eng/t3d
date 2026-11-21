@@ -23,6 +23,7 @@ export interface CodeAssetRecord {
 
 interface CodeAssetState {
   assets: Record<string, CodeAssetRecord>
+  revision: number
   upsertAsset: (record: CodeAssetRecord) => void
   removeAsset: (id: string) => void
   clear: () => void
@@ -30,14 +31,16 @@ interface CodeAssetState {
 
 export const useCodeAssetStore = create<CodeAssetState>((set) => ({
   assets: {},
-  upsertAsset: (record) => set((state) => ({ assets: { ...state.assets, [record.id]: record } })),
+  revision: 0,
+  upsertAsset: (record) =>
+    set((state) => ({ assets: { ...state.assets, [record.id]: record }, revision: state.revision + 1 })),
   removeAsset: (id) =>
     set((state) => {
       const next = { ...state.assets }
       delete next[id]
-      return { assets: next }
+      return { assets: next, revision: state.revision + 1 }
     }),
-  clear: () => set({ assets: {} }),
+  clear: () => set((state) => ({ assets: {}, revision: state.revision + 1 })),
 }))
 
 const PROJECT_TSCONFIG = `{

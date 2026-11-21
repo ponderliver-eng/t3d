@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type MouseEvent } from 'react'
 import { createPortal } from 'react-dom'
-import { Box, ChevronRight, Clapperboard, Component, CopyPlus, Folder, FolderOpen, FolderPlus, FolderSearch, Globe, Image, Layers, LayoutGrid, List, ListTree, MapPin, Minus, Music, PackageOpen, Palette, PanelsTopLeft, Pencil, Plus, RefreshCw, Rows3, Scaling, Search, Sparkles, Sun, Trash2, Unlink, Upload, X } from 'lucide-react'
+import { Box, ChevronRight, Clapperboard, Component, CopyPlus, FileCode2, Folder, FolderOpen, FolderPlus, FolderSearch, Globe, Image, Layers, LayoutGrid, List, ListTree, MapPin, Minus, Music, PackageOpen, Palette, PanelsTopLeft, Pencil, Plus, RefreshCw, Rows3, Scaling, Search, Sparkles, Sun, Trash2, Unlink, Upload, Wand2, X } from 'lucide-react'
 import { CLIP_MIME } from '../animation/playback'
 import { ASSET_MIME, assignClip, bindImportInput, createDefaultMaterial, createDefaultUi, deleteAsset, duplicateAsset, importFiles, isNodeDrag, logNamed, NODE_MIME, openAsset, openImport, reimportModel, reportAssetUsers } from '../assets/import'
 import { savePrefabFromSelection } from '../assets/import'
@@ -8,14 +8,16 @@ import { readPrefab } from '../assets/prefab'
 import { ASSETS_ROOT, directoryTree, findDir, isWithin, parentDir, type DirNode } from '../assets/folders'
 import { MaterialBall } from '../assets/materialBall'
 import { assetDirectory, useAssetStore, type ProjectAsset } from '../assets/library'
-import { assetDiskPath, folderDiskPath } from '../project/disk'
-import { electronBridge } from '../project/electronBridge'
+import { assetDiskPath, folderDiskPath, projectDirectoryPath } from '../project/disk'
+import { electronBridge, joinProjectPath } from '../project/electronBridge'
 import { clipDuration, clipNamesFor, subscribeModels } from '../assets/models'
 import { useEditorStore } from '../scene/store'
 import { translate, useI18n, type MessageKey } from '../i18n'
 import { openAssetPreview, type PreviewKind } from '../preview/previewStore'
 import { openPackagePicker, usePackageImportStore } from '../assets/packageImportStore'
 import { TextureResizeDialog } from './TextureResizeDialog'
+import { openCodeAssetModal } from '../../core/codeAssets/CodeAssetModal'
+import { defaultTemplateFor, normalizeCodeAssetId, saveAndCompileCodeAsset, useCodeAssetStore } from '../../core/codeAssets/workspace'
 import './ProjectPanel.css'
 
 const PILLS = [
@@ -31,7 +33,10 @@ const PILLS = [
 
 type PillId = (typeof PILLS)[number]['id']
 type BrowseView = 'list' | 'grid' | 'details'
-type BrowseMenu = { x: number; y: number; target: 'asset'; id: string } | { x: number; y: number; target: 'dir'; path: string }
+type BrowseMenu =
+  | { x: number; y: number; target: 'asset'; id: string }
+  | { x: number; y: number; target: 'dir'; path: string }
+  | { x: number; y: number; target: 'code'; id: string }
 
 const KIND_ICON = {
   scene: Globe,
@@ -71,6 +76,7 @@ export default function ProjectPanel() {
   const [view, setView] = useState<BrowseView>('list')
   const [query, setQuery] = useState('')
   const [menu, setMenu] = useState<BrowseMenu | null>(null)
+  const [selectedCodeId, setSelectedCodeId] = useState<string | null>(null)
   const [renameId, setRenameId] = useState<string | null>(null)
   const [renamePath, setRenamePath] = useState<string | null>(null)
   const expanded = useAssetStore(state => state.expanded)
@@ -83,6 +89,7 @@ export default function ProjectPanel() {
   const inputRef = useRef<HTMLInputElement>(null)
   const panelRef = useRef<HTMLDivElement>(null)
   const assets = useAssetStore(state => state.assets)
+  const codeAssets = useCodeAssetStore(state => state.assets)
   const folders = useAssetStore(state => state.folders)
   const assetDirs = useAssetStore(state => state.assetDirs)
   const browseDir = useAssetStore(state => state.browseDir)
@@ -94,6 +101,12 @@ export default function ProjectPanel() {
   useEffect(() => subscribeModels(() => setModelVersion(value => value + 1)), [])
   const nodes = useEditorStore(state => state.nodes)
   const q = query.trim().toLowerCase()
+  const filteredCodeAssets = useMemo(() => {
+    if (pill !== 'all') return []
+    return Object.values(codeAssets).filter(item =>
+      !q || item.name.toLowerCase().includes(q) || item.relativePath.toLowerCase().includes(q),
+    )
+  }, [codeAssets, pill, q])
   const referenced = useMemo(() => referencedIds(nodes, assets), [nodes, assets])
   const tree = useMemo(() => directoryTree(folders, assetDirs), [folders, assetDirs])
   const items = useMemo(() => {
@@ -365,10 +378,12 @@ export default function ProjectPanel() {
             setMenu({ x: event.clientX, y: event.clientY, target: 'dir', path: browseDir })
           }}
         >
-          {view === 'details' && items.length > 0 && (
+          {view === 'details' && (items.length > 0 || filteredCodeAssets.length > 0) && (
             <div className="project-browse__detail-head"><span>{t('project.name')}</span><span>{t('project.type')}</span><span>{t('project.detail')}</span></div>
           )}
-          {items.length === 0 && <p className="project-panel__hint-note">{over ? t('project.drop') : t('project.empty')}</p>}
+          {items.length === 0 && filteredCodeAssets.length === 0 && (
+            <p className="project-panel__hint-note">{over ? t('project.drop') : t('project.empty')}</p>
+          )}
           {items.map(item => item.kind === 'dir' ? (
             <DirRow
               key={item.path}
@@ -446,6 +461,52 @@ export default function ProjectPanel() {
               onToggleClips={() => setClipOpen(current => ({ ...current, [item.asset.id]: !current[item.asset.id] }))}
             />
           ))}
+          {filteredCodeAssets.map(item => {
+            const Icon = item.kind === 'shader' ? Wand2 : FileCode2
+            const iconColor = item.kind === 'shader' ? '#c084fc' : '#38bdf8'
+            const fileName = item.relativePath.split('/').pop() ?? item.relativePath
+            return (
+              <div key={`code:${item.id}`} className="project-asset-block">
+                <div
+                  className={`project-asset ${view === 'grid' ? 'project-asset--grid' : ''} ${view === 'details' ? 'project-asset--details' : ''} ${selectedCodeId === item.id ? 'project-asset--picked' : ''}`}
+                  title={`${item.name} (${item.relativePath})`}
+                  onClick={() => setSelectedCodeId(item.id)}
+                  onDoubleClick={() => openCodeAssetModal(item.kind, item.id)}
+                  onContextMenu={event => {
+                    event.preventDefault()
+                    event.stopPropagation()
+                    setSelectedCodeId(item.id)
+                    setMenu({ x: event.clientX, y: event.clientY, target: 'code', id: item.id })
+                  }}
+                >
+                  <div className="project-asset__lead">
+                    <Icon size={view === 'grid' ? 28 : 14} style={{ color: iconColor, flexShrink: 0 }} />
+                    <span>{fileName}</span>
+                    <span
+                      className={`project-code-badge ${item.ok ? 'is-ok' : 'is-err'}`}
+                      title={item.ok ? '编译通过' : `${item.diagnostics.length} 个编译错误`}
+                    >
+                      {item.ok ? '' : `${item.diagnostics.length}错`}
+                    </span>
+                  </div>
+                  {view === 'details' && <em>{item.kind === 'shader' ? '着色器' : '脚本'}</em>}
+                  {view === 'details' && <em>{item.ok ? item.name : `${item.diagnostics.length} 个错误`}</em>}
+                  {view !== 'grid' && (
+                    <button
+                      type="button"
+                      title="移除代码资产"
+                      onClick={event => {
+                        event.stopPropagation()
+                        useCodeAssetStore.getState().removeAsset(item.id)
+                      }}
+                    >
+                      <Trash2 size={12} />
+                    </button>
+                  )}
+                </div>
+              </div>
+            )
+          })}
         </div>
       </section>
       {menu?.target === 'asset' && (
@@ -489,6 +550,49 @@ export default function ProjectPanel() {
           }}><Trash2 size={12} />{t('project.delete')}</button>
         </div>
       )}
+      {menu?.target === 'code' && (() => {
+        const codeItem = useCodeAssetStore.getState().assets[menu.id]
+        if (!codeItem) return null
+        const dir = projectDirectoryPath()
+        const diskTarget = dir ? joinProjectPath(dir, codeItem.relativePath) : null
+        const openExternal = (editor: 'cursor' | 'code') => {
+          const bridge = electronBridge()
+          if (diskTarget && bridge?.codeAssets?.openInEditor) {
+            void bridge.codeAssets.openInEditor(diskTarget, editor)
+          }
+          setMenu(null)
+        }
+        return (
+          <div className="project-panel__menu" style={{ left: menu.x, top: menu.y }} onPointerDown={event => event.stopPropagation()}>
+            <CreateMenu dir={browseDir} onDone={() => setMenu(null)} onNewFolder={path => setRenamePath(path)} />
+            <div className="project-panel__sep" />
+            <button type="button" onClick={() => { openCodeAssetModal(codeItem.kind, codeItem.id); setMenu(null) }}>
+              <FolderOpen size={12} />{t('project.open')}
+            </button>
+            {diskTarget && electronBridge()?.codeAssets?.openInEditor && (
+              <>
+                <button type="button" onClick={() => openExternal('cursor')}>
+                  <FileCode2 size={12} />在 Cursor 中打开
+                </button>
+                <button type="button" onClick={() => openExternal('code')}>
+                  <FileCode2 size={12} />在 VS Code 中打开
+                </button>
+              </>
+            )}
+            <button type="button" onClick={() => { revealOnDisk(diskTarget); setMenu(null) }}>
+              <FolderSearch size={12} />{t('project.reveal')}
+            </button>
+            <div className="project-panel__sep" />
+            <button type="button" onClick={() => {
+              useCodeAssetStore.getState().removeAsset(codeItem.id)
+              if (selectedCodeId === codeItem.id) setSelectedCodeId(null)
+              setMenu(null)
+            }}>
+              <Trash2 size={12} />{t('project.delete')}
+            </button>
+          </div>
+        )
+      })()}
       {menu?.target === 'dir' && (
         <div className="project-panel__menu" style={{ left: menu.x, top: menu.y }} onPointerDown={event => event.stopPropagation()}>
           <CreateMenu dir={menu.path} onDone={() => setMenu(null)} onNewFolder={path => setRenamePath(path)} />
@@ -580,6 +684,33 @@ function CreateMenu({ dir, onDone, onNewFolder }: { dir: string, onDone: () => v
             <button type="button" onClick={() => { createDefaultMaterial(dir); onDone() }}><Palette size={12} />{t('project.createMaterial')}</button>
             <button type="button" onClick={() => { createDefaultUi(dir); onDone() }}><PanelsTopLeft size={12} />{t('project.createUi')}</button>
             <button type="button" disabled={!hasSelection} onClick={() => { useAssetStore.getState().setBrowseDir(dir); savePrefabFromSelection(); onDone() }}><Component size={12} />{t('project.createPrefab')}</button>
+            <div className="project-panel__sep" />
+            <button
+              type="button"
+              onClick={() => {
+                const count = Object.values(useCodeAssetStore.getState().assets).filter(a => a.kind === 'script').length + 1
+                const id = normalizeCodeAssetId('script', `behavior_${count}`)
+                void saveAndCompileCodeAsset('script', id, defaultTemplateFor('script', id)).then(() => {
+                  openCodeAssetModal('script', id)
+                })
+                onDone()
+              }}
+            >
+              <FileCode2 size={12} />脚本
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const count = Object.values(useCodeAssetStore.getState().assets).filter(a => a.kind === 'shader').length + 1
+                const id = normalizeCodeAssetId('shader', `surface_${count}`)
+                void saveAndCompileCodeAsset('shader', id, defaultTemplateFor('shader', id)).then(() => {
+                  openCodeAssetModal('shader', id)
+                })
+                onDone()
+              }}
+            >
+              <Wand2 size={12} />Shader
+            </button>
           </div>
         </div>
       </div>

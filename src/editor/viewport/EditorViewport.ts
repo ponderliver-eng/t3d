@@ -52,6 +52,7 @@ import { clipsForSkeleton, humanoidBindingKey } from '../animation/humanoidPlayb
 import { activeAnimatorState, stepAnimator } from '../animation/animator'
 import { lockClipInPlace, maskClip } from '../animation/playback'
 import { useAssetStore } from '../assets/library'
+import { useCodeAssetStore } from '../../core/codeAssets/workspace'
 import { bindTextureRenderer, environmentFor } from '../assets/textures'
 import { inspectorCardOpen } from '../panels/inspectorMemory'
 import { EDITOR_HELPER_LAYER, layerBitIndex } from '../project/taxonomy'
@@ -114,6 +115,7 @@ interface ViewData {
   overlayBlend?: ActionBlend
   syncedNode?: SceneNode
   syncedAssetRevision?: number
+  syncedCodeRevision?: number
   syncedEditing?: boolean
   syncedHelpers?: boolean
   syncedLayerBit?: number
@@ -211,6 +213,7 @@ export class EditorViewport {
   private appliedViewNonce = 0
   private readonly unsubscribe: () => void
   private readonly unsubscribeAssets: () => void
+  private readonly unsubscribeCodeAssets: () => void
   private readonly resizeObserver: ResizeObserver
 
   constructor(private readonly canvas: HTMLCanvasElement, private readonly stage: HTMLElement) {
@@ -343,6 +346,7 @@ export class EditorViewport {
     this.resize()
     this.unsubscribe = useEditorStore.subscribe(() => this.onStore())
     this.unsubscribeAssets = useAssetStore.subscribe(() => this.onStore())
+    this.unsubscribeCodeAssets = useCodeAssetStore.subscribe(() => this.onStore())
     this.unsubInspectorMemory = useInspectorMemory.subscribe(state => {
       const req = state.partFlashRequest
       if (!req || req.nonce === this.lastFlashNonce) return
@@ -456,6 +460,7 @@ export class EditorViewport {
     cancelAnimationFrame(this.raf)
     this.unsubscribe()
     this.unsubscribeAssets()
+    this.unsubscribeCodeAssets()
     this.unsubInspectorMemory()
     this.resizeObserver.disconnect()
     setSpawnProvider(() => [0, 0, 0])
@@ -526,6 +531,7 @@ export class EditorViewport {
     const state = useEditorStore.getState()
     syncCapabilityRuntimes(state.capabilities)
     const assetRevision = useAssetStore.getState().revision
+    const codeRevision = useCodeAssetStore.getState().revision
     const editing = state.playState === 'stopped'
     const helpers = state.helpersVisible
     for (const [id, group] of this.objects) {
@@ -571,12 +577,14 @@ export class EditorViewport {
       group.visible = node.visible && (state.editorCullingMask & (1 << layerBit)) !== 0
       const viewDirty = nodeChanged
         || data.syncedAssetRevision !== assetRevision
+        || data.syncedCodeRevision !== codeRevision
         || data.syncedEditing !== editing
         || data.syncedHelpers !== helpers
       if (viewDirty) {
         this.updateView(group, node, editing)
         data.syncedNode = node
         data.syncedAssetRevision = assetRevision
+        data.syncedCodeRevision = codeRevision
         data.syncedEditing = editing
         data.syncedHelpers = helpers
       }

@@ -21,6 +21,8 @@ import { useAssetStore } from './library'
 import { textureFor, unityMetallicRoughnessTextureFor } from './textures'
 import type { ParticleMaterialDesc } from '../../capabilities/particles/runtime'
 import type { AlphaMode, CullMode, ModelPartOverride, ParticleBlend, PbrSlot, SceneNode, SurfaceShader } from '../scene/types'
+import { buildMaterialFromShader } from '../../core/codeAssets/shaderRuntime'
+import { useCodeAssetStore } from '../../core/codeAssets/workspace'
 
 export interface SurfaceSlot extends PbrSlot {
   materialAssetId: string | null
@@ -144,6 +146,27 @@ function materialSlot(id: string | null | undefined): SurfaceSlot | null {
 
 export function applySlot(material: Material, slot: PbrSlot): Material {
   const surface = normalizeSlot(slot)
+  if (surface.shader.startsWith('custom:')) {
+    const shaderId = surface.shader.slice('custom:'.length)
+    const record = useCodeAssetStore.getState().assets[shaderId]
+    if (record?.kind === 'shader' && record.compiledShader?.definition) {
+      const key = `${shaderId}:${record.updatedAt}`
+      let next = material
+      if (material.userData?.t3dCustomShaderKey !== key) {
+        const built = buildMaterialFromShader(record.compiledShader.definition)
+        next = built.material
+        next.name = material.name
+        const token = materialSlotToken(material)
+        if (token != null) next.userData.t3dSlot = token
+        next.userData.t3dCustomShaderKey = key
+      }
+      if (!record.compiledShader.definition.doubleSided) {
+        next.side = sideFor(surface.cull)
+      }
+      ;(next as MeshBasicMaterial).wireframe = surface.wireframe
+      return next
+    }
+  }
   const next = ensureClass(material, surface)
   paint(next, surface)
   return next
@@ -224,9 +247,10 @@ function materialSlotToken(material: Material | null | undefined): number | null
 }
 
 function ensureClass(material: Material, slot: SurfaceSlot): Material {
-  const basic = slot.shader !== 'lit' && slot.shader !== 'unity-standard'
-  if (basic && (material as MeshBasicMaterial).isMeshBasicMaterial) return material
-  if (!basic && (material as MeshStandardMaterial).isMeshStandardMaterial) return material
+  const basic = slot.shader !== 'lit' && slot.shader !== 'unity-standard' && !slot.shader.startsWith('custom:')
+  const wasCustom = Boolean(material.userData?.t3dCustomShaderKey)
+  if (!wasCustom && basic && (material as MeshBasicMaterial).isMeshBasicMaterial) return material
+  if (!wasCustom && !basic && (material as MeshStandardMaterial).isMeshStandardMaterial) return material
   const next = basic ? new MeshBasicMaterial() : new MeshStandardMaterial()
   next.name = material.name
   const token = materialSlotToken(material)

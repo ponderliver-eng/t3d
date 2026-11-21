@@ -1,13 +1,16 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { Check, ExternalLink, Play, X } from 'lucide-react'
+import { Check, ExternalLink, FileCode2, Play, Wand2, X } from 'lucide-react'
 import { projectDirectoryPath } from '../../editor/project/disk'
 import { electronBridge, joinProjectPath } from '../../editor/project/electronBridge'
+import { defaultForSchema } from '../schema/fieldSchema'
+import { SchemaForm } from '../schema/SchemaForm'
 import {
   saveAndCompileCodeAsset,
   useCodeAssetStore,
   type CodeAssetKind,
 } from './workspace'
+import './CodeAssetModal.css'
 
 interface CodeModalTarget {
   kind: CodeAssetKind
@@ -32,6 +35,7 @@ export function CodeAssetModalHost() {
   const record = useCodeAssetStore((s) => (target ? s.assets[target.id] : undefined))
   const [draft, setDraft] = useState('')
   const [busy, setBusy] = useState(false)
+  const [previewParams, setPreviewParams] = useState<Record<string, unknown>>({})
 
   useEffect(() => {
     const sync = () => setTarget(activeModalTarget)
@@ -40,8 +44,26 @@ export function CodeAssetModalHost() {
   }, [])
 
   useEffect(() => {
-    if (record) setDraft(record.source)
+    if (record) {
+      setDraft(record.source)
+    }
   }, [record?.id, record?.updatedAt])
+
+  const schemaFields = useMemo(() => {
+    if (!record) return {}
+    if (record.kind === 'shader') {
+      return record.compiledShader?.definition.params ?? {}
+    }
+    return record.compiledScript?.behavior?.params ?? {}
+  }, [record])
+
+  useEffect(() => {
+    const defaults: Record<string, unknown> = {}
+    for (const [k, s] of Object.entries(schemaFields)) {
+      defaults[k] = defaultForSchema(s)
+    }
+    setPreviewParams(defaults)
+  }, [record?.id, schemaFields])
 
   if (!target || !record) return null
 
@@ -62,168 +84,102 @@ export function CodeAssetModalHost() {
     await bridge.codeAssets.openInEditor(joinProjectPath(dir, record.relativePath), editor)
   }
 
+  const colorA = typeof previewParams.baseColor === 'string'
+    ? previewParams.baseColor
+    : typeof previewParams.a === 'string'
+      ? previewParams.a
+      : '#4a9eff'
+  const colorB = typeof previewParams.glowColor === 'string'
+    ? previewParams.glowColor
+    : typeof previewParams.b === 'string'
+      ? previewParams.b
+      : '#93c5fd'
+
   return createPortal(
     <div
-      style={{
-        position: 'fixed',
-        inset: 0,
-        zIndex: 12000,
-        background: 'rgba(10, 12, 16, 0.72)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: 24,
-      }}
+      className="code-modal-backdrop"
       onPointerDown={(e) => {
         if (e.target === e.currentTarget) closeCodeAssetModal()
       }}
     >
-      <div
-        style={{
-          width: 'min(920px, 92vw)',
-          height: 'min(680px, 86vh)',
-          background: '#1b1f27',
-          border: '1px solid #2f3644',
-          borderRadius: 8,
-          display: 'flex',
-          flexDirection: 'column',
-          overflow: 'hidden',
-          boxShadow: '0 16px 48px rgba(0,0,0,0.6)',
-        }}
-      >
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
-            padding: '10px 14px',
-            background: '#222731',
-            borderBottom: '1px solid #2f3644',
-            fontSize: 12,
-          }}
-        >
-          <span
-            style={{
-              padding: '2px 6px',
-              borderRadius: 4,
-              background: record.kind === 'shader' ? '#3a2d5c' : '#1f3d5a',
-              color: '#e2e8f0',
-              fontWeight: 600,
-            }}
-          >
+      <div className="code-modal">
+        <div className="code-modal__head">
+          <span className={`code-modal__kind code-modal__kind--${record.kind}`}>
+            {record.kind === 'shader' ? <Wand2 size={12} /> : <FileCode2 size={12} />}
             {record.kind === 'shader' ? '着色器' : '脚本'}
           </span>
-          <strong style={{ color: '#f1f5f9' }}>{record.relativePath}</strong>
-          <span style={{ color: record.ok ? '#68d391' : '#f87171', fontSize: 11 }}>
+          <span className="code-modal__path">{record.relativePath}</span>
+          <span className={`code-modal__status ${record.ok ? 'is-ok' : 'is-err'}`}>
             {record.ok ? '● 编译通过' : `● ${record.diagnostics.length} 个错误`}
           </span>
-          <div style={{ flex: 1 }} />
+          <div className="code-modal__spacer" />
           {projectDirectoryPath() && (
             <>
-              <button
-                type="button"
-                onClick={() => void openExternal('cursor')}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 4,
-                  padding: '4px 8px',
-                  borderRadius: 4,
-                  border: '1px solid #394254',
-                  background: '#272d38',
-                  color: '#cbd5e1',
-                  cursor: 'pointer',
-                  fontSize: 11,
-                }}
-              >
+              <button type="button" className="code-modal__btn" onClick={() => void openExternal('cursor')}>
                 <ExternalLink size={12} /> Cursor 打开
               </button>
-              <button
-                type="button"
-                onClick={() => void openExternal('code')}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 4,
-                  padding: '4px 8px',
-                  borderRadius: 4,
-                  border: '1px solid #394254',
-                  background: '#272d38',
-                  color: '#cbd5e1',
-                  cursor: 'pointer',
-                  fontSize: 11,
-                }}
-              >
+              <button type="button" className="code-modal__btn" onClick={() => void openExternal('code')}>
                 <ExternalLink size={12} /> VS Code
               </button>
             </>
           )}
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => void save()}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 4,
-              padding: '4px 10px',
-              borderRadius: 4,
-              border: '1px solid #3b82f6',
-              background: '#2563eb',
-              color: '#fff',
-              cursor: 'pointer',
-              fontSize: 11,
-            }}
-          >
+          <button type="button" className="code-modal__btn code-modal__btn--primary" disabled={busy} onClick={() => void save()}>
             {busy ? <Play size={12} /> : <Check size={12} />} 保存并热重载
           </button>
-          <button
-            type="button"
-            onClick={closeCodeAssetModal}
-            style={{
-              background: 'transparent',
-              border: 'none',
-              color: '#94a3b8',
-              cursor: 'pointer',
-              padding: 4,
-            }}
-          >
+          <button type="button" className="code-modal__close" onClick={closeCodeAssetModal}>
             <X size={15} />
           </button>
         </div>
 
-        <textarea
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          spellCheck={false}
-          style={{
-            flex: 1,
-            width: '100%',
-            boxSizing: 'border-box',
-            padding: 14,
-            border: 'none',
-            outline: 'none',
-            resize: 'none',
-            background: '#13161c',
-            color: '#e2e8f0',
-            fontFamily: 'Consolas, "Fira Code", monospace',
-            fontSize: 12.5,
-            lineHeight: 1.55,
-          }}
-        />
+        <div className="code-modal__body">
+          <textarea
+            className="code-modal__editor"
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            spellCheck={false}
+          />
+          <aside className="code-modal__side">
+            {record.kind === 'shader' && (
+              <div>
+                <div className="code-modal__section-title">表面预览</div>
+                <div
+                  className="code-modal__swatch"
+                  style={{ background: `linear-gradient(135deg, ${colorA}, ${colorB})` }}
+                >
+                  <span>{record.compiledShader?.definition.name ?? record.name}</span>
+                  <span>{record.compiledShader?.definition.mode ?? 'lit'}</span>
+                </div>
+              </div>
+            )}
+
+            <div>
+              <div className="code-modal__section-title">
+                {record.kind === 'shader' ? '公开参数 (params)' : '组件参数预览 (SchemaForm)'}
+              </div>
+              {Object.keys(schemaFields).length > 0 ? (
+                <SchemaForm
+                  schema={{ type: 'object', fields: schemaFields }}
+                  value={previewParams}
+                  onChange={(next) => setPreviewParams(next as Record<string, unknown>)}
+                />
+              ) : (
+                <div className="code-modal__meta">当前未声明公开参数。</div>
+              )}
+            </div>
+
+            <div>
+              <div className="code-modal__section-title">使用方式</div>
+              <div className="code-modal__meta">
+                {record.kind === 'shader'
+                  ? '修改 surface() 并保存后自动热重载，可在材质卡片或 Cursor 中联动编辑。'
+                  : '在场景节点 Inspector 底部点击「添加组件」挂载此脚本，即可用右侧生成的表单调节参数。'}
+              </div>
+            </div>
+          </aside>
+        </div>
 
         {record.diagnostics.length > 0 && (
-          <div
-            style={{
-              maxHeight: 130,
-              overflowY: 'auto',
-              padding: '8px 14px',
-              background: '#1e171a',
-              borderTop: '1px solid #4c2229',
-              fontSize: 11.5,
-              color: '#fca5a5',
-            }}
-          >
+          <div className="code-modal__diag">
             {record.diagnostics.map((d, idx) => (
               <div key={idx} style={{ marginBottom: 4 }}>
                 <strong>第 {d.line} 行：</strong> {d.message} <span style={{ color: '#94a3b8' }}>（{d.hint}）</span>

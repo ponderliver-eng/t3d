@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { Bone, ChevronDown, ChevronRight, Component, ExternalLink, Eye, FolderOpen, FolderSearch, Image as ImageIcon, MapPin, Move, Package, Pause, Play, Plus, Rotate3d, Scaling, Search, Square, SunMedium, Trash2, Undo2, Unlink, Upload, X } from 'lucide-react'
+import { Bone, Check, ChevronDown, ChevronRight, Component, ExternalLink, Eye, FolderOpen, FolderSearch, Image as ImageIcon, MapPin, Move, Package, Pause, Play, Plus, Rotate3d, Scaling, Search, Square, SunMedium, Trash2, Undo2, Unlink, Upload, X } from 'lucide-react'
 import { clipDuration, clipNamesFor, getModelTemplate, loadModelTemplate, subscribeModels, type ModelTreeNode } from '../assets/models'
 import { ClipField } from './ClipPicker'
 import { activeAnimatorState, emptyAnimator } from '../animation/animator'
@@ -21,6 +21,10 @@ import { emptyRule } from '../../runtime/sceneRuntime'
 import { CameraCard } from '../gameplay/CameraCard'
 import { InteractCard, TriggerCard, MoverCard, CheckpointCard, ScoreCard, SoundSourceCard } from '../gameplay/DeviceCards'
 import { listEnabledPackComponents } from '../../gameplay/registry'
+import { SchemaForm } from '../../core/schema/SchemaForm'
+import { defaultForSchema } from '../../core/schema/fieldSchema'
+import { openCodeAssetModal } from '../../core/codeAssets/CodeAssetModal'
+import { useCodeAssetStore } from '../../core/codeAssets/workspace'
 import {
   cameraPresetForMode,
   defaultCameraFollow,
@@ -369,6 +373,7 @@ export default function InspectorPanel() {
       <SoundSourceCard node={node} disabled={locked} />
       <RulesCard node={node} disabled={locked} />
       <PackComponentCards node={node} disabled={locked} />
+      <ProjectScriptCards node={node} disabled={locked} />
       <PhysicsCard node={node} disabled={locked} />
       <BuoyancyCard node={node} disabled={locked} />
       <NavigationCard node={node} disabled={locked} />
@@ -1116,31 +1121,32 @@ function materialIdFromDrop(event: DragEvent): string | null {
 
 function MaterialEditor({ slot, onChange }: { slot: PbrSlot, onChange: (patch: Partial<PbrSlot>) => void }) {
   const { t } = useI18n()
+  const codeAssets = useCodeAssetStore(state => state.assets)
+  const shaders = Object.values(codeAssets).filter(item => item.kind === 'shader')
   const shaderKind = slot.shader ?? 'lit'
-  const lit = shaderKind === 'lit' || shaderKind === 'unity-standard'
+  const isCustom = shaderKind.startsWith('custom:')
+  const lit = !isCustom && (shaderKind === 'lit' || shaderKind === 'unity-standard')
   const isUnity = shaderKind === 'unity-standard'
   const particle = shaderKind === 'particle-unlit'
-  const textured = shaderKind !== 'unlit-color'
+  const textured = !isCustom && shaderKind !== 'unlit-color'
   return (
     <>
       <Section title={t('material.shader')} color="#d4b8ff">
-        <label className="field">
+        <div className="field">
           <span>{t('material.shader')}</span>
-          <select value={shaderKind} onChange={event => {
-            const shader = event.target.value as SurfaceShader
-            onChange(shader === 'particle-unlit'
-              ? { shader, particleBlend: slot.particleBlend ?? 'additive', depthWrite: false, cull: 'off', alphaMode: 'blend' }
-              : { shader })
-          }}>
-            <option value="lit">{t('material.lit')}</option>
-            <option value="unity-standard">{t('material.unityStandard')}</option>
-            <option value="unlit-color">{t('material.unlitColor')}</option>
-            <option value="unlit-texture">{t('material.unlitTexture')}</option>
-            <option value="particle-unlit">{t('material.particle')}</option>
-          </select>
-        </label>
+          <ShaderSelect
+            value={shaderKind}
+            customShaders={shaders}
+            onChange={shader => {
+              onChange(shader === 'particle-unlit'
+                ? { shader, particleBlend: slot.particleBlend ?? 'additive', depthWrite: false, cull: 'off', alphaMode: 'blend' }
+                : { shader })
+            }}
+          />
+        </div>
+        <ProjectShaderHint selectedShader={shaderKind} onSelect={shader => onChange({ shader })} />
       </Section>
-      <Section title={t('material.surface')} color="#c9a6ff">
+      {!isCustom && <Section title={t('material.surface')} color="#c9a6ff">
         <ColorField label={t('material.color')} value={slot.color} gesture={t('gesture.material')} onChange={color => onChange({ color })} />
         {textured && <MapField label={t('material.baseMap')} value={slot.mapAssetId ?? null} onChange={mapAssetId => onChange({ mapAssetId })} />}
         {lit && (
@@ -1163,7 +1169,7 @@ function MaterialEditor({ slot, onChange }: { slot: PbrSlot, onChange: (patch: P
             <MapField label={t('material.aoMap')} title={t('material.aoMapHint')} value={slot.aoAssetId ?? null} onChange={aoAssetId => onChange({ aoAssetId })} />
           </>
         )}
-      </Section>
+      </Section>}
       {lit && (
         <Section title={t('material.emission')} color="#f2cf7f">
           <ColorField label={t('material.emissionColor')} value={slot.emissive} gesture={t('gesture.material')} onChange={emissive => onChange({ emissive })} />
@@ -1184,7 +1190,7 @@ function MaterialEditor({ slot, onChange }: { slot: PbrSlot, onChange: (patch: P
           </label>
         </Section>
       )}
-      {!particle && <Section title={t('material.transparency')} color="#9fd6ff">
+      {!particle && !isCustom && <Section title={t('material.transparency')} color="#9fd6ff">
         {!particle && <label className="field">
           <span>{t('material.mode')}</span>
           <select value={slot.alphaMode ?? 'opaque'} onChange={event => onChange({ alphaMode: event.target.value as AlphaMode })}>
@@ -1603,10 +1609,13 @@ function resetTransform(id: string, patch: Partial<SceneNode>) {
   commitNode(id, translate('gesture.reset'), patch)
 }
 
-function Section({ title, color, children }: { title: string; color: string; children: ReactNode }) {
+function Section({ title, color, action, children }: { title: string; color: string; action?: ReactNode; children: ReactNode }) {
   return (
     <section className="iv2-section">
-      <div className="iv2-section__title" style={{ color }}><i /><span>{title}</span></div>
+      <div className="iv2-section__title" style={{ color, display: 'flex', alignItems: 'center' }}>
+        <i /><span>{title}</span>
+        {action && <span style={{ marginLeft: 'auto' }}>{action}</span>}
+      </div>
       {children}
     </section>
   )
@@ -1847,6 +1856,271 @@ interface ComponentOption {
   color: string
   added: boolean
   apply: () => void
+}
+
+function ShaderSelect({
+  value,
+  customShaders,
+  onChange,
+}: {
+  value: SurfaceShader
+  customShaders: Array<{ id: string, name: string, ok: boolean }>
+  onChange: (shader: SurfaceShader) => void
+}) {
+  const { t } = useI18n()
+  const [open, setOpen] = useState(false)
+  const [rect, setRect] = useState<{ left: number, top: number, width: number } | null>(null)
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
+
+  const builtinOptions: Array<{ value: SurfaceShader, label: string }> = [
+    { value: 'lit', label: t('material.lit') },
+    { value: 'unity-standard', label: t('material.unityStandard') },
+    { value: 'unlit-color', label: t('material.unlitColor') },
+    { value: 'unlit-texture', label: t('material.unlitTexture') },
+    { value: 'particle-unlit', label: t('material.particle') },
+  ]
+
+  const currentLabel = value.startsWith('custom:')
+    ? (customShaders.find(item => `custom:${item.id}` === value)?.name ?? value.slice('custom:'.length))
+    : (builtinOptions.find(item => item.value === value)?.label ?? value)
+
+  useEffect(() => {
+    if (!open) return
+    const onDown = (event: PointerEvent) => {
+      const target = event.target as Node
+      if (triggerRef.current?.contains(target) || menuRef.current?.contains(target)) return
+      setOpen(false)
+    }
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOpen(false)
+    }
+    window.addEventListener('pointerdown', onDown, true)
+    window.addEventListener('keydown', onKey)
+    return () => {
+      window.removeEventListener('pointerdown', onDown, true)
+      window.removeEventListener('keydown', onKey)
+    }
+  }, [open])
+
+  const toggle = () => {
+    if (open) {
+      setOpen(false)
+      return
+    }
+    const box = triggerRef.current?.getBoundingClientRect()
+    if (!box) return
+    const width = Math.max(box.width, 200)
+    const left = Math.min(box.left, window.innerWidth - width - 8)
+    const top = Math.min(box.bottom + 4, window.innerHeight - 280)
+    setRect({ left: Math.max(8, left), top: Math.max(8, top), width })
+    setOpen(true)
+  }
+
+  return (
+    <>
+      <button
+        ref={triggerRef}
+        type="button"
+        className="shader-select__trigger"
+        onClick={toggle}
+        aria-expanded={open}
+      >
+        <span>{currentLabel}</span>
+        <ChevronDown size={12} />
+      </button>
+      {open && rect && createPortal(
+        <div
+          ref={menuRef}
+          className="shader-select__menu"
+          style={{ left: rect.left, top: rect.top, width: rect.width }}
+        >
+          <div className="shader-select__group">内置着色器</div>
+          {builtinOptions.map(opt => {
+            const active = opt.value === value
+            return (
+              <button
+                key={opt.value}
+                type="button"
+                className={`shader-select__item ${active ? 'is-active' : ''}`}
+                onClick={() => { onChange(opt.value); setOpen(false) }}
+              >
+                <span className="shader-select__check">{active && <Check size={12} />}</span>
+                <span>{opt.label}</span>
+              </button>
+            )
+          })}
+          {customShaders.length > 0 && (
+            <>
+              <div className="shader-select__sep" />
+              <div className="shader-select__group">自定义着色器</div>
+              {customShaders.map(shader => {
+                const optionValue = `custom:${shader.id}` as SurfaceShader
+                const active = optionValue === value
+                return (
+                  <button
+                    key={shader.id}
+                    type="button"
+                    className={`shader-select__item ${active ? 'is-active' : ''}`}
+                    onClick={() => { onChange(optionValue); setOpen(false) }}
+                  >
+                    <span className="shader-select__check">{active && <Check size={12} />}</span>
+                    <span>{shader.name}</span>
+                    {!shader.ok && <em className="shader-select__err">错误</em>}
+                  </button>
+                )
+              })}
+            </>
+          )}
+        </div>,
+        document.body,
+      )}
+    </>
+  )
+}
+
+function ProjectShaderHint({
+  selectedShader,
+  onSelect,
+}: {
+  selectedShader: SurfaceShader
+  onSelect: (shader: SurfaceShader) => void
+}) {
+  const codeAssets = useCodeAssetStore(state => state.assets)
+  const shaders = Object.values(codeAssets).filter(item => item.kind === 'shader')
+  if (shaders.length === 0) return null
+  const activeId = selectedShader.startsWith('custom:') ? selectedShader.slice('custom:'.length) : null
+  const activeShader = activeId ? shaders.find(s => s.id === activeId) : undefined
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 6 }}>
+      <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>工程着色器（点击应用）：</span>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+        {shaders.map(shader => {
+          const active = shader.id === activeId
+          return (
+            <button
+              key={shader.id}
+              type="button"
+              onClick={() => onSelect(`custom:${shader.id}`)}
+              title={shader.ok ? `应用着色器 ${shader.name}` : `编译错误 (${shader.diagnostics.length})`}
+              style={{
+                padding: '2px 7px',
+                fontSize: 11,
+                borderRadius: 4,
+                border: active ? '1px solid #c084fc' : '1px solid var(--border)',
+                background: active ? 'rgba(192, 132, 252, 0.28)' : 'rgba(192, 132, 252, 0.1)',
+                color: shader.ok ? (active ? '#f3e8ff' : '#d8b4fe') : '#fca5a5',
+                cursor: 'pointer',
+              }}
+            >
+              {shader.name}
+            </button>
+          )
+        })}
+      </div>
+      {activeShader && (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6, fontSize: 11, color: 'var(--text-muted)' }}>
+          <span>{activeShader.ok ? `已绑定：${activeShader.relativePath}` : `${activeShader.diagnostics.length} 个编译错误`}</span>
+          <button
+            type="button"
+            onClick={() => openCodeAssetModal('shader', activeShader.id)}
+            style={{
+              padding: '2px 8px',
+              fontSize: 11,
+              borderRadius: 4,
+              border: '1px solid var(--border)',
+              background: 'rgba(255, 255, 255, 0.06)',
+              color: 'var(--text-primary)',
+              cursor: 'pointer',
+            }}
+          >
+            编辑 / 预览
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function ProjectScriptCards({ node, disabled }: { node: SceneNode, disabled: boolean }) {
+  const codeAssets = useCodeAssetStore(state => state.assets)
+  const projectBag = node.gameplay?.packs?.__project__ as Record<string, Record<string, unknown>> | undefined
+  if (!projectBag || typeof projectBag !== 'object') return null
+
+  const entries = Object.entries(projectBag)
+  if (entries.length === 0) return null
+
+  return (
+    <>
+      {entries.map(([scriptId, rawParams]) => {
+        const asset = codeAssets[scriptId]
+        const def = asset?.compiledScript?.behavior
+        const title = def?.name ?? scriptId
+        const schemaFields = def?.params ?? {}
+        const value = rawParams && typeof rawParams === 'object' ? rawParams : {}
+        const remove = () => {
+          const nextProject = { ...projectBag }
+          delete nextProject[scriptId]
+          const nextPacks = { ...(node.gameplay?.packs ?? {}), __project__: nextProject }
+          commitNode(node.id, `移除脚本 ${title}`, {
+            gameplay: { ...node.gameplay, packs: nextPacks },
+          })
+        }
+        return (
+          <Section
+            key={`script:${scriptId}`}
+            title={`脚本 · ${title}`}
+            color="#38bdf8"
+            action={(
+              <div style={{ display: 'flex', gap: 4 }}>
+                {asset && (
+                  <button
+                    type="button"
+                    title="编辑脚本源码"
+                    onClick={() => openCodeAssetModal('script', scriptId)}
+                    style={{ background: 'transparent', border: 'none', color: '#93c5fd', cursor: 'pointer', padding: 2 }}
+                  >
+                    <ExternalLink size={12} />
+                  </button>
+                )}
+                {!disabled && (
+                  <button
+                    type="button"
+                    title="移除脚本"
+                    onClick={remove}
+                    style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: 2 }}
+                  >
+                    <Trash2 size={12} />
+                  </button>
+                )}
+              </div>
+            )}
+          >
+            {Object.keys(schemaFields).length > 0 ? (
+              <SchemaForm
+                schema={{ type: 'object', fields: schemaFields }}
+                value={value}
+                disabled={disabled}
+                onChange={(nextVal) => {
+                  const nextPacks = {
+                    ...(node.gameplay?.packs ?? {}),
+                    __project__: { ...projectBag, [scriptId]: nextVal as Record<string, unknown> },
+                  }
+                  commitNode(node.id, `修改脚本参数 ${title}`, {
+                    gameplay: { ...node.gameplay, packs: nextPacks },
+                  })
+                }}
+              />
+            ) : (
+              <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                {asset ? '该脚本无公开参数' : `未找到脚本资产 scripts/${scriptId}.ts`}
+              </div>
+            )}
+          </Section>
+        )
+      })}
+    </>
+  )
 }
 
 function PackComponentCards({ node, disabled }: { node: SceneNode, disabled: boolean }) {
@@ -2108,6 +2382,33 @@ function AddComponentPicker({ node, disabled }: { node: SceneNode, disabled: boo
           gameplay: { ...node.gameplay, packs: nextPacks },
         })
         useInspectorMemory.getState().setOpen(`node:${node.id}`, `${packId}:${def.componentId}`, true)
+      },
+    })
+  }
+
+  const projectBag = (node.gameplay?.packs?.__project__ ?? {}) as Record<string, unknown>
+  for (const asset of Object.values(useCodeAssetStore.getState().assets)) {
+    if (asset.kind !== 'script' || asset.compiledScript?.kind !== 'behavior' || !asset.compiledScript.behavior) continue
+    const behavior = asset.compiledScript.behavior
+    options.push({
+      id: `script:${asset.id}`,
+      cardId: `script:${asset.id}`,
+      group: 'pack',
+      label: `脚本 · ${behavior.name}`,
+      color: '#38bdf8',
+      added: Boolean(projectBag[asset.id]),
+      apply: () => {
+        const defaults: Record<string, unknown> = {}
+        for (const [k, s] of Object.entries(behavior.params ?? {})) {
+          defaults[k] = defaultForSchema(s)
+        }
+        const nextPacks = {
+          ...(node.gameplay?.packs ?? {}),
+          __project__: { ...projectBag, [asset.id]: defaults },
+        }
+        commitNode(node.id, `挂载脚本 ${behavior.name}`, {
+          gameplay: { ...node.gameplay, packs: nextPacks },
+        })
       },
     })
   }

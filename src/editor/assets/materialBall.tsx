@@ -187,7 +187,10 @@ function renderMaterialBallNow(key: string, slot: PbrSlot): string {
   const view = stage()
   if (!view) return ''
   try {
-    const next = applySlot(view.mesh.material as Material, slot)
+    const ballSlot = slot.shader?.startsWith('custom:')
+      ? { ...slot, shader: 'lit' as const, color: '#9f7aea', roughness: 0.35, metalness: 0.25 }
+      : slot
+    const next = applySlot(view.mesh.material as Material, ballSlot)
     if (next !== view.mesh.material) {
       ;(view.mesh.material as Material).dispose()
       view.mesh.material = next
