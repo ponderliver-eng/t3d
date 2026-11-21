@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Bot, Check, Download, Loader2, RotateCcw, Send, Settings, Sparkles, Square, Trash2, Upload, X } from 'lucide-react'
+import { Bot, Check, Copy, Download, Loader2, RotateCcw, Send, Settings, Sparkles, Square, Trash2, Upload, X } from 'lucide-react'
 import { createCheckpoint } from '../core/project/checkpoints'
 import { useManagerModalStore } from '../core/project/ProjectManagerModal'
 import { useCodeAssetStore } from '../core/codeAssets/workspace'
@@ -41,6 +41,27 @@ export default function AiWorkbenchPanel() {
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const importInputRef = useRef<HTMLInputElement | null>(null)
   const [elapsedMs, setElapsedMs] = useState(0)
+  const [copiedTurnId, setCopiedTurnId] = useState<string | null>(null)
+
+  const copyTurnText = async (turnId: string, content: string) => {
+    if (!content) return
+    try {
+      await navigator.clipboard.writeText(content)
+    } catch {
+      const ta = document.createElement('textarea')
+      ta.value = content
+      ta.style.position = 'fixed'
+      ta.style.opacity = '0'
+      document.body.appendChild(ta)
+      ta.select()
+      document.execCommand('copy')
+      document.body.removeChild(ta)
+    }
+    setCopiedTurnId(turnId)
+    window.setTimeout(() => {
+      setCopiedTurnId((cur) => (cur === turnId ? null : cur))
+    }, 1500)
+  }
 
   useEffect(() => {
     if (status === 'idle' || !startedAt) {
@@ -395,11 +416,33 @@ export default function AiWorkbenchPanel() {
             )}
 
             {turn.text && (
-              <div style={{ whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>{turn.text}</div>
+              <div
+                style={{
+                  whiteSpace: 'pre-wrap',
+                  lineHeight: 1.5,
+                  userSelect: 'text',
+                  WebkitUserSelect: 'text',
+                  cursor: 'text',
+                  wordBreak: 'break-word',
+                }}
+              >
+                {turn.text}
+              </div>
             )}
 
             {isActiveTurn && streamingText && (
-              <div style={{ whiteSpace: 'pre-wrap', lineHeight: 1.5, color: '#d4d4d8', opacity: 0.9 }}>
+              <div
+                style={{
+                  whiteSpace: 'pre-wrap',
+                  lineHeight: 1.5,
+                  color: '#d4d4d8',
+                  opacity: 0.9,
+                  userSelect: 'text',
+                  WebkitUserSelect: 'text',
+                  cursor: 'text',
+                  wordBreak: 'break-word',
+                }}
+              >
                 {streamingText}
               </div>
             )}
@@ -449,15 +492,28 @@ export default function AiWorkbenchPanel() {
             )}
 
             {turn.error && (
-              <div style={{ color: '#fca5a5', fontSize: '11px', lineHeight: 1.4 }}>{turn.error}</div>
+              <div
+                style={{
+                  color: '#fca5a5',
+                  fontSize: '11px',
+                  lineHeight: 1.4,
+                  userSelect: 'text',
+                  WebkitUserSelect: 'text',
+                  cursor: 'text',
+                  wordBreak: 'break-word',
+                }}
+              >
+                {turn.error}
+              </div>
             )}
 
-            {turn.role === 'assistant' && !isActiveTurn && (turn.usage?.model || turn.checkpointId) && (
+            {!isActiveTurn && (turn.text || turn.error || (turn.role === 'assistant' && (turn.usage?.model || turn.checkpointId))) && (
               <div
                 style={{
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'space-between',
+                  gap: '8px',
                   marginTop: '2px',
                   paddingTop: '4px',
                   borderTop: '1px solid rgba(255,255,255,0.05)',
@@ -465,31 +521,54 @@ export default function AiWorkbenchPanel() {
                   color: '#71717a',
                 }}
               >
-                <span>
-                  {turn.usage?.model
+                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {turn.role === 'assistant' && turn.usage?.model
                     ? `${turn.usage.model} · ${(turn.usage.inputTokens ?? 0) + (turn.usage.outputTokens ?? 0)} tok`
                     : ''}
                 </span>
-                {turn.checkpointId && status === 'idle' && (
-                  <button
-                    type="button"
-                    onClick={() => rollbackTurn(turn.checkpointId!)}
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '3px',
-                      background: 'transparent',
-                      border: 'none',
-                      color: '#93c5fd',
-                      cursor: 'pointer',
-                      fontSize: '11px',
-                      padding: 0,
-                    }}
-                  >
-                    <RotateCcw size={11} />
-                    <span>回退本轮</span>
-                  </button>
-                )}
+                <div style={{ display: 'inline-flex', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
+                  {(turn.text || turn.error) && (
+                    <button
+                      type="button"
+                      title="复制文本"
+                      onClick={() => void copyTurnText(turn.id, turn.text || turn.error || '')}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '3px',
+                        background: 'transparent',
+                        border: 'none',
+                        color: copiedTurnId === turn.id ? '#4ade80' : '#a1a1aa',
+                        cursor: 'pointer',
+                        fontSize: '11px',
+                        padding: 0,
+                      }}
+                    >
+                      {copiedTurnId === turn.id ? <Check size={11} /> : <Copy size={11} />}
+                      <span>{copiedTurnId === turn.id ? '已复制' : '复制'}</span>
+                    </button>
+                  )}
+                  {turn.role === 'assistant' && turn.checkpointId && status === 'idle' && (
+                    <button
+                      type="button"
+                      onClick={() => rollbackTurn(turn.checkpointId!)}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '3px',
+                        background: 'transparent',
+                        border: 'none',
+                        color: '#93c5fd',
+                        cursor: 'pointer',
+                        fontSize: '11px',
+                        padding: 0,
+                      }}
+                    >
+                      <RotateCcw size={11} />
+                      <span>回退本轮</span>
+                    </button>
+                  )}
+                </div>
               </div>
             )}
           </div>

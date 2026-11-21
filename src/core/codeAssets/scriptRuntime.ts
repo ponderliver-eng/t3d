@@ -437,6 +437,9 @@ function stepProjectScripts(dt: number, host: SceneRuntimeHost) {
     const projectScripts = node.gameplay?.packs?.__project__
     if (!projectScripts || typeof projectScripts !== 'object') continue
     for (const [scriptId, rawParams] of Object.entries(projectScripts as Record<string, unknown>)) {
+      if (rawParams && typeof rawParams === 'object' && (rawParams as Record<string, unknown>).__enabled === false) {
+        continue
+      }
       const def = compiledBehaviors.get(scriptId)
       if (!def) continue
       const key = instanceKey(node.id, scriptId)
@@ -476,6 +479,7 @@ function stepProjectScripts(dt: number, host: SceneRuntimeHost) {
         const node = nodes[rec.nodeId]
         if (!def?.onMessage || !node) continue
         const rawParams = (node.gameplay?.packs?.__project__ as Record<string, unknown> | undefined)?.[rec.scriptId]
+        if (rawParams && typeof rawParams === 'object' && (rawParams as Record<string, unknown>).__enabled === false) continue
         const ctx = buildScriptContext(node, rec.scriptId, rawParams, rec.state, host)
         const sender = msg.senderId ? makeNodeHandle(msg.senderId, host) : undefined
         try {

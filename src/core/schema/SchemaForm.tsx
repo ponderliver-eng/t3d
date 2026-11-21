@@ -1,5 +1,10 @@
-import type { CSSProperties } from 'react'
-import { defaultForSchema, type FieldSchema, type ObjectFieldSchema } from './fieldSchema'
+import { useEffect, useState, type CSSProperties, type DragEvent } from 'react'
+import { createPortal } from 'react-dom'
+import { Box, FileBox, Search, X } from 'lucide-react'
+import { ASSET_MIME, NODE_MIME } from '../../editor/assets/import'
+import { useAssetStore } from '../../editor/assets/library'
+import { useEditorStore } from '../../editor/scene/store'
+import { defaultForSchema, type FieldSchema, type ObjectFieldSchema, type RefFieldSchema } from './fieldSchema'
 
 export interface SchemaFormProps {
   schema: ObjectFieldSchema
@@ -13,7 +18,8 @@ const rowStyle: CSSProperties = {
   display: 'grid',
   gridTemplateColumns: '88px minmax(0, 1fr)',
   alignItems: 'center',
-  gap: '8px',
+  gap: '10px',
+  minHeight: '24px',
   fontSize: '12px',
   color: '#d4d4d8',
 }
@@ -22,7 +28,7 @@ const inputStyle: CSSProperties = {
   width: '100%',
   minWidth: 0,
   height: '24px',
-  padding: '0 6px',
+  padding: '0 7px',
   borderRadius: '4px',
   border: '1px solid rgba(255,255,255,0.12)',
   background: 'rgba(0,0,0,0.28)',
@@ -34,7 +40,7 @@ const inputStyle: CSSProperties = {
 export function SchemaForm({ schema, value, disabled = false, compact = false, onChange }: SchemaFormProps) {
   const entries = Object.entries(schema.fields)
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: compact ? '6px' : '8px' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: compact ? '6px' : '7px' }}>
       {entries.map(([key, field]) => {
         const current = value[key] !== undefined ? value[key] : defaultForSchema(field)
         return (
@@ -118,7 +124,7 @@ function SchemaControl({
       const hasRange = field.min !== undefined && field.max !== undefined
       if (hasRange) {
         return (
-          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(64px, 1fr) 54px', gap: '6px', alignItems: 'center' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(64px, 1fr) 52px', gap: '6px', alignItems: 'center' }}>
             <input
               type="range"
               disabled={disabled}
@@ -127,7 +133,7 @@ function SchemaControl({
               step={field.step ?? (field.max! - field.min! <= 2 ? 0.01 : 0.1)}
               value={num}
               onChange={(e) => onChange(Number(e.target.value))}
-              style={{ width: '100%', accentColor: '#3b82f6' }}
+              style={{ width: '100%', margin: 0, accentColor: '#4a9eff', cursor: disabled ? 'default' : 'pointer' }}
             />
             <input
               type="number"
@@ -140,7 +146,7 @@ function SchemaControl({
                 const parsed = Number(e.target.value)
                 if (Number.isFinite(parsed)) onChange(parsed)
               }}
-              style={{ ...inputStyle, textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}
+              style={{ ...inputStyle, padding: '0 5px', textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}
             />
           </div>
         )
@@ -222,15 +228,54 @@ function SchemaControl({
       )
     }
     case 'string':
-    case 'texture':
-    case 'ref':
       return (
         <input
           type="text"
           disabled={disabled}
           value={typeof value === 'string' ? value : ''}
-          placeholder={field.type === 'string' ? '' : `(${field.type})`}
-          onChange={(e) => onChange(field.type === 'string' ? e.target.value : (e.target.value || null))}
+          onChange={(e) => onChange(e.target.value)}
+          style={inputStyle}
+        />
+      )
+    case 'texture':
+      return (
+        <AssetRefControl
+          value={typeof value === 'string' ? value : null}
+          kinds={['texture']}
+          disabled={disabled}
+          title={field.label}
+          onChange={(next) => onChange(next)}
+        />
+      )
+    case 'ref':
+      if (field.target === 'node') {
+        return (
+          <NodeRefControl
+            value={typeof value === 'string' ? value : null}
+            disabled={disabled}
+            title={field.label}
+            onChange={(next) => onChange(next)}
+          />
+        )
+      }
+      if (field.target === 'asset') {
+        return (
+          <AssetRefControl
+            value={typeof value === 'string' ? value : null}
+            kinds={field.kinds}
+            disabled={disabled}
+            title={field.label}
+            onChange={(next) => onChange(next)}
+          />
+        )
+      }
+      return (
+        <input
+          type="text"
+          disabled={disabled}
+          value={typeof value === 'string' ? value : ''}
+          placeholder={`(${(field as RefFieldSchema).target})`}
+          onChange={(e) => onChange(e.target.value || null)}
           style={inputStyle}
         />
       )
@@ -243,4 +288,338 @@ function SchemaControl({
       )
     }
   }
+}
+
+const refSlotStyle = (dropping: boolean, disabled: boolean): CSSProperties => ({
+  display: 'flex',
+  alignItems: 'center',
+  gap: '4px',
+  minWidth: 0,
+  height: '24px',
+  padding: '0 4px 0 6px',
+  borderRadius: '4px',
+  border: dropping ? '1px solid #3b82f6' : '1px solid rgba(255,255,255,0.12)',
+  background: dropping ? 'rgba(59,130,246,0.16)' : 'rgba(0,0,0,0.28)',
+  boxShadow: dropping ? '0 0 0 1px rgba(59,130,246,0.35)' : 'none',
+  opacity: disabled ? 0.6 : 1,
+  transition: 'border-color 0.12s, background 0.12s',
+})
+
+const refNameBtnStyle = (hasValue: boolean, missing: boolean): CSSProperties => ({
+  flex: 1,
+  minWidth: 0,
+  display: 'flex',
+  alignItems: 'center',
+  gap: '5px',
+  background: 'transparent',
+  border: 'none',
+  padding: 0,
+  textAlign: 'left',
+  fontSize: '12px',
+  color: missing ? '#fca5a5' : hasValue ? '#f4f4f5' : '#71717a',
+  cursor: hasValue && !missing ? 'pointer' : 'default',
+  overflow: 'hidden',
+})
+
+const refActionBtnStyle: CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  width: '18px',
+  height: '18px',
+  padding: 0,
+  borderRadius: '3px',
+  border: 'none',
+  background: 'transparent',
+  color: '#a1a1aa',
+  cursor: 'pointer',
+  flexShrink: 0,
+}
+
+function NodeRefControl({
+  value,
+  disabled,
+  title,
+  onChange,
+}: {
+  value: string | null
+  disabled: boolean
+  title: string
+  onChange: (next: string | null) => void
+}) {
+  const nodes = useEditorStore((s) => s.nodes)
+  const [dropping, setDropping] = useState(false)
+  const [pickerOpen, setPickerOpen] = useState(false)
+
+  const node = value ? nodes[value] : undefined
+  const missing = Boolean(value && !node)
+
+  const acceptsDrop = (e: DragEvent) => !disabled && e.dataTransfer.types.includes(NODE_MIME)
+  const handleDrop = (e: DragEvent) => {
+    setDropping(false)
+    if (!acceptsDrop(e)) return
+    const id = e.dataTransfer.getData(NODE_MIME)
+    if (!id || !useEditorStore.getState().nodes[id]) return
+    e.preventDefault()
+    onChange(id)
+  }
+
+  return (
+    <>
+      <div
+        style={refSlotStyle(dropping, disabled)}
+        title={node ? `${node.name} (${node.id}) — 点击定位，或拖放其他节点替换` : '从层级树拖放节点到此处，或点击右侧放大镜选择'}
+        onDragEnter={(e) => {
+          if (!acceptsDrop(e)) return
+          e.preventDefault()
+          setDropping(true)
+        }}
+        onDragOver={(e) => {
+          if (!acceptsDrop(e)) return
+          e.preventDefault()
+          e.dataTransfer.dropEffect = 'copy'
+          if (!dropping) setDropping(true)
+        }}
+        onDragLeave={(e) => {
+          if (e.currentTarget.contains(e.relatedTarget as Node | null)) return
+          setDropping(false)
+        }}
+        onDrop={handleDrop}
+      >
+        <button
+          type="button"
+          style={refNameBtnStyle(Boolean(value), missing)}
+          onClick={() => {
+            if (node) {
+              useEditorStore.getState().setSelection([node.id])
+              useEditorStore.getState().requestFocus()
+            } else if (!disabled) {
+              setPickerOpen(true)
+            }
+          }}
+        >
+          <Box size={12} style={{ color: node ? '#60a5fa' : '#71717a', flexShrink: 0 }} />
+          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {dropping ? '松开以引用节点' : node ? node.name : missing ? `已丢失 (${value?.slice(0, 8)})` : '无 (拖放节点或选择)'}
+          </span>
+        </button>
+        {!disabled && (
+          <button
+            type="button"
+            style={refActionBtnStyle}
+            title={`选择${title}`}
+            onClick={(e) => { e.preventDefault(); setPickerOpen(true) }}
+          >
+            <Search size={12} />
+          </button>
+        )}
+        {!disabled && value && (
+          <button
+            type="button"
+            style={refActionBtnStyle}
+            title="清空引用"
+            onClick={(e) => { e.preventDefault(); onChange(null) }}
+          >
+            <X size={12} />
+          </button>
+        )}
+      </div>
+
+      {pickerOpen && (
+        <RefPickerModal
+          title={`选择${title}`}
+          selectedId={value}
+          items={Object.values(nodes)
+            .sort((a, b) => a.name.localeCompare(b.name, 'zh'))
+            .map((n) => ({ id: n.id, name: n.name, badge: n.kind }))}
+          onSelect={(id) => {
+            onChange(id)
+            setPickerOpen(false)
+          }}
+          onClose={() => setPickerOpen(false)}
+        />
+      )}
+    </>
+  )
+}
+
+function AssetRefControl({
+  value,
+  kinds,
+  disabled,
+  title,
+  onChange,
+}: {
+  value: string | null
+  kinds?: readonly string[]
+  disabled: boolean
+  title: string
+  onChange: (next: string | null) => void
+}) {
+  const assets = useAssetStore((s) => s.assets)
+  const [dropping, setDropping] = useState(false)
+  const [pickerOpen, setPickerOpen] = useState(false)
+
+  const asset = value ? assets[value] : undefined
+  const missing = Boolean(value && !asset)
+
+  const acceptsDrop = (e: DragEvent) => !disabled && e.dataTransfer.types.includes(ASSET_MIME)
+  const handleDrop = (e: DragEvent) => {
+    setDropping(false)
+    if (!acceptsDrop(e)) return
+    const id = e.dataTransfer.getData(ASSET_MIME)
+    const dropped = id ? useAssetStore.getState().assets[id] : undefined
+    if (!dropped) return
+    if (kinds && kinds.length > 0 && !kinds.includes(dropped.kind)) return
+    e.preventDefault()
+    onChange(dropped.id)
+  }
+
+  const filteredAssets = Object.values(assets)
+    .filter((a) => !kinds || kinds.length === 0 || kinds.includes(a.kind))
+    .sort((a, b) => a.name.localeCompare(b.name, 'zh'))
+
+  return (
+    <>
+      <div
+        style={refSlotStyle(dropping, disabled)}
+        title={asset ? `${asset.name} (${asset.kind}) — 点击定位，或拖放资产替换` : '从资源面板拖放资产到此处，或点击右侧放大镜选择'}
+        onDragEnter={(e) => {
+          if (!acceptsDrop(e)) return
+          e.preventDefault()
+          setDropping(true)
+        }}
+        onDragOver={(e) => {
+          if (!acceptsDrop(e)) return
+          e.preventDefault()
+          e.dataTransfer.dropEffect = 'copy'
+          if (!dropping) setDropping(true)
+        }}
+        onDragLeave={(e) => {
+          if (e.currentTarget.contains(e.relatedTarget as Node | null)) return
+          setDropping(false)
+        }}
+        onDrop={handleDrop}
+      >
+        <button
+          type="button"
+          style={refNameBtnStyle(Boolean(value), missing)}
+          onClick={() => {
+            if (asset) {
+              useEditorStore.getState().inspectAsset(asset.id)
+            } else if (!disabled) {
+              setPickerOpen(true)
+            }
+          }}
+        >
+          <FileBox size={12} style={{ color: asset ? '#34d399' : '#71717a', flexShrink: 0 }} />
+          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {dropping ? '松开以引用资产' : asset ? asset.name : missing ? `已丢失 (${value?.slice(0, 8)})` : '无 (拖放资产或选择)'}
+          </span>
+        </button>
+        {!disabled && (
+          <button
+            type="button"
+            style={refActionBtnStyle}
+            title={`选择${title}`}
+            onClick={(e) => { e.preventDefault(); setPickerOpen(true) }}
+          >
+            <Search size={12} />
+          </button>
+        )}
+        {!disabled && value && (
+          <button
+            type="button"
+            style={refActionBtnStyle}
+            title="清空引用"
+            onClick={(e) => { e.preventDefault(); onChange(null) }}
+          >
+            <X size={12} />
+          </button>
+        )}
+      </div>
+
+      {pickerOpen && (
+        <RefPickerModal
+          title={`选择${title}`}
+          selectedId={value}
+          items={filteredAssets.map((a) => ({ id: a.id, name: a.name, badge: a.kind }))}
+          onSelect={(id) => {
+            onChange(id)
+            setPickerOpen(false)
+          }}
+          onClose={() => setPickerOpen(false)}
+        />
+      )}
+    </>
+  )
+}
+
+function RefPickerModal({
+  title,
+  selectedId,
+  items,
+  onSelect,
+  onClose,
+}: {
+  title: string
+  selectedId: string | null
+  items: Array<{ id: string; name: string; badge: string }>
+  onSelect: (id: string | null) => void
+  onClose: () => void
+}) {
+  const [query, setQuery] = useState('')
+  const q = query.trim().toLowerCase()
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
+
+  const filtered = q
+    ? items.filter((it) => it.name.toLowerCase().includes(q) || it.id.toLowerCase().includes(q) || it.badge.toLowerCase().includes(q))
+    : items
+
+  return createPortal(
+    <div className="asset-picker__backdrop" onMouseDown={onClose}>
+      <section className="asset-picker" role="dialog" aria-label={title} onMouseDown={(e) => e.stopPropagation()}>
+        <header className="asset-picker__header">
+          <h2>{title}</h2>
+          <button type="button" onClick={onClose}><X size={14} /></button>
+        </header>
+        <div className="asset-picker__search">
+          <Search size={12} />
+          <input
+            autoFocus
+            value={query}
+            placeholder="搜索名称、类型或 ID…"
+            onChange={(e) => setQuery(e.target.value)}
+          />
+        </div>
+        <div className="asset-picker__list">
+          <button type="button" className={!selectedId ? 'is-on' : ''} onClick={() => onSelect(null)}>
+            <i />
+            <span>无（清空引用）</span>
+          </button>
+          {filtered.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              className={selectedId === item.id ? 'is-on' : ''}
+              onClick={() => onSelect(item.id)}
+            >
+              <i />
+              <span>{item.name}</span>
+              <em>{item.badge}</em>
+            </button>
+          ))}
+          {filtered.length === 0 && <p>没有匹配的项</p>}
+        </div>
+      </section>
+    </div>,
+    document.body,
+  )
 }

@@ -230,7 +230,7 @@ export function registerCodeAssetCommands(): () => void {
     params: {
       type: 'object',
       fields: {
-        nodeId: { type: 'string', default: '', label: '目标节点 ID' },
+        nodeId: { type: 'ref', target: 'node', default: '', label: '目标节点 ID' },
         scriptId: { type: 'string', default: '', label: '脚本 ID' },
         params: { type: 'object', fields: {}, label: '脚本参数', optional: true },
       },

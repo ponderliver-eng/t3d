@@ -71,7 +71,16 @@ const PROJECT_TSCONFIG = `{
 const RUNTIME_DTS_SUMMARY = `export interface Vec2 { x: number; y: number }
 export interface Vec3 { x: number; y: number; z: number }
 export interface Vec4 { x: number; y: number; z: number; w: number }
-export type ScriptParamSchema = Record<string, unknown>
+export type ScriptParamSchema =
+  | { type: 'number'; default: number; min?: number; max?: number; step?: number; label: string; description?: string }
+  | { type: 'boolean'; default: boolean; label: string; description?: string }
+  | { type: 'string'; default: string; label: string; description?: string }
+  | { type: 'color'; default: string; label: string; description?: string }
+  | { type: 'vec2'; default: readonly [number, number]; label: string; description?: string }
+  | { type: 'vec3'; default: readonly [number, number, number]; label: string; description?: string }
+  | { type: 'enum'; options: ReadonlyArray<{ value: string; label: string }>; default: string; label: string; description?: string }
+  | { type: 'ref'; target: 'node' | 'asset'; kinds?: readonly string[]; default?: string | null; label: string; description?: string }
+  | Record<string, unknown>
 export type ScriptParamMap = Record<string, ScriptParamSchema>
 export interface NodeHandle {
   readonly id: string; readonly name: string; readonly tags: readonly string[]

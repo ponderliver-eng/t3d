@@ -500,6 +500,13 @@ function compactMessagesForStep<
 function buildSystemPrompt(selectedRefs: Array<{ id: string; label: string }>): string {
   const designMd = formatDesignMarkdown(getDesignDoc())
   const overview = JSON.stringify(queryProjectOverview())
+  const sceneNodes = Object.values(useEditorStore.getState().nodes)
+  const nodeIndexText = sceneNodes.length > 0
+    ? `\n当前场景节点索引（名称 -> ID，共 ${sceneNodes.length} 个）：\n${sceneNodes
+        .slice(0, 30)
+        .map((n) => `- ${n.name} (${n.kind}): ${n.id}`)
+        .join('\n')}${sceneNodes.length > 30 ? '\n- ...（更多节点请调用 query__scene_outline）' : ''}`
+    : ''
   const selectedText = selectedRefs.length > 0
     ? `\n当前用户在视口中选中的节点（精简快照，无需重复 inspect 基础字段）：\n${selectedRefs
         .map((r) => {
@@ -525,7 +532,7 @@ function buildSystemPrompt(selectedRefs: Array<{ id: string; label: string }>): 
   return [
     '你是 T3D 游戏工程管理器的内置 AI 创作助手。',
     '核心原则：',
-    '1. 只能通过提供的工具读取或修改工程数据，不要编造不存在的节点 ID 或资产 ID；如需查询登记清单，优先按具体 category 查询（避免不必要的全量 all）。',
+    '1. 只能通过提供的工具读取或修改工程数据，严格使用工具返回的准确节点 ID 或资产 ID，切勿凭记忆猜测或截断 UUID；如需查询登记清单，优先按具体 category 查询（避免不必要的全量 all）。',
     '2. 搭完或修改完场景后，务必调用 query__project_diagnose 做一次工程体检并修正错误。',
     '3. 若是新建游戏项目或需求发生方向变化，先用 project__design__update 维护 design.md 全局规范。',
     '4. 放置模型或物体到地面时，优先开启 snapToGround: true。',
@@ -534,12 +541,13 @@ function buildSystemPrompt(selectedRefs: Array<{ id: string; label: string }>): 
     '   脚本内置 API（严禁自己编造 window.__t3dKeys 等全局变量）：',
     '   - 移动/旋转/缩放：必须整体赋值（如 self.position = { x, y, z }，self.rotation = { x, y, z }），不要写 self.position.x = ...。',
     '   - 输入（WASD/方向键/手柄/触控）：用 const move = self.input.axis2D("Move")（返回 { x, y }，W/↑ 为 y=+1，D/→ 为 x=+1）；也可用 self.input.isPressed("Jump" | "KeyW" | "Space") / self.input.justPressed(...) / self.input.isKeyPressed("KeyW")。',
+    '   - 节点/资产引用参数：若脚本参数需要引用场景节点或资产，必须声明为 { type: "ref", target: "node", label: "目标节点", default: null }（运行时 self.params.xxx 自动解析为 NodeHandle | null），不要用 type: "string" 存节点 ID。',
     '   - 节点查找与跟随：self.findNodeById(id)、self.findNodesByTag(tag)、self.moveToward(target, maxDist)、self.lookAt(target)。',
     '6. 编写自定义着色器后，可用 shader__bind 绑定到指定材质或节点。',
     '',
     '当前工程设计规范（design.md）：',
     designMd,
     '',
-    `当前工程概览：${overview}${selectedText}`,
+    `当前工程概览：${overview}${nodeIndexText}${selectedText}`,
   ].join('\n')
 }

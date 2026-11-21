@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type DragEvent, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
-import { Bone, Check, ChevronDown, ChevronRight, Component, ExternalLink, Eye, FolderOpen, FolderSearch, Image as ImageIcon, MapPin, Move, Package, Pause, Play, Plus, Rotate3d, Scaling, Search, Square, SunMedium, Trash2, Undo2, Unlink, Upload, X } from 'lucide-react'
+import { Bone, Check, ChevronDown, ChevronRight, Component, ExternalLink, Eye, FolderOpen, FolderSearch, Image as ImageIcon, MapPin, Move, Package, Pause, Play, Plus, Rotate3d, RotateCcw, Scaling, Search, Square, SunMedium, Trash2, Undo2, Unlink, Upload, X } from 'lucide-react'
 import { clipDuration, clipNamesFor, getModelTemplate, loadModelTemplate, subscribeModels, type ModelTreeNode } from '../assets/models'
 import { ClipField } from './ClipPicker'
 import { activeAnimatorState, emptyAnimator } from '../animation/animator'
@@ -2118,79 +2118,179 @@ function ProjectScriptCards({ node, disabled }: { node: SceneNode, disabled: boo
 
   return (
     <>
-      {entries.map(([scriptId, rawParams]) => {
-        const asset = codeAssets[scriptId]
-        const def = asset?.compiledScript?.behavior
-        const title = def?.name ?? scriptId
-        const schemaFields = def?.params ?? {}
-        const value = rawParams && typeof rawParams === 'object' ? rawParams : {}
-        const remove = () => {
-          const nextProject = { ...projectBag }
-          delete nextProject[scriptId]
-          const nextPacks = { ...(node.gameplay?.packs ?? {}), __project__: nextProject }
-          commitNode(node.id, `移除脚本 ${title}`, {
-            gameplay: { ...node.gameplay, packs: nextPacks },
-          })
-        }
-        return (
-          <Section
-            key={`script:${scriptId}`}
-            title={`脚本 · ${title}`}
-            color="#38bdf8"
-            action={(
-              <div style={{ display: 'flex', gap: 4 }}>
-                {asset && (
-                  <button
-                    type="button"
-                    title="编辑脚本源码"
-                    onClick={() => openCodeAssetModal('script', scriptId)}
-                    style={{ background: 'transparent', border: 'none', color: '#93c5fd', cursor: 'pointer', padding: 2 }}
-                  >
-                    <ExternalLink size={12} />
-                  </button>
-                )}
-                {!disabled && (
-                  <button
-                    type="button"
-                    title="移除脚本"
-                    onClick={remove}
-                    style={{ background: 'transparent', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: 2 }}
-                  >
-                    <Trash2 size={12} />
-                  </button>
-                )}
-              </div>
-            )}
-          >
-            {def?.description && (
-              <div style={{ fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.45, marginBottom: 4 }}>
-                {def.description}
-              </div>
-            )}
-            {Object.keys(schemaFields).length > 0 ? (
-              <SchemaForm
-                schema={{ type: 'object', fields: schemaFields }}
-                value={value}
-                disabled={disabled}
-                onChange={(nextVal) => {
-                  const nextPacks = {
-                    ...(node.gameplay?.packs ?? {}),
-                    __project__: { ...projectBag, [scriptId]: nextVal as Record<string, unknown> },
-                  }
-                  commitNode(node.id, `修改脚本参数 ${title}`, {
-                    gameplay: { ...node.gameplay, packs: nextPacks },
-                  })
-                }}
-              />
-            ) : (
-              <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                {asset ? '该脚本无公开参数' : `未找到脚本资产 scripts/${scriptId}.ts`}
-              </div>
-            )}
-          </Section>
-        )
-      })}
+      {entries.map(([scriptId, rawParams]) => (
+        <ProjectScriptCard
+          key={`script:${scriptId}`}
+          node={node}
+          scriptId={scriptId}
+          rawParams={rawParams}
+          projectBag={projectBag}
+          asset={codeAssets[scriptId]}
+          disabled={disabled}
+        />
+      ))}
     </>
+  )
+}
+
+function ProjectScriptCard({
+  node,
+  scriptId,
+  rawParams,
+  projectBag,
+  asset,
+  disabled,
+}: {
+  node: SceneNode
+  scriptId: string
+  rawParams: Record<string, unknown>
+  projectBag: Record<string, Record<string, unknown>>
+  asset: CodeAssetRecord | undefined
+  disabled: boolean
+}) {
+  const [open, setOpen] = useInspectorCardOpen(`script:${scriptId}`)
+  const def = asset?.compiledScript?.behavior
+  const title = def?.name ?? scriptId
+  const schemaFields = def?.params ?? {}
+  const value = rawParams && typeof rawParams === 'object' ? rawParams : {}
+  const enabled = value.__enabled !== false
+
+  const updateParams = (nextParams: Record<string, unknown>, label: string) => {
+    const nextPacks = {
+      ...(node.gameplay?.packs ?? {}),
+      __project__: { ...projectBag, [scriptId]: nextParams },
+    }
+    commitNode(node.id, label, {
+      gameplay: { ...node.gameplay, packs: nextPacks },
+    })
+  }
+
+  const toggleEnabled = (nextEnabled: boolean) => {
+    updateParams({ ...value, __enabled: nextEnabled }, `${nextEnabled ? '启用' : '停用'}脚本 ${title}`)
+  }
+
+  const resetDefaults = () => {
+    const defaults: Record<string, unknown> = { __enabled: enabled }
+    for (const [k, s] of Object.entries(schemaFields)) {
+      defaults[k] = defaultForSchema(s)
+    }
+    updateParams(defaults, `重置脚本参数 ${title}`)
+  }
+
+  const remove = () => {
+    const nextProject = { ...projectBag }
+    delete nextProject[scriptId]
+    const nextPacks = { ...(node.gameplay?.packs ?? {}), __project__: nextProject }
+    commitNode(node.id, `移除脚本 ${title}`, {
+      gameplay: { ...node.gameplay, packs: nextPacks },
+    })
+  }
+
+  return (
+    <section className="iv2-card iv2-card--wide">
+      <header className="iv2-card__header" onClick={() => setOpen(!open)}>
+        <span className="iv2-card__dot" style={{ background: enabled ? '#38bdf8' : '#64748b' }} />
+        <input
+          type="checkbox"
+          checked={enabled}
+          disabled={disabled}
+          title={enabled ? '点击关闭脚本（试玩时不运行）' : '点击开启脚本'}
+          onClick={(e) => e.stopPropagation()}
+          onChange={(e) => toggleEnabled(e.target.checked)}
+          style={{ width: 13, height: 13, margin: 0, cursor: disabled ? 'default' : 'pointer', accentColor: '#38bdf8', flexShrink: 0 }}
+        />
+        <span
+          style={{
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+            opacity: enabled ? 1 : 0.55,
+          }}
+        >
+          {`脚本 · ${title}`}
+        </span>
+        {!enabled && (
+          <span
+            style={{
+              fontSize: 10,
+              padding: '1px 5px',
+              borderRadius: 3,
+              background: 'rgba(148,163,184,0.14)',
+              color: '#94a3b8',
+              flexShrink: 0,
+            }}
+          >
+            已关闭
+          </span>
+        )}
+        <div className="iv2-card__actions" onClick={(e) => e.stopPropagation()}>
+          {asset && (
+            <button
+              type="button"
+              className="iv2-card__reset"
+              title="编辑脚本源码"
+              onClick={() => openCodeAssetModal('script', scriptId)}
+            >
+              <ExternalLink size={12} />
+            </button>
+          )}
+          {!disabled && Object.keys(schemaFields).length > 0 && (
+            <button
+              type="button"
+              className="iv2-card__reset"
+              title="重置为默认参数"
+              onClick={resetDefaults}
+            >
+              <RotateCcw size={12} />
+            </button>
+          )}
+          {!disabled && (
+            <button
+              type="button"
+              className="iv2-card__remove"
+              title="移除脚本"
+              onClick={remove}
+            >
+              <Trash2 size={12} />
+            </button>
+          )}
+        </div>
+        {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+      </header>
+      {open && (
+        <div className="iv2-card__body" style={{ gap: 8, opacity: enabled ? 1 : 0.6 }}>
+          {def?.description && (
+            <div
+              style={{
+                fontSize: 11,
+                color: 'var(--text-muted)',
+                lineHeight: 1.45,
+                padding: '5px 8px',
+                borderRadius: 4,
+                background: 'rgba(255,255,255,0.03)',
+                borderLeft: `2px solid ${enabled ? '#38bdf8' : '#64748b'}`,
+              }}
+            >
+              {def.description}
+            </div>
+          )}
+          {Object.keys(schemaFields).length > 0 ? (
+            <SchemaForm
+              schema={{ type: 'object', fields: schemaFields }}
+              value={value}
+              disabled={disabled}
+              onChange={(nextVal) => {
+                updateParams(nextVal as Record<string, unknown>, `修改脚本参数 ${title}`)
+              }}
+            />
+          ) : (
+            <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+              {asset ? '该脚本无公开参数' : `未找到脚本资产 scripts/${scriptId}.ts`}
+            </div>
+          )}
+        </div>
+      )}
+    </section>
   )
 }
 

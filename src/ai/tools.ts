@@ -14,6 +14,7 @@ import { createBranch, listBranches, switchBranch } from '../core/project/checkp
 import { getInputActionMap, saveProjectInputMap, setInputActionMap, type ActionBinding } from '../core/input/actionMap'
 import { captureMainViewport } from '../core/preview/offscreenPreview'
 import { projectDirectoryPath } from '../editor/project/disk'
+import { useEditorStore } from '../editor/scene/store'
 import { exportWebPlayerBundle } from '../player/exporter'
 import { PlaytestSession, type SmokeStep } from '../playtest/session'
 
@@ -229,6 +230,7 @@ export async function executeAiTool(
   toolName: string,
   args: Record<string, unknown>,
 ): Promise<AiToolExecutionResult> {
+  const resolvedArgs = resolveAiNodeArgs(toolName, args)
   switch (toolName) {
     case 'query__project_overview':
       return {
@@ -243,19 +245,23 @@ export async function executeAiTool(
         toolName,
         displayLabel: '查询场景层级',
         data: querySceneOutline(
-          typeof args.parentId === 'string' ? args.parentId : null,
-          typeof args.depth === 'number' ? args.depth : 3,
+          typeof resolvedArgs.parentId === 'string' ? resolvedArgs.parentId : null,
+          typeof resolvedArgs.depth === 'number' ? resolvedArgs.depth : 3,
         ),
       }
     case 'query__node_inspect': {
-      const nodeId = String(args.nodeId ?? '')
+      const nodeId = String(resolvedArgs.nodeId ?? '')
       const node = queryNodeInspect(nodeId)
       return {
         ok: Boolean(node),
         toolName,
         displayLabel: `检查节点 ${node?.name ?? nodeId}`,
         targetNodeId: node ? nodeId : undefined,
-        data: node ?? { ok: false, message: `节点 "${nodeId}" 不存在` },
+        data: node ?? {
+          ok: false,
+          message: `节点 "${nodeId}" 不存在`,
+          availableNodes: listCompactNodes(),
+        },
       }
     }
     case 'query__asset_search':
@@ -413,19 +419,80 @@ export async function executeAiTool(
 
   const commandId = fromToolName(toolName)
   const cmd = commandBus.get(commandId)
-  const res = await commandBus.dispatch(commandId, args)
-  const targetNodeId = extractTargetNodeId(args, res.ok ? res.value : undefined)
+  const res = await commandBus.dispatch(commandId, resolvedArgs)
+  const targetNodeId = extractTargetNodeId(resolvedArgs, res.ok ? res.value : undefined)
   const summary = res.ok
     ? (res.changed.summary || cmd?.title || commandId)
     : `${cmd?.title ?? commandId} 失败：${res.message}`
+
+  const data = !res.ok && (res.code === 'NOT_FOUND' || res.code === 'node.notFound' || res.message.includes('不存在'))
+    ? { ...res, availableNodes: listCompactNodes() }
+    : res
 
   return {
     ok: res.ok,
     toolName,
     displayLabel: summary,
     targetNodeId,
-    data: res,
+    data,
   }
+}
+
+function resolveNodeIdFuzzy(raw: string): string {
+  const trimmed = raw.trim()
+  if (!trimmed) return raw
+  const nodes = useEditorStore.getState().nodes
+  if (nodes[trimmed]) return trimmed
+
+  const all = Object.values(nodes)
+  // 1. 按节点名称精确匹配（仅当唯一匹配时自动转换）
+  const byExactName = all.filter((n) => n.name === trimmed)
+  if (byExactName.length === 1) return byExactName[0].id
+
+  // 2. 按 ID 前缀唯一匹配（防止大模型漏写/截断 UUID 尾部）
+  if (trimmed.length >= 6) {
+    const cleanPrefix = trimmed.replace(/\?+$/g, '').replace(/\.\.\.$/g, '')
+    if (cleanPrefix.length >= 6) {
+      const byPrefix = all.filter((n) => n.id.startsWith(cleanPrefix))
+      if (byPrefix.length === 1) return byPrefix[0].id
+    }
+  }
+  return raw
+}
+
+function resolveAiNodeArgs(toolName: string, args: Record<string, unknown>): Record<string, unknown> {
+  const next: Record<string, unknown> = { ...args }
+  const nodeRefKeys = ['nodeId', 'parentId', 'targetNodeId', 'sourceNodeId']
+  for (const key of nodeRefKeys) {
+    if (typeof next[key] === 'string' && next[key]) {
+      next[key] = resolveNodeIdFuzzy(next[key] as string)
+    }
+  }
+  if (Array.isArray(next.nodeIds)) {
+    next.nodeIds = next.nodeIds.map((id) => (typeof id === 'string' ? resolveNodeIdFuzzy(id) : id))
+  }
+
+  // 若是挂载脚本，顺便把脚本 params 里声明为 ref(node) 的字段也做名称/前缀容错解析
+  if (toolName === 'script__attach' && typeof next.scriptId === 'string' && next.params && typeof next.params === 'object') {
+    const scriptId = next.scriptId.replace(/^scripts\//, '').replace(/\.ts$/, '')
+    const behavior = useCodeAssetStore.getState().assets[scriptId]?.compiledScript?.behavior
+    if (behavior?.params) {
+      const resolvedParams = { ...(next.params as Record<string, unknown>) }
+      for (const [k, schema] of Object.entries(behavior.params)) {
+        if (schema.type === 'ref' && schema.target === 'node' && typeof resolvedParams[k] === 'string') {
+          resolvedParams[k] = resolveNodeIdFuzzy(resolvedParams[k] as string)
+        }
+      }
+      next.params = resolvedParams
+    }
+  }
+  return next
+}
+
+function listCompactNodes() {
+  return Object.values(useEditorStore.getState().nodes)
+    .slice(0, 40)
+    .map((n) => ({ id: n.id, name: n.name, kind: n.kind }))
 }
 
 function extractTargetNodeId(args: Record<string, unknown>, value: unknown): string | undefined {

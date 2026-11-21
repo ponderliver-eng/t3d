@@ -4375,6 +4375,9 @@ var virtualAxes = /* @__PURE__ */ new Map();
 function isKeyHeld(code) {
   return physicalKeys.has(code) || virtualKeys.has(code);
 }
+function wasKeyTapped(code) {
+  return tappedKeys.has(code);
+}
 function activeGamepad() {
   if (typeof navigator === "undefined" || typeof navigator.getGamepads !== "function") return null;
   const pads = navigator.getGamepads();
@@ -5016,8 +5019,9 @@ function buildScriptContext(node, scriptId, rawParams, stateObj, host) {
     fx: { spawn: () => {
     } },
     input: {
-      isPressed: (action) => isActionPressed(action),
-      justPressed: (action) => wasActionTapped(action),
+      isPressed: (actionOrKey) => isActionPressed(actionOrKey) || isKeyHeld(actionOrKey) || isKeyHeld(`Key${actionOrKey.toUpperCase()}`),
+      justPressed: (actionOrKey) => wasActionTapped(actionOrKey) || wasKeyTapped(actionOrKey) || wasKeyTapped(`Key${actionOrKey.toUpperCase()}`),
+      isKeyPressed: (code) => isKeyHeld(code) || isKeyHeld(`Key${code.toUpperCase()}`),
       justReleased: () => false,
       axis1D: (action) => isActionPressed(action) ? 1 : 0,
       axis2D: (action) => getActionAxis2D(action)
@@ -5140,6 +5144,9 @@ function stepProjectScripts(dt, host) {
     const projectScripts = node.gameplay?.packs?.__project__;
     if (!projectScripts || typeof projectScripts !== "object") continue;
     for (const [scriptId, rawParams] of Object.entries(projectScripts)) {
+      if (rawParams && typeof rawParams === "object" && rawParams.__enabled === false) {
+        continue;
+      }
       const def = compiledBehaviors.get(scriptId);
       if (!def) continue;
       const key = instanceKey2(node.id, scriptId);
@@ -5177,6 +5184,7 @@ function stepProjectScripts(dt, host) {
         const node = nodes[rec.nodeId];
         if (!def?.onMessage || !node) continue;
         const rawParams = node.gameplay?.packs?.__project__?.[rec.scriptId];
+        if (rawParams && typeof rawParams === "object" && rawParams.__enabled === false) continue;
         const ctx = buildScriptContext(node, rec.scriptId, rawParams, rec.state, host);
         const sender = msg.senderId ? makeNodeHandle(msg.senderId, host) : void 0;
         try {
