@@ -416,7 +416,11 @@ function toolPhaseLabel(toolName: string): string {
   if (toolName.startsWith('scene__')) return '正在搭建 / 修改场景节点…'
   if (toolName.startsWith('asset__')) return '正在处理材质与资产…'
   if (toolName.startsWith('gameplay__') || toolName.startsWith('capability__')) return '正在配置玩法与能力包…'
-  if (toolName === 'query__project_diagnose') return '正在执行工程体检与性能预算检查…'
+  if (toolName === 'ui__createDocument') return '正在生成 UI 界面资产…'
+  if (toolName === 'ui__updateDocument') return '正在更新 UI 界面结构…'
+  if (toolName === 'ui__mountScreen') return '正在挂载 UI 屏幕到场景…'
+  if (toolName === 'query__ui_inspect') return '正在读取 UI 界面结构…'
+  if (toolName.startsWith('query__project_diagnose')) return '正在执行工程体检与性能预算检查…'
   if (toolName.startsWith('query__')) return '正在读取工程信息…'
   if (toolName.startsWith('playtest__')) return '正在执行试玩冒烟验证…'
   if (toolName.startsWith('pack__')) return '正在处理能力包…'
@@ -548,7 +552,12 @@ function buildSystemPrompt(selectedRefs: Array<{ id: string; label: string }>): 
     '     · 动画片段：{ type: "ref", target: "clip", label: "动画", default: null }；策划表条目：{ type: "ref", target: "tableRow", tableId: "tags" | "juice", label: "...", default: null }',
     '   - 节点查找与跟随：self.findNodeById(id)、self.findNodesByTag(tag)、self.moveToward(target, maxDist)、self.lookAt(target)。',
     '   - 编辑器专用 Gizmo（试玩时自动完全隐藏/不执行）：可定义 onDrawGizmos(self, gizmos) 绘制辅助线与交互手柄，例如 gizmos.wireSphere(self.position, self.params.radius, { color: "#38bdf8" })、gizmos.wireBox(center, size)、gizmos.disc(center, radius)、gizmos.line(from, to)、gizmos.arrow(from, dir, len)；选中节点时可用 gizmos.isSelected 判断，并用 gizmos.radiusHandle("radius") 或 gizmos.positionHandle("targetPos") 绑定可拖拽参数手柄。',
+    '   - UI 与屏幕控制：self.ui.getVar(key) / self.ui.setVar(key, val) 读写界面变量；self.ui.onEvent(eventName, (payload) => { ... }) 监听按钮点击发送的 sendMessage 事件；self.ui.showScreen(nameOrId) / hideScreen(nameOrId) / toggleScreen(nameOrId) / isScreenVisible(nameOrId) 控制场景中 screen 屏幕显隐。',
     '6. 编写自定义着色器后，可用 shader__bind 绑定到指定材质或节点。',
+    '7. 创建/修改 UI 界面（ui__createDocument / ui__updateDocument / query__ui_inspect）：',
+    '   - document 格式：{ schemaVersion: 1, root: UiNode }；可用节点 type 为 "panel" | "stack" | "text" | "image" | "button" | "progress"。',
+    '   - layout 支持 mode: "anchor"（anchorMin/anchorMax/pivot 取 0~1，x/y/width/height 像素）或 mode: "flex"（flexDirection: "row"|"column", gap, align, justify, padding）。',
+    '   - 数据绑定：bindings: [{ id: "b1", target: "text"|"visible"|"enabled"|"progress.value"|"opacity", source: { kind: "variable", varId: "hp" } }]；按钮事件：click: { kind: "sendMessage", message: "start_game" } 或 { kind: "setVariable", varId: "...", value: "..." }。',
     '',
     '当前工程设计规范（design.md）：',
     designMd,

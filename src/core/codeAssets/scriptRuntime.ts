@@ -4,7 +4,7 @@ import { findRow } from '../../gameplay/registry'
 import { playSound, stopMusic } from '../../runtime/audio'
 import { measureCost } from '../../runtime/frameProfile'
 import { registerRuntimeSystem, RUNTIME_STAGE, type SceneRuntimeHost } from '../../runtime/sceneRuntime'
-import { uiValues, writeUiVariable } from '../../runtime/ui/values'
+import { onUiClick, setScreenVisible, uiValues, writeUiVariable } from '../../runtime/ui/values'
 import { getRuntimeWorld } from '../../runtime/world'
 import { getActionAxis2D, isActionPressed, isKeyHeld, wasActionTapped, wasKeyTapped } from '../input/actionMap'
 import { defaultForSchema, type FieldSchema } from '../schema/fieldSchema'
@@ -71,8 +71,37 @@ const compiledBehaviors = new Map<string, BehaviorDefinition>()
 const compiledSystems = new Map<string, { def: SystemDefinition; unregister: () => void }>()
 const instanceStates = new Map<string, BehaviorInstanceRecord>()
 const messageQueue: Array<{ targetNodeId: string | null; name: string; payload?: unknown; senderId?: string }> = []
+const uiEventHandlers = new Map<string, Map<string, Set<(payload?: unknown) => void>>>()
+const uiEventQueue: Array<{ eventName: string; payload: { nodeId: string; kind: string; varId?: string; value?: string } }> = []
+let uiClickSubscribed = false
 const globalMemory = new Map<string, unknown>()
 const persistentMemory = new Map<string, unknown>()
+
+function ensureUiClickBridge() {
+  if (uiClickSubscribed) return
+  uiClickSubscribed = true
+  onUiClick((action, uiNodeId) => {
+    if (getRuntimeWorld().getPlayState() !== 'playing') return
+    if (action.kind === 'sendMessage' && action.message) {
+      uiEventQueue.push({
+        eventName: action.message,
+        payload: { nodeId: uiNodeId, kind: action.kind },
+      })
+    } else if (action.kind === 'setVariable' && action.varId) {
+      uiEventQueue.push({
+        eventName: `var:${action.varId}`,
+        payload: { nodeId: uiNodeId, kind: action.kind, varId: action.varId, value: action.value },
+      })
+    }
+  })
+}
+
+function resolveScreenNodeId(screenIdOrName: string): string | null {
+  const nodes = getRuntimeWorld().getNodes()
+  if (nodes[screenIdOrName]?.kind === 'screen') return screenIdOrName
+  const hit = Object.values(nodes).find((n) => n.kind === 'screen' && n.name === screenIdOrName)
+  return hit ? hit.id : null
+}
 let simElapsed = 0
 let framePointerDelta = { x: 0, y: 0 }
 let framePointerPos = { x: 0, y: 0 }
@@ -364,7 +393,47 @@ function buildScriptContext(
     ui: {
       getVar: (key: string) => uiValues().variables[key],
       setVar: (key: string, value: unknown) => writeUiVariable(key, value),
-      onEvent: () => () => {},
+      onEvent: (eventName: string, handler: (payload?: unknown) => void) => {
+        ensureUiClickBridge()
+        const instKey = instanceKey(node.id, scriptId)
+        let byEvent = uiEventHandlers.get(instKey)
+        if (!byEvent) {
+          byEvent = new Map()
+          uiEventHandlers.set(instKey, byEvent)
+        }
+        let set = byEvent.get(eventName)
+        if (!set) {
+          set = new Set()
+          byEvent.set(eventName, set)
+        }
+        set.add(handler)
+        return () => {
+          set?.delete(handler)
+        }
+      },
+      showScreen: (screenIdOrName: string) => {
+        const sid = resolveScreenNodeId(screenIdOrName)
+        if (sid) setScreenVisible(sid, true)
+      },
+      hideScreen: (screenIdOrName: string) => {
+        const sid = resolveScreenNodeId(screenIdOrName)
+        if (sid) setScreenVisible(sid, false)
+      },
+      toggleScreen: (screenIdOrName: string) => {
+        const sid = resolveScreenNodeId(screenIdOrName)
+        if (!sid) return
+        const nodeTarget = world.getNodes()[sid]
+        const curMap = uiValues().screens
+        const cur = sid in curMap ? curMap[sid] : Boolean(nodeTarget?.screen?.visibleOnPlay ?? true)
+        setScreenVisible(sid, !cur)
+      },
+      isScreenVisible: (screenIdOrName: string) => {
+        const sid = resolveScreenNodeId(screenIdOrName)
+        if (!sid) return false
+        const nodeTarget = world.getNodes()[sid]
+        const curMap = uiValues().screens
+        return sid in curMap ? curMap[sid] : Boolean(nodeTarget?.screen?.visibleOnPlay ?? true)
+      },
     },
     scene: {
       currentId: () => world.getActiveSceneId(),
@@ -473,6 +542,8 @@ export function getRegisteredBehavior(scriptId: string): BehaviorDefinition | un
 export function clearScriptRuntimeState(): void {
   instanceStates.clear()
   messageQueue.length = 0
+  uiEventHandlers.clear()
+  uiEventQueue.length = 0
   globalMemory.clear()
   simElapsed = 0
   framePointerDelta = { x: 0, y: 0 }
@@ -555,9 +626,29 @@ function stepProjectScripts(dt: number, host: SceneRuntimeHost) {
     }
   }
 
+  // 派发 UI 点击事件队列
+  if (uiEventQueue.length > 0) {
+    const uiBatch = uiEventQueue.splice(0, uiEventQueue.length)
+    for (const evt of uiBatch) {
+      for (const [instKey, byEvent] of uiEventHandlers.entries()) {
+        if (!activeKeys.has(instKey)) continue
+        const handlers = byEvent.get(evt.eventName)
+        if (!handlers || handlers.size === 0) continue
+        for (const fn of [...handlers]) {
+          try {
+            fn(evt.payload)
+          } catch (error) {
+            world.log('error', `UI 事件 "${evt.eventName}" 处理错误: ${error instanceof Error ? error.message : String(error)}`)
+          }
+        }
+      }
+    }
+  }
+
   // 清理已移除节点或卸载脚本的实例状态
   for (const [key, rec] of instanceStates.entries()) {
     if (activeKeys.has(key)) continue
+    uiEventHandlers.delete(key)
     const def = compiledBehaviors.get(rec.scriptId)
     const node = nodes[rec.nodeId]
     if (def?.onDestroy && node) {

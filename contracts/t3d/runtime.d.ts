@@ -150,6 +150,10 @@ export interface UiApi {
   getVar<T = unknown>(key: string): T | undefined
   setVar(key: string, value: unknown): void
   onEvent(eventName: string, handler: (payload?: unknown) => void): () => void
+  showScreen(screenIdOrName: string): void
+  hideScreen(screenIdOrName: string): void
+  toggleScreen(screenIdOrName: string): void
+  isScreenVisible(screenIdOrName: string): boolean
 }
 
 export interface SceneApi {

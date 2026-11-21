@@ -16,6 +16,7 @@ import { captureMainViewport } from '../core/preview/offscreenPreview'
 import { projectDirectoryPath } from '../editor/project/disk'
 import { useEditorStore } from '../editor/scene/store'
 import { exportWebPlayerBundle } from '../player/exporter'
+import { useAssetStore } from '../editor/assets/library'
 import { PlaytestSession, type SmokeStep } from '../playtest/session'
 
 export interface AiToolSpec {
@@ -121,6 +122,17 @@ const QUERY_TOOLS: AiToolSpec[] = [
     name: 'query__code_assets',
     description: '列出当前工程已编译的脚本与着色器资产（含编译状态与诊断信息）',
     parameters: { type: 'object', properties: {}, additionalProperties: false },
+  },
+  {
+    name: 'query__ui_inspect',
+    description: '读取指定 UI 资产的完整 UiDocument 节点树与绑定/点击事件详情（不传 assetId 则列出全部 UI 资产）',
+    parameters: {
+      type: 'object',
+      properties: {
+        assetId: { type: 'string', description: 'UI 资产 ID（可选）' },
+      },
+      additionalProperties: false,
+    },
   },
   {
     name: 'playtest__run_smoke',
@@ -317,6 +329,36 @@ export async function executeAiTool(
         toolName,
         displayLabel: `代码资产列表（${items.length} 个）`,
         data: items,
+      }
+    }
+    case 'query__ui_inspect': {
+      const assets = useAssetStore.getState().assets
+      const id = typeof resolvedArgs.assetId === 'string' ? resolvedArgs.assetId.trim() : ''
+      if (id) {
+        const hit = assets[id]
+        if (!hit || hit.kind !== 'ui') {
+          return {
+            ok: false,
+            toolName,
+            displayLabel: `读取 UI 失败：${id} 不存在`,
+            data: { ok: false, message: `UI 资产 "${id}" 不存在` },
+          }
+        }
+        return {
+          ok: true,
+          toolName,
+          displayLabel: `读取 UI 文档 ${hit.name}`,
+          data: { id: hit.id, name: hit.name, document: hit.document },
+        }
+      }
+      const list = Object.values(assets)
+        .filter((a) => a.kind === 'ui')
+        .map((a) => ({ id: a.id, name: a.name }))
+      return {
+        ok: true,
+        toolName,
+        displayLabel: `UI 资产列表（${list.length} 个）`,
+        data: list,
       }
     }
     case 'playtest__run_smoke': {

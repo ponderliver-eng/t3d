@@ -1,7 +1,7 @@
 import { useAssetStore } from '../../../editor/assets/library'
 import { useEditorStore } from '../../../editor/scene/store'
 import type { PbrSlot, Vec3 } from '../../../editor/scene/types'
-import type { UiDocument } from '../../../runtime/ui/spec'
+import { UI_LAYERS, UI_NODE_TYPES, type UiDocument, type UiLayer, type UiNode } from '../../../runtime/ui/spec'
 import { commandBus } from '../bus'
 import type { CommandDef } from '../types'
 
@@ -130,45 +130,150 @@ const renameAssetCmd: CommandDef<RenameAssetParams, { assetId: string; name: str
   },
 }
 
+function normalizeUiNode(raw: unknown, depth = 0): UiNode {
+  const src = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {}
+  const rawType = typeof src.type === 'string' && (UI_NODE_TYPES as readonly string[]).includes(src.type)
+    ? (src.type as UiNode['type'])
+    : (depth === 0 ? 'panel' : 'text')
+  const layoutSrc = src.layout && typeof src.layout === 'object' ? (src.layout as Record<string, unknown>) : {}
+  const mode = layoutSrc.mode === 'flex' ? 'flex' : 'anchor'
+  const children = Array.isArray(src.children)
+    ? src.children.map((c) => normalizeUiNode(c, depth + 1))
+    : undefined
+
+  return {
+    ...(src as Partial<UiNode>),
+    id: typeof src.id === 'string' && src.id.trim() ? src.id : crypto.randomUUID(),
+    type: rawType,
+    name: typeof src.name === 'string' && src.name.trim() ? src.name : (depth === 0 ? 'Root' : rawType),
+    layout: {
+      ...(layoutSrc as Partial<NonNullable<UiNode['layout']>>),
+      mode,
+      ...(depth === 0 && mode === 'anchor' && !layoutSrc.anchorMin && !layoutSrc.anchorMax
+        ? { anchorMin: { x: 0, y: 0 }, anchorMax: { x: 1, y: 1 }, pivot: { x: 0, y: 0 }, x: 0, y: 0 }
+        : {}),
+    },
+    ...(children ? { children } : {}),
+  }
+}
+
+function normalizeUiDocument(raw: unknown): UiDocument {
+  const src = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {}
+  const rootRaw = src.root && typeof src.root === 'object' ? src.root : src
+  return {
+    schemaVersion: 1,
+    root: normalizeUiNode(rootRaw, 0),
+  }
+}
+
 interface CreateUiDocParams {
   name: string
   document: Record<string, unknown>
+  mountToScene?: boolean
+  layer?: UiLayer
 }
 
-const createUiDocCmd: CommandDef<CreateUiDocParams, { assetId: string; name: string }> = {
+const createUiDocCmd: CommandDef<CreateUiDocParams, { assetId: string; name: string; mounted?: boolean }> = {
   id: 'ui.createDocument',
   title: '新建界面文档资产',
-  description: '创建一个 UiDocument 界面资产',
+  description: '创建一个 UiDocument 界面资产（支持可选 mountToScene 直接挂载到当前场景）',
   risk: 'safe',
   params: {
     type: 'object',
     fields: {
       name: { type: 'string', minLength: 1, default: '新界面', label: '界面名称' },
-      document: { type: 'object', fields: {}, label: 'UiDocument 数据' },
+      document: { type: 'object', fields: {}, label: 'UiDocument 数据（含 schemaVersion: 1 和 root 节点树）' },
+      mountToScene: { type: 'boolean', default: false, optional: true, label: '立即挂载到场景' },
+      layer: {
+        type: 'enum',
+        options: UI_LAYERS.map((l) => ({ value: l, label: l })),
+        default: 'hud',
+        optional: true,
+        label: '挂载层级',
+      },
     },
   },
   run(_ctx, p) {
     const assetId = crypto.randomUUID()
+    const doc = normalizeUiDocument(p.document)
     useAssetStore.getState().add({
       id: assetId,
       name: p.name,
       kind: 'ui',
-      document: p.document as unknown as UiDocument,
+      document: doc,
     })
+    if (p.mountToScene) {
+      useEditorStore.getState().mountScreen(assetId, [0, 0, 0])
+      if (p.layer) {
+        const nodes = useEditorStore.getState().nodes
+        const screenNode = Object.values(nodes).find((n) => n.kind === 'screen' && n.screen?.documentId === assetId)
+        if (screenNode && screenNode.screen) {
+          useEditorStore.getState().updateNode(screenNode.id, {
+            name: p.name,
+            screen: { ...screenNode.screen, layer: p.layer },
+          })
+        }
+      }
+    }
     return {
       ok: true,
-      value: { assetId, name: p.name },
-      changed: { assetsChanged: [assetId], summary: `新建界面文档 ${p.name}` },
+      value: { assetId, name: p.name, mounted: Boolean(p.mountToScene) },
+      changed: {
+        assetsChanged: [assetId],
+        summary: `新建界面文档 ${p.name}${p.mountToScene ? ' 并挂载到场景' : ''}`,
+      },
+    }
+  },
+}
+
+interface UpdateUiDocParams {
+  assetId: string
+  name?: string
+  document: Record<string, unknown>
+}
+
+const updateUiDocCmd: CommandDef<UpdateUiDocParams, { assetId: string; name: string }> = {
+  id: 'ui.updateDocument',
+  title: '更新界面文档资产',
+  description: '更新已有 UiDocument 界面资产的节点树结构或名称',
+  risk: 'safe',
+  params: {
+    type: 'object',
+    fields: {
+      assetId: { type: 'ref', target: 'asset', kinds: ['ui'], required: true, label: '界面资产 ID' },
+      name: { type: 'string', default: '', optional: true, label: '新名称（可选）' },
+      document: { type: 'object', fields: {}, label: '更新后的 UiDocument 数据' },
+    },
+  },
+  run(_ctx, p) {
+    const store = useAssetStore.getState()
+    const asset = store.assets[p.assetId]
+    if (!asset || asset.kind !== 'ui') {
+      return { ok: false, code: 'asset.notFound', message: `界面资产 "${p.assetId}" 不存在` }
+    }
+    const nextDoc = normalizeUiDocument(p.document)
+    const nextName = p.name && p.name.trim() ? p.name.trim() : asset.name
+    store.updateUi(p.assetId, nextDoc)
+    if (nextName !== asset.name) {
+      store.rename(p.assetId, nextName)
+    }
+    return {
+      ok: true,
+      value: { assetId: p.assetId, name: nextName },
+      changed: { assetsChanged: [p.assetId], summary: `更新界面文档 ${nextName}` },
     }
   },
 }
 
 interface MountScreenParams {
   assetId: string
-  point: Vec3
+  point?: Vec3
+  layer?: UiLayer
+  visibleOnPlay?: boolean
+  name?: string
 }
 
-const mountScreenCmd: CommandDef<MountScreenParams, { assetId: string }> = {
+const mountScreenCmd: CommandDef<MountScreenParams, { assetId: string; nodeId?: string }> = {
   id: 'ui.mountScreen',
   title: '挂载界面屏幕到场景',
   risk: 'safe',
@@ -177,6 +282,15 @@ const mountScreenCmd: CommandDef<MountScreenParams, { assetId: string }> = {
     fields: {
       assetId: { type: 'ref', target: 'asset', kinds: ['ui'], required: true, label: '界面资产 ID' },
       point: { type: 'vec3', default: [0, 0, 0], optional: true, label: '放置位置' },
+      layer: {
+        type: 'enum',
+        options: UI_LAYERS.map((l) => ({ value: l, label: l })),
+        default: 'hud',
+        optional: true,
+        label: 'UI 层级',
+      },
+      visibleOnPlay: { type: 'boolean', default: true, optional: true, label: '试玩时默认显示' },
+      name: { type: 'string', default: '', optional: true, label: '屏幕节点名称（可选）' },
     },
   },
   run(_ctx, p) {
@@ -184,11 +298,28 @@ const mountScreenCmd: CommandDef<MountScreenParams, { assetId: string }> = {
     if (!asset || asset.kind !== 'ui') {
       return { ok: false, code: 'asset.notFound', message: `界面资产 "${p.assetId}" 不存在` }
     }
-    useEditorStore.getState().mountScreen(p.assetId, p.point ?? [0, 0, 0])
+    const editor = useEditorStore.getState()
+    const beforeIds = new Set(Object.keys(editor.nodes))
+    editor.mountScreen(p.assetId, p.point ?? [0, 0, 0])
+    const afterNodes = useEditorStore.getState().nodes
+    const created = Object.values(afterNodes).find((n) => !beforeIds.has(n.id) && n.kind === 'screen')
+    if (created && created.screen) {
+      useEditorStore.getState().updateNode(created.id, {
+        ...(p.name && p.name.trim() ? { name: p.name.trim() } : {}),
+        screen: {
+          ...created.screen,
+          ...(p.layer ? { layer: p.layer } : {}),
+          ...(typeof p.visibleOnPlay === 'boolean' ? { visibleOnPlay: p.visibleOnPlay } : {}),
+        },
+      })
+    }
     return {
       ok: true,
-      value: { assetId: p.assetId },
-      changed: { summary: `挂载界面 ${asset.name}` },
+      value: { assetId: p.assetId, nodeId: created?.id },
+      changed: {
+        ...(created ? { nodeIds: [created.id] } : {}),
+        summary: `挂载界面 ${asset.name}`,
+      },
     }
   },
 }
@@ -199,6 +330,7 @@ export function registerAssetAndUiCommands(): () => void {
     commandBus.register(assignMaterialCmd),
     commandBus.register(renameAssetCmd),
     commandBus.register(createUiDocCmd),
+    commandBus.register(updateUiDocCmd),
     commandBus.register(mountScreenCmd),
   ]
   return () => unsubs.forEach((fn) => fn())

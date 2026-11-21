@@ -112,7 +112,15 @@ export interface ScriptContext<P = Record<string, unknown>, S = Record<string, u
     justPressedMouseButton(button: 0 | 1 | 2): boolean
     justReleasedMouseButton(button: 0 | 1 | 2): boolean
   }
-  readonly ui: { getVar(k: string): unknown; setVar(k: string, v: unknown): void }
+  readonly ui: {
+    getVar(k: string): unknown
+    setVar(k: string, v: unknown): void
+    onEvent(eventName: string, handler: (payload?: unknown) => void): () => void
+    showScreen(screenIdOrName: string): void
+    hideScreen(screenIdOrName: string): void
+    toggleScreen(screenIdOrName: string): void
+    isScreenVisible(screenIdOrName: string): boolean
+  }
   readonly audio: { playSfx(id: string, opts?: { volume?: number }): void; playBgm(id: string): void; stopBgm(): void }
   log(...args: unknown[]): void
   warn(...args: unknown[]): void

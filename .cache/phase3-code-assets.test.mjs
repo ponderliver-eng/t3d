@@ -4726,6 +4726,7 @@ var components = {};
 var screens = {};
 var snapshot = EMPTY_UI_VALUES;
 var listeners = /* @__PURE__ */ new Set();
+var clickListeners = /* @__PURE__ */ new Set();
 function publish() {
   snapshot = {
     variables: { ...variables },
@@ -4740,6 +4741,14 @@ function uiValues() {
 function writeUiVariable(varId, value) {
   variables = { ...variables, [varId]: value };
   publish();
+}
+function setScreenVisible(nodeId, visible) {
+  screens = { ...screens, [nodeId]: visible };
+  publish();
+}
+function onUiClick(listener2) {
+  clickListeners.add(listener2);
+  return () => clickListeners.delete(listener2);
 }
 
 // src/core/codeAssets/scriptRuntime.ts
@@ -4778,8 +4787,35 @@ var compiledBehaviors = /* @__PURE__ */ new Map();
 var compiledSystems = /* @__PURE__ */ new Map();
 var instanceStates = /* @__PURE__ */ new Map();
 var messageQueue = [];
+var uiEventHandlers = /* @__PURE__ */ new Map();
+var uiEventQueue = [];
+var uiClickSubscribed = false;
 var globalMemory = /* @__PURE__ */ new Map();
 var persistentMemory = /* @__PURE__ */ new Map();
+function ensureUiClickBridge() {
+  if (uiClickSubscribed) return;
+  uiClickSubscribed = true;
+  onUiClick((action, uiNodeId) => {
+    if (getRuntimeWorld().getPlayState() !== "playing") return;
+    if (action.kind === "sendMessage" && action.message) {
+      uiEventQueue.push({
+        eventName: action.message,
+        payload: { nodeId: uiNodeId, kind: action.kind }
+      });
+    } else if (action.kind === "setVariable" && action.varId) {
+      uiEventQueue.push({
+        eventName: `var:${action.varId}`,
+        payload: { nodeId: uiNodeId, kind: action.kind, varId: action.varId, value: action.value }
+      });
+    }
+  });
+}
+function resolveScreenNodeId(screenIdOrName) {
+  const nodes = getRuntimeWorld().getNodes();
+  if (nodes[screenIdOrName]?.kind === "screen") return screenIdOrName;
+  const hit = Object.values(nodes).find((n) => n.kind === "screen" && n.name === screenIdOrName);
+  return hit ? hit.id : null;
+}
 var simElapsed = 0;
 var framePointerDelta = { x: 0, y: 0 };
 var framePointerPos = { x: 0, y: 0 };
@@ -5069,7 +5105,46 @@ function buildScriptContext(node, scriptId, rawParams, stateObj, host) {
     ui: {
       getVar: (key) => uiValues().variables[key],
       setVar: (key, value) => writeUiVariable(key, value),
-      onEvent: () => () => {
+      onEvent: (eventName, handler) => {
+        ensureUiClickBridge();
+        const instKey = instanceKey2(node.id, scriptId);
+        let byEvent = uiEventHandlers.get(instKey);
+        if (!byEvent) {
+          byEvent = /* @__PURE__ */ new Map();
+          uiEventHandlers.set(instKey, byEvent);
+        }
+        let set = byEvent.get(eventName);
+        if (!set) {
+          set = /* @__PURE__ */ new Set();
+          byEvent.set(eventName, set);
+        }
+        set.add(handler);
+        return () => {
+          set?.delete(handler);
+        };
+      },
+      showScreen: (screenIdOrName) => {
+        const sid = resolveScreenNodeId(screenIdOrName);
+        if (sid) setScreenVisible(sid, true);
+      },
+      hideScreen: (screenIdOrName) => {
+        const sid = resolveScreenNodeId(screenIdOrName);
+        if (sid) setScreenVisible(sid, false);
+      },
+      toggleScreen: (screenIdOrName) => {
+        const sid = resolveScreenNodeId(screenIdOrName);
+        if (!sid) return;
+        const nodeTarget = world3.getNodes()[sid];
+        const curMap = uiValues().screens;
+        const cur = sid in curMap ? curMap[sid] : Boolean(nodeTarget?.screen?.visibleOnPlay ?? true);
+        setScreenVisible(sid, !cur);
+      },
+      isScreenVisible: (screenIdOrName) => {
+        const sid = resolveScreenNodeId(screenIdOrName);
+        if (!sid) return false;
+        const nodeTarget = world3.getNodes()[sid];
+        const curMap = uiValues().screens;
+        return sid in curMap ? curMap[sid] : Boolean(nodeTarget?.screen?.visibleOnPlay ?? true);
       }
     },
     scene: {
@@ -5168,6 +5243,8 @@ function compileAndRegisterScript(id, fileName, source) {
 function clearScriptRuntimeState() {
   instanceStates.clear();
   messageQueue.length = 0;
+  uiEventHandlers.clear();
+  uiEventQueue.length = 0;
   globalMemory.clear();
   simElapsed = 0;
   framePointerDelta = { x: 0, y: 0 };
@@ -5245,8 +5322,26 @@ function stepProjectScripts(dt, host) {
       }
     }
   }
+  if (uiEventQueue.length > 0) {
+    const uiBatch = uiEventQueue.splice(0, uiEventQueue.length);
+    for (const evt of uiBatch) {
+      for (const [instKey, byEvent] of uiEventHandlers.entries()) {
+        if (!activeKeys.has(instKey)) continue;
+        const handlers = byEvent.get(evt.eventName);
+        if (!handlers || handlers.size === 0) continue;
+        for (const fn of [...handlers]) {
+          try {
+            fn(evt.payload);
+          } catch (error) {
+            world3.log("error", `UI \u4E8B\u4EF6 "${evt.eventName}" \u5904\u7406\u9519\u8BEF: ${error instanceof Error ? error.message : String(error)}`);
+          }
+        }
+      }
+    }
+  }
   for (const [key, rec] of instanceStates.entries()) {
     if (activeKeys.has(key)) continue;
+    uiEventHandlers.delete(key);
     const def = compiledBehaviors.get(rec.scriptId);
     const node = nodes[rec.nodeId];
     if (def?.onDestroy && node) {
