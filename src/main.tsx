@@ -1,12 +1,14 @@
 import { createRoot } from 'react-dom/client'
 import { Cache } from 'three'
 import App from './App'
+import { ensureCoreCommandsRegistered } from './core/commands'
 import { openCachedProject } from './editor/assets/project'
 import { PreviewStandalone } from './editor/preview/PreviewHost'
 import { readPreviewHash } from './editor/preview/previewStore'
 import './styles/global.css'
 
 Cache.enabled = true
+ensureCoreCommandsRegistered()
 
 const splash = document.getElementById('boot-splash')
 const standalone = readPreviewHash()
