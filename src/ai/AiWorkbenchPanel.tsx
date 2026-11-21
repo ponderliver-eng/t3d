@@ -1,5 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { Bot, Check, RotateCcw, Send, Settings, Sparkles, Square, Trash2, X } from 'lucide-react'
+import { createCheckpoint } from '../core/project/checkpoints'
+import { useManagerModalStore } from '../core/project/ProjectManagerModal'
+import { useCodeAssetStore } from '../core/codeAssets/workspace'
 import { useEditorStore } from '../editor/scene/store'
 import { useAgentStore } from './agentLoop'
 
@@ -24,6 +27,7 @@ export default function AiWorkbenchPanel() {
 
   const selection = useEditorStore((s) => s.selection)
   const nodes = useEditorStore((s) => s.nodes)
+  const codeAssets = useCodeAssetStore((s) => s.assets)
 
   const [input, setInput] = useState('')
   const [settingsOpen, setSettingsOpen] = useState(false)
@@ -59,11 +63,51 @@ export default function AiWorkbenchPanel() {
   const selectedNodes = selection.map((id) => nodes[id]).filter(Boolean)
 
   const handleSend = () => {
-    if (!input.trim() || status !== 'idle') return
-    const text = input
+    const trimmed = input.trim()
+    if (!trimmed || status !== 'idle') return
+    if (trimmed === '/diagnose') {
+      setInput('')
+      useManagerModalStore.getState().openModal('diagnose')
+      return
+    }
+    if (trimmed === '/pack') {
+      setInput('')
+      useManagerModalStore.getState().openModal('packs')
+      return
+    }
+    if (trimmed === '/checkpoint') {
+      setInput('')
+      void createCheckpoint(`手动快照 ${new Date().toLocaleTimeString()}`, true).then(() => {
+        useEditorStore.getState().notify('已创建里程碑快照')
+      })
+      return
+    }
+    if (trimmed === '/playtest') {
+      setInput('')
+      void sendPrompt('请启动试玩探针跑一次冒烟测试（playtest__run_smoke）并做工程体检（query__project_diagnose），汇报结果。')
+      return
+    }
     setInput('')
-    void sendPrompt(text)
+    void sendPrompt(trimmed)
   }
+
+  const atMatch = input.match(/@([^\s@]*)$/)
+  const atQuery = atMatch ? atMatch[1].toLowerCase() : null
+  const slashMenu = input.startsWith('/') && !input.includes(' ')
+  const mentionCandidates = atQuery === null
+    ? []
+    : [
+        ...Object.values(nodes).map(n => ({ id: n.id, label: n.name, kind: '节点' })),
+        ...Object.values(codeAssets).map(c => ({ id: c.id, label: c.name, kind: c.kind === 'shader' ? '着色器' : '脚本' })),
+      ]
+        .filter(item => !atQuery || item.label.toLowerCase().includes(atQuery))
+        .slice(0, 6)
+  const slashCommands = [
+    { cmd: '/playtest', desc: '运行冒烟试玩与体检' },
+    { cmd: '/diagnose', desc: '打开体检与性能预算看板' },
+    { cmd: '/pack', desc: '打开能力包沉淀中心' },
+    { cmd: '/checkpoint', desc: '立即保存里程碑快照' },
+  ].filter(item => item.cmd.startsWith(input.toLowerCase()))
 
   return (
     <aside
@@ -425,12 +469,66 @@ export default function AiWorkbenchPanel() {
             )}
           </div>
         )}
-        <div style={{ display: 'flex', gap: '6px', alignItems: 'flex-end' }}>
+        <div style={{ position: 'relative' }}>
+          {slashMenu && slashCommands.length > 0 && (
+            <div style={popupMenuStyle}>
+              {slashCommands.map(item => (
+                <button
+                  key={item.cmd}
+                  type="button"
+                  style={popupItemStyle}
+                  onClick={() => {
+                    setInput(item.cmd)
+                    setTimeout(() => handleSend(), 0)
+                  }}
+                >
+                  <strong style={{ color: '#93c5fd' }}>{item.cmd}</strong>
+                  <span style={{ color: '#a1a1aa' }}>{item.desc}</span>
+                </button>
+              ))}
+            </div>
+          )}
+          {!slashMenu && mentionCandidates.length > 0 && (
+            <div style={popupMenuStyle}>
+              {mentionCandidates.map(item => (
+                <button
+                  key={`${item.kind}:${item.id}`}
+                  type="button"
+                  style={popupItemStyle}
+                  onClick={() => {
+                    setInput(prev => prev.replace(/@[^\s@]*$/, `@${item.label} `))
+                  }}
+                >
+                  <span style={{ color: '#e4e4e7' }}>@{item.label}</span>
+                  <span style={{ color: '#71717a', marginLeft: 'auto' }}>{item.kind}</span>
+                </button>
+              ))}
+            </div>
+          )}
+          <div style={{ display: 'flex', gap: '6px', alignItems: 'flex-end' }}>
           <textarea
             rows={2}
             value={input}
-            placeholder="描述你想做的游戏或改动（Enter 发送，Shift+Enter 换行）"
+            placeholder="输入需求，@ 引用节点/脚本，/ 触发快捷指令（Enter 发送）"
             onChange={(e) => setInput(e.target.value)}
+            onPaste={(e) => {
+              const items = e.clipboardData?.items
+              if (!items) return
+              for (const item of items) {
+                if (item.type.startsWith('image/')) {
+                  const file = item.getAsFile()
+                  if (!file) continue
+                  const reader = new FileReader()
+                  reader.onload = () => {
+                    if (typeof reader.result === 'string') {
+                      setPendingAttachmentImage(reader.result)
+                    }
+                  }
+                  reader.readAsDataURL(file)
+                  break
+                }
+              }
+            }}
             onKeyDown={(e) => {
               if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault()
@@ -485,6 +583,7 @@ export default function AiWorkbenchPanel() {
               <Square size={12} />
             </button>
           )}
+          </div>
         </div>
       </div>
     </aside>
@@ -536,4 +635,34 @@ const refPillStyle: React.CSSProperties = {
   border: '1px solid rgba(59,130,246,0.38)',
   color: '#93c5fd',
   fontSize: '11px',
+}
+
+const popupMenuStyle: React.CSSProperties = {
+  position: 'absolute',
+  bottom: '100%',
+  left: 0,
+  right: 0,
+  marginBottom: 6,
+  padding: 4,
+  borderRadius: 6,
+  background: '#181a20',
+  border: '1px solid rgba(255,255,255,0.14)',
+  boxShadow: '0 10px 28px rgba(0,0,0,0.55)',
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 2,
+  zIndex: 20,
+}
+
+const popupItemStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 8,
+  padding: '5px 8px',
+  borderRadius: 4,
+  border: 'none',
+  background: 'transparent',
+  fontSize: 11,
+  cursor: 'pointer',
+  textAlign: 'left',
 }

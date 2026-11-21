@@ -1,4 +1,4 @@
-import { ArrowDownToLine, Axis3d, BookOpen, BoxSelect, Check, Crosshair, FilePlus, GitBranch, Globe, Grid3x3, History, Library, Magnet, Move3d, Package, Pause, Play, Redo2, RotateCcw, Save, Scaling, Sparkles, Square, Undo2 } from 'lucide-react'
+import { ArrowDownToLine, Axis3d, BookOpen, BoxSelect, Check, Crosshair, FileDown, FilePlus, GitBranch, Globe, Grid3x3, History, Library, Magnet, Move3d, Package, Pause, Play, Redo2, RotateCcw, Save, Scaling, Activity, Sparkles, Square, Undo2 } from 'lucide-react'
 import { useAgentStore } from '../../ai/agentLoop'
 import { useManagerModalStore } from '../../core/project/ProjectManagerModal'
 import { saveProjectNow } from '../assets/project'
@@ -168,6 +168,24 @@ export default function Toolbar() {
       >
         <GitBranch size={14} />
         <span>分支</span>
+      </button>
+      <button
+        type="button"
+        className="toolbar__btn"
+        title="体检与性能预算看板"
+        onClick={() => useManagerModalStore.getState().openModal('diagnose')}
+      >
+        <Activity size={14} />
+        <span>体检</span>
+      </button>
+      <button
+        type="button"
+        className="toolbar__btn"
+        title="验证与 Web 发布"
+        onClick={() => useManagerModalStore.getState().openModal('publish')}
+      >
+        <FileDown size={14} />
+        <span>发布</span>
       </button>
       <button
         type="button"

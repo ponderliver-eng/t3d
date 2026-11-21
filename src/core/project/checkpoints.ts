@@ -266,6 +266,32 @@ export function activeBranchId(): string {
   return currentBranchId
 }
 
+export interface BranchDiffSummary {
+  added: string[]
+  removed: string[]
+  modified: string[]
+}
+
+export function diffBranchWithMain(branchId: string): BranchDiffSummary | null {
+  ensureMainBranch()
+  const main = branches.get('main')
+  const target = branches.get(branchId)
+  if (!main || !target) return null
+  const mainNodes = currentBranchId === 'main' ? useEditorStore.getState().nodes : main.snapshot.nodes
+  const targetNodes = currentBranchId === branchId ? useEditorStore.getState().nodes : target.snapshot.nodes
+  const added: string[] = []
+  const removed: string[] = []
+  const modified: string[] = []
+  for (const [id, node] of Object.entries(targetNodes)) {
+    if (!mainNodes[id]) added.push(node.name)
+    else if (JSON.stringify(mainNodes[id]) !== JSON.stringify(node)) modified.push(node.name)
+  }
+  for (const [id, node] of Object.entries(mainNodes)) {
+    if (!targetNodes[id]) removed.push(node.name)
+  }
+  return { added, removed, modified }
+}
+
 function toBranchSummary(branch: ExperimentBranch): BranchSummary {
   return {
     id: branch.id,
