@@ -19,6 +19,7 @@ export interface AiTurnItem {
   id: string
   role: 'user' | 'assistant'
   text: string
+  imageDataUrl?: string
   refs?: Array<{ kind: 'node'; id: string; label: string }>
   actions?: AiActionPill[]
   checkpointId?: string
@@ -44,6 +45,8 @@ interface ProviderInfo {
 
 interface AgentState {
   panelOpen: boolean
+  quickPromptOpen: boolean
+  pendingAttachmentImage: string | null
   status: 'idle' | 'running' | 'awaiting-confirm'
   activeRequestId: string | null
   streamingText: string
@@ -54,6 +57,8 @@ interface AgentState {
   activeNodeIds: string[]
 
   setPanelOpen: (open: boolean) => void
+  setQuickPromptOpen: (open: boolean) => void
+  setPendingAttachmentImage: (dataUrl: string | null) => void
   refreshProviders: () => Promise<void>
   saveProvider: (input: {
     id: string
@@ -75,6 +80,8 @@ const MAX_TOOL_STEPS = 16
 
 export const useAgentStore = create<AgentState>((set, get) => ({
   panelOpen: false,
+  quickPromptOpen: false,
+  pendingAttachmentImage: null,
   status: 'idle',
   activeRequestId: null,
   streamingText: '',
@@ -85,6 +92,8 @@ export const useAgentStore = create<AgentState>((set, get) => ({
   activeNodeIds: [],
 
   setPanelOpen: (open) => set({ panelOpen: open }),
+  setQuickPromptOpen: (open) => set({ quickPromptOpen: open }),
+  setPendingAttachmentImage: (dataUrl) => set({ pendingAttachmentImage: dataUrl }),
 
   refreshProviders: async () => {
     const ai = electronBridge()?.ai
@@ -164,10 +173,14 @@ export const useAgentStore = create<AgentState>((set, get) => ({
       .filter(Boolean)
       .map((n) => ({ kind: 'node' as const, id: n.id, label: n.name }))
 
+    const attachedImage = get().pendingAttachmentImage ?? undefined
+    if (attachedImage) set({ pendingAttachmentImage: null })
+
     const userTurn: AiTurnItem = {
       id: `u_${Date.now()}`,
       role: 'user',
       text,
+      imageDataUrl: attachedImage,
       refs: selectedRefs.length > 0 ? selectedRefs : undefined,
     }
 

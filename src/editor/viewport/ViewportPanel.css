@@ -582,3 +582,125 @@
   height: 48px;
   border-radius: 999px;
 }
+
+.viewport-annotate-canvas {
+  position: absolute;
+  inset: 0;
+  z-index: 32;
+  cursor: crosshair;
+}
+
+.viewport-annotate-bar {
+  position: absolute;
+  top: 44px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 33;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  border-radius: 6px;
+  background: rgba(18, 21, 26, 0.92);
+  border: 1px solid rgba(248, 113, 113, 0.45);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+  font-size: 12px;
+  color: #e4e4e7;
+}
+
+.viewport-annotate-bar button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 24px;
+  padding: 0 8px;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.06);
+  color: #e4e4e7;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.viewport-annotate-bar button.is-primary {
+  background: #2563eb;
+  border-color: #2563eb;
+  color: #fff;
+}
+
+.viewport-quick-prompt {
+  position: absolute;
+  top: 52px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 35;
+  width: min(460px, calc(100% - 28px));
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: #181a1f;
+  border: 1px solid rgba(192, 132, 252, 0.4);
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.6);
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.viewport-quick-prompt__head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: #d4d4d8;
+}
+
+.viewport-quick-prompt__head button {
+  margin-left: auto;
+  background: transparent;
+  border: none;
+  color: #a1a1aa;
+  cursor: pointer;
+  display: inline-flex;
+  padding: 2px;
+}
+
+.viewport-quick-prompt__pill {
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: rgba(59, 130, 246, 0.18);
+  color: #93c5fd;
+  font-size: 10px;
+}
+
+.viewport-quick-prompt__row {
+  display: flex;
+  gap: 6px;
+}
+
+.viewport-quick-prompt__row input {
+  flex: 1;
+  height: 28px;
+  padding: 0 9px;
+  border-radius: 5px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: #101216;
+  color: #f4f4f5;
+  font-size: 12px;
+}
+
+.viewport-quick-prompt__row button {
+  width: 30px;
+  height: 28px;
+  border-radius: 5px;
+  border: none;
+  background: #7c3aed;
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.viewport-quick-prompt__row button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}

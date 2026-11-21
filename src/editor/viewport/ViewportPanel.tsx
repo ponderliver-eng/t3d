@@ -5,8 +5,10 @@ import { subscribeWarmProgress, warmProgress } from '../assets/project'
 import { useI18n, type MessageKey } from '../i18n'
 import type { CameraView } from '../scene/types'
 import { useAssetStore } from '../assets/library'
-import { ArrowDown, ArrowDownToLine, ArrowLeft, ArrowRight, ArrowUp, Axis3d, BarChart3, Box, BoxSelect, ChevronDown, Crosshair, Focus, Globe, Grid3x3, Lightbulb, Magnet, Maximize, Monitor, Move3d, Route, RotateCcw, Scaling, Scan, Smartphone, Square } from 'lucide-react'
+import { ArrowDown, ArrowDownToLine, ArrowLeft, ArrowRight, ArrowUp, Axis3d, BarChart3, Box, BoxSelect, ChevronDown, Crosshair, Focus, Globe, Grid3x3, Lightbulb, Magnet, Maximize, Monitor, Move3d, PenTool, Route, RotateCcw, Scaling, Scan, Send, Smartphone, Sparkles, Square, Trash2, X } from 'lucide-react'
+import { useAgentStore } from '../../ai/agentLoop'
 import { injectVirtualInput } from '../../core/input/actionMap'
+import { captureMainViewport } from '../../core/preview/offscreenPreview'
 import { useEditorStore } from '../scene/store'
 import { EditorViewport } from './EditorViewport'
 import ViewCube from './ViewCube'
@@ -46,8 +48,72 @@ export default function ViewportPanel() {
   const [menu, setMenu] = useState<'view' | 'gizmo' | null>(null)
   const [statsOpen, setStatsOpen] = useState(false)
   const [devicePreset, setDevicePreset] = useState<'full' | 'desktop' | 'mobile-portrait' | 'mobile-landscape'>('full')
+  const [annotateMode, setAnnotateMode] = useState(false)
+  const annotateCanvasRef = useRef<HTMLCanvasElement>(null)
+  const drawingRef = useRef(false)
+  const quickPromptOpen = useAgentStore(state => state.quickPromptOpen)
+  const setQuickPromptOpen = useAgentStore(state => state.setQuickPromptOpen)
+  const [quickInput, setQuickInput] = useState('')
+  const selection = useEditorStore(state => state.selection)
+  const nodes = useEditorStore(state => state.nodes)
   const { t } = useI18n()
   const viewName = (id: CameraView) => t(`view.${id}` as MessageKey)
+
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'k') {
+        event.preventDefault()
+        setQuickPromptOpen(!useAgentStore.getState().quickPromptOpen)
+      } else if (event.key === 'Escape') {
+        if (useAgentStore.getState().quickPromptOpen) setQuickPromptOpen(false)
+        if (annotateMode) setAnnotateMode(false)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [annotateMode, setQuickPromptOpen])
+
+  useEffect(() => {
+    if (!annotateMode) return
+    const overlay = annotateCanvasRef.current
+    const stage = stageRef.current
+    if (!overlay || !stage) return
+    const rect = stage.getBoundingClientRect()
+    overlay.width = Math.max(1, Math.floor(rect.width))
+    overlay.height = Math.max(1, Math.floor(rect.height))
+  }, [annotateMode])
+
+  const clearAnnotation = () => {
+    const overlay = annotateCanvasRef.current
+    if (!overlay) return
+    const ctx = overlay.getContext('2d')
+    ctx?.clearRect(0, 0, overlay.width, overlay.height)
+  }
+
+  const sendAnnotationToAi = () => {
+    const baseDataUrl = captureMainViewport()
+    const overlay = annotateCanvasRef.current
+    if (!baseDataUrl || !overlay) {
+      useAgentStore.getState().setPanelOpen(true)
+      setAnnotateMode(false)
+      return
+    }
+    const img = new Image()
+    img.onload = () => {
+      const merged = document.createElement('canvas')
+      merged.width = img.width
+      merged.height = img.height
+      const ctx = merged.getContext('2d')
+      if (ctx) {
+        ctx.drawImage(img, 0, 0)
+        ctx.drawImage(overlay, 0, 0, img.width, img.height)
+        useAgentStore.getState().setPendingAttachmentImage(merged.toDataURL('image/png'))
+        useAgentStore.getState().setPanelOpen(true)
+      }
+      setAnnotateMode(false)
+    }
+    img.src = baseDataUrl
+  }
 
   const viewportRef = useRef<EditorViewport | null>(null)
 
@@ -194,6 +260,22 @@ export default function ViewportPanel() {
           </button>
           <button
             type="button"
+            className={`viewport-tool-btn ${annotateMode ? 'viewport-tool-btn--active' : ''}`}
+            title="视口圈选批注并发送给 AI"
+            onClick={() => setAnnotateMode(v => !v)}
+          >
+            <PenTool size={12} />
+          </button>
+          <button
+            type="button"
+            className={`viewport-tool-btn ${quickPromptOpen ? 'viewport-tool-btn--active' : ''}`}
+            title="就地唤醒 AI 指令框 (Ctrl/Cmd + K)"
+            onClick={() => setQuickPromptOpen(!quickPromptOpen)}
+          >
+            <Sparkles size={12} />
+          </button>
+          <button
+            type="button"
             className="viewport-tool-btn"
             title={t('view.fullscreen')}
             onClick={() => {
@@ -291,6 +373,89 @@ export default function ViewportPanel() {
                 onPointerDown={() => injectVirtualInput({ type: 'actionDown', action: 'Jump' })}
                 onPointerUp={() => injectVirtualInput({ type: 'actionUp', action: 'Jump' })}
               >跳</button>
+            </div>
+          </div>
+        )}
+        {annotateMode && (
+          <>
+            <canvas
+              ref={annotateCanvasRef}
+              className="viewport-annotate-canvas"
+              onPointerDown={e => {
+                const canvas = annotateCanvasRef.current
+                if (!canvas) return
+                const rect = canvas.getBoundingClientRect()
+                const ctx = canvas.getContext('2d')
+                if (!ctx) return
+                drawingRef.current = true
+                ctx.strokeStyle = '#ef4444'
+                ctx.lineWidth = 3
+                ctx.lineCap = 'round'
+                ctx.lineJoin = 'round'
+                ctx.beginPath()
+                ctx.moveTo(e.clientX - rect.left, e.clientY - rect.top)
+              }}
+              onPointerMove={e => {
+                if (!drawingRef.current) return
+                const canvas = annotateCanvasRef.current
+                if (!canvas) return
+                const rect = canvas.getBoundingClientRect()
+                const ctx = canvas.getContext('2d')
+                if (!ctx) return
+                ctx.lineTo(e.clientX - rect.left, e.clientY - rect.top)
+                ctx.stroke()
+              }}
+              onPointerUp={() => { drawingRef.current = false }}
+              onPointerLeave={() => { drawingRef.current = false }}
+            />
+            <div className="viewport-annotate-bar" onPointerDown={e => e.stopPropagation()}>
+              <span>在视口中圈画需要修改的位置</span>
+              <button type="button" onClick={clearAnnotation}><Trash2 size={12} />清除</button>
+              <button type="button" className="is-primary" onClick={sendAnnotationToAi}><Send size={12} />附带批注发给 AI</button>
+              <button type="button" onClick={() => setAnnotateMode(false)}><X size={12} /></button>
+            </div>
+          </>
+        )}
+        {quickPromptOpen && (
+          <div className="viewport-quick-prompt" onPointerDown={e => e.stopPropagation()}>
+            <div className="viewport-quick-prompt__head">
+              <Sparkles size={13} style={{ color: '#c084fc' }} />
+              <span>AI 就地指令</span>
+              {selection.slice(0, 3).map(id => nodes[id]).filter(Boolean).map(n => (
+                <span key={n.id} className="viewport-quick-prompt__pill">@{n.name}</span>
+              ))}
+              <button type="button" onClick={() => setQuickPromptOpen(false)}><X size={12} /></button>
+            </div>
+            <div className="viewport-quick-prompt__row">
+              <input
+                autoFocus
+                value={quickInput}
+                placeholder="输入对当前选中物体或视口的修改要求，回车发送…"
+                onChange={e => setQuickInput(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' && quickInput.trim()) {
+                    const text = quickInput.trim()
+                    setQuickInput('')
+                    setQuickPromptOpen(false)
+                    useAgentStore.getState().setPanelOpen(true)
+                    void useAgentStore.getState().sendPrompt(text)
+                  }
+                }}
+              />
+              <button
+                type="button"
+                disabled={!quickInput.trim()}
+                onClick={() => {
+                  const text = quickInput.trim()
+                  if (!text) return
+                  setQuickInput('')
+                  setQuickPromptOpen(false)
+                  useAgentStore.getState().setPanelOpen(true)
+                  void useAgentStore.getState().sendPrompt(text)
+                }}
+              >
+                <Send size={12} />
+              </button>
             </div>
           </div>
         )}

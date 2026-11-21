@@ -3,6 +3,7 @@ import { registerAssetAndUiCommands } from './domains/assetAndUi'
 import { registerCapabilityCommands } from './domains/capability'
 import { registerCodeAssetCommands } from './domains/codeAssets'
 import { registerGameplayCommands } from './domains/gameplay'
+import { registerPackCommands } from './domains/pack'
 import { registerPictureAndProjectCommands } from './domains/pictureAndProject'
 import { registerSceneCommands } from './domains/scene'
 
@@ -12,8 +13,9 @@ let registeredCleanup: (() => void) | null = null
 export function ensureCoreCommandsRegistered(): () => void {
   if (registeredCleanup) return registeredCleanup
   bindCommandBusToEditor()
-  registerCodeAssetCommands()
   const unsubs = [
+    registerCodeAssetCommands(),
+    registerPackCommands(),
     registerSceneCommands(),
     registerCapabilityCommands(),
     registerGameplayCommands(),

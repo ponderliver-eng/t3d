@@ -10,6 +10,7 @@ import {
 } from '../core/query'
 import { fieldSchemaToJsonSchema } from '../core/schema/fieldSchema'
 import { useCodeAssetStore } from '../core/codeAssets/workspace'
+import { createBranch, listBranches, switchBranch } from '../core/project/checkpoints'
 import { getInputActionMap, saveProjectInputMap, setInputActionMap, type ActionBinding } from '../core/input/actionMap'
 import { captureMainViewport } from '../core/preview/offscreenPreview'
 import { projectDirectoryPath } from '../editor/project/disk'
@@ -177,6 +178,34 @@ const QUERY_TOOLS: AiToolSpec[] = [
       },
       required: ['outputDir'],
       additionalProperties: false,
+    },
+  },
+  {
+    name: 'branch__list',
+    description: '列出当前工程的所有实验分支与激活状态',
+    parameters: { type: 'object', properties: {} },
+  },
+  {
+    name: 'branch__create',
+    description: '从当前状态或指定快照拉出一条轻量实验分支，用于 A/B 方案试玩对比',
+    parameters: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', description: '分支名称，如 方案B-高机动手感' },
+        fromCheckpointId: { type: 'string', description: '可选基线快照 ID' },
+      },
+      required: ['name'],
+    },
+  },
+  {
+    name: 'branch__switch',
+    description: '切换到指定实验分支以对比或继续编辑',
+    parameters: {
+      type: 'object',
+      properties: {
+        branchId: { type: 'string', description: '目标分支 ID（如 main 或 exp_...）' },
+      },
+      required: ['branchId'],
     },
   },
 ]
@@ -350,6 +379,33 @@ export async function executeAiTool(
         ok: res.ok,
         toolName,
         displayLabel: res.message,
+        data: res,
+      }
+    }
+    case 'branch__list': {
+      const list = listBranches()
+      return {
+        ok: true,
+        toolName,
+        displayLabel: `实验分支列表（${list.length} 个）`,
+        data: list,
+      }
+    }
+    case 'branch__create': {
+      const res = createBranch(String(args.name ?? ''), typeof args.fromCheckpointId === 'string' ? args.fromCheckpointId : undefined)
+      return {
+        ok: res.ok,
+        toolName,
+        displayLabel: res.ok ? `已创建分支 ${res.branch?.name}` : `创建分支失败：${res.error}`,
+        data: res,
+      }
+    }
+    case 'branch__switch': {
+      const res = switchBranch(String(args.branchId ?? ''))
+      return {
+        ok: res.ok,
+        toolName,
+        displayLabel: res.ok ? `已切换至分支 ${res.branch?.name}` : `切换分支失败：${res.error}`,
         data: res,
       }
     }

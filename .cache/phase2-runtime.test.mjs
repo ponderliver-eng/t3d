@@ -3376,14 +3376,19 @@ var init_session4 = __esm({
 });
 
 // src/capabilities/registry.ts
+function allCapabilityManifests() {
+  return [...CAPABILITIES, ...dynamicCapabilities.values()];
+}
 function defaultCapabilities() {
-  return Object.fromEntries(CAPABILITIES.map((item) => [item.id, item.defaultEnabled]));
+  const base = Object.fromEntries(CAPABILITIES.map((item) => [item.id, item.defaultEnabled]));
+  for (const item of dynamicCapabilities.values()) base[item.id] = item.defaultEnabled;
+  return base;
 }
 function normalizeCapabilities(value) {
   const next = defaultCapabilities();
   if (!value || typeof value !== "object") return next;
   const record = value;
-  for (const item of CAPABILITIES) {
+  for (const item of allCapabilityManifests()) {
     if (typeof record[item.id] === "boolean") next[item.id] = record[item.id];
   }
   return next;
@@ -3391,7 +3396,7 @@ function normalizeCapabilities(value) {
 function capabilityEnabled(capabilities, id) {
   const defaults = defaultCapabilities();
   if (!capabilities || typeof capabilities[id] !== "boolean") return defaults[id] ?? false;
-  const manifest = CAPABILITIES.find((item) => item.id === id);
+  const manifest = allCapabilityManifests().find((item) => item.id === id);
   if (manifest?.dependencies) {
     for (const dep of manifest.dependencies) {
       if (!capabilityEnabled(capabilities, dep)) return false;
@@ -3399,7 +3404,7 @@ function capabilityEnabled(capabilities, id) {
   }
   return capabilities[id];
 }
-var CAPABILITIES;
+var CAPABILITIES, dynamicCapabilities;
 var init_registry = __esm({
   "src/capabilities/registry.ts"() {
     "use strict";
@@ -3411,6 +3416,7 @@ var init_registry = __esm({
       { id: "sky", defaultEnabled: false, category: "environment", loadRuntime: () => Promise.resolve().then(() => (init_session4(), session_exports3)) },
       { id: "water", defaultEnabled: false, category: "environment", loadRuntime: () => Promise.resolve().then(() => (init_session2(), session_exports)) }
     ];
+    dynamicCapabilities = /* @__PURE__ */ new Map();
   }
 });
 

@@ -32,25 +32,47 @@ export type CapabilityId = (typeof CAPABILITIES)[number]['id']
 const loadedModules = new Map<string, CapabilityRuntimeModule>()
 const activeCleanup = new Map<string, () => void>()
 const pendingLoads = new Map<string, Promise<void>>()
+const dynamicCapabilities = new Map<string, CapabilityManifest>()
+
+export function registerDynamicCapability(manifest: CapabilityManifest) {
+  dynamicCapabilities.set(manifest.id, manifest)
+}
+
+export function unregisterDynamicCapability(id: string) {
+  const cleanup = activeCleanup.get(id)
+  if (cleanup) {
+    cleanup()
+    activeCleanup.delete(id)
+  }
+  loadedModules.get(id)?.dispose?.()
+  loadedModules.delete(id)
+  dynamicCapabilities.delete(id)
+}
+
+export function allCapabilityManifests(): CapabilityManifest[] {
+  return [...(CAPABILITIES as readonly CapabilityManifest[]), ...dynamicCapabilities.values()]
+}
 
 export function defaultCapabilities(): Record<CapabilityId, boolean> {
-  return Object.fromEntries(CAPABILITIES.map(item => [item.id, item.defaultEnabled])) as Record<CapabilityId, boolean>
+  const base = Object.fromEntries(CAPABILITIES.map(item => [item.id, item.defaultEnabled])) as Record<string, boolean>
+  for (const item of dynamicCapabilities.values()) base[item.id] = item.defaultEnabled
+  return base as Record<CapabilityId, boolean>
 }
 
 export function normalizeCapabilities(value: unknown): Record<CapabilityId, boolean> {
-  const next = defaultCapabilities()
-  if (!value || typeof value !== 'object') return next
+  const next = defaultCapabilities() as Record<string, boolean>
+  if (!value || typeof value !== 'object') return next as Record<CapabilityId, boolean>
   const record = value as Record<string, unknown>
-  for (const item of CAPABILITIES) {
+  for (const item of allCapabilityManifests()) {
     if (typeof record[item.id] === 'boolean') next[item.id] = record[item.id] as boolean
   }
-  return next
+  return next as Record<CapabilityId, boolean>
 }
 
 export function capabilityEnabled(capabilities: Record<string, boolean> | undefined, id: CapabilityId | string): boolean {
   const defaults = defaultCapabilities() as Record<string, boolean>
   if (!capabilities || typeof capabilities[id] !== 'boolean') return defaults[id] ?? false
-  const manifest = CAPABILITIES.find(item => item.id === id) as CapabilityManifest | undefined
+  const manifest = allCapabilityManifests().find(item => item.id === id)
   if (manifest?.dependencies) {
     for (const dep of manifest.dependencies) {
       if (!capabilityEnabled(capabilities, dep)) return false
@@ -61,7 +83,7 @@ export function capabilityEnabled(capabilities: Record<string, boolean> | undefi
 
 /** 根据当前工程的 capabilities 开关，按需懒加载已启用的能力包或卸载已关闭的能力包。 */
 export function syncCapabilityRuntimes(capabilities: Record<string, boolean> | undefined) {
-  for (const item of CAPABILITIES as readonly CapabilityManifest[]) {
+  for (const item of allCapabilityManifests()) {
     const enabled = capabilityEnabled(capabilities, item.id)
     if (!enabled) {
       const cleanup = activeCleanup.get(item.id)

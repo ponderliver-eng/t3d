@@ -8,6 +8,8 @@ export default function AiWorkbenchPanel() {
   const setPanelOpen = useAgentStore((s) => s.setPanelOpen)
   const status = useAgentStore((s) => s.status)
   const turns = useAgentStore((s) => s.turns)
+  const pendingAttachmentImage = useAgentStore((s) => s.pendingAttachmentImage)
+  const setPendingAttachmentImage = useAgentStore((s) => s.setPendingAttachmentImage)
   const streamingText = useAgentStore((s) => s.streamingText)
   const providers = useAgentStore((s) => s.providers)
   const activeProviderId = useAgentStore((s) => s.activeProviderId)
@@ -242,6 +244,14 @@ export default function AiWorkbenchPanel() {
               </div>
             )}
 
+            {turn.imageDataUrl && (
+              <img
+                src={turn.imageDataUrl}
+                alt="视口批注截图"
+                style={{ width: '100%', maxHeight: 150, objectFit: 'cover', borderRadius: 4, border: '1px solid rgba(255,255,255,0.12)' }}
+              />
+            )}
+
             {turn.text && (
               <div style={{ whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>{turn.text}</div>
             )}
@@ -370,10 +380,45 @@ export default function AiWorkbenchPanel() {
 
       {/* 底部输入区 */}
       <div style={{ padding: '8px 10px', borderTop: '1px solid rgba(255,255,255,0.08)', background: '#1f1f23' }}>
+        {pendingAttachmentImage && (
+          <div style={{ position: 'relative', marginBottom: 6, borderRadius: 4, overflow: 'hidden', border: '1px solid rgba(248,113,113,0.4)' }}>
+            <img src={pendingAttachmentImage} alt="待发送视口批注" style={{ width: '100%', maxHeight: 96, objectFit: 'cover', display: 'block' }} />
+            <button
+              type="button"
+              onClick={() => setPendingAttachmentImage(null)}
+              title="移除批注截图"
+              style={{
+                position: 'absolute',
+                top: 4,
+                right: 4,
+                width: 20,
+                height: 20,
+                borderRadius: 999,
+                border: 'none',
+                background: 'rgba(0,0,0,0.72)',
+                color: '#fff',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+              }}
+            >
+              <X size={12} />
+            </button>
+          </div>
+        )}
         {selectedNodes.length > 0 && (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginBottom: '6px' }}>
             {selectedNodes.slice(0, 4).map((n) => (
-              <span key={n.id} style={refPillStyle}>@{n.name}</span>
+              <button
+                key={n.id}
+                type="button"
+                onClick={() => setInput((prev) => `${prev}${prev && !prev.endsWith(' ') ? ' ' : ''}@${n.name} `)}
+                title="点击插入引用到输入框"
+                style={{ ...refPillStyle, cursor: 'pointer', border: 'none' }}
+              >
+                @{n.name}
+              </button>
             ))}
             {selectedNodes.length > 4 && (
               <span style={refPillStyle}>+{selectedNodes.length - 4}</span>

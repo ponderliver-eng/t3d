@@ -16,6 +16,15 @@ export function registerGameplayPack(pack: GameplayPackManifest) {
   packs.set(pack.id, pack)
 }
 
+export function unregisterGameplayPack(packId: string): boolean {
+  if (packId === CORE_GAMEPLAY_PACK_ID) return false
+  return packs.delete(packId)
+}
+
+export function getGameplayPack(packId: string): GameplayPackManifest | undefined {
+  return packs.get(packId)
+}
+
 export function listGameplayPacks(): GameplayPackManifest[] {
   return [...packs.values()]
 }

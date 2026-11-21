@@ -1,5 +1,6 @@
-import { ArrowDownToLine, Axis3d, BoxSelect, Check, Crosshair, FilePlus, Globe, Grid3x3, History, Library, Magnet, Move3d, Pause, Play, Redo2, RotateCcw, Save, Scaling, Sparkles, Square, Undo2 } from 'lucide-react'
+import { ArrowDownToLine, Axis3d, BookOpen, BoxSelect, Check, Crosshair, FilePlus, GitBranch, Globe, Grid3x3, History, Library, Magnet, Move3d, Package, Pause, Play, Redo2, RotateCcw, Save, Scaling, Sparkles, Square, Undo2 } from 'lucide-react'
 import { useAgentStore } from '../../ai/agentLoop'
+import { useManagerModalStore } from '../../core/project/ProjectManagerModal'
 import { saveProjectNow } from '../assets/project'
 import { translate, useI18n } from '../i18n'
 import { askNewScene, useEditorStore } from '../scene/store'
@@ -141,6 +142,33 @@ export default function Toolbar() {
         )}
       </div>
       <div className="toolbar__spacer" />
+      <button
+        type="button"
+        className="toolbar__btn"
+        title="立项蓝图 (design.md)"
+        onClick={() => useManagerModalStore.getState().openModal('design')}
+      >
+        <BookOpen size={14} />
+        <span>蓝图</span>
+      </button>
+      <button
+        type="button"
+        className="toolbar__btn"
+        title="能力包沉淀与配方"
+        onClick={() => useManagerModalStore.getState().openModal('packs')}
+      >
+        <Package size={14} />
+        <span>能力包</span>
+      </button>
+      <button
+        type="button"
+        className="toolbar__btn"
+        title="快照与实验分支对比"
+        onClick={() => useManagerModalStore.getState().openModal('branches')}
+      >
+        <GitBranch size={14} />
+        <span>分支</span>
+      </button>
       <button
         type="button"
         className={`toolbar__btn ${aiPanelOpen ? 'toolbar__btn--active' : ''}`}
