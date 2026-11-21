@@ -1144,7 +1144,7 @@ function MaterialEditor({ slot, onChange }: { slot: PbrSlot, onChange: (patch: P
             }}
           />
         </div>
-        <ProjectShaderHint selectedShader={shaderKind} onSelect={shader => onChange({ shader })} />
+        <ProjectShaderHint selectedShader={shaderKind} />
       </Section>
       {!isCustom && <Section title={t('material.surface')} color="#c9a6ff">
         <ColorField label={t('material.color')} value={slot.color} gesture={t('gesture.material')} onChange={color => onChange({ color })} />
@@ -1979,65 +1979,33 @@ function ShaderSelect({
   )
 }
 
-function ProjectShaderHint({
-  selectedShader,
-  onSelect,
-}: {
-  selectedShader: SurfaceShader
-  onSelect: (shader: SurfaceShader) => void
-}) {
+function ProjectShaderHint({ selectedShader }: { selectedShader: SurfaceShader }) {
   const codeAssets = useCodeAssetStore(state => state.assets)
-  const shaders = Object.values(codeAssets).filter(item => item.kind === 'shader')
-  if (shaders.length === 0) return null
-  const activeId = selectedShader.startsWith('custom:') ? selectedShader.slice('custom:'.length) : null
-  const activeShader = activeId ? shaders.find(s => s.id === activeId) : undefined
+  if (!selectedShader.startsWith('custom:')) return null
+  const activeId = selectedShader.slice('custom:'.length)
+  const activeShader = codeAssets[activeId]
+  if (!activeShader || activeShader.kind !== 'shader') return null
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginTop: 6 }}>
-      <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>工程着色器（点击应用）：</span>
-      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-        {shaders.map(shader => {
-          const active = shader.id === activeId
-          return (
-            <button
-              key={shader.id}
-              type="button"
-              onClick={() => onSelect(`custom:${shader.id}`)}
-              title={shader.ok ? `应用着色器 ${shader.name}` : `编译错误 (${shader.diagnostics.length})`}
-              style={{
-                padding: '2px 7px',
-                fontSize: 11,
-                borderRadius: 4,
-                border: active ? '1px solid #c084fc' : '1px solid var(--border)',
-                background: active ? 'rgba(192, 132, 252, 0.28)' : 'rgba(192, 132, 252, 0.1)',
-                color: shader.ok ? (active ? '#f3e8ff' : '#d8b4fe') : '#fca5a5',
-                cursor: 'pointer',
-              }}
-            >
-              {shader.name}
-            </button>
-          )
-        })}
-      </div>
-      {activeShader && (
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6, fontSize: 11, color: 'var(--text-muted)' }}>
-          <span>{activeShader.ok ? `已绑定：${activeShader.relativePath}` : `${activeShader.diagnostics.length} 个编译错误`}</span>
-          <button
-            type="button"
-            onClick={() => openCodeAssetModal('shader', activeShader.id)}
-            style={{
-              padding: '2px 8px',
-              fontSize: 11,
-              borderRadius: 4,
-              border: '1px solid var(--border)',
-              background: 'rgba(255, 255, 255, 0.06)',
-              color: 'var(--text-primary)',
-              cursor: 'pointer',
-            }}
-          >
-            编辑 / 预览
-          </button>
-        </div>
-      )}
+    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6, marginTop: 6, fontSize: 11, color: 'var(--text-muted)' }}>
+      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        {activeShader.ok ? activeShader.relativePath : `${activeShader.diagnostics.length} 个编译错误`}
+      </span>
+      <button
+        type="button"
+        onClick={() => openCodeAssetModal('shader', activeShader.id)}
+        style={{
+          flexShrink: 0,
+          padding: '2px 8px',
+          fontSize: 11,
+          borderRadius: 4,
+          border: '1px solid var(--border)',
+          background: 'rgba(255, 255, 255, 0.06)',
+          color: 'var(--text-primary)',
+          cursor: 'pointer',
+        }}
+      >
+        编辑 / 预览
+      </button>
     </div>
   )
 }
