@@ -273,4 +273,33 @@ function registerIpc() {
       return { ok: true, launcher: 'system' }
     }
   })
+  ipcMain.handle(
+    'viewport:capturePage',
+    async (
+      event,
+      rect?: { x: number; y: number; width: number; height: number },
+      maxWidth?: number,
+    ) => {
+      const win = BrowserWindow.fromWebContents(event.sender) ?? mainWindow
+      if (!win || win.isDestroyed()) return null
+      const safeRect = rect && rect.width > 4 && rect.height > 4
+        ? {
+            x: Math.max(0, Math.round(rect.x)),
+            y: Math.max(0, Math.round(rect.y)),
+            width: Math.max(1, Math.round(rect.width)),
+            height: Math.max(1, Math.round(rect.height)),
+          }
+        : undefined
+      let image = safeRect ? await win.webContents.capturePage(safeRect) : await win.webContents.capturePage()
+      if (image.isEmpty()) return null
+      const size = image.getSize()
+      const capW = typeof maxWidth === 'number' && maxWidth > 0 ? Math.round(maxWidth) : 960
+      if (size.width > capW && capW > 0) {
+        const capH = Math.max(1, Math.round((size.height * capW) / size.width))
+        image = image.resize({ width: capW, height: capH, quality: 'good' })
+      }
+      const jpeg = image.toJPEG(86)
+      return `data:image/jpeg;base64,${jpeg.toString('base64')}`
+    },
+  )
 }

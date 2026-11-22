@@ -35,6 +35,10 @@ contextBridge.exposeInMainWorld('__electron', {
       return () => ipcRenderer.removeListener('codeAsset:changed', listener)
     },
   },
+  viewport: {
+    capturePage: (rect?: { x: number; y: number; width: number; height: number }, maxWidth?: number) =>
+      ipcRenderer.invoke('viewport:capturePage', rect, maxWidth),
+  },
   ai: {
     listProviders: () => ipcRenderer.invoke('ai:listProviders'),
     saveProvider: (input: unknown) => ipcRenderer.invoke('ai:saveProvider', input),

@@ -2,7 +2,16 @@ import { ASSETS_ROOT, normalizeDir } from '../../../editor/assets/folders'
 import { useAssetStore } from '../../../editor/assets/library'
 import { useEditorStore } from '../../../editor/scene/store'
 import type { PbrSlot, Vec3 } from '../../../editor/scene/types'
-import { UI_LAYERS, UI_NODE_TYPES, type UiDocument, type UiLayer, type UiNode } from '../../../runtime/ui/spec'
+import {
+  createUiTemplateDocument,
+  UI_LAYERS,
+  UI_NODE_TYPES,
+  validateUiDocument,
+  type UiDocument,
+  type UiLayer,
+  type UiNode,
+  type UiTemplateId,
+} from '../../../runtime/ui/spec'
 import { commandBus } from '../bus'
 import type { CommandDef } from '../types'
 
@@ -228,9 +237,16 @@ const createUiDocCmd: CommandDef<CreateUiDocParams, { assetId: string; name: str
         }
       }
     }
+    const warnings = validateUiDocument(doc)
     return {
       ok: true,
-      value: { assetId, name: p.name, mounted: Boolean(p.mountToScene), folder: targetDir },
+      value: {
+        assetId,
+        name: p.name,
+        mounted: Boolean(p.mountToScene),
+        folder: targetDir,
+        ...(warnings.length > 0 ? { warnings } : {}),
+      },
       changed: {
         assetsChanged: [assetId],
         summary: `新建界面文档 ${p.name}${p.mountToScene ? ' 并挂载到场景' : ''}`,
@@ -270,10 +286,122 @@ const updateUiDocCmd: CommandDef<UpdateUiDocParams, { assetId: string; name: str
     if (nextName !== asset.name) {
       store.rename(p.assetId, nextName)
     }
+    const warnings = validateUiDocument(nextDoc)
     return {
       ok: true,
-      value: { assetId: p.assetId, name: nextName },
+      value: { assetId: p.assetId, name: nextName, ...(warnings.length > 0 ? { warnings } : {}) },
       changed: { assetsChanged: [p.assetId], summary: `更新界面文档 ${nextName}` },
+    }
+  },
+}
+
+interface CreateUiFromTemplateParams {
+  template: UiTemplateId
+  name?: string
+  title?: string
+  subtitle?: string
+  primaryText?: string
+  secondaryText?: string
+  primaryMessage?: string
+  secondaryMessage?: string
+  varKey?: string
+  scoreVarKey?: string
+  accentColor?: string
+  mountToScene?: boolean
+  layer?: UiLayer
+  folder?: string
+}
+
+const createUiFromTemplateCmd: CommandDef<CreateUiFromTemplateParams, { assetId: string; name: string; mounted: boolean; folder: string; document: UiDocument }> = {
+  id: 'ui.createFromTemplate',
+  title: '从标准模板创建界面',
+  description: '基于内置高可读性排版模板（hud / menu / dialog / result）快速创建 UI 界面资产，自动做好安全边距、Flex 对齐、半透明卡片与响应式锚点。推荐优先使用此工具再用 ui.updateDocument 微调。',
+  risk: 'safe',
+  params: {
+    type: 'object',
+    fields: {
+      template: {
+        type: 'enum',
+        options: [
+          { value: 'hud', label: '游戏内 HUD（血条+计分+底部提示）' },
+          { value: 'menu', label: '居中主菜单/暂停菜单' },
+          { value: 'dialog', label: '居中弹窗/对话框' },
+          { value: 'result', label: '居中结算面板' },
+        ],
+        default: 'hud',
+        label: '模板类型',
+      },
+      name: { type: 'string', default: '', optional: true, label: '界面名称' },
+      title: { type: 'string', default: '', optional: true, label: '主标题' },
+      subtitle: { type: 'string', default: '', optional: true, label: '副标题/正文/操作提示' },
+      primaryText: { type: 'string', default: '', optional: true, label: '主按钮文字' },
+      secondaryText: { type: 'string', default: '', optional: true, label: '次按钮文字' },
+      primaryMessage: { type: 'string', default: '', optional: true, label: '主按钮发送消息名' },
+      secondaryMessage: { type: 'string', default: '', optional: true, label: '次按钮发送消息名' },
+      varKey: { type: 'string', default: 'hp', optional: true, label: 'HUD 进度条绑定变量名' },
+      scoreVarKey: { type: 'string', default: 'score', optional: true, label: 'HUD/结算分数绑定变量名' },
+      accentColor: { type: 'color', default: '#3b82f6', optional: true, label: '主题强调色' },
+      mountToScene: { type: 'boolean', default: true, optional: true, label: '立即挂载到场景' },
+      layer: {
+        type: 'enum',
+        options: UI_LAYERS.map((l) => ({ value: l, label: l })),
+        default: 'hud',
+        optional: true,
+        label: '挂载层级',
+      },
+      folder: { type: 'string', default: 'Assets/UI', optional: true, label: '存放目录' },
+    },
+  },
+  run(_ctx, p) {
+    const assetId = crypto.randomUUID()
+    const doc = createUiTemplateDocument(p.template, {
+      title: p.title,
+      subtitle: p.subtitle,
+      primaryText: p.primaryText,
+      secondaryText: p.secondaryText,
+      primaryMessage: p.primaryMessage,
+      secondaryMessage: p.secondaryMessage,
+      varKey: p.varKey,
+      scoreVarKey: p.scoreVarKey,
+      accentColor: p.accentColor,
+    })
+    const defaultNames: Record<UiTemplateId, string> = {
+      hud: '游戏HUD',
+      menu: '主菜单',
+      dialog: '提示弹窗',
+      result: '结算界面',
+    }
+    const name = p.name?.trim() || defaultNames[p.template] || '新界面'
+    const targetDir = normalizeDir(p.folder?.trim() || 'Assets/UI')
+    const store = useAssetStore.getState()
+    ensureAssetFolderPath(targetDir)
+    store.add({
+      id: assetId,
+      name,
+      kind: 'ui',
+      document: doc,
+    })
+    store.place(assetId, targetDir)
+    const shouldMount = p.mountToScene ?? true
+    if (shouldMount) {
+      useEditorStore.getState().mountScreen(assetId, [0, 0, 0])
+      const layer = p.layer ?? (p.template === 'hud' ? 'hud' : p.template === 'dialog' ? 'popup' : 'menu')
+      const nodes = useEditorStore.getState().nodes
+      const screenNode = Object.values(nodes).find((n) => n.kind === 'screen' && n.screen?.documentId === assetId)
+      if (screenNode && screenNode.screen) {
+        useEditorStore.getState().updateNode(screenNode.id, {
+          name,
+          screen: { ...screenNode.screen, layer },
+        })
+      }
+    }
+    return {
+      ok: true,
+      value: { assetId, name, mounted: shouldMount, folder: targetDir, document: doc },
+      changed: {
+        assetsChanged: [assetId],
+        summary: `从模板(${p.template})创建界面 ${name}${shouldMount ? ' 并挂载到场景' : ''}`,
+      },
     }
   },
 }
@@ -486,6 +614,7 @@ export function registerAssetAndUiCommands(): () => void {
     commandBus.register(moveToFolderCmd),
     commandBus.register(createPrefabCmd),
     commandBus.register(createUiDocCmd),
+    commandBus.register(createUiFromTemplateCmd),
     commandBus.register(updateUiDocCmd),
     commandBus.register(mountScreenCmd),
   ]

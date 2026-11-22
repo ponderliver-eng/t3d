@@ -8,6 +8,7 @@ export function collectNavSurfaces(roots: Iterable<Object3D>): { positions: Floa
   const indices: number[] = []
   const vertex = new Vector3()
   for (const root of roots) {
+    if (!root) continue
     root.updateWorldMatrix(true, true)
     root.traverse(child => {
       const mesh = child as Mesh

@@ -12,7 +12,7 @@ import { fieldSchemaToJsonSchema } from '../core/schema/fieldSchema'
 import { useCodeAssetStore } from '../core/codeAssets/workspace'
 import { createBranch, listBranches, switchBranch } from '../core/project/checkpoints'
 import { getInputActionMap, saveProjectInputMap, setInputActionMap, type ActionBinding } from '../core/input/actionMap'
-import { captureMainViewport } from '../core/preview/offscreenPreview'
+import { captureViewportComposite } from '../core/preview/offscreenPreview'
 import { projectDirectoryPath } from '../editor/project/disk'
 import { useEditorStore } from '../editor/scene/store'
 import { exportWebPlayerBundle } from '../player/exporter'
@@ -220,8 +220,35 @@ const QUERY_TOOLS: AiToolSpec[] = [
     },
   },
   {
+    name: 'viewport__capture',
+    description: '抓取当前视口截图（含 3D 场景与叠加 UI 界面）。若传入 playSeconds（如 0.8），会自动启动试玩运行指定秒数后截图，默认截完自动退出试玩，非常适合检查游戏内真实相机、动态效果与 UI 排版。',
+    parameters: {
+      type: 'object',
+      properties: {
+        width: { type: 'number', description: '可选最大宽度（默认 960）' },
+        height: { type: 'number', description: '可选缩放高度' },
+        playSeconds: { type: 'number', description: '可选：自动开启试玩并运行指定秒数（如 0.5~2.0）后再截图' },
+        keepPlaying: { type: 'boolean', description: '可选：截图后是否保持试玩状态（默认 false，自动恢复编辑态以便继续修改工程）' },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'playtest__control',
+    description: '控制编辑器实时试玩状态（开始试玩 play / 暂停 pause / 停止并还原 stop），可配合 waitSeconds 等待几帧再观察或截图',
+    parameters: {
+      type: 'object',
+      properties: {
+        action: { type: 'string', enum: ['play', 'pause', 'stop'], description: '控制动作' },
+        waitSeconds: { type: 'number', description: '可选：执行后等待的真实秒数（如 0.5）' },
+      },
+      required: ['action'],
+      additionalProperties: false,
+    },
+  },
+  {
     name: 'playtest__capture',
-    description: '复用主渲染器抓取当前视口截图（PNG DataURL）',
+    description: '抓取当前视口截图（含 3D 场景与 UI 界面，PNG/JPEG DataURL）',
     parameters: {
       type: 'object',
       properties: {
@@ -308,7 +335,9 @@ export function toolDomainFor(toolName: string): AiToolDomain {
     toolName === 'project__design__get' ||
     toolName === 'project__design__update' ||
     toolName === 'project__createCheckpoint' ||
-    toolName === 'asset__createPrefab'
+    toolName === 'asset__createPrefab' ||
+    toolName === 'viewport__capture' ||
+    toolName === 'playtest__control'
   ) {
     return 'core'
   }
@@ -564,11 +593,18 @@ async function executeAiToolInner(
       if (id) {
         const hit = assets[id]
         if (!hit || hit.kind !== 'ui') {
+          const availableUiAssets = Object.values(assets)
+            .filter((a) => a.kind === 'ui')
+            .map((a) => ({ id: a.id, name: a.name }))
           return {
             ok: false,
             toolName,
             displayLabel: `读取 UI 失败：${id} 不存在`,
-            data: { ok: false, message: `UI 资产 "${id}" 不存在` },
+            data: {
+              ok: false,
+              message: `UI 资产 "${id}" 不存在（注意：screen 节点 ID 不是 UI 资产 ID，请使用 availableUiAssets 中的 id 或不传 assetId 列出全部）`,
+              availableUiAssets,
+            },
           }
         }
         return {
@@ -607,16 +643,58 @@ async function executeAiToolInner(
         data: report,
       }
     }
+    case 'playtest__control': {
+      const action = String(args.action ?? '').trim()
+      const store = useEditorStore.getState()
+      if (action === 'play') {
+        if (store.playState === 'stopped' || store.playState === 'paused') store.play()
+      } else if (action === 'pause') {
+        if (store.playState === 'playing') store.pause()
+      } else if (action === 'stop') {
+        if (store.playState !== 'stopped') store.stop()
+      } else {
+        return { ok: false, toolName, displayLabel: `未知试玩动作：${action}`, data: { error: 'invalid action' } }
+      }
+      const waitSec = typeof args.waitSeconds === 'number' && args.waitSeconds > 0 ? args.waitSeconds : 0.05
+      await waitRealFrames(waitSec)
+      const nextState = useEditorStore.getState().playState
+      return {
+        ok: true,
+        toolName,
+        displayLabel: nextState === 'playing' ? '已进入试玩状态' : nextState === 'paused' ? '已暂停试玩' : '已退出试玩',
+        data: { playState: nextState },
+      }
+    }
+    case 'viewport__capture':
     case 'playtest__capture': {
-      const dataUrl = captureMainViewport({
-        width: typeof args.width === 'number' ? args.width : undefined,
-        height: typeof args.height === 'number' ? args.height : undefined,
-      })
+      const playSec = typeof args.playSeconds === 'number' && args.playSeconds > 0 ? args.playSeconds : 0
+      const keepPlaying = args.keepPlaying === true
+      const store = useEditorStore.getState()
+      const startedHere = playSec > 0 && store.playState === 'stopped'
+      if (startedHere) {
+        store.play()
+      }
+      if (playSec > 0 || store.playState === 'playing') {
+        await waitRealFrames(playSec)
+      }
+      let dataUrl: string | null = null
+      try {
+        dataUrl = await captureViewportComposite({
+          width: typeof args.width === 'number' ? args.width : undefined,
+          height: typeof args.height === 'number' ? args.height : undefined,
+        })
+      } finally {
+        if (startedHere && !keepPlaying && useEditorStore.getState().playState !== 'stopped') {
+          useEditorStore.getState().stop()
+        }
+      }
       return {
         ok: Boolean(dataUrl),
         toolName,
-        displayLabel: dataUrl ? '视口截图成功' : '视口未就绪，无法截图',
-        data: dataUrl ? { dataUrl } : { error: 'viewport not ready' },
+        displayLabel: dataUrl ? (startedHere ? '试玩实景截图成功' : '视口截图成功') : '视口未就绪，无法截图',
+        data: dataUrl
+          ? { dataUrl, playState: useEditorStore.getState().playState }
+          : { error: 'viewport not ready' },
       }
     }
     case 'input__get_map': {
@@ -700,8 +778,18 @@ async function executeAiToolInner(
     ? (res.changed.summary || cmd?.title || commandId)
     : `${cmd?.title ?? commandId} 失败：${res.message}`
 
-  const data = !res.ok && (res.code === 'NOT_FOUND' || res.code === 'node.notFound' || res.message.includes('不存在'))
-    ? { ...res, availableNodes: listCompactNodes() }
+  const data = !res.ok && (res.code === 'NOT_FOUND' || res.code === 'node.notFound' || res.code === 'asset.notFound' || res.message.includes('不存在'))
+    ? {
+        ...res,
+        availableNodes: listCompactNodes(),
+        ...(res.code === 'asset.notFound' || toolName.startsWith('ui__') || toolName.startsWith('asset__')
+          ? {
+              availableUiAssets: Object.values(useAssetStore.getState().assets)
+                .filter((a) => a.kind === 'ui')
+                .map((a) => ({ id: a.id, name: a.name })),
+            }
+          : {}),
+      }
     : res
 
   return {
@@ -755,9 +843,46 @@ function resolveAssetIdFuzzy(raw: string): string {
   if (!trimmed) return raw
   const assets = useAssetStore.getState().assets
   if (assets[trimmed]) return trimmed
-  const byName = Object.values(assets).filter((a) => a.name === trimmed)
+
+  // 若 AI 误把场景里的 screen 节点 ID（或节点名）当成了 UI 资产 ID，自动解包成其绑定的 documentId
+  const nodes = useEditorStore.getState().nodes
+  const maybeNode = nodes[trimmed] ?? Object.values(nodes).find((n) => n.kind === 'screen' && n.name === trimmed)
+  if (maybeNode?.kind === 'screen' && maybeNode.screen?.documentId && assets[maybeNode.screen.documentId]) {
+    return maybeNode.screen.documentId
+  }
+
+  const all = Object.values(assets)
+  const byName = all.filter((a) => a.name === trimmed)
   if (byName.length === 1) return byName[0].id
+
+  if (trimmed.length >= 6) {
+    const cleanPrefix = trimmed.replace(/\?+$/g, '').replace(/\.\.\.$/g, '')
+    if (cleanPrefix.length >= 6) {
+      const byPrefix = all.filter((a) => a.id.startsWith(cleanPrefix))
+      if (byPrefix.length === 1) return byPrefix[0].id
+    }
+  }
+
+  const uuidHead = trimmed.match(/^([0-9a-fA-F]{8})-[0-9a-fA-F-]*/)?.[1]
+  if (uuidHead) {
+    const byHead = all.filter((a) => a.id.toLowerCase().startsWith(uuidHead.toLowerCase() + '-'))
+    if (byHead.length === 1) return byHead[0].id
+  }
+  const uuidTail = trimmed.match(/([0-9a-fA-F]{12})$/)?.[1]
+  if (uuidTail) {
+    const byTail = all.filter((a) => a.id.toLowerCase().endsWith('-' + uuidTail.toLowerCase()))
+    if (byTail.length === 1) return byTail[0].id
+  }
+
   return raw
+}
+
+async function waitRealFrames(seconds: number): Promise<void> {
+  const ms = Math.max(0, Math.min(10000, seconds * 1000))
+  if (ms > 0) {
+    await new Promise<void>((resolve) => setTimeout(resolve, ms))
+  }
+  await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))
 }
 
 function resolveAiNodeArgs(toolName: string, args: Record<string, unknown>): Record<string, unknown> {

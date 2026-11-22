@@ -25,11 +25,21 @@ export interface ViewportBridge {
 }
 
 let activeBridge: ViewportBridge | null = null
+let activeCompositeCapture: ((options?: CaptureViewportOptions) => Promise<string | null>) | null = null
 
 export function registerViewportBridge(bridge: ViewportBridge | null): () => void {
   activeBridge = bridge
   return () => {
     if (activeBridge === bridge) activeBridge = null
+  }
+}
+
+export function registerCompositeCapture(
+  capturer: ((options?: CaptureViewportOptions) => Promise<string | null>) | null,
+): () => void {
+  activeCompositeCapture = capturer
+  return () => {
+    if (activeCompositeCapture === capturer) activeCompositeCapture = null
   }
 }
 
@@ -44,6 +54,22 @@ export function captureMainViewport(options?: CaptureViewportOptions): string | 
   if (!activeBridge) return null
   activeBridge.renderNow()
   return activeBridge.captureDataUrl(options)
+}
+
+/**
+ * 合成抓图（包含 3D 视口与叠加在其上的 UI DOM 层，优先使用宿主窗口区域截图）。
+ */
+export async function captureViewportComposite(options?: CaptureViewportOptions): Promise<string | null> {
+  if (activeBridge) activeBridge.renderNow()
+  if (activeCompositeCapture) {
+    try {
+      const composite = await activeCompositeCapture(options)
+      if (composite) return composite
+    } catch {
+      // 回退到纯 3D 画布截图
+    }
+  }
+  return captureMainViewport(options)
 }
 
 export function readMainRenderMetrics(): RenderMetricsSnapshot | null {

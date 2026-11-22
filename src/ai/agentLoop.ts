@@ -456,6 +456,7 @@ export const useAgentStore = create<AgentState>((set, get) => ({
           toolCalls: result.toolCalls,
         })
 
+        const stepCapturedImages: string[] = []
         for (const tc of result.toolCalls) {
           if (isConfirmRequiredTool(tc.name)) {
             const approved = await new Promise<boolean>((resolve) => {
@@ -520,7 +521,21 @@ export const useAgentStore = create<AgentState>((set, get) => ({
           }))
           saveInflightBackup(get().turns)
 
-          const serialized = JSON.stringify(execRes.data)
+          let toolPayload: unknown = execRes.data
+          if (
+            execRes.ok &&
+            execRes.data &&
+            typeof execRes.data === 'object' &&
+            'dataUrl' in execRes.data &&
+            typeof (execRes.data as { dataUrl?: unknown }).dataUrl === 'string'
+          ) {
+            const url = (execRes.data as { dataUrl: string }).dataUrl
+            if (url.startsWith('data:image/')) {
+              stepCapturedImages.push(url)
+              toolPayload = { captured: true, note: '视口截图已附在接下来的图片消息中，请直接观察画面效果。' }
+            }
+          }
+          const serialized = JSON.stringify(toolPayload)
           chatMessages.push({
             role: 'tool',
             toolCallId: tc.id,
@@ -528,6 +543,13 @@ export const useAgentStore = create<AgentState>((set, get) => ({
             content: serialized.length > 6000
               ? `${serialized.slice(0, 6000)}...(结果已截断，请使用具体查询工具获取细节)`
               : serialized,
+          })
+        }
+        if (stepCapturedImages.length > 0 && get().status !== 'idle') {
+          chatMessages.push({
+            role: 'user',
+            text: '这是刚截取的视口画面（含 3D 场景与叠加 UI），请直接检查相机构图、物体朝向与 UI 排版是否合理：',
+            images: [stepCapturedImages[stepCapturedImages.length - 1]],
           })
         }
       }
@@ -616,10 +638,12 @@ function toolPhaseLabel(toolName: string): string {
   if (toolName.startsWith('scene__')) return '正在搭建 / 修改场景节点…'
   if (toolName.startsWith('asset__')) return '正在处理材质与资产…'
   if (toolName.startsWith('gameplay__') || toolName.startsWith('capability__')) return '正在配置玩法与能力包…'
-  if (toolName === 'ui__createDocument') return '正在生成 UI 界面资产…'
+  if (toolName === 'ui__createDocument' || toolName === 'ui__createFromTemplate') return '正在生成 UI 界面资产…'
   if (toolName === 'ui__updateDocument') return '正在更新 UI 界面结构…'
   if (toolName === 'ui__mountScreen') return '正在挂载 UI 屏幕到场景…'
   if (toolName === 'query__ui_inspect') return '正在读取 UI 界面结构…'
+  if (toolName === 'viewport__capture' || toolName === 'playtest__capture') return '正在截取视口画面…'
+  if (toolName === 'playtest__control') return '正在切换试玩状态…'
   if (toolName.startsWith('query__project_diagnose')) return '正在执行工程体检与性能预算检查…'
   if (toolName.startsWith('query__')) return '正在读取工程信息…'
   if (toolName.startsWith('playtest__')) return '正在执行试玩冒烟验证…'
@@ -790,7 +814,10 @@ function buildSystemPrompt(attachedRefs: AiRefItem[], activeDomains: Set<AiToolD
   const nodeIndexText = sceneNodes.length > 0
     ? `\n当前场景节点索引（名称 -> ID，共 ${sceneNodes.length} 个）：\n${sceneNodes
         .slice(0, 30)
-        .map((n) => `- ${n.name} (${n.kind}): ${n.id}`)
+        .map((n) => {
+          const extra = n.kind === 'screen' && n.screen?.documentId ? `, uiAssetId=${n.screen.documentId}` : ''
+          return `- ${n.name} (${n.kind}${extra}): ${n.id}`
+        })
         .join('\n')}${sceneNodes.length > 30 ? '\n- ...（更多节点请调用 query__scene_outline）' : ''}`
     : ''
 
@@ -817,6 +844,8 @@ function buildSystemPrompt(attachedRefs: AiRefItem[], activeDomains: Set<AiToolD
     '4. 工程规划与层级规范：',
     '   - 遇到多模块/多关卡或资产较多（>5 个）时，先用 project__design__update 规划目录规范，再用 asset__createFolder 建立 Assets/Materials/<模块>、Assets/UI/<模块>、Assets/Prefabs/<模块> 等目录树；用空节点（kind: "empty"）做模块分组，但严禁堆砌无意义的空节点充当装饰或伪对象池。',
     '   - 放置模型或物体到地面时，优先开启 snapToGround: true。',
+    '   - 坐标系与相机摆放铁律：场景节点的 rotation 单位为**角度（度）**（脚本内 self.rotation 为弧度）；摆放相机（camera）、方向光或聚光灯时，**优先直接传 lookAt: [x, y, z] 目标世界坐标**让引擎自动计算朝向（如 position: [0, 8, 12], lookAt: [0, 1, 0]），切勿手猜相机欧拉角。',
+    '   - 视觉自检（支持自动试玩截图）：随时可调用 viewport__capture 抓取当前视口画面；若需要查看真实试玩效果（如 UI 渲染、角色落地、物理与脚本运行效果），可直接传 viewport__capture({ playSeconds: 0.8 })，系统会自动开启试玩运行 0.8 秒并截取含 UI 的实景图后**自动退出试玩**。注意：系统要求**必须退出试玩后才能修改工程数据**，若通过 playtest__control({ action: "play" }) 手动开启了试玩，修改前务必先调用 playtest__control({ action: "stop" }) 退出试玩。',
   ]
 
   if (activeDomains.has('script')) {
@@ -863,9 +892,12 @@ function buildSystemPrompt(attachedRefs: AiRefItem[], activeDomains: Set<AiToolD
 
   if (activeDomains.has('ui')) {
     lines.push(
-      '7. 创建/修改 UI 界面（ui__createDocument / ui__updateDocument / query__ui_inspect）：',
-      '   - document 格式：{ schemaVersion: 1, root: UiNode }；可用节点 type 为 "panel" | "stack" | "text" | "image" | "button" | "progress"。',
-      '   - layout 支持 mode: "anchor"（anchorMin/anchorMax/pivot 取 0~1，x/y/width/height 像素）或 mode: "flex"（flexDirection: "row"|"column", gap, align, justify, padding）。',
+      '7. 创建/修改 UI 界面（推荐优先 ui__createFromTemplate，再按需 ui__updateDocument / query__ui_inspect）：',
+      '   - 优先使用 ui__createFromTemplate({ template: "hud"|"menu"|"dialog"|"result", title, subtitle, primaryText, secondaryText, varKey, scoreVarKey, accentColor, mountToScene: true }) 生成规范版式骨架，避免从零手算坐标出错。',
+      '   - 手写或修改 UiDocument（{ schemaVersion: 1, root: UiNode }）排版铁律：',
+      '     · 根节点 root 必须全屏铺满（mode: "anchor", anchorMin: {x:0,y:0}, anchorMax: {x:1,y:1}, pivot: {x:0,y:0}）。',
+      '     · 四角停靠 HUD 只在顶层放容器并用 anchor 停靠（边距统一 24px，如左上 x:24,y:24 / 右上 anchorMin:{x:1,y:0},x:-24,y:24,pivot:{x:1,y:0} / 居中 anchor:{x:0.5,y:0.5},pivot:{x:0.5,y:0.5}），容器内部一律用 type: "stack" + mode: "flex"（flexDirection, gap: 8~14, padding, align, justify）自动流式排版，严禁在同容器内手算多个 anchor 像素坐标。',
+      '     · 视觉规范：卡片深色半透明（rgba(15,23,42,0.82)）+ borderRadius: 8~12 + borderWidth: 1；正文 ≥14px、标题 20~28px、按钮高 36~44px。',
       '   - 数据绑定：bindings: [{ id: "b1", target: "text"|"visible"|"enabled"|"progress.value"|"opacity", source: { kind: "variable", varId: "hp" } }]；按钮事件：click: { kind: "sendMessage", message: "start_game" } 或 { kind: "setVariable", varId: "...", value: "..." }。',
     )
   }

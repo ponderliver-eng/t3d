@@ -32,6 +32,9 @@ export interface ElectronBridge {
     openInEditor: (filePath: string, preferred?: 'cursor' | 'code') => Promise<{ ok: boolean; launcher: string }>
     onChanged: (handler: (payload: { relativePath: string }) => void) => () => void
   }
+  viewport?: {
+    capturePage: (rect?: { x: number; y: number; width: number; height: number }, maxWidth?: number) => Promise<string | null>
+  }
   ai?: {
     listProviders: () => Promise<{
       activeProviderId: string

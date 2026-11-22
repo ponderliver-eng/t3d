@@ -138,7 +138,7 @@ export class CommandBus {
         ok: false,
         code: 'play.locked',
         message: `试玩进行中，禁止执行修改工程的指令 "${commandId}"`,
-        hint: '请先停止试玩，或只调用只读查询/试玩探针接口',
+        hint: '系统要求必须退出试玩后才能修改工程。请先调用 playtest__control({ action: "stop" }) 退出试玩，再重试修改指令。',
       })
     }
 

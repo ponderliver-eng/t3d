@@ -23,11 +23,12 @@ export function prepareSkinnedPickBounds(root: Object3D) {
   root.updateMatrixWorld(true)
   root.traverse(child => {
     const mesh = child as SkinnedBounds
-    if (!mesh.isSkinnedMesh || !mesh.skeleton) return
+    if (!mesh.isSkinnedMesh || !mesh.skeleton || !Array.isArray(mesh.skeleton.bones)) return
     mesh.skeleton.update()
     inverse.copy(mesh.matrixWorld).invert()
     boneBox.makeEmpty()
     for (const bone of mesh.skeleton.bones) {
+      if (!bone) continue
       bone.getWorldPosition(vertex).applyMatrix4(inverse)
       boneBox.expandByPoint(vertex)
     }
@@ -68,5 +69,20 @@ function skinPad(mesh: SkinnedBounds, bones: Box3): number {
 
 export function boundsOf(root: Object3D): Box3 {
   prepareSkinnedPickBounds(root)
-  return new Box3().setFromObject(root)
+  try {
+    return new Box3().setFromObject(root)
+  } catch {
+    root.updateMatrixWorld(true)
+    const fallback = new Box3()
+    const itemBox = new Box3()
+    root.traverse(child => {
+      const geo = (child as { geometry?: { boundingBox?: Box3 | null; computeBoundingBox?: () => void } }).geometry
+      if (!geo) return
+      if (!geo.boundingBox) geo.computeBoundingBox?.()
+      if (!geo.boundingBox) return
+      itemBox.copy(geo.boundingBox).applyMatrix4(child.matrixWorld)
+      fallback.union(itemBox)
+    })
+    return fallback
+  }
 }

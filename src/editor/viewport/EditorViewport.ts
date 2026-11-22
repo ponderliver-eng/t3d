@@ -806,8 +806,10 @@ export class EditorViewport {
   }
 
   private measureSnap(ids: string[]) {
+    this.sync()
     const down = new Vector3(0, -1, 0)
     const moves: { id: string, position: [number, number, number] }[] = []
+    const activePickables = this.pickables.filter(obj => obj.parent !== null)
     for (const id of ids) {
       const object = this.objects.get(id)
       const node = useEditorStore.getState().nodes[id]
@@ -820,7 +822,7 @@ export class EditorViewport {
       ray.layers.mask = this.raycaster.layers.mask
       let ground = 0
       let found = false
-      for (const hit of ray.intersectObjects(this.pickables, true)) {
+      for (const hit of ray.intersectObjects(activePickables, true)) {
         let current: Object3D | null = hit.object
         let self = false
         while (current) {

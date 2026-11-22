@@ -1,3 +1,4 @@
+import { Euler, Matrix4, Quaternion, Vector3 } from 'three'
 import { makeNode, nextOrder, uniqueName } from '../../../editor/scene/kinds'
 import { useEditorStore } from '../../../editor/scene/store'
 import { isUnder } from '../../../editor/scene/transform'
@@ -5,6 +6,31 @@ import type { NodeKind, SceneNode, Vec3 } from '../../../editor/scene/types'
 import { measureGroundSnap } from '../../../editor/scene/viewportBridge'
 import { commandBus } from '../bus'
 import type { CommandDef } from '../types'
+
+const RAD_TO_DEG = 180 / Math.PI
+
+function computeLookAtRotationDeg(kind: NodeKind, from: Vec3, target: Vec3): Vec3 {
+  const eye = new Vector3(from[0], from[1], from[2])
+  const tgt = new Vector3(target[0], target[1], target[2])
+  const dir = tgt.clone().sub(eye)
+  if (dir.lengthSq() < 1e-8) return [0, 0, 0]
+  dir.normalize()
+  const round2 = (n: number) => Math.round(n * 100) / 100
+
+  if (kind === 'directional-light' || kind === 'spot-light') {
+    const q = new Quaternion().setFromUnitVectors(new Vector3(0, -1, 0), dir)
+    const e = new Euler().setFromQuaternion(q, 'XYZ')
+    return [round2(e.x * RAD_TO_DEG), round2(e.y * RAD_TO_DEG), round2(e.z * RAD_TO_DEG)]
+  }
+
+  const up = Math.abs(dir.y) > 0.99 ? new Vector3(0, 0, 1) : new Vector3(0, 1, 0)
+  const mat = new Matrix4()
+  // camera 默认观察方向为 -Z；普通节点默认正面为 +Z
+  if (kind === 'camera') mat.lookAt(eye, tgt, up)
+  else mat.lookAt(tgt, eye, up)
+  const e = new Euler().setFromRotationMatrix(mat, 'XYZ')
+  return [round2(e.x * RAD_TO_DEG), round2(e.y * RAD_TO_DEG), round2(e.z * RAD_TO_DEG)]
+}
 
 const VALID_KINDS: ReadonlyArray<{ value: NodeKind; label: string }> = [
   { value: 'empty', label: '空节点' },
@@ -32,13 +58,14 @@ interface CreateNodeParams {
   position: Vec3
   rotation: Vec3
   scale: Vec3
+  lookAt?: Vec3
   snapToGround: boolean
 }
 
 const createNodeCmd: CommandDef<CreateNodeParams, { nodeId: string; name: string; position: Vec3 }> = {
   id: 'scene.createNode',
   title: '创建场景节点',
-  description: '在当前场景中创建一个指定种类的节点，可指定名称、父节点、变换与是否贴地',
+  description: '在当前场景中创建一个指定种类的节点，可指定名称、父节点、变换、朝向目标点(lookAt)与是否贴地',
   risk: 'safe',
   params: {
     type: 'object',
@@ -47,8 +74,9 @@ const createNodeCmd: CommandDef<CreateNodeParams, { nodeId: string; name: string
       name: { type: 'string', default: '', label: '名称' },
       parentId: { type: 'ref', target: 'node', default: null, label: '父节点 ID' },
       position: { type: 'vec3', default: [0, 0, 0], label: '位置' },
-      rotation: { type: 'vec3', default: [0, 0, 0], label: '旋转（弧度）' },
+      rotation: { type: 'vec3', default: [0, 0, 0], label: '旋转（角度/度）' },
       scale: { type: 'vec3', default: [1, 1, 1], label: '缩放' },
+      lookAt: { type: 'vec3', default: [0, 0, 0], optional: true, label: '朝向目标世界坐标（设置后自动计算旋转，推荐用于相机与聚光灯）' },
       snapToGround: { type: 'boolean', default: false, label: '创建后贴地放置' },
     },
   },
@@ -67,7 +95,9 @@ const createNodeCmd: CommandDef<CreateNodeParams, { nodeId: string; name: string
     const defaultLabel = VALID_KINDS.find((k) => k.value === p.kind)?.label ?? p.kind
     const baseName = (typeof p.name === 'string' ? p.name.trim() : '') || defaultLabel
     const pos: Vec3 = Array.isArray(p.position) && p.position.length === 3 ? [...p.position] : [0, 0, 0]
-    const rot: Vec3 = Array.isArray(p.rotation) && p.rotation.length === 3 ? [...p.rotation] : [0, 0, 0]
+    const rot: Vec3 = Array.isArray(p.lookAt) && p.lookAt.length === 3
+      ? computeLookAtRotationDeg(p.kind, pos, p.lookAt)
+      : (Array.isArray(p.rotation) && p.rotation.length === 3 ? [...p.rotation] : [0, 0, 0])
     const scl: Vec3 = Array.isArray(p.scale) && p.scale.length === 3 ? [...p.scale] : [1, 1, 1]
     const baseNode = makeNode({
       id: crypto.randomUUID(),
@@ -165,21 +195,23 @@ interface SetTransformParams {
   position?: Vec3
   rotation?: Vec3
   scale?: Vec3
+  lookAt?: Vec3
   snapToGround?: boolean
 }
 
 const setTransformCmd: CommandDef<SetTransformParams, { nodeId: string; position: Vec3; rotation: Vec3; scale: Vec3 }> = {
   id: 'scene.setTransform',
   title: '修改节点变换',
-  description: '修改节点的位置、旋转（弧度）或缩放，支持贴地放置',
+  description: '修改节点的位置、旋转（角度/度）、缩放，支持 lookAt 自动对准目标点与贴地放置',
   risk: 'safe',
   params: {
     type: 'object',
     fields: {
       nodeId: { type: 'ref', target: 'node', required: true, label: '节点 ID' },
       position: { type: 'vec3', default: [0, 0, 0], optional: true, label: '位置' },
-      rotation: { type: 'vec3', default: [0, 0, 0], optional: true, label: '旋转（弧度）' },
+      rotation: { type: 'vec3', default: [0, 0, 0], optional: true, label: '旋转（角度/度）' },
       scale: { type: 'vec3', default: [1, 1, 1], optional: true, label: '缩放' },
+      lookAt: { type: 'vec3', default: [0, 0, 0], optional: true, label: '朝向目标世界坐标（设置后自动计算旋转，推荐用于相机与灯光）' },
       snapToGround: { type: 'boolean', default: false, optional: true, label: '贴地放置' },
     },
   },
@@ -194,10 +226,14 @@ const setTransformCmd: CommandDef<SetTransformParams, { nodeId: string; position
         hint: '请通过 scene.outline 获取有效的节点 ID',
       }
     }
+    const nextPos: Vec3 = p.position ? [...p.position] : [...node.position]
+    const nextRot: Vec3 = Array.isArray(p.lookAt) && p.lookAt.length === 3
+      ? computeLookAtRotationDeg(node.kind, nextPos, p.lookAt)
+      : (p.rotation ? [...p.rotation] : [...node.rotation])
     const nextNode: SceneNode = {
       ...node,
-      position: p.position ? [...p.position] : [...node.position],
-      rotation: p.rotation ? [...p.rotation] : [...node.rotation],
+      position: nextPos,
+      rotation: nextRot,
       scale: p.scale ? [...p.scale] : [...node.scale],
     }
     useEditorStore.setState({

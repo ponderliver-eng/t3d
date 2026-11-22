@@ -8,7 +8,8 @@ import { useAssetStore } from '../assets/library'
 import { ArrowDown, ArrowDownToLine, ArrowLeft, ArrowRight, ArrowUp, Axis3d, BarChart3, Box, BoxSelect, ChevronDown, Crosshair, Focus, Globe, Grid3x3, Lightbulb, Magnet, Maximize, Monitor, Move3d, PenTool, Route, RotateCcw, Scaling, Scan, Send, Smartphone, Sparkles, Square, Trash2, X } from 'lucide-react'
 import { useAgentStore } from '../../ai/agentLoop'
 import { injectVirtualInput } from '../../core/input/actionMap'
-import { captureMainViewport } from '../../core/preview/offscreenPreview'
+import { captureMainViewport, registerCompositeCapture } from '../../core/preview/offscreenPreview'
+import { electronBridge } from '../project/electronBridge'
 import { useEditorStore } from '../scene/store'
 import { EditorViewport } from './EditorViewport'
 import ViewCube from './ViewCube'
@@ -123,7 +124,18 @@ export default function ViewportPanel() {
     if (!canvas || !stage) return
     const viewport = new EditorViewport(canvas, stage)
     viewportRef.current = viewport
+    const unregisterComposite = registerCompositeCapture(async (options) => {
+      const cap = electronBridge()?.viewport?.capturePage
+      if (!cap) return null
+      const rect = stage.getBoundingClientRect()
+      if (rect.width <= 8 || rect.height <= 8) return null
+      return cap(
+        { x: rect.left, y: rect.top, width: rect.width, height: rect.height },
+        options?.width ?? 960,
+      )
+    })
     return () => {
+      unregisterComposite()
       viewportRef.current = null
       viewport.dispose()
     }
