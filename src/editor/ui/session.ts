@@ -9,12 +9,15 @@ import { containerIdFor, insertUiChild, parentOf, removeUiNode, shiftUiNode, map
 interface UiEditorSession {
   assetId: string | null
   selectedId: string
+  selectedIds: string[]
   past: UiDocument[]
   future: UiDocument[]
   overrides: Record<string, unknown>
   open: (assetId: string) => void
   close: () => void
-  select: (id: string) => void
+  select: (id: string, mode?: 'replace' | 'toggle' | 'add' | 'keep') => void
+  selectRange: (anchorId: string, targetId: string, orderedIds: string[]) => void
+  selectIds: (ids: string[]) => void
   commit: (next: UiDocument) => void
   undo: () => boolean
   redo: () => boolean
@@ -27,21 +30,53 @@ interface UiEditorSession {
 export const useUiEditor = create<UiEditorSession>((set, get) => ({
   assetId: null,
   selectedId: 'root',
+  selectedIds: ['root'],
   past: [],
   future: [],
   overrides: {},
   open: assetId => {
     const document = readDocument(assetId)
+    const selectedId = document?.root.id ?? 'root'
     set({
       assetId,
-      selectedId: document?.root.id ?? 'root',
+      selectedId,
+      selectedIds: [selectedId],
       past: [],
       future: [],
       overrides: {},
     })
   },
-  close: () => set({ assetId: null, past: [], future: [], overrides: {} }),
-  select: id => set({ selectedId: id }),
+  close: () => set({ assetId: null, selectedIds: ['root'], past: [], future: [], overrides: {} }),
+  select: (id, mode = 'replace') => set(state => {
+    if (mode === 'toggle') {
+      const has = state.selectedIds.includes(id)
+      const next = has ? state.selectedIds.filter(item => item !== id) : [...state.selectedIds, id]
+      const selectedIds = next.length > 0 ? next : [id]
+      return { selectedIds, selectedId: selectedIds.includes(state.selectedId) ? state.selectedId : selectedIds[selectedIds.length - 1] }
+    }
+    if (mode === 'add') {
+      const selectedIds = state.selectedIds.includes(id) ? state.selectedIds : [...state.selectedIds, id]
+      return { selectedIds, selectedId: id }
+    }
+    if (mode === 'keep') return { selectedId: id }
+    return { selectedId: id, selectedIds: [id] }
+  }),
+  selectRange: (anchorId, targetId, orderedIds) => {
+    const start = orderedIds.indexOf(anchorId)
+    const end = orderedIds.indexOf(targetId)
+    if (start < 0 || end < 0) {
+      set({ selectedId: targetId, selectedIds: [targetId] })
+      return
+    }
+    const [from, to] = start < end ? [start, end] : [end, start]
+    const selectedIds = orderedIds.slice(from, to + 1)
+    set({ selectedId: targetId, selectedIds: selectedIds.length > 0 ? selectedIds : [targetId] })
+  },
+  selectIds: ids => set(() => {
+    const selectedIds = [...new Set(ids.filter(Boolean))]
+    if (selectedIds.length === 0) return {}
+    return { selectedIds, selectedId: selectedIds[selectedIds.length - 1] }
+  }),
   commit: next => {
     const assetId = get().assetId
     const current = assetId ? readDocument(assetId) : null
@@ -76,16 +111,20 @@ export const useUiEditor = create<UiEditorSession>((set, get) => ({
     const node = createUiNode(type)
     node.name = nodeTypeName(type)
     get().commit({ ...document, root: insertUiChild(document.root, parentId, node) })
-    set({ selectedId: node.id })
+    set({ selectedId: node.id, selectedIds: [node.id] })
   },
   removeSelected: () => {
     const assetId = get().assetId
     const document = assetId ? readDocument(assetId) : null
-    const selectedId = get().selectedId
-    if (!document || selectedId === document.root.id) return
-    const parent = parentOf(document.root, selectedId)
-    get().commit({ ...document, root: removeUiNode(document.root, selectedId) })
-    set({ selectedId: parent?.id ?? document.root.id })
+    if (!document) return
+    const ids = get().selectedIds.filter(id => id !== document.root.id)
+    if (ids.length === 0) return
+    const parent = parentOf(document.root, get().selectedId) ?? parentOf(document.root, ids[0])
+    let root = document.root
+    for (const id of ids) root = removeUiNode(root, id)
+    get().commit({ ...document, root })
+    const selectedId = parent?.id ?? document.root.id
+    set({ selectedId, selectedIds: [selectedId] })
   },
   shiftSelected: delta => {
     const assetId = get().assetId

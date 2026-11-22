@@ -22,7 +22,7 @@ import type { UiLayout, UiNode, UiNodeType, UiStateKind, UiStyle } from '../../r
 import { UI_NODE_TYPES } from '../../runtime/ui/spec'
 import { EMPTY_UI_VALUES, resolveUiTree } from '../../runtime/ui/bindings'
 import { UiDomDocument } from '../../runtime/ui/dom'
-import { collectUiBindings, findUiNode, flattenUi, mapUiNode } from '../../runtime/ui/tree'
+import { collectUiBindings, findUiNode, flattenUi, mapUiNode, parentOf } from '../../runtime/ui/tree'
 import { patchSelected, readDocument, useUiEditor } from './session'
 import './UiEditor.css'
 
@@ -59,6 +59,7 @@ export function UiEditor() {
   const { t } = useI18n()
   const assetId = useUiEditor(state => state.assetId)
   const selectedId = useUiEditor(state => state.selectedId)
+  const selectedIds = useUiEditor(state => state.selectedIds)
   const overrides = useUiEditor(state => state.overrides)
   const canUndo = useUiEditor(state => state.past.length > 0)
   const canRedo = useUiEditor(state => state.future.length > 0)
@@ -70,13 +71,53 @@ export function UiEditor() {
   const [styleState, setStyleState] = useState<'normal' | UiStateKind>('normal')
   const [notice, setNotice] = useState('')
   const [live, setLive] = useState<Record<string, Partial<UiLayout>>>({})
+  const [marquee, setMarquee] = useState<{ x: number, y: number, w: number, h: number } | null>(null)
+  const [panning, setPanning] = useState(false)
   const liveRef = useRef<Record<string, Partial<UiLayout>>>({})
   const zoomRef = useRef(zoom)
+  const stageRef = useRef<HTMLDivElement>(null)
   zoomRef.current = zoom
 
   useEffect(() => {
     if (assetId && !document) useUiEditor.getState().close()
   }, [assetId, document])
+
+  useEffect(() => {
+    const stage = stageRef.current
+    if (!stage) return
+    const onWheel = (event: WheelEvent) => {
+      event.preventDefault()
+      if (event.deltaY === 0) return
+      const step = event.deltaY > 0 ? -0.05 : 0.05
+      setZoom(current => Math.min(1.5, Math.max(0.25, Math.round((current + step) * 20) / 20)))
+    }
+    const onPointerDown = (event: PointerEvent) => {
+      if (event.button !== 1) return
+      event.preventDefault()
+      const originX = event.clientX
+      const originY = event.clientY
+      const scrollLeft = stage.scrollLeft
+      const scrollTop = stage.scrollTop
+      setPanning(true)
+      const move = (next: PointerEvent) => {
+        stage.scrollLeft = scrollLeft - (next.clientX - originX)
+        stage.scrollTop = scrollTop - (next.clientY - originY)
+      }
+      const up = () => {
+        window.removeEventListener('pointermove', move)
+        window.removeEventListener('pointerup', up)
+        setPanning(false)
+      }
+      window.addEventListener('pointermove', move)
+      window.addEventListener('pointerup', up)
+    }
+    stage.addEventListener('wheel', onWheel, { passive: false })
+    stage.addEventListener('pointerdown', onPointerDown, true)
+    return () => {
+      stage.removeEventListener('wheel', onWheel)
+      stage.removeEventListener('pointerdown', onPointerDown, true)
+    }
+  }, [assetId, document?.root.id])
 
   const size = SIZES.find(item => item.id === sizeId) ?? SIZES[1]
   const selected = document ? (findUiNode(document.root, selectedId) ?? document.root) : null
@@ -87,35 +128,96 @@ export function UiEditor() {
 
   if (!assetId || !document || !preview || !selected) return null
 
+  const startMarquee = (event: { clientX: number, clientY: number, shiftKey: boolean, ctrlKey: boolean, metaKey: boolean, button: number }) => {
+    const stage = stageRef.current
+    if (!stage || event.button !== 0) return
+    const start = { x: event.clientX, y: event.clientY }
+    const additive = event.shiftKey || event.ctrlKey || event.metaKey
+    const previous = additive ? useUiEditor.getState().selectedIds.filter(id => id !== document.root.id) : []
+    let moved = false
+    const toStage = (clientX: number, clientY: number) => {
+      const rect = stage.getBoundingClientRect()
+      return { x: clientX - rect.left + stage.scrollLeft, y: clientY - rect.top + stage.scrollTop }
+    }
+    const move = (next: PointerEvent) => {
+      if (Math.hypot(next.clientX - start.x, next.clientY - start.y) < 4) return
+      moved = true
+      const a = toStage(start.x, start.y)
+      const b = toStage(next.clientX, next.clientY)
+      setMarquee({ x: Math.min(a.x, b.x), y: Math.min(a.y, b.y), w: Math.abs(b.x - a.x), h: Math.abs(b.y - a.y) })
+    }
+    const up = (next: PointerEvent) => {
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', up)
+      setMarquee(null)
+      if (!moved) {
+        useUiEditor.getState().select(document.root.id)
+        return
+      }
+      const box = {
+        left: Math.min(start.x, next.clientX),
+        top: Math.min(start.y, next.clientY),
+        right: Math.max(start.x, next.clientX),
+        bottom: Math.max(start.y, next.clientY),
+      }
+      const hits: string[] = []
+      const seen = new Set<string>()
+      stage.querySelectorAll<HTMLElement>('[data-ui-node-id]').forEach(element => {
+        const id = element.dataset.uiNodeId
+        if (!id || id === document.root.id || seen.has(id)) return
+        const rect = element.getBoundingClientRect()
+        if (rect.width < 1 || rect.height < 1) return
+        const overlap = Math.min(rect.right, box.right) - Math.max(rect.left, box.left)
+        const overlapY = Math.min(rect.bottom, box.bottom) - Math.max(rect.top, box.top)
+        if (overlap <= 0 || overlapY <= 0) return
+        seen.add(id)
+        hits.push(id)
+      })
+      const ids = [...new Set([...previous, ...hits])]
+      if (ids.length === 0) useUiEditor.getState().select(document.root.id)
+      else useUiEditor.getState().selectIds(ids)
+    }
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', up)
+  }
+
   const startDrag = (id: string, event: React.PointerEvent<HTMLElement>) => {
-    if (event.button !== 0 || id === document.root.id) return
-    const node = findUiNode(document.root, id)
-    if (!node || node.layout?.mode !== 'anchor') return
-    const origin = { x: node.layout.x ?? 0, y: node.layout.y ?? 0 }
+    if (event.button !== 0) return
+    if (event.ctrlKey || event.metaKey || event.shiftKey) return
+    const chosen = useUiEditor.getState().selectedIds.includes(id) ? useUiEditor.getState().selectedIds : [id]
+    const origins = chosen.flatMap(itemId => {
+      if (itemId === document.root.id) return []
+      if (chosen.some(other => other !== itemId && other !== document.root.id && isInside(document.root, other, itemId))) return []
+      const node = findUiNode(document.root, itemId)
+      if (!node) return []
+      return [{ id: itemId, x: node.layout?.x ?? 0, y: node.layout?.y ?? 0 }]
+    })
+    if (origins.length === 0) return
     const pointer = { x: event.clientX, y: event.clientY }
     const move = (next: PointerEvent) => {
+      next.preventDefault()
       const scale = zoomRef.current || 1
-      const patch = {
-        x: Math.round(origin.x + (next.clientX - pointer.x) / scale),
-        y: Math.round(origin.y + (next.clientY - pointer.y) / scale),
-      }
-      liveRef.current = { [id]: patch }
+      const dx = Math.round((next.clientX - pointer.x) / scale)
+      const dy = Math.round((next.clientY - pointer.y) / scale)
+      liveRef.current = Object.fromEntries(origins.map(item => [item.id, { x: item.x + dx, y: item.y + dy }]))
       setLive(liveRef.current)
     }
     const up = () => {
       window.removeEventListener('pointermove', move)
       window.removeEventListener('pointerup', up)
-      const patch = liveRef.current[id]
+      const patches = liveRef.current
       liveRef.current = {}
       setLive({})
-      if (!patch) return
       const fresh = readDocument(assetId)
-      const target = fresh ? findUiNode(fresh.root, id) : null
-      if (!fresh || !target) return
-      useUiEditor.getState().commit({
-        ...fresh,
-        root: replaceLayout(fresh.root, id, { ...(target.layout ?? { mode: 'anchor' }), ...patch }),
-      })
+      if (!fresh || Object.keys(patches).length === 0) return
+      let root = fresh.root
+      for (const item of origins) {
+        const patch = patches[item.id]
+        const target = patch ? findUiNode(root, item.id) : null
+        if (!patch || !target) continue
+        root = replaceLayout(root, item.id, { ...(target.layout ?? { mode: 'anchor' }), ...patch })
+      }
+      useUiEditor.getState().commit({ ...fresh, root })
     }
     window.addEventListener('pointermove', move)
     window.addEventListener('pointerup', up)
@@ -264,7 +366,7 @@ export function UiEditor() {
               <button type="button" title={t('ui.down')} disabled={selectedId === document.root.id} onClick={() => useUiEditor.getState().shiftSelected(1)}>
                 <ArrowDown size={12} />
               </button>
-              <button type="button" title={t('ui.delete')} disabled={selectedId === document.root.id} onClick={() => useUiEditor.getState().removeSelected()}>
+              <button type="button" title={t('ui.delete')} disabled={!selectedIds.some(id => id !== document.root.id)} onClick={() => useUiEditor.getState().removeSelected()}>
                 <Trash2 size={12} />
               </button>
             </div>
@@ -276,9 +378,15 @@ export function UiEditor() {
               return (
                 <div
                   key={item.node.id}
-                  className={`ui-editor__row ${item.node.id === selectedId ? 'ui-editor__row--on' : ''} ${hidden ? 'is-hidden' : ''}`}
+                  className={`ui-editor__row ${selectedIds.includes(item.node.id) ? 'ui-editor__row--on' : ''} ${hidden ? 'is-hidden' : ''}`}
                   style={{ paddingLeft: 8 + item.depth * 14 }}
-                  onClick={() => useUiEditor.getState().select(item.node.id)}
+                  onClick={event => {
+                    if (event.shiftKey) {
+                      useUiEditor.getState().selectRange(selectedId, item.node.id, flattenUi(document.root).map(row => row.node.id))
+                      return
+                    }
+                    useUiEditor.getState().select(item.node.id, event.ctrlKey || event.metaKey ? 'toggle' : 'replace')
+                  }}
                 >
                   <span className="ui-editor__row-icon">{nodeTypeIcon(item.node.type)}</span>
                   <span className="ui-editor__row-label">{item.node.name || t(`ui.type.${item.node.type}`)}</span>
@@ -301,13 +409,14 @@ export function UiEditor() {
 
         {/* 中央：画布舞台 */}
         <div
-          className={`ui-editor__stage ${showGrid ? 'has-grid' : ''}`}
-          onWheel={e => {
-            if (e.ctrlKey || e.metaKey) {
-              e.preventDefault()
-              const next = Math.min(1.5, Math.max(0.25, Number((zoom - Math.sign(e.deltaY) * 0.05).toFixed(2))))
-              setZoom(next)
-            }
+          ref={stageRef}
+          className={`ui-editor__stage ${showGrid ? 'has-grid' : ''} ${panning ? 'is-panning' : ''}`}
+          onMouseDown={event => { if (event.button === 1) event.preventDefault() }}
+          onPointerDown={event => {
+            if (event.button !== 0) return
+            const target = event.target as HTMLElement
+            if (target.closest('[data-ui-node-id]')) return
+            startMarquee(event)
           }}
         >
           <div className="ui-editor__scaler" style={{ width: size.width * zoom, height: size.height * zoom }}>
@@ -319,23 +428,30 @@ export function UiEditor() {
                 root={preview}
                 pickable
                 selectedId={selectedId}
+                selectedIds={selectedIds}
                 previewState={styleState === 'normal' ? undefined : styleState}
                 resolveImageUrl={textureUrl}
-                onSelect={id => useUiEditor.getState().select(id)}
+                onSelect={(id, event) => {
+                  if (id === document.root.id) return
+                  if (event?.shiftKey) useUiEditor.getState().select(id, 'add')
+                  else if (event?.ctrlKey || event?.metaKey) useUiEditor.getState().select(id, 'toggle')
+                  else useUiEditor.getState().select(id, useUiEditor.getState().selectedIds.includes(id) ? 'keep' : 'replace')
+                }}
                 onActivate={node => setNotice(node.click ? translate('ui.previewClick', { name: node.name || node.text || node.id, detail: clickDetail(node) }) : '')}
                 onDragStart={startDrag}
                 onResizeStart={startResize}
               />
             </div>
           </div>
+          {marquee && <div className="ui-editor__marquee" style={{ left: marquee.x, top: marquee.y, width: marquee.w, height: marquee.h }} />}
 
           <div className="ui-editor__status-pill">
-            <span>{selected.name || t(`ui.type.${selected.type}`)}</span>
+            <span>{selectedIds.length > 1 ? `已选 ${selectedIds.length} 个` : (selected.name || t(`ui.type.${selected.type}`))}</span>
             <em>{t(`ui.type.${selected.type}`)}</em>
-            {selected.layout?.width !== undefined && (
+            {selected.layout?.width !== undefined && selectedIds.length < 2 && (
               <span>{selected.layout.width}×{selected.layout.height ?? 0}</span>
             )}
-            <span className="ui-editor__status-hint">拖动控件移动 · 右下角手柄缩放 · Ctrl+滚轮缩放画布</span>
+            <span className="ui-editor__status-hint">滚轮缩放 · 按住滚轮平移 · 拖出框选多个控件</span>
           </div>
         </div>
 
@@ -754,6 +870,15 @@ function applyLive(node: UiNode, live: Record<string, Partial<UiLayout>>): UiNod
     layout: patch ? { mode: node.layout?.mode ?? 'anchor', ...node.layout, ...patch } : node.layout,
     children: node.children?.map(child => applyLive(child, live)),
   }
+}
+
+function isInside(root: UiNode, ancestorId: string, id: string): boolean {
+  let parent = parentOf(root, id)
+  while (parent) {
+    if (parent.id === ancestorId) return true
+    parent = parentOf(root, parent.id)
+  }
+  return false
 }
 
 function replaceLayout(root: UiNode, id: string, layout: UiLayout): UiNode {

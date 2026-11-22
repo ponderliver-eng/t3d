@@ -8,9 +8,10 @@ export interface UiDomProps {
   root: UiNode
   pickable?: boolean
   selectedId?: string
+  selectedIds?: readonly string[]
   previewState?: 'hover' | 'pressed' | 'disabled'
   resolveImageUrl?: (imageId: string) => string | undefined
-  onSelect?: (id: string) => void
+  onSelect?: (id: string, event?: { ctrlKey: boolean, metaKey: boolean, shiftKey: boolean }) => void
   onActivate?: (node: UiNode) => void
   onDragStart?: (id: string, event: ReactPointerEvent<HTMLElement>) => void
   onResizeStart?: (id: string, event: ReactPointerEvent<HTMLElement>) => void
@@ -18,8 +19,8 @@ export interface UiDomProps {
 
 export function UiDomDocument({ root, ...props }: UiDomProps) {
   return (
-    <div className={props.pickable ? 'ui-dom-preview ui-dom-preview--pick' : 'ui-dom-preview'} onPointerDown={() => props.onSelect?.(root.id)}>
-      <UiDomNode node={root} pickable={props.pickable} selectedId={props.selectedId} previewState={props.previewState} resolveImageUrl={props.resolveImageUrl} onSelect={props.onSelect} onActivate={props.onActivate} onDragStart={props.onDragStart} onResizeStart={props.onResizeStart} />
+    <div className={props.pickable ? 'ui-dom-preview ui-dom-preview--pick' : 'ui-dom-preview'}>
+      <UiDomNode node={root} pickable={props.pickable} selectedId={props.selectedId} selectedIds={props.selectedIds} previewState={props.previewState} resolveImageUrl={props.resolveImageUrl} onSelect={props.onSelect} onActivate={props.onActivate} onDragStart={props.onDragStart} onResizeStart={props.onResizeStart} />
     </div>
   )
 }
@@ -63,6 +64,7 @@ function UiDomNode({
   node,
   pickable,
   selectedId,
+  selectedIds,
   previewState,
   resolveImageUrl,
   onSelect,
@@ -77,7 +79,7 @@ function UiDomNode({
   const imageUrl = node.imageId ? resolveImageUrl?.(node.imageId) : undefined
   const hit = pickable || isHitTarget(node)
   const style = nodeStyle(node, state, imageUrl)
-  const selected = selectedId === node.id
+  const selected = selectedIds ? selectedIds.includes(node.id) : selectedId === node.id
   const className = [
     'ui-dom-node',
     `ui-dom-node--${node.type}`,
@@ -89,9 +91,10 @@ function UiDomNode({
     style,
     'data-ui-node-id': node.id,
     onPointerDown: (event: ReactPointerEvent<HTMLElement>) => {
+      if (event.button !== 0) return
       if (!pickable && !hit) return
       event.stopPropagation()
-      onSelect?.(node.id)
+      onSelect?.(node.id, event)
       if (node.enabled === false) return
       setPointer('pressed')
       if (pickable) onDragStart?.(node.id, event)
@@ -105,7 +108,7 @@ function UiDomNode({
       if (node.type === 'button') onActivate?.(node)
     },
   }
-  const resize = selected && pickable && onResizeStart ? (
+  const resize = selectedId === node.id && pickable && onResizeStart ? (
     <span
       className="ui-dom-node__resize"
       onPointerDown={event => {
@@ -147,6 +150,7 @@ function UiDomNode({
           node={child}
           pickable={pickable}
           selectedId={selectedId}
+          selectedIds={selectedIds}
           previewState={previewState}
           resolveImageUrl={resolveImageUrl}
           onSelect={onSelect}
@@ -196,13 +200,15 @@ function nodeStyle(node: UiNode, state: 'normal' | 'hover' | 'pressed' | 'disabl
     paddingBottom: px(layout?.padding?.bottom),
     paddingLeft: px(layout?.padding?.left),
   }
-  if (layout?.mode === 'flex' || node.type === 'stack') {
+  if (layout?.mode === 'flex' || (node.type === 'stack' && layout?.mode !== 'anchor')) {
     css.display = 'flex'
     css.position = 'relative'
     css.flexDirection = layout?.flexDirection ?? 'column'
     css.gap = px(layout?.gap)
     css.alignItems = flexAlign(layout?.align)
     css.justifyContent = flexJustify(layout?.justify)
+    if (layout?.x) css.left = px(layout.x)
+    if (layout?.y) css.top = px(layout.y)
   }
   if (layout?.mode === 'anchor') {
     const anchorMin = layout.anchorMin ?? { x: 0.5, y: 0.5 }
