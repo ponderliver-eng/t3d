@@ -126,6 +126,25 @@ export type SchemaValidationResult<T = unknown> =
   | { ok: true; value: T }
   | { ok: false; issues: SchemaValidationIssue[] }
 
+export function safeVecDefault(type: 'vec2' | 'vec3' | 'vec4', rawDefault: unknown): number[] {
+  const len = type === 'vec2' ? 2 : type === 'vec3' ? 3 : 4
+  if (Array.isArray(rawDefault)) {
+    return Array.from({ length: len }, (_, i) => {
+      const v = rawDefault[i]
+      return typeof v === 'number' && Number.isFinite(v) ? v : 0
+    })
+  }
+  if (rawDefault && typeof rawDefault === 'object') {
+    const obj = rawDefault as Record<string, unknown>
+    const keys = ['x', 'y', 'z', 'w']
+    return Array.from({ length: len }, (_, i) => {
+      const v = obj[keys[i]]
+      return typeof v === 'number' && Number.isFinite(v) ? v : 0
+    })
+  }
+  return Array.from({ length: len }, () => 0)
+}
+
 export function defaultForSchema(schema: FieldSchema): unknown {
   switch (schema.type) {
     case 'number':
@@ -137,7 +156,7 @@ export function defaultForSchema(schema: FieldSchema): unknown {
     case 'vec2':
     case 'vec3':
     case 'vec4':
-      return [...schema.default]
+      return safeVecDefault(schema.type, schema.default)
     case 'texture':
     case 'ref':
       return schema.default ?? null
@@ -178,11 +197,12 @@ export function normalizeBySchema<T = unknown>(
     case 'vec3':
     case 'vec4': {
       const len = schema.type === 'vec2' ? 2 : schema.type === 'vec3' ? 3 : 4
-      if (!Array.isArray(raw)) return [...schema.default] as T
+      const fallback = safeVecDefault(schema.type, schema.default)
+      if (!Array.isArray(raw)) return fallback as T
       const out: number[] = []
       for (let i = 0; i < len; i += 1) {
         const v = raw[i]
-        out.push(typeof v === 'number' && Number.isFinite(v) ? v : schema.default[i])
+        out.push(typeof v === 'number' && Number.isFinite(v) ? v : fallback[i])
       }
       return out as T
     }
@@ -292,15 +312,16 @@ function validateInner(
     case 'vec2':
     case 'vec3':
     case 'vec4': {
-      if (raw === undefined) return [...schema.default]
+      const fallback = safeVecDefault(schema.type, schema.default)
+      if (raw === undefined) return fallback
       const expected = schema.type === 'vec2' ? 2 : schema.type === 'vec3' ? 3 : 4
       if (!Array.isArray(raw) || raw.length !== expected || raw.some((v) => typeof v !== 'number' || !Number.isFinite(v))) {
         issues.push({
           path: loc,
           message: `${schema.label} 必须是长度为 ${expected} 的数字数组`,
-          hint: `示例：${JSON.stringify(schema.default)}`,
+          hint: `示例：${JSON.stringify(fallback)}`,
         })
-        return [...schema.default]
+        return fallback
       }
       return [...raw]
     }
@@ -414,7 +435,7 @@ export function fieldSchemaToJsonSchema(schema: FieldSchema): Record<string, unk
         items: { type: 'number' },
         minItems: len,
         maxItems: len,
-        default: [...schema.default],
+        default: safeVecDefault(schema.type, schema.default),
       }
     }
     case 'enum':

@@ -205,7 +205,7 @@ function SchemaControl({
     case 'vec3':
     case 'vec4': {
       const len = field.type === 'vec2' ? 2 : field.type === 'vec3' ? 3 : 4
-      const arr = Array.isArray(value) ? value : [...field.default]
+      const arr = Array.isArray(value) ? value : (defaultForSchema(field) as number[])
       return (
         <div style={{ display: 'grid', gridTemplateColumns: `repeat(${len}, minmax(0, 1fr))`, gap: '4px' }}>
           {Array.from({ length: len }, (_, idx) => (

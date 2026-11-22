@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type DragEvent } from 'react'
-import { Bot, Box, Camera, Check, ChevronDown, ChevronRight, Copy, Download, FileBox, FileCode2, Loader2, RotateCcw, Send, Settings, Sparkles, Square, Trash2, Upload, Wand2, X } from 'lucide-react'
+import { AlertTriangle, Bot, Box, Camera, Check, ChevronDown, ChevronRight, Copy, Download, FileBox, FileCode2, Loader2, RotateCcw, Send, Settings, Sparkles, Square, Trash2, Upload, Wand2, X } from 'lucide-react'
 import { createCheckpoint } from '../core/project/checkpoints'
 import { useManagerModalStore } from '../core/project/ProjectManagerModal'
 import { openCodeAssetModal } from '../core/codeAssets/CodeAssetModal'
@@ -685,6 +685,58 @@ export default function AiWorkbenchPanel() {
                 }}
               >
                 {turn.error}
+              </div>
+            )}
+
+            {!isActiveTurn && turn.stopReason === 'interrupted' && (
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 10,
+                  padding: '8px 10px',
+                  borderRadius: 6,
+                  background: 'rgba(239, 68, 68, 0.14)',
+                  border: '1px solid rgba(248, 113, 113, 0.45)',
+                  color: '#fecaca',
+                  fontSize: 11,
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 7, minWidth: 0 }}>
+                  <AlertTriangle size={14} style={{ color: '#f87171', flexShrink: 0, marginTop: 1 }} />
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                    <span style={{ fontWeight: 700, color: '#fca5a5' }}>执行异常中断（页面刷新或连接断开）</span>
+                    <span style={{ color: '#fca5a5', opacity: 0.85, fontSize: 10.5 }}>
+                      已保留您的提问与当前已完成的进度，可点击继续处理。
+                    </span>
+                  </div>
+                </div>
+                {idx === turns.length - 1 && status === 'idle' && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const prevUser = [...turns.slice(0, idx)].reverse().find((t) => t.role === 'user')
+                      const hint = prevUser?.text
+                        ? `上一轮执行因页面刷新/异常中断，请结合我的上一条请求（“${prevUser.text.slice(0, 120)}”）以及已执行的步骤，继续完成剩余工作。`
+                        : '上一轮执行因页面刷新/异常中断，请结合上下文与已执行的步骤，继续完成剩余工作。'
+                      void sendPrompt(hint)
+                    }}
+                    style={{
+                      flexShrink: 0,
+                      padding: '4px 10px',
+                      borderRadius: 4,
+                      border: 'none',
+                      background: '#dc2626',
+                      color: '#fff',
+                      fontSize: 11,
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    点击继续
+                  </button>
+                )}
               </div>
             )}
 

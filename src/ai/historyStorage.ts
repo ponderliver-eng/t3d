@@ -3,12 +3,95 @@ import { electronBridge, joinProjectPath } from '../editor/project/electronBridg
 import type { AiTurnItem } from './agentLoop'
 
 const DRAFT_STORAGE_KEY = 't3d:ai-history-draft'
+const INFLIGHT_BACKUP_PREFIX = 't3d:ai-inflight:'
 const HISTORY_REL_PATH = '.t3d/ai-history.json'
 
 interface SerializedAiHistory {
   version: 1
   updatedAt: string
   turns: AiTurnItem[]
+}
+
+function inflightKey(dir: string | null): string {
+  return `${INFLIGHT_BACKUP_PREFIX}${dir || '__draft__'}`
+}
+
+export function saveInflightBackup(turns: AiTurnItem[], dir: string | null = projectDirectoryPath()): void {
+  if (typeof localStorage === 'undefined') return
+  try {
+    const payload: SerializedAiHistory = {
+      version: 1,
+      updatedAt: new Date().toISOString(),
+      turns: sanitizeTurnsForDraft(turns),
+    }
+    localStorage.setItem(inflightKey(dir), JSON.stringify(payload))
+  } catch {
+    // 忽略存储配额错误
+  }
+}
+
+export function clearInflightBackup(dir: string | null = projectDirectoryPath()): void {
+  if (typeof localStorage === 'undefined') return
+  try {
+    localStorage.removeItem(inflightKey(dir))
+  } catch {
+    // ignore
+  }
+}
+
+function readInflightBackup(dir: string | null): SerializedAiHistory | null {
+  if (typeof localStorage === 'undefined') return null
+  try {
+    const raw = localStorage.getItem(inflightKey(dir))
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as Partial<SerializedAiHistory>
+    if (!parsed || !Array.isArray(parsed.turns)) return null
+    return {
+      version: 1,
+      updatedAt: typeof parsed.updatedAt === 'string' ? parsed.updatedAt : '',
+      turns: parsed.turns,
+    }
+  } catch {
+    return null
+  }
+}
+
+export function recoverInterruptedTurns(turns: AiTurnItem[]): { turns: AiTurnItem[]; recovered: boolean } {
+  if (turns.length === 0) return { turns, recovered: false }
+  let recovered = false
+  const next: AiTurnItem[] = turns.map((turn, idx) => {
+    const isLast = idx === turns.length - 1
+    const looksUnfinished =
+      turn.role === 'assistant' &&
+      (turn.inProgress || (isLast && !turn.stopReason && !turn.error && !turn.usage))
+
+    if (!looksUnfinished) return turn
+    recovered = true
+    const fixedActions = turn.actions?.map((a) =>
+      a.pending ? { ...a, pending: false, ok: false, label: `${a.label}（已中断）` } : a,
+    )
+    const { inProgress: _omit, ...rest } = turn
+    return {
+      ...rest,
+      ...(fixedActions ? { actions: fixedActions } : {}),
+      stopReason: 'interrupted',
+    }
+  })
+
+  // 若最后一条是用户提问（刷新时 assistant 占位尚未落盘），补齐一条中断占位以便提示继续
+  const tail = next[next.length - 1]
+  if (tail && tail.role === 'user') {
+    recovered = true
+    next.push({
+      id: `a_interrupted_${Date.now()}`,
+      role: 'assistant',
+      text: '',
+      actions: [],
+      stopReason: 'interrupted',
+    })
+  }
+
+  return { turns: next, recovered }
 }
 
 function sanitizeTurnsForDraft(turns: AiTurnItem[]): AiTurnItem[] {
@@ -114,13 +197,24 @@ export function initAiHistorySync(
   let lastDir: string | null = projectDirectoryPath()
 
   const syncForDirectory = async (dir: string | null, wasDraft: boolean) => {
+    const backup = readInflightBackup(dir)
     if (!dir) {
-      setTurns(loadDraftAiHistory())
+      const base = loadDraftAiHistory()
+      const merged = backup && backup.turns.length >= base.length ? backup.turns : base
+      const { turns: recoveredTurns, recovered } = recoverInterruptedTurns(merged)
+      setTurns(recoveredTurns)
+      clearInflightBackup(null)
+      if (recovered) void saveAiHistory(recoveredTurns)
       return
     }
     const existing = await loadProjectAiHistory(dir)
-    if (existing !== null) {
-      setTurns(existing)
+    if (existing !== null || backup) {
+      const base = existing ?? []
+      const merged = backup && backup.turns.length >= base.length ? backup.turns : base
+      const { turns: recoveredTurns, recovered } = recoverInterruptedTurns(merged)
+      setTurns(recoveredTurns)
+      clearInflightBackup(dir)
+      if (recovered || backup) void saveAiHistory(recoveredTurns)
       return
     }
     // 新目录工程还没有对话记录：如果是从草稿另存为目录工程，自动把草稿对话迁移过去

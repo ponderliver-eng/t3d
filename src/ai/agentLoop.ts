@@ -6,7 +6,7 @@ import { queryNodeInspect, queryProjectOverview } from '../core/query'
 import { useAssetStore } from '../editor/assets/library'
 import { electronBridge } from '../editor/project/electronBridge'
 import { useEditorStore } from '../editor/scene/store'
-import { initAiHistorySync, saveAiHistory } from './historyStorage'
+import { clearInflightBackup, initAiHistorySync, saveAiHistory, saveInflightBackup } from './historyStorage'
 import {
   buildAiToolSpecs,
   executeAiTool,
@@ -42,8 +42,9 @@ export interface AiTurnItem {
   checkpointId?: string
   usage?: { inputTokens?: number; outputTokens?: number; model?: string }
   error?: string
-  stopReason?: 'completed' | 'max-steps' | 'paused-with-plan'
+  stopReason?: 'completed' | 'max-steps' | 'paused-with-plan' | 'interrupted'
   pendingTasksCount?: number
+  inProgress?: boolean
 }
 
 export interface PendingConfirmation {
@@ -293,9 +294,11 @@ export const useAgentStore = create<AgentState>((set, get) => ({
       turns: [
         ...s.turns,
         userTurn,
-        { id: currentAssistantId, role: 'assistant', text: '', actions: [], checkpointId: checkpoint.id },
+        { id: currentAssistantId, role: 'assistant', text: '', actions: [], checkpointId: checkpoint.id, inProgress: true },
       ],
     }))
+    saveInflightBackup(get().turns)
+    void saveAiHistory(get().turns)
 
     const systemPrompt = buildSystemPrompt(mergedRefs)
     const tools = buildAiToolSpecs()
@@ -328,15 +331,18 @@ export const useAgentStore = create<AgentState>((set, get) => ({
           ...(item.imageDataUrl ? { images: [item.imageDataUrl] } : {}),
         })
       }
+      const prevAssistantId = currentAssistantId
       currentAssistantId = `a_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`
       actions = []
       finalText = ''
       set((s) => ({
         turns: [
-          ...s.turns,
-          { id: currentAssistantId, role: 'assistant', text: '', actions: [] },
+          ...s.turns.map((t) => (t.id === prevAssistantId ? { ...t, inProgress: false, stopReason: 'completed' as const } : t)),
+          { id: currentAssistantId, role: 'assistant', text: '', actions: [], inProgress: true },
         ],
       }))
+      saveInflightBackup(get().turns)
+      void saveAiHistory(get().turns)
       return true
     }
 
@@ -470,6 +476,7 @@ export const useAgentStore = create<AgentState>((set, get) => ({
               t.id === currentAssistantId ? { ...t, actions: [...actions] } : t,
             ),
           }))
+          saveInflightBackup(get().turns)
 
           const serialized = JSON.stringify(execRes.data)
           chatMessages.push({
@@ -505,10 +512,12 @@ export const useAgentStore = create<AgentState>((set, get) => ({
                 usage: { inputTokens: totalIn, outputTokens: totalOut, model: usedModel },
                 stopReason,
                 pendingTasksCount,
+                inProgress: undefined,
               }
             : t,
         ),
       }))
+      clearInflightBackup()
       void saveAiHistory(get().turns)
     } catch (error) {
       if (!txCommitted && commandBus.hasActiveTransaction()) {
@@ -523,9 +532,10 @@ export const useAgentStore = create<AgentState>((set, get) => ({
         activeNodeIds: [],
         steerQueue: [],
         turns: s.turns.map((t) =>
-          t.id === currentAssistantId ? { ...t, text: finalText, actions, error: msg } : t,
+          t.id === currentAssistantId ? { ...t, text: finalText, actions, error: msg, inProgress: undefined } : t,
         ),
       }))
+      clearInflightBackup()
       void saveAiHistory(get().turns)
     }
   },
@@ -535,6 +545,23 @@ initAiHistorySync(
   () => useAgentStore.getState().turns,
   (turns) => useAgentStore.setState({ turns }),
 )
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('beforeunload', () => {
+    const state = useAgentStore.getState()
+    if (state.status === 'idle') return
+    const snapshot = state.turns.map((t, idx) => {
+      const isLastAssistant = idx === state.turns.length - 1 && t.role === 'assistant'
+      if (!isLastAssistant) return t
+      return {
+        ...t,
+        inProgress: true,
+        text: t.text || state.streamingText || '',
+      }
+    })
+    saveInflightBackup(snapshot)
+  })
+}
 
 registerTaskPlanUpdater((tasks) => {
   useAgentStore.setState({ taskPlan: tasks })
@@ -570,7 +597,10 @@ function buildHistoryMessages(
   const MAX_IMAGES = 2
 
   const candidates = turns.filter(
-    (t) => t.id !== excludeId && !t.error && (t.text.trim() || t.imageDataUrl || (t.actions && t.actions.length > 0)),
+    (t) =>
+      t.id !== excludeId &&
+      !t.error &&
+      (t.text.trim() || t.imageDataUrl || (t.actions && t.actions.length > 0) || t.stopReason === 'interrupted'),
   )
 
   const picked: Array<{ role: 'user' | 'assistant'; text: string; images?: string[] }> = []
@@ -591,6 +621,9 @@ function buildHistoryMessages(
         .map((a) => `${a.ok ? '✓' : '✕'} ${a.label}${a.targetNodeId ? ` [${a.targetNodeId}]` : ''}`)
         .join('；')
       content = `${content}\n[本轮已执行操作: ${actionSummary}]`.trim()
+    }
+    if (t.role === 'assistant' && t.stopReason === 'interrupted') {
+      content = `${content}\n[本轮执行因页面刷新或异常而中断]`.trim()
     }
     const includeImage = t.role === 'user' && Boolean(t.imageDataUrl) && imagesUsed < MAX_IMAGES
     if (includeImage) imagesUsed += 1
