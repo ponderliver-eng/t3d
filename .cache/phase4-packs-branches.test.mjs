@@ -14,6 +14,268 @@ var __export = (target, all) => {
     __defProp(target, name, { get: all[name], enumerable: true });
 };
 
+// src/core/schema/fieldSchema.ts
+function safeVecDefault(type, rawDefault) {
+  const len = type === "vec2" ? 2 : type === "vec3" ? 3 : 4;
+  if (Array.isArray(rawDefault)) {
+    return Array.from({ length: len }, (_, i) => {
+      const v = rawDefault[i];
+      return typeof v === "number" && Number.isFinite(v) ? v : 0;
+    });
+  }
+  if (rawDefault && typeof rawDefault === "object") {
+    const obj = rawDefault;
+    const keys = ["x", "y", "z", "w"];
+    return Array.from({ length: len }, (_, i) => {
+      const v = obj[keys[i]];
+      return typeof v === "number" && Number.isFinite(v) ? v : 0;
+    });
+  }
+  return Array.from({ length: len }, () => 0);
+}
+function defaultForSchema(schema) {
+  switch (schema.type) {
+    case "number":
+    case "boolean":
+    case "string":
+    case "color":
+    case "enum":
+      return schema.default;
+    case "vec2":
+    case "vec3":
+    case "vec4":
+      return safeVecDefault(schema.type, schema.default);
+    case "texture":
+    case "ref":
+      return schema.default ?? null;
+    case "list":
+      return schema.default ? structuredClone(schema.default) : [];
+    case "object": {
+      const out = {};
+      for (const [key, child] of Object.entries(schema.fields)) {
+        out[key] = defaultForSchema(child);
+      }
+      return out;
+    }
+  }
+}
+function normalizeBySchema(schema, raw, options) {
+  const clampNumbers = options?.clampNumbers ?? true;
+  switch (schema.type) {
+    case "number": {
+      const num = typeof raw === "number" && Number.isFinite(raw) ? raw : schema.default;
+      if (!clampNumbers) return num;
+      let next = num;
+      if (schema.min !== void 0) next = Math.max(schema.min, next);
+      if (schema.max !== void 0) next = Math.min(schema.max, next);
+      return next;
+    }
+    case "boolean":
+      return typeof raw === "boolean" ? raw : schema.default;
+    case "string":
+      return typeof raw === "string" ? raw : schema.default;
+    case "color":
+      return typeof raw === "string" && /^#[0-9a-fA-F]{3,8}$/.test(raw) ? raw : schema.default;
+    case "vec2":
+    case "vec3":
+    case "vec4": {
+      const len = schema.type === "vec2" ? 2 : schema.type === "vec3" ? 3 : 4;
+      const fallback = safeVecDefault(schema.type, schema.default);
+      if (!Array.isArray(raw)) return fallback;
+      const out = [];
+      for (let i = 0; i < len; i += 1) {
+        const v = raw[i];
+        out.push(typeof v === "number" && Number.isFinite(v) ? v : fallback[i]);
+      }
+      return out;
+    }
+    case "enum": {
+      if (typeof raw === "string" && schema.options.some((opt) => opt.value === raw)) {
+        return raw;
+      }
+      return schema.default;
+    }
+    case "texture":
+    case "ref":
+      return typeof raw === "string" && raw.length > 0 ? raw : null;
+    case "list": {
+      if (!Array.isArray(raw)) return defaultForSchema(schema);
+      return raw.map((entry) => normalizeBySchema(schema.item, entry, options));
+    }
+    case "object": {
+      const src = raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
+      const out = {};
+      for (const [key, child] of Object.entries(schema.fields)) {
+        out[key] = normalizeBySchema(child, src[key], options);
+      }
+      return out;
+    }
+  }
+}
+function validateBySchema(schema, raw, path = "") {
+  const issues = [];
+  const value = validateInner(schema, raw, path, issues);
+  if (issues.length > 0) {
+    return { ok: false, issues };
+  }
+  return { ok: true, value };
+}
+function validateInner(schema, raw, path, issues) {
+  const loc = path || "(root)";
+  switch (schema.type) {
+    case "number": {
+      if (raw === void 0) return schema.default;
+      if (typeof raw !== "number" || !Number.isFinite(raw)) {
+        issues.push({
+          path: loc,
+          message: `${schema.label} \u5FC5\u987B\u662F\u6709\u6548\u6570\u5B57`,
+          hint: `\u8BF7\u4F20\u5165\u6570\u5B57${schema.min !== void 0 || schema.max !== void 0 ? `\uFF08\u8303\u56F4 ${schema.min ?? "-\u221E"} ~ ${schema.max ?? "+\u221E"}\uFF09` : ""}`
+        });
+        return schema.default;
+      }
+      if (schema.min !== void 0 && raw < schema.min) {
+        issues.push({
+          path: loc,
+          message: `${schema.label} \u4E0D\u80FD\u5C0F\u4E8E ${schema.min}\uFF08\u5F53\u524D\u4E3A ${raw}\uFF09`,
+          hint: `\u8BF7\u8C03\u6574\u5230 ${schema.min} \u4EE5\u4E0A`
+        });
+      }
+      if (schema.max !== void 0 && raw > schema.max) {
+        issues.push({
+          path: loc,
+          message: `${schema.label} \u4E0D\u80FD\u5927\u4E8E ${schema.max}\uFF08\u5F53\u524D\u4E3A ${raw}\uFF09`,
+          hint: `\u8BF7\u8C03\u6574\u5230 ${schema.max} \u4EE5\u4E0B`
+        });
+      }
+      return raw;
+    }
+    case "boolean": {
+      if (raw === void 0) return schema.default;
+      if (typeof raw !== "boolean") {
+        issues.push({ path: loc, message: `${schema.label} \u5FC5\u987B\u662F\u5E03\u5C14\u503C`, hint: "\u8BF7\u4F20\u5165 true \u6216 false" });
+        return schema.default;
+      }
+      return raw;
+    }
+    case "string": {
+      if (raw === void 0 || schema.optional && raw === null) return schema.default;
+      if (typeof raw !== "string") {
+        issues.push({ path: loc, message: `${schema.label} \u5FC5\u987B\u662F\u5B57\u7B26\u4E32` });
+        return schema.default;
+      }
+      if (schema.minLength !== void 0 && raw.length < schema.minLength) {
+        issues.push({ path: loc, message: `${schema.label} \u957F\u5EA6\u4E0D\u80FD\u5C11\u4E8E ${schema.minLength}` });
+      }
+      if (schema.maxLength !== void 0 && raw.length > schema.maxLength) {
+        issues.push({ path: loc, message: `${schema.label} \u957F\u5EA6\u4E0D\u80FD\u8D85\u8FC7 ${schema.maxLength}` });
+      }
+      return raw;
+    }
+    case "color": {
+      if (raw === void 0) return schema.default;
+      if (typeof raw !== "string" || !/^#[0-9a-fA-F]{3,8}$/.test(raw)) {
+        issues.push({ path: loc, message: `${schema.label} \u5FC5\u987B\u662F\u5341\u516D\u8FDB\u5236\u989C\u8272\u503C`, hint: "\u683C\u5F0F\u5982 #ff5a1e" });
+        return schema.default;
+      }
+      return raw;
+    }
+    case "vec2":
+    case "vec3":
+    case "vec4": {
+      const fallback = safeVecDefault(schema.type, schema.default);
+      if (raw === void 0) return fallback;
+      const expected = schema.type === "vec2" ? 2 : schema.type === "vec3" ? 3 : 4;
+      if (!Array.isArray(raw) || raw.length !== expected || raw.some((v) => typeof v !== "number" || !Number.isFinite(v))) {
+        issues.push({
+          path: loc,
+          message: `${schema.label} \u5FC5\u987B\u662F\u957F\u5EA6\u4E3A ${expected} \u7684\u6570\u5B57\u6570\u7EC4`,
+          hint: `\u793A\u4F8B\uFF1A${JSON.stringify(fallback)}`
+        });
+        return fallback;
+      }
+      return [...raw];
+    }
+    case "enum": {
+      if (raw === void 0) return schema.default;
+      if (typeof raw !== "string" || !schema.options.some((opt) => opt.value === raw)) {
+        const allowed = schema.options.map((o) => o.value).join(", ");
+        issues.push({
+          path: loc,
+          message: `${schema.label} \u7684\u503C "${String(raw)}" \u4E0D\u5728\u53EF\u9009\u8303\u56F4\u5185`,
+          hint: `\u53EF\u9009\u503C\uFF1A${allowed}`
+        });
+        return schema.default;
+      }
+      return raw;
+    }
+    case "texture":
+    case "ref": {
+      if (raw === void 0) {
+        if (schema.type === "ref" && schema.required && !schema.default) {
+          issues.push({ path: loc, message: `${schema.label} \u4E0D\u80FD\u4E3A\u7A7A` });
+        }
+        return schema.default ?? null;
+      }
+      if (raw === null) {
+        if (schema.type === "ref" && schema.required) {
+          issues.push({ path: loc, message: `${schema.label} \u4E0D\u80FD\u4E3A\u7A7A` });
+        }
+        return null;
+      }
+      if (typeof raw !== "string" || raw.length === 0) {
+        issues.push({ path: loc, message: `${schema.label} \u5FC5\u987B\u662F\u6709\u6548\u5F15\u7528 ID \u6216 null` });
+        return null;
+      }
+      return raw;
+    }
+    case "list": {
+      if (raw === void 0) return defaultForSchema(schema);
+      if (!Array.isArray(raw)) {
+        issues.push({ path: loc, message: `${schema.label} \u5FC5\u987B\u662F\u6570\u7EC4` });
+        return [];
+      }
+      if (schema.minItems !== void 0 && raw.length < schema.minItems) {
+        issues.push({ path: loc, message: `${schema.label} \u81F3\u5C11\u9700\u8981 ${schema.minItems} \u9879` });
+      }
+      if (schema.maxItems !== void 0 && raw.length > schema.maxItems) {
+        issues.push({ path: loc, message: `${schema.label} \u6700\u591A\u5141\u8BB8 ${schema.maxItems} \u9879` });
+      }
+      return raw.map((item, idx) => validateInner(schema.item, item, `${path}[${idx}]`, issues));
+    }
+    case "object": {
+      let objRaw = raw;
+      if (typeof objRaw === "string" && Object.keys(schema.fields).length === 0) {
+        try {
+          objRaw = JSON.parse(objRaw);
+        } catch {
+        }
+      }
+      if (objRaw !== void 0 && (objRaw === null || typeof objRaw !== "object" || Array.isArray(objRaw))) {
+        issues.push({ path: loc, message: `${schema.label ?? loc} \u5FC5\u987B\u662F\u5BF9\u8C61` });
+        return defaultForSchema(schema);
+      }
+      const src = objRaw ?? {};
+      if (Object.keys(schema.fields).length === 0) {
+        return { ...src };
+      }
+      const out = {};
+      for (const [key, child] of Object.entries(schema.fields)) {
+        if (child.optional && src[key] === void 0) {
+          continue;
+        }
+        const nextPath = path ? `${path}.${key}` : key;
+        out[key] = validateInner(child, src[key], nextPath, issues);
+      }
+      return out;
+    }
+  }
+}
+var init_fieldSchema = __esm({
+  "src/core/schema/fieldSchema.ts"() {
+    "use strict";
+  }
+});
+
 // src/runtime/transform.ts
 import { Euler, Quaternion, Vector3 } from "three";
 function eulerQuaternion(rotation) {
@@ -500,6 +762,16 @@ async function createRapierWorld() {
       if (!live || live.kind !== "dynamic") return;
       live.body.addTorque({ x: torque[0], y: torque[1], z: torque[2] }, true);
     },
+    setLinearVelocity(id, velocity) {
+      const live = bodies.get(id);
+      if (!live || live.kind !== "dynamic") return;
+      live.body.setLinvel({ x: velocity[0], y: velocity[1], z: velocity[2] }, true);
+    },
+    applyImpulse(id, impulse) {
+      const live = bodies.get(id);
+      if (!live || live.kind !== "dynamic") return;
+      live.body.applyImpulse({ x: impulse[0], y: impulse[1], z: impulse[2] }, true);
+    },
     dispose() {
       controller2.free();
       puppets.clear();
@@ -664,6 +936,20 @@ function registerPhysicsExtension(id, order, step2) {
     if (idx >= 0) extensions.splice(idx, 1);
   };
 }
+function getPhysicsBodyState(id) {
+  return world?.bodyState(id) ?? null;
+}
+function setPhysicsVelocity(id, velocity) {
+  world?.setLinearVelocity(id, velocity);
+}
+function applyPhysicsImpulse(id, impulse) {
+  world?.applyImpulse(id, impulse);
+}
+function applyPhysicsForce(id, force) {
+  const st = world?.bodyState(id);
+  if (!st || !world) return;
+  world.applyForceAtPoint(id, force, st.position);
+}
 function tickPhysics(dt, resolveObject) {
   const runtime2 = getRuntimeWorld();
   const enabled = capabilityEnabled(runtime2.getCapabilities(), "physics");
@@ -769,7 +1055,7 @@ var world, booting, lastInspectorSync, meshCache, extensions;
 var init_session = __esm({
   "src/capabilities/physics/session.ts"() {
     "use strict";
-    init_registry();
+    init_registry2();
     init_transform();
     init_world();
     init_meshCollect();
@@ -1111,16 +1397,16 @@ function defaultWaterNormalTexture() {
       data[o + 3] = 255;
     }
   }
-  const texture3 = new DataTexture(data, size, size, RGBAFormat, UnsignedByteType);
-  texture3.colorSpace = NoColorSpace;
-  texture3.wrapS = RepeatWrapping;
-  texture3.wrapT = RepeatWrapping;
-  texture3.minFilter = LinearMipmapLinearFilter;
-  texture3.magFilter = LinearFilter;
-  texture3.generateMipmaps = true;
-  texture3.needsUpdate = true;
-  cachedNormal = texture3;
-  return texture3;
+  const texture4 = new DataTexture(data, size, size, RGBAFormat, UnsignedByteType);
+  texture4.colorSpace = NoColorSpace;
+  texture4.wrapS = RepeatWrapping;
+  texture4.wrapT = RepeatWrapping;
+  texture4.minFilter = LinearMipmapLinearFilter;
+  texture4.magFilter = LinearFilter;
+  texture4.generateMipmaps = true;
+  texture4.needsUpdate = true;
+  cachedNormal = texture4;
+  return texture4;
 }
 function cellularWeb(u, v, period, pts, thickness) {
   const gx = Math.floor(u * period);
@@ -1197,16 +1483,16 @@ function defaultWaterFoamTexture() {
       data[o + 3] = 255;
     }
   }
-  const texture3 = new DataTexture(data, size, size, RGBAFormat, UnsignedByteType);
-  texture3.colorSpace = NoColorSpace;
-  texture3.wrapS = RepeatWrapping;
-  texture3.wrapT = RepeatWrapping;
-  texture3.minFilter = LinearMipmapLinearFilter;
-  texture3.magFilter = LinearFilter;
-  texture3.generateMipmaps = true;
-  texture3.needsUpdate = true;
-  cachedFoam = texture3;
-  return texture3;
+  const texture4 = new DataTexture(data, size, size, RGBAFormat, UnsignedByteType);
+  texture4.colorSpace = NoColorSpace;
+  texture4.wrapS = RepeatWrapping;
+  texture4.wrapT = RepeatWrapping;
+  texture4.minFilter = LinearMipmapLinearFilter;
+  texture4.magFilter = LinearFilter;
+  texture4.generateMipmaps = true;
+  texture4.needsUpdate = true;
+  cachedFoam = texture4;
+  return texture4;
 }
 function defaultWaterCausticsTexture() {
   if (cachedCaustics) return cachedCaustics;
@@ -1258,16 +1544,16 @@ function defaultWaterCausticsTexture() {
       data[o + 3] = 255;
     }
   }
-  const texture3 = new DataTexture(data, size, size, RGBAFormat, UnsignedByteType);
-  texture3.colorSpace = NoColorSpace;
-  texture3.wrapS = RepeatWrapping;
-  texture3.wrapT = RepeatWrapping;
-  texture3.minFilter = LinearMipmapLinearFilter;
-  texture3.magFilter = LinearFilter;
-  texture3.generateMipmaps = true;
-  texture3.needsUpdate = true;
-  cachedCaustics = texture3;
-  return texture3;
+  const texture4 = new DataTexture(data, size, size, RGBAFormat, UnsignedByteType);
+  texture4.colorSpace = NoColorSpace;
+  texture4.wrapS = RepeatWrapping;
+  texture4.wrapT = RepeatWrapping;
+  texture4.minFilter = LinearMipmapLinearFilter;
+  texture4.magFilter = LinearFilter;
+  texture4.generateMipmaps = true;
+  texture4.needsUpdate = true;
+  cachedCaustics = texture4;
+  return texture4;
 }
 var cachedNormal, cachedFoam, cachedCaustics;
 var init_proceduralTextures = __esm({
@@ -2427,7 +2713,7 @@ var init_session2 = __esm({
   "src/capabilities/water/session.ts"() {
     "use strict";
     init_world();
-    init_registry();
+    init_registry2();
     init_defaults();
     init_waterMaterial();
     init_waves();
@@ -2659,609 +2945,294 @@ var init_session3 = __esm({
   }
 });
 
-// src/capabilities/sky/defaults.ts
-function defaultSkySettings() {
+// src/runtime/motion.ts
+function evalEasing(name, rawT) {
+  const t = Math.max(0, Math.min(1, Number.isFinite(rawT) ? rawT : 0));
+  switch (name) {
+    case "inQuad":
+      return t * t;
+    case "outQuad":
+      return 1 - (1 - t) * (1 - t);
+    case "inOutQuad":
+      return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+    case "inCubic":
+      return t * t * t;
+    case "outCubic":
+      return 1 - Math.pow(1 - t, 3);
+    case "inOutCubic":
+      return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+    case "inOutSine":
+      return -(Math.cos(Math.PI * t) - 1) / 2;
+    case "outBack": {
+      const c1 = 1.70158;
+      const c3 = c1 + 1;
+      return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2);
+    }
+    case "inOutBack": {
+      const c1 = 1.70158;
+      const c2 = c1 * 1.525;
+      return t < 0.5 ? Math.pow(2 * t, 2) * ((c2 + 1) * 2 * t - c2) / 2 : (Math.pow(2 * t - 2, 2) * ((c2 + 1) * (t * 2 - 2) + c2) + 2) / 2;
+    }
+    case "outBounce": {
+      const n1 = 7.5625;
+      const d1 = 2.75;
+      if (t < 1 / d1) return n1 * t * t;
+      if (t < 2 / d1) {
+        const u2 = t - 1.5 / d1;
+        return n1 * u2 * u2 + 0.75;
+      }
+      if (t < 2.5 / d1) {
+        const u2 = t - 2.25 / d1;
+        return n1 * u2 * u2 + 0.9375;
+      }
+      const u = t - 2.625 / d1;
+      return n1 * u * u + 0.984375;
+    }
+    case "outElastic": {
+      if (t === 0 || t === 1) return t;
+      const c4 = 2 * Math.PI / 3;
+      return Math.pow(2, -10 * t) * Math.sin((t * 10 - 0.75) * c4) + 1;
+    }
+    case "linear":
+    default:
+      return t;
+  }
+}
+function normalizeCurveKeys(rawKeys) {
+  const out = [];
+  for (const k of rawKeys) {
+    if (Array.isArray(k)) {
+      const t = Number(k[0]);
+      const v = Number(k[1]);
+      if (Number.isFinite(t) && Number.isFinite(v)) {
+        out.push({ t, v, mode: "smooth" });
+      }
+    } else if (k && typeof k === "object") {
+      const obj = k;
+      const t = Number(obj.t);
+      const v = Number(obj.v);
+      const mode = obj.mode === "linear" || obj.mode === "step" ? obj.mode : "smooth";
+      if (Number.isFinite(t) && Number.isFinite(v)) {
+        out.push({ t, v, mode });
+      }
+    }
+  }
+  out.sort((a, b) => a.t - b.t);
+  return out;
+}
+function evalCurveKeys(keys, rawT, wrapMode = "clamp") {
+  if (keys.length === 0) return 0;
+  if (keys.length === 1) return keys[0].v;
+  const minT = keys[0].t;
+  const maxT = keys[keys.length - 1].t;
+  const span = maxT - minT;
+  let t = Number.isFinite(rawT) ? rawT : minT;
+  if (span > 1e-6) {
+    if (wrapMode === "loop") {
+      const offset = ((t - minT) % span + span) % span;
+      t = minT + offset;
+    } else if (wrapMode === "pingPong") {
+      const cycle = span * 2;
+      const offset = ((t - minT) % cycle + cycle) % cycle;
+      t = offset <= span ? minT + offset : maxT - (offset - span);
+    } else {
+      t = Math.max(minT, Math.min(maxT, t));
+    }
+  } else {
+    return keys[0].v;
+  }
+  for (let i = 0; i < keys.length - 1; i += 1) {
+    const a = keys[i];
+    const b = keys[i + 1];
+    if (t <= b.t || i === keys.length - 2) {
+      const segLen = b.t - a.t;
+      if (segLen <= 1e-6) return b.v;
+      const u = Math.max(0, Math.min(1, (t - a.t) / segLen));
+      if (a.mode === "step") return a.v;
+      if (a.mode === "linear") return a.v + (b.v - a.v) * u;
+      const s = u * u * (3 - 2 * u);
+      return a.v + (b.v - a.v) * s;
+    }
+  }
+  return keys[keys.length - 1].v;
+}
+function createAnimationCurve(rawKeys, options) {
+  const keys = normalizeCurveKeys(rawKeys);
+  const wrap = options?.wrap ?? "clamp";
   return {
-    timeOfDay: 15,
-    latitude: 35,
-    dayOfYear: 172,
-    north: "+Z",
-    exposure: 2.5,
-    turbidity: 1,
-    groundAlbedo: 0.3,
-    sunDisc: true,
-    sunAngularDiameter: 0.53,
-    sunIntensity: 0.12,
-    sunShadow: true,
-    fog: false,
-    fogDensity: 0.3,
-    fogHeightFalloff: 300,
-    fogBaseHeight: 0,
-    fogMaxOpacity: 1,
-    fogColor: "#c9d6e6",
-    fogSkyColor: true,
-    haze: false,
-    hazeStrength: 1,
-    hazeNear: 200,
-    stars: false,
-    starIntensity: 1,
-    starSize: 0.7,
-    milkyWay: 0.25,
-    moon: false,
-    moonAngularDiameter: 0.53,
-    moonPhase: 0.5,
-    moonLight: 1,
-    mirrorBelowHorizon: false
+    keys,
+    eval: (t) => evalCurveKeys(keys, t, wrap)
   };
 }
-function normalizeSkySettings(value) {
-  const base = defaultSkySettings();
-  if (!value || typeof value !== "object") return base;
-  const raw = value;
-  return {
-    timeOfDay: clamp3(raw.timeOfDay, base.timeOfDay, 0, 24),
-    latitude: clamp3(raw.latitude, base.latitude, -90, 90),
-    dayOfYear: Math.round(clamp3(raw.dayOfYear, base.dayOfYear, 1, 365)),
-    north: typeof raw.north === "string" && NORTH.includes(raw.north) ? raw.north : base.north,
-    exposure: clamp3(raw.exposure, base.exposure, 0, 120),
-    turbidity: clamp3(raw.turbidity, base.turbidity, 0, 12),
-    groundAlbedo: clamp3(raw.groundAlbedo, base.groundAlbedo, 0, 1),
-    sunDisc: bool(raw.sunDisc, base.sunDisc),
-    sunAngularDiameter: clamp3(raw.sunAngularDiameter, base.sunAngularDiameter, 0.05, 12),
-    sunIntensity: clamp3(raw.sunIntensity, base.sunIntensity, 0, 4),
-    sunShadow: bool(raw.sunShadow, base.sunShadow),
-    fog: bool(raw.fog, base.fog),
-    fogDensity: clamp3(raw.fogDensity, base.fogDensity, 0, 12),
-    fogHeightFalloff: clamp3(raw.fogHeightFalloff, base.fogHeightFalloff, 1, 8e3),
-    fogBaseHeight: clamp3(raw.fogBaseHeight, base.fogBaseHeight, -500, 8e3),
-    fogMaxOpacity: clamp3(raw.fogMaxOpacity, base.fogMaxOpacity, 0, 1),
-    fogColor: colorOf(raw.fogColor, base.fogColor),
-    fogSkyColor: bool(raw.fogSkyColor, base.fogSkyColor),
-    haze: bool(raw.haze, base.haze),
-    hazeStrength: clamp3(raw.hazeStrength, base.hazeStrength, 0, 3),
-    hazeNear: clamp3(raw.hazeNear, base.hazeNear, 1, 1e3),
-    stars: bool(raw.stars, base.stars),
-    starIntensity: clamp3(raw.starIntensity, base.starIntensity, 0, 4),
-    starSize: clamp3(raw.starSize, base.starSize, 0.2, 3),
-    milkyWay: clamp3(raw.milkyWay, base.milkyWay, 0, 2),
-    moon: bool(raw.moon, base.moon),
-    moonAngularDiameter: clamp3(raw.moonAngularDiameter, base.moonAngularDiameter, 0.05, 12),
-    moonPhase: clamp3(raw.moonPhase, base.moonPhase, 0, 1),
-    moonLight: clamp3(raw.moonLight, base.moonLight, 0, 3),
-    mirrorBelowHorizon: bool(raw.mirrorBelowHorizon, base.mirrorBelowHorizon)
-  };
+function catmullRomValue(p0, p1, p2, p3, t, tension) {
+  const t2 = t * t;
+  const t3 = t2 * t;
+  const m1 = tension * (p2 - p0);
+  const m2 = tension * (p3 - p1);
+  const a = 2 * p1 - 2 * p2 + m1 + m2;
+  const b = -3 * p1 + 3 * p2 - 2 * m1 - m2;
+  return a * t3 + b * t2 + m1 * t + p1;
 }
-function clamp3(value, fallback, min3, max4) {
-  const next = typeof value === "number" && Number.isFinite(value) ? value : fallback;
-  return Math.min(max4, Math.max(min3, next));
-}
-function bool(value, fallback) {
-  return typeof value === "boolean" ? value : fallback;
-}
-function colorOf(value, fallback) {
-  return typeof value === "string" && /^#[0-9a-fA-F]{6}$/.test(value) ? value : fallback;
-}
-var SKY_CAPABILITY_ID, NORTH;
-var init_defaults3 = __esm({
-  "src/capabilities/sky/defaults.ts"() {
-    "use strict";
-    SKY_CAPABILITY_ID = "sky";
-    NORTH = ["+X", "-X", "+Z", "-Z"];
-  }
-});
-
-// src/core/layers.ts
-var EDITOR_HELPER_LAYER;
-var init_layers = __esm({
-  "src/core/layers.ts"() {
-    "use strict";
-    EDITOR_HELPER_LAYER = 31;
-  }
-});
-
-// src/capabilities/sky/runtime.ts
-var runtime_exports = {};
-__export(runtime_exports, {
-  createSkyDriver: () => createSkyDriver
-});
-import { Color as Color3, OrthographicCamera } from "three";
-import { mix as mix3, uniform as uniform2, vec4 as vec42 } from "three/tsl";
-import { Sky } from "@pmndrs/sky";
-function createSkyDriver(renderer, scene2) {
-  return new SkyRuntime(renderer, scene2);
-}
-function degreesToRadians(degrees) {
-  return degrees * Math.PI / 180;
-}
-function fogChanged(prev, next) {
-  return prev.fog !== next.fog || prev.fogDensity !== next.fogDensity || prev.fogHeightFalloff !== next.fogHeightFalloff || prev.fogBaseHeight !== next.fogBaseHeight || prev.fogMaxOpacity !== next.fogMaxOpacity;
-}
-function lightUserLayers(light) {
-  light.layers.disableAll();
-  for (let bit = 0; bit < EDITOR_HELPER_LAYER; bit += 1) light.layers.enable(bit);
-}
-function configureShadow(light) {
-  light.shadow.mapSize.set(2048, 2048);
-  light.shadow.bias = -15e-5;
-  light.shadow.normalBias = 0.04;
-  const camera = light.shadow.camera;
-  if (camera instanceof OrthographicCamera) {
-    camera.near = 0.5;
-    camera.far = 160;
-    camera.left = -40;
-    camera.right = 40;
-    camera.top = 40;
-    camera.bottom = -40;
-    camera.updateProjectionMatrix();
-  }
-}
-var SkyRuntime;
-var init_runtime = __esm({
-  "src/capabilities/sky/runtime.ts"() {
-    "use strict";
-    init_layers();
-    init_session4();
-    SkyRuntime = class {
-      constructor(renderer, scene2) {
-        this.scene = scene2;
-        this.sky = new Sky(renderer, {
-          preset: "earth",
-          sunColor: "bruneton",
-          enableAerialPerspective: true
-        });
-        this.sky.attach(scene2);
-        this.sun = this.sky.createSun({
-          physical: true,
-          intensity: 0.12,
-          castShadow: true,
-          horizonFade: true
-        });
-        lightUserLayers(this.sun.light);
-        configureShadow(this.sun.light);
-        this.sun.attach(scene2);
-      }
-      scene;
-      sky;
-      sun;
-      moon = null;
-      applied = null;
-      starsWanted = false;
-      starsReady = false;
-      starsPending = false;
-      starToken = 0;
-      night = null;
-      starLook = null;
-      fogTint = uniform2(new Color3("#c9d6e6"));
-      fogUseColor = uniform2(0);
-      hazeOn = false;
-      fogOn = false;
-      apKey = "";
-      applyFogNode = (colorNode, scenePass) => {
-        let node = colorNode;
-        if (this.hazeOn && this.sky.aerialPerspectiveTexture) {
-          this.sky.setHazePolicy("ap");
-          node = this.sky.applyHaze(node, {
-            scenePass,
-            policy: "ap",
-            raymarchFallback: false,
-            // 编辑器远平面只有两千米。不传这个的话，远处地面的深度会被当成天空，雾气在合成时被减掉。
-            useCameraFar: true
-          });
-        }
-        if (!this.fogOn) return node;
-        const skyFog = this.sky.applyFog(node, { scenePass });
-        const amount = this.sky.applyFog(node, { scenePass, debugMode: "fog-amount" });
-        const base = node;
-        const flat = mix3(base.rgb, this.fogTint, amount.r);
-        return vec42(mix3(skyFog.rgb, flat, this.fogUseColor), skyFog.a);
-      };
-      /** 构造时库自己已经开始编译。这里只取那一份 Promise，避免和主绘制抢渲染器。 */
-      compile() {
-        return this.sky.compileAsync();
-      }
-      hazeReady() {
-        return Boolean(this.sky.aerialPerspectiveTexture);
-      }
-      sync(settings, camera) {
-        const prev = this.applied;
-        if (!prev || prev.timeOfDay !== settings.timeOfDay) this.sky.setTimeOfDay(settings.timeOfDay);
-        if (!prev || prev.latitude !== settings.latitude) this.sky.setLatitude(settings.latitude);
-        if (!prev || prev.dayOfYear !== settings.dayOfYear) this.sky.setDayOfYear(settings.dayOfYear);
-        if (!prev || prev.north !== settings.north) this.sky.setNorth(settings.north);
-        if (!prev || prev.exposure !== settings.exposure) this.sky.setExposure(settings.exposure);
-        if (!prev || prev.turbidity !== settings.turbidity) this.sky.setTurbidity(settings.turbidity);
-        if (!prev || prev.groundAlbedo !== settings.groundAlbedo) this.sky.setGroundAlbedo(settings.groundAlbedo);
-        if (!prev || prev.sunDisc !== settings.sunDisc || prev.sunAngularDiameter !== settings.sunAngularDiameter) {
-          this.sky.setSunDisc({
-            visible: settings.sunDisc,
-            angularDiameter: degreesToRadians(settings.sunAngularDiameter)
-          });
-        }
-        if (!prev || prev.mirrorBelowHorizon !== settings.mirrorBelowHorizon) this.sky.setMirrorBelowHorizon(settings.mirrorBelowHorizon);
-        if (!prev || prev.sunIntensity !== settings.sunIntensity) this.sun.setIntensity(settings.sunIntensity);
-        if (!prev || prev.sunShadow !== settings.sunShadow) this.sun.castShadow = settings.sunShadow;
-        if (!prev || fogChanged(prev, settings)) {
-          this.sky.setFog({
-            density: settings.fogDensity,
-            heightFalloff: settings.fogHeightFalloff,
-            baseHeight: settings.fogBaseHeight,
-            maxOpacity: settings.fog ? settings.fogMaxOpacity : 0
-          });
-        }
-        this.fogTint.value.set(settings.fogColor);
-        this.fogUseColor.value = settings.fogSkyColor ? 0 : 1;
-        if (!prev || prev.hazeStrength !== settings.hazeStrength) this.sky.setHazeStrength(settings.hazeStrength);
-        if (!prev || prev.hazeNear !== settings.hazeNear) this.sky.setAerialPerspectiveDistanceScale(settings.hazeNear);
-        this.hazeOn = settings.haze;
-        this.fogOn = settings.fog;
-        this.syncMoon(settings);
-        this.syncStars(settings);
-        this.applied = settings;
-        this.sky.update(camera);
-        this.applyCelestialFade(settings, prev);
-        if (settings.haze && this.hazeReady()) {
-          const e = camera.matrixWorld.elements;
-          const nextApKey = `${e[0].toFixed(3)},${e[4].toFixed(3)},${e[8].toFixed(3)},${e[12].toFixed(2)},${e[13].toFixed(2)},${e[14].toFixed(2)}|${settings.timeOfDay}|${settings.latitude}|${settings.dayOfYear}|${settings.north}|${settings.turbidity}|${settings.groundAlbedo}`;
-          if (nextApKey !== this.apKey) {
-            this.apKey = nextApKey;
-            void this.sky.updateAerialPerspective();
-          }
-        } else {
-          this.apKey = "";
-        }
-        const atmosphere = settings.fog || settings.haze;
-        setSkyViewState({
-          owns: true,
-          fog: atmosphere,
-          apply: atmosphere ? this.applyFogNode : null,
-          signature: `${settings.haze ? 1 : 0}${settings.fog ? 1 : 0}`
-        });
-      }
-      dispose() {
-        this.starToken += 1;
-        this.starsWanted = false;
-        if (this.starsReady) this.sky.disableStars();
-        this.starsReady = false;
-        this.night = null;
-        this.moon?.dispose();
-        this.moon = null;
-        this.sun.dispose();
-        this.sky.detach();
-        this.sky.dispose();
-        setSkyViewState({ owns: false, fog: false, apply: null });
-      }
-      syncMoon(settings) {
-        if (!settings.moon) {
-          this.moon?.dispose();
-          this.moon = null;
-          return;
-        }
-        if (!this.moon) {
-          this.moon = this.sky.createMoonlight({
-            skyFill: false,
-            castShadow: false,
-            phase: settings.moonPhase,
-            discAngularDiameter: degreesToRadians(settings.moonAngularDiameter)
-          });
-          lightUserLayers(this.moon.moon.light);
-          this.moon.attach(this.scene);
-          this.moon.setIntensity(settings.moonLight);
-          this.moon.moon.setDiscIntensity(3);
-          return;
-        }
-        const prev = this.applied;
-        if (!prev || prev.moonLight !== settings.moonLight) this.moon.setIntensity(settings.moonLight);
-        if (!prev || prev.moonPhase !== settings.moonPhase) this.moon.setPhase(settings.moonPhase);
-        if (!prev || prev.moonAngularDiameter !== settings.moonAngularDiameter) {
-          this.moon.moon.setDiscAngularDiameter(degreesToRadians(settings.moonAngularDiameter));
-        }
-        this.moon.moon.setDiscIntensity(3);
-      }
-      syncStars(settings) {
-        const enabled = settings.stars;
-        if (enabled) this.starLook = settings;
-        if (enabled === this.starsWanted && (!enabled || this.starsReady || this.starsPending)) {
-          if (enabled && this.night) this.applyStarLook(settings);
-          return;
-        }
-        this.starsWanted = enabled;
-        this.starToken += 1;
-        if (!enabled) {
-          if (this.starsReady) this.sky.disableStars();
-          this.starsReady = false;
-          this.starsPending = false;
-          this.night = null;
-          return;
-        }
-        const token = this.starToken;
-        this.starsPending = true;
-        void this.sky.enableStars({
-          intensity: settings.starIntensity,
-          size: settings.starSize,
-          milkyWay: settings.milkyWay
-        }).then((night) => {
-          if (token !== this.starToken) {
-            this.sky.disableStars();
-            this.starsReady = false;
-            this.starsPending = false;
-            this.night = null;
-            return;
-          }
-          this.night = night;
-          this.starsPending = false;
-          this.starsReady = true;
-          if (this.starLook) this.applyStarLook(this.starLook, true);
-        }).catch((error) => {
-          if (token === this.starToken) this.starsPending = false;
-          console.warn("[sky] \u661F\u7A7A\u52A0\u8F7D\u5931\u8D25", error);
-        });
-      }
-      applyStarLook(settings, force = false) {
-        const night = this.night;
-        if (!night) return;
-        const prev = force ? null : this.applied;
-        if (!prev || prev.starIntensity !== settings.starIntensity) night.setIntensity(settings.starIntensity);
-        if (!prev || prev.starSize !== settings.starSize) night.setSize(settings.starSize);
-        if (!prev || prev.milkyWay !== settings.milkyWay) night.setMilkyWay(settings.milkyWay);
-        this.applyStarContrast(settings, prev);
-      }
-      /**
-       * 星星按天空亮度淡出，和夜空示例一样。
-       * 库的阈值按曝光 40 调过。这里曝光低得多，要按同样比例放大，否则白天也看得见。
-       * 月面不要再乘太阳高度：那会在白天把月盘亮度写成 0。月亮跟着月相转到地平线以下时，本来就看不到。
-       */
-      applyCelestialFade(settings, prev) {
-        this.applyStarContrast(settings, prev);
-      }
-      applyStarContrast(settings, prev) {
-        const night = this.night;
-        if (!night || prev && prev.exposure === settings.exposure) return;
-        const scale = 40 / Math.max(settings.exposure, 0.05);
-        night.setContrast(40 * scale);
-        night.setMilkyWayContrast(20 * scale);
-      }
+function createSplinePath(rawPoints, options) {
+  const points = rawPoints.map((p) => ({ x: p.x, y: p.y, z: p.z }));
+  const closed = Boolean(options?.closed);
+  const tension = Number.isFinite(options?.tension) ? Number(options?.tension) : 0.5;
+  const samplesPerSegment = Math.max(4, Math.min(64, Math.floor(options?.samplesPerSegment ?? 16)));
+  if (points.length === 0) {
+    const zero = { x: 0, y: 0, z: 0 };
+    return {
+      length: 0,
+      points,
+      closed,
+      pointAt: () => ({ ...zero }),
+      tangentAt: () => ({ x: 0, y: 0, z: 1 }),
+      pointAtDistance: () => ({ ...zero }),
+      tangentAtDistance: () => ({ x: 0, y: 0, z: 1 })
     };
   }
-});
-
-// src/capabilities/sky/session.ts
-var session_exports3 = {};
-__export(session_exports3, {
-  composeSkyFog: () => composeSkyFog,
-  dispose: () => dispose3,
-  mount: () => mount3,
-  releaseSkyResources: () => releaseSkyResources,
-  setSkyViewState: () => setSkyViewState,
-  skyBlocksFrame: () => skyBlocksFrame,
-  skyFogActive: () => skyFogActive,
-  skyFogRevision: () => skyFogRevision,
-  skyOwnsSceneSlots: () => skyOwnsSceneSlots
-});
-function skyOwnsSceneSlots() {
-  return ownsSlots;
-}
-function skyBlocksFrame() {
-  return compiling;
-}
-function skyFogActive() {
-  return fogActive;
-}
-function skyFogRevision() {
-  return fogRevision;
-}
-function composeSkyFog(colorNode, scenePass) {
-  return fogApply ? fogApply(colorNode, scenePass) : colorNode;
-}
-function setSkyViewState(next) {
-  ownsSlots = next.owns;
-  const signature = next.signature ?? "";
-  if (fogActive === next.fog && fogApply === next.apply && fogSignature === signature) return;
-  fogActive = next.fog;
-  fogApply = next.apply;
-  fogSignature = signature;
-  fogRevision += 1;
-}
-function releaseSkyResources() {
-  bootToken += 1;
-  booting2 = false;
-  compiling = false;
-  driver?.dispose();
-  driver = null;
-  setSkyViewState({ owns: false, fog: false, apply: null });
-}
-function mount3() {
-  if (removeHook) return () => shutdown();
-  removeHook = getRuntimeWorld().registerBeforeRenderHook?.("sky", 20, (ctx) => onBeforeRender2(ctx)) ?? null;
-  return () => shutdown();
-}
-function dispose3() {
-  shutdown();
-}
-function shutdown() {
-  removeHook?.();
-  removeHook = null;
-  releaseSkyResources();
-}
-function onBeforeRender2(ctx) {
-  pending = ctx;
-  try {
-    const runtime2 = getRuntimeWorld();
-    if (!capabilityEnabled(runtime2.getCapabilities(), SKY_CAPABILITY_ID)) {
-      if (driver || booting2 || compiling) releaseSkyResources();
-      return;
-    }
-    const settings = normalizeSkySettings(runtime2.getPicture().capabilities?.[SKY_CAPABILITY_ID]);
-    if (!driver) {
-      ensure();
-      return;
-    }
-    if (compiling) return;
-    if (settings.haze && !driver.hazeReady()) {
-      driver.dispose();
-      driver = null;
-      ensure();
-      return;
-    }
-    driver.sync(settings, ctx.camera);
-  } catch (error) {
-    console.warn("[sky] \u5929\u7A7A\u66F4\u65B0\u5931\u8D25", error);
-  } finally {
-    restoreCanvas(ctx);
+  if (points.length === 1) {
+    const only = points[0];
+    return {
+      length: 0,
+      points,
+      closed,
+      pointAt: () => ({ ...only }),
+      tangentAt: () => ({ x: 0, y: 0, z: 1 }),
+      pointAtDistance: () => ({ ...only }),
+      tangentAtDistance: () => ({ x: 0, y: 0, z: 1 })
+    };
   }
-}
-function restoreCanvas(ctx) {
-  try {
-    ctx.renderer.setRenderTarget(null);
-  } catch {
-  }
-}
-function ensure() {
-  if (booting2 || !pending) return;
-  booting2 = true;
-  const token = ++bootToken;
-  const ctx = pending;
-  void Promise.resolve().then(() => (init_runtime(), runtime_exports)).then((module) => {
-    if (token !== bootToken) return;
-    booting2 = false;
-    const runtime2 = getRuntimeWorld();
-    if (!capabilityEnabled(runtime2.getCapabilities(), SKY_CAPABILITY_ID) || !pending) return;
-    let created;
-    try {
-      created = module.createSkyDriver(ctx.renderer, ctx.scene);
-    } catch (error) {
-      console.warn("[sky] \u5929\u7A7A\u521B\u5EFA\u5931\u8D25", error);
-      return;
+  const segCount = closed ? points.length : points.length - 1;
+  const getCtrl = (idx) => {
+    if (closed) {
+      const wrapped = (idx % points.length + points.length) % points.length;
+      return points[wrapped];
     }
-    driver = created;
-    compiling = true;
-    void created.compile().then(() => {
-      if (token !== bootToken || driver !== created || !pending) return;
-      const latest = getRuntimeWorld();
-      if (!capabilityEnabled(latest.getCapabilities(), SKY_CAPABILITY_ID)) return;
-      created.sync(normalizeSkySettings(latest.getPicture().capabilities?.[SKY_CAPABILITY_ID]), pending.camera);
-    }).catch((error) => {
-      console.warn("[sky] \u7740\u8272\u5668\u7F16\u8BD1\u5931\u8D25", error);
-    }).finally(() => {
-      if (token === bootToken) compiling = false;
-    });
-  }).catch((error) => {
-    if (token === bootToken) booting2 = false;
-    console.warn("[sky] \u5929\u7A7A\u52A0\u8F7D\u5931\u8D25", error);
-  });
+    const clamped = Math.max(0, Math.min(points.length - 1, idx));
+    return points[clamped];
+  };
+  const rawPointAt = (uRaw) => {
+    const u = closed ? (uRaw % 1 + 1) % 1 : Math.max(0, Math.min(1, uRaw));
+    const scaled = u * segCount;
+    const segIdx = Math.min(segCount - 1, Math.floor(scaled));
+    const localT = scaled - segIdx;
+    const p0 = getCtrl(segIdx - 1);
+    const p1 = getCtrl(segIdx);
+    const p2 = getCtrl(segIdx + 1);
+    const p3 = getCtrl(segIdx + 2);
+    return {
+      x: catmullRomValue(p0.x, p1.x, p2.x, p3.x, localT, tension),
+      y: catmullRomValue(p0.y, p1.y, p2.y, p3.y, localT, tension),
+      z: catmullRomValue(p0.z, p1.z, p2.z, p3.z, localT, tension)
+    };
+  };
+  const totalSamples = segCount * samplesPerSegment;
+  const lutU = [0];
+  const lutDist = [0];
+  let acc = 0;
+  let prev = rawPointAt(0);
+  for (let i = 1; i <= totalSamples; i += 1) {
+    const u = i / totalSamples;
+    const cur = rawPointAt(u);
+    acc += Math.hypot(cur.x - prev.x, cur.y - prev.y, cur.z - prev.z);
+    lutU.push(u);
+    lutDist.push(acc);
+    prev = cur;
+  }
+  const totalLength = acc;
+  const distanceToU = (distRaw) => {
+    if (totalLength <= 1e-6) return 0;
+    const d = closed ? (distRaw % totalLength + totalLength) % totalLength : Math.max(0, Math.min(totalLength, distRaw));
+    let lo = 0;
+    let hi = lutDist.length - 1;
+    while (lo < hi - 1) {
+      const mid = lo + hi >> 1;
+      if (lutDist[mid] <= d) lo = mid;
+      else hi = mid;
+    }
+    const d0 = lutDist[lo];
+    const d1 = lutDist[hi];
+    const ratio = d1 > d0 + 1e-6 ? (d - d0) / (d1 - d0) : 0;
+    return lutU[lo] + (lutU[hi] - lutU[lo]) * ratio;
+  };
+  const tangentFromU = (u) => {
+    const eps = 1 / Math.max(100, totalSamples * 2);
+    const a = rawPointAt(u - eps);
+    const b = rawPointAt(u + eps);
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const dz = b.z - a.z;
+    const len = Math.hypot(dx, dy, dz);
+    if (len <= 1e-6) return { x: 0, y: 0, z: 1 };
+    return { x: dx / len, y: dy / len, z: dz / len };
+  };
+  return {
+    length: totalLength,
+    points,
+    closed,
+    pointAt: (t) => rawPointAt(distanceToU((closed ? (t % 1 + 1) % 1 : Math.max(0, Math.min(1, t))) * totalLength)),
+    tangentAt: (t) => tangentFromU(distanceToU((closed ? (t % 1 + 1) % 1 : Math.max(0, Math.min(1, t))) * totalLength)),
+    pointAtDistance: (distance2) => rawPointAt(distanceToU(distance2)),
+    tangentAtDistance: (distance2) => tangentFromU(distanceToU(distance2))
+  };
 }
-var ownsSlots, fogActive, fogApply, fogSignature, fogRevision, removeHook, driver, booting2, bootToken, pending, compiling;
-var init_session4 = __esm({
-  "src/capabilities/sky/session.ts"() {
+var init_motion = __esm({
+  "src/runtime/motion.ts"() {
     "use strict";
-    init_registry();
-    init_world();
-    init_defaults3();
-    ownsSlots = false;
-    fogActive = false;
-    fogApply = null;
-    fogSignature = "";
-    fogRevision = 0;
-    removeHook = null;
-    driver = null;
-    booting2 = false;
-    bootToken = 0;
-    pending = null;
-    compiling = false;
   }
 });
 
-// src/capabilities/registry.ts
-function registerDynamicCapability(manifest) {
-  dynamicCapabilities.set(manifest.id, manifest);
+// src/capabilities/navigation/archive.ts
+function navEpoch() {
+  return epoch;
 }
-function unregisterDynamicCapability(id) {
-  const cleanup = activeCleanup.get(id);
-  if (cleanup) {
-    cleanup();
-    activeCleanup.delete(id);
+function navRecord(sceneId) {
+  return saved.get(sceneId) ?? null;
+}
+function forgetNavMesh(sceneId) {
+  saved.delete(sceneId);
+}
+function hydrateNavMeshes(value) {
+  saved.clear();
+  epoch += 1;
+  if (!value || typeof value !== "object") return;
+  for (const [id, record] of Object.entries(value)) {
+    const cleaned = cleanRecord(record);
+    if (cleaned) saved.set(id, cleaned);
   }
-  loadedModules.get(id)?.dispose?.();
-  loadedModules.delete(id);
-  dynamicCapabilities.delete(id);
 }
-function allCapabilityManifests() {
-  return [...CAPABILITIES, ...dynamicCapabilities.values()];
+function decodeBytes(value) {
+  const binary = atob(value);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+  return bytes;
 }
-function defaultCapabilities() {
-  const base = Object.fromEntries(CAPABILITIES.map((item) => [item.id, item.defaultEnabled]));
-  for (const item of dynamicCapabilities.values()) base[item.id] = item.defaultEnabled;
-  return base;
-}
-function normalizeCapabilities(value) {
-  const next = defaultCapabilities();
-  if (!value || typeof value !== "object") return next;
+function cleanRecord(value) {
+  if (!value || typeof value !== "object") return null;
   const record = value;
-  for (const item of allCapabilityManifests()) {
-    if (typeof record[item.id] === "boolean") next[item.id] = record[item.id];
-  }
-  return next;
+  if (typeof record.bytes !== "string" || record.bytes.length === 0) return null;
+  if (record.mode !== "solo" && record.mode !== "tileCache") return null;
+  if (typeof record.signature !== "string") return null;
+  return {
+    bytes: record.bytes,
+    mode: record.mode,
+    signature: record.signature,
+    triangles: typeof record.triangles === "number" ? record.triangles : 0
+  };
 }
-function capabilityEnabled(capabilities, id) {
-  const defaults = defaultCapabilities();
-  if (!capabilities || typeof capabilities[id] !== "boolean") return defaults[id] ?? false;
-  const manifest = allCapabilityManifests().find((item) => item.id === id);
-  if (manifest?.dependencies) {
-    for (const dep of manifest.dependencies) {
-      if (!capabilityEnabled(capabilities, dep)) return false;
-    }
-  }
-  return capabilities[id];
-}
-function syncCapabilityRuntimes(capabilities) {
-  for (const item of allCapabilityManifests()) {
-    const enabled = capabilityEnabled(capabilities, item.id);
-    if (!enabled) {
-      const cleanup = activeCleanup.get(item.id);
-      if (cleanup) {
-        cleanup();
-        activeCleanup.delete(item.id);
-      }
-      loadedModules.get(item.id)?.dispose?.();
-      continue;
-    }
-    if (!item.loadRuntime || activeCleanup.has(item.id) || pendingLoads.has(item.id)) continue;
-    const cached = loadedModules.get(item.id);
-    if (cached) {
-      const cleanup = cached.mount?.();
-      activeCleanup.set(item.id, typeof cleanup === "function" ? cleanup : () => void 0);
-      continue;
-    }
-    const loader = item.loadRuntime;
-    const task = loader().then((mod2) => {
-      pendingLoads.delete(item.id);
-      loadedModules.set(item.id, mod2);
-      if (capabilityEnabled(capabilities, item.id) && !activeCleanup.has(item.id)) {
-        const cleanup = mod2.mount?.();
-        activeCleanup.set(item.id, typeof cleanup === "function" ? cleanup : () => void 0);
-      }
-    }).catch((error) => {
-      pendingLoads.delete(item.id);
-      console.warn(`[capability] ${item.id} \u52A0\u8F7D\u5931\u8D25`, error);
-    });
-    pendingLoads.set(item.id, task);
-  }
-}
-var CAPABILITIES, loadedModules, activeCleanup, pendingLoads, dynamicCapabilities;
-var init_registry = __esm({
-  "src/capabilities/registry.ts"() {
+var saved, epoch;
+var init_archive = __esm({
+  "src/capabilities/navigation/archive.ts"() {
     "use strict";
-    CAPABILITIES = [
-      { id: "physics", defaultEnabled: true, category: "physics" },
-      { id: "buoyancy", defaultEnabled: true, category: "physics", dependencies: ["physics"], loadRuntime: () => Promise.resolve().then(() => (init_session3(), session_exports2)) },
-      { id: "navigation", defaultEnabled: true, category: "physics" },
-      { id: "particles", defaultEnabled: false, category: "scene-object" },
-      { id: "sky", defaultEnabled: false, category: "environment", loadRuntime: () => Promise.resolve().then(() => (init_session4(), session_exports3)) },
-      { id: "water", defaultEnabled: false, category: "environment", loadRuntime: () => Promise.resolve().then(() => (init_session2(), session_exports)) }
-    ];
-    loadedModules = /* @__PURE__ */ new Map();
-    activeCleanup = /* @__PURE__ */ new Map();
-    pendingLoads = /* @__PURE__ */ new Map();
-    dynamicCapabilities = /* @__PURE__ */ new Map();
+    saved = /* @__PURE__ */ new Map();
+    epoch = 0;
+  }
+});
+
+// src/capabilities/navigation/defaults.ts
+var init_defaults3 = __esm({
+  "src/capabilities/navigation/defaults.ts"() {
+    "use strict";
   }
 });
 
@@ -3422,6 +3393,272 @@ var init_recastNav = __esm({
   }
 });
 
+// src/capabilities/navigation/session.ts
+import { create } from "zustand";
+function tr(key, fallback) {
+  return getRuntimeWorld().translate?.(key) ?? fallback;
+}
+function hydrateNavigation(value) {
+  hydrateNavMeshes(value);
+  loadedScene = "";
+}
+function cancelNavBake() {
+  controller?.abort();
+  controller = null;
+  pending = null;
+  if (useNavUi.getState().phase === "baking") {
+    useNavUi.setState({ phase: "idle", text: "" });
+  }
+}
+function findNavigationPath(start2, end) {
+  const runtime2 = getRuntimeWorld();
+  if (!capabilityEnabled(runtime2.getCapabilities(), "navigation")) return null;
+  return instance?.findPath(start2, end) ?? null;
+}
+function tickNavigation() {
+  const runtime2 = getRuntimeWorld();
+  if (!capabilityEnabled(runtime2.getCapabilities(), "navigation")) {
+    if (instance || controller || debugMesh || loadedScene) disposeWorld();
+    return;
+  }
+  const sceneId = runtime2.getActiveSceneId();
+  const ui = useNavUi.getState();
+  if (ui.phase === "baking" && ui.sceneId !== sceneId) cancelNavBake();
+  if (!activating && (loadedScene !== sceneId || seenEpoch !== navEpoch())) {
+    activating = true;
+    void activate(sceneId).finally(() => {
+      activating = false;
+    });
+  }
+  if (!instance || loadedScene !== sceneId) return;
+  applyObstacles(runtime2.getPlayState() === "playing" ? collectObstacles(runtime2.getNodes()) : []);
+}
+async function activate(sceneId) {
+  const ticket = life;
+  const record = navRecord(sceneId);
+  seenEpoch = navEpoch();
+  if (useNavUi.getState().phase === "baking" && useNavUi.getState().sceneId === sceneId) {
+    loadedScene = sceneId;
+    return;
+  }
+  if (!record) {
+    instance?.clear();
+    loadedScene = sceneId;
+    obstacleKey = "";
+    pullDebug();
+    if (useNavUi.getState().phase !== "baking") {
+      useNavUi.setState({ phase: "idle", text: "", sceneId, signature: "", triangles: 0 });
+    }
+    return;
+  }
+  try {
+    const nav = await world2();
+    if (ticket !== life || getRuntimeWorld().getActiveSceneId() !== sceneId) return;
+    await nav.restore({ bytes: decodeBytes(record.bytes), mode: record.mode });
+    if (ticket !== life || getRuntimeWorld().getActiveSceneId() !== sceneId) return;
+    loadedScene = sceneId;
+    obstacleKey = "";
+    pullDebug();
+    useNavUi.setState({
+      phase: "ready",
+      text: tr("navigation.ready", "Navigation ready"),
+      sceneId,
+      signature: record.signature,
+      triangles: record.triangles
+    });
+  } catch (error) {
+    if (ticket !== life) return;
+    const text = error instanceof Error ? error.message : String(error);
+    useNavUi.setState({ phase: "error", text, sceneId });
+  }
+}
+async function world2() {
+  if (instance) return instance;
+  const ticket = life;
+  if (!opening) opening = Promise.resolve().then(() => (init_recastNav(), recastNav_exports)).then((module) => module.createRecastNavigation());
+  const created = await opening;
+  opening = null;
+  if (ticket !== life || !capabilityEnabled(getRuntimeWorld().getCapabilities(), "navigation")) {
+    created.dispose();
+    throw abortError2();
+  }
+  if (instance && instance !== created) created.dispose();
+  instance ??= created;
+  return instance;
+}
+function applyObstacles(items) {
+  const key = items.map((item) => [
+    item.id,
+    item.position.map((value) => value.toFixed(2)).join(","),
+    item.radius.toFixed(2),
+    item.height.toFixed(2)
+  ].join(":")).join("|");
+  if (key === obstacleKey) return;
+  obstacleKey = key;
+  instance?.obstacles(items);
+  pullDebug();
+}
+function collectObstacles(nodes) {
+  const items = [];
+  for (const node of Object.values(nodes)) {
+    if (!node.visible || node.navigation?.role !== "obstacle") continue;
+    const pose = worldPose(nodes, node.id);
+    const radius = Math.max(0.05, node.navigation.radius) * Math.max(Math.abs(pose.scale.x), Math.abs(pose.scale.z));
+    const height = Math.max(0.05, node.navigation.height) * Math.abs(pose.scale.y);
+    items.push({
+      id: node.id,
+      position: [pose.position.x, pose.position.y - height / 2, pose.position.z],
+      radius,
+      height
+    });
+  }
+  return items;
+}
+function pullDebug() {
+  debugMesh = instance?.debug() ?? null;
+}
+function disposeWorld() {
+  life += 1;
+  controller?.abort();
+  controller = null;
+  pending = null;
+  instance?.dispose();
+  instance = null;
+  opening = null;
+  loadedScene = "";
+  obstacleKey = "";
+  debugMesh = null;
+  if (useNavUi.getState().phase === "baking") useNavUi.setState({ phase: "idle", text: "" });
+}
+function abortError2() {
+  const error = new Error("aborted");
+  error.name = "AbortError";
+  return error;
+}
+var useNavUi, instance, opening, life, loadedScene, seenEpoch, activating, controller, pending, obstacleKey, debugMesh;
+var init_session4 = __esm({
+  "src/capabilities/navigation/session.ts"() {
+    "use strict";
+    init_registry2();
+    init_transform();
+    init_world();
+    init_archive();
+    init_defaults3();
+    useNavUi = create(() => ({
+      phase: "idle",
+      text: "",
+      sceneId: "",
+      signature: "",
+      triangles: 0
+    }));
+    instance = null;
+    opening = null;
+    life = 0;
+    loadedScene = "";
+    seenEpoch = -1;
+    activating = false;
+    controller = null;
+    pending = null;
+    obstacleKey = "";
+    debugMesh = null;
+  }
+});
+
+// src/capabilities/particles/readQuarks.ts
+function readQuarksDocument(json) {
+  if (!json || typeof json !== "object") return null;
+  const record = json;
+  if (record.version === "3.0" && record.shape && typeof record.shape === "object") {
+    const body = { ...record };
+    delete body.material;
+    delete body.texture;
+    return {
+      simulation: { format: "system", body },
+      appearance: appearanceFromFields(record, DEFAULT_APPEARANCE)
+    };
+  }
+  if (record.object && typeof record.object === "object") {
+    const system = findSystem(record.object);
+    return {
+      simulation: { format: "loader", body: record },
+      appearance: appearanceFromLoader(record, system)
+    };
+  }
+  return null;
+}
+function asSimulation(value) {
+  if (!value || typeof value !== "object") return null;
+  const record = value;
+  if ((record.format === "system" || record.format === "loader") && record.body && typeof record.body === "object") {
+    return { format: record.format, body: record.body };
+  }
+  return readQuarksDocument(value)?.simulation ?? null;
+}
+function appearanceFromLoader(root2, system) {
+  const materials = Array.isArray(root2.materials) ? root2.materials : [];
+  const materialId = system && typeof system.material === "string" ? system.material : "";
+  const material = materials.find((item) => item && typeof item === "object" && item.uuid === materialId);
+  const appearance = appearanceFromFields(material ?? system ?? {}, DEFAULT_APPEARANCE);
+  appearance.image = firstImage(root2);
+  return appearance;
+}
+function appearanceFromFields(source, fallback) {
+  const premultiplied = source.premultipliedAlpha === true;
+  return {
+    color: cssColor(source.color) ?? fallback.color,
+    blend: premultiplied ? "premultiply" : blendFromThree(source.blending, fallback.blend),
+    opacity: typeof source.opacity === "number" ? source.opacity : fallback.opacity,
+    depthWrite: typeof source.depthWrite === "boolean" ? source.depthWrite : fallback.depthWrite,
+    image: fallback.image
+  };
+}
+function blendFromThree(value, fallback) {
+  if (value === 2) return "additive";
+  if (value === 4) return "multiply";
+  if (value === 1) return "alpha";
+  if (value === 5) return "premultiply";
+  return fallback;
+}
+function cssColor(value) {
+  if (typeof value !== "number" || !Number.isFinite(value)) return null;
+  return `#${Math.max(0, Math.min(16777215, value)).toString(16).padStart(6, "0")}`;
+}
+function firstImage(root2) {
+  if (!Array.isArray(root2.images)) return null;
+  for (const image of root2.images) {
+    if (image && typeof image === "object" && typeof image.url === "string") {
+      const url = image.url;
+      if (url.length > 0) return url;
+    }
+  }
+  return null;
+}
+function findSystem(value) {
+  if (!value || typeof value !== "object") return null;
+  const record = value;
+  if (record.ps && typeof record.ps === "object") return record.ps;
+  if (Array.isArray(record.children)) {
+    for (const child of record.children) {
+      const found = findSystem(child);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+var DEFAULT_APPEARANCE;
+var init_readQuarks = __esm({
+  "src/capabilities/particles/readQuarks.ts"() {
+    "use strict";
+    DEFAULT_APPEARANCE = {
+      color: "#ff8c33",
+      blend: "additive",
+      opacity: 1,
+      depthWrite: false,
+      image: null
+    };
+  }
+});
+
 // src/capabilities/particles/simulationForm.ts
 function readRange(value) {
   if (!value || typeof value !== "object") return { min: 0, max: 0, curve: false };
@@ -3462,7 +3699,7 @@ var init_simulationForm = __esm({
 // src/capabilities/particles/tslBatch.ts
 import {
   AdditiveBlending,
-  Color as Color4,
+  Color as Color3,
   CustomBlending,
   MultiplyBlending,
   NormalBlending,
@@ -3481,17 +3718,17 @@ import {
   fract,
   length as length2,
   max as max2,
-  mix as mix4,
+  mix as mix3,
   mod,
   modelWorldMatrix as modelWorldMatrix2,
   normalize as normalize2,
   positionGeometry as positionGeometry2,
   texture as texture2,
-  uniform as uniform3,
+  uniform as uniform2,
   uv,
   vec2 as vec22,
   vec3 as vec32,
-  vec4 as vec43
+  vec4 as vec42
 } from "three/tsl";
 import { MeshBasicNodeMaterial as MeshBasicNodeMaterial2 } from "three/webgpu";
 import {
@@ -3516,15 +3753,15 @@ function createSpriteMaterial(settings) {
   const particleColor = attr(PARTICLE_ATTR.color, "vec4");
   const uvTile = attr(PARTICLE_ATTR.uvTile, "float");
   const tiles = uni(new Vector22(settings.uTileCount, settings.vTileCount));
-  const tint = uni(new Color4(source.color?.r ?? 1, source.color?.g ?? 1, source.color?.b ?? 1));
+  const tint = uni(new Color3(source.color?.r ?? 1, source.color?.g ?? 1, source.color?.b ?? 1));
   const tintOpacity = uni(source.opacity ?? 1);
   const baseUv = tiledUv(uv(), uvTile, tiles);
-  let sampled = vec43(1, 1, 1, 1);
+  let sampled = vec42(1, 1, 1, 1);
   if (source.map) {
     const current = texture2(source.map, baseUv);
     if (settings.blendTiles) {
       const nextUv = tiledUv(uv(), floor(uvTile).add(1), tiles);
-      sampled = mix4(current, texture2(source.map, nextUv), fract(uvTile));
+      sampled = mix3(current, texture2(source.map, nextUv), fract(uvTile));
     } else {
       sampled = current;
     }
@@ -3540,9 +3777,9 @@ function createTrailMaterial(source) {
   copySurface(material, source);
   const particleColor = attr(PARTICLE_ATTR.color, "vec4");
   const map = source.map;
-  const sampled = map ? texture2(map, uv()) : vec43(1, 1, 1, 1);
+  const sampled = map ? texture2(map, uv()) : vec42(1, 1, 1, 1);
   const color2 = source.color;
-  const tint = uni(new Color4(color2?.r ?? 1, color2?.g ?? 1, color2?.b ?? 1));
+  const tint = uni(new Color3(color2?.r ?? 1, color2?.g ?? 1, color2?.b ?? 1));
   material.colorNode = sampled.rgb.mul(particleColor.rgb).mul(tint);
   material.opacityNode = sampled.a.mul(particleColor.a);
   material.vertexNode = trailClip();
@@ -3573,12 +3810,12 @@ function attr(name, type) {
   return attribute(name, type);
 }
 function uni(value) {
-  return uniform3(value);
+  return uniform2(value);
 }
 function spriteClip(mode) {
   const offset = attr(PARTICLE_ATTR.offset, "vec3");
   const size = attr(PARTICLE_ATTR.size, "vec3");
-  const world3 = modelWorldMatrix2.mul(vec43(offset, 1));
+  const world3 = modelWorldMatrix2.mul(vec42(offset, 1));
   if (mode === RenderMode.Mesh) return meshClip(offset, size);
   if (mode === RenderMode.Trail) return trailClip();
   const rotation = attr(PARTICLE_ATTR.rotation, "float");
@@ -3587,33 +3824,33 @@ function spriteClip(mode) {
   const s = rotation.sin();
   const rotated = vec22(c.mul(aligned.x).sub(s.mul(aligned.y)), s.mul(aligned.x).add(c.mul(aligned.y)));
   if (mode === RenderMode.HorizontalBillBoard) {
-    const shifted = vec43(world3.x.add(rotated.x), world3.y, world3.z.sub(rotated.y), world3.w);
+    const shifted = vec42(world3.x.add(rotated.x), world3.y, world3.z.sub(rotated.y), world3.w);
     return cameraProjectionMatrix.mul(cameraViewMatrix.mul(shifted));
   }
   if (mode === RenderMode.VerticalBillBoard) {
-    const raised = vec43(world3.x, world3.y.add(rotated.y), world3.z, world3.w);
+    const raised = vec42(world3.x, world3.y.add(rotated.y), world3.z, world3.w);
     const view2 = cameraViewMatrix.mul(raised);
-    return cameraProjectionMatrix.mul(vec43(view2.x.add(rotated.x), view2.y, view2.z, view2.w));
+    return cameraProjectionMatrix.mul(vec42(view2.x.add(rotated.x), view2.y, view2.z, view2.w));
   }
   if (mode === RenderMode.StretchedBillBoard) return stretchedClip(world3, size);
   const view = cameraViewMatrix.mul(world3);
-  return cameraProjectionMatrix.mul(vec43(view.x.add(rotated.x), view.y.add(rotated.y), view.z, view.w));
+  return cameraProjectionMatrix.mul(vec42(view.x.add(rotated.x), view.y.add(rotated.y), view.z, view.w));
 }
 function stretchedClip(world3, size) {
   const velocity = attr(PARTICLE_ATTR.velocity, "vec4");
   const view = cameraViewMatrix.mul(world3);
-  const viewVelocity = cameraViewMatrix.mul(vec43(velocity.x, velocity.y, velocity.z, 0)).xyz;
+  const viewVelocity = cameraViewMatrix.mul(vec42(velocity.x, velocity.y, velocity.z, 0)).xyz;
   const vlength = max2(length2(viewVelocity), float2(1e-4));
   const avg = size.x.add(size.y).mul(0.5);
   const side = normalize2(cross(view.xyz, viewVelocity));
   const stretched = view.xyz.add(side.mul(positionGeometry2.y).mul(avg)).sub(viewVelocity.mul(positionGeometry2.x.add(0.5)).mul(float2(1).add(velocity.w.div(vlength))).mul(avg));
-  return cameraProjectionMatrix.mul(vec43(stretched, view.w));
+  return cameraProjectionMatrix.mul(vec42(stretched, view.w));
 }
 function meshClip(offset, size) {
   const rotation = attr(PARTICLE_ATTR.rotation, "vec4");
   const scaled = vec32(positionGeometry2.x.mul(size.x), positionGeometry2.y.mul(size.y), positionGeometry2.z.mul(size.z));
   const spun = rotateByQuat(rotation, scaled);
-  const local = vec43(spun.x.add(offset.x), spun.y.add(offset.y), spun.z.add(offset.z), 1);
+  const local = vec42(spun.x.add(offset.x), spun.y.add(offset.y), spun.z.add(offset.z), 1);
   return cameraProjectionMatrix.mul(cameraViewMatrix.mul(modelWorldMatrix2.mul(local)));
 }
 function trailClip() {
@@ -3621,14 +3858,14 @@ function trailClip() {
   const next = attr(PARTICLE_ATTR.next, "vec3");
   const side = attr(PARTICLE_ATTR.side, "float");
   const width = attr(PARTICLE_ATTR.width, "float");
-  const world3 = modelWorldMatrix2.mul(vec43(positionGeometry2, 1)).xyz;
-  const worldPrev = modelWorldMatrix2.mul(vec43(previous, 1)).xyz;
-  const worldNext = modelWorldMatrix2.mul(vec43(next, 1)).xyz;
+  const world3 = modelWorldMatrix2.mul(vec42(positionGeometry2, 1)).xyz;
+  const worldPrev = modelWorldMatrix2.mul(vec42(previous, 1)).xyz;
+  const worldNext = modelWorldMatrix2.mul(vec42(next, 1)).xyz;
   const tangent = normalize2(worldNext.sub(worldPrev).add(vec32(0, 1e-4, 0)));
   const toCamera = normalize2(cameraPosition2.sub(world3));
   const binormal = normalize2(cross(tangent, toCamera));
   const placed = world3.add(binormal.mul(side).mul(width));
-  return cameraProjectionMatrix.mul(cameraViewMatrix.mul(vec43(placed, 1)));
+  return cameraProjectionMatrix.mul(cameraViewMatrix.mul(vec42(placed, 1)));
 }
 function rotateByQuat(q, v) {
   const t = cross(q.xyz, v).mul(2);
@@ -3893,186 +4130,2419 @@ var init_quarksRuntime = __esm({
   }
 });
 
+// src/capabilities/particles/session.ts
+function tickParticles(dt, parentOf) {
+  const runtimeWorld = getRuntimeWorld();
+  if (!capabilityEnabled(runtimeWorld.getCapabilities(), "particles") || !scene) {
+    disposeParticles();
+    return;
+  }
+  if (!runtime) {
+    ensureRuntime();
+    return;
+  }
+  const instances = [];
+  for (const node of Object.values(runtimeWorld.getNodes())) {
+    if (node.kind !== "effect" || !node.effect) continue;
+    const parent = parentOf(node.id);
+    if (!parent || !rootedInScene(parent)) continue;
+    const resolved = resolveInstance(node.id, node.effect, node.visible, parent);
+    if (resolved) instances.push(resolved);
+  }
+  runtime.sync(instances);
+  runtime.update(dt);
+}
+function disposeParticles() {
+  generation += 1;
+  runtime?.dispose();
+  runtime = null;
+  loading = null;
+}
+function ensureRuntime() {
+  if (loading || !scene) return;
+  const token = generation;
+  const root2 = scene;
+  loading = Promise.resolve().then(() => (init_quarksRuntime(), quarksRuntime_exports)).then((module) => {
+    if (token !== generation) return;
+    runtime = module.createQuarksRuntime(root2);
+  }).catch((error) => {
+    console.warn("[particles] three.quarks \u52A0\u8F7D\u5931\u8D25", error);
+  }).finally(() => {
+    if (token === generation) loading = null;
+  });
+}
+function rootedInScene(object) {
+  let current = object;
+  while (current.parent) current = current.parent;
+  return current.type === "Scene";
+}
+function resolveInstance(id, effect, visible, parent) {
+  const runtimeWorld = getRuntimeWorld();
+  let simulation = effect.simulation;
+  let materialId = effect.materialAssetId;
+  if (effect.assetId) {
+    const asset = runtimeWorld.getAsset(effect.assetId);
+    if (!asset || asset.kind !== "effect") return null;
+    simulation = asset.simulation;
+    materialId = effect.materialAssetId ?? asset.materialAssetId ?? null;
+  }
+  const stored = asSimulation(simulation);
+  if (!stored) return null;
+  const material = runtimeWorld.resolveParticleDesc?.(materialId) ?? null;
+  if (material === "incompatible") return null;
+  return {
+    id,
+    parent,
+    simulation: stored,
+    material,
+    playing: effect.playing !== false,
+    visible
+  };
+}
+var runtime, loading, scene, generation;
+var init_session5 = __esm({
+  "src/capabilities/particles/session.ts"() {
+    "use strict";
+    init_registry2();
+    init_world();
+    init_readQuarks();
+    runtime = null;
+    loading = null;
+    scene = null;
+    generation = 0;
+  }
+});
+
+// src/gameplay/juiceClock.ts
+function scalePlayDt(dt, now = performance.now() / 1e3) {
+  if (now < holdUntil) return 0;
+  return dt;
+}
+function juiceShake(now = performance.now() / 1e3) {
+  if (now >= shakeUntil || shakeAmp <= 0) return { x: 0, y: 0 };
+  return { x: (Math.random() - 0.5) * shakeAmp, y: (Math.random() - 0.5) * shakeAmp };
+}
+var holdUntil, shakeAmp, shakeUntil;
+var init_juiceClock = __esm({
+  "src/gameplay/juiceClock.ts"() {
+    "use strict";
+    holdUntil = 0;
+    shakeAmp = 0;
+    shakeUntil = 0;
+  }
+});
+
+// src/core/input/actionMap.ts
+function resolveFsBridge() {
+  return globalThis.electronAPI?.fs;
+}
+function cloneDefaultMap() {
+  return structuredClone(DEFAULT_INPUT_MAP);
+}
+function normalizeInputMap(raw) {
+  const base = cloneDefaultMap();
+  if (!raw || typeof raw !== "object") return base;
+  const record = raw;
+  const deadzone = typeof record.deadzone === "number" && Number.isFinite(record.deadzone) ? Math.max(0.01, Math.min(0.6, record.deadzone)) : base.deadzone;
+  const actions = { ...base.actions };
+  if (record.actions && typeof record.actions === "object") {
+    for (const [name, value] of Object.entries(record.actions)) {
+      if (!value || typeof value !== "object") continue;
+      const item = value;
+      const type = item.type === "axis2d" ? "axis2d" : "button";
+      actions[name] = {
+        type,
+        label: typeof item.label === "string" && item.label.trim() ? item.label : name,
+        keys: Array.isArray(item.keys) ? item.keys.filter((k) => typeof k === "string") : void 0,
+        axis: item.axis && typeof item.axis === "object" ? item.axis : void 0,
+        gamepadButton: typeof item.gamepadButton === "number" ? item.gamepadButton : void 0,
+        gamepadAxes: item.gamepadAxes && typeof item.gamepadAxes === "object" ? item.gamepadAxes : void 0,
+        touchControl: item.touchControl === "joystick" || item.touchControl === "button" ? item.touchControl : void 0,
+        touchLabel: typeof item.touchLabel === "string" ? item.touchLabel : void 0
+      };
+    }
+  }
+  return { version: 1, deadzone, actions };
+}
+function getInputActionMap() {
+  return currentMap;
+}
+function setInputActionMap(next) {
+  currentMap = normalizeInputMap(next);
+}
+async function saveProjectInputMap(projectRoot, map = currentMap) {
+  currentMap = normalizeInputMap(map);
+  if (!projectRoot) return false;
+  const fs = resolveFsBridge();
+  if (!fs?.writeTextFile) return false;
+  const path = `${projectRoot.replace(/[\\/]+$/, "")}/${INPUT_MAP_FILE}`;
+  await fs.writeTextFile(path, `${JSON.stringify(currentMap, null, 2)}
+`);
+  return true;
+}
+function injectVirtualInput(events) {
+  const list = Array.isArray(events) ? events : [events];
+  for (const event of list) {
+    if (event.type === "clear") {
+      virtualKeys.clear();
+      virtualActions.clear();
+      virtualAxes.clear();
+      tappedKeys.clear();
+      tappedActions.clear();
+      continue;
+    }
+    if (event.type === "keyDown") {
+      if (!virtualKeys.has(event.code)) tappedKeys.add(event.code);
+      virtualKeys.add(event.code);
+      continue;
+    }
+    if (event.type === "keyUp") {
+      virtualKeys.delete(event.code);
+      continue;
+    }
+    if (event.type === "actionDown") {
+      if (!virtualActions.has(event.action)) tappedActions.add(event.action);
+      virtualActions.add(event.action);
+      continue;
+    }
+    if (event.type === "actionUp") {
+      virtualActions.delete(event.action);
+      continue;
+    }
+    if (event.type === "axis") {
+      virtualAxes.set(event.action, {
+        x: Math.max(-1, Math.min(1, event.x)),
+        y: Math.max(-1, Math.min(1, event.y))
+      });
+    }
+  }
+}
+function clearAllVirtualInput() {
+  injectVirtualInput({ type: "clear" });
+}
+function isKeyHeld(code) {
+  return physicalKeys.has(code) || virtualKeys.has(code);
+}
+function wasKeyTapped(code) {
+  return tappedKeys.has(code);
+}
+function activeGamepad() {
+  if (typeof navigator === "undefined" || typeof navigator.getGamepads !== "function") return null;
+  const pads = navigator.getGamepads();
+  for (const pad of pads) {
+    if (pad && pad.connected) return pad;
+  }
+  return null;
+}
+function isActionPressed(actionName) {
+  if (virtualActions.has(actionName)) return true;
+  const binding = currentMap.actions[actionName];
+  if (!binding) return false;
+  if (binding.keys?.some((code) => isKeyHeld(code))) return true;
+  if (typeof binding.gamepadButton === "number") {
+    const pad = activeGamepad();
+    if (pad?.buttons[binding.gamepadButton]?.pressed) return true;
+  }
+  return false;
+}
+function wasActionTapped(actionName) {
+  if (tappedActions.has(actionName)) return true;
+  const binding = currentMap.actions[actionName];
+  if (!binding) return false;
+  return Boolean(binding.keys?.some((code) => tappedKeys.has(code)));
+}
+function getActionAxis2D(actionName) {
+  const vAxis = virtualAxes.get(actionName);
+  let x = vAxis?.x ?? 0;
+  let y = vAxis?.y ?? 0;
+  const binding = currentMap.actions[actionName];
+  if (binding?.axis) {
+    if (binding.axis.right?.some((c) => isKeyHeld(c))) x += 1;
+    if (binding.axis.left?.some((c) => isKeyHeld(c))) x -= 1;
+    if (binding.axis.up?.some((c) => isKeyHeld(c))) y += 1;
+    if (binding.axis.down?.some((c) => isKeyHeld(c))) y -= 1;
+  }
+  if (binding?.gamepadAxes) {
+    const pad = activeGamepad();
+    if (pad) {
+      const gx = pad.axes[binding.gamepadAxes.x] ?? 0;
+      const gyRaw = pad.axes[binding.gamepadAxes.y] ?? 0;
+      const gy = binding.gamepadAxes.invertY ? -gyRaw : gyRaw;
+      if (Math.abs(gx) > currentMap.deadzone) x += gx;
+      if (Math.abs(gy) > currentMap.deadzone) y += gy;
+    }
+  }
+  const len = Math.hypot(x, y);
+  if (len > 1) {
+    x /= len;
+    y /= len;
+  }
+  return { x, y };
+}
+function consumeInputFrame() {
+  tappedKeys.clear();
+  tappedActions.clear();
+}
+var DEFAULT_INPUT_MAP, INPUT_MAP_FILE, currentMap, physicalKeys, virtualKeys, tappedKeys, virtualActions, tappedActions, virtualAxes;
+var init_actionMap = __esm({
+  "src/core/input/actionMap.ts"() {
+    "use strict";
+    DEFAULT_INPUT_MAP = {
+      version: 1,
+      deadzone: 0.15,
+      actions: {
+        Move: {
+          type: "axis2d",
+          label: "\u79FB\u52A8",
+          axis: {
+            up: ["KeyW", "ArrowUp"],
+            down: ["KeyS", "ArrowDown"],
+            left: ["KeyA", "ArrowLeft"],
+            right: ["KeyD", "ArrowRight"]
+          },
+          gamepadAxes: { x: 0, y: 1, invertY: true },
+          touchControl: "joystick"
+        },
+        Jump: {
+          type: "button",
+          label: "\u8DF3\u8DC3",
+          keys: ["Space"],
+          gamepadButton: 0,
+          touchControl: "button",
+          touchLabel: "\u8DF3"
+        },
+        Sprint: {
+          type: "button",
+          label: "\u51B2\u523A\u8DD1",
+          keys: ["ShiftLeft", "ShiftRight"],
+          gamepadButton: 4
+        },
+        Dash: {
+          type: "button",
+          label: "\u95EA\u907F",
+          keys: ["KeyC"],
+          gamepadButton: 1,
+          touchControl: "button",
+          touchLabel: "\u95EA"
+        },
+        Interact: {
+          type: "button",
+          label: "\u4EA4\u4E92",
+          keys: ["KeyE"],
+          gamepadButton: 2,
+          touchControl: "button",
+          touchLabel: "\u4EA4\u4E92"
+        },
+        Attack: {
+          type: "button",
+          label: "\u653B\u51FB/\u5F00\u706B",
+          keys: ["KeyJ"],
+          gamepadButton: 7,
+          touchControl: "button",
+          touchLabel: "\u653B"
+        }
+      }
+    };
+    INPUT_MAP_FILE = "input.json";
+    currentMap = cloneDefaultMap();
+    physicalKeys = /* @__PURE__ */ new Set();
+    virtualKeys = /* @__PURE__ */ new Set();
+    tappedKeys = /* @__PURE__ */ new Set();
+    virtualActions = /* @__PURE__ */ new Set();
+    tappedActions = /* @__PURE__ */ new Set();
+    virtualAxes = /* @__PURE__ */ new Map();
+  }
+});
+
+// src/runtime/frameProfile.ts
+function measureCost(id, run) {
+  const start2 = performance.now();
+  try {
+    run();
+  } finally {
+    const ms = performance.now() - start2;
+    buckets.set(id, (buckets.get(id) ?? 0) + ms);
+    if (capture) capture.set(id, (capture.get(id) ?? 0) + ms);
+  }
+}
+var buckets, capture;
+var init_frameProfile = __esm({
+  "src/runtime/frameProfile.ts"() {
+    "use strict";
+    buckets = /* @__PURE__ */ new Map();
+    capture = null;
+  }
+});
+
+// src/runtime/sceneRuntime.ts
+function defaultCharacter() {
+  return {
+    enabled: true,
+    driver: "capsule",
+    mode: "adventure",
+    clickButton: "right",
+    clickStop: 0.35,
+    moveSpeed: 4.5,
+    turnSpeed: 540,
+    sprintMultiplier: 1.6,
+    jumpSpeed: 6.5,
+    maxJumps: 2,
+    coyoteTime: 0.12,
+    jumpBuffer: 0.12,
+    gravity: 18,
+    radius: 0.35,
+    height: 1.7,
+    capsuleOffset: [0, 0, 0],
+    physicsInteract: false,
+    mass: 65,
+    pushStrength: 1,
+    swim: true,
+    swimSpeedMultiplier: 0.65,
+    swimHeightOffset: 0,
+    dash: true,
+    dashKey: "KeyC",
+    dashDistance: 4,
+    dashDuration: 0.22,
+    dashInvincible: 0.35,
+    dashCooldown: 0.8,
+    footstepDistance: 1.6,
+    footstepJuice: "",
+    lockTargetId: "",
+    lockTargetName: "",
+    idleClip: "",
+    idleClipAssetId: "",
+    walkClip: "",
+    walkClipAssetId: "",
+    runClip: "",
+    runClipAssetId: "",
+    jumpClip: "",
+    jumpClipAssetId: "",
+    airClip: "",
+    airClipAssetId: "",
+    landClip: "",
+    landClipAssetId: "",
+    dodgeClip: "",
+    dodgeClipAssetId: "",
+    swimIdleClip: "",
+    swimIdleClipAssetId: "",
+    swimClip: "",
+    swimClipAssetId: ""
+  };
+}
+function defaultCameraFollow() {
+  return {
+    enabled: true,
+    targetId: "",
+    targetName: "",
+    offset: [0, 1.8, -4.2],
+    pivot: [0, 1.4, 0],
+    orbit: "rightDrag",
+    sensitivity: 0.25,
+    minPitch: -35,
+    maxPitch: 70,
+    collision: true,
+    collisionRadius: 0.2,
+    localOffset: false,
+    damping: 8,
+    lookAtTarget: true,
+    fov: 60,
+    zoom: true,
+    zoomSpeed: 0.18,
+    minDistance: 0.8,
+    maxDistance: 18
+  };
+}
+function cameraPresetForMode(mode) {
+  if (mode === "strafe") return { offset: [0.65, 0.45, -2.2], pivot: [0, 1.5, 0], orbit: "mouse", localOffset: false, lookAtTarget: true, fov: 55, collision: true };
+  if (mode === "lockOn") return { offset: [0.35, 2.2, -4.8], pivot: [0, 1.35, 0], orbit: "rightDrag", localOffset: false, lookAtTarget: true, fov: 58, collision: true };
+  if (mode === "pointAndClick") return { offset: [0, 10.5, -7.2], pivot: [0, 0.8, 0], orbit: "none", localOffset: false, lookAtTarget: true, fov: 48, collision: false };
+  if (mode === "topDown") return { offset: [0, 9.5, -6.5], pivot: [0, 0.8, 0], orbit: "none", localOffset: false, lookAtTarget: true, fov: 50, collision: false };
+  if (mode === "side25d") return { offset: [0, 1.6, -7.5], pivot: [0, 1.2, 0], orbit: "none", localOffset: false, lookAtTarget: true, fov: 45, collision: false };
+  if (mode === "firstPerson") return { offset: [0, 0, 0.12], pivot: [0, 1.65, 0], orbit: "mouse", localOffset: false, lookAtTarget: false, fov: 72, collision: false, zoom: false, damping: 0, minPitch: -85, maxPitch: 85 };
+  return { offset: [0, 1.8, -4.2], pivot: [0, 1.4, 0], orbit: "rightDrag", localOffset: false, lookAtTarget: true, fov: 60, collision: true };
+}
+function resolveCharacterCamera(character, raw) {
+  const mode = character.mode;
+  const preset = cameraPresetForMode(mode);
+  const base = { ...defaultCameraFollow(), ...preset, ...raw, preset: mode };
+  base.targetId = "";
+  base.targetName = "";
+  base.lookAtTarget = true;
+  if (mode === "pointAndClick" || mode === "topDown" || mode === "side25d") {
+    base.orbit = "none";
+    base.localOffset = false;
+    base.collision = false;
+    return base;
+  }
+  if (mode === "firstPerson") {
+    base.orbit = "mouse";
+    base.localOffset = false;
+    base.collision = false;
+    base.zoom = false;
+    base.lookAtTarget = false;
+    base.damping = 0;
+    if (base.minPitch === -35 && base.maxPitch === 70) {
+      base.minPitch = -85;
+      base.maxPitch = 85;
+    }
+    if (base.offset[1] > 0.4 && Math.abs(base.offset[1] - base.pivot[1]) < 0.05) {
+      base.offset = [base.offset[0], 0, base.offset[2]];
+    }
+    return base;
+  }
+  if (mode === "strafe") {
+    base.orbit = "mouse";
+    base.localOffset = false;
+    return base;
+  }
+  base.localOffset = false;
+  if (base.orbit === "none") base.orbit = "rightDrag";
+  if (character.driver !== "capsule" && character.clickButton === "right" && base.orbit === "rightDrag") {
+    base.orbit = "mouse";
+  }
+  return base;
+}
+function defaultInteract() {
+  return {
+    enabled: true,
+    prompt: "\u6309 E \u4EA4\u4E92",
+    key: "KeyE",
+    radius: 2.5,
+    filterTagId: "",
+    message: "onInteract",
+    once: false
+  };
+}
+function defaultTrigger() {
+  return {
+    enabled: true,
+    radius: 3,
+    filterTagId: "",
+    enterMessage: "onZoneEnter",
+    exitMessage: "onZoneExit",
+    once: false
+  };
+}
+function defaultMover() {
+  return {
+    enabled: true,
+    offset: [0, 3, 0],
+    duration: 2.5,
+    pause: 0.6,
+    pingPong: true,
+    autoPlay: true,
+    startMessage: "onActivateMover",
+    carryRadius: 1.6
+  };
+}
+function defaultCheckpoint() {
+  return {
+    enabled: true,
+    spawn: false,
+    radius: 2.5,
+    delay: 1.2,
+    abyssY: -12,
+    message: "onPlayerRespawned"
+  };
+}
+function defaultSoundSource() {
+  return {
+    enabled: true,
+    assetId: "",
+    loop: true,
+    volume: 1,
+    refDistance: 3,
+    rolloff: 1
+  };
+}
+function defaultScore() {
+  return {
+    enabled: true,
+    title: "\u5230\u8FBE\u76EE\u6807",
+    target: 100,
+    perInteract: 50,
+    timeLimit: 0,
+    victoryMessage: "onStageVictory",
+    defeatMessage: "onStageDefeat"
+  };
+}
+function registerRuntimeSystem(id, order, step2) {
+  const target = order >= RUNTIME_STAGE.POST_ANIMATION ? postAnimationSystems : order >= RUNTIME_STAGE.PHYSICS_NAV ? postPhysicsSystems : systems;
+  const index = target.findIndex((item) => item.id === id);
+  if (index >= 0) target.splice(index, 1);
+  target.push({ id, order, step: step2 });
+  target.sort((a, b) => a.order - b.order);
+  return () => {
+    const idx = target.findIndex((item) => item.id === id);
+    if (idx >= 0) target.splice(idx, 1);
+  };
+}
+function stepSceneRuntime(dt, host) {
+  const scaled = scalePlayDt(dt);
+  for (const system of systems) {
+    measureCost(system.id, () => system.step(scaled, host));
+  }
+  measureCost("physics", () => tickPhysics(scaled, host.resolveObject));
+  measureCost("navigation", () => tickNavigation());
+  for (const system of postPhysicsSystems) {
+    measureCost(system.id, () => system.step(scaled, host));
+  }
+  if (host.ready) {
+    measureCost("animation", () => host.updateAnimations(scaled));
+    for (const system of postAnimationSystems) {
+      measureCost(system.id, () => system.step(scaled, host));
+    }
+    measureCost("particles", () => tickParticles(scaled, host.resolveObject));
+  }
+  consumeInputFrame();
+}
+var RUNTIME_STAGE, systems, postPhysicsSystems, postAnimationSystems;
+var init_sceneRuntime = __esm({
+  "src/runtime/sceneRuntime.ts"() {
+    "use strict";
+    init_session();
+    init_session4();
+    init_session5();
+    init_juiceClock();
+    init_actionMap();
+    init_frameProfile();
+    RUNTIME_STAGE = {
+      PRE_PHYSICS: 10,
+      PHYSICS_NAV: 50,
+      POST_PHYSICS: 55,
+      ANIMATION: 60,
+      POST_ANIMATION: 70,
+      PRE_RENDER: 80
+    };
+    systems = [];
+    postPhysicsSystems = [];
+    postAnimationSystems = [];
+  }
+});
+
+// src/capabilities/spline/schema.ts
+function defaultSplinePath() {
+  return {
+    points: [
+      [0, 0, 0],
+      [3, 0, 2],
+      [6, 0, -2],
+      [9, 0, 0]
+    ],
+    closed: false,
+    tension: 0.5,
+    color: "#34d399"
+  };
+}
+function normalizeSplinePath(raw) {
+  const def = defaultSplinePath();
+  if (!raw || typeof raw !== "object") return def;
+  const obj = raw;
+  const pts = Array.isArray(obj.points) ? obj.points.filter((p) => Array.isArray(p) && p.length >= 3).map((p) => [
+    Number.isFinite(Number(p[0])) ? Number(p[0]) : 0,
+    Number.isFinite(Number(p[1])) ? Number(p[1]) : 0,
+    Number.isFinite(Number(p[2])) ? Number(p[2]) : 0
+  ]) : def.points;
+  return {
+    points: pts.length >= 2 ? pts : def.points,
+    closed: typeof obj.closed === "boolean" ? obj.closed : def.closed,
+    tension: typeof obj.tension === "number" && Number.isFinite(obj.tension) ? Math.max(0, Math.min(1, obj.tension)) : def.tension,
+    color: typeof obj.color === "string" && /^#[0-9a-fA-F]{3,8}$/.test(obj.color) ? obj.color : def.color
+  };
+}
+function normalizeSpline(raw) {
+  return normalizeBySchema(SPLINE_SCHEMA, raw);
+}
+var SPLINE_CAPABILITY_ID, SPLINE_PATH_CAPABILITY_ID, SPLINE_SCHEMA;
+var init_schema = __esm({
+  "src/capabilities/spline/schema.ts"() {
+    "use strict";
+    init_fieldSchema();
+    SPLINE_CAPABILITY_ID = "spline";
+    SPLINE_PATH_CAPABILITY_ID = "splinePath";
+    SPLINE_SCHEMA = {
+      type: "object",
+      label: "Spline \u8DEF\u5F84\u8FD0\u52A8",
+      fields: {
+        enabled: { type: "boolean", default: true, label: "\u542F\u7528" },
+        pathNodeId: { type: "ref", target: "node", kinds: ["spline"], default: null, label: "Spline \u66F2\u7EBF\u8282\u70B9" },
+        mode: {
+          type: "enum",
+          default: "loop",
+          label: "\u8FD0\u884C\u6A21\u5F0F",
+          options: [
+            { value: "once", label: "\u5355\u6B21\u5230\u8FBE" },
+            { value: "loop", label: "\u5FAA\u73AF" },
+            { value: "pingPong", label: "\u5F80\u8FD4" }
+          ]
+        },
+        speed: { type: "number", default: 4, min: 0.05, max: 200, step: 0.5, label: "\u79FB\u52A8\u901F\u5EA6 (m/s)" },
+        tension: { type: "number", default: 0.5, min: 0, max: 1, step: 0.05, label: "\u66F2\u7EBF\u5F20\u529B" },
+        closed: { type: "boolean", default: false, label: "\u95ED\u5408\u66F2\u7EBF" },
+        faceDirection: { type: "boolean", default: true, label: "\u671D\u5411\u8DEF\u5F84\u5207\u7EBF" },
+        planeXZ: { type: "boolean", default: false, label: "\u4FDD\u6301\u5F53\u524D\u9AD8\u5EA6 (XZ)" },
+        autoStart: { type: "boolean", default: true, label: "\u8BD5\u73A9\u81EA\u52A8\u542F\u52A8" },
+        startProgress: { type: "number", default: 0, min: 0, max: 1, step: 0.05, label: "\u8D77\u59CB\u8FDB\u5EA6 (0~1)" }
+      }
+    };
+  }
+});
+
+// src/capabilities/spline/session.ts
+var session_exports3 = {};
+__export(session_exports3, {
+  default: () => session_default3,
+  dispose: () => dispose3,
+  mount: () => mount3
+});
+import { Vector3 as Vector37 } from "three";
+function specOf3(raw) {
+  if (!raw || typeof raw !== "object") return normalizeSpline(raw);
+  const cached = specCache3.get(raw);
+  if (cached) return cached;
+  const next = normalizeSpline(raw);
+  specCache3.set(raw, next);
+  return next;
+}
+function collectWaypoints(nodes, host, ownerNode, spec) {
+  const pathParentId = spec.pathNodeId || ownerNode.id;
+  const pathNode = nodes[pathParentId];
+  const rawSplinePath = pathNode?.capabilities?.[SPLINE_PATH_CAPABILITY_ID];
+  if (pathNode && (pathNode.kind === "spline" || rawSplinePath)) {
+    const pathData = normalizeSplinePath(rawSplinePath);
+    const pathObj = host.resolveObject(pathNode.id);
+    if (pathObj) pathObj.updateMatrixWorld();
+    const tmp = new Vector37();
+    const points2 = [];
+    const closed2 = spec.closed || pathData.closed || spec.mode === "loop";
+    const tension = Number.isFinite(pathData.tension) ? pathData.tension : spec.tension;
+    const keyParts2 = [pathNode.id, closed2 ? "1" : "0", String(tension)];
+    for (let i = 0; i < pathData.points.length; i += 1) {
+      const pt = pathData.points[i];
+      if (pathObj) {
+        tmp.set(pt[0], pt[1], pt[2]).applyMatrix4(pathObj.matrixWorld);
+      } else {
+        tmp.set(pathNode.position[0] + pt[0], pathNode.position[1] + pt[1], pathNode.position[2] + pt[2]);
+      }
+      points2.push({ x: tmp.x, y: tmp.y, z: tmp.z });
+      keyParts2.push(`${i}:${tmp.x.toFixed(2)},${tmp.y.toFixed(2)},${tmp.z.toFixed(2)}`);
+    }
+    return { key: keyParts2.join("|"), points: points2, closed: closed2, tension };
+  }
+  const children = Object.values(nodes).filter((n) => n.parentId === pathParentId && n.id !== ownerNode.id).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  const points = [];
+  const closed = spec.closed || spec.mode === "loop";
+  const keyParts = [pathParentId, closed ? "1" : "0", String(spec.tension)];
+  for (const child of children) {
+    const obj = host.resolveObject(child.id);
+    const p = obj ? { x: obj.position.x, y: obj.position.y, z: obj.position.z } : { x: child.position[0], y: child.position[1], z: child.position[2] };
+    points.push(p);
+    keyParts.push(`${child.id}:${p.x.toFixed(2)},${p.y.toFixed(2)},${p.z.toFixed(2)}`);
+  }
+  return { key: keyParts.join("|"), points, closed, tension: spec.tension };
+}
+function stepSplineCapability(dt, host) {
+  const runtime2 = getRuntimeWorld();
+  if (runtime2.getPlayState() !== "playing") {
+    if (agents.size > 0) agents.clear();
+    return;
+  }
+  const nodes = runtime2.getNodes();
+  const activeIds = /* @__PURE__ */ new Set();
+  for (const node of Object.values(nodes)) {
+    const raw = node.capabilities?.[SPLINE_CAPABILITY_ID];
+    if (!raw) continue;
+    const spec = specOf3(raw);
+    if (!spec.enabled || !spec.autoStart) continue;
+    const obj = host.resolveObject(node.id);
+    if (!obj) continue;
+    activeIds.add(node.id);
+    const { key, points, closed, tension } = collectWaypoints(nodes, host, node, spec);
+    if (points.length < 2) continue;
+    let agent = agents.get(node.id);
+    if (!agent || agent.pathKey !== key) {
+      const spline = createSplinePath(points, {
+        closed,
+        tension
+      });
+      const startDist = Math.max(0, Math.min(1, spec.startProgress)) * spline.length;
+      agent = {
+        pathKey: key,
+        spline,
+        distance: startDist,
+        direction: 1,
+        finished: false
+      };
+      agents.set(node.id, agent);
+      const startPt = spline.pointAtDistance(startDist);
+      obj.position.set(startPt.x, spec.planeXZ ? obj.position.y : startPt.y, startPt.z);
+    }
+    if (agent.finished || dt <= 0 || agent.spline.length <= 1e-6) continue;
+    const totalLen = agent.spline.length;
+    let nextDist = agent.distance + spec.speed * dt * agent.direction;
+    if (spec.mode === "loop") {
+      nextDist = (nextDist % totalLen + totalLen) % totalLen;
+    } else if (spec.mode === "pingPong") {
+      if (nextDist >= totalLen) {
+        nextDist = totalLen - (nextDist - totalLen);
+        agent.direction = -1;
+      } else if (nextDist <= 0) {
+        nextDist = -nextDist;
+        agent.direction = 1;
+      }
+    } else {
+      if (nextDist >= totalLen) {
+        nextDist = totalLen;
+        agent.finished = true;
+      } else if (nextDist <= 0) {
+        nextDist = 0;
+        agent.finished = true;
+      }
+    }
+    agent.distance = nextDist;
+    const pt = agent.spline.pointAtDistance(nextDist);
+    obj.position.set(pt.x, spec.planeXZ ? obj.position.y : pt.y, pt.z);
+    if (spec.faceDirection) {
+      const tan2 = agent.spline.tangentAtDistance(nextDist);
+      const tx = tan2.x * agent.direction;
+      const tz = tan2.z * agent.direction;
+      if (Math.abs(tx) > 1e-5 || Math.abs(tz) > 1e-5) {
+        obj.rotation.y = Math.atan2(tx, tz);
+      }
+    }
+  }
+  for (const id of agents.keys()) {
+    if (!activeIds.has(id)) agents.delete(id);
+  }
+}
+function mount3() {
+  if (!unregister2) {
+    unregister2 = registerRuntimeSystem(
+      "capability.spline",
+      RUNTIME_STAGE.PRE_PHYSICS + 2,
+      stepSplineCapability
+    );
+  }
+  return dispose3;
+}
+function dispose3() {
+  unregister2?.();
+  unregister2 = null;
+  agents.clear();
+}
+var unregister2, agents, specCache3, splineRuntimeModule, session_default3;
+var init_session6 = __esm({
+  "src/capabilities/spline/session.ts"() {
+    "use strict";
+    init_motion();
+    init_sceneRuntime();
+    init_world();
+    init_schema();
+    unregister2 = null;
+    agents = /* @__PURE__ */ new Map();
+    specCache3 = /* @__PURE__ */ new WeakMap();
+    splineRuntimeModule = { mount: mount3, dispose: dispose3 };
+    session_default3 = splineRuntimeModule;
+  }
+});
+
+// src/capabilities/tween/schema.ts
+function normalizeTween(raw) {
+  return normalizeBySchema(TWEEN_SCHEMA, raw);
+}
+var TWEEN_CAPABILITY_ID, TWEEN_SCHEMA;
+var init_schema2 = __esm({
+  "src/capabilities/tween/schema.ts"() {
+    "use strict";
+    init_fieldSchema();
+    TWEEN_CAPABILITY_ID = "tween";
+    TWEEN_SCHEMA = {
+      type: "object",
+      label: "Tween \u8865\u95F4\u52A8\u6548",
+      fields: {
+        enabled: { type: "boolean", default: true, label: "\u542F\u7528" },
+        property: {
+          type: "enum",
+          default: "floatBob",
+          label: "\u52A8\u6548\u7C7B\u578B",
+          options: [
+            { value: "floatBob", label: "\u60AC\u6D6E\u6D6E\u52A8 (PingPong)" },
+            { value: "positionOffset", label: "\u4F4D\u7F6E\u504F\u79FB" },
+            { value: "rotationOffset", label: "\u65CB\u8F6C\u89D2\u5EA6 (\u5EA6)" },
+            { value: "scaleMultiplier", label: "\u7F29\u653E\u500D\u7387\u53D8\u5316" }
+          ]
+        },
+        delta: { type: "vec3", default: [0, 0.35, 0], label: "\u53D8\u5316\u91CF (X/Y/Z)" },
+        duration: { type: "number", default: 1.2, min: 0.05, max: 60, step: 0.1, label: "\u5355\u7A0B\u65F6\u957F (\u79D2)" },
+        delay: { type: "number", default: 0, min: 0, max: 30, step: 0.1, label: "\u8D77\u59CB\u5EF6\u8FDF (\u79D2)" },
+        ease: {
+          type: "enum",
+          default: "inOutSine",
+          label: "\u7F13\u52A8\u66F2\u7EBF",
+          options: [
+            { value: "linear", label: "\u7EBF\u6027 (Linear)" },
+            { value: "inOutSine", label: "\u6B63\u5F26\u7F13\u5165\u7F13\u51FA (Sine)" },
+            { value: "outQuad", label: "\u4E8C\u6B21\u7F13\u51FA (OutQuad)" },
+            { value: "inOutQuad", label: "\u4E8C\u6B21\u7F13\u5165\u7F13\u51FA (InOutQuad)" },
+            { value: "outCubic", label: "\u4E09\u6B21\u7F13\u51FA (OutCubic)" },
+            { value: "inOutCubic", label: "\u4E09\u6B21\u7F13\u5165\u7F13\u51FA (InOutCubic)" },
+            { value: "outBack", label: "\u56DE\u5F39 (OutBack)" },
+            { value: "outBounce", label: "\u5F39\u8DF3 (OutBounce)" },
+            { value: "outElastic", label: "\u5F39\u6027 (OutElastic)" }
+          ]
+        },
+        loopMode: {
+          type: "enum",
+          default: "pingPong",
+          label: "\u5FAA\u73AF\u6A21\u5F0F",
+          options: [
+            { value: "once", label: "\u5355\u6B21" },
+            { value: "loop", label: "\u4ECE\u5934\u5FAA\u73AF" },
+            { value: "pingPong", label: "\u5F80\u8FD4 (PingPong)" }
+          ]
+        },
+        autoStart: { type: "boolean", default: true, label: "\u8BD5\u73A9\u81EA\u52A8\u64AD\u653E" }
+      }
+    };
+  }
+});
+
+// src/capabilities/tween/session.ts
+var session_exports4 = {};
+__export(session_exports4, {
+  default: () => session_default4,
+  dispose: () => dispose4,
+  mount: () => mount4
+});
+function specOf4(raw) {
+  if (!raw || typeof raw !== "object") return normalizeTween(raw);
+  const cached = specCache4.get(raw);
+  if (cached) return cached;
+  const next = normalizeTween(raw);
+  specCache4.set(raw, next);
+  return next;
+}
+function stepTweenCapability(dt, host) {
+  const runtime2 = getRuntimeWorld();
+  if (runtime2.getPlayState() !== "playing") {
+    if (agents2.size > 0) agents2.clear();
+    return;
+  }
+  const nodes = runtime2.getNodes();
+  const activeIds = /* @__PURE__ */ new Set();
+  for (const node of Object.values(nodes)) {
+    const raw = node.capabilities?.[TWEEN_CAPABILITY_ID];
+    if (!raw) continue;
+    const spec = specOf4(raw);
+    if (!spec.enabled || !spec.autoStart) continue;
+    const obj = host.resolveObject(node.id);
+    if (!obj) continue;
+    activeIds.add(node.id);
+    let agent = agents2.get(node.id);
+    if (!agent) {
+      agent = {
+        basePos: [obj.position.x, obj.position.y, obj.position.z],
+        baseRot: [obj.rotation.x, obj.rotation.y, obj.rotation.z],
+        baseScale: [obj.scale.x, obj.scale.y, obj.scale.z],
+        delayLeft: Math.max(0, spec.delay),
+        elapsed: 0,
+        reversed: false,
+        finished: false
+      };
+      agents2.set(node.id, agent);
+    }
+    if (agent.finished || dt <= 0) continue;
+    if (agent.delayLeft > 0) {
+      agent.delayLeft -= dt;
+      if (agent.delayLeft > 0) continue;
+      agent.elapsed += -agent.delayLeft;
+      agent.delayLeft = 0;
+    } else {
+      agent.elapsed += dt;
+    }
+    const dur = Math.max(0.05, spec.duration);
+    let rawT = agent.elapsed / dur;
+    const effectiveLoop = spec.property === "floatBob" && spec.loopMode === "once" ? "pingPong" : spec.loopMode;
+    if (rawT >= 1) {
+      if (effectiveLoop === "loop") {
+        agent.elapsed = agent.elapsed % dur;
+        rawT = agent.elapsed / dur;
+      } else if (effectiveLoop === "pingPong") {
+        const cycles = Math.floor(rawT);
+        if (cycles % 2 === 1) agent.reversed = !agent.reversed;
+        agent.elapsed = agent.elapsed % dur;
+        rawT = agent.elapsed / dur;
+      } else {
+        rawT = 1;
+        agent.finished = true;
+      }
+    }
+    const progress = agent.reversed ? 1 - rawT : rawT;
+    const eased = evalEasing(spec.ease, progress);
+    const [dx, dy, dz] = spec.delta;
+    if (spec.property === "positionOffset" || spec.property === "floatBob") {
+      obj.position.set(
+        agent.basePos[0] + dx * eased,
+        agent.basePos[1] + dy * eased,
+        agent.basePos[2] + dz * eased
+      );
+    } else if (spec.property === "rotationOffset") {
+      const rx = dx * Math.PI / 180;
+      const ry = dy * Math.PI / 180;
+      const rz = dz * Math.PI / 180;
+      obj.rotation.set(
+        agent.baseRot[0] + rx * eased,
+        agent.baseRot[1] + ry * eased,
+        agent.baseRot[2] + rz * eased
+      );
+    } else if (spec.property === "scaleMultiplier") {
+      obj.scale.set(
+        agent.baseScale[0] * (1 + dx * eased),
+        agent.baseScale[1] * (1 + dy * eased),
+        agent.baseScale[2] * (1 + dz * eased)
+      );
+    }
+  }
+  for (const id of agents2.keys()) {
+    if (!activeIds.has(id)) agents2.delete(id);
+  }
+}
+function mount4() {
+  if (!unregister3) {
+    unregister3 = registerRuntimeSystem(
+      "capability.tween",
+      RUNTIME_STAGE.PRE_PHYSICS + 3,
+      stepTweenCapability
+    );
+  }
+  return dispose4;
+}
+function dispose4() {
+  unregister3?.();
+  unregister3 = null;
+  agents2.clear();
+}
+var unregister3, agents2, specCache4, tweenRuntimeModule, session_default4;
+var init_session7 = __esm({
+  "src/capabilities/tween/session.ts"() {
+    "use strict";
+    init_motion();
+    init_sceneRuntime();
+    init_world();
+    init_schema2();
+    unregister3 = null;
+    agents2 = /* @__PURE__ */ new Map();
+    specCache4 = /* @__PURE__ */ new WeakMap();
+    tweenRuntimeModule = { mount: mount4, dispose: dispose4 };
+    session_default4 = tweenRuntimeModule;
+  }
+});
+
+// src/capabilities/crowd/schema.ts
+function normalizeCrowd(raw) {
+  return normalizeBySchema(CROWD_SCHEMA, raw);
+}
+var CROWD_CAPABILITY_ID, CROWD_SCHEMA;
+var init_schema3 = __esm({
+  "src/capabilities/crowd/schema.ts"() {
+    "use strict";
+    init_fieldSchema();
+    CROWD_CAPABILITY_ID = "crowd";
+    CROWD_SCHEMA = {
+      type: "object",
+      label: "\u7FA4\u4F53\u907F\u8BA9 (Crowd)",
+      fields: {
+        enabled: { type: "boolean", default: true, label: "\u542F\u7528" },
+        radius: { type: "number", default: 0.8, min: 0.2, max: 10, step: 0.1, label: "\u907F\u8BA9\u534A\u5F84 (m)" },
+        maxSpeed: { type: "number", default: 4.5, min: 0.1, max: 50, step: 0.5, label: "\u6700\u5927\u901F\u5EA6 (m/s)" },
+        separationWeight: { type: "number", default: 1.8, min: 0, max: 10, step: 0.1, label: "\u5206\u79BB\u6743\u91CD" },
+        cohesionWeight: { type: "number", default: 0.25, min: 0, max: 5, step: 0.05, label: "\u51DD\u805A\u6743\u91CD" },
+        alignmentWeight: { type: "number", default: 0.35, min: 0, max: 5, step: 0.05, label: "\u5BF9\u9F50\u6743\u91CD" },
+        planeXZ: { type: "boolean", default: true, label: "XZ \u5E73\u9762\u79FB\u52A8" },
+        faceDirection: { type: "boolean", default: true, label: "\u671D\u5411\u79FB\u52A8\u65B9\u5411" }
+      }
+    };
+  }
+});
+
+// src/capabilities/crowd/session.ts
+var session_exports5 = {};
+__export(session_exports5, {
+  crowdRuntimeModule: () => crowdRuntimeModule,
+  dispose: () => dispose5,
+  ensureCrowdRuntime: () => ensureCrowdRuntime,
+  getCrowdStats: () => getCrowdStats,
+  isCrowdMoving: () => isCrowdMoving,
+  mount: () => mount5,
+  setCrowdFormation: () => setCrowdFormation,
+  setCrowdTarget: () => setCrowdTarget,
+  stopCrowdAgent: () => stopCrowdAgent
+});
+function readNodePosition(host, node) {
+  const obj = host.resolveObject(node.id);
+  if (obj) return { x: obj.position.x, y: obj.position.y, z: obj.position.z };
+  return { x: node.position[0], y: node.position[1], z: node.position[2] };
+}
+function writeNodePosition(host, node, x, y, z) {
+  const obj = host.resolveObject(node.id);
+  if (obj) obj.position.set(x, y, z);
+  node.position = [x, y, z];
+}
+function writeNodeYaw(host, node, dx, dz) {
+  if (dx * dx + dz * dz < 1e-6) return;
+  const yawRad = Math.atan2(dx, dz);
+  const obj = host.resolveObject(node.id);
+  if (obj) obj.rotation.y = yawRad;
+  node.rotation = [node.rotation[0], yawRad * 180 / Math.PI, node.rotation[2]];
+}
+function setCrowdTarget(nodeId, target, options) {
+  const existing = agents3.get(nodeId);
+  if (existing) {
+    existing.target = { x: target.x, y: target.y, z: target.z };
+    existing.arriveDist = Math.max(0.05, options?.arriveDist ?? 0.35);
+    existing.speedOverride = options?.speed;
+    existing.onArrive = options?.onArrive;
+  } else {
+    agents3.set(nodeId, {
+      nodeId,
+      vx: 0,
+      vy: 0,
+      vz: 0,
+      target: { x: target.x, y: target.y, z: target.z },
+      arriveDist: Math.max(0.05, options?.arriveDist ?? 0.35),
+      speedOverride: options?.speed,
+      onArrive: options?.onArrive
+    });
+  }
+}
+function stopCrowdAgent(nodeId) {
+  const agent = agents3.get(nodeId);
+  if (!agent) return;
+  agent.target = null;
+  agent.vx = 0;
+  agent.vy = 0;
+  agent.vz = 0;
+  agent.onArrive = void 0;
+}
+function isCrowdMoving(nodeId) {
+  const agent = agents3.get(nodeId);
+  return Boolean(agent && agent.target);
+}
+function getCrowdStats() {
+  let moving = 0;
+  for (const agent of agents3.values()) {
+    if (agent.target) moving += 1;
+  }
+  return { total: agents3.size, moving };
+}
+function setCrowdFormation(nodeIds, center, options) {
+  const count = nodeIds.length;
+  if (count === 0) return;
+  const formation = options?.formation ?? "grid";
+  const spacing = Math.max(0.5, options?.spacing ?? 1.8);
+  const yaw = options?.facingYaw ?? 0;
+  const cos3 = Math.cos(yaw);
+  const sin3 = Math.sin(yaw);
+  const rotateOffset = (lx, lz) => ({
+    x: center.x + lx * cos3 + lz * sin3,
+    y: center.y,
+    z: center.z - lx * sin3 + lz * cos3
+  });
+  if (formation === "line") {
+    const half = (count - 1) * 0.5;
+    for (let i = 0; i < count; i += 1) {
+      const target = rotateOffset((i - half) * spacing, 0);
+      setCrowdTarget(nodeIds[i], target, options);
+    }
+    return;
+  }
+  if (formation === "wedge") {
+    for (let i = 0; i < count; i += 1) {
+      if (i === 0) {
+        setCrowdTarget(nodeIds[i], rotateOffset(0, 0), options);
+      } else {
+        const rank = Math.ceil(i / 2);
+        const side = i % 2 === 1 ? -1 : 1;
+        setCrowdTarget(nodeIds[i], rotateOffset(side * rank * spacing * 0.85, -rank * spacing), options);
+      }
+    }
+    return;
+  }
+  if (formation === "circle") {
+    const radius = Math.max(spacing, count * spacing / (Math.PI * 2));
+    for (let i = 0; i < count; i += 1) {
+      const angle = i / count * Math.PI * 2;
+      setCrowdTarget(
+        nodeIds[i],
+        rotateOffset(Math.cos(angle) * radius, Math.sin(angle) * radius),
+        options
+      );
+    }
+    return;
+  }
+  const cols = Math.max(1, Math.ceil(Math.sqrt(count)));
+  const rows = Math.ceil(count / cols);
+  for (let i = 0; i < count; i += 1) {
+    const col = i % cols;
+    const row = Math.floor(i / cols);
+    const lx = (col - (cols - 1) * 0.5) * spacing;
+    const lz = -(row - (rows - 1) * 0.5) * spacing;
+    setCrowdTarget(nodeIds[i], rotateOffset(lx, lz), options);
+  }
+}
+function stepCrowdRuntime(dt, host) {
+  const world3 = getRuntimeWorld();
+  const nodes = world3.getNodes();
+  const entries = [];
+  let maxRadius = 1;
+  for (const node of Object.values(nodes)) {
+    const raw = node.capabilities?.[CROWD_CAPABILITY_ID];
+    if (!raw || !node.visible) continue;
+    const spec = normalizeCrowd(raw);
+    if (!spec.enabled) continue;
+    let agent = agents3.get(node.id);
+    if (!agent) {
+      agent = {
+        nodeId: node.id,
+        vx: 0,
+        vy: 0,
+        vz: 0,
+        target: null,
+        arriveDist: 0.35
+      };
+      agents3.set(node.id, agent);
+    }
+    if (spec.radius > maxRadius) maxRadius = spec.radius;
+    entries.push({
+      node,
+      spec,
+      pos: readNodePosition(host, node),
+      agent
+    });
+  }
+  const activeSet = new Set(entries.map((e) => e.node.id));
+  for (const id of agents3.keys()) {
+    if (!activeSet.has(id)) agents3.delete(id);
+  }
+  if (entries.length === 0) return;
+  const cellSize = Math.max(1.2, maxRadius * 2.4);
+  const grid = /* @__PURE__ */ new Map();
+  for (let i = 0; i < entries.length; i += 1) {
+    const p = entries[i].pos;
+    const cx = Math.floor(p.x / cellSize);
+    const cz = Math.floor(p.z / cellSize);
+    const key = `${cx},${cz}`;
+    let bucket = grid.get(key);
+    if (!bucket) {
+      bucket = [];
+      grid.set(key, bucket);
+    }
+    bucket.push(i);
+  }
+  const safeDt = Math.min(0.05, Math.max(1e-4, dt));
+  for (let i = 0; i < entries.length; i += 1) {
+    const { node, spec, pos, agent } = entries[i];
+    const maxSpeed = Math.max(0.1, agent.speedOverride ?? spec.maxSpeed);
+    let desiredVx = 0;
+    let desiredVy = 0;
+    let desiredVz = 0;
+    let hasGoal = false;
+    if (agent.target) {
+      const gx = agent.target.x - pos.x;
+      const gy = spec.planeXZ ? 0 : agent.target.y - pos.y;
+      const gz = agent.target.z - pos.z;
+      const dist = Math.hypot(gx, gy, gz);
+      if (dist <= agent.arriveDist) {
+        agent.target = null;
+        agent.vx = 0;
+        agent.vy = 0;
+        agent.vz = 0;
+        const cb = agent.onArrive;
+        agent.onArrive = void 0;
+        if (cb) {
+          try {
+            cb();
+          } catch (err) {
+            console.warn("[Crowd] onArrive \u56DE\u8C03\u5F02\u5E38:", err);
+          }
+        }
+      } else {
+        hasGoal = true;
+        const slowRadius = Math.max(agent.arriveDist * 2.5, 1);
+        const speed = dist < slowRadius ? maxSpeed * (dist / slowRadius) : maxSpeed;
+        desiredVx = gx / dist * speed;
+        desiredVy = gy / dist * speed;
+        desiredVz = gz / dist * speed;
+      }
+    }
+    let sepX = 0;
+    let sepY = 0;
+    let sepZ = 0;
+    let cohX = 0;
+    let cohY = 0;
+    let cohZ = 0;
+    let aliX = 0;
+    let aliY = 0;
+    let aliZ = 0;
+    let neighborCount = 0;
+    const cx = Math.floor(pos.x / cellSize);
+    const cz = Math.floor(pos.z / cellSize);
+    for (let ox = -1; ox <= 1; ox += 1) {
+      for (let oz = -1; oz <= 1; oz += 1) {
+        const bucket = grid.get(`${cx + ox},${cz + oz}`);
+        if (!bucket) continue;
+        for (const j of bucket) {
+          if (j === i) continue;
+          const other = entries[j];
+          const dx = pos.x - other.pos.x;
+          const dy = spec.planeXZ ? 0 : pos.y - other.pos.y;
+          const dz = pos.z - other.pos.z;
+          const d2 = dx * dx + dy * dy + dz * dz;
+          const minDist = spec.radius + other.spec.radius;
+          if (d2 > minDist * minDist * 2.25) continue;
+          const d = Math.sqrt(d2);
+          if (d < minDist) {
+            if (d > 1e-4) {
+              const push = (minDist - d) / minDist * maxSpeed;
+              sepX += dx / d * push;
+              sepY += dy / d * push;
+              sepZ += dz / d * push;
+            } else {
+              const angle = i * 2.39996 % (Math.PI * 2);
+              sepX += Math.cos(angle) * maxSpeed * 0.5;
+              sepZ += Math.sin(angle) * maxSpeed * 0.5;
+            }
+          }
+          neighborCount += 1;
+          cohX += other.pos.x;
+          cohY += other.pos.y;
+          cohZ += other.pos.z;
+          aliX += other.agent.vx;
+          aliY += other.agent.vy;
+          aliZ += other.agent.vz;
+        }
+      }
+    }
+    let steerVx = desiredVx + sepX * spec.separationWeight;
+    let steerVy = desiredVy + sepY * spec.separationWeight;
+    let steerVz = desiredVz + sepZ * spec.separationWeight;
+    if (neighborCount > 0 && hasGoal) {
+      const inv = 1 / neighborCount;
+      const cxAvg = cohX * inv - pos.x;
+      const cyAvg = spec.planeXZ ? 0 : cohY * inv - pos.y;
+      const czAvg = cohZ * inv - pos.z;
+      const cLen = Math.hypot(cxAvg, cyAvg, czAvg);
+      if (cLen > 1e-4) {
+        steerVx += cxAvg / cLen * maxSpeed * spec.cohesionWeight * 0.5;
+        steerVy += cyAvg / cLen * maxSpeed * spec.cohesionWeight * 0.5;
+        steerVz += czAvg / cLen * maxSpeed * spec.cohesionWeight * 0.5;
+      }
+      steerVx += aliX * inv * spec.alignmentWeight * 0.4;
+      steerVy += aliY * inv * spec.alignmentWeight * 0.4;
+      steerVz += aliZ * inv * spec.alignmentWeight * 0.4;
+    }
+    const spd = Math.hypot(steerVx, steerVy, steerVz);
+    if (spd > maxSpeed) {
+      const k = maxSpeed / spd;
+      steerVx *= k;
+      steerVy *= k;
+      steerVz *= k;
+    }
+    const blend = Math.min(1, safeDt * 10);
+    agent.vx += (steerVx - agent.vx) * blend;
+    agent.vy += (steerVy - agent.vy) * blend;
+    agent.vz += (steerVz - agent.vz) * blend;
+    const moved = Math.hypot(agent.vx, agent.vy, agent.vz);
+    if (moved < 0.01 && !hasGoal) {
+      agent.vx = 0;
+      agent.vy = 0;
+      agent.vz = 0;
+      continue;
+    }
+    const nx = pos.x + agent.vx * safeDt;
+    const ny = spec.planeXZ ? pos.y : pos.y + agent.vy * safeDt;
+    const nz = pos.z + agent.vz * safeDt;
+    writeNodePosition(host, node, nx, ny, nz);
+    if (spec.faceDirection && agent.vx * agent.vx + agent.vz * agent.vz > 0.04) {
+      writeNodeYaw(host, node, agent.vx, agent.vz);
+    }
+  }
+}
+function ensureCrowdRuntime() {
+  if (unregisterCrowd) return;
+  unregisterCrowd = registerRuntimeSystem(
+    "capability.crowd",
+    RUNTIME_STAGE.PRE_PHYSICS + 4,
+    stepCrowdRuntime
+  );
+}
+function mount5() {
+  ensureCrowdRuntime();
+  return dispose5;
+}
+function dispose5() {
+  unregisterCrowd?.();
+  unregisterCrowd = null;
+  agents3.clear();
+}
+var agents3, unregisterCrowd, crowdRuntimeModule;
+var init_session8 = __esm({
+  "src/capabilities/crowd/session.ts"() {
+    "use strict";
+    init_sceneRuntime();
+    init_world();
+    init_schema3();
+    agents3 = /* @__PURE__ */ new Map();
+    unregisterCrowd = null;
+    crowdRuntimeModule = {
+      mount: mount5,
+      dispose: dispose5
+    };
+  }
+});
+
+// src/gameplay/types.ts
+var CORE_GAMEPLAY_PACK_ID;
+var init_types = __esm({
+  "src/gameplay/types.ts"() {
+    "use strict";
+    CORE_GAMEPLAY_PACK_ID = "t3d.core";
+  }
+});
+
+// src/gameplay/registry.ts
+function registerGameplayPack(pack) {
+  packs.set(pack.id, pack);
+}
+function unregisterGameplayPack(packId) {
+  if (packId === CORE_GAMEPLAY_PACK_ID) return false;
+  return packs.delete(packId);
+}
+function getGameplayPack(packId) {
+  return packs.get(packId);
+}
+function listGameplayPacks() {
+  return [...packs.values()];
+}
+function resolveEnabledPackIds(enabled) {
+  const next = /* @__PURE__ */ new Set([CORE_GAMEPLAY_PACK_ID, ...enabled ?? []]);
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const id of [...next]) {
+      for (const dep of packs.get(id)?.dependencies ?? []) {
+        if (!next.has(dep)) {
+          next.add(dep);
+          changed = true;
+        }
+      }
+    }
+  }
+  return next;
+}
+function listEnabledTableSchemas(enabled) {
+  const on = resolveEnabledPackIds(enabled);
+  const schemas = [];
+  for (const pack of packs.values()) {
+    if (!on.has(pack.id)) continue;
+    for (const table of pack.tables ?? []) schemas.push(table);
+  }
+  return schemas;
+}
+function tableSchema(tableId) {
+  for (const pack of packs.values()) {
+    const found = pack.tables?.find((table) => table.tableId === tableId);
+    if (found) return found;
+  }
+  return void 0;
+}
+function defaultRows(tableId) {
+  return structuredClone(tableSchema(tableId)?.defaultRows ?? []);
+}
+function tableRows(database, tableId) {
+  const existing = database?.tables?.[tableId];
+  if (existing) return existing;
+  return defaultRows(tableId);
+}
+function createDefaultGameDatabase(enabled) {
+  const tables = {};
+  for (const schema of listEnabledTableSchemas(enabled)) {
+    tables[schema.tableId] = structuredClone(schema.defaultRows ?? []);
+  }
+  return { tables };
+}
+function ensureGameDatabase(value, enabled) {
+  const base = createDefaultGameDatabase(enabled);
+  if (!value || typeof value !== "object") return base;
+  const tables = value.tables;
+  if (!tables || typeof tables !== "object") return base;
+  for (const [tableId, rows] of Object.entries(tables)) {
+    if (!Array.isArray(rows)) continue;
+    base.tables[tableId] = rows.flatMap((row) => cleanRow(row));
+  }
+  return base;
+}
+function cleanRow(value) {
+  if (!value || typeof value !== "object") return [];
+  const row = value;
+  if (typeof row.id !== "string" || typeof row.name !== "string") return [];
+  return [{
+    id: row.id,
+    name: row.name,
+    category: typeof row.category === "string" ? row.category : "",
+    description: typeof row.description === "string" ? row.description : "",
+    fields: row.fields && typeof row.fields === "object" ? { ...row.fields } : {}
+  }];
+}
+function findRow(database, tableId, id) {
+  const key = id.trim();
+  if (!key) return void 0;
+  return tableRows(database, tableId).find((row) => row.id === key);
+}
+var packs;
+var init_registry = __esm({
+  "src/gameplay/registry.ts"() {
+    "use strict";
+    init_types();
+    packs = /* @__PURE__ */ new Map();
+  }
+});
+
+// src/gameplay/runtimeTags.ts
+function matchesTag(actual, query) {
+  if (!actual || !query) return false;
+  const have = actual.trim();
+  let want = query.trim();
+  if (!have || !want) return false;
+  if (want.endsWith(".*")) want = want.slice(0, -2);
+  if (have === want) return true;
+  return have.startsWith(`${want}.`);
+}
+function listRuntimeTags(nodeId, now = performance.now() / 1e3) {
+  const bag = bags.get(nodeId);
+  if (!bag) return [];
+  return [...bag.entries()].map(([tag, until]) => ({
+    tag,
+    remaining: until > 0 ? Math.max(0, until - now) : null
+  }));
+}
+function nodeHasTag(node, query) {
+  if (!query.trim()) return false;
+  if (matchesTag(node.tagId, query)) return true;
+  for (const tag of node.tagIds ?? []) {
+    if (matchesTag(tag, query)) return true;
+  }
+  const bag = bags.get(node.id);
+  if (!bag) return false;
+  for (const tag of bag.keys()) {
+    if (matchesTag(tag, query)) return true;
+  }
+  return false;
+}
+var bags;
+var init_runtimeTags = __esm({
+  "src/gameplay/runtimeTags.ts"() {
+    "use strict";
+    init_world();
+    init_registry();
+    bags = /* @__PURE__ */ new Map();
+  }
+});
+
+// src/capabilities/projectile/schema.ts
+function normalizeProjectile(raw) {
+  return normalizeBySchema(PROJECTILE_SCHEMA, raw);
+}
+var PROJECTILE_CAPABILITY_ID, PROJECTILE_SCHEMA;
+var init_schema4 = __esm({
+  "src/capabilities/projectile/schema.ts"() {
+    "use strict";
+    init_fieldSchema();
+    PROJECTILE_CAPABILITY_ID = "projectile";
+    PROJECTILE_SCHEMA = {
+      type: "object",
+      label: "\u901A\u7528\u5F39\u9053 (Projectile)",
+      fields: {
+        enabled: { type: "boolean", default: true, label: "\u542F\u7528" },
+        mode: {
+          type: "enum",
+          default: "linear",
+          label: "\u5F39\u9053\u6A21\u5F0F",
+          options: [
+            { value: "linear", label: "\u76F4\u7EBF\u98DE\u884C" },
+            { value: "homing", label: "\u81EA\u52A8\u8FFD\u8E2A" },
+            { value: "ballistic", label: "\u629B\u7269\u7EBF" }
+          ]
+        },
+        speed: { type: "number", default: 22, min: 0.5, max: 200, step: 1, label: "\u98DE\u884C\u901F\u5EA6 (m/s)" },
+        gravity: { type: "number", default: 9.8, min: 0, max: 50, step: 0.5, label: "\u91CD\u529B\u52A0\u901F\u5EA6" },
+        turnRate: { type: "number", default: 6, min: 0.1, max: 30, step: 0.5, label: "\u8FFD\u8E2A\u8F6C\u5411\u7387 (rad/s)" },
+        maxLifetime: { type: "number", default: 3, min: 0.1, max: 60, step: 0.2, label: "\u6700\u5927\u5BFF\u547D (s)" },
+        hitRadius: { type: "number", default: 0.65, min: 0.05, max: 10, step: 0.05, label: "\u547D\u4E2D\u5224\u5B9A\u534A\u5F84 (m)" },
+        targetTag: { type: "string", default: "enemy", label: "\u76EE\u6807\u6807\u7B7E" },
+        damage: { type: "number", default: 10, min: 0, max: 9999, step: 1, label: "\u4F24\u5BB3\u503C" },
+        destroyOnHit: { type: "boolean", default: true, label: "\u547D\u4E2D\u540E\u56DE\u6C60/\u9500\u6BC1" }
+      }
+    };
+  }
+});
+
+// src/capabilities/projectile/session.ts
+var session_exports6 = {};
+__export(session_exports6, {
+  bindProjectileRuntimeHooks: () => bindProjectileRuntimeHooks,
+  dispose: () => dispose6,
+  ensureProjectileRuntime: () => ensureProjectileRuntime,
+  launchProjectile: () => launchProjectile,
+  mount: () => mount6,
+  projectileRuntimeModule: () => projectileRuntimeModule,
+  resetProjectileState: () => resetProjectileState
+});
+import { Quaternion as Quaternion4, Vector3 as Vector38 } from "three";
+function bindProjectileRuntimeHooks(next) {
+  hooks = next;
+}
+function readPos(host, node) {
+  const obj = host.resolveObject(node.id);
+  if (obj) return { x: obj.position.x, y: obj.position.y, z: obj.position.z };
+  return { x: node.position[0], y: node.position[1], z: node.position[2] };
+}
+function writePos(host, node, x, y, z) {
+  const obj = host.resolveObject(node.id);
+  if (obj) obj.position.set(x, y, z);
+  node.position = [x, y, z];
+}
+function orientAlongVelocity(host, node, vx, vy, vz) {
+  const lenSq = vx * vx + vy * vy + vz * vz;
+  if (lenSq < 1e-6) return;
+  tmpDir.set(vx, vy, vz).normalize();
+  tmpQuat2.setFromUnitVectors(tmpForward, tmpDir);
+  const obj = host.resolveObject(node.id);
+  if (obj) {
+    obj.quaternion.copy(tmpQuat2);
+    node.rotation = [
+      obj.rotation.x * 180 / Math.PI,
+      obj.rotation.y * 180 / Math.PI,
+      obj.rotation.z * 180 / Math.PI
+    ];
+  }
+}
+function defaultDirectionForNode(node) {
+  const yaw = (node.rotation?.[1] ?? 0) * Math.PI / 180;
+  return { x: Math.sin(yaw), y: 0, z: Math.cos(yaw) };
+}
+function launchProjectile(nodeId, options) {
+  const world3 = getRuntimeWorld();
+  const node = world3.getNodes()[nodeId];
+  const rawSpec = node?.capabilities?.[PROJECTILE_CAPABILITY_ID];
+  const spec = normalizeProjectile(rawSpec);
+  const speed = Math.max(0.1, options?.speed ?? spec.speed);
+  const dir = options?.direction ?? (node ? defaultDirectionForNode(node) : { x: 0, y: 0, z: 1 });
+  const len = Math.hypot(dir.x, dir.y, dir.z) || 1;
+  activeProjectiles.set(nodeId, {
+    nodeId,
+    vx: dir.x / len * speed,
+    vy: dir.y / len * speed,
+    vz: dir.z / len * speed,
+    elapsed: 0,
+    mode: options?.mode,
+    speed: options?.speed,
+    gravity: options?.gravity,
+    turnRate: options?.turnRate,
+    maxLifetime: options?.maxLifetime,
+    hitRadius: options?.hitRadius,
+    targetTag: options?.targetTag,
+    damage: options?.damage,
+    destroyOnHit: options?.destroyOnHit,
+    targetId: options?.targetId,
+    ownerId: options?.ownerId,
+    onHit: options?.onHit
+  });
+}
+function resetProjectileState(nodeId) {
+  activeProjectiles.delete(nodeId);
+}
+function stepProjectileRuntime(dt, host) {
+  const world3 = getRuntimeWorld();
+  const nodes = world3.getNodes();
+  const safeDt = Math.min(0.05, Math.max(1e-4, dt));
+  for (const node of Object.values(nodes)) {
+    const raw = node.capabilities?.[PROJECTILE_CAPABILITY_ID];
+    if (!raw) continue;
+    if (!node.visible || hooks.isNodeInactive?.(node.id, nodes)) {
+      activeProjectiles.delete(node.id);
+      continue;
+    }
+    const spec = normalizeProjectile(raw);
+    if (!spec.enabled) continue;
+    if (!activeProjectiles.has(node.id)) {
+      const dir = defaultDirectionForNode(node);
+      activeProjectiles.set(node.id, {
+        nodeId: node.id,
+        vx: dir.x * spec.speed,
+        vy: dir.y * spec.speed,
+        vz: dir.z * spec.speed,
+        elapsed: 0
+      });
+    }
+  }
+  for (const [id, state] of [...activeProjectiles.entries()]) {
+    const node = nodes[id];
+    if (!node || !node.visible || hooks.isNodeInactive?.(id, nodes)) {
+      activeProjectiles.delete(id);
+      continue;
+    }
+    const spec = normalizeProjectile(node.capabilities?.[PROJECTILE_CAPABILITY_ID]);
+    const mode = state.mode ?? spec.mode;
+    const speed = Math.max(0.1, state.speed ?? spec.speed);
+    const gravity = state.gravity ?? spec.gravity;
+    const turnRate = state.turnRate ?? spec.turnRate;
+    const maxLifetime = Math.max(0.05, state.maxLifetime ?? spec.maxLifetime);
+    const hitRadius = Math.max(0.02, state.hitRadius ?? spec.hitRadius);
+    const targetTag = (state.targetTag ?? spec.targetTag).trim();
+    const damage = state.damage ?? spec.damage;
+    const destroyOnHit = state.destroyOnHit ?? spec.destroyOnHit;
+    state.elapsed += safeDt;
+    if (state.elapsed >= maxLifetime) {
+      activeProjectiles.delete(id);
+      hooks.onRecycle?.(id, host);
+      continue;
+    }
+    const pos = readPos(host, node);
+    if (mode === "homing" && state.targetId) {
+      const targetNode = nodes[state.targetId];
+      if (targetNode && targetNode.visible && !hooks.isNodeInactive?.(targetNode.id, nodes)) {
+        const tp = readPos(host, targetNode);
+        const dx = tp.x - pos.x;
+        const dy = tp.y - pos.y;
+        const dz = tp.z - pos.z;
+        const dist = Math.hypot(dx, dy, dz);
+        if (dist > 1e-4) {
+          const desiredVx = dx / dist * speed;
+          const desiredVy = dy / dist * speed;
+          const desiredVz = dz / dist * speed;
+          const blend = Math.min(1, turnRate * safeDt);
+          state.vx += (desiredVx - state.vx) * blend;
+          state.vy += (desiredVy - state.vy) * blend;
+          state.vz += (desiredVz - state.vz) * blend;
+          const curSpd = Math.hypot(state.vx, state.vy, state.vz) || 1;
+          state.vx = state.vx / curSpd * speed;
+          state.vy = state.vy / curSpd * speed;
+          state.vz = state.vz / curSpd * speed;
+        }
+      }
+    } else if (mode === "ballistic") {
+      state.vy -= gravity * safeDt;
+    }
+    const nx = pos.x + state.vx * safeDt;
+    const ny = pos.y + state.vy * safeDt;
+    const nz = pos.z + state.vz * safeDt;
+    writePos(host, node, nx, ny, nz);
+    orientAlongVelocity(host, node, state.vx, state.vy, state.vz);
+    let hitNode = null;
+    if (state.targetId) {
+      const t = nodes[state.targetId];
+      if (t && t.visible && !hooks.isNodeInactive?.(t.id, nodes)) {
+        const tp = readPos(host, t);
+        const d = Math.hypot(tp.x - nx, tp.y - ny, tp.z - nz);
+        if (d <= hitRadius) hitNode = t;
+      }
+    }
+    if (!hitNode && targetTag) {
+      const r2 = hitRadius * hitRadius;
+      for (const candidate of Object.values(nodes)) {
+        if (candidate.id === id || candidate.id === state.ownerId) continue;
+        if (!candidate.visible || hooks.isNodeInactive?.(candidate.id, nodes)) continue;
+        if (!nodeHasTag(candidate, targetTag)) continue;
+        const cp = readPos(host, candidate);
+        const dx = cp.x - nx;
+        const dy = cp.y - ny;
+        const dz = cp.z - nz;
+        if (dx * dx + dy * dy + dz * dz <= r2) {
+          hitNode = candidate;
+          break;
+        }
+      }
+    }
+    if (hitNode) {
+      const hitPos = { x: nx, y: ny, z: nz };
+      try {
+        state.onHit?.(hitNode.id, hitPos);
+      } catch (err) {
+        console.warn("[Projectile] onHit \u56DE\u8C03\u5F02\u5E38:", err);
+      }
+      try {
+        hooks.onHit?.({
+          projectileId: id,
+          targetId: hitNode.id,
+          ownerId: state.ownerId,
+          damage,
+          position: hitPos
+        });
+      } catch (err) {
+        console.warn("[Projectile] hooks.onHit \u5F02\u5E38:", err);
+      }
+      if (destroyOnHit) {
+        activeProjectiles.delete(id);
+        hooks.onRecycle?.(id, host);
+      }
+    }
+  }
+}
+function ensureProjectileRuntime() {
+  if (unregisterProjectile) return;
+  unregisterProjectile = registerRuntimeSystem(
+    "capability.projectile",
+    RUNTIME_STAGE.PRE_PHYSICS + 5,
+    stepProjectileRuntime
+  );
+}
+function mount6() {
+  ensureProjectileRuntime();
+  return dispose6;
+}
+function dispose6() {
+  unregisterProjectile?.();
+  unregisterProjectile = null;
+  activeProjectiles.clear();
+}
+var activeProjectiles, unregisterProjectile, hooks, tmpDir, tmpQuat2, tmpForward, projectileRuntimeModule;
+var init_session9 = __esm({
+  "src/capabilities/projectile/session.ts"() {
+    "use strict";
+    init_runtimeTags();
+    init_sceneRuntime();
+    init_world();
+    init_schema4();
+    activeProjectiles = /* @__PURE__ */ new Map();
+    unregisterProjectile = null;
+    hooks = {};
+    tmpDir = new Vector38();
+    tmpQuat2 = new Quaternion4();
+    tmpForward = new Vector38(0, 0, 1);
+    projectileRuntimeModule = {
+      mount: mount6,
+      dispose: dispose6
+    };
+  }
+});
+
+// src/capabilities/sky/defaults.ts
+function defaultSkySettings() {
+  return {
+    timeOfDay: 15,
+    latitude: 35,
+    dayOfYear: 172,
+    north: "+Z",
+    exposure: 2.5,
+    turbidity: 1,
+    groundAlbedo: 0.3,
+    sunDisc: true,
+    sunAngularDiameter: 0.53,
+    sunIntensity: 0.12,
+    sunShadow: true,
+    fog: false,
+    fogDensity: 0.3,
+    fogHeightFalloff: 300,
+    fogBaseHeight: 0,
+    fogMaxOpacity: 1,
+    fogColor: "#c9d6e6",
+    fogSkyColor: true,
+    haze: false,
+    hazeStrength: 1,
+    hazeNear: 200,
+    stars: false,
+    starIntensity: 1,
+    starSize: 0.7,
+    milkyWay: 0.25,
+    moon: false,
+    moonAngularDiameter: 0.53,
+    moonPhase: 0.5,
+    moonLight: 1,
+    mirrorBelowHorizon: false
+  };
+}
+function normalizeSkySettings(value) {
+  const base = defaultSkySettings();
+  if (!value || typeof value !== "object") return base;
+  const raw = value;
+  return {
+    timeOfDay: clamp3(raw.timeOfDay, base.timeOfDay, 0, 24),
+    latitude: clamp3(raw.latitude, base.latitude, -90, 90),
+    dayOfYear: Math.round(clamp3(raw.dayOfYear, base.dayOfYear, 1, 365)),
+    north: typeof raw.north === "string" && NORTH.includes(raw.north) ? raw.north : base.north,
+    exposure: clamp3(raw.exposure, base.exposure, 0, 120),
+    turbidity: clamp3(raw.turbidity, base.turbidity, 0, 12),
+    groundAlbedo: clamp3(raw.groundAlbedo, base.groundAlbedo, 0, 1),
+    sunDisc: bool(raw.sunDisc, base.sunDisc),
+    sunAngularDiameter: clamp3(raw.sunAngularDiameter, base.sunAngularDiameter, 0.05, 12),
+    sunIntensity: clamp3(raw.sunIntensity, base.sunIntensity, 0, 4),
+    sunShadow: bool(raw.sunShadow, base.sunShadow),
+    fog: bool(raw.fog, base.fog),
+    fogDensity: clamp3(raw.fogDensity, base.fogDensity, 0, 12),
+    fogHeightFalloff: clamp3(raw.fogHeightFalloff, base.fogHeightFalloff, 1, 8e3),
+    fogBaseHeight: clamp3(raw.fogBaseHeight, base.fogBaseHeight, -500, 8e3),
+    fogMaxOpacity: clamp3(raw.fogMaxOpacity, base.fogMaxOpacity, 0, 1),
+    fogColor: colorOf(raw.fogColor, base.fogColor),
+    fogSkyColor: bool(raw.fogSkyColor, base.fogSkyColor),
+    haze: bool(raw.haze, base.haze),
+    hazeStrength: clamp3(raw.hazeStrength, base.hazeStrength, 0, 3),
+    hazeNear: clamp3(raw.hazeNear, base.hazeNear, 1, 1e3),
+    stars: bool(raw.stars, base.stars),
+    starIntensity: clamp3(raw.starIntensity, base.starIntensity, 0, 4),
+    starSize: clamp3(raw.starSize, base.starSize, 0.2, 3),
+    milkyWay: clamp3(raw.milkyWay, base.milkyWay, 0, 2),
+    moon: bool(raw.moon, base.moon),
+    moonAngularDiameter: clamp3(raw.moonAngularDiameter, base.moonAngularDiameter, 0.05, 12),
+    moonPhase: clamp3(raw.moonPhase, base.moonPhase, 0, 1),
+    moonLight: clamp3(raw.moonLight, base.moonLight, 0, 3),
+    mirrorBelowHorizon: bool(raw.mirrorBelowHorizon, base.mirrorBelowHorizon)
+  };
+}
+function clamp3(value, fallback, min3, max4) {
+  const next = typeof value === "number" && Number.isFinite(value) ? value : fallback;
+  return Math.min(max4, Math.max(min3, next));
+}
+function bool(value, fallback) {
+  return typeof value === "boolean" ? value : fallback;
+}
+function colorOf(value, fallback) {
+  return typeof value === "string" && /^#[0-9a-fA-F]{6}$/.test(value) ? value : fallback;
+}
+var SKY_CAPABILITY_ID, NORTH;
+var init_defaults4 = __esm({
+  "src/capabilities/sky/defaults.ts"() {
+    "use strict";
+    SKY_CAPABILITY_ID = "sky";
+    NORTH = ["+X", "-X", "+Z", "-Z"];
+  }
+});
+
+// src/core/layers.ts
+var EDITOR_HELPER_LAYER;
+var init_layers = __esm({
+  "src/core/layers.ts"() {
+    "use strict";
+    EDITOR_HELPER_LAYER = 31;
+  }
+});
+
+// src/capabilities/sky/runtime.ts
+var runtime_exports = {};
+__export(runtime_exports, {
+  createSkyDriver: () => createSkyDriver
+});
+import { Color as Color4, OrthographicCamera } from "three";
+import { mix as mix4, uniform as uniform3, vec4 as vec43 } from "three/tsl";
+import { Sky } from "@pmndrs/sky";
+function createSkyDriver(renderer, scene2) {
+  return new SkyRuntime(renderer, scene2);
+}
+function degreesToRadians(degrees) {
+  return degrees * Math.PI / 180;
+}
+function fogChanged(prev, next) {
+  return prev.fog !== next.fog || prev.fogDensity !== next.fogDensity || prev.fogHeightFalloff !== next.fogHeightFalloff || prev.fogBaseHeight !== next.fogBaseHeight || prev.fogMaxOpacity !== next.fogMaxOpacity;
+}
+function lightUserLayers(light) {
+  light.layers.disableAll();
+  for (let bit = 0; bit < EDITOR_HELPER_LAYER; bit += 1) light.layers.enable(bit);
+}
+function configureShadow(light) {
+  light.shadow.mapSize.set(2048, 2048);
+  light.shadow.bias = -15e-5;
+  light.shadow.normalBias = 0.04;
+  const camera = light.shadow.camera;
+  if (camera instanceof OrthographicCamera) {
+    camera.near = 0.5;
+    camera.far = 160;
+    camera.left = -40;
+    camera.right = 40;
+    camera.top = 40;
+    camera.bottom = -40;
+    camera.updateProjectionMatrix();
+  }
+}
+var SkyRuntime;
+var init_runtime = __esm({
+  "src/capabilities/sky/runtime.ts"() {
+    "use strict";
+    init_layers();
+    init_session10();
+    SkyRuntime = class {
+      constructor(renderer, scene2) {
+        this.scene = scene2;
+        this.sky = new Sky(renderer, {
+          preset: "earth",
+          sunColor: "bruneton",
+          enableAerialPerspective: true
+        });
+        this.sky.attach(scene2);
+        this.sun = this.sky.createSun({
+          physical: true,
+          intensity: 0.12,
+          castShadow: true,
+          horizonFade: true
+        });
+        lightUserLayers(this.sun.light);
+        configureShadow(this.sun.light);
+        this.sun.attach(scene2);
+      }
+      scene;
+      sky;
+      sun;
+      moon = null;
+      applied = null;
+      starsWanted = false;
+      starsReady = false;
+      starsPending = false;
+      starToken = 0;
+      night = null;
+      starLook = null;
+      fogTint = uniform3(new Color4("#c9d6e6"));
+      fogUseColor = uniform3(0);
+      hazeOn = false;
+      fogOn = false;
+      apKey = "";
+      applyFogNode = (colorNode, scenePass) => {
+        let node = colorNode;
+        if (this.hazeOn && this.sky.aerialPerspectiveTexture) {
+          this.sky.setHazePolicy("ap");
+          node = this.sky.applyHaze(node, {
+            scenePass,
+            policy: "ap",
+            raymarchFallback: false,
+            // 编辑器远平面只有两千米。不传这个的话，远处地面的深度会被当成天空，雾气在合成时被减掉。
+            useCameraFar: true
+          });
+        }
+        if (!this.fogOn) return node;
+        const skyFog = this.sky.applyFog(node, { scenePass });
+        const amount = this.sky.applyFog(node, { scenePass, debugMode: "fog-amount" });
+        const base = node;
+        const flat = mix4(base.rgb, this.fogTint, amount.r);
+        return vec43(mix4(skyFog.rgb, flat, this.fogUseColor), skyFog.a);
+      };
+      /** 构造时库自己已经开始编译。这里只取那一份 Promise，避免和主绘制抢渲染器。 */
+      compile() {
+        return this.sky.compileAsync();
+      }
+      hazeReady() {
+        return Boolean(this.sky.aerialPerspectiveTexture);
+      }
+      sync(settings, camera) {
+        const prev = this.applied;
+        if (!prev || prev.timeOfDay !== settings.timeOfDay) this.sky.setTimeOfDay(settings.timeOfDay);
+        if (!prev || prev.latitude !== settings.latitude) this.sky.setLatitude(settings.latitude);
+        if (!prev || prev.dayOfYear !== settings.dayOfYear) this.sky.setDayOfYear(settings.dayOfYear);
+        if (!prev || prev.north !== settings.north) this.sky.setNorth(settings.north);
+        if (!prev || prev.exposure !== settings.exposure) this.sky.setExposure(settings.exposure);
+        if (!prev || prev.turbidity !== settings.turbidity) this.sky.setTurbidity(settings.turbidity);
+        if (!prev || prev.groundAlbedo !== settings.groundAlbedo) this.sky.setGroundAlbedo(settings.groundAlbedo);
+        if (!prev || prev.sunDisc !== settings.sunDisc || prev.sunAngularDiameter !== settings.sunAngularDiameter) {
+          this.sky.setSunDisc({
+            visible: settings.sunDisc,
+            angularDiameter: degreesToRadians(settings.sunAngularDiameter)
+          });
+        }
+        if (!prev || prev.mirrorBelowHorizon !== settings.mirrorBelowHorizon) this.sky.setMirrorBelowHorizon(settings.mirrorBelowHorizon);
+        if (!prev || prev.sunIntensity !== settings.sunIntensity) this.sun.setIntensity(settings.sunIntensity);
+        if (!prev || prev.sunShadow !== settings.sunShadow) this.sun.castShadow = settings.sunShadow;
+        if (!prev || fogChanged(prev, settings)) {
+          this.sky.setFog({
+            density: settings.fogDensity,
+            heightFalloff: settings.fogHeightFalloff,
+            baseHeight: settings.fogBaseHeight,
+            maxOpacity: settings.fog ? settings.fogMaxOpacity : 0
+          });
+        }
+        this.fogTint.value.set(settings.fogColor);
+        this.fogUseColor.value = settings.fogSkyColor ? 0 : 1;
+        if (!prev || prev.hazeStrength !== settings.hazeStrength) this.sky.setHazeStrength(settings.hazeStrength);
+        if (!prev || prev.hazeNear !== settings.hazeNear) this.sky.setAerialPerspectiveDistanceScale(settings.hazeNear);
+        this.hazeOn = settings.haze;
+        this.fogOn = settings.fog;
+        this.syncMoon(settings);
+        this.syncStars(settings);
+        this.applied = settings;
+        this.sky.update(camera);
+        this.applyCelestialFade(settings, prev);
+        if (settings.haze && this.hazeReady()) {
+          const e = camera.matrixWorld.elements;
+          const nextApKey = `${e[0].toFixed(3)},${e[4].toFixed(3)},${e[8].toFixed(3)},${e[12].toFixed(2)},${e[13].toFixed(2)},${e[14].toFixed(2)}|${settings.timeOfDay}|${settings.latitude}|${settings.dayOfYear}|${settings.north}|${settings.turbidity}|${settings.groundAlbedo}`;
+          if (nextApKey !== this.apKey) {
+            this.apKey = nextApKey;
+            void this.sky.updateAerialPerspective();
+          }
+        } else {
+          this.apKey = "";
+        }
+        const atmosphere = settings.fog || settings.haze;
+        setSkyViewState({
+          owns: true,
+          fog: atmosphere,
+          apply: atmosphere ? this.applyFogNode : null,
+          signature: `${settings.haze ? 1 : 0}${settings.fog ? 1 : 0}`
+        });
+      }
+      dispose() {
+        this.starToken += 1;
+        this.starsWanted = false;
+        if (this.starsReady) this.sky.disableStars();
+        this.starsReady = false;
+        this.night = null;
+        this.moon?.dispose();
+        this.moon = null;
+        this.sun.dispose();
+        this.sky.detach();
+        this.sky.dispose();
+        setSkyViewState({ owns: false, fog: false, apply: null });
+      }
+      syncMoon(settings) {
+        if (!settings.moon) {
+          this.moon?.dispose();
+          this.moon = null;
+          return;
+        }
+        if (!this.moon) {
+          this.moon = this.sky.createMoonlight({
+            skyFill: false,
+            castShadow: false,
+            phase: settings.moonPhase,
+            discAngularDiameter: degreesToRadians(settings.moonAngularDiameter)
+          });
+          lightUserLayers(this.moon.moon.light);
+          this.moon.attach(this.scene);
+          this.moon.setIntensity(settings.moonLight);
+          this.moon.moon.setDiscIntensity(3);
+          return;
+        }
+        const prev = this.applied;
+        if (!prev || prev.moonLight !== settings.moonLight) this.moon.setIntensity(settings.moonLight);
+        if (!prev || prev.moonPhase !== settings.moonPhase) this.moon.setPhase(settings.moonPhase);
+        if (!prev || prev.moonAngularDiameter !== settings.moonAngularDiameter) {
+          this.moon.moon.setDiscAngularDiameter(degreesToRadians(settings.moonAngularDiameter));
+        }
+        this.moon.moon.setDiscIntensity(3);
+      }
+      syncStars(settings) {
+        const enabled = settings.stars;
+        if (enabled) this.starLook = settings;
+        if (enabled === this.starsWanted && (!enabled || this.starsReady || this.starsPending)) {
+          if (enabled && this.night) this.applyStarLook(settings);
+          return;
+        }
+        this.starsWanted = enabled;
+        this.starToken += 1;
+        if (!enabled) {
+          if (this.starsReady) this.sky.disableStars();
+          this.starsReady = false;
+          this.starsPending = false;
+          this.night = null;
+          return;
+        }
+        const token = this.starToken;
+        this.starsPending = true;
+        void this.sky.enableStars({
+          intensity: settings.starIntensity,
+          size: settings.starSize,
+          milkyWay: settings.milkyWay
+        }).then((night) => {
+          if (token !== this.starToken) {
+            this.sky.disableStars();
+            this.starsReady = false;
+            this.starsPending = false;
+            this.night = null;
+            return;
+          }
+          this.night = night;
+          this.starsPending = false;
+          this.starsReady = true;
+          if (this.starLook) this.applyStarLook(this.starLook, true);
+        }).catch((error) => {
+          if (token === this.starToken) this.starsPending = false;
+          console.warn("[sky] \u661F\u7A7A\u52A0\u8F7D\u5931\u8D25", error);
+        });
+      }
+      applyStarLook(settings, force = false) {
+        const night = this.night;
+        if (!night) return;
+        const prev = force ? null : this.applied;
+        if (!prev || prev.starIntensity !== settings.starIntensity) night.setIntensity(settings.starIntensity);
+        if (!prev || prev.starSize !== settings.starSize) night.setSize(settings.starSize);
+        if (!prev || prev.milkyWay !== settings.milkyWay) night.setMilkyWay(settings.milkyWay);
+        this.applyStarContrast(settings, prev);
+      }
+      /**
+       * 星星按天空亮度淡出，和夜空示例一样。
+       * 库的阈值按曝光 40 调过。这里曝光低得多，要按同样比例放大，否则白天也看得见。
+       * 月面不要再乘太阳高度：那会在白天把月盘亮度写成 0。月亮跟着月相转到地平线以下时，本来就看不到。
+       */
+      applyCelestialFade(settings, prev) {
+        this.applyStarContrast(settings, prev);
+      }
+      applyStarContrast(settings, prev) {
+        const night = this.night;
+        if (!night || prev && prev.exposure === settings.exposure) return;
+        const scale = 40 / Math.max(settings.exposure, 0.05);
+        night.setContrast(40 * scale);
+        night.setMilkyWayContrast(20 * scale);
+      }
+    };
+  }
+});
+
+// src/capabilities/sky/session.ts
+var session_exports7 = {};
+__export(session_exports7, {
+  composeSkyFog: () => composeSkyFog,
+  dispose: () => dispose7,
+  mount: () => mount7,
+  releaseSkyResources: () => releaseSkyResources,
+  setSkyViewState: () => setSkyViewState,
+  skyBlocksFrame: () => skyBlocksFrame,
+  skyFogActive: () => skyFogActive,
+  skyFogRevision: () => skyFogRevision,
+  skyOwnsSceneSlots: () => skyOwnsSceneSlots
+});
+function skyOwnsSceneSlots() {
+  return ownsSlots;
+}
+function skyBlocksFrame() {
+  return compiling;
+}
+function skyFogActive() {
+  return fogActive;
+}
+function skyFogRevision() {
+  return fogRevision;
+}
+function composeSkyFog(colorNode, scenePass) {
+  return fogApply ? fogApply(colorNode, scenePass) : colorNode;
+}
+function setSkyViewState(next) {
+  ownsSlots = next.owns;
+  const signature = next.signature ?? "";
+  if (fogActive === next.fog && fogApply === next.apply && fogSignature === signature) return;
+  fogActive = next.fog;
+  fogApply = next.apply;
+  fogSignature = signature;
+  fogRevision += 1;
+}
+function releaseSkyResources() {
+  bootToken += 1;
+  booting2 = false;
+  compiling = false;
+  driver?.dispose();
+  driver = null;
+  setSkyViewState({ owns: false, fog: false, apply: null });
+}
+function mount7() {
+  if (removeHook) return () => shutdown();
+  removeHook = getRuntimeWorld().registerBeforeRenderHook?.("sky", 20, (ctx) => onBeforeRender2(ctx)) ?? null;
+  return () => shutdown();
+}
+function dispose7() {
+  shutdown();
+}
+function shutdown() {
+  removeHook?.();
+  removeHook = null;
+  releaseSkyResources();
+}
+function onBeforeRender2(ctx) {
+  pending2 = ctx;
+  try {
+    const runtime2 = getRuntimeWorld();
+    if (!capabilityEnabled(runtime2.getCapabilities(), SKY_CAPABILITY_ID)) {
+      if (driver || booting2 || compiling) releaseSkyResources();
+      return;
+    }
+    const settings = normalizeSkySettings(runtime2.getPicture().capabilities?.[SKY_CAPABILITY_ID]);
+    if (!driver) {
+      ensure();
+      return;
+    }
+    if (compiling) return;
+    if (settings.haze && !driver.hazeReady()) {
+      driver.dispose();
+      driver = null;
+      ensure();
+      return;
+    }
+    driver.sync(settings, ctx.camera);
+  } catch (error) {
+    console.warn("[sky] \u5929\u7A7A\u66F4\u65B0\u5931\u8D25", error);
+  } finally {
+    restoreCanvas(ctx);
+  }
+}
+function restoreCanvas(ctx) {
+  try {
+    ctx.renderer.setRenderTarget(null);
+  } catch {
+  }
+}
+function ensure() {
+  if (booting2 || !pending2) return;
+  booting2 = true;
+  const token = ++bootToken;
+  const ctx = pending2;
+  void Promise.resolve().then(() => (init_runtime(), runtime_exports)).then((module) => {
+    if (token !== bootToken) return;
+    booting2 = false;
+    const runtime2 = getRuntimeWorld();
+    if (!capabilityEnabled(runtime2.getCapabilities(), SKY_CAPABILITY_ID) || !pending2) return;
+    let created;
+    try {
+      created = module.createSkyDriver(ctx.renderer, ctx.scene);
+    } catch (error) {
+      console.warn("[sky] \u5929\u7A7A\u521B\u5EFA\u5931\u8D25", error);
+      return;
+    }
+    driver = created;
+    compiling = true;
+    void created.compile().then(() => {
+      if (token !== bootToken || driver !== created || !pending2) return;
+      const latest = getRuntimeWorld();
+      if (!capabilityEnabled(latest.getCapabilities(), SKY_CAPABILITY_ID)) return;
+      created.sync(normalizeSkySettings(latest.getPicture().capabilities?.[SKY_CAPABILITY_ID]), pending2.camera);
+    }).catch((error) => {
+      console.warn("[sky] \u7740\u8272\u5668\u7F16\u8BD1\u5931\u8D25", error);
+    }).finally(() => {
+      if (token === bootToken) compiling = false;
+    });
+  }).catch((error) => {
+    if (token === bootToken) booting2 = false;
+    console.warn("[sky] \u5929\u7A7A\u52A0\u8F7D\u5931\u8D25", error);
+  });
+}
+var ownsSlots, fogActive, fogApply, fogSignature, fogRevision, removeHook, driver, booting2, bootToken, pending2, compiling;
+var init_session10 = __esm({
+  "src/capabilities/sky/session.ts"() {
+    "use strict";
+    init_registry2();
+    init_world();
+    init_defaults4();
+    ownsSlots = false;
+    fogActive = false;
+    fogApply = null;
+    fogSignature = "";
+    fogRevision = 0;
+    removeHook = null;
+    driver = null;
+    booting2 = false;
+    bootToken = 0;
+    pending2 = null;
+    compiling = false;
+  }
+});
+
+// src/capabilities/registry.ts
+function registerDynamicCapability(manifest) {
+  dynamicCapabilities.set(manifest.id, manifest);
+}
+function unregisterDynamicCapability(id) {
+  const cleanup = activeCleanup.get(id);
+  if (cleanup) {
+    cleanup();
+    activeCleanup.delete(id);
+  }
+  loadedModules.get(id)?.dispose?.();
+  loadedModules.delete(id);
+  dynamicCapabilities.delete(id);
+}
+function allCapabilityManifests() {
+  return [...CAPABILITIES, ...dynamicCapabilities.values()];
+}
+function defaultCapabilities() {
+  const base = Object.fromEntries(CAPABILITIES.map((item) => [item.id, item.defaultEnabled]));
+  for (const item of dynamicCapabilities.values()) base[item.id] = item.defaultEnabled;
+  return base;
+}
+function normalizeCapabilities(value) {
+  const next = defaultCapabilities();
+  if (!value || typeof value !== "object") return next;
+  const record = value;
+  for (const item of allCapabilityManifests()) {
+    if (typeof record[item.id] === "boolean") next[item.id] = record[item.id];
+  }
+  return next;
+}
+function capabilityEnabled(capabilities, id) {
+  const defaults = defaultCapabilities();
+  if (!capabilities || typeof capabilities[id] !== "boolean") return defaults[id] ?? false;
+  const manifest = allCapabilityManifests().find((item) => item.id === id);
+  if (manifest?.dependencies) {
+    for (const dep of manifest.dependencies) {
+      if (!capabilityEnabled(capabilities, dep)) return false;
+    }
+  }
+  return capabilities[id];
+}
+function syncCapabilityRuntimes(capabilities) {
+  for (const item of allCapabilityManifests()) {
+    const enabled = capabilityEnabled(capabilities, item.id);
+    if (!enabled) {
+      const cleanup = activeCleanup.get(item.id);
+      if (cleanup) {
+        cleanup();
+        activeCleanup.delete(item.id);
+      }
+      loadedModules.get(item.id)?.dispose?.();
+      continue;
+    }
+    if (!item.loadRuntime || activeCleanup.has(item.id) || pendingLoads.has(item.id)) continue;
+    const cached = loadedModules.get(item.id);
+    if (cached) {
+      const cleanup = cached.mount?.();
+      activeCleanup.set(item.id, typeof cleanup === "function" ? cleanup : () => void 0);
+      continue;
+    }
+    const loader = item.loadRuntime;
+    const task = loader().then((mod2) => {
+      pendingLoads.delete(item.id);
+      loadedModules.set(item.id, mod2);
+      if (capabilityEnabled(capabilities, item.id) && !activeCleanup.has(item.id)) {
+        const cleanup = mod2.mount?.();
+        activeCleanup.set(item.id, typeof cleanup === "function" ? cleanup : () => void 0);
+      }
+    }).catch((error) => {
+      pendingLoads.delete(item.id);
+      console.warn(`[capability] ${item.id} \u52A0\u8F7D\u5931\u8D25`, error);
+    });
+    pendingLoads.set(item.id, task);
+  }
+}
+var CAPABILITIES, loadedModules, activeCleanup, pendingLoads, dynamicCapabilities;
+var init_registry2 = __esm({
+  "src/capabilities/registry.ts"() {
+    "use strict";
+    CAPABILITIES = [
+      { id: "physics", defaultEnabled: true, category: "physics" },
+      { id: "buoyancy", defaultEnabled: true, category: "physics", dependencies: ["physics"], loadRuntime: () => Promise.resolve().then(() => (init_session3(), session_exports2)) },
+      { id: "navigation", defaultEnabled: true, category: "physics" },
+      { id: "spline", defaultEnabled: true, category: "animation", loadRuntime: () => Promise.resolve().then(() => (init_session6(), session_exports3)) },
+      { id: "tween", defaultEnabled: true, category: "animation", loadRuntime: () => Promise.resolve().then(() => (init_session7(), session_exports4)) },
+      { id: "crowd", defaultEnabled: true, category: "physics", loadRuntime: () => Promise.resolve().then(() => (init_session8(), session_exports5)) },
+      { id: "projectile", defaultEnabled: true, category: "physics", loadRuntime: () => Promise.resolve().then(() => (init_session9(), session_exports6)) },
+      { id: "particles", defaultEnabled: false, category: "scene-object" },
+      { id: "sky", defaultEnabled: false, category: "environment", loadRuntime: () => Promise.resolve().then(() => (init_session10(), session_exports7)) },
+      { id: "water", defaultEnabled: false, category: "environment", loadRuntime: () => Promise.resolve().then(() => (init_session2(), session_exports)) }
+    ];
+    loadedModules = /* @__PURE__ */ new Map();
+    activeCleanup = /* @__PURE__ */ new Map();
+    pendingLoads = /* @__PURE__ */ new Map();
+    dynamicCapabilities = /* @__PURE__ */ new Map();
+  }
+});
+
 // tests/phase4-packs-branches.test.ts
 import assert from "node:assert/strict";
 import test from "node:test";
 
-// src/core/schema/fieldSchema.ts
-function defaultForSchema(schema) {
-  switch (schema.type) {
-    case "number":
-    case "boolean":
-    case "string":
-    case "color":
-    case "enum":
-      return schema.default;
-    case "vec2":
-    case "vec3":
-    case "vec4":
-      return [...schema.default];
-    case "texture":
-    case "ref":
-      return schema.default ?? null;
-    case "list":
-      return schema.default ? structuredClone(schema.default) : [];
-    case "object": {
-      const out = {};
-      for (const [key, child] of Object.entries(schema.fields)) {
-        out[key] = defaultForSchema(child);
-      }
-      return out;
-    }
-  }
-}
-function validateBySchema(schema, raw, path = "") {
-  const issues = [];
-  const value = validateInner(schema, raw, path, issues);
-  if (issues.length > 0) {
-    return { ok: false, issues };
-  }
-  return { ok: true, value };
-}
-function validateInner(schema, raw, path, issues) {
-  const loc = path || "(root)";
-  switch (schema.type) {
-    case "number": {
-      if (raw === void 0) return schema.default;
-      if (typeof raw !== "number" || !Number.isFinite(raw)) {
-        issues.push({
-          path: loc,
-          message: `${schema.label} \u5FC5\u987B\u662F\u6709\u6548\u6570\u5B57`,
-          hint: `\u8BF7\u4F20\u5165\u6570\u5B57${schema.min !== void 0 || schema.max !== void 0 ? `\uFF08\u8303\u56F4 ${schema.min ?? "-\u221E"} ~ ${schema.max ?? "+\u221E"}\uFF09` : ""}`
-        });
-        return schema.default;
-      }
-      if (schema.min !== void 0 && raw < schema.min) {
-        issues.push({
-          path: loc,
-          message: `${schema.label} \u4E0D\u80FD\u5C0F\u4E8E ${schema.min}\uFF08\u5F53\u524D\u4E3A ${raw}\uFF09`,
-          hint: `\u8BF7\u8C03\u6574\u5230 ${schema.min} \u4EE5\u4E0A`
-        });
-      }
-      if (schema.max !== void 0 && raw > schema.max) {
-        issues.push({
-          path: loc,
-          message: `${schema.label} \u4E0D\u80FD\u5927\u4E8E ${schema.max}\uFF08\u5F53\u524D\u4E3A ${raw}\uFF09`,
-          hint: `\u8BF7\u8C03\u6574\u5230 ${schema.max} \u4EE5\u4E0B`
-        });
-      }
-      return raw;
-    }
-    case "boolean": {
-      if (raw === void 0) return schema.default;
-      if (typeof raw !== "boolean") {
-        issues.push({ path: loc, message: `${schema.label} \u5FC5\u987B\u662F\u5E03\u5C14\u503C`, hint: "\u8BF7\u4F20\u5165 true \u6216 false" });
-        return schema.default;
-      }
-      return raw;
-    }
-    case "string": {
-      if (raw === void 0) return schema.default;
-      if (typeof raw !== "string") {
-        issues.push({ path: loc, message: `${schema.label} \u5FC5\u987B\u662F\u5B57\u7B26\u4E32` });
-        return schema.default;
-      }
-      if (schema.minLength !== void 0 && raw.length < schema.minLength) {
-        issues.push({ path: loc, message: `${schema.label} \u957F\u5EA6\u4E0D\u80FD\u5C11\u4E8E ${schema.minLength}` });
-      }
-      if (schema.maxLength !== void 0 && raw.length > schema.maxLength) {
-        issues.push({ path: loc, message: `${schema.label} \u957F\u5EA6\u4E0D\u80FD\u8D85\u8FC7 ${schema.maxLength}` });
-      }
-      return raw;
-    }
-    case "color": {
-      if (raw === void 0) return schema.default;
-      if (typeof raw !== "string" || !/^#[0-9a-fA-F]{3,8}$/.test(raw)) {
-        issues.push({ path: loc, message: `${schema.label} \u5FC5\u987B\u662F\u5341\u516D\u8FDB\u5236\u989C\u8272\u503C`, hint: "\u683C\u5F0F\u5982 #ff5a1e" });
-        return schema.default;
-      }
-      return raw;
-    }
-    case "vec2":
-    case "vec3":
-    case "vec4": {
-      if (raw === void 0) return [...schema.default];
-      const expected = schema.type === "vec2" ? 2 : schema.type === "vec3" ? 3 : 4;
-      if (!Array.isArray(raw) || raw.length !== expected || raw.some((v) => typeof v !== "number" || !Number.isFinite(v))) {
-        issues.push({
-          path: loc,
-          message: `${schema.label} \u5FC5\u987B\u662F\u957F\u5EA6\u4E3A ${expected} \u7684\u6570\u5B57\u6570\u7EC4`,
-          hint: `\u793A\u4F8B\uFF1A${JSON.stringify(schema.default)}`
-        });
-        return [...schema.default];
-      }
-      return [...raw];
-    }
-    case "enum": {
-      if (raw === void 0) return schema.default;
-      if (typeof raw !== "string" || !schema.options.some((opt) => opt.value === raw)) {
-        const allowed = schema.options.map((o) => o.value).join(", ");
-        issues.push({
-          path: loc,
-          message: `${schema.label} \u7684\u503C "${String(raw)}" \u4E0D\u5728\u53EF\u9009\u8303\u56F4\u5185`,
-          hint: `\u53EF\u9009\u503C\uFF1A${allowed}`
-        });
-        return schema.default;
-      }
-      return raw;
-    }
-    case "texture":
-    case "ref": {
-      if (raw === void 0) {
-        if (schema.type === "ref" && schema.required && !schema.default) {
-          issues.push({ path: loc, message: `${schema.label} \u4E0D\u80FD\u4E3A\u7A7A` });
-        }
-        return schema.default ?? null;
-      }
-      if (raw === null) {
-        if (schema.type === "ref" && schema.required) {
-          issues.push({ path: loc, message: `${schema.label} \u4E0D\u80FD\u4E3A\u7A7A` });
-        }
-        return null;
-      }
-      if (typeof raw !== "string" || raw.length === 0) {
-        issues.push({ path: loc, message: `${schema.label} \u5FC5\u987B\u662F\u6709\u6548\u5F15\u7528 ID \u6216 null` });
-        return null;
-      }
-      return raw;
-    }
-    case "list": {
-      if (raw === void 0) return defaultForSchema(schema);
-      if (!Array.isArray(raw)) {
-        issues.push({ path: loc, message: `${schema.label} \u5FC5\u987B\u662F\u6570\u7EC4` });
-        return [];
-      }
-      if (schema.minItems !== void 0 && raw.length < schema.minItems) {
-        issues.push({ path: loc, message: `${schema.label} \u81F3\u5C11\u9700\u8981 ${schema.minItems} \u9879` });
-      }
-      if (schema.maxItems !== void 0 && raw.length > schema.maxItems) {
-        issues.push({ path: loc, message: `${schema.label} \u6700\u591A\u5141\u8BB8 ${schema.maxItems} \u9879` });
-      }
-      return raw.map((item, idx) => validateInner(schema.item, item, `${path}[${idx}]`, issues));
-    }
-    case "object": {
-      if (raw !== void 0 && (raw === null || typeof raw !== "object" || Array.isArray(raw))) {
-        issues.push({ path: loc, message: `${schema.label ?? loc} \u5FC5\u987B\u662F\u5BF9\u8C61` });
-        return defaultForSchema(schema);
-      }
-      const src = raw ?? {};
-      const out = {};
-      for (const [key, child] of Object.entries(schema.fields)) {
-        if (child.optional && src[key] === void 0) {
-          continue;
-        }
-        const nextPath = path ? `${path}.${key}` : key;
-        out[key] = validateInner(child, src[key], nextPath, issues);
-      }
-      return out;
-    }
-  }
-}
-
 // src/core/commands/bus.ts
+init_fieldSchema();
 var DEFAULT_ADAPTER = {
   isPlaying: () => false,
   captureSnapshot: () => null,
@@ -4180,7 +6650,7 @@ var CommandBus = class {
         ok: false,
         code: "play.locked",
         message: `\u8BD5\u73A9\u8FDB\u884C\u4E2D\uFF0C\u7981\u6B62\u6267\u884C\u4FEE\u6539\u5DE5\u7A0B\u7684\u6307\u4EE4 "${commandId}"`,
-        hint: "\u8BF7\u5148\u505C\u6B62\u8BD5\u73A9\uFF0C\u6216\u53EA\u8C03\u7528\u53EA\u8BFB\u67E5\u8BE2/\u8BD5\u73A9\u63A2\u9488\u63A5\u53E3"
+        hint: '\u7CFB\u7EDF\u8981\u6C42\u5FC5\u987B\u9000\u51FA\u8BD5\u73A9\u540E\u624D\u80FD\u4FEE\u6539\u5DE5\u7A0B\u3002\u8BF7\u5148\u8C03\u7528 playtest__control({ action: "stop" }) \u9000\u51FA\u8BD5\u73A9\uFF0C\u518D\u91CD\u8BD5\u4FEE\u6539\u6307\u4EE4\u3002'
       });
     }
     const validated = validateBySchema(cmd.params, rawParams);
@@ -4212,6 +6682,7 @@ var CommandBus = class {
     try {
       result = await cmd.run(ctx, validated.value);
     } catch (error) {
+      console.error("[CommandBus]", commandId, rawParams, error);
       result = {
         ok: false,
         code: "command.exception",
@@ -4290,10 +6761,7 @@ function hasAnyChange(c) {
 }
 
 // src/core/query/inspect.ts
-init_registry();
-
-// src/editor/assets/library.ts
-import { create } from "zustand";
+init_registry2();
 
 // src/editor/assets/folders.ts
 var ASSETS_ROOT = "Assets";
@@ -4375,10 +6843,11 @@ function uniqueFolderName(parent, folders, assetDirs) {
 }
 
 // src/editor/assets/library.ts
+import { create as create2 } from "zustand";
 function assetDirectory(id, assetDirs) {
   return normalizeDir(assetDirs[id] ?? ASSETS_ROOT);
 }
-var useAssetStore = create((set, get) => ({
+var useAssetStore = create2((set, get) => ({
   assets: {},
   folders: [],
   assetDirs: {},
@@ -4514,8 +6983,8 @@ var useAssetStore = create((set, get) => ({
 }));
 
 // src/editor/scene/store.ts
-import { Quaternion as Quaternion6, Vector3 as Vector39 } from "three";
-import { create as create4 } from "zustand";
+import { Quaternion as Quaternion7, Vector3 as Vector312 } from "three";
+import { create as create6 } from "zustand";
 
 // src/editor/scene/spawn.ts
 var provider = () => [0, 0, 0];
@@ -4524,7 +6993,39 @@ function getSpawn() {
 }
 
 // src/editor/scene/seed.ts
-import { Euler as Euler2, Quaternion as Quaternion4, Vector3 as Vector37 } from "three";
+import { Euler as Euler2, Quaternion as Quaternion5, Vector3 as Vector39 } from "three";
+
+// src/capabilities/physics/defaults.ts
+var SHARED = {
+  trigger: false,
+  mass: 1,
+  friction: 0.7,
+  restitution: 0.05,
+  linearDamping: 0.1,
+  angularDamping: 0.1,
+  gravityScale: 1
+};
+function defaultNodePhysics(kind) {
+  if (kind === "plane") {
+    return { ...SHARED, body: "static", shape: "box", size: [1, 1, 0.05] };
+  }
+  if (kind === "sphere") {
+    return { ...SHARED, body: "dynamic", shape: "sphere", size: [0.5, 0.5, 0.5] };
+  }
+  if (kind === "capsule") {
+    return { ...SHARED, body: "dynamic", shape: "capsule", size: [0.3, 1.1, 0.3] };
+  }
+  if (kind === "cylinder") {
+    return { ...SHARED, body: "dynamic", shape: "cylinder", size: [0.5, 1, 0.5] };
+  }
+  if (kind === "cone") {
+    return { ...SHARED, body: "dynamic", shape: "cone", size: [0.5, 1, 0.5] };
+  }
+  if (kind === "model") {
+    return { ...SHARED, body: "static", shape: "convex", size: [1, 1, 1] };
+  }
+  return { ...SHARED, body: "dynamic", shape: "box", size: [1, 1, 1] };
+}
 
 // src/capabilities/particles/defaults.ts
 var QUARKS_VERSION = "0.17.1";
@@ -4581,9 +7082,369 @@ function defaultNodeEffect() {
   };
 }
 
+// src/editor/scene/kinds.ts
+init_schema();
+
 // src/runtime/ui/spec.ts
+var UI_LAYERS = ["hud", "menu", "popup", "modal"];
+var UI_NODE_TYPES = ["panel", "stack", "text", "image", "button", "progress"];
 function defaultNodeScreen() {
   return { documentId: null, layer: "hud", visibleOnPlay: true };
+}
+function createUiTemplateDocument(template, opts = {}) {
+  const accent = opts.accentColor?.trim() || "#3b82f6";
+  const varKey = opts.varKey?.trim() || "hp";
+  const scoreKey = opts.scoreVarKey?.trim() || "score";
+  if (template === "hud") {
+    return {
+      schemaVersion: 1,
+      root: {
+        id: "hud_root",
+        type: "panel",
+        name: "HUD\u6839\u5BB9\u5668",
+        layout: {
+          mode: "anchor",
+          anchorMin: { x: 0, y: 0 },
+          anchorMax: { x: 1, y: 1 },
+          pivot: { x: 0, y: 0 }
+        },
+        style: { backgroundColor: "transparent" },
+        children: [
+          {
+            id: "hud_top_left",
+            type: "stack",
+            name: "\u5DE6\u4E0A\u89D2\u72B6\u6001\u680F",
+            layout: {
+              mode: "flex",
+              flexDirection: "column",
+              gap: 8,
+              align: "stretch",
+              justify: "start",
+              padding: { top: 12, right: 14, bottom: 12, left: 14 },
+              x: 24,
+              y: 24,
+              width: 240,
+              anchorMin: { x: 0, y: 0 },
+              anchorMax: { x: 0, y: 0 },
+              pivot: { x: 0, y: 0 }
+            },
+            style: {
+              backgroundColor: "rgba(15, 23, 42, 0.78)",
+              borderColor: "rgba(148, 163, 184, 0.25)",
+              borderWidth: 1,
+              borderRadius: 10
+            },
+            children: [
+              {
+                id: "hud_title",
+                type: "text",
+                name: "\u72B6\u6001\u6807\u9898",
+                text: opts.title || "\u751F\u547D\u503C",
+                layout: { mode: "flex", height: 22 },
+                style: { color: "#f8fafc", fontSize: 15, align: "left" }
+              },
+              {
+                id: "hud_hp_bar",
+                type: "progress",
+                name: "\u751F\u547D\u503C\u6761",
+                progress: { min: 0, max: 1, value: 1 },
+                layout: { mode: "flex", height: 14 },
+                style: { backgroundColor: "rgba(30, 41, 59, 0.9)", tintColor: "#22c55e", borderRadius: 7 },
+                bindings: [{ id: "b_hp", target: "progress.value", source: { kind: "variable", varId: varKey } }]
+              }
+            ]
+          },
+          {
+            id: "hud_top_right",
+            type: "stack",
+            name: "\u53F3\u4E0A\u89D2\u8BA1\u5206\u4E0E\u64CD\u4F5C",
+            layout: {
+              mode: "flex",
+              flexDirection: "row",
+              gap: 12,
+              align: "center",
+              justify: "end",
+              padding: { top: 10, right: 14, bottom: 10, left: 14 },
+              x: -24,
+              y: 24,
+              anchorMin: { x: 1, y: 0 },
+              anchorMax: { x: 1, y: 0 },
+              pivot: { x: 1, y: 0 }
+            },
+            style: {
+              backgroundColor: "rgba(15, 23, 42, 0.78)",
+              borderColor: "rgba(148, 163, 184, 0.25)",
+              borderWidth: 1,
+              borderRadius: 10
+            },
+            children: [
+              {
+                id: "hud_score_text",
+                type: "text",
+                name: "\u5206\u6570\u6587\u672C",
+                text: "0",
+                layout: { mode: "flex", width: 96, height: 26 },
+                style: { color: "#fbbf24", fontSize: 18, align: "right" },
+                bindings: [{ id: "b_score", target: "text", source: { kind: "variable", varId: scoreKey } }]
+              },
+              {
+                id: "hud_pause_btn",
+                type: "button",
+                name: "\u529F\u80FD\u6309\u94AE",
+                text: opts.primaryText || "\u83DC\u5355",
+                layout: { mode: "flex", width: 76, height: 32 },
+                style: {
+                  backgroundColor: accent,
+                  color: "#ffffff",
+                  fontSize: 14,
+                  align: "center",
+                  borderRadius: 6
+                },
+                click: { kind: "sendMessage", message: opts.primaryMessage || "ui.menu" }
+              }
+            ]
+          },
+          {
+            id: "hud_bottom_tip",
+            type: "stack",
+            name: "\u5E95\u90E8\u63D0\u793A\u680F",
+            layout: {
+              mode: "flex",
+              flexDirection: "row",
+              gap: 10,
+              align: "center",
+              justify: "center",
+              padding: { top: 8, right: 18, bottom: 8, left: 18 },
+              y: -24,
+              anchorMin: { x: 0.5, y: 1 },
+              anchorMax: { x: 0.5, y: 1 },
+              pivot: { x: 0.5, y: 1 }
+            },
+            style: {
+              backgroundColor: "rgba(15, 23, 42, 0.72)",
+              borderColor: "rgba(148, 163, 184, 0.2)",
+              borderWidth: 1,
+              borderRadius: 999
+            },
+            children: [
+              {
+                id: "hud_tip_text",
+                type: "text",
+                name: "\u64CD\u4F5C\u63D0\u793A",
+                text: opts.subtitle || "WASD \u79FB\u52A8 \xB7 \u9F20\u6807\u7784\u51C6 \xB7 \u7A7A\u683C\u8DF3\u8DC3",
+                layout: { mode: "flex", height: 22 },
+                style: { color: "#cbd5e1", fontSize: 13, align: "center" }
+              }
+            ]
+          }
+        ]
+      }
+    };
+  }
+  if (template === "dialog") {
+    return {
+      schemaVersion: 1,
+      root: {
+        id: "dialog_root",
+        type: "panel",
+        name: "\u5F39\u7A97\u906E\u7F69",
+        layout: { mode: "anchor", anchorMin: { x: 0, y: 0 }, anchorMax: { x: 1, y: 1 }, pivot: { x: 0, y: 0 } },
+        style: { backgroundColor: "rgba(2, 6, 23, 0.58)" },
+        children: [
+          {
+            id: "dialog_card",
+            type: "stack",
+            name: "\u5F39\u7A97\u5361\u7247",
+            layout: {
+              mode: "flex",
+              flexDirection: "column",
+              gap: 14,
+              align: "stretch",
+              justify: "start",
+              padding: { top: 22, right: 24, bottom: 20, left: 24 },
+              width: 420,
+              anchorMin: { x: 0.5, y: 0.5 },
+              anchorMax: { x: 0.5, y: 0.5 },
+              pivot: { x: 0.5, y: 0.5 }
+            },
+            style: {
+              backgroundColor: "rgba(15, 23, 42, 0.94)",
+              borderColor: "rgba(148, 163, 184, 0.3)",
+              borderWidth: 1,
+              borderRadius: 12
+            },
+            children: [
+              {
+                id: "dialog_title",
+                type: "text",
+                name: "\u5F39\u7A97\u6807\u9898",
+                text: opts.title || "\u63D0\u793A",
+                layout: { mode: "flex", height: 30 },
+                style: { color: "#f8fafc", fontSize: 20, align: "left" }
+              },
+              {
+                id: "dialog_body",
+                type: "text",
+                name: "\u5F39\u7A97\u6B63\u6587",
+                text: opts.subtitle || "\u786E\u8BA4\u8981\u6267\u884C\u5F53\u524D\u64CD\u4F5C\u5417\uFF1F",
+                layout: { mode: "flex", height: 48 },
+                style: { color: "#cbd5e1", fontSize: 14, align: "left" }
+              },
+              {
+                id: "dialog_actions",
+                type: "stack",
+                name: "\u64CD\u4F5C\u680F",
+                layout: { mode: "flex", flexDirection: "row", gap: 10, align: "center", justify: "end", height: 40 },
+                style: { backgroundColor: "transparent" },
+                children: [
+                  {
+                    id: "dialog_cancel",
+                    type: "button",
+                    name: "\u53D6\u6D88\u6309\u94AE",
+                    text: opts.secondaryText || "\u53D6\u6D88",
+                    layout: { mode: "flex", width: 96, height: 38 },
+                    style: { backgroundColor: "rgba(51, 65, 85, 0.9)", color: "#e2e8f0", fontSize: 14, align: "center", borderRadius: 8 },
+                    click: { kind: "sendMessage", message: opts.secondaryMessage || "ui.cancel" }
+                  },
+                  {
+                    id: "dialog_confirm",
+                    type: "button",
+                    name: "\u786E\u8BA4\u6309\u94AE",
+                    text: opts.primaryText || "\u786E\u5B9A",
+                    layout: { mode: "flex", width: 96, height: 38 },
+                    style: { backgroundColor: accent, color: "#ffffff", fontSize: 14, align: "center", borderRadius: 8 },
+                    click: { kind: "sendMessage", message: opts.primaryMessage || "ui.confirm" }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    };
+  }
+  const isResult = template === "result";
+  return {
+    schemaVersion: 1,
+    root: {
+      id: `${template}_root`,
+      type: "panel",
+      name: isResult ? "\u7ED3\u7B97\u906E\u7F69" : "\u4E3B\u83DC\u5355\u906E\u7F69",
+      layout: { mode: "anchor", anchorMin: { x: 0, y: 0 }, anchorMax: { x: 1, y: 1 }, pivot: { x: 0, y: 0 } },
+      style: { backgroundColor: "rgba(2, 6, 23, 0.62)" },
+      children: [
+        {
+          id: `${template}_card`,
+          type: "stack",
+          name: isResult ? "\u7ED3\u7B97\u5361\u7247" : "\u83DC\u5355\u5361\u7247",
+          layout: {
+            mode: "flex",
+            flexDirection: "column",
+            gap: 14,
+            align: "stretch",
+            justify: "center",
+            padding: { top: 28, right: 32, bottom: 28, left: 32 },
+            width: 360,
+            anchorMin: { x: 0.5, y: 0.5 },
+            anchorMax: { x: 0.5, y: 0.5 },
+            pivot: { x: 0.5, y: 0.5 }
+          },
+          style: {
+            backgroundColor: "rgba(15, 23, 42, 0.92)",
+            borderColor: "rgba(148, 163, 184, 0.28)",
+            borderWidth: 1,
+            borderRadius: 14
+          },
+          children: [
+            {
+              id: `${template}_title`,
+              type: "text",
+              name: "\u6807\u9898",
+              text: opts.title || (isResult ? "\u6311\u6218\u5B8C\u6210" : "\u5F00\u59CB\u6E38\u620F"),
+              layout: { mode: "flex", height: 38 },
+              style: { color: "#f8fafc", fontSize: 28, align: "center" }
+            },
+            {
+              id: `${template}_subtitle`,
+              type: "text",
+              name: "\u526F\u6807\u9898",
+              text: opts.subtitle || (isResult ? "\u672C\u5C40\u5F97\u5206" : "\u51C6\u5907\u597D\u8FCE\u63A5\u6311\u6218\u4E86\u5417\uFF1F"),
+              layout: { mode: "flex", height: 24 },
+              style: { color: "#94a3b8", fontSize: 14, align: "center" },
+              ...isResult ? { bindings: [{ id: "b_result_score", target: "text", source: { kind: "variable", varId: scoreKey } }] } : {}
+            },
+            {
+              id: `${template}_primary_btn`,
+              type: "button",
+              name: "\u4E3B\u6309\u94AE",
+              text: opts.primaryText || (isResult ? "\u518D\u6765\u4E00\u5C40" : "\u5F00\u59CB\u6E38\u620F"),
+              layout: { mode: "flex", height: 44 },
+              style: { backgroundColor: accent, color: "#ffffff", fontSize: 16, align: "center", borderRadius: 8 },
+              click: { kind: "sendMessage", message: opts.primaryMessage || (isResult ? "ui.restart" : "ui.start") }
+            },
+            {
+              id: `${template}_secondary_btn`,
+              type: "button",
+              name: "\u6B21\u6309\u94AE",
+              text: opts.secondaryText || (isResult ? "\u8FD4\u56DE\u4E3B\u83DC\u5355" : "\u6E38\u620F\u8BBE\u7F6E"),
+              layout: { mode: "flex", height: 40 },
+              style: { backgroundColor: "rgba(51, 65, 85, 0.85)", color: "#e2e8f0", fontSize: 14, align: "center", borderRadius: 8 },
+              click: { kind: "sendMessage", message: opts.secondaryMessage || (isResult ? "ui.menu" : "ui.settings") }
+            }
+          ]
+        }
+      ]
+    }
+  };
+}
+function validateUiDocument(doc) {
+  const warnings = [];
+  const root2 = doc.root;
+  const rl = root2.layout;
+  if (!rl || rl.mode !== "anchor" || (rl.anchorMin?.x ?? 0) !== 0 || (rl.anchorMin?.y ?? 0) !== 0 || (rl.anchorMax?.x ?? 1) !== 1 || (rl.anchorMax?.y ?? 1) !== 1) {
+    warnings.push('\u6839\u8282\u70B9\u5EFA\u8BAE\u8BBE\u4E3A\u5168\u5C4F\u951A\u70B9\uFF08mode: "anchor", anchorMin: {x:0,y:0}, anchorMax: {x:1,y:1}\uFF09\u4EE5\u786E\u4FDD\u81EA\u9002\u5E94\u5206\u8FA8\u7387\u3002');
+  }
+  const walk = (node, depth) => {
+    const layout = node.layout;
+    if (node.type === "text" && typeof node.style?.fontSize === "number" && node.style.fontSize < 12) {
+      warnings.push(`\u8282\u70B9 "${node.name || node.id}" \u5B57\u53F7\u4EC5 ${node.style.fontSize}px\uFF0C\u5EFA\u8BAE\u4E0D\u5C0F\u4E8E 12px\u3002`);
+    }
+    if ((node.type === "button" || node.type === "progress") && layout && typeof layout.height === "number" && layout.height < 12) {
+      warnings.push(`\u8282\u70B9 "${node.name || node.id}" \u9AD8\u5EA6\u4EC5 ${layout.height}px\uFF0C\u53EF\u80FD\u8FC7\u6241\u96BE\u4EE5\u770B\u6E05/\u70B9\u51FB\u3002`);
+    }
+    if (node.type === "stack" && layout?.mode === "flex" && (node.children?.length ?? 0) > 1 && layout.gap === void 0) {
+      warnings.push(`Flex \u5BB9\u5668 "${node.name || node.id}" \u672A\u8BBE\u7F6E gap\uFF0C\u5EFA\u8BAE\u8BBE\u7F6E gap: 8~16 \u907F\u514D\u5B50\u9879\u7D27\u8D34\u3002`);
+    }
+    const children = node.children ?? [];
+    if (depth > 0 && children.length > 1) {
+      const anchorBoxes = [];
+      for (const c of children) {
+        const cl = c.layout;
+        if (cl?.mode === "anchor" && typeof cl.x === "number" && typeof cl.y === "number") {
+          anchorBoxes.push({
+            name: c.name || c.id,
+            x: cl.x,
+            y: cl.y,
+            w: cl.width ?? 100,
+            h: cl.height ?? 32
+          });
+        }
+      }
+      for (let i = 0; i < anchorBoxes.length; i += 1) {
+        for (let j = i + 1; j < anchorBoxes.length; j += 1) {
+          const a = anchorBoxes[i];
+          const b = anchorBoxes[j];
+          if (Math.abs(a.x - b.x) < Math.min(a.w, b.w) * 0.5 && Math.abs(a.y - b.y) < Math.min(a.h, b.h) * 0.5) {
+            warnings.push(`\u540C\u7EA7 Anchor \u8282\u70B9 "${a.name}" \u4E0E "${b.name}" \u5750\u6807\u8FC7\u8FD1\u53EF\u80FD\u91CD\u53E0\uFF0C\u5EFA\u8BAE\u6539\u7528 stack (mode: "flex") \u81EA\u52A8\u6392\u7248\u3002`);
+            break;
+          }
+        }
+      }
+    }
+    for (const child of children) walk(child, depth + 1);
+  };
+  walk(root2, 0);
+  return warnings;
 }
 
 // src/editor/scene/kinds.ts
@@ -4609,6 +7470,8 @@ function defaultColor(kind) {
       return "#b0b0b0";
     case "screen":
       return "#4a9eff";
+    case "spline":
+      return "#34d399";
     default:
       return "#d5dde6";
   }
@@ -4641,6 +7504,7 @@ function restHeight(kind) {
     case "model":
     case "plane":
     case "empty":
+    case "spline":
       return 0;
     case "effect":
     case "screen":
@@ -4696,6 +7560,7 @@ function makeNode(partial) {
     wireframe: false,
     effect: kind === "effect" ? defaultNodeEffect() : null,
     screen: kind === "screen" ? defaultNodeScreen() : null,
+    capabilities: kind === "spline" ? { [SPLINE_PATH_CAPABILITY_ID]: defaultSplinePath(), ...partial.capabilities ?? {} } : partial.capabilities,
     slots: [],
     castShadow: kind === "directional-light" || kind === "spot-light" || (isMesh(kind) || kind === "model") && kind !== "plane",
     receiveShadow: isMesh(kind) || kind === "model",
@@ -4845,7 +7710,7 @@ function normalizeEditorView(value) {
 // src/editor/scene/seed.ts
 function aimDownY(from, to) {
   const direction = to.clone().sub(from).normalize();
-  const quaternion = new Quaternion4().setFromUnitVectors(new Vector37(0, -1, 0), direction);
+  const quaternion = new Quaternion5().setFromUnitVectors(new Vector39(0, -1, 0), direction);
   const euler = new Euler2().setFromQuaternion(quaternion, "XYZ");
   return [euler.x * 180 / Math.PI, euler.y * 180 / Math.PI, euler.z * 180 / Math.PI];
 }
@@ -4858,7 +7723,7 @@ function createSeed() {
       kind: "directional-light",
       order: 0,
       position: sunPosition,
-      rotation: aimDownY(new Vector37(...sunPosition), new Vector37(0, 0.5, 0))
+      rotation: aimDownY(new Vector39(...sunPosition), new Vector39(0, 0.5, 0))
     }),
     "seed-sky": makeNode({
       id: "seed-sky",
@@ -4874,7 +7739,8 @@ function createSeed() {
       order: 2,
       position: [0, 0, 0],
       rotation: [-90, 0, 0],
-      scale: [40, 40, 1]
+      scale: [40, 40, 1],
+      physics: defaultNodePhysics("plane")
     }),
     "seed-cube": makeNode({
       id: "seed-cube",
@@ -4904,6 +7770,3243 @@ function createFreshScene(name) {
     picture: structuredClone(DEFAULT_PICTURE),
     selectedId: map.get(seed2.selectedId) ?? Object.keys(nodes)[0]
   };
+}
+
+// src/core/codeAssets/workspace.ts
+import { create as create4 } from "zustand";
+
+// src/editor/project/disk.ts
+import { create as create3 } from "zustand";
+
+// src/editor/project/electronBridge.ts
+function electronBridge() {
+  if (typeof window === "undefined") return null;
+  return window.__electron ?? null;
+}
+function joinProjectPath(root2, relative2) {
+  const rel = relative2.replace(/\\/g, "/").replace(/^\/+/, "");
+  const base = root2.replace(/[\\/]+$/, "");
+  return rel ? `${base}/${rel}` : base;
+}
+function toArrayBuffer(data) {
+  if (data instanceof ArrayBuffer) return data;
+  return data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength);
+}
+
+// src/editor/project/disk.ts
+var CACHE_ROOT = ".cache/t3d";
+var IMPORT_ARTIFACTS = `${CACHE_ROOT}/import-artifacts`;
+var TEXTURE_ARTIFACTS = `${CACHE_ROOT}/texture-artifacts`;
+var TEXTURE_ORIGINALS = `${CACHE_ROOT}/texture-originals`;
+var CACHE_INDEX_PATH = `${CACHE_ROOT}/editor-library/v1/cache-index.json`;
+var CACHE_INDEX_VERSION = 1;
+var useProjectDirectory = create3(() => ({
+  active: false,
+  name: "",
+  epoch: 0
+}));
+var root = null;
+var projectName = "";
+var records = /* @__PURE__ */ new Map();
+var cacheIndex = emptyIndex();
+var ioChain = Promise.resolve();
+function directoryProjectName() {
+  return projectName;
+}
+function assetRecord(id) {
+  return records.get(id);
+}
+function projectDirectoryPath() {
+  return root?.kind === "path" ? root.path : null;
+}
+async function readAssetBytes(id) {
+  const record = records.get(id);
+  if (!record) return null;
+  return readBytes(requireRoot(), record.relativePath);
+}
+function emptyIndex() {
+  return { schemaVersion: CACHE_INDEX_VERSION, generatedAt: Date.now(), artifacts: {} };
+}
+function requireRoot() {
+  if (!root) throw new Error("\u6CA1\u6709\u6253\u5F00\u7684\u5DE5\u7A0B\u76EE\u5F55");
+  return root;
+}
+function normalizeLayoutPath(path) {
+  return path.replace(/\\/g, "/").split("/").filter((part) => part && part !== "." && part !== "..").join("/");
+}
+async function getDirectory(handle, path, create9) {
+  try {
+    const parts = normalizeLayoutPath(path).split("/").filter(Boolean);
+    let current = handle;
+    for (const part of parts) current = await current.getDirectoryHandle(part, { create: create9 });
+    return current;
+  } catch (error) {
+    if (!create9 && error instanceof DOMException && error.name === "NotFoundError") return null;
+    throw error;
+  }
+}
+async function getFile(handle, path, create9) {
+  const parts = normalizeLayoutPath(path).split("/").filter(Boolean);
+  const name = parts.pop();
+  if (!name) return null;
+  const parent = await getDirectory(handle, parts.join("/"), create9);
+  if (!parent) return null;
+  try {
+    return await parent.getFileHandle(name, { create: create9 });
+  } catch (error) {
+    if (!create9 && error instanceof DOMException && error.name === "NotFoundError") return null;
+    throw error;
+  }
+}
+async function readBytes(current, path) {
+  if (current.kind === "path") {
+    const desktop = electronBridge();
+    if (!desktop) return null;
+    const full = joinProjectPath(current.path, path);
+    try {
+      const data = await desktop.fs.readBinaryFile(full);
+      return data ? toArrayBuffer(data) : null;
+    } catch {
+      return null;
+    }
+  }
+  const file = await getFile(current.handle, path, false);
+  if (!file) return null;
+  return (await file.getFile()).arrayBuffer();
+}
+
+// src/core/codeAssets/scriptRuntime.ts
+init_session4();
+init_runtimeTags();
+init_session8();
+init_session9();
+init_session();
+init_registry();
+import { Vector3 as Vector310 } from "three";
+
+// src/runtime/audio.ts
+init_sceneRuntime();
+init_world();
+import { Audio, AudioListener, PositionalAudio } from "three";
+var MAX_SFX = 32;
+var buffers = /* @__PURE__ */ new Map();
+var listener = null;
+var voices = [];
+var nextId = 1;
+var musicId = 0;
+var heardPlay = false;
+var installed = false;
+var DEFAULT_MIX = { master: 1, music: 0.8, sfx: 1 };
+function readAudioMix(picture) {
+  return {
+    master: unit(picture.audio?.master, DEFAULT_MIX.master),
+    music: unit(picture.audio?.music, DEFAULT_MIX.music),
+    sfx: unit(picture.audio?.sfx, DEFAULT_MIX.sfx)
+  };
+}
+function unlockAudio() {
+  if (holdContext) return;
+  const ctx = ensureListener().context;
+  if (ctx.state === "suspended") void ctx.resume();
+}
+function playSound(options) {
+  installUnlock();
+  const id = nextId++;
+  const ticket = playTicket;
+  const ear = ensureListener();
+  const run = () => {
+    void start(id, options, ticket);
+  };
+  if (ear.context.state === "suspended" && !holdContext) void ear.context.resume().then(run);
+  else run();
+  return id;
+}
+function stopMusic() {
+  const voice = voices.find((item) => item.id === musicId);
+  if (voice) fadeStop(voice);
+  musicId = 0;
+}
+function stopAllSounds() {
+  playTicket += 1;
+  for (const voice of [...voices]) stopVoice(voice);
+  musicId = 0;
+  emitters.clear();
+  managed.clear();
+}
+var emitters = /* @__PURE__ */ new Map();
+var managed = /* @__PURE__ */ new Set();
+var playTicket = 0;
+var holdContext = false;
+function ownsEmitter(id) {
+  for (const current of emitters.values()) if (current.voice === id) return true;
+  return false;
+}
+function guardAudioMatrixUpdate(node) {
+  const original = node.updateMatrixWorld.bind(node);
+  node.updateMatrixWorld = function safeAudioUpdateMatrixWorld(force) {
+    Object.getPrototypeOf(Object.getPrototypeOf(node)).updateMatrixWorld.call(node, force);
+    const now = node.context?.currentTime;
+    if (typeof now !== "number" || !Number.isFinite(now)) return;
+    const elements = node.matrixWorld.elements;
+    for (let i = 0; i < elements.length; i += 1) {
+      if (!Number.isFinite(elements[i])) return;
+    }
+    try {
+      original(force);
+    } catch {
+    }
+  };
+  return node;
+}
+function ensureListener() {
+  if (!listener) {
+    listener = guardAudioMatrixUpdate(new AudioListener());
+    listener.gain.gain.value = 1;
+  }
+  return listener;
+}
+function installUnlock() {
+  if (installed || typeof window === "undefined") return;
+  installed = true;
+  const once = () => unlockAudio();
+  window.addEventListener("pointerdown", once, { capture: true });
+  window.addEventListener("keydown", once, { capture: true });
+}
+async function start(id, options, ticket) {
+  const assetId = options.assetId.trim();
+  if (!assetId) return;
+  const world3 = getRuntimeWorld();
+  const asset = world3.getAsset(assetId);
+  if (!asset || asset.kind !== "audio") return;
+  const buffer = await bufferFor(assetId, "hash" in asset && typeof asset.hash === "string" ? asset.hash : assetId);
+  if (!buffer) return;
+  if (managed.has(id) && (ticket !== playTicket || !ownsEmitter(id))) {
+    managed.delete(id);
+    return;
+  }
+  if (managed.has(id) && options.parent && !options.parent.parent) {
+    emitters.forEach((current, nodeId) => {
+      if (current.voice === id) emitters.delete(nodeId);
+    });
+    managed.delete(id);
+    return;
+  }
+  const latestWorld = getRuntimeWorld();
+  if (options.bus === "music" && latestWorld.getPlayState() !== "playing") return;
+  const mix6 = readAudioMix(latestWorld.getPicture());
+  applyMix(mix6);
+  const bus = options.bus ?? "sfx";
+  if (bus === "sfx") trimSfx();
+  const ear = ensureListener();
+  const audio = options.parent ? guardAudioMatrixUpdate(new PositionalAudio(ear)) : new Audio(ear);
+  audio.setBuffer(buffer);
+  audio.setLoop(options.loop === true);
+  const local = clamp4(options.volume ?? 1, 0, 4);
+  audio.setVolume(local * (bus === "music" ? mix6.music : mix6.sfx));
+  if (options.playbackRate && options.playbackRate > 0) audio.setPlaybackRate(options.playbackRate);
+  if (audio instanceof PositionalAudio && options.parent) {
+    audio.setRefDistance(Math.max(0.05, options.refDistance ?? 2));
+    audio.setRolloffFactor(Math.max(0, options.rolloff ?? 1));
+    audio.setDistanceModel("inverse");
+    options.parent.add(audio);
+  }
+  const voice = { id, audio, parent: options.parent ?? null, loop: options.loop === true, bus, local };
+  voices.push(voice);
+  if (bus === "music") {
+    const previous = voices.find((item) => item.id === musicId && item.id !== id);
+    if (previous) fadeStop(previous);
+    musicId = id;
+  }
+  audio.play();
+  const source = audio.source;
+  if (!voice.loop && source) source.onended = () => stopVoice(voice);
+}
+async function bufferFor(assetId, hash) {
+  const key = hash || assetId;
+  let pending3 = buffers.get(key);
+  if (!pending3) {
+    pending3 = (async () => {
+      const world3 = getRuntimeWorld();
+      const url = await world3.resolveAssetUrl?.(assetId) ?? world3.getAsset(assetId)?.url ?? "";
+      if (!url) return null;
+      const response = await fetch(url);
+      const data = await response.arrayBuffer();
+      return ensureListener().context.decodeAudioData(data.slice(0));
+    })().catch((error) => {
+      buffers.delete(key);
+      console.warn("[audio] \u89E3\u7801\u5931\u8D25", error);
+      return null;
+    });
+    buffers.set(key, pending3);
+  }
+  const buffer = await pending3;
+  return buffer && buffer.duration > 0 ? buffer : null;
+}
+function trimSfx() {
+  const live = voices.filter((item) => item.bus === "sfx" && !item.loop && !managed.has(item.id));
+  while (live.length >= MAX_SFX) {
+    const oldest = live.shift();
+    if (oldest) stopVoice(oldest);
+  }
+}
+function fadeStop(voice) {
+  try {
+    const gain = voice.audio.getOutput().gain;
+    const now = voice.audio.context.currentTime;
+    if (!Number.isFinite(now) || !Number.isFinite(gain.value)) {
+      stopVoice(voice);
+      return;
+    }
+    gain.cancelScheduledValues(now);
+    gain.setValueAtTime(gain.value, now);
+    gain.linearRampToValueAtTime(0, now + 0.35);
+  } catch {
+    stopVoice(voice);
+    return;
+  }
+  window.setTimeout(() => stopVoice(voice), 400);
+}
+function stopVoice(voice) {
+  const index = voices.indexOf(voice);
+  if (index >= 0) voices.splice(index, 1);
+  if (musicId === voice.id) musicId = 0;
+  try {
+    if (voice.audio.isPlaying) voice.audio.stop();
+  } catch {
+  }
+  voice.parent?.remove(voice.audio);
+  voice.audio.disconnect();
+}
+var appliedMix = "";
+function applyMix(mix6) {
+  const key = `${mix6.master}|${mix6.music}|${mix6.sfx}`;
+  if (key === appliedMix) return;
+  appliedMix = key;
+  const ear = listener;
+  if (ear) ear.gain.gain.value = mix6.master;
+  for (const voice of voices) {
+    voice.audio.setVolume(voice.local * (voice.bus === "music" ? mix6.music : mix6.sfx));
+  }
+}
+function unit(value, fallback) {
+  const number = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(number) ? clamp4(number, 0, 1) : fallback;
+}
+function clamp4(value, min3, max4) {
+  return Math.min(max4, Math.max(min3, value));
+}
+var contextChain = Promise.resolve();
+function settleContext(paused) {
+  const ctx = listener?.context;
+  if (!ctx) return;
+  contextChain = contextChain.then(async () => {
+    if (paused !== holdContext) return;
+    if (paused && ctx.state === "running") await ctx.suspend();
+    if (!paused && ctx.state === "suspended") await ctx.resume();
+  }).catch(() => void 0);
+}
+registerRuntimeSystem("core.audio", 44, () => {
+  const world3 = getRuntimeWorld();
+  applyMix(readAudioMix(world3.getPicture()));
+  const playState = world3.getPlayState();
+  if (playState === "paused") {
+    heardPlay = true;
+    if (!holdContext) {
+      holdContext = true;
+      settleContext(true);
+    }
+    return;
+  }
+  if (holdContext) {
+    holdContext = false;
+    settleContext(false);
+  }
+  if (playState === "playing") {
+    heardPlay = true;
+    return;
+  }
+  if (!heardPlay) return;
+  heardPlay = false;
+  stopAllSounds();
+});
+installUnlock();
+
+// src/core/codeAssets/scriptRuntime.ts
+init_frameProfile();
+init_motion();
+init_sceneRuntime();
+
+// src/runtime/ui/bindings.ts
+var EMPTY_UI_VALUES = { variables: {}, components: {}, screens: {} };
+function coerceUiValue(raw) {
+  if (typeof raw !== "string") return raw;
+  const text = raw.trim();
+  if (text === "true") return true;
+  if (text === "false") return false;
+  if (text !== "" && Number.isFinite(Number(text))) return Number(text);
+  return raw;
+}
+
+// src/runtime/ui/values.ts
+var variables = {};
+var components = {};
+var screens = {};
+var snapshot = EMPTY_UI_VALUES;
+var listeners = /* @__PURE__ */ new Set();
+var clickListeners = /* @__PURE__ */ new Set();
+function publish() {
+  snapshot = {
+    variables: { ...variables },
+    components: Object.fromEntries(Object.entries(components).map(([id, fields]) => [id, { ...fields }])),
+    screens: { ...screens }
+  };
+  for (const listener2 of listeners) listener2();
+}
+function uiValues() {
+  return snapshot;
+}
+function writeUiVariable(varId, value) {
+  variables = { ...variables, [varId]: value };
+  publish();
+}
+function setScreenVisible(nodeId, visible) {
+  screens = { ...screens, [nodeId]: visible };
+  publish();
+}
+function resetUiValues() {
+  variables = {};
+  components = {};
+  screens = {};
+  publish();
+}
+function onUiClick(listener2) {
+  clickListeners.add(listener2);
+  return () => clickListeners.delete(listener2);
+}
+function dispatchUiClick(action, nodeId) {
+  if (action.kind === "setVariable") writeUiVariable(action.varId, coerceUiValue(action.value));
+  for (const listener2 of clickListeners) listener2(action, nodeId);
+}
+
+// src/core/codeAssets/scriptRuntime.ts
+init_world();
+init_actionMap();
+init_fieldSchema();
+
+// src/core/codeAssets/compiler.ts
+import ts from "typescript";
+function diagnosticHint(code, message) {
+  if (message.includes("t3d/shader") || message.includes("t3d/runtime")) {
+    return '\u8BF7\u786E\u4FDD\u4ECE "t3d/shader" \u6216 "t3d/runtime" \u5BFC\u5165\u767D\u540D\u5355 API';
+  }
+  if (code === 2304) return "\u5B58\u5728\u672A\u5B9A\u4E49\u7684\u6807\u8BC6\u7B26\uFF0C\u8BF7\u68C0\u67E5\u62FC\u5199\u6216\u4ECE t3d/runtime / t3d/shader \u5BFC\u5165";
+  if (code === 2322 || code === 2345) return "\u7C7B\u578B\u4E0D\u5339\u914D\uFF0C\u8BF7\u68C0\u67E5\u53C2\u6570\u6216\u8FD4\u56DE\u503C\u7C7B\u578B\u662F\u5426\u7B26\u5408\u5951\u7EA6";
+  return "\u8BF7\u6839\u636E\u62A5\u9519\u884C\u53F7\u4FEE\u6B63\u8BED\u6CD5\u6216\u7C7B\u578B\u9519\u8BEF";
+}
+function checkAndTranspileTs(fileName, source) {
+  const compilerOptions = {
+    target: ts.ScriptTarget.ES2022,
+    module: ts.ModuleKind.CommonJS,
+    esModuleInterop: true,
+    strict: true,
+    skipLibCheck: true,
+    isolatedModules: true
+  };
+  const output = ts.transpileModule(source, {
+    fileName,
+    reportDiagnostics: true,
+    compilerOptions
+  });
+  const diagnostics = (output.diagnostics ?? []).map((diag) => {
+    const start2 = diag.start ?? 0;
+    const pos = diag.file ? diag.file.getLineAndCharacterOfPosition(start2) : { line: 0, character: 0 };
+    const msg = ts.flattenDiagnosticMessageText(diag.messageText, "\n");
+    return {
+      file: fileName,
+      line: pos.line + 1,
+      column: pos.character + 1,
+      severity: diag.category === ts.DiagnosticCategory.Warning ? "warning" : "error",
+      message: msg,
+      hint: diagnosticHint(diag.code, msg)
+    };
+  });
+  const hasError = diagnostics.some((d) => d.severity === "error");
+  if (hasError) {
+    return { ok: false, diagnostics };
+  }
+  return {
+    ok: true,
+    diagnostics,
+    jsCode: output.outputText
+  };
+}
+function evaluateTranspiledModule(fileName, jsCode, injectedModules) {
+  const moduleObj = { exports: {} };
+  const customRequire = (specifier) => {
+    if (specifier in injectedModules) {
+      return injectedModules[specifier];
+    }
+    throw new Error(`\u4E0D\u5141\u8BB8\u5BFC\u5165\u672A\u6388\u6743\u6A21\u5757 "${specifier}"\uFF08\u4EC5\u5141\u8BB8 ${Object.keys(injectedModules).join(", ")}\uFF09`);
+  };
+  try {
+    const fn = new Function("require", "module", "exports", jsCode);
+    fn(customRequire, moduleObj, moduleObj.exports);
+    const exported = moduleObj.exports.default ?? moduleObj.exports;
+    return {
+      ok: true,
+      diagnostics: [],
+      jsCode,
+      exports: exported
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return {
+      ok: false,
+      diagnostics: [
+        {
+          file: fileName,
+          line: 1,
+          column: 1,
+          severity: "error",
+          message: `\u6A21\u5757\u6267\u884C\u5931\u8D25\uFF1A${message}`,
+          hint: "\u8BF7\u68C0\u67E5\u9876\u5C42\u4EE3\u7801\u662F\u5426\u5B58\u5728\u8FD0\u884C\u65F6\u5F02\u5E38\u6216\u975E\u6CD5\u6A21\u5757\u5BFC\u5165"
+        }
+      ]
+    };
+  }
+}
+
+// src/core/codeAssets/scriptRuntime.ts
+var compiledBehaviors = /* @__PURE__ */ new Map();
+var compiledSystems = /* @__PURE__ */ new Map();
+var instanceStates = /* @__PURE__ */ new Map();
+var messageQueue = [];
+var uiEventHandlers = /* @__PURE__ */ new Map();
+var uiEventQueue = [];
+var uiClickSubscribed = false;
+var globalMemory = /* @__PURE__ */ new Map();
+var persistentMemory = /* @__PURE__ */ new Map();
+var navAgents = /* @__PURE__ */ new Map();
+var pooledInactive = /* @__PURE__ */ new Set();
+var nodePoolKey = /* @__PURE__ */ new Map();
+var poolBuckets = /* @__PURE__ */ new Map();
+var scriptTimers = /* @__PURE__ */ new Map();
+var splineFollowAgents = /* @__PURE__ */ new Map();
+var activeTweens = /* @__PURE__ */ new Map();
+var sfxCooldownAt = /* @__PURE__ */ new Map();
+var nextTimerId = 1;
+var nextTweenId = 1;
+function ensureUiClickBridge() {
+  if (uiClickSubscribed) return;
+  uiClickSubscribed = true;
+  onUiClick((action, uiNodeId) => {
+    if (getRuntimeWorld().getPlayState() !== "playing") return;
+    if (action.kind === "sendMessage" && action.message) {
+      const payload = { nodeId: uiNodeId, kind: action.kind };
+      uiEventQueue.push({
+        eventName: action.message,
+        payload
+      });
+      messageQueue.push({
+        targetNodeId: null,
+        name: action.message,
+        payload
+      });
+    } else if (action.kind === "setVariable" && action.varId) {
+      uiEventQueue.push({
+        eventName: `var:${action.varId}`,
+        payload: { nodeId: uiNodeId, kind: action.kind, varId: action.varId, value: action.value }
+      });
+    }
+  });
+}
+function resolveScreenNodeId(screenIdOrName) {
+  const nodes = getRuntimeWorld().getNodes();
+  if (nodes[screenIdOrName]?.kind === "screen") return screenIdOrName;
+  const hit = Object.values(nodes).find((n) => n.kind === "screen" && n.name === screenIdOrName);
+  return hit ? hit.id : null;
+}
+var simElapsed = 0;
+var framePointerDelta = { x: 0, y: 0 };
+var framePointerPos = { x: 0, y: 0 };
+var frameWheelDelta = 0;
+var prevMouseButtons = 0;
+var currMouseButtons = 0;
+function mouseButtonMask(button) {
+  if (button === 0) return 1;
+  if (button === 1) return 4;
+  if (button === 2) return 2;
+  return 0;
+}
+function instanceKey2(nodeId, scriptId) {
+  return `${nodeId}::${scriptId}`;
+}
+function resolveVec3Input(target) {
+  if (!target || typeof target !== "object") return null;
+  const rec = target;
+  if (typeof rec.x === "number" && typeof rec.y === "number" && typeof rec.z === "number") {
+    return { x: rec.x, y: rec.y, z: rec.z };
+  }
+  if (rec.position && typeof rec.position === "object") {
+    const pos = rec.position;
+    if (typeof pos.x === "number" && typeof pos.y === "number" && typeof pos.z === "number") {
+      return { x: pos.x, y: pos.y, z: pos.z };
+    }
+  }
+  return null;
+}
+function toVec3Obj(tuple) {
+  return { x: tuple[0], y: tuple[1], z: tuple[2] };
+}
+function makeNodeHandle(nodeId, host) {
+  const world3 = getRuntimeWorld();
+  const node = world3.getNodes()[nodeId];
+  if (!node) return null;
+  const obj = host.resolveObject(nodeId);
+  const collectTags = () => {
+    const out = [];
+    if (node.tagId && !out.includes(node.tagId)) out.push(node.tagId);
+    if (Array.isArray(node.tagIds)) {
+      for (const t of node.tagIds) {
+        if (t && !out.includes(t)) out.push(t);
+      }
+    }
+    for (const rt of listRuntimeTags(node.id)) {
+      if (rt.tag && !out.includes(rt.tag)) out.push(rt.tag);
+    }
+    return out;
+  };
+  return {
+    get id() {
+      return node.id;
+    },
+    get name() {
+      return node.name;
+    },
+    get tags() {
+      return collectTags();
+    },
+    get parent() {
+      return node.parentId ? makeNodeHandle(node.parentId, host) : null;
+    },
+    get position() {
+      return obj ? { x: obj.position.x, y: obj.position.y, z: obj.position.z } : toVec3Obj(node.position);
+    },
+    set position(val) {
+      if (obj) obj.position.set(val.x, val.y, val.z);
+      node.position[0] = val.x;
+      node.position[1] = val.y;
+      node.position[2] = val.z;
+    },
+    get rotation() {
+      return obj ? { x: obj.rotation.x, y: obj.rotation.y, z: obj.rotation.z } : {
+        x: node.rotation[0] * Math.PI / 180,
+        y: node.rotation[1] * Math.PI / 180,
+        z: node.rotation[2] * Math.PI / 180
+      };
+    },
+    set rotation(val) {
+      if (obj) obj.rotation.set(val.x, val.y, val.z);
+      node.rotation[0] = val.x * 180 / Math.PI;
+      node.rotation[1] = val.y * 180 / Math.PI;
+      node.rotation[2] = val.z * 180 / Math.PI;
+    },
+    get scale() {
+      return obj ? { x: obj.scale.x, y: obj.scale.y, z: obj.scale.z } : toVec3Obj(node.scale);
+    },
+    set scale(val) {
+      if (obj) obj.scale.set(val.x, val.y, val.z);
+      node.scale[0] = val.x;
+      node.scale[1] = val.y;
+      node.scale[2] = val.z;
+    },
+    get visible() {
+      if (pooledInactive.has(nodeId)) return false;
+      return obj ? obj.visible : node.visible;
+    },
+    set visible(val) {
+      if (obj) obj.visible = val;
+      node.visible = val;
+      if (!nodePoolKey.has(nodeId)) {
+        world3.updateNode(nodeId, { visible: val });
+      }
+    },
+    hasTag: (tag) => nodeHasTag(node, String(tag ?? "")),
+    addTag: (tag) => {
+      const t = String(tag ?? "").trim();
+      if (!t) return;
+      const list = Array.isArray(node.tagIds) ? [...node.tagIds] : [];
+      if (!list.includes(t)) {
+        list.push(t);
+        node.tagIds = list;
+      }
+    },
+    removeTag: (tag) => {
+      const t = String(tag ?? "").trim();
+      if (!t) return;
+      if (node.tagId === t) node.tagId = void 0;
+      if (Array.isArray(node.tagIds)) {
+        node.tagIds = node.tagIds.filter((x) => x !== t);
+      }
+    },
+    getChildren: () => {
+      const all = world3.getNodes();
+      return Object.values(all).filter((c) => c.parentId === node.id && !isNodePooledInactive(c.id, all)).sort((a, b) => (a.order ?? 0) - (b.order ?? 0)).map((c) => makeNodeHandle(c.id, host)).filter(Boolean);
+    },
+    sendMessage: (name, payload) => {
+      messageQueue.push({ targetNodeId: nodeId, name, payload });
+    },
+    getBehavior: (behavior) => {
+      const targetEntry = Object.entries(node.gameplay?.packs?.__project__ ?? {}).find(
+        ([sid2]) => compiledBehaviors.get(sid2) === behavior || compiledBehaviors.get(sid2)?.name === behavior?.name
+      );
+      if (!targetEntry) return null;
+      const [sid, rawParams] = targetEntry;
+      const rec = instanceStates.get(instanceKey2(nodeId, sid));
+      if (!rec) return null;
+      const ctx = buildScriptContext(node, sid, rawParams, rec.state, host);
+      const wrapped = {};
+      for (const [mName, fn] of Object.entries(behavior.methods ?? {})) {
+        wrapped[mName] = (...args) => fn(ctx, ...args);
+      }
+      return wrapped;
+    },
+    destroy: () => {
+      destroyOrReleaseNode(nodeId, host);
+    }
+  };
+}
+function cancelTimersForNode(nodeId) {
+  for (const [tid, t] of scriptTimers.entries()) {
+    if (t.nodeId === nodeId) scriptTimers.delete(tid);
+  }
+  splineFollowAgents.delete(nodeId);
+  for (const [twId, tw] of activeTweens.entries()) {
+    if (tw.ownerNodeId === nodeId) activeTweens.delete(twId);
+  }
+}
+function resolveSplinePointsInput(input, host) {
+  const world3 = getRuntimeWorld();
+  const nodes = world3.getNodes();
+  if (Array.isArray(input)) {
+    const pts = [];
+    for (const item of input) {
+      const v = resolveVec3Input(item);
+      if (v) pts.push(v);
+    }
+    return { points: pts };
+  }
+  const parentNode = resolveTemplateNode(input, nodes);
+  if (!parentNode) return { points: [] };
+  const rawSplinePath = parentNode.capabilities?.splinePath;
+  if (parentNode.kind === "spline" || rawSplinePath) {
+    const pathObj = host.resolveObject(parentNode.id);
+    if (pathObj) pathObj.updateMatrixWorld();
+    const rawPts = Array.isArray(rawSplinePath?.points) ? rawSplinePath.points : [];
+    const pts = [];
+    for (const p of rawPts) {
+      if (!Array.isArray(p) || p.length < 3) continue;
+      const lx = Number(p[0]) || 0;
+      const ly = Number(p[1]) || 0;
+      const lz = Number(p[2]) || 0;
+      if (pathObj) {
+        const v = new Vector310(lx, ly, lz).applyMatrix4(pathObj.matrixWorld);
+        pts.push({ x: v.x, y: v.y, z: v.z });
+      } else {
+        pts.push({
+          x: parentNode.position[0] + lx,
+          y: parentNode.position[1] + ly,
+          z: parentNode.position[2] + lz
+        });
+      }
+    }
+    return {
+      points: pts,
+      closed: typeof rawSplinePath?.closed === "boolean" ? rawSplinePath.closed : void 0,
+      tension: typeof rawSplinePath?.tension === "number" ? rawSplinePath.tension : void 0
+    };
+  }
+  const children = Object.values(nodes).filter((n) => n.parentId === parentNode.id && !isNodePooledInactive(n.id, nodes)).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  const targets = children.length > 0 ? children : [parentNode];
+  return {
+    points: targets.map((n) => {
+      const obj = host.resolveObject(n.id);
+      return obj ? { x: obj.position.x, y: obj.position.y, z: obj.position.z } : toVec3Obj(n.position);
+    })
+  };
+}
+function buildCurveApi() {
+  return {
+    create: (keys, options) => createAnimationCurve(keys, options),
+    eval: (keys, t, options) => createAnimationCurve(keys, options).eval(t),
+    ease: (name, t) => evalEasing(name, t),
+    parabola: (t, height = 1) => {
+      const u = Math.max(0, Math.min(1, Number.isFinite(t) ? t : 0));
+      return 4 * u * (1 - u) * height;
+    },
+    pulse: (t) => {
+      const u = Math.max(0, Math.min(1, Number.isFinite(t) ? t : 0));
+      return Math.sin(u * Math.PI);
+    }
+  };
+}
+function isNodePooledInactive(nodeId, nodes) {
+  let cur = nodeId;
+  let guard = 0;
+  while (cur && guard < 16) {
+    if (pooledInactive.has(cur)) return true;
+    cur = nodes[cur]?.parentId ?? null;
+    guard += 1;
+  }
+  return false;
+}
+function resolveTemplateNode(templateOrName, nodes) {
+  if (!templateOrName) return null;
+  if (typeof templateOrName === "object" && typeof templateOrName.id === "string") {
+    return nodes[templateOrName.id] ?? null;
+  }
+  if (typeof templateOrName === "string") {
+    const key = templateOrName.trim();
+    if (!key) return null;
+    if (nodes[key]) return nodes[key];
+    return Object.values(nodes).find((n) => n.name === key) ?? null;
+  }
+  return null;
+}
+function cloneSceneSubtree(templateNode, options, host) {
+  const world3 = getRuntimeWorld();
+  const allNodes = world3.getNodes();
+  const clonedMap = {};
+  const idMap = /* @__PURE__ */ new Map();
+  const collect = (srcId) => {
+    const src = allNodes[srcId];
+    if (!src) return;
+    const nextId2 = typeof crypto !== "undefined" && typeof crypto.randomUUID === "function" ? crypto.randomUUID() : `rt_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    idMap.set(srcId, nextId2);
+    for (const child of Object.values(allNodes)) {
+      if (child.parentId === srcId) collect(child.id);
+    }
+  };
+  collect(templateNode.id);
+  if (idMap.size === 0) return null;
+  const rootNewId = idMap.get(templateNode.id);
+  const parentOpt = options?.parent;
+  const resolvedParentId = parentOpt === void 0 ? templateNode.parentId : parentOpt === null ? null : typeof parentOpt === "string" ? allNodes[parentOpt]?.id ?? Object.values(allNodes).find((n) => n.name === parentOpt)?.id ?? null : parentOpt.id ?? null;
+  for (const [oldId, newId] of idMap.entries()) {
+    const src = allNodes[oldId];
+    const copy = structuredClone(src);
+    copy.id = newId;
+    if (oldId === templateNode.id) {
+      copy.parentId = resolvedParentId;
+      copy.visible = options?.visible !== void 0 ? options.visible : true;
+      if (options?.name) copy.name = options.name;
+      else copy.name = `${src.name}_${newId.slice(0, 4)}`;
+      const posVec = resolveVec3Input(options?.position);
+      if (posVec) copy.position = [posVec.x, posVec.y, posVec.z];
+      const rotVec = resolveVec3Input(options?.rotation);
+      if (rotVec) {
+        copy.rotation = [
+          rotVec.x * 180 / Math.PI,
+          rotVec.y * 180 / Math.PI,
+          rotVec.z * 180 / Math.PI
+        ];
+      }
+      const scaleVec = resolveVec3Input(options?.scale);
+      if (scaleVec) copy.scale = [scaleVec.x, scaleVec.y, scaleVec.z];
+    } else {
+      copy.parentId = src.parentId ? idMap.get(src.parentId) ?? null : null;
+    }
+    delete copy.prefabAssetId;
+    delete copy.prefabInstanceId;
+    delete copy.prefabTemplateId;
+    delete copy.prefabHostTemplateId;
+    clonedMap[newId] = copy;
+  }
+  world3.setNodes({ ...allNodes, ...clonedMap });
+  const spawnedObj = host.resolveObject(rootNewId);
+  if (spawnedObj) {
+    const rootNode = clonedMap[rootNewId];
+    spawnedObj.visible = rootNode.visible;
+    spawnedObj.position.set(rootNode.position[0], rootNode.position[1], rootNode.position[2]);
+    spawnedObj.rotation.set(
+      rootNode.rotation[0] * Math.PI / 180,
+      rootNode.rotation[1] * Math.PI / 180,
+      rootNode.rotation[2] * Math.PI / 180
+    );
+    spawnedObj.scale.set(rootNode.scale[0], rootNode.scale[1], rootNode.scale[2]);
+  }
+  return rootNewId;
+}
+function spawnFromTemplateOrPrefab(templateOrPrefab, options, host) {
+  const world3 = getRuntimeWorld();
+  const nodes = world3.getNodes();
+  const tplNode = resolveTemplateNode(templateOrPrefab, nodes);
+  if (tplNode) {
+    const rootId = cloneSceneSubtree(tplNode, options, host);
+    if (!rootId) return null;
+    return {
+      rootId,
+      templatePos: [...tplNode.position],
+      templateRotDeg: [...tplNode.rotation],
+      templateScale: [...tplNode.scale],
+      templateTagId: tplNode.tagId,
+      templateTagIds: tplNode.tagIds ? [...tplNode.tagIds] : void 0
+    };
+  }
+  if (typeof templateOrPrefab === "string" && templateOrPrefab.trim()) {
+    const posVec = resolveVec3Input(options?.position);
+    const pos = posVec ? [posVec.x, posVec.y, posVec.z] : [0, 0, 0];
+    const parentOpt = options?.parent;
+    const parentId = typeof parentOpt === "string" ? parentOpt : parentOpt && "id" in parentOpt ? parentOpt.id ?? null : null;
+    const rootId = world3.instantiatePrefab?.(templateOrPrefab.trim(), { parentId, position: pos }) ?? null;
+    if (!rootId) return null;
+    const spawned = world3.getNodes()[rootId];
+    if (spawned) {
+      if (options?.visible !== void 0) spawned.visible = options.visible;
+      if (options?.name) spawned.name = options.name;
+      const rotVec = resolveVec3Input(optsOrRot(options?.rotation));
+      if (rotVec) {
+        spawned.rotation = [rotVec.x * 180 / Math.PI, rotVec.y * 180 / Math.PI, rotVec.z * 180 / Math.PI];
+      }
+      const scaleVec = resolveVec3Input(options?.scale);
+      if (scaleVec) spawned.scale = [scaleVec.x, scaleVec.y, scaleVec.z];
+      const spawnedObj = host.resolveObject(rootId);
+      if (spawnedObj) {
+        spawnedObj.visible = spawned.visible;
+        spawnedObj.position.set(spawned.position[0], spawned.position[1], spawned.position[2]);
+        spawnedObj.rotation.set(
+          spawned.rotation[0] * Math.PI / 180,
+          spawned.rotation[1] * Math.PI / 180,
+          spawned.rotation[2] * Math.PI / 180
+        );
+        spawnedObj.scale.set(spawned.scale[0], spawned.scale[1], spawned.scale[2]);
+      }
+      return {
+        rootId,
+        templatePos: [0, 0, 0],
+        templateRotDeg: [...spawned.rotation],
+        templateScale: [...spawned.scale],
+        templateTagId: spawned.tagId,
+        templateTagIds: spawned.tagIds ? [...spawned.tagIds] : void 0
+      };
+    }
+    return { rootId };
+  }
+  return null;
+}
+function optsOrRot(rot) {
+  return rot;
+}
+function resetAndInvokeSpawn(nodeId, payload, host) {
+  const nodes = getRuntimeWorld().getNodes();
+  const targetNode = nodes[nodeId];
+  if (!targetNode) return;
+  const subtreeIds2 = [];
+  const collectSubtree = (id) => {
+    subtreeIds2.push(id);
+    for (const candidate of Object.values(nodes)) {
+      if (candidate.parentId === id) collectSubtree(candidate.id);
+    }
+  };
+  collectSubtree(nodeId);
+  for (const subId of subtreeIds2) {
+    const subNode = nodes[subId];
+    if (!subNode) continue;
+    const projectScripts = subNode.gameplay?.packs?.__project__;
+    if (!projectScripts || typeof projectScripts !== "object") continue;
+    for (const [sid, rawParams] of Object.entries(projectScripts)) {
+      if (rawParams && typeof rawParams === "object" && rawParams.__enabled === false) continue;
+      const def = compiledBehaviors.get(sid);
+      if (!def) continue;
+      const key = instanceKey2(subId, sid);
+      const rec = {
+        nodeId: subId,
+        scriptId: sid,
+        started: true,
+        state: def.state ? { ...def.state() } : {}
+      };
+      instanceStates.set(key, rec);
+      const ctx = buildScriptContext(subNode, sid, rawParams, rec.state, host);
+      try {
+        def.onStart?.(ctx);
+        def.onSpawn?.(ctx, payload);
+      } catch (error) {
+        getRuntimeWorld().log("error", `\u811A\u672C "${def.name}" \u6FC0\u6D3B\u9519\u8BEF: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+  }
+}
+function releaseToPool(nodeId, host) {
+  const pKey = nodePoolKey.get(nodeId);
+  if (!pKey) return false;
+  const bucket = poolBuckets.get(pKey);
+  if (!bucket) return false;
+  if (pooledInactive.has(nodeId)) return true;
+  pooledInactive.add(nodeId);
+  const nodes = getRuntimeWorld().getNodes();
+  const resetSubtree = (id) => {
+    cancelTimersForNode(id);
+    navAgents.delete(id);
+    resetProjectileState(id);
+    stopCrowdAgent(id);
+    splineFollowAgents.delete(id);
+    for (const [tid, tw] of activeTweens.entries()) {
+      if (tw.ownerNodeId === id) activeTweens.delete(tid);
+    }
+    if (nodes[id]?.physics) {
+      setPhysicsVelocity(id, [0, 0, 0]);
+    }
+    for (const child of Object.values(nodes)) {
+      if (child.parentId === id) resetSubtree(child.id);
+    }
+  };
+  resetSubtree(nodeId);
+  const obj = host.resolveObject(nodeId);
+  if (obj) obj.visible = false;
+  const n = nodes[nodeId];
+  if (n) n.visible = false;
+  if (!bucket.idle.includes(nodeId)) {
+    bucket.idle.push(nodeId);
+  }
+  return true;
+}
+function destroyOrReleaseNode(nodeId, host) {
+  if (releaseToPool(nodeId, host)) return;
+  cancelTimersForNode(nodeId);
+  navAgents.delete(nodeId);
+  const world3 = getRuntimeWorld();
+  const prev = world3.getNodes();
+  if (!prev[nodeId]) return;
+  const next = { ...prev };
+  const removeTree = (id) => {
+    delete next[id];
+    cancelTimersForNode(id);
+    for (const child of Object.values(prev)) {
+      if (child.parentId === id) removeTree(child.id);
+    }
+  };
+  removeTree(nodeId);
+  world3.setNodes(next);
+}
+function resolvePoolKey(templateOrPrefab) {
+  if (!templateOrPrefab) return null;
+  if (typeof templateOrPrefab === "object" && typeof templateOrPrefab.id === "string") {
+    return `node:${templateOrPrefab.id}`;
+  }
+  if (typeof templateOrPrefab === "string" && templateOrPrefab.trim()) {
+    return `ref:${templateOrPrefab.trim()}`;
+  }
+  return null;
+}
+function buildScriptContext(node, scriptId, rawParams, stateObj, host) {
+  const world3 = getRuntimeWorld();
+  const def = compiledBehaviors.get(scriptId);
+  const resolvedParams = {};
+  const inputRecord = rawParams && typeof rawParams === "object" ? rawParams : {};
+  for (const [k, schema] of Object.entries(def?.params ?? {})) {
+    const val = k in inputRecord ? inputRecord[k] : defaultForSchema(schema);
+    if (schema.type === "vec2" && Array.isArray(val)) resolvedParams[k] = { x: Number(val[0]) || 0, y: Number(val[1]) || 0 };
+    else if (schema.type === "vec3" && Array.isArray(val)) resolvedParams[k] = { x: Number(val[0]) || 0, y: Number(val[1]) || 0, z: Number(val[2]) || 0 };
+    else if (schema.type === "ref" && schema.target === "node" && typeof val === "string") resolvedParams[k] = makeNodeHandle(val, host);
+    else resolvedParams[k] = val;
+  }
+  const handle = makeNodeHandle(node.id, host);
+  const obj = host.resolveObject(node.id);
+  return {
+    node: handle,
+    params: resolvedParams,
+    state: stateObj,
+    elapsedTime: simElapsed,
+    get position() {
+      return handle.position;
+    },
+    set position(v) {
+      handle.position = v;
+    },
+    get rotation() {
+      return handle.rotation;
+    },
+    set rotation(v) {
+      handle.rotation = v;
+    },
+    get scale() {
+      return handle.scale;
+    },
+    set scale(v) {
+      handle.scale = v;
+    },
+    get visible() {
+      return handle.visible;
+    },
+    set visible(v) {
+      handle.visible = v;
+    },
+    hasTag: (tag) => handle.hasTag(tag),
+    addTag: (tag) => handle.addTag(tag),
+    removeTag: (tag) => handle.removeTag(tag),
+    get forward() {
+      const yaw = handle.rotation.y;
+      return { x: Math.sin(yaw), y: 0, z: Math.cos(yaw) };
+    },
+    get right() {
+      const yaw = handle.rotation.y;
+      return { x: Math.cos(yaw), y: 0, z: -Math.sin(yaw) };
+    },
+    distanceTo(target) {
+      const vec = resolveVec3Input(target);
+      if (!vec) return Number.POSITIVE_INFINITY;
+      const cur = handle.position;
+      return Math.hypot(vec.x - cur.x, vec.y - cur.y, vec.z - cur.z);
+    },
+    directionTo(target, options) {
+      const vec = resolveVec3Input(target);
+      if (!vec) return { x: 0, y: 0, z: 1 };
+      const cur = handle.position;
+      const dx = vec.x - cur.x;
+      const dy = options?.planeXZ ? 0 : vec.y - cur.y;
+      const dz = vec.z - cur.z;
+      const len = Math.hypot(dx, dy, dz);
+      if (len <= 1e-6) return { x: 0, y: 0, z: 1 };
+      return { x: dx / len, y: dy / len, z: dz / len };
+    },
+    translate(delta, space = "world") {
+      const cur = handle.position;
+      if (space === "local") {
+        const yaw = handle.rotation.y;
+        const sinY = Math.sin(yaw);
+        const cosY = Math.cos(yaw);
+        const wx = delta.x * cosY + delta.z * sinY;
+        const wz = -delta.x * sinY + delta.z * cosY;
+        handle.position = { x: cur.x + wx, y: cur.y + delta.y, z: cur.z + wz };
+      } else {
+        handle.position = { x: cur.x + delta.x, y: cur.y + delta.y, z: cur.z + delta.z };
+      }
+    },
+    rotateY(radians) {
+      const rot = handle.rotation;
+      handle.rotation = { x: rot.x, y: rot.y + radians, z: rot.z };
+    },
+    moveToward(target, maxDistance, options) {
+      const vec = resolveVec3Input(target);
+      if (!vec) return false;
+      const cur = handle.position;
+      const dx = vec.x - cur.x;
+      const dy = options?.planeXZ ? 0 : vec.y - cur.y;
+      const dz = vec.z - cur.z;
+      const dist = Math.hypot(dx, dy, dz);
+      if (options?.faceTarget && (Math.abs(dx) > 1e-5 || Math.abs(dz) > 1e-5)) {
+        const yaw = Math.atan2(dx, dz);
+        const r = handle.rotation;
+        handle.rotation = { x: r.x, y: yaw, z: r.z };
+      }
+      if (dist <= 1e-4 || dist <= maxDistance) {
+        handle.position = { x: vec.x, y: options?.planeXZ ? cur.y : vec.y, z: vec.z };
+        return true;
+      }
+      const ratio = maxDistance / dist;
+      handle.position = {
+        x: cur.x + dx * ratio,
+        y: cur.y + dy * ratio,
+        z: cur.z + dz * ratio
+      };
+      return false;
+    },
+    lookAt(target, options) {
+      const vec = resolveVec3Input(target);
+      if (!vec || !Number.isFinite(vec.x) || !Number.isFinite(vec.y) || !Number.isFinite(vec.z)) return;
+      const cur = handle.position;
+      if (options?.yOnly) {
+        const dx = vec.x - cur.x;
+        const dz = vec.z - cur.z;
+        if (Math.abs(dx) > 1e-5 || Math.abs(dz) > 1e-5) {
+          const r = handle.rotation;
+          handle.rotation = { x: r.x, y: Math.atan2(dx, dz), z: r.z };
+        }
+        return;
+      }
+      if (!obj) {
+        const dx = vec.x - cur.x;
+        const dz = vec.z - cur.z;
+        const dy = vec.y - cur.y;
+        const horiz = Math.hypot(dx, dz);
+        const yaw = Math.atan2(dx, dz);
+        const pitch = -Math.atan2(dy, Math.max(1e-5, horiz));
+        handle.rotation = { x: pitch, y: yaw, z: 0 };
+        return;
+      }
+      if (node.kind === "camera") {
+        const p = obj.position;
+        obj.lookAt(2 * p.x - vec.x, 2 * p.y - vec.y, 2 * p.z - vec.z);
+      } else {
+        obj.lookAt(vec.x, vec.y, vec.z);
+      }
+      node.rotation[0] = obj.rotation.x * 180 / Math.PI;
+      node.rotation[1] = obj.rotation.y * 180 / Math.PI;
+      node.rotation[2] = obj.rotation.z * 180 / Math.PI;
+    },
+    sendMessage(name, payload) {
+      messageQueue.push({ targetNodeId: node.id, name, payload, senderId: node.id });
+    },
+    broadcast(name, payload) {
+      messageQueue.push({ targetNodeId: null, name, payload, senderId: node.id });
+    },
+    getBehavior: (behavior) => handle.getBehavior(behavior),
+    findNodeById: (id) => makeNodeHandle(id, host),
+    findNodesByTag: (tag) => {
+      const all = world3.getNodes();
+      return Object.values(all).filter((n) => !isNodePooledInactive(n.id, all) && nodeHasTag(n, tag)).map((n) => makeNodeHandle(n.id, host)).filter(Boolean);
+    },
+    findNodesInRadius: (center, radius, tag) => {
+      const r2 = radius * radius;
+      const all = world3.getNodes();
+      return Object.values(all).filter((n) => {
+        if (isNodePooledInactive(n.id, all)) return false;
+        if (tag && !nodeHasTag(n, tag)) return false;
+        const p = host.resolveObject(n.id)?.position;
+        const x = p ? p.x : n.position[0];
+        const y = p ? p.y : n.position[1];
+        const z = p ? p.z : n.position[2];
+        const dx = x - center.x;
+        const dy = y - center.y;
+        const dz = z - center.z;
+        return dx * dx + dy * dy + dz * dz <= r2;
+      }).map((n) => makeNodeHandle(n.id, host)).filter(Boolean);
+    },
+    cloneNode: (templateOrName, opts) => {
+      const tpl = resolveTemplateNode(templateOrName, world3.getNodes());
+      if (!tpl) return null;
+      const spawnedId = cloneSceneSubtree(tpl, opts, host);
+      if (!spawnedId) return null;
+      if (opts?.initMessage) {
+        messageQueue.push({ targetNodeId: spawnedId, name: opts.initMessage, payload: opts.initPayload, senderId: node.id });
+      }
+      return makeNodeHandle(spawnedId, host);
+    },
+    spawnPrefab: (prefabId, opts) => {
+      const posVec = resolveVec3Input(opts?.position);
+      const pos = posVec ? [posVec.x, posVec.y, posVec.z] : [0, 0, 0];
+      const parentId = typeof opts?.parent === "string" ? opts.parent : opts?.parent && typeof opts.parent === "object" ? opts.parent.id ?? null : null;
+      const spawnedId = world3.instantiatePrefab?.(prefabId, { parentId, position: pos }) ?? null;
+      if (!spawnedId) return null;
+      const spawnedNode = world3.getNodes()[spawnedId];
+      if (spawnedNode) {
+        if (opts?.name) spawnedNode.name = opts.name;
+        const rotVec = resolveVec3Input(opts?.rotation);
+        if (rotVec) {
+          spawnedNode.rotation = [rotVec.x * 180 / Math.PI, rotVec.y * 180 / Math.PI, rotVec.z * 180 / Math.PI];
+        }
+        const scaleVec = resolveVec3Input(opts?.scale);
+        if (scaleVec) spawnedNode.scale = [scaleVec.x, scaleVec.y, scaleVec.z];
+      }
+      return makeNodeHandle(spawnedId, host);
+    },
+    destroyNode: (target) => {
+      const targetId = typeof target === "string" ? target : target?.id;
+      if (targetId) destroyOrReleaseNode(targetId, host);
+    },
+    pool: {
+      preload: (templateOrPrefab, count) => {
+        const key = resolvePoolKey(templateOrPrefab);
+        if (!key) return;
+        const targetCount = Math.max(0, Math.min(200, Math.floor(count)));
+        let bucket = poolBuckets.get(key);
+        if (!bucket) {
+          bucket = { all: [], idle: [] };
+          poolBuckets.set(key, bucket);
+        }
+        while (bucket.all.length < targetCount) {
+          const spawned = spawnFromTemplateOrPrefab(templateOrPrefab, { visible: false }, host);
+          if (!spawned) break;
+          if (!bucket.templatePos && spawned.templatePos) bucket.templatePos = spawned.templatePos;
+          if (!bucket.templateRotDeg && spawned.templateRotDeg) bucket.templateRotDeg = spawned.templateRotDeg;
+          if (!bucket.templateScale && spawned.templateScale) bucket.templateScale = spawned.templateScale;
+          if (bucket.templateTagId === void 0 && spawned.templateTagId !== void 0) bucket.templateTagId = spawned.templateTagId;
+          if (bucket.templateTagIds === void 0 && spawned.templateTagIds !== void 0) bucket.templateTagIds = spawned.templateTagIds;
+          pooledInactive.add(spawned.rootId);
+          nodePoolKey.set(spawned.rootId, key);
+          bucket.all.push(spawned.rootId);
+          bucket.idle.push(spawned.rootId);
+        }
+      },
+      acquire: (templateOrPrefab, opts) => {
+        const key = resolvePoolKey(templateOrPrefab);
+        if (!key) return null;
+        let bucket = poolBuckets.get(key);
+        if (!bucket) {
+          bucket = { all: [], idle: [] };
+          poolBuckets.set(key, bucket);
+        }
+        const allNodes = world3.getNodes();
+        let pickedId = null;
+        while (bucket.idle.length > 0) {
+          const cand = bucket.idle.pop();
+          if (allNodes[cand]) {
+            pickedId = cand;
+            break;
+          }
+        }
+        if (!pickedId) {
+          const spawned = spawnFromTemplateOrPrefab(templateOrPrefab, {
+            position: opts?.position,
+            rotation: opts?.rotation,
+            scale: opts?.scale,
+            visible: true
+          }, host);
+          if (!spawned) return null;
+          if (!bucket.templatePos && spawned.templatePos) bucket.templatePos = spawned.templatePos;
+          if (!bucket.templateRotDeg && spawned.templateRotDeg) bucket.templateRotDeg = spawned.templateRotDeg;
+          if (!bucket.templateScale && spawned.templateScale) bucket.templateScale = spawned.templateScale;
+          if (bucket.templateTagId === void 0 && spawned.templateTagId !== void 0) bucket.templateTagId = spawned.templateTagId;
+          if (bucket.templateTagIds === void 0 && spawned.templateTagIds !== void 0) bucket.templateTagIds = spawned.templateTagIds;
+          pickedId = spawned.rootId;
+          nodePoolKey.set(pickedId, key);
+          bucket.all.push(pickedId);
+        } else {
+          pooledInactive.delete(pickedId);
+          const n = world3.getNodes()[pickedId];
+          const objTarget = host.resolveObject(pickedId);
+          const posVec = resolveVec3Input(opts?.position);
+          const rotVec = resolveVec3Input(opts?.rotation);
+          const scaleVec = resolveVec3Input(opts?.scale);
+          if (n) {
+            n.visible = true;
+            n.tagId = bucket.templateTagId;
+            n.tagIds = bucket.templateTagIds ? [...bucket.templateTagIds] : void 0;
+            if (posVec) n.position = [posVec.x, posVec.y, posVec.z];
+            else if (bucket.templatePos) n.position = [...bucket.templatePos];
+            if (rotVec) n.rotation = [rotVec.x * 180 / Math.PI, rotVec.y * 180 / Math.PI, rotVec.z * 180 / Math.PI];
+            else if (bucket.templateRotDeg) n.rotation = [...bucket.templateRotDeg];
+            if (scaleVec) n.scale = [scaleVec.x, scaleVec.y, scaleVec.z];
+            else if (bucket.templateScale) n.scale = [...bucket.templateScale];
+          }
+          if (objTarget && n) {
+            objTarget.visible = true;
+            objTarget.position.set(n.position[0], n.position[1], n.position[2]);
+            objTarget.rotation.set(
+              n.rotation[0] * Math.PI / 180,
+              n.rotation[1] * Math.PI / 180,
+              n.rotation[2] * Math.PI / 180
+            );
+            objTarget.scale.set(n.scale[0], n.scale[1], n.scale[2]);
+          }
+        }
+        resetAndInvokeSpawn(pickedId, opts?.payload, host);
+        return makeNodeHandle(pickedId, host);
+      },
+      release: (target) => {
+        const targetId = typeof target === "string" ? target : target?.id;
+        if (targetId) destroyOrReleaseNode(targetId, host);
+      },
+      stats: (templateOrPrefab) => {
+        if (templateOrPrefab) {
+          const key = resolvePoolKey(templateOrPrefab);
+          const b = key ? poolBuckets.get(key) : void 0;
+          const total2 = b ? b.all.length : 0;
+          const pooled2 = b ? b.idle.length : 0;
+          return { active: Math.max(0, total2 - pooled2), pooled: pooled2, total: total2 };
+        }
+        let total = 0;
+        let pooled = 0;
+        for (const b of poolBuckets.values()) {
+          total += b.all.length;
+          pooled += b.idle.length;
+        }
+        return { active: Math.max(0, total - pooled), pooled, total };
+      }
+    },
+    after: (seconds, callback) => {
+      const id = nextTimerId++;
+      const delay = Math.max(0, Number(seconds) || 0);
+      scriptTimers.set(id, { id, nodeId: node.id, scriptId, remaining: delay, interval: delay, repeat: false, callback });
+      return id;
+    },
+    every: (seconds, callback) => {
+      const id = nextTimerId++;
+      const interval = Math.max(0.016, Number(seconds) || 0.1);
+      scriptTimers.set(id, { id, nodeId: node.id, scriptId, remaining: interval, interval, repeat: true, callback });
+      return id;
+    },
+    cancelTimer: (timerId) => {
+      scriptTimers.delete(timerId);
+    },
+    physics: {
+      raycast: (origin, dir, maxDistance) => {
+        const dist = host.probe?.(
+          [origin.x, origin.y, origin.z],
+          [dir.x, dir.y, dir.z],
+          maxDistance,
+          node.id
+        );
+        if (dist === null || dist === void 0) return null;
+        return {
+          node: handle,
+          point: {
+            x: origin.x + dir.x * dist,
+            y: origin.y + dir.y * dist,
+            z: origin.z + dir.z * dist
+          },
+          normal: { x: 0, y: 1, z: 0 },
+          distance: dist
+        };
+      },
+      sphereCast: (center, radius, options) => {
+        const nodes = world3.getNodes();
+        const r2 = radius * radius;
+        const hits = [];
+        for (const n of Object.values(nodes)) {
+          if (!n.visible || n.id === node.id || isNodePooledInactive(n.id, nodes)) continue;
+          if (options?.tag && n.tagId !== options.tag && !n.tagIds?.includes(options.tag)) continue;
+          const o = host.resolveObject(n.id);
+          const px = o ? o.position.x : n.position[0];
+          const py = o ? o.position.y : n.position[1];
+          const pz = o ? o.position.z : n.position[2];
+          const dx = px - center.x;
+          const dy = py - center.y;
+          const dz = pz - center.z;
+          if (dx * dx + dy * dy + dz * dz <= r2) {
+            const h = makeNodeHandle(n.id, host);
+            if (h) hits.push(h);
+          }
+        }
+        return hits;
+      },
+      getVelocity: () => {
+        const st = getPhysicsBodyState(node.id);
+        if (!st) return { x: 0, y: 0, z: 0 };
+        return { x: st.linvel[0], y: st.linvel[1], z: st.linvel[2] };
+      },
+      setVelocity: (velocity) => {
+        setPhysicsVelocity(node.id, [velocity.x, velocity.y, velocity.z]);
+      },
+      applyImpulse: (impulse) => {
+        applyPhysicsImpulse(node.id, [impulse.x, impulse.y, impulse.z]);
+      },
+      applyForce: (force) => {
+        applyPhysicsForce(node.id, [force.x, force.y, force.z]);
+      }
+    },
+    nav: {
+      moveTo: (target, speed = 3.5) => {
+        const cur = handle.position;
+        const path = findNavigationPath([cur.x, cur.y, cur.z], [target.x, target.y, target.z]);
+        if (!path || path.length === 0) {
+          navAgents.delete(node.id);
+          return false;
+        }
+        navAgents.set(node.id, { path, index: 0, speed: Math.max(0.1, speed) });
+        return true;
+      },
+      stop: () => {
+        navAgents.delete(node.id);
+      },
+      get isMoving() {
+        return navAgents.has(node.id);
+      }
+    },
+    spline: {
+      create: (pointsOrParent, options) => {
+        const resolved = resolveSplinePointsInput(pointsOrParent, host);
+        return createSplinePath(resolved.points, {
+          closed: options?.closed ?? resolved.closed,
+          tension: options?.tension ?? resolved.tension
+        });
+      },
+      follow: (pointsOrParent, options) => {
+        let spline;
+        if (pointsOrParent && typeof pointsOrParent === "object" && "pointAtDistance" in pointsOrParent) {
+          spline = pointsOrParent;
+        } else {
+          const resolved = resolveSplinePointsInput(pointsOrParent, host);
+          spline = createSplinePath(resolved.points, {
+            closed: options?.closed ?? options?.loop ?? resolved.closed,
+            tension: options?.tension ?? resolved.tension
+          });
+        }
+        if (spline.points.length === 0) {
+          splineFollowAgents.delete(node.id);
+          return false;
+        }
+        const startT = Math.max(0, Math.min(1, Number(options?.startProgress ?? 0)));
+        const startDist = startT * spline.length;
+        const startPos = spline.pointAtDistance(startDist);
+        handle.position = {
+          x: startPos.x,
+          y: options?.planeXZ ? handle.position.y : startPos.y,
+          z: startPos.z
+        };
+        splineFollowAgents.set(node.id, {
+          nodeId: node.id,
+          spline,
+          distance: startDist,
+          speed: Math.max(0.01, Number(options?.speed ?? 4)),
+          direction: 1,
+          loop: Boolean(options?.loop),
+          pingPong: Boolean(options?.pingPong),
+          faceDirection: options?.faceDirection !== false,
+          planeXZ: Boolean(options?.planeXZ),
+          onArrive: options?.onArrive
+        });
+        return true;
+      },
+      stop: () => {
+        splineFollowAgents.delete(node.id);
+      },
+      get isFollowing() {
+        return splineFollowAgents.has(node.id);
+      },
+      get progress() {
+        const ag = splineFollowAgents.get(node.id);
+        if (!ag || ag.spline.length <= 1e-6) return 0;
+        return Math.max(0, Math.min(1, ag.distance / ag.spline.length));
+      }
+    },
+    tween: {
+      to: (target, props, duration, options) => {
+        const targetHandle = target && typeof target === "object" && "id" in target && typeof target.id === "string" ? makeNodeHandle(target.id, host) ?? target : target;
+        if (!targetHandle) return -1;
+        const startPos = props.position && targetHandle.position ? { ...targetHandle.position } : null;
+        const startRot = props.rotation && targetHandle.rotation ? { ...targetHandle.rotation } : null;
+        const startScale = props.scale && targetHandle.scale ? { ...targetHandle.scale } : null;
+        const endPos = resolveVec3Input(props.position);
+        const endRot = resolveVec3Input(props.rotation);
+        const endScale = resolveVec3Input(props.scale);
+        const id = nextTweenId++;
+        const dur = Math.max(1e-3, Number(duration) || 1e-3);
+        activeTweens.set(id, {
+          id,
+          ownerNodeId: node.id,
+          delayRemaining: Math.max(0, Number(options?.delay ?? 0)),
+          elapsed: 0,
+          duration: dur,
+          ease: options?.ease ?? "outQuad",
+          repeat: Math.max(0, Math.floor(options?.repeat ?? 0)),
+          yoyo: Boolean(options?.yoyo),
+          reversed: false,
+          completedCount: 0,
+          apply: (t) => {
+            if (startPos && endPos) {
+              targetHandle.position = {
+                x: startPos.x + (endPos.x - startPos.x) * t,
+                y: startPos.y + (endPos.y - startPos.y) * t,
+                z: startPos.z + (endPos.z - startPos.z) * t
+              };
+            }
+            if (startRot && endRot) {
+              targetHandle.rotation = {
+                x: startRot.x + (endRot.x - startRot.x) * t,
+                y: startRot.y + (endRot.y - startRot.y) * t,
+                z: startRot.z + (endRot.z - startRot.z) * t
+              };
+            }
+            if (startScale && endScale) {
+              targetHandle.scale = {
+                x: startScale.x + (endScale.x - startScale.x) * t,
+                y: startScale.y + (endScale.y - startScale.y) * t,
+                z: startScale.z + (endScale.z - startScale.z) * t
+              };
+            }
+          },
+          onUpdate: options?.onUpdate,
+          onComplete: options?.onComplete
+        });
+        return id;
+      },
+      value: (from, to, duration, onUpdate, options) => {
+        const id = nextTweenId++;
+        const dur = Math.max(1e-3, Number(duration) || 1e-3);
+        activeTweens.set(id, {
+          id,
+          ownerNodeId: node.id,
+          delayRemaining: Math.max(0, Number(options?.delay ?? 0)),
+          elapsed: 0,
+          duration: dur,
+          ease: options?.ease ?? "outQuad",
+          repeat: Math.max(0, Math.floor(options?.repeat ?? 0)),
+          yoyo: Boolean(options?.yoyo),
+          reversed: false,
+          completedCount: 0,
+          apply: (t) => {
+            onUpdate(from + (to - from) * t);
+          },
+          onComplete: options?.onComplete
+        });
+        return id;
+      },
+      punchScale: (strength = 0.25, duration = 0.22) => {
+        const base = { ...handle.scale };
+        const id = nextTweenId++;
+        const dur = Math.max(0.05, Number(duration) || 0.22);
+        activeTweens.set(id, {
+          id,
+          ownerNodeId: node.id,
+          delayRemaining: 0,
+          elapsed: 0,
+          duration: dur,
+          ease: "linear",
+          repeat: 0,
+          yoyo: false,
+          reversed: false,
+          completedCount: 0,
+          apply: (t) => {
+            const pulse = Math.sin(t * Math.PI) * strength;
+            handle.scale = {
+              x: base.x * (1 + pulse),
+              y: base.y * (1 + pulse),
+              z: base.z * (1 + pulse)
+            };
+          },
+          onComplete: () => {
+            handle.scale = base;
+          }
+        });
+        return id;
+      },
+      shakePosition: (intensity = 0.18, duration = 0.25) => {
+        const base = { ...handle.position };
+        const id = nextTweenId++;
+        const dur = Math.max(0.05, Number(duration) || 0.25);
+        activeTweens.set(id, {
+          id,
+          ownerNodeId: node.id,
+          delayRemaining: 0,
+          elapsed: 0,
+          duration: dur,
+          ease: "linear",
+          repeat: 0,
+          yoyo: false,
+          reversed: false,
+          completedCount: 0,
+          apply: (t) => {
+            const decay = 1 - t;
+            const amp = intensity * decay;
+            handle.position = {
+              x: base.x + (Math.random() * 2 - 1) * amp,
+              y: base.y + (Math.random() * 2 - 1) * amp,
+              z: base.z + (Math.random() * 2 - 1) * amp
+            };
+          },
+          onComplete: () => {
+            handle.position = base;
+          }
+        });
+        return id;
+      },
+      cancel: (tweenId) => {
+        activeTweens.delete(tweenId);
+      },
+      cancelAll: () => {
+        for (const [twId, tw] of activeTweens.entries()) {
+          if (tw.ownerNodeId === node.id) activeTweens.delete(twId);
+        }
+      }
+    },
+    curve: buildCurveApi(),
+    crowd: {
+      moveTo: (target, options) => {
+        const v = resolveVec3Input(target);
+        if (!v) return;
+        setCrowdTarget(node.id, v, options);
+      },
+      stop: () => stopCrowdAgent(node.id),
+      get isMoving() {
+        return isCrowdMoving(node.id);
+      },
+      formation: (units, center, options) => {
+        const c = resolveVec3Input(center);
+        if (!c) return;
+        const nodes = world3.getNodes();
+        const ids = units.map((u) => resolveTemplateNode(u, nodes)?.id ?? (typeof u === "string" ? u : u?.id)).filter((id) => Boolean(id));
+        setCrowdFormation(ids, c, options);
+      },
+      stats: () => getCrowdStats()
+    },
+    projectile: {
+      launch: (options) => {
+        const nodes = world3.getNodes();
+        const targetId = options?.target ? resolveTemplateNode(options.target, nodes)?.id ?? (typeof options.target === "string" ? options.target : options.target?.id) : null;
+        const ownerId = options?.owner ? resolveTemplateNode(options.owner, nodes)?.id ?? (typeof options.owner === "string" ? options.owner : options.owner?.id) : node.id;
+        launchProjectile(node.id, {
+          direction: options?.direction ? resolveVec3Input(options.direction) ?? void 0 : void 0,
+          targetId,
+          ownerId,
+          mode: options?.mode,
+          speed: options?.speed,
+          gravity: options?.gravity,
+          turnRate: options?.turnRate,
+          maxLifetime: options?.maxLifetime,
+          hitRadius: options?.hitRadius,
+          targetTag: options?.targetTag,
+          damage: options?.damage,
+          destroyOnHit: options?.destroyOnHit,
+          onHit: options?.onHit ? (hitNodeId, pos) => {
+            options.onHit(makeNodeHandle(hitNodeId, host), pos);
+          } : void 0
+        });
+      },
+      reset: () => resetProjectileState(node.id)
+    },
+    anim: {
+      playBody: (clipName, opts) => {
+        world3.playBody?.(node.id, clipName, opts);
+      },
+      playUpper: (clipName, opts) => {
+        world3.playUpper?.(node.id, clipName, opts);
+      },
+      stopUpper: (fade2) => world3.stopUpper?.(node.id, fade2)
+    },
+    audio: {
+      playSfx: (assetId, opts) => {
+        const now = typeof performance !== "undefined" ? performance.now() : Date.now();
+        const last = sfxCooldownAt.get(assetId) ?? 0;
+        if (now - last < 40) return;
+        sfxCooldownAt.set(assetId, now);
+        playSound({ assetId, bus: "sfx", volume: opts?.volume, playbackRate: opts?.pitch, parent: obj ?? void 0 });
+      },
+      playBgm: (assetId, opts) => {
+        playSound({ assetId, bus: "music", volume: opts?.volume, loop: opts?.loop ?? true });
+      },
+      stopBgm: () => stopMusic()
+    },
+    fx: {
+      spawn: (effectId, position, options) => {
+        const nodes = world3.getNodes();
+        const id = `fx_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+        const s = options?.scale ?? 1;
+        const fxNode = {
+          ...node,
+          id,
+          name: `FX_${effectId.slice(0, 8)}`,
+          kind: "effect",
+          parentId: null,
+          visible: true,
+          locked: false,
+          position: [position.x, position.y, position.z],
+          rotation: [0, 0, 0],
+          scale: [s, s, s],
+          castShadow: false,
+          receiveShadow: false,
+          assetId: effectId,
+          slots: [],
+          gameplay: {},
+          physics: void 0,
+          effect: {
+            assetId: effectId,
+            quarksVersion: "1.0",
+            playing: true,
+            materialAssetId: null,
+            simulation: null
+          }
+        };
+        world3.setNodes({ ...nodes, [id]: fxNode });
+        const ttl = options?.autoDestroySec !== void 0 ? options.autoDestroySec : 3;
+        if (ttl > 0) {
+          const tid = nextTimerId++;
+          scriptTimers.set(tid, {
+            id: tid,
+            nodeId: id,
+            scriptId,
+            remaining: ttl,
+            interval: ttl,
+            repeat: false,
+            callback: () => destroyOrReleaseNode(id, host)
+          });
+        }
+      }
+    },
+    input: {
+      isPressed: (actionOrKey) => isActionPressed(actionOrKey) || isKeyHeld(actionOrKey) || isKeyHeld(`Key${actionOrKey.toUpperCase()}`),
+      justPressed: (actionOrKey) => wasActionTapped(actionOrKey) || wasKeyTapped(actionOrKey) || wasKeyTapped(`Key${actionOrKey.toUpperCase()}`),
+      isKeyPressed: (code) => isKeyHeld(code) || isKeyHeld(`Key${code.toUpperCase()}`),
+      justReleased: () => false,
+      axis1D: (action) => isActionPressed(action) ? 1 : 0,
+      axis2D: (action) => getActionAxis2D(action),
+      pointerDelta: () => ({ ...framePointerDelta }),
+      pointerPosition: () => ({ ...framePointerPos }),
+      wheelDelta: () => frameWheelDelta,
+      isMouseButtonPressed: (button) => (currMouseButtons & mouseButtonMask(button)) !== 0,
+      justPressedMouseButton: (button) => (currMouseButtons & mouseButtonMask(button)) !== 0 && (prevMouseButtons & mouseButtonMask(button)) === 0,
+      justReleasedMouseButton: (button) => (currMouseButtons & mouseButtonMask(button)) === 0 && (prevMouseButtons & mouseButtonMask(button)) !== 0
+    },
+    ui: {
+      getVar: (key) => uiValues().variables[key],
+      setVar: (key, value) => writeUiVariable(key, value),
+      onEvent: (eventName, handler) => {
+        ensureUiClickBridge();
+        const instKey = instanceKey2(node.id, scriptId);
+        let byEvent = uiEventHandlers.get(instKey);
+        if (!byEvent) {
+          byEvent = /* @__PURE__ */ new Map();
+          uiEventHandlers.set(instKey, byEvent);
+        }
+        let set = byEvent.get(eventName);
+        if (!set) {
+          set = /* @__PURE__ */ new Set();
+          byEvent.set(eventName, set);
+        }
+        set.add(handler);
+        return () => {
+          set?.delete(handler);
+        };
+      },
+      showScreen: (screenIdOrName) => {
+        const sid = resolveScreenNodeId(screenIdOrName);
+        if (sid) setScreenVisible(sid, true);
+      },
+      hideScreen: (screenIdOrName) => {
+        const sid = resolveScreenNodeId(screenIdOrName);
+        if (sid) setScreenVisible(sid, false);
+      },
+      toggleScreen: (screenIdOrName) => {
+        const sid = resolveScreenNodeId(screenIdOrName);
+        if (!sid) return;
+        const nodeTarget = world3.getNodes()[sid];
+        const curMap = uiValues().screens;
+        const cur = sid in curMap ? curMap[sid] : Boolean(nodeTarget?.screen?.visibleOnPlay ?? true);
+        setScreenVisible(sid, !cur);
+      },
+      isScreenVisible: (screenIdOrName) => {
+        const sid = resolveScreenNodeId(screenIdOrName);
+        if (!sid) return false;
+        const nodeTarget = world3.getNodes()[sid];
+        const curMap = uiValues().screens;
+        return sid in curMap ? curMap[sid] : Boolean(nodeTarget?.screen?.visibleOnPlay ?? true);
+      },
+      worldToScreen: (position) => {
+        const vec = resolveVec3Input(position);
+        if (!vec || !host.worldToScreen) return null;
+        return host.worldToScreen([vec.x, vec.y, vec.z]);
+      }
+    },
+    scene: {
+      currentId: () => world3.getActiveSceneId(),
+      load: (sceneId, options) => {
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new CustomEvent("t3d:load-scene", { detail: { sceneId, spawnPoint: options?.spawnPoint } }));
+        }
+      }
+    },
+    global: {
+      get: (key) => globalMemory.get(key),
+      set: (key, value) => {
+        globalMemory.set(key, value);
+      },
+      remove: (key) => {
+        globalMemory.delete(key);
+      }
+    },
+    storage: {
+      get: (key) => persistentMemory.get(key),
+      set: (key, value) => {
+        persistentMemory.set(key, value);
+      },
+      remove: (key) => {
+        persistentMemory.delete(key);
+      }
+    },
+    tables: {
+      getRow: (tableId, rowId) => findRow(world3.getGameDatabase(), tableId, rowId)?.fields ?? null
+    },
+    log: (...args) => world3.log("info", args.map(String).join(" ")),
+    warn: (...args) => world3.log("warn", args.map(String).join(" "))
+  };
+}
+function buildSystemWorldApi(systemId, host) {
+  const world3 = getRuntimeWorld();
+  const sysNodeId = `__system__:${systemId}`;
+  const poolHelpers = {
+    preload: (templateOrPrefab, count) => {
+      const key = resolvePoolKey(templateOrPrefab);
+      if (!key) return;
+      const targetCount = Math.max(0, Math.min(200, Math.floor(count)));
+      let bucket = poolBuckets.get(key);
+      if (!bucket) {
+        bucket = { all: [], idle: [] };
+        poolBuckets.set(key, bucket);
+      }
+      while (bucket.all.length < targetCount) {
+        const spawned = spawnFromTemplateOrPrefab(templateOrPrefab, { visible: false }, host);
+        if (!spawned) break;
+        if (!bucket.templatePos && spawned.templatePos) bucket.templatePos = spawned.templatePos;
+        if (!bucket.templateRotDeg && spawned.templateRotDeg) bucket.templateRotDeg = spawned.templateRotDeg;
+        if (!bucket.templateScale && spawned.templateScale) bucket.templateScale = spawned.templateScale;
+        if (bucket.templateTagId === void 0 && spawned.templateTagId !== void 0) bucket.templateTagId = spawned.templateTagId;
+        if (bucket.templateTagIds === void 0 && spawned.templateTagIds !== void 0) bucket.templateTagIds = spawned.templateTagIds;
+        pooledInactive.add(spawned.rootId);
+        nodePoolKey.set(spawned.rootId, key);
+        bucket.all.push(spawned.rootId);
+        bucket.idle.push(spawned.rootId);
+      }
+    },
+    acquire: (templateOrPrefab, opts) => {
+      const key = resolvePoolKey(templateOrPrefab);
+      if (!key) return null;
+      let bucket = poolBuckets.get(key);
+      if (!bucket) {
+        bucket = { all: [], idle: [] };
+        poolBuckets.set(key, bucket);
+      }
+      const allNodes = world3.getNodes();
+      let pickedId = null;
+      while (bucket.idle.length > 0) {
+        const cand = bucket.idle.pop();
+        if (allNodes[cand]) {
+          pickedId = cand;
+          break;
+        }
+      }
+      if (!pickedId) {
+        const spawned = spawnFromTemplateOrPrefab(templateOrPrefab, {
+          position: opts?.position,
+          rotation: opts?.rotation,
+          scale: opts?.scale,
+          visible: true
+        }, host);
+        if (!spawned) return null;
+        if (!bucket.templatePos && spawned.templatePos) bucket.templatePos = spawned.templatePos;
+        if (!bucket.templateRotDeg && spawned.templateRotDeg) bucket.templateRotDeg = spawned.templateRotDeg;
+        if (!bucket.templateScale && spawned.templateScale) bucket.templateScale = spawned.templateScale;
+        if (bucket.templateTagId === void 0 && spawned.templateTagId !== void 0) bucket.templateTagId = spawned.templateTagId;
+        if (bucket.templateTagIds === void 0 && spawned.templateTagIds !== void 0) bucket.templateTagIds = spawned.templateTagIds;
+        pickedId = spawned.rootId;
+        nodePoolKey.set(pickedId, key);
+        bucket.all.push(pickedId);
+      } else {
+        pooledInactive.delete(pickedId);
+        const n = world3.getNodes()[pickedId];
+        const objTarget = host.resolveObject(pickedId);
+        const posVec = resolveVec3Input(opts?.position);
+        const rotVec = resolveVec3Input(opts?.rotation);
+        const scaleVec = resolveVec3Input(opts?.scale);
+        if (n) {
+          n.visible = true;
+          n.tagId = bucket.templateTagId;
+          n.tagIds = bucket.templateTagIds ? [...bucket.templateTagIds] : void 0;
+          if (posVec) n.position = [posVec.x, posVec.y, posVec.z];
+          else if (bucket.templatePos) n.position = [...bucket.templatePos];
+          if (rotVec) n.rotation = [rotVec.x * 180 / Math.PI, rotVec.y * 180 / Math.PI, rotVec.z * 180 / Math.PI];
+          else if (bucket.templateRotDeg) n.rotation = [...bucket.templateRotDeg];
+          if (scaleVec) n.scale = [scaleVec.x, scaleVec.y, scaleVec.z];
+          else if (bucket.templateScale) n.scale = [...bucket.templateScale];
+        }
+        if (objTarget && n) {
+          objTarget.visible = true;
+          objTarget.position.set(n.position[0], n.position[1], n.position[2]);
+          objTarget.rotation.set(
+            n.rotation[0] * Math.PI / 180,
+            n.rotation[1] * Math.PI / 180,
+            n.rotation[2] * Math.PI / 180
+          );
+          objTarget.scale.set(n.scale[0], n.scale[1], n.scale[2]);
+        }
+      }
+      resetAndInvokeSpawn(pickedId, opts?.payload, host);
+      return makeNodeHandle(pickedId, host);
+    },
+    release: (target) => {
+      const targetId = typeof target === "string" ? target : target?.id;
+      if (targetId) destroyOrReleaseNode(targetId, host);
+    },
+    stats: (templateOrPrefab) => {
+      if (templateOrPrefab) {
+        const key = resolvePoolKey(templateOrPrefab);
+        const b = key ? poolBuckets.get(key) : void 0;
+        const total2 = b ? b.all.length : 0;
+        const pooled2 = b ? b.idle.length : 0;
+        return { active: Math.max(0, total2 - pooled2), pooled: pooled2, total: total2 };
+      }
+      let total = 0;
+      let pooled = 0;
+      for (const b of poolBuckets.values()) {
+        total += b.all.length;
+        pooled += b.idle.length;
+      }
+      return { active: Math.max(0, total - pooled), pooled, total };
+    }
+  };
+  return {
+    get elapsedTime() {
+      return simElapsed;
+    },
+    findNodeById: (id) => makeNodeHandle(id, host),
+    findNodesByTag: (tag) => {
+      const all = world3.getNodes();
+      return Object.values(all).filter((n) => !isNodePooledInactive(n.id, all) && nodeHasTag(n, tag)).map((n) => makeNodeHandle(n.id, host)).filter(Boolean);
+    },
+    findNodesInRadius: (center, radius, tag) => {
+      const r2 = radius * radius;
+      const all = world3.getNodes();
+      return Object.values(all).filter((n) => {
+        if (isNodePooledInactive(n.id, all)) return false;
+        if (tag && !nodeHasTag(n, tag)) return false;
+        const p = host.resolveObject(n.id)?.position;
+        const x = p ? p.x : n.position[0];
+        const y = p ? p.y : n.position[1];
+        const z = p ? p.z : n.position[2];
+        const dx = x - center.x;
+        const dy = y - center.y;
+        const dz = z - center.z;
+        return dx * dx + dy * dy + dz * dz <= r2;
+      }).map((n) => makeNodeHandle(n.id, host)).filter(Boolean);
+    },
+    cloneNode: (templateOrName, opts) => {
+      const tpl = resolveTemplateNode(templateOrName, world3.getNodes());
+      if (!tpl) return null;
+      const spawnedId = cloneSceneSubtree(tpl, opts, host);
+      if (!spawnedId) return null;
+      const initMsg = typeof opts?.initMessage === "string" ? opts.initMessage : void 0;
+      if (initMsg) {
+        messageQueue.push({ targetNodeId: spawnedId, name: initMsg, payload: opts?.initPayload });
+      }
+      return makeNodeHandle(spawnedId, host);
+    },
+    spawnPrefab: (prefabId, opts) => {
+      const posVec = resolveVec3Input(opts?.position);
+      const pos = posVec ? [posVec.x, posVec.y, posVec.z] : [0, 0, 0];
+      const spawnedId = world3.instantiatePrefab?.(prefabId, { position: pos }) ?? null;
+      if (!spawnedId) return null;
+      const spawnedNode = world3.getNodes()[spawnedId];
+      if (spawnedNode && opts?.name) spawnedNode.name = opts.name;
+      return makeNodeHandle(spawnedId, host);
+    },
+    destroyNode: (target) => {
+      const targetId = typeof target === "string" ? target : target?.id;
+      if (targetId) destroyOrReleaseNode(targetId, host);
+    },
+    pool: poolHelpers,
+    broadcast: (name, payload) => {
+      messageQueue.push({ targetNodeId: null, name, payload });
+    },
+    after: (seconds, callback) => {
+      const id = nextTimerId++;
+      const delay = Math.max(0, Number(seconds) || 0);
+      scriptTimers.set(id, { id, nodeId: sysNodeId, scriptId: systemId, remaining: delay, interval: delay, repeat: false, callback });
+      return id;
+    },
+    every: (seconds, callback) => {
+      const id = nextTimerId++;
+      const interval = Math.max(0.016, Number(seconds) || 0.1);
+      scriptTimers.set(id, { id, nodeId: sysNodeId, scriptId: systemId, remaining: interval, interval, repeat: true, callback });
+      return id;
+    },
+    cancelTimer: (timerId) => {
+      scriptTimers.delete(timerId);
+    },
+    curve: buildCurveApi(),
+    crowd: {
+      moveTo: (targetNode, target, options) => {
+        const nodes = world3.getNodes();
+        const id = resolveTemplateNode(targetNode, nodes)?.id ?? (typeof targetNode === "string" ? targetNode : targetNode?.id);
+        const v = resolveVec3Input(target);
+        if (id && v) setCrowdTarget(id, v, options);
+      },
+      stop: (targetNode) => {
+        const nodes = world3.getNodes();
+        const id = resolveTemplateNode(targetNode, nodes)?.id ?? (typeof targetNode === "string" ? targetNode : targetNode?.id);
+        if (id) stopCrowdAgent(id);
+      },
+      formation: (units, center, options) => {
+        const c = resolveVec3Input(center);
+        if (!c) return;
+        const nodes = world3.getNodes();
+        const ids = units.map((u) => resolveTemplateNode(u, nodes)?.id ?? (typeof u === "string" ? u : u?.id)).filter((id) => Boolean(id));
+        setCrowdFormation(ids, c, options);
+      },
+      stats: () => getCrowdStats()
+    },
+    projectile: {
+      launch: (projNode, options) => {
+        const nodes = world3.getNodes();
+        const id = resolveTemplateNode(projNode, nodes)?.id ?? (typeof projNode === "string" ? projNode : projNode?.id);
+        if (!id) return;
+        const targetId = options?.target ? resolveTemplateNode(options.target, nodes)?.id ?? (typeof options.target === "string" ? options.target : options.target?.id) : null;
+        const ownerId = options?.owner ? resolveTemplateNode(options.owner, nodes)?.id ?? (typeof options.owner === "string" ? options.owner : options.owner?.id) : null;
+        launchProjectile(id, {
+          direction: options?.direction ? resolveVec3Input(options.direction) ?? void 0 : void 0,
+          targetId,
+          ownerId,
+          mode: options?.mode,
+          speed: options?.speed,
+          gravity: options?.gravity,
+          turnRate: options?.turnRate,
+          maxLifetime: options?.maxLifetime,
+          hitRadius: options?.hitRadius,
+          targetTag: options?.targetTag,
+          damage: options?.damage,
+          destroyOnHit: options?.destroyOnHit,
+          onHit: options?.onHit ? (hitNodeId, pos) => {
+            options.onHit(makeNodeHandle(hitNodeId, host), pos);
+          } : void 0
+        });
+      },
+      reset: (projNode) => {
+        const nodes = world3.getNodes();
+        const id = resolveTemplateNode(projNode, nodes)?.id ?? (typeof projNode === "string" ? projNode : projNode?.id);
+        if (id) resetProjectileState(id);
+      }
+    },
+    input: {
+      isPressed: (actionOrKey) => isActionPressed(actionOrKey) || isKeyHeld(actionOrKey) || isKeyHeld(`Key${actionOrKey.toUpperCase()}`),
+      justPressed: (actionOrKey) => wasActionTapped(actionOrKey) || wasKeyTapped(actionOrKey) || wasKeyTapped(`Key${actionOrKey.toUpperCase()}`),
+      isKeyPressed: (code) => isKeyHeld(code) || isKeyHeld(`Key${code.toUpperCase()}`),
+      justReleased: () => false,
+      axis1D: (action) => isActionPressed(action) ? 1 : 0,
+      axis2D: (action) => getActionAxis2D(action),
+      pointerDelta: () => ({ ...framePointerDelta }),
+      pointerPosition: () => ({ ...framePointerPos }),
+      wheelDelta: () => frameWheelDelta,
+      isMouseButtonPressed: (button) => (currMouseButtons & mouseButtonMask(button)) !== 0,
+      justPressedMouseButton: (button) => (currMouseButtons & mouseButtonMask(button)) !== 0 && (prevMouseButtons & mouseButtonMask(button)) === 0,
+      justReleasedMouseButton: (button) => (currMouseButtons & mouseButtonMask(button)) === 0 && (prevMouseButtons & mouseButtonMask(button)) !== 0
+    },
+    ui: {
+      getVar: (key) => uiValues().variables[key],
+      setVar: (key, value) => writeUiVariable(key, value),
+      onEvent: (eventName, handler) => {
+        ensureUiClickBridge();
+        const instKey = `sys:${systemId}`;
+        let byEvent = uiEventHandlers.get(instKey);
+        if (!byEvent) {
+          byEvent = /* @__PURE__ */ new Map();
+          uiEventHandlers.set(instKey, byEvent);
+        }
+        let set = byEvent.get(eventName);
+        if (!set) {
+          set = /* @__PURE__ */ new Set();
+          byEvent.set(eventName, set);
+        }
+        set.add(handler);
+        return () => {
+          set?.delete(handler);
+        };
+      },
+      showScreen: (screenIdOrName) => {
+        const sid = resolveScreenNodeId(screenIdOrName);
+        if (sid) setScreenVisible(sid, true);
+      },
+      hideScreen: (screenIdOrName) => {
+        const sid = resolveScreenNodeId(screenIdOrName);
+        if (sid) setScreenVisible(sid, false);
+      },
+      toggleScreen: (screenIdOrName) => {
+        const sid = resolveScreenNodeId(screenIdOrName);
+        if (!sid) return;
+        const nodeTarget = world3.getNodes()[sid];
+        const curMap = uiValues().screens;
+        const cur = sid in curMap ? curMap[sid] : Boolean(nodeTarget?.screen?.visibleOnPlay ?? true);
+        setScreenVisible(sid, !cur);
+      },
+      isScreenVisible: (screenIdOrName) => {
+        const sid = resolveScreenNodeId(screenIdOrName);
+        if (!sid) return false;
+        const nodeTarget = world3.getNodes()[sid];
+        const curMap = uiValues().screens;
+        return sid in curMap ? curMap[sid] : Boolean(nodeTarget?.screen?.visibleOnPlay ?? true);
+      },
+      worldToScreen: (position) => {
+        const vec = resolveVec3Input(position);
+        if (!vec || !host.worldToScreen) return null;
+        return host.worldToScreen([vec.x, vec.y, vec.z]);
+      }
+    },
+    scene: {
+      currentId: () => world3.getActiveSceneId(),
+      load: (sceneId, options) => {
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new CustomEvent("t3d:load-scene", { detail: { sceneId, spawnPoint: options?.spawnPoint } }));
+        }
+      }
+    },
+    global: {
+      get: (key) => globalMemory.get(key),
+      set: (key, value) => {
+        globalMemory.set(key, value);
+      },
+      remove: (key) => {
+        globalMemory.delete(key);
+      }
+    },
+    storage: {
+      get: (key) => persistentMemory.get(key),
+      set: (key, value) => {
+        persistentMemory.set(key, value);
+      },
+      remove: (key) => {
+        persistentMemory.delete(key);
+      }
+    },
+    tables: {
+      getRow: (tableId, rowId) => findRow(world3.getGameDatabase(), tableId, rowId)?.fields ?? null
+    },
+    log: (...args) => world3.log("info", args.map(String).join(" ")),
+    warn: (...args) => world3.log("warn", args.map(String).join(" "))
+  };
+}
+function createRuntimeSdk() {
+  return {
+    defineBehavior: (def) => ({ __t3dKind: "behavior", ...def }),
+    defineSystem: (def) => ({ __t3dKind: "system", ...def })
+  };
+}
+function compileAndRegisterScript(id, fileName, source) {
+  const transpiled = checkAndTranspileTs(fileName, source);
+  if (!transpiled.ok || !transpiled.jsCode) {
+    return { ok: false, diagnostics: transpiled.diagnostics };
+  }
+  const evaluated = evaluateTranspiledModule(fileName, transpiled.jsCode, {
+    "t3d/runtime": createRuntimeSdk()
+  });
+  if (!evaluated.ok || !evaluated.exports) {
+    return { ok: false, diagnostics: evaluated.diagnostics };
+  }
+  const exp3 = evaluated.exports;
+  if (exp3.__t3dKind === "system") {
+    const def2 = exp3;
+    const prev = compiledSystems.get(id);
+    prev?.unregister();
+    const baseOrder = def2.stage === "preRender" ? RUNTIME_STAGE.PRE_RENDER - 1 : def2.stage === "postAnimation" ? RUNTIME_STAGE.POST_ANIMATION : def2.stage === "postPhysics" ? RUNTIME_STAGE.PHYSICS_NAV + 5 : RUNTIME_STAGE.PRE_PHYSICS + 1;
+    const sysEntry = {
+      def: def2,
+      mounted: false,
+      state: def2.createState ? { ...def2.createState() } : def2.state ? { ...def2.state() } : {},
+      unregister: () => {
+      }
+    };
+    const unregister4 = registerRuntimeSystem(
+      `script.${id}`,
+      baseOrder + (def2.order ?? 0),
+      (dt, host) => {
+        if (getRuntimeWorld().getPlayState() !== "playing") return;
+        const api = buildSystemWorldApi(id, host);
+        try {
+          if (!sysEntry.mounted) {
+            sysEntry.mounted = true;
+            sysEntry.state = def2.createState ? { ...def2.createState() } : def2.state ? { ...def2.state() } : {};
+            def2.onMount?.(api, sysEntry.state);
+            def2.onInit?.(api, sysEntry.state);
+          }
+          def2.onStep?.(api, sysEntry.state, dt);
+          def2.onUpdate?.(api, sysEntry.state, dt);
+        } catch (error) {
+          getRuntimeWorld().log("error", `\u7CFB\u7EDF "${def2.name}" \u8FD0\u884C\u9519\u8BEF: ${error instanceof Error ? error.message : String(error)}`);
+        }
+      }
+    );
+    sysEntry.unregister = unregister4;
+    compiledSystems.set(id, sysEntry);
+    return {
+      ok: true,
+      diagnostics: transpiled.diagnostics,
+      jsCode: transpiled.jsCode,
+      exports: { id, file: fileName, kind: "system", system: def2 }
+    };
+  }
+  const def = exp3;
+  if (exp3.__t3dKind !== "behavior" || typeof def.name !== "string" || !def.name.trim()) {
+    return {
+      ok: false,
+      diagnostics: [
+        {
+          file: fileName,
+          line: 1,
+          column: 1,
+          severity: "error",
+          message: "\u811A\u672C\u5FC5\u987B\u901A\u8FC7 export default defineBehavior({ name, description, params, onUpdate }) \u6216 defineSystem(...) \u5BFC\u51FA",
+          hint: '\u8BF7\u4ECE "t3d/runtime" \u5BFC\u5165 defineBehavior\uFF0C\u5E76\u63D0\u4F9B name\uFF08\u4E2D\u6587\u6807\u9898\uFF09\u3001description\uFF08\u4F5C\u7528\u8BF4\u660E\uFF09\u548C onUpdate(self, dt) \u56DE\u8C03\uFF1B\u4FEE\u6539\u4F4D\u7F6E\u8BF7\u6574\u4F53\u8D4B\u503C self.position = { x, y, z }'
+        }
+      ]
+    };
+  }
+  compiledBehaviors.set(id, def);
+  return {
+    ok: true,
+    diagnostics: transpiled.diagnostics,
+    jsCode: transpiled.jsCode,
+    exports: { id, file: fileName, kind: "behavior", behavior: def }
+  };
+}
+function clearScriptRuntimeState() {
+  for (const [sysId, sys] of compiledSystems.entries()) {
+    if (sys.mounted) {
+      sys.mounted = false;
+      const noopHost = { ready: false, resolveObject: () => null, updateAnimations: () => {
+      } };
+      const api = buildSystemWorldApi(sysId, noopHost);
+      try {
+        sys.def.onDispose?.(api, sys.state);
+        sys.def.onDestroy?.(api, sys.state);
+      } catch {
+      }
+      sys.state = {};
+    }
+  }
+  instanceStates.clear();
+  messageQueue.length = 0;
+  uiEventHandlers.clear();
+  uiEventQueue.length = 0;
+  globalMemory.clear();
+  navAgents.clear();
+  pooledInactive.clear();
+  nodePoolKey.clear();
+  poolBuckets.clear();
+  scriptTimers.clear();
+  splineFollowAgents.clear();
+  activeTweens.clear();
+  sfxCooldownAt.clear();
+  nextTimerId = 1;
+  nextTweenId = 1;
+  simElapsed = 0;
+  framePointerDelta = { x: 0, y: 0 };
+  framePointerPos = { x: 0, y: 0 };
+  frameWheelDelta = 0;
+  prevMouseButtons = 0;
+  currMouseButtons = 0;
+}
+function stepProjectScripts(dt, host) {
+  const world3 = getRuntimeWorld();
+  if (world3.getPlayState() !== "playing") {
+    clearScriptRuntimeState();
+    return;
+  }
+  ensureUiClickBridge();
+  bindProjectileRuntimeHooks({
+    onHit: ({ projectileId, targetId, ownerId, damage, position }) => {
+      messageQueue.push({
+        targetNodeId: targetId,
+        name: "onProjectileHit",
+        payload: { projectileId, targetId, ownerId, damage, position },
+        senderId: projectileId
+      });
+      messageQueue.push({
+        targetNodeId: projectileId,
+        name: "onProjectileHit",
+        payload: { projectileId, targetId, ownerId, damage, position },
+        senderId: projectileId
+      });
+    },
+    onRecycle: (nodeId, runtimeHost) => {
+      destroyOrReleaseNode(nodeId, runtimeHost);
+    },
+    isNodeInactive: (nodeId, nodes2) => isNodePooledInactive(nodeId, nodes2)
+  });
+  simElapsed += Math.max(0, dt);
+  framePointerDelta = host.peekPointerDelta?.() ?? host.pointerDelta?.() ?? { x: 0, y: 0 };
+  framePointerPos = host.pointerNormalized?.() ?? { x: 0, y: 0 };
+  frameWheelDelta = host.peekWheel?.() ?? host.wheel?.() ?? 0;
+  prevMouseButtons = currMouseButtons;
+  currMouseButtons = host.mouseButtons ? host.mouseButtons() : host.rightHeld?.() ? 2 : 0;
+  const nodes = world3.getNodes();
+  const activeKeys = /* @__PURE__ */ new Set();
+  for (const sysId of compiledSystems.keys()) {
+    activeKeys.add(`sys:${sysId}`);
+  }
+  if (navAgents.size > 0 && dt > 0) {
+    for (const [agentId, agent] of navAgents) {
+      const obj = host.resolveObject(agentId);
+      const n = nodes[agentId];
+      if (!obj && !n) {
+        navAgents.delete(agentId);
+        continue;
+      }
+      const targetPt = agent.path[agent.index];
+      if (!targetPt) {
+        navAgents.delete(agentId);
+        continue;
+      }
+      const curX = obj ? obj.position.x : n.position[0];
+      const curY = obj ? obj.position.y : n.position[1];
+      const curZ = obj ? obj.position.z : n.position[2];
+      const dx = targetPt[0] - curX;
+      const dy = targetPt[1] - curY;
+      const dz = targetPt[2] - curZ;
+      const dist = Math.hypot(dx, dy, dz);
+      const stepDist = agent.speed * dt;
+      if (dist <= Math.max(0.05, stepDist)) {
+        if (obj) obj.position.set(targetPt[0], targetPt[1], targetPt[2]);
+        agent.index += 1;
+        if (agent.index >= agent.path.length) navAgents.delete(agentId);
+      } else {
+        const inv = stepDist / dist;
+        if (obj) {
+          obj.position.set(curX + dx * inv, curY + dy * inv, curZ + dz * inv);
+          obj.rotation.y = Math.atan2(dx, dz);
+        }
+      }
+    }
+  }
+  for (const node of Object.values(nodes)) {
+    if (isNodePooledInactive(node.id, nodes)) continue;
+    const projectScripts = node.gameplay?.packs?.__project__;
+    if (!projectScripts || typeof projectScripts !== "object") continue;
+    for (const [scriptId, rawParams] of Object.entries(projectScripts)) {
+      if (rawParams && typeof rawParams === "object" && rawParams.__enabled === false) {
+        continue;
+      }
+      const def = compiledBehaviors.get(scriptId);
+      if (!def) continue;
+      const key = instanceKey2(node.id, scriptId);
+      activeKeys.add(key);
+      let rec = instanceStates.get(key);
+      if (!rec) {
+        rec = {
+          nodeId: node.id,
+          scriptId,
+          started: false,
+          state: def.state ? { ...def.state() } : {}
+        };
+        instanceStates.set(key, rec);
+      }
+      const ctx = buildScriptContext(node, scriptId, rawParams, rec.state, host);
+      measureCost(`script:${scriptId}`, () => {
+        try {
+          if (!rec.started) {
+            rec.started = true;
+            def.onStart?.(ctx);
+          }
+          def.onUpdate?.(ctx, dt);
+        } catch (error) {
+          world3.log("error", `\u811A\u672C "${def.name}" \u8FD0\u884C\u9519\u8BEF: ${error instanceof Error ? error.message : String(error)}`);
+        }
+      });
+    }
+  }
+  if (splineFollowAgents.size > 0 && dt > 0) {
+    for (const [agentId, ag] of Array.from(splineFollowAgents.entries())) {
+      const n = nodes[agentId];
+      const h = makeNodeHandle(agentId, host);
+      if (!n || !h || isNodePooledInactive(agentId, nodes)) {
+        splineFollowAgents.delete(agentId);
+        continue;
+      }
+      const totalLen = ag.spline.length;
+      if (totalLen <= 1e-6) {
+        splineFollowAgents.delete(agentId);
+        ag.onArrive?.();
+        continue;
+      }
+      let nextDist = ag.distance + ag.speed * dt * ag.direction;
+      let arrived = false;
+      if (ag.loop) {
+        nextDist = (nextDist % totalLen + totalLen) % totalLen;
+      } else if (ag.pingPong) {
+        if (nextDist >= totalLen) {
+          nextDist = totalLen - (nextDist - totalLen);
+          ag.direction = -1;
+        } else if (nextDist <= 0) {
+          nextDist = -nextDist;
+          ag.direction = 1;
+        }
+      } else {
+        if (nextDist >= totalLen) {
+          nextDist = totalLen;
+          arrived = true;
+        } else if (nextDist <= 0) {
+          nextDist = 0;
+          arrived = true;
+        }
+      }
+      ag.distance = nextDist;
+      const pt = ag.spline.pointAtDistance(nextDist);
+      const cur = h.position;
+      h.position = { x: pt.x, y: ag.planeXZ ? cur.y : pt.y, z: pt.z };
+      if (ag.faceDirection) {
+        const tan2 = ag.spline.tangentAtDistance(nextDist);
+        const tx = tan2.x * ag.direction;
+        const tz = tan2.z * ag.direction;
+        if (Math.abs(tx) > 1e-5 || Math.abs(tz) > 1e-5) {
+          const r = h.rotation;
+          h.rotation = { x: r.x, y: Math.atan2(tx, tz), z: r.z };
+        }
+      }
+      if (arrived) {
+        splineFollowAgents.delete(agentId);
+        try {
+          ag.onArrive?.();
+        } catch (error) {
+          world3.log("error", `Spline \u5230\u8FBE\u56DE\u8C03\u9519\u8BEF: ${error instanceof Error ? error.message : String(error)}`);
+        }
+      }
+    }
+  }
+  if (activeTweens.size > 0 && dt > 0) {
+    for (const tw of Array.from(activeTweens.values())) {
+      if (!activeTweens.has(tw.id)) continue;
+      const ownerExists = tw.ownerNodeId.startsWith("__system__:") || Boolean(nodes[tw.ownerNodeId]) && !isNodePooledInactive(tw.ownerNodeId, nodes);
+      if (!ownerExists) {
+        activeTweens.delete(tw.id);
+        continue;
+      }
+      if (tw.delayRemaining > 0) {
+        tw.delayRemaining -= dt;
+        if (tw.delayRemaining > 0) continue;
+        tw.elapsed += -tw.delayRemaining;
+        tw.delayRemaining = 0;
+      } else {
+        tw.elapsed += dt;
+      }
+      const rawT = Math.min(1, tw.elapsed / tw.duration);
+      const progress = tw.reversed ? 1 - rawT : rawT;
+      const eased = evalEasing(tw.ease, progress);
+      try {
+        tw.apply(eased);
+        tw.onUpdate?.(eased);
+      } catch (error) {
+        world3.log("error", `Tween \u66F4\u65B0\u9519\u8BEF: ${error instanceof Error ? error.message : String(error)}`);
+        activeTweens.delete(tw.id);
+        continue;
+      }
+      if (rawT >= 1) {
+        if (tw.completedCount < tw.repeat) {
+          tw.completedCount += 1;
+          tw.elapsed = 0;
+          if (tw.yoyo) tw.reversed = !tw.reversed;
+        } else {
+          activeTweens.delete(tw.id);
+          try {
+            tw.onComplete?.();
+          } catch (error) {
+            world3.log("error", `Tween \u5B8C\u6210\u56DE\u8C03\u9519\u8BEF: ${error instanceof Error ? error.message : String(error)}`);
+          }
+        }
+      }
+    }
+  }
+  if (scriptTimers.size > 0 && dt > 0) {
+    const timerSnapshot = Array.from(scriptTimers.values());
+    for (const timer of timerSnapshot) {
+      if (!scriptTimers.has(timer.id)) continue;
+      const isSystemTimer = timer.nodeId.startsWith("__system__:");
+      const tNode = isSystemTimer ? null : nodes[timer.nodeId];
+      if (!isSystemTimer && (!tNode || isNodePooledInactive(timer.nodeId, nodes))) {
+        scriptTimers.delete(timer.id);
+        continue;
+      }
+      timer.remaining -= dt;
+      if (timer.remaining <= 0) {
+        if (timer.repeat) {
+          timer.remaining += timer.interval;
+          if (timer.remaining <= 0) timer.remaining = timer.interval;
+        } else {
+          scriptTimers.delete(timer.id);
+        }
+        try {
+          timer.callback();
+        } catch (error) {
+          world3.log("error", `\u811A\u672C\u5B9A\u65F6\u5668\u56DE\u8C03\u9519\u8BEF: ${error instanceof Error ? error.message : String(error)}`);
+        }
+      }
+    }
+  }
+  if (messageQueue.length > 0) {
+    const batch = messageQueue.splice(0, messageQueue.length);
+    for (const msg of batch) {
+      for (const rec of instanceStates.values()) {
+        if (msg.targetNodeId && msg.targetNodeId !== rec.nodeId) continue;
+        const def = compiledBehaviors.get(rec.scriptId);
+        const node = nodes[rec.nodeId];
+        if (!def?.onMessage || !node) continue;
+        const rawParams = node.gameplay?.packs?.__project__?.[rec.scriptId];
+        if (rawParams && typeof rawParams === "object" && rawParams.__enabled === false) continue;
+        const ctx = buildScriptContext(node, rec.scriptId, rawParams, rec.state, host);
+        const sender = msg.senderId ? makeNodeHandle(msg.senderId, host) : void 0;
+        try {
+          def.onMessage(ctx, { name: msg.name, payload: msg.payload, sender });
+        } catch (error) {
+          world3.log("error", `\u811A\u672C "${def.name}" \u6D88\u606F\u5904\u7406\u9519\u8BEF: ${error instanceof Error ? error.message : String(error)}`);
+        }
+      }
+    }
+  }
+  if (uiEventQueue.length > 0) {
+    const uiBatch = uiEventQueue.splice(0, uiEventQueue.length);
+    for (const evt of uiBatch) {
+      for (const [instKey, byEvent] of uiEventHandlers.entries()) {
+        if (!activeKeys.has(instKey)) continue;
+        const handlers = byEvent.get(evt.eventName);
+        if (!handlers || handlers.size === 0) continue;
+        for (const fn of [...handlers]) {
+          try {
+            fn(evt.payload);
+          } catch (error) {
+            world3.log("error", `UI \u4E8B\u4EF6 "${evt.eventName}" \u5904\u7406\u9519\u8BEF: ${error instanceof Error ? error.message : String(error)}`);
+          }
+        }
+      }
+    }
+  }
+  for (const [key, rec] of instanceStates.entries()) {
+    if (activeKeys.has(key)) continue;
+    uiEventHandlers.delete(key);
+    const def = compiledBehaviors.get(rec.scriptId);
+    const node = nodes[rec.nodeId];
+    if (def?.onDestroy && node) {
+      const ctx = buildScriptContext(node, rec.scriptId, {}, rec.state, host);
+      try {
+        def.onDestroy(ctx);
+      } catch {
+      }
+    }
+    instanceStates.delete(key);
+  }
+}
+registerRuntimeSystem("core.projectScripts", RUNTIME_STAGE.PRE_PHYSICS + 2, stepProjectScripts);
+
+// src/core/codeAssets/shaderRuntime.ts
+init_fieldSchema();
+import { Color as Color5, DataTexture as DataTexture2, RGBAFormat as RGBAFormat2 } from "three";
+import * as tsl from "three/tsl";
+import { MeshBasicNodeMaterial as MeshBasicNodeMaterial3, MeshStandardNodeMaterial } from "three/webgpu";
+var textureResolver = null;
+var cachedFallbackTex = null;
+function fallbackWhiteTexture() {
+  if (!cachedFallbackTex) {
+    cachedFallbackTex = new DataTexture2(new Uint8Array([255, 255, 255, 255]), 1, 1, RGBAFormat2);
+    cachedFallbackTex.needsUpdate = true;
+  }
+  return cachedFallbackTex;
+}
+function resolveTextureAsset(raw) {
+  if (typeof raw === "string" && raw.trim() && textureResolver) {
+    const tex = textureResolver(raw.trim());
+    if (tex) return tex;
+  }
+  if (raw && typeof raw === "object" && "isTexture" in raw) {
+    return raw;
+  }
+  if (raw && typeof raw === "object" && "value" in raw) {
+    const val = raw.value;
+    if (val && typeof val === "object" && "isTexture" in val) return val;
+  }
+  return fallbackWhiteTexture();
+}
+function asNode(value) {
+  if (value === void 0 || value === null) return void 0;
+  if (typeof value === "number") return tsl.float(value);
+  if (typeof value === "boolean") return tsl.float(value ? 1 : 0);
+  if (typeof value === "string") return tsl.color(new Color5(value));
+  return value;
+}
+function paramToNode(schema, raw) {
+  const value = raw !== void 0 ? raw : defaultForSchema(schema);
+  if (schema.type === "number") return tsl.float(Number(value) || 0);
+  if (schema.type === "boolean") return tsl.float(value ? 1 : 0);
+  if (schema.type === "color") return tsl.color(new Color5(typeof value === "string" ? value : "#ffffff"));
+  if (schema.type === "vec2") {
+    const arr = Array.isArray(value) ? value : [0, 0];
+    return tsl.vec2(Number(arr[0]) || 0, Number(arr[1]) || 0);
+  }
+  if (schema.type === "vec3") {
+    const arr = Array.isArray(value) ? value : [0, 0, 0];
+    return tsl.vec3(Number(arr[0]) || 0, Number(arr[1]) || 0, Number(arr[2]) || 0);
+  }
+  if (schema.type === "vec4") {
+    const arr = Array.isArray(value) ? value : [0, 0, 0, 1];
+    return tsl.vec4(Number(arr[0]) || 0, Number(arr[1]) || 0, Number(arr[2]) || 0, Number(arr[3]) ?? 1);
+  }
+  if (schema.type === "texture" || schema.type === "ref" && schema.target === "asset") {
+    return tsl.texture(resolveTextureAsset(value));
+  }
+  return value;
+}
+function createShaderSdk() {
+  return {
+    defineShader: (def) => def,
+    float: (x = 0) => tsl.float(x),
+    vec2: (x = 0, y = 0) => tsl.vec2(x, y),
+    vec3: (x = 0, y = 0, z = 0) => tsl.vec3(x, y, z),
+    vec4: (x = 0, y = 0, z = 0, w = 1) => tsl.vec4(x, y, z, w),
+    color: (hexOrR, g, b) => typeof hexOrR === "string" ? tsl.color(new Color5(hexOrR)) : tsl.vec3(hexOrR, g ?? hexOrR, b ?? hexOrR),
+    mix: (a, b, t) => tsl.mix(asNode(a), asNode(b), asNode(t)),
+    clamp: (x, minVal, maxVal) => tsl.clamp(asNode(x), asNode(minVal), asNode(maxVal)),
+    smoothstep: (edge0, edge1, x) => tsl.smoothstep(asNode(edge0), asNode(edge1), asNode(x)),
+    step: (edge, x) => tsl.step(asNode(edge), asNode(x)),
+    tan: (x) => tsl.tan(asNode(x)),
+    sin: (x) => tsl.sin(asNode(x)),
+    cos: (x) => tsl.cos(asNode(x)),
+    abs: (x) => tsl.abs(asNode(x)),
+    sign: (x) => tsl.sign(asNode(x)),
+    floor: (x) => tsl.floor(asNode(x)),
+    ceil: (x) => tsl.ceil(asNode(x)),
+    fract: (x) => tsl.fract(asNode(x)),
+    pow: (x, y) => tsl.pow(asNode(x), asNode(y)),
+    sqrt: (x) => tsl.sqrt(asNode(x)),
+    exp: (x) => tsl.exp(asNode(x)),
+    log: (x) => tsl.log(asNode(x)),
+    saturate: (x) => tsl.saturate(asNode(x)),
+    min: (a, b) => tsl.min(asNode(a), asNode(b)),
+    max: (a, b) => tsl.max(asNode(a), asNode(b)),
+    dot: (a, b) => tsl.dot(asNode(a), asNode(b)),
+    cross: (a, b) => tsl.cross(asNode(a), asNode(b)),
+    normalize: (v) => tsl.normalize(asNode(v)),
+    length: (v) => tsl.length(asNode(v)),
+    distance: (a, b) => tsl.distance(asNode(a), asNode(b)),
+    reflect: (incident, normal) => tsl.reflect(asNode(incident), asNode(normal)),
+    fwidth: (x) => tsl.fwidth(asNode(x)),
+    fresnel: (normalNode, viewDirNode, power = 3) => {
+      const n = tsl.normalize(asNode(normalNode));
+      const v = tsl.normalize(asNode(viewDirNode));
+      const ndotv = tsl.clamp(
+        tsl.dot(n, v),
+        0,
+        1
+      );
+      return tsl.pow(ndotv.oneMinus(), asNode(power));
+    },
+    uv: (index = 0) => tsl.uv(index),
+    time: tsl.time,
+    deltaTime: tsl.deltaTime,
+    normalView: tsl.normalView,
+    normalWorld: tsl.normalWorld,
+    normalLocal: tsl.normalLocal,
+    positionWorld: tsl.positionWorld,
+    positionLocal: tsl.positionLocal,
+    viewDirection: tsl.positionViewDirection,
+    cameraPosition: tsl.cameraPosition,
+    screenUV: tsl.screenUV,
+    vertexColor: () => tsl.vertexColor(),
+    texture: (texRef, uvNode) => {
+      const tex = resolveTextureAsset(texRef);
+      return uvNode !== void 0 ? tsl.texture(tex, asNode(uvNode)) : tsl.texture(tex);
+    }
+  };
+}
+var VALID_SURFACE_KEYS = /* @__PURE__ */ new Set([
+  "baseColor",
+  "normal",
+  "roughness",
+  "metalness",
+  "emissive",
+  "opacity",
+  "vertexOffset"
+]);
+function buildMaterialFromShader(def, overrides, options) {
+  const paramValues = {};
+  const runtimeParams = {};
+  const accessedParams = /* @__PURE__ */ new Set();
+  const declaredKeys = Object.keys(def.params ?? {});
+  for (const [key, schema] of Object.entries(def.params ?? {})) {
+    const val = overrides && key in overrides ? overrides[key] : defaultForSchema(schema);
+    paramValues[key] = val;
+    runtimeParams[key] = paramToNode(schema, val);
+  }
+  const trackedParams = new Proxy(runtimeParams, {
+    get(target, prop, receiver) {
+      if (typeof prop === "string") accessedParams.add(prop);
+      return Reflect.get(target, prop, receiver);
+    }
+  });
+  const surfaceArg = new Proxy(
+    {
+      params: trackedParams,
+      uv: tsl.uv(0),
+      time: tsl.time,
+      deltaTime: tsl.deltaTime,
+      positionLocal: tsl.positionLocal,
+      positionWorld: tsl.positionWorld,
+      normalLocal: tsl.normalLocal,
+      normalView: tsl.normalView,
+      normalWorld: tsl.normalWorld,
+      viewDirection: tsl.positionViewDirection,
+      cameraPosition: tsl.cameraPosition,
+      screenUV: tsl.screenUV,
+      vertexColor: tsl.vertexColor()
+    },
+    {
+      get(target, prop, receiver) {
+        if (typeof prop === "string" && prop in runtimeParams) {
+          return Reflect.get(trackedParams, prop);
+        }
+        return Reflect.get(target, prop, receiver);
+      }
+    }
+  );
+  const out = def.surface(surfaceArg);
+  const warnings = [];
+  if (!out || typeof out !== "object") {
+    throw new Error("surface() \u5FC5\u987B\u8FD4\u56DE\u4E00\u4E2A\u5305\u542B\u8868\u9762\u8F93\u51FA\u5C5E\u6027\u7684\u5BF9\u8C61");
+  }
+  const outKeys = Object.keys(out).filter((k) => out[k] !== void 0);
+  const unknownKeys = outKeys.filter((k) => !VALID_SURFACE_KEYS.has(k));
+  if (unknownKeys.length > 0) {
+    const mapped = unknownKeys.map((k) => k === "color" ? "color\uFF08\u5E94\u4E3A baseColor\uFF09" : k).join("\u3001");
+    if (options?.strict) {
+      throw new Error(`surface() \u8FD4\u56DE\u4E86\u65E0\u6548\u5B57\u6BB5\uFF1A${mapped}`);
+    }
+    warnings.push(`surface() \u8FD4\u56DE\u4E86\u672A\u8BC6\u522B\u5B57\u6BB5\uFF1A${mapped}`);
+  }
+  const validCount = outKeys.filter((k) => VALID_SURFACE_KEYS.has(k)).length;
+  if (validCount === 0 && !out.color) {
+    throw new Error("surface() \u672A\u8FD4\u56DE\u4EFB\u4F55\u6709\u6548\u8F93\u51FA\u5B57\u6BB5\uFF08\u5982 baseColor / emissive / roughness / opacity\uFF09");
+  }
+  const unusedParams = declaredKeys.filter((k) => !accessedParams.has(k));
+  if (unusedParams.length > 0) {
+    const msg = `params \u4E2D\u58F0\u660E\u4E86 ${unusedParams.join("\u3001")}\uFF0C\u4F46 surface() \u4E2D\u672A\u4F7F\u7528`;
+    if (options?.strict) {
+      throw new Error(msg);
+    }
+    warnings.push(msg);
+  }
+  if (out.opacity !== void 0 && !def.transparent) {
+    warnings.push("surface() \u8FD4\u56DE\u4E86 opacity\uFF0C\u5EFA\u8BAE\u8BBE\u7F6E transparent: true \u624D\u4F1A\u751F\u6548");
+  }
+  const isUnlit = def.mode === "unlit";
+  const material = isUnlit ? new MeshBasicNodeMaterial3() : new MeshStandardNodeMaterial();
+  const baseColorNode = out.baseColor !== void 0 ? out.baseColor : out.color;
+  if (baseColorNode !== void 0) {
+    ;
+    material.colorNode = asNode(baseColorNode);
+  }
+  if (out.opacity !== void 0) {
+    ;
+    material.opacityNode = asNode(out.opacity);
+  }
+  if (out.vertexOffset !== void 0) {
+    ;
+    material.positionNode = tsl.positionLocal.add(asNode(out.vertexOffset));
+  }
+  if (!isUnlit && material instanceof MeshStandardNodeMaterial) {
+    if (out.roughness !== void 0) material.roughnessNode = asNode(out.roughness);
+    if (out.metalness !== void 0) material.metalnessNode = asNode(out.metalness);
+    if (out.emissive !== void 0) material.emissiveNode = asNode(out.emissive);
+    if (out.normal !== void 0) material.normalNode = asNode(out.normal);
+  }
+  if (def.transparent) material.transparent = true;
+  if (def.doubleSided) material.side = 2;
+  material.needsUpdate = true;
+  return { material, paramValues, warnings };
+}
+function compileShaderSource(id, fileName, source, overrides) {
+  const transpiled = checkAndTranspileTs(fileName, source);
+  if (!transpiled.ok || !transpiled.jsCode) {
+    return { ok: false, diagnostics: transpiled.diagnostics };
+  }
+  const sdk = createShaderSdk();
+  const evaluated = evaluateTranspiledModule(fileName, transpiled.jsCode, {
+    "t3d/shader": sdk
+  });
+  if (!evaluated.ok || !evaluated.exports || typeof evaluated.exports.surface !== "function") {
+    return {
+      ok: false,
+      diagnostics: evaluated.diagnostics.length ? evaluated.diagnostics : [
+        {
+          file: fileName,
+          line: 1,
+          column: 1,
+          severity: "error",
+          message: "\u7740\u8272\u5668\u5FC5\u987B\u901A\u8FC7 export default defineShader({ ... }) \u5BFC\u51FA",
+          hint: "\u8BF7\u68C0\u67E5\u9ED8\u8BA4\u5BFC\u51FA\u662F\u5426\u5305\u542B name\u3001params \u548C surface \u51FD\u6570"
+        }
+      ]
+    };
+  }
+  try {
+    const { material, paramValues } = buildMaterialFromShader(evaluated.exports, overrides, { strict: true });
+    return {
+      ok: true,
+      diagnostics: transpiled.diagnostics,
+      jsCode: transpiled.jsCode,
+      exports: {
+        id,
+        file: fileName,
+        definition: evaluated.exports,
+        material,
+        paramValues
+      }
+    };
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    return {
+      ok: false,
+      diagnostics: [
+        {
+          file: fileName,
+          line: 1,
+          column: 1,
+          severity: "error",
+          message: `TSL \u7740\u8272\u5668\u6784\u5EFA\u5931\u8D25\uFF1A${msg}`,
+          hint: "\u8BF7\u68C0\u67E5 surface() \u8FD4\u56DE\u7684\u8282\u70B9\u7C7B\u578B\u53CA\u8FD0\u7B97\u53C2\u6570"
+        }
+      ]
+    };
+  }
+}
+
+// src/core/codeAssets/workspace.ts
+var useCodeAssetStore = create4((set) => ({
+  assets: {},
+  selectedId: null,
+  revision: 0,
+  selectAsset: (id) => set({ selectedId: id }),
+  upsertAsset: (record) => set((state) => ({ assets: { ...state.assets, [record.id]: record }, revision: state.revision + 1 })),
+  removeAsset: (id) => set((state) => {
+    const next = { ...state.assets };
+    delete next[id];
+    return {
+      assets: next,
+      selectedId: state.selectedId === id ? null : state.selectedId,
+      revision: state.revision + 1
+    };
+  }),
+  clear: () => set((state) => ({ assets: {}, selectedId: null, revision: state.revision + 1 }))
+}));
+var PROJECT_TSCONFIG = `{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "noEmit": true,
+    "baseUrl": ".",
+    "paths": {
+      "t3d/runtime": [".t3d/runtime.d.ts"],
+      "t3d/shader": [".t3d/shader.d.ts"]
+    }
+  },
+  "include": ["Assets/**/*.ts", "scripts/**/*.ts", "shaders/**/*.ts", ".t3d/**/*.d.ts"]
+}
+`;
+var RUNTIME_DTS_SUMMARY = `export interface Vec2 { x: number; y: number }
+export interface Vec3 { x: number; y: number; z: number }
+export interface Vec4 { x: number; y: number; z: number; w: number }
+export type ScriptParamSchema =
+  | { type: 'number'; default: number; min?: number; max?: number; step?: number; label: string; description?: string }
+  | { type: 'boolean'; default: boolean; label: string; description?: string }
+  | { type: 'string'; default: string; label: string; description?: string }
+  | { type: 'color'; default: string; label: string; description?: string }
+  | { type: 'vec2'; default: readonly [number, number]; label: string; description?: string }
+  | { type: 'vec3'; default: readonly [number, number, number]; label: string; description?: string }
+  | { type: 'enum'; options: ReadonlyArray<{ value: string; label: string }>; default: string; label: string; description?: string }
+  | { type: 'texture'; default?: string | null; label: string; description?: string }
+  | { type: 'ref'; target: 'node' | 'asset' | 'clip' | 'tableRow'; kinds?: readonly string[]; tableId?: string; default?: string | null; label: string; description?: string }
+  | Record<string, unknown>
+export type ScriptParamMap = Record<string, ScriptParamSchema>
+export interface NodeHandle {
+  readonly id: string; readonly name: string; readonly tags: readonly string[]; readonly parent: NodeHandle | null
+  position: Vec3; rotation: Vec3; scale: Vec3; visible: boolean
+  hasTag(tag: string): boolean
+  addTag(tag: string): void
+  removeTag(tag: string): void
+  getChildren(): readonly NodeHandle[]
+  sendMessage(name: string, payload?: unknown): void
+  destroy(): void
+}
+export interface ScriptContext<P = Record<string, unknown>, S = Record<string, unknown>> {
+  readonly node: NodeHandle; readonly params: P; readonly state: S; readonly elapsedTime: number
+  position: Vec3; rotation: Vec3; scale: Vec3; visible: boolean
+  readonly forward: Vec3; readonly right: Vec3
+  distanceTo(target: Vec3 | NodeHandle): number
+  hasTag(tag: string): boolean
+  addTag(tag: string): void
+  removeTag(tag: string): void
+  directionTo(target: Vec3 | NodeHandle, options?: { planeXZ?: boolean }): Vec3
+  translate(delta: Vec3, space?: 'local' | 'world'): void
+  rotateY(radians: number): void
+  moveToward(target: Vec3 | NodeHandle, maxDistance: number, options?: { faceTarget?: boolean; planeXZ?: boolean }): boolean
+  lookAt(target: Vec3 | NodeHandle, options?: { yOnly?: boolean }): void
+  sendMessage(name: string, payload?: unknown): void
+  broadcast(name: string, payload?: unknown): void
+  findNodeById(id: string): NodeHandle | null
+  findNodesByTag(tag: string): readonly NodeHandle[]
+  findNodesInRadius(center: Vec3, radius: number, tag?: string): readonly NodeHandle[]
+  cloneNode(templateOrName: string | NodeHandle, options?: { position?: Vec3; rotation?: Vec3; scale?: Vec3; parent?: NodeHandle | string | null; visible?: boolean; name?: string; initMessage?: string; initPayload?: unknown }): NodeHandle | null
+  spawnPrefab(prefabId: string, options?: { position?: Vec3; rotation?: Vec3; name?: string }): NodeHandle | null
+  destroyNode(node: NodeHandle): void
+  readonly pool: {
+    preload(templateOrPrefab: string | NodeHandle, count: number): void
+    acquire(templateOrPrefab: string | NodeHandle, options?: { position?: Vec3; rotation?: Vec3; scale?: Vec3; payload?: unknown }): NodeHandle | null
+    release(node: NodeHandle): void
+    stats(templateOrPrefab?: string | NodeHandle): { active: number; pooled: number; total: number }
+  }
+  after(seconds: number, callback: () => void): number
+  every(seconds: number, callback: () => void): number
+  cancelTimer(timerId: number): void
+  readonly spline: {
+    create(pointsOrParent: string | NodeHandle | ReadonlyArray<Vec3 | NodeHandle>, options?: { closed?: boolean; tension?: number }): {
+      readonly length: number; readonly closed: boolean; readonly points: readonly Vec3[]
+      pointAt(t: number): Vec3; tangentAt(t: number): Vec3
+      pointAtDistance(distance: number): Vec3; tangentAtDistance(distance: number): Vec3
+    }
+    follow(pointsOrParent: string | NodeHandle | ReadonlyArray<Vec3 | NodeHandle>, options?: {
+      speed?: number; closed?: boolean; tension?: number; loop?: boolean; pingPong?: boolean
+      faceDirection?: boolean; planeXZ?: boolean; startProgress?: number; onArrive?: () => void
+    }): boolean
+    stop(): void
+    readonly isFollowing: boolean
+    readonly progress: number
+  }
+  readonly tween: {
+    to(target: NodeHandle | { position?: Vec3; rotation?: Vec3; scale?: Vec3 }, props: { position?: Vec3; rotation?: Vec3; scale?: Vec3 }, duration: number, options?: { ease?: string; delay?: number; repeat?: number; yoyo?: boolean; onUpdate?: (p: number) => void; onComplete?: () => void }): number
+    value(from: number, to: number, duration: number, onUpdate: (val: number) => void, options?: { ease?: string; delay?: number; repeat?: number; yoyo?: boolean; onComplete?: () => void }): number
+    punchScale(strength?: number, duration?: number): number
+    shakePosition(intensity?: number, duration?: number): number
+    cancel(tweenId: number): void
+    cancelAll(): void
+  }
+  readonly curve: {
+    create(keys: ReadonlyArray<readonly [number, number] | { t: number; v: number; mode?: 'linear' | 'smooth' | 'step' }>, options?: { wrap?: 'clamp' | 'loop' | 'pingPong' }): { eval(t: number): number }
+    eval(keys: ReadonlyArray<readonly [number, number] | { t: number; v: number; mode?: 'linear' | 'smooth' | 'step' }>, t: number, options?: { wrap?: 'clamp' | 'loop' | 'pingPong' }): number
+    ease(name: string, t: number): number
+    parabola(t: number, height?: number): number
+    pulse(t: number): number
+  }
+  readonly input: {
+    isPressed(a: string): boolean
+    justPressed(a: string): boolean
+    isKeyPressed(code: string): boolean
+    axis2D(a: string): Vec2
+    pointerDelta(): Vec2
+    pointerPosition(): Vec2
+    wheelDelta(): number
+    isMouseButtonPressed(button: 0 | 1 | 2): boolean
+    justPressedMouseButton(button: 0 | 1 | 2): boolean
+    justReleasedMouseButton(button: 0 | 1 | 2): boolean
+  }
+  readonly ui: {
+    getVar(k: string): unknown
+    setVar(k: string, v: unknown): void
+    onEvent(eventName: string, handler: (payload?: unknown) => void): () => void
+    showScreen(screenIdOrName: string): void
+    hideScreen(screenIdOrName: string): void
+    toggleScreen(screenIdOrName: string): void
+    isScreenVisible(screenIdOrName: string): boolean
+    worldToScreen(position: Vec3 | NodeHandle): { x: number; y: number; ndcX: number; ndcY: number; visible: boolean } | null
+  }
+  readonly audio: { playSfx(id: string, opts?: { volume?: number }): void; playBgm(id: string): void; stopBgm(): void }
+  log(...args: unknown[]): void
+  warn(...args: unknown[]): void
+}
+export interface GizmosApi {
+  readonly isSelected: boolean
+  line(from: Vec3 | NodeHandle, to: Vec3 | NodeHandle, opts?: { color?: string }): void
+  arrow(from: Vec3 | NodeHandle, dir: Vec3, length?: number, opts?: { color?: string }): void
+  wireSphere(center: Vec3 | NodeHandle, radius: number, opts?: { color?: string }): void
+  wireBox(center: Vec3 | NodeHandle, size: Vec3, opts?: { color?: string }): void
+  disc(center: Vec3 | NodeHandle, radius: number, opts?: { normal?: Vec3; color?: string }): void
+  radiusHandle(paramKey: string, opts?: { center?: Vec3 | NodeHandle; axis?: 'x' | 'y' | 'z'; color?: string }): void
+  positionHandle(paramKey: string, opts?: { color?: string }): void
+}
+export function defineBehavior<P extends ScriptParamMap, S extends Record<string, unknown>>(def: {
+  name: string; description?: string; params?: P; state?: () => S
+  onStart?: (self: ScriptContext<Record<string, any>, S>) => void
+  onSpawn?: (self: ScriptContext<Record<string, any>, S>, payload?: unknown) => void
+  onUpdate?: (self: ScriptContext<Record<string, any>, S>, dt: number) => void
+  onDestroy?: (self: ScriptContext<Record<string, any>, S>) => void
+  onMessage?: (self: ScriptContext<Record<string, any>, S>, msg: { name: string; payload?: unknown }) => void
+  onDrawGizmos?: (self: ScriptContext<Record<string, any>, S>, gizmos: GizmosApi) => void
+}): unknown
+export function defineSystem<S extends Record<string, unknown>>(def: {
+  name: string; description?: string; stage?: 'prePhysics' | 'postPhysics' | 'postAnimation' | 'preRender'; order?: number
+  state?: () => S; createState?: () => S
+  onMount?: (world: Omit<ScriptContext<Record<string, any>, S>, 'node' | 'params' | 'state' | 'position' | 'rotation' | 'scale' | 'visible'>, state: S) => void
+  onStep?: (world: Omit<ScriptContext<Record<string, any>, S>, 'node' | 'params' | 'state' | 'position' | 'rotation' | 'scale' | 'visible'>, state: S, dt: number) => void
+  onUpdate?: (world: Omit<ScriptContext<Record<string, any>, S>, 'node' | 'params' | 'state' | 'position' | 'rotation' | 'scale' | 'visible'>, state: S, dt: number) => void
+  onDispose?: (world: Omit<ScriptContext<Record<string, any>, S>, 'node' | 'params' | 'state' | 'position' | 'rotation' | 'scale' | 'visible'>, state: S) => void
+}): unknown
+`;
+var SHADER_DTS_SUMMARY = `export interface ShaderNode {
+  add(other: unknown): ShaderNode; sub(other: unknown): ShaderNode; mul(other: unknown): ShaderNode; div(other: unknown): ShaderNode
+  clamp(min?: unknown, max?: unknown): ShaderNode; abs(): ShaderNode; fract(): ShaderNode; floor(): ShaderNode
+}
+export function defineShader(def: {
+  name: string; mode?: 'lit' | 'unlit'; transparent?: boolean; doubleSided?: boolean
+  params: Record<string, unknown>
+  surface: (params: Record<string, any>) => {
+    baseColor?: unknown; normal?: unknown; roughness?: unknown; metalness?: unknown
+    emissive?: unknown; opacity?: unknown; vertexOffset?: unknown
+  }
+}): unknown
+export function float(x?: number): ShaderNode
+export function vec2(x?: number, y?: number): ShaderNode
+export function vec3(x?: number, y?: number, z?: number): ShaderNode
+export function vec4(x?: number, y?: number, z?: number, w?: number): ShaderNode
+export function color(hexOrR: string | number, g?: number, b?: number): ShaderNode
+export function mix(a: unknown, b: unknown, t: unknown): ShaderNode
+export function clamp(x: unknown, min: unknown, max: unknown): ShaderNode
+export function smoothstep(edge0: unknown, edge1: unknown, x: unknown): ShaderNode
+export function step(edge: unknown, x: unknown): ShaderNode
+export function sin(x: unknown): ShaderNode
+export function cos(x: unknown): ShaderNode
+export function tan(x: unknown): ShaderNode
+export function abs(x: unknown): ShaderNode
+export function sign(x: unknown): ShaderNode
+export function floor(x: unknown): ShaderNode
+export function ceil(x: unknown): ShaderNode
+export function fract(x: unknown): ShaderNode
+export function pow(x: unknown, y: unknown): ShaderNode
+export function sqrt(x: unknown): ShaderNode
+export function exp(x: unknown): ShaderNode
+export function log(x: unknown): ShaderNode
+export function saturate(x: unknown): ShaderNode
+export function min(a: unknown, b: unknown): ShaderNode
+export function max(a: unknown, b: unknown): ShaderNode
+export function dot(a: unknown, b: unknown): ShaderNode
+export function cross(a: unknown, b: unknown): ShaderNode
+export function normalize(v: unknown): ShaderNode
+export function length(v: unknown): ShaderNode
+export function distance(a: unknown, b: unknown): ShaderNode
+export function reflect(incident: unknown, normal: unknown): ShaderNode
+export function fwidth(x: unknown): ShaderNode
+export function fresnel(normal: unknown, viewDir: unknown, power?: unknown): ShaderNode
+export function texture(texRef: unknown, uv?: unknown): ShaderNode
+export function uv(index?: number): ShaderNode
+export const time: ShaderNode
+export const deltaTime: ShaderNode
+export const normalView: ShaderNode
+export const normalWorld: ShaderNode
+export const normalLocal: ShaderNode
+export const positionWorld: ShaderNode
+export const positionLocal: ShaderNode
+export const viewDirection: ShaderNode
+export const cameraPosition: ShaderNode
+export const screenUV: ShaderNode
+export function vertexColor(): ShaderNode
+`;
+function codeAssetDirKey(kind, id) {
+  return `code:${kind}:${id}`;
+}
+function defaultCodeAssetDir(kind) {
+  return kind === "shader" ? "Assets/Shaders" : "Assets/Scripts";
+}
+function codeAssetFileName(kind, id) {
+  return kind === "shader" ? `${id}.shader.ts` : `${id}.ts`;
+}
+function ensureFolderInStore(folder) {
+  const dir = normalizeDir(folder);
+  if (dir === ASSETS_ROOT) return;
+  const store = useAssetStore.getState();
+  if (!store.folders.includes(dir)) {
+    useAssetStore.setState((s) => ({
+      folders: [.../* @__PURE__ */ new Set([...s.folders.map(normalizeDir), dir])].filter((f) => f !== ASSETS_ROOT),
+      revision: s.revision + 1
+    }));
+  }
+}
+async function ensureCodeWorkspaceFiles(projectRoot) {
+  const dir = projectRoot ?? projectDirectoryPath();
+  if (!dir) return;
+  const bridge = electronBridge();
+  if (!bridge?.fs?.mkdir || !bridge?.fs?.writeTextFile) return;
+  await bridge.fs.mkdir(joinProjectPath(dir, ".t3d"));
+  await bridge.fs.mkdir(joinProjectPath(dir, "Assets/Scripts"));
+  await bridge.fs.mkdir(joinProjectPath(dir, "Assets/Shaders"));
+  await bridge.fs.writeTextFile(joinProjectPath(dir, ".t3d/runtime.d.ts"), RUNTIME_DTS_SUMMARY);
+  await bridge.fs.writeTextFile(joinProjectPath(dir, ".t3d/shader.d.ts"), SHADER_DTS_SUMMARY);
+  await bridge.fs.writeTextFile(joinProjectPath(dir, "tsconfig.json"), PROJECT_TSCONFIG);
+}
+function normalizeCodeAssetId(kind, nameOrId) {
+  const clean = nameOrId.trim().replace(/\.(shader\.ts|ts)$/i, "").replace(/[^a-zA-Z0-9_-]/g, "_");
+  return clean || `${kind}_${Date.now().toString(36)}`;
+}
+function codeAssetRelativePath(kind, id, folder) {
+  const dirKey = codeAssetDirKey(kind, id);
+  const storedDir = useAssetStore.getState().assetDirs[dirKey];
+  const existingRel = useCodeAssetStore.getState().assets[id]?.relativePath;
+  const existingAssetsDir = existingRel && (existingRel.startsWith(`${ASSETS_ROOT}/`) || existingRel === ASSETS_ROOT) && existingRel.includes("/") ? existingRel.slice(0, existingRel.lastIndexOf("/")) : null;
+  const targetDir = folder?.trim() ? normalizeDir(folder) : storedDir ? normalizeDir(storedDir) : existingAssetsDir ? normalizeDir(existingAssetsDir) : defaultCodeAssetDir(kind);
+  return `${targetDir}/${codeAssetFileName(kind, id)}`;
+}
+function compileCodeAsset(kind, id, relativePath, source) {
+  if (kind === "shader") {
+    const res2 = compileShaderSource(id, relativePath, source);
+    const record2 = {
+      id,
+      kind,
+      name: res2.exports?.definition.name ?? id,
+      relativePath,
+      source,
+      diagnostics: res2.diagnostics,
+      ok: res2.ok,
+      updatedAt: Date.now(),
+      compiledShader: res2.exports
+    };
+    useCodeAssetStore.getState().upsertAsset(record2);
+    return record2;
+  }
+  const res = compileAndRegisterScript(id, relativePath, source);
+  const record = {
+    id,
+    kind,
+    name: res.exports?.behavior?.name ?? res.exports?.system?.name ?? id,
+    relativePath,
+    source,
+    diagnostics: res.diagnostics,
+    ok: res.ok,
+    updatedAt: Date.now(),
+    compiledScript: res.exports
+  };
+  useCodeAssetStore.getState().upsertAsset(record);
+  return record;
+}
+async function saveAndCompileCodeAsset(kind, idOrName, source, folder) {
+  const id = normalizeCodeAssetId(kind, idOrName);
+  const prevRel = useCodeAssetStore.getState().assets[id]?.relativePath;
+  const rel = codeAssetRelativePath(kind, id, folder);
+  const targetDir = normalizeDir(rel.slice(0, rel.lastIndexOf("/")));
+  ensureFolderInStore(targetDir);
+  useAssetStore.getState().place(codeAssetDirKey(kind, id), targetDir);
+  const record = compileCodeAsset(kind, id, rel, source);
+  const dir = projectDirectoryPath();
+  const bridge = electronBridge();
+  if (dir && bridge?.fs) {
+    await ensureCodeWorkspaceFiles(dir);
+    if (bridge.fs.mkdir) {
+      await bridge.fs.mkdir(joinProjectPath(dir, targetDir));
+    }
+    await bridge.fs.writeTextFile(joinProjectPath(dir, rel), source);
+    if (prevRel && prevRel !== rel && bridge.fs.unlinkFile) {
+      await bridge.fs.unlinkFile(joinProjectPath(dir, prevRel)).catch(() => void 0);
+    }
+  }
+  if (!record.ok && record.diagnostics.length > 0) {
+    const first = record.diagnostics[0];
+    useEditorStore.getState().log("warn", `${rel}:${first.line} ${first.message}`);
+  } else {
+    useEditorStore.getState().log("info", `\u4EE3\u7801\u8D44\u4EA7\u5DF2\u7F16\u8BD1\u5E76\u70ED\u91CD\u8F7D\uFF1A${rel}`);
+  }
+  return record;
+}
+function defaultTemplateFor(kind, name) {
+  if (kind === "shader") {
+    return `import { defineShader, color, mix, sin, time, uv } from 't3d/shader'
+
+export default defineShader({
+  name: '${name}',
+  mode: 'lit',
+  params: {
+    baseColor: { type: 'color', default: '#4a9eff', label: '\u4E3B\u989C\u8272' },
+    glowColor: { type: 'color', default: '#93c5fd', label: '\u8109\u51B2\u989C\u8272' },
+    speed: { type: 'number', default: 2, min: 0, max: 20, label: '\u8109\u51B2\u901F\u5EA6' },
+  },
+  surface(p) {
+    const wave = sin(uv().y.mul(8).add(time.mul(p.speed))).mul(0.5).add(0.5)
+    return {
+      baseColor: mix(p.baseColor, p.glowColor, wave),
+      roughness: 0.35,
+      metalness: 0.1,
+    }
+  },
+})
+`;
+  }
+  return `import { defineBehavior } from 't3d/runtime'
+
+export default defineBehavior({
+  name: '${name}',
+  params: {
+    speed: { type: 'number', default: 2, min: 0, max: 30, label: '\u65CB\u8F6C\u901F\u5EA6' },
+  },
+  state: () => ({
+    elapsed: 0,
+  }),
+  onUpdate(self, dt) {
+    self.state.elapsed += dt
+    self.rotation = {
+      x: self.rotation.x,
+      y: self.rotation.y + self.params.speed * dt,
+      z: self.rotation.z,
+    }
+  },
+})
+`;
 }
 
 // src/editor/assets/prefab.ts
@@ -5280,7 +11383,7 @@ function uniqueName2(nodes, base) {
 import { useMemo } from "react";
 
 // src/editor/prefs/store.ts
-import { create as create2 } from "zustand";
+import { create as create5 } from "zustand";
 var KEY = "t3d-editor-prefs";
 function readPrefs() {
   const fallback = { language: "system", autoSave: true, openLastProject: true, uiScale: 1 };
@@ -5304,7 +11407,7 @@ function dataOf(state, patch) {
 }
 var initial = readPrefs();
 persist(initial);
-var usePrefsStore = create2((set) => ({
+var usePrefsStore = create5((set) => ({
   ...initial,
   settingsOpen: false,
   setLanguage: (language) => set((state) => {
@@ -5395,9 +11498,24 @@ var zh = {
   "library.item.physics": "\u7269\u7406",
   "library.item.physicsDetail": "\u78B0\u649E\u4F53\u3001\u521A\u4F53\u548C\u8BD5\u73A9\u65F6\u7684\u7269\u7406\u6A21\u62DF\u3002",
   "library.item.physicsPoints": "\u521A\u4F53\u4E0E\u78B0\u649E\u4F53\n\u573A\u666F\u91CD\u529B\u4E0B\u7684\u6A21\u62DF",
+  "library.item.buoyancy": "\u6D6E\u529B",
+  "library.item.buoyancyDetail": "\u57FA\u4E8E\u5F53\u524D\u6C34\u4F53\u6CE2\u6D6A\u7684\u7269\u7406\u6D6E\u529B\u4E0E\u6C34\u963B\u5C3C\uFF08\u4F9D\u8D56\u7269\u7406\u7CFB\u7EDF\uFF09\u3002",
+  "library.item.buoyancyPoints": "\u591A\u70B9\u6D6E\u529B\u91C7\u6837\n\u6C34\u963B\u5C3C\u4E0E\u6CE2\u6D6A\u8DDF\u968F",
   "library.item.navigation": "\u5BFC\u822A",
   "library.item.navigationDetail": "\u4ECE\u9759\u6001\u8868\u9762\u70D8\u7119\u5BFC\u822A\u7F51\u683C\u3002\u8BD5\u73A9\u65F6\u969C\u788D\u53EF\u4EE5\u6316\u5F00\u7F51\u683C\u3002",
   "library.item.navigationPoints": "\u5BFC\u822A\u7F51\u683C\u70D8\u7119\n\u5BFB\u8DEF\u4E0E\u969C\u788D",
+  "library.item.spline": "Spline \u8DEF\u5F84\u8FD0\u52A8",
+  "library.item.splineDetail": "\u914D\u5408 3D \u89C6\u53E3\u53EF\u7F16\u8F91 Spline \u66F2\u7EBF\u8282\u70B9\uFF0C\u6309\u5F27\u957F\u5300\u901F\u5DE1\u903B\u6216\u8F68\u9053\u79FB\u52A8\u3002",
+  "library.item.splinePoints": "3D \u89C6\u53E3\u66F2\u8FB9\u7F16\u8F91\u5668\n\u5F27\u957F\u5300\u901F\u8FD0\u52A8\n\u5355\u6B21 / \u5FAA\u73AF / \u5F80\u8FD4",
+  "library.item.tween": "Tween \u8865\u95F4\u52A8\u6548",
+  "library.item.tweenDetail": "\u4E3A\u7269\u4F53\u63D0\u4F9B\u4F4D\u7F6E\u3001\u65CB\u8F6C\u3001\u7F29\u653E\u4E0E\u60AC\u6D6E\u6D6E\u52A8\u7B49\u7F13\u52A8\u5FAA\u73AF\u52A8\u6548\u3002",
+  "library.item.tweenPoints": "12 \u79CD\u5E38\u7528\u7F13\u52A8\u66F2\u7EBF\n\u5FAA\u73AF\u4E0E Yoyo \u5F80\u8FD4\n\u811A\u672C self.tween \u94FE\u5F0F\u9A71\u52A8",
+  "library.item.crowd": "\u7FA4\u4F53\u907F\u8BA9 (Crowd)",
+  "library.item.crowdDetail": "\u4E3A\u591A\u5355\u4F4D\u63D0\u4F9B\u5C40\u90E8\u907F\u8BA9\u5206\u79BB\u3001\u51DD\u805A\u5BF9\u9F50\u4E0E\u6A2A\u6392/\u65B9\u9635/\u6954\u5F62/\u73AF\u5F62\u7F16\u961F\u79FB\u52A8\u3002",
+  "library.item.crowdPoints": "\u7A7A\u95F4\u7F51\u683C\u5C40\u90E8\u907F\u8BA9\n\u6A2A\u6392 / \u65B9\u9635 / \u6954\u5F62 / \u73AF\u5F62\u7F16\u961F\n\u811A\u672C self.crowd / world.crowd",
+  "library.item.projectile": "\u901A\u7528\u5F39\u9053 (Projectile)",
+  "library.item.projectileDetail": "\u652F\u6301\u76F4\u7EBF\u3001\u8FFD\u8E2A\u4E0E\u629B\u7269\u7EBF\u5F39\u9053\u98DE\u884C\uFF0C\u81EA\u52A8\u68C0\u6D4B\u76EE\u6807\u6807\u7B7E\u547D\u4E2D\u5E76\u56DE\u6C60\u6216\u9500\u6BC1\u3002",
+  "library.item.projectilePoints": "\u76F4\u7EBF / \u8FFD\u8E2A / \u629B\u7269\u7EBF\n\u76EE\u6807\u6807\u7B7E\u547D\u4E2D\u4E0E\u56DE\u6C60\n\u81EA\u52A8\u6D3E\u53D1 onProjectileHit",
   "library.item.particles": "\u7C92\u5B50",
   "library.item.particlesDetail": "\u7C92\u5B50\u8FD0\u884C\u65F6\u3002\u5173\u6389\u540E\u8D44\u6E90\u548C\u7269\u4F53\u4E0A\u7684\u6570\u636E\u8FD8\u5728\uFF0C\u53EA\u662F\u4E0D\u518D\u64AD\u653E\u3002",
   "library.item.particlesPoints": "\u7C92\u5B50\u6A21\u62DF\n\u73B0\u6210\u9884\u8BBE\u5728\u7D20\u6750\u680F",
@@ -5420,6 +11538,14 @@ var zh = {
   "buoyancy.needsDynamic": "\u9700\u8981\u52A8\u6001\u521A\u4F53\u624D\u80FD\u53D7\u529B\u6F02\u6D6E",
   "buoyancy.makeDynamic": "\u8BBE\u4E3A\u52A8\u6001\u521A\u4F53",
   "projectSettings.buoyancyDetail": "\u57FA\u4E8E\u5F53\u524D\u6C34\u4F53\u6CE2\u6D6A\u7684\u7269\u7406\u6D6E\u529B\u4E0E\u6C34\u963B\u5C3C\uFF08\u4F9D\u8D56\u7269\u7406\u7CFB\u7EDF\uFF09\u3002",
+  "spline.title": "Spline \u8DEF\u5F84\u8FD0\u52A8",
+  "projectSettings.splineDetail": "\u6CBF\u8DEF\u5F84\u7236\u8282\u70B9\u7684\u6709\u5E8F\u5B50\u8282\u70B9\u4F5C\u5E73\u6ED1\u6837\u6761\u66F2\u7EBF\u5300\u901F\u8FD0\u52A8\u3002",
+  "tween.title": "Tween \u8865\u95F4\u52A8\u6548",
+  "projectSettings.tweenDetail": "\u4E3A\u7269\u4F53\u63D0\u4F9B\u4F4D\u7F6E\u3001\u65CB\u8F6C\u3001\u7F29\u653E\u4E0E\u60AC\u6D6E\u6D6E\u52A8\u7B49\u7F13\u52A8\u5FAA\u73AF\u52A8\u6548\u3002",
+  "crowd.title": "\u7FA4\u4F53\u907F\u8BA9 (Crowd)",
+  "projectSettings.crowdDetail": "\u4E3A\u591A\u5355\u4F4D\u63D0\u4F9B\u5C40\u90E8\u907F\u8BA9\u5206\u79BB\u3001\u51DD\u805A\u5BF9\u9F50\u4E0E\u6A2A\u6392/\u65B9\u9635/\u6954\u5F62/\u73AF\u5F62\u7F16\u961F\u79FB\u52A8\u3002",
+  "projectile.title": "\u901A\u7528\u5F39\u9053 (Projectile)",
+  "projectSettings.projectileDetail": "\u652F\u6301\u76F4\u7EBF\u3001\u8FFD\u8E2A\u4E0E\u629B\u7269\u7EBF\u5F39\u9053\u98DE\u884C\uFF0C\u81EA\u52A8\u68C0\u6D4B\u76EE\u6807\u6807\u7B7E\u547D\u4E2D\u5E76\u56DE\u6C60\u6216\u9500\u6BC1\u3002",
   "water.title": "\u6C34\u4F53",
   "water.enable": "\u542F\u7528\u6C34\u4F53",
   "water.groupColor": "\u6C34\u8272\u4E0E\u5438\u6536",
@@ -5540,6 +11666,7 @@ var zh = {
   "menu.camera": "\u76F8\u673A",
   "menu.effect": "\u7279\u6548",
   "menu.screen": "\u754C\u9762",
+  "menu.spline": "Spline \u66F2\u7EBF",
   "component.add": "\u6DFB\u52A0\u7EC4\u4EF6",
   "component.search": "\u641C\u7D22\u7EC4\u4EF6\u2026",
   "component.remove": "\u79FB\u9664\u7EC4\u4EF6",
@@ -5581,6 +11708,7 @@ var zh = {
   "kind.camera": "\u76F8\u673A",
   "kind.effect": "\u7279\u6548",
   "kind.screen": "\u754C\u9762",
+  "kind.spline": "Spline \u66F2\u7EBF",
   "tool.newScene": "\u65B0\u5EFA\u573A\u666F",
   "tool.save": "\u4FDD\u5B58\u5230\u672C\u5730\u7F13\u5B58",
   "tool.undo": "\u64A4\u9500",
@@ -6964,9 +13092,24 @@ var en = {
   "library.item.physics": "Physics",
   "library.item.physicsDetail": "Colliders, rigidbodies, and simulation while playing.",
   "library.item.physicsPoints": "Rigidbodies and colliders\nSimulation under scene gravity",
+  "library.item.buoyancy": "Buoyancy",
+  "library.item.buoyancyDetail": "Wave-driven physical buoyancy and water drag (requires Physics).",
+  "library.item.buoyancyPoints": "Multi-point buoyancy sampling\nWater drag & wave following",
   "library.item.navigation": "Navigation",
   "library.item.navigationDetail": "Bakes a navmesh from static surfaces. Obstacles can carve it during play.",
   "library.item.navigationPoints": "Navmesh baking\nPaths and obstacles",
+  "library.item.spline": "Spline Motion",
+  "library.item.splineDetail": "Constant-speed arc-length movement along editable 3D viewport Spline curves.",
+  "library.item.splinePoints": "3D viewport curve editor\nArc-length uniform speed\nOnce / Loop / Ping-Pong",
+  "library.item.tween": "Tween Motion",
+  "library.item.tweenDetail": "Drive looping or one-shot eased position, rotation, scale, and float animations.",
+  "library.item.tweenPoints": "12 built-in easing curves\nLoop & Yoyo repeat\nScript self.tween API",
+  "library.item.crowd": "Crowd Avoidance",
+  "library.item.crowdDetail": "Local separation steering and line/grid/wedge/circle formation movement for multiple units.",
+  "library.item.crowdPoints": "Spatial hash local avoidance\nLine / Grid / Wedge / Circle formations\nScript self.crowd / world.crowd",
+  "library.item.projectile": "Projectile",
+  "library.item.projectileDetail": "Linear, homing, and ballistic projectile flight with tag-based hit detection and auto-recycle.",
+  "library.item.projectilePoints": "Linear / Homing / Ballistic\nTag hit detection & pooling\nEmits onProjectileHit",
   "library.item.particles": "Particles",
   "library.item.particlesDetail": "Particle runtime. Turning this off keeps the data and stops playback.",
   "library.item.particlesPoints": "Particle simulation\nPresets live in Assets",
@@ -6989,6 +13132,14 @@ var en = {
   "buoyancy.needsDynamic": "Requires a dynamic rigid body to float",
   "buoyancy.makeDynamic": "Set dynamic",
   "projectSettings.buoyancyDetail": "Wave-driven physics buoyancy and water drag (requires physics).",
+  "spline.title": "Spline Path",
+  "projectSettings.splineDetail": "Move objects smoothly along ordered child waypoints of a path node.",
+  "tween.title": "Tween Motion",
+  "projectSettings.tweenDetail": "Drive looping or one-shot eased position, rotation, scale, and float animations.",
+  "crowd.title": "Crowd Avoidance",
+  "projectSettings.crowdDetail": "Local separation steering and line/grid/wedge/circle formation movement for multiple units.",
+  "projectile.title": "Projectile",
+  "projectSettings.projectileDetail": "Linear, homing, and ballistic projectile flight with tag-based hit detection and auto-recycle.",
   "water.title": "Water",
   "water.enable": "Enable water",
   "water.groupColor": "Color & absorption",
@@ -7109,6 +13260,7 @@ var en = {
   "menu.camera": "Camera",
   "menu.effect": "Effect",
   "menu.screen": "UI",
+  "menu.spline": "Spline Curve",
   "component.add": "Add Component",
   "component.search": "Search components\u2026",
   "component.remove": "Remove Component",
@@ -7150,6 +13302,7 @@ var en = {
   "kind.camera": "Camera",
   "kind.effect": "Effect",
   "kind.screen": "UI",
+  "kind.spline": "Spline Curve",
   "tool.newScene": "New Scene",
   "tool.save": "Save to local cache",
   "tool.undo": "Undo",
@@ -8484,103 +14637,11 @@ function translate(key, vars) {
 }
 
 // src/editor/scene/store.ts
-init_registry();
-
-// src/gameplay/types.ts
-var CORE_GAMEPLAY_PACK_ID = "t3d.core";
-
-// src/gameplay/registry.ts
-var packs = /* @__PURE__ */ new Map();
-function registerGameplayPack(pack) {
-  packs.set(pack.id, pack);
-}
-function unregisterGameplayPack(packId) {
-  if (packId === CORE_GAMEPLAY_PACK_ID) return false;
-  return packs.delete(packId);
-}
-function getGameplayPack(packId) {
-  return packs.get(packId);
-}
-function listGameplayPacks() {
-  return [...packs.values()];
-}
-function resolveEnabledPackIds(enabled) {
-  const next = /* @__PURE__ */ new Set([CORE_GAMEPLAY_PACK_ID, ...enabled ?? []]);
-  let changed = true;
-  while (changed) {
-    changed = false;
-    for (const id of [...next]) {
-      for (const dep of packs.get(id)?.dependencies ?? []) {
-        if (!next.has(dep)) {
-          next.add(dep);
-          changed = true;
-        }
-      }
-    }
-  }
-  return next;
-}
-function listEnabledTableSchemas(enabled) {
-  const on = resolveEnabledPackIds(enabled);
-  const schemas = [];
-  for (const pack of packs.values()) {
-    if (!on.has(pack.id)) continue;
-    for (const table of pack.tables ?? []) schemas.push(table);
-  }
-  return schemas;
-}
-function tableSchema(tableId) {
-  for (const pack of packs.values()) {
-    const found = pack.tables?.find((table) => table.tableId === tableId);
-    if (found) return found;
-  }
-  return void 0;
-}
-function defaultRows(tableId) {
-  return structuredClone(tableSchema(tableId)?.defaultRows ?? []);
-}
-function tableRows(database, tableId) {
-  const existing = database?.tables?.[tableId];
-  if (existing) return existing;
-  return defaultRows(tableId);
-}
-function createDefaultGameDatabase(enabled) {
-  const tables = {};
-  for (const schema of listEnabledTableSchemas(enabled)) {
-    tables[schema.tableId] = structuredClone(schema.defaultRows ?? []);
-  }
-  return { tables };
-}
-function ensureGameDatabase(value, enabled) {
-  const base = createDefaultGameDatabase(enabled);
-  if (!value || typeof value !== "object") return base;
-  const tables = value.tables;
-  if (!tables || typeof tables !== "object") return base;
-  for (const [tableId, rows] of Object.entries(tables)) {
-    if (!Array.isArray(rows)) continue;
-    base.tables[tableId] = rows.flatMap((row) => cleanRow(row));
-  }
-  return base;
-}
-function cleanRow(value) {
-  if (!value || typeof value !== "object") return [];
-  const row = value;
-  if (typeof row.id !== "string" || typeof row.name !== "string") return [];
-  return [{
-    id: row.id,
-    name: row.name,
-    category: typeof row.category === "string" ? row.category : "",
-    description: typeof row.description === "string" ? row.description : "",
-    fields: row.fields && typeof row.fields === "object" ? { ...row.fields } : {}
-  }];
-}
-function findRow(database, tableId, id) {
-  const key = id.trim();
-  if (!key) return void 0;
-  return tableRows(database, tableId).find((row) => row.id === key);
-}
+init_registry2();
 
 // src/gameplay/corePack.ts
+init_registry();
+init_types();
 var tags = [
   { id: "Team.Player", name: "\u73A9\u5BB6\u9635\u8425", category: "Team", description: "\u4E3B\u89D2\u4E0E\u53CB\u519B", fields: { color: "#3b82f6", defaultDurationSec: 0, blockPrefix: "" } },
   { id: "Team.Enemy", name: "\u654C\u4EBA\u9635\u8425", category: "Team", description: "\u654C\u65B9\u5355\u4F4D", fields: { color: "#ef4444", defaultDurationSec: 0, blockPrefix: "" } },
@@ -8632,889 +14693,13 @@ registerGameplayPack({
   ]
 });
 
-// src/capabilities/physics/defaults.ts
-var SHARED = {
-  trigger: false,
-  mass: 1,
-  friction: 0.7,
-  restitution: 0.05,
-  linearDamping: 0.1,
-  angularDamping: 0.1,
-  gravityScale: 1
-};
-function defaultNodePhysics(kind) {
-  if (kind === "plane") {
-    return { ...SHARED, body: "static", shape: "box", size: [1, 1, 0.05] };
-  }
-  if (kind === "sphere") {
-    return { ...SHARED, body: "dynamic", shape: "sphere", size: [0.5, 0.5, 0.5] };
-  }
-  if (kind === "capsule") {
-    return { ...SHARED, body: "dynamic", shape: "capsule", size: [0.3, 1.1, 0.3] };
-  }
-  if (kind === "cylinder") {
-    return { ...SHARED, body: "dynamic", shape: "cylinder", size: [0.5, 1, 0.5] };
-  }
-  if (kind === "cone") {
-    return { ...SHARED, body: "dynamic", shape: "cone", size: [0.5, 1, 0.5] };
-  }
-  if (kind === "model") {
-    return { ...SHARED, body: "static", shape: "convex", size: [1, 1, 1] };
-  }
-  return { ...SHARED, body: "dynamic", shape: "box", size: [1, 1, 1] };
-}
-
-// src/runtime/sceneRuntime.ts
-init_session();
-
-// src/capabilities/navigation/session.ts
+// src/editor/scene/store.ts
 init_registry();
-init_transform();
-init_world();
-import { create as create3 } from "zustand";
-
-// src/capabilities/navigation/archive.ts
-var saved = /* @__PURE__ */ new Map();
-var epoch = 0;
-function navEpoch() {
-  return epoch;
-}
-function navRecord(sceneId) {
-  return saved.get(sceneId) ?? null;
-}
-function forgetNavMesh(sceneId) {
-  saved.delete(sceneId);
-}
-function hydrateNavMeshes(value) {
-  saved.clear();
-  epoch += 1;
-  if (!value || typeof value !== "object") return;
-  for (const [id, record] of Object.entries(value)) {
-    const cleaned = cleanRecord(record);
-    if (cleaned) saved.set(id, cleaned);
-  }
-}
-function decodeBytes(value) {
-  const binary = atob(value);
-  const bytes = new Uint8Array(binary.length);
-  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
-  return bytes;
-}
-function cleanRecord(value) {
-  if (!value || typeof value !== "object") return null;
-  const record = value;
-  if (typeof record.bytes !== "string" || record.bytes.length === 0) return null;
-  if (record.mode !== "solo" && record.mode !== "tileCache") return null;
-  if (typeof record.signature !== "string") return null;
-  return {
-    bytes: record.bytes,
-    mode: record.mode,
-    signature: record.signature,
-    triangles: typeof record.triangles === "number" ? record.triangles : 0
-  };
-}
-
-// src/capabilities/navigation/session.ts
-function tr(key, fallback) {
-  return getRuntimeWorld().translate?.(key) ?? fallback;
-}
-var useNavUi = create3(() => ({
-  phase: "idle",
-  text: "",
-  sceneId: "",
-  signature: "",
-  triangles: 0
-}));
-var instance = null;
-var opening = null;
-var life = 0;
-var loadedScene = "";
-var seenEpoch = -1;
-var activating = false;
-var controller = null;
-var pending2 = null;
-var obstacleKey = "";
-var debugMesh = null;
-function hydrateNavigation(value) {
-  hydrateNavMeshes(value);
-  loadedScene = "";
-}
-function cancelNavBake() {
-  controller?.abort();
-  controller = null;
-  pending2 = null;
-  if (useNavUi.getState().phase === "baking") {
-    useNavUi.setState({ phase: "idle", text: "" });
-  }
-}
-function findNavigationPath(start2, end) {
-  const runtime2 = getRuntimeWorld();
-  if (!capabilityEnabled(runtime2.getCapabilities(), "navigation")) return null;
-  return instance?.findPath(start2, end) ?? null;
-}
-function tickNavigation() {
-  const runtime2 = getRuntimeWorld();
-  if (!capabilityEnabled(runtime2.getCapabilities(), "navigation")) {
-    if (instance || controller || debugMesh || loadedScene) disposeWorld();
-    return;
-  }
-  const sceneId = runtime2.getActiveSceneId();
-  const ui = useNavUi.getState();
-  if (ui.phase === "baking" && ui.sceneId !== sceneId) cancelNavBake();
-  if (!activating && (loadedScene !== sceneId || seenEpoch !== navEpoch())) {
-    activating = true;
-    void activate(sceneId).finally(() => {
-      activating = false;
-    });
-  }
-  if (!instance || loadedScene !== sceneId) return;
-  applyObstacles(runtime2.getPlayState() === "playing" ? collectObstacles(runtime2.getNodes()) : []);
-}
-async function activate(sceneId) {
-  const ticket = life;
-  const record = navRecord(sceneId);
-  seenEpoch = navEpoch();
-  if (useNavUi.getState().phase === "baking" && useNavUi.getState().sceneId === sceneId) {
-    loadedScene = sceneId;
-    return;
-  }
-  if (!record) {
-    instance?.clear();
-    loadedScene = sceneId;
-    obstacleKey = "";
-    pullDebug();
-    if (useNavUi.getState().phase !== "baking") {
-      useNavUi.setState({ phase: "idle", text: "", sceneId, signature: "", triangles: 0 });
-    }
-    return;
-  }
-  try {
-    const nav = await world2();
-    if (ticket !== life || getRuntimeWorld().getActiveSceneId() !== sceneId) return;
-    await nav.restore({ bytes: decodeBytes(record.bytes), mode: record.mode });
-    if (ticket !== life || getRuntimeWorld().getActiveSceneId() !== sceneId) return;
-    loadedScene = sceneId;
-    obstacleKey = "";
-    pullDebug();
-    useNavUi.setState({
-      phase: "ready",
-      text: tr("navigation.ready", "Navigation ready"),
-      sceneId,
-      signature: record.signature,
-      triangles: record.triangles
-    });
-  } catch (error) {
-    if (ticket !== life) return;
-    const text = error instanceof Error ? error.message : String(error);
-    useNavUi.setState({ phase: "error", text, sceneId });
-  }
-}
-async function world2() {
-  if (instance) return instance;
-  const ticket = life;
-  if (!opening) opening = Promise.resolve().then(() => (init_recastNav(), recastNav_exports)).then((module) => module.createRecastNavigation());
-  const created = await opening;
-  opening = null;
-  if (ticket !== life || !capabilityEnabled(getRuntimeWorld().getCapabilities(), "navigation")) {
-    created.dispose();
-    throw abortError2();
-  }
-  if (instance && instance !== created) created.dispose();
-  instance ??= created;
-  return instance;
-}
-function applyObstacles(items) {
-  const key = items.map((item) => [
-    item.id,
-    item.position.map((value) => value.toFixed(2)).join(","),
-    item.radius.toFixed(2),
-    item.height.toFixed(2)
-  ].join(":")).join("|");
-  if (key === obstacleKey) return;
-  obstacleKey = key;
-  instance?.obstacles(items);
-  pullDebug();
-}
-function collectObstacles(nodes) {
-  const items = [];
-  for (const node of Object.values(nodes)) {
-    if (!node.visible || node.navigation?.role !== "obstacle") continue;
-    const pose = worldPose(nodes, node.id);
-    const radius = Math.max(0.05, node.navigation.radius) * Math.max(Math.abs(pose.scale.x), Math.abs(pose.scale.z));
-    const height = Math.max(0.05, node.navigation.height) * Math.abs(pose.scale.y);
-    items.push({
-      id: node.id,
-      position: [pose.position.x, pose.position.y - height / 2, pose.position.z],
-      radius,
-      height
-    });
-  }
-  return items;
-}
-function pullDebug() {
-  debugMesh = instance?.debug() ?? null;
-}
-function disposeWorld() {
-  life += 1;
-  controller?.abort();
-  controller = null;
-  pending2 = null;
-  instance?.dispose();
-  instance = null;
-  opening = null;
-  loadedScene = "";
-  obstacleKey = "";
-  debugMesh = null;
-  if (useNavUi.getState().phase === "baking") useNavUi.setState({ phase: "idle", text: "" });
-}
-function abortError2() {
-  const error = new Error("aborted");
-  error.name = "AbortError";
-  return error;
-}
-
-// src/capabilities/particles/session.ts
-init_registry();
-init_world();
-
-// src/capabilities/particles/readQuarks.ts
-var DEFAULT_APPEARANCE = {
-  color: "#ff8c33",
-  blend: "additive",
-  opacity: 1,
-  depthWrite: false,
-  image: null
-};
-function readQuarksDocument(json) {
-  if (!json || typeof json !== "object") return null;
-  const record = json;
-  if (record.version === "3.0" && record.shape && typeof record.shape === "object") {
-    const body = { ...record };
-    delete body.material;
-    delete body.texture;
-    return {
-      simulation: { format: "system", body },
-      appearance: appearanceFromFields(record, DEFAULT_APPEARANCE)
-    };
-  }
-  if (record.object && typeof record.object === "object") {
-    const system = findSystem(record.object);
-    return {
-      simulation: { format: "loader", body: record },
-      appearance: appearanceFromLoader(record, system)
-    };
-  }
-  return null;
-}
-function asSimulation(value) {
-  if (!value || typeof value !== "object") return null;
-  const record = value;
-  if ((record.format === "system" || record.format === "loader") && record.body && typeof record.body === "object") {
-    return { format: record.format, body: record.body };
-  }
-  return readQuarksDocument(value)?.simulation ?? null;
-}
-function appearanceFromLoader(root2, system) {
-  const materials = Array.isArray(root2.materials) ? root2.materials : [];
-  const materialId = system && typeof system.material === "string" ? system.material : "";
-  const material = materials.find((item) => item && typeof item === "object" && item.uuid === materialId);
-  const appearance = appearanceFromFields(material ?? system ?? {}, DEFAULT_APPEARANCE);
-  appearance.image = firstImage(root2);
-  return appearance;
-}
-function appearanceFromFields(source, fallback) {
-  const premultiplied = source.premultipliedAlpha === true;
-  return {
-    color: cssColor(source.color) ?? fallback.color,
-    blend: premultiplied ? "premultiply" : blendFromThree(source.blending, fallback.blend),
-    opacity: typeof source.opacity === "number" ? source.opacity : fallback.opacity,
-    depthWrite: typeof source.depthWrite === "boolean" ? source.depthWrite : fallback.depthWrite,
-    image: fallback.image
-  };
-}
-function blendFromThree(value, fallback) {
-  if (value === 2) return "additive";
-  if (value === 4) return "multiply";
-  if (value === 1) return "alpha";
-  if (value === 5) return "premultiply";
-  return fallback;
-}
-function cssColor(value) {
-  if (typeof value !== "number" || !Number.isFinite(value)) return null;
-  return `#${Math.max(0, Math.min(16777215, value)).toString(16).padStart(6, "0")}`;
-}
-function firstImage(root2) {
-  if (!Array.isArray(root2.images)) return null;
-  for (const image of root2.images) {
-    if (image && typeof image === "object" && typeof image.url === "string") {
-      const url = image.url;
-      if (url.length > 0) return url;
-    }
-  }
-  return null;
-}
-function findSystem(value) {
-  if (!value || typeof value !== "object") return null;
-  const record = value;
-  if (record.ps && typeof record.ps === "object") return record.ps;
-  if (Array.isArray(record.children)) {
-    for (const child of record.children) {
-      const found = findSystem(child);
-      if (found) return found;
-    }
-  }
-  return null;
-}
-
-// src/capabilities/particles/session.ts
-var runtime = null;
-var loading = null;
-var scene = null;
-var generation = 0;
-function tickParticles(dt, parentOf) {
-  const runtimeWorld = getRuntimeWorld();
-  if (!capabilityEnabled(runtimeWorld.getCapabilities(), "particles") || !scene) {
-    disposeParticles();
-    return;
-  }
-  if (!runtime) {
-    ensureRuntime();
-    return;
-  }
-  const instances = [];
-  for (const node of Object.values(runtimeWorld.getNodes())) {
-    if (node.kind !== "effect" || !node.effect) continue;
-    const parent = parentOf(node.id);
-    if (!parent || !rootedInScene(parent)) continue;
-    const resolved = resolveInstance(node.id, node.effect, node.visible, parent);
-    if (resolved) instances.push(resolved);
-  }
-  runtime.sync(instances);
-  runtime.update(dt);
-}
-function disposeParticles() {
-  generation += 1;
-  runtime?.dispose();
-  runtime = null;
-  loading = null;
-}
-function ensureRuntime() {
-  if (loading || !scene) return;
-  const token = generation;
-  const root2 = scene;
-  loading = Promise.resolve().then(() => (init_quarksRuntime(), quarksRuntime_exports)).then((module) => {
-    if (token !== generation) return;
-    runtime = module.createQuarksRuntime(root2);
-  }).catch((error) => {
-    console.warn("[particles] three.quarks \u52A0\u8F7D\u5931\u8D25", error);
-  }).finally(() => {
-    if (token === generation) loading = null;
-  });
-}
-function rootedInScene(object) {
-  let current = object;
-  while (current.parent) current = current.parent;
-  return current.type === "Scene";
-}
-function resolveInstance(id, effect, visible, parent) {
-  const runtimeWorld = getRuntimeWorld();
-  let simulation = effect.simulation;
-  let materialId = effect.materialAssetId;
-  if (effect.assetId) {
-    const asset = runtimeWorld.getAsset(effect.assetId);
-    if (!asset || asset.kind !== "effect") return null;
-    simulation = asset.simulation;
-    materialId = effect.materialAssetId ?? asset.materialAssetId ?? null;
-  }
-  const stored = asSimulation(simulation);
-  if (!stored) return null;
-  const material = runtimeWorld.resolveParticleDesc?.(materialId) ?? null;
-  if (material === "incompatible") return null;
-  return {
-    id,
-    parent,
-    simulation: stored,
-    material,
-    playing: effect.playing !== false,
-    visible
-  };
-}
-
-// src/gameplay/juiceClock.ts
-var holdUntil = 0;
-var shakeAmp = 0;
-var shakeUntil = 0;
-function scalePlayDt(dt, now = performance.now() / 1e3) {
-  if (now < holdUntil) return 0;
-  return dt;
-}
-function juiceShake(now = performance.now() / 1e3) {
-  if (now >= shakeUntil || shakeAmp <= 0) return { x: 0, y: 0 };
-  return { x: (Math.random() - 0.5) * shakeAmp, y: (Math.random() - 0.5) * shakeAmp };
-}
-
-// src/core/input/actionMap.ts
-function resolveFsBridge() {
-  return globalThis.electronAPI?.fs;
-}
-var DEFAULT_INPUT_MAP = {
-  version: 1,
-  deadzone: 0.15,
-  actions: {
-    Move: {
-      type: "axis2d",
-      label: "\u79FB\u52A8",
-      axis: {
-        up: ["KeyW", "ArrowUp"],
-        down: ["KeyS", "ArrowDown"],
-        left: ["KeyA", "ArrowLeft"],
-        right: ["KeyD", "ArrowRight"]
-      },
-      gamepadAxes: { x: 0, y: 1, invertY: true },
-      touchControl: "joystick"
-    },
-    Jump: {
-      type: "button",
-      label: "\u8DF3\u8DC3",
-      keys: ["Space"],
-      gamepadButton: 0,
-      touchControl: "button",
-      touchLabel: "\u8DF3"
-    },
-    Sprint: {
-      type: "button",
-      label: "\u51B2\u523A\u8DD1",
-      keys: ["ShiftLeft", "ShiftRight"],
-      gamepadButton: 4
-    },
-    Dash: {
-      type: "button",
-      label: "\u95EA\u907F",
-      keys: ["KeyC"],
-      gamepadButton: 1,
-      touchControl: "button",
-      touchLabel: "\u95EA"
-    },
-    Interact: {
-      type: "button",
-      label: "\u4EA4\u4E92",
-      keys: ["KeyE"],
-      gamepadButton: 2,
-      touchControl: "button",
-      touchLabel: "\u4EA4\u4E92"
-    },
-    Attack: {
-      type: "button",
-      label: "\u653B\u51FB/\u5F00\u706B",
-      keys: ["KeyJ"],
-      gamepadButton: 7,
-      touchControl: "button",
-      touchLabel: "\u653B"
-    }
-  }
-};
-var INPUT_MAP_FILE = "input.json";
-function cloneDefaultMap() {
-  return structuredClone(DEFAULT_INPUT_MAP);
-}
-function normalizeInputMap(raw) {
-  const base = cloneDefaultMap();
-  if (!raw || typeof raw !== "object") return base;
-  const record = raw;
-  const deadzone = typeof record.deadzone === "number" && Number.isFinite(record.deadzone) ? Math.max(0.01, Math.min(0.6, record.deadzone)) : base.deadzone;
-  const actions = { ...base.actions };
-  if (record.actions && typeof record.actions === "object") {
-    for (const [name, value] of Object.entries(record.actions)) {
-      if (!value || typeof value !== "object") continue;
-      const item = value;
-      const type = item.type === "axis2d" ? "axis2d" : "button";
-      actions[name] = {
-        type,
-        label: typeof item.label === "string" && item.label.trim() ? item.label : name,
-        keys: Array.isArray(item.keys) ? item.keys.filter((k) => typeof k === "string") : void 0,
-        axis: item.axis && typeof item.axis === "object" ? item.axis : void 0,
-        gamepadButton: typeof item.gamepadButton === "number" ? item.gamepadButton : void 0,
-        gamepadAxes: item.gamepadAxes && typeof item.gamepadAxes === "object" ? item.gamepadAxes : void 0,
-        touchControl: item.touchControl === "joystick" || item.touchControl === "button" ? item.touchControl : void 0,
-        touchLabel: typeof item.touchLabel === "string" ? item.touchLabel : void 0
-      };
-    }
-  }
-  return { version: 1, deadzone, actions };
-}
-var currentMap = cloneDefaultMap();
-function getInputActionMap() {
-  return currentMap;
-}
-function setInputActionMap(next) {
-  currentMap = normalizeInputMap(next);
-}
-async function saveProjectInputMap(projectRoot, map = currentMap) {
-  currentMap = normalizeInputMap(map);
-  if (!projectRoot) return false;
-  const fs = resolveFsBridge();
-  if (!fs?.writeTextFile) return false;
-  const path = `${projectRoot.replace(/[\\/]+$/, "")}/${INPUT_MAP_FILE}`;
-  await fs.writeTextFile(path, `${JSON.stringify(currentMap, null, 2)}
-`);
-  return true;
-}
-var physicalKeys = /* @__PURE__ */ new Set();
-var virtualKeys = /* @__PURE__ */ new Set();
-var tappedKeys = /* @__PURE__ */ new Set();
-var virtualActions = /* @__PURE__ */ new Set();
-var tappedActions = /* @__PURE__ */ new Set();
-var virtualAxes = /* @__PURE__ */ new Map();
-function injectVirtualInput(events) {
-  const list = Array.isArray(events) ? events : [events];
-  for (const event of list) {
-    if (event.type === "clear") {
-      virtualKeys.clear();
-      virtualActions.clear();
-      virtualAxes.clear();
-      tappedKeys.clear();
-      tappedActions.clear();
-      continue;
-    }
-    if (event.type === "keyDown") {
-      if (!virtualKeys.has(event.code)) tappedKeys.add(event.code);
-      virtualKeys.add(event.code);
-      continue;
-    }
-    if (event.type === "keyUp") {
-      virtualKeys.delete(event.code);
-      continue;
-    }
-    if (event.type === "actionDown") {
-      if (!virtualActions.has(event.action)) tappedActions.add(event.action);
-      virtualActions.add(event.action);
-      continue;
-    }
-    if (event.type === "actionUp") {
-      virtualActions.delete(event.action);
-      continue;
-    }
-    if (event.type === "axis") {
-      virtualAxes.set(event.action, {
-        x: Math.max(-1, Math.min(1, event.x)),
-        y: Math.max(-1, Math.min(1, event.y))
-      });
-    }
-  }
-}
-function clearAllVirtualInput() {
-  injectVirtualInput({ type: "clear" });
-}
-function isKeyHeld(code) {
-  return physicalKeys.has(code) || virtualKeys.has(code);
-}
-function activeGamepad() {
-  if (typeof navigator === "undefined" || typeof navigator.getGamepads !== "function") return null;
-  const pads = navigator.getGamepads();
-  for (const pad of pads) {
-    if (pad && pad.connected) return pad;
-  }
-  return null;
-}
-function isActionPressed(actionName) {
-  if (virtualActions.has(actionName)) return true;
-  const binding = currentMap.actions[actionName];
-  if (!binding) return false;
-  if (binding.keys?.some((code) => isKeyHeld(code))) return true;
-  if (typeof binding.gamepadButton === "number") {
-    const pad = activeGamepad();
-    if (pad?.buttons[binding.gamepadButton]?.pressed) return true;
-  }
-  return false;
-}
-function wasActionTapped(actionName) {
-  if (tappedActions.has(actionName)) return true;
-  const binding = currentMap.actions[actionName];
-  if (!binding) return false;
-  return Boolean(binding.keys?.some((code) => tappedKeys.has(code)));
-}
-function getActionAxis2D(actionName) {
-  const vAxis = virtualAxes.get(actionName);
-  let x = vAxis?.x ?? 0;
-  let y = vAxis?.y ?? 0;
-  const binding = currentMap.actions[actionName];
-  if (binding?.axis) {
-    if (binding.axis.right?.some((c) => isKeyHeld(c))) x += 1;
-    if (binding.axis.left?.some((c) => isKeyHeld(c))) x -= 1;
-    if (binding.axis.up?.some((c) => isKeyHeld(c))) y += 1;
-    if (binding.axis.down?.some((c) => isKeyHeld(c))) y -= 1;
-  }
-  if (binding?.gamepadAxes) {
-    const pad = activeGamepad();
-    if (pad) {
-      const gx = pad.axes[binding.gamepadAxes.x] ?? 0;
-      const gyRaw = pad.axes[binding.gamepadAxes.y] ?? 0;
-      const gy = binding.gamepadAxes.invertY ? -gyRaw : gyRaw;
-      if (Math.abs(gx) > currentMap.deadzone) x += gx;
-      if (Math.abs(gy) > currentMap.deadzone) y += gy;
-    }
-  }
-  const len = Math.hypot(x, y);
-  if (len > 1) {
-    x /= len;
-    y /= len;
-  }
-  return { x, y };
-}
-function consumeInputFrame() {
-  tappedKeys.clear();
-  tappedActions.clear();
-}
-
-// src/runtime/frameProfile.ts
-var buckets = /* @__PURE__ */ new Map();
-var capture = null;
-function measureCost(id, run) {
-  const start2 = performance.now();
-  try {
-    run();
-  } finally {
-    const ms = performance.now() - start2;
-    buckets.set(id, (buckets.get(id) ?? 0) + ms);
-    if (capture) capture.set(id, (capture.get(id) ?? 0) + ms);
-  }
-}
-
-// src/runtime/sceneRuntime.ts
-function defaultCharacter() {
-  return {
-    enabled: true,
-    driver: "capsule",
-    mode: "adventure",
-    clickButton: "right",
-    clickStop: 0.35,
-    moveSpeed: 4.5,
-    turnSpeed: 540,
-    sprintMultiplier: 1.6,
-    jumpSpeed: 6.5,
-    maxJumps: 2,
-    coyoteTime: 0.12,
-    jumpBuffer: 0.12,
-    gravity: 18,
-    radius: 0.35,
-    height: 1.7,
-    capsuleOffset: [0, 0, 0],
-    physicsInteract: false,
-    mass: 65,
-    pushStrength: 1,
-    swim: true,
-    swimSpeedMultiplier: 0.65,
-    swimHeightOffset: 0,
-    dash: true,
-    dashKey: "KeyC",
-    dashDistance: 4,
-    dashDuration: 0.22,
-    dashInvincible: 0.35,
-    dashCooldown: 0.8,
-    footstepDistance: 1.6,
-    footstepJuice: "",
-    lockTargetId: "",
-    lockTargetName: "",
-    idleClip: "",
-    idleClipAssetId: "",
-    walkClip: "",
-    walkClipAssetId: "",
-    runClip: "",
-    runClipAssetId: "",
-    jumpClip: "",
-    jumpClipAssetId: "",
-    airClip: "",
-    airClipAssetId: "",
-    landClip: "",
-    landClipAssetId: "",
-    dodgeClip: "",
-    dodgeClipAssetId: "",
-    swimIdleClip: "",
-    swimIdleClipAssetId: "",
-    swimClip: "",
-    swimClipAssetId: ""
-  };
-}
-function defaultCameraFollow() {
-  return {
-    enabled: true,
-    targetId: "",
-    targetName: "",
-    offset: [0, 1.8, -4.2],
-    pivot: [0, 1.4, 0],
-    orbit: "rightDrag",
-    sensitivity: 0.25,
-    minPitch: -35,
-    maxPitch: 70,
-    collision: true,
-    collisionRadius: 0.2,
-    localOffset: false,
-    damping: 8,
-    lookAtTarget: true,
-    fov: 60,
-    zoom: true,
-    zoomSpeed: 0.18,
-    minDistance: 0.8,
-    maxDistance: 18
-  };
-}
-function cameraPresetForMode(mode) {
-  if (mode === "strafe") return { offset: [0.65, 0.45, -2.2], pivot: [0, 1.5, 0], orbit: "mouse", localOffset: false, lookAtTarget: true, fov: 55, collision: true };
-  if (mode === "lockOn") return { offset: [0.35, 2.2, -4.8], pivot: [0, 1.35, 0], orbit: "rightDrag", localOffset: false, lookAtTarget: true, fov: 58, collision: true };
-  if (mode === "pointAndClick") return { offset: [0, 10.5, -7.2], pivot: [0, 0.8, 0], orbit: "none", localOffset: false, lookAtTarget: true, fov: 48, collision: false };
-  if (mode === "topDown") return { offset: [0, 9.5, -6.5], pivot: [0, 0.8, 0], orbit: "none", localOffset: false, lookAtTarget: true, fov: 50, collision: false };
-  if (mode === "side25d") return { offset: [0, 1.6, -7.5], pivot: [0, 1.2, 0], orbit: "none", localOffset: false, lookAtTarget: true, fov: 45, collision: false };
-  if (mode === "firstPerson") return { offset: [0, 0, 0.12], pivot: [0, 1.65, 0], orbit: "mouse", localOffset: false, lookAtTarget: false, fov: 72, collision: false, zoom: false, damping: 0, minPitch: -85, maxPitch: 85 };
-  return { offset: [0, 1.8, -4.2], pivot: [0, 1.4, 0], orbit: "rightDrag", localOffset: false, lookAtTarget: true, fov: 60, collision: true };
-}
-function resolveCharacterCamera(character, raw) {
-  const mode = character.mode;
-  const preset = cameraPresetForMode(mode);
-  const base = { ...defaultCameraFollow(), ...preset, ...raw, preset: mode };
-  base.targetId = "";
-  base.targetName = "";
-  base.lookAtTarget = true;
-  if (mode === "pointAndClick" || mode === "topDown" || mode === "side25d") {
-    base.orbit = "none";
-    base.localOffset = false;
-    base.collision = false;
-    return base;
-  }
-  if (mode === "firstPerson") {
-    base.orbit = "mouse";
-    base.localOffset = false;
-    base.collision = false;
-    base.zoom = false;
-    base.lookAtTarget = false;
-    base.damping = 0;
-    if (base.minPitch === -35 && base.maxPitch === 70) {
-      base.minPitch = -85;
-      base.maxPitch = 85;
-    }
-    if (base.offset[1] > 0.4 && Math.abs(base.offset[1] - base.pivot[1]) < 0.05) {
-      base.offset = [base.offset[0], 0, base.offset[2]];
-    }
-    return base;
-  }
-  if (mode === "strafe") {
-    base.orbit = "mouse";
-    base.localOffset = false;
-    return base;
-  }
-  base.localOffset = false;
-  if (base.orbit === "none") base.orbit = "rightDrag";
-  if (character.driver !== "capsule" && character.clickButton === "right" && base.orbit === "rightDrag") {
-    base.orbit = "mouse";
-  }
-  return base;
-}
-function defaultInteract() {
-  return {
-    enabled: true,
-    prompt: "\u6309 E \u4EA4\u4E92",
-    key: "KeyE",
-    radius: 2.5,
-    filterTagId: "",
-    message: "onInteract",
-    once: false
-  };
-}
-function defaultTrigger() {
-  return {
-    enabled: true,
-    radius: 3,
-    filterTagId: "",
-    enterMessage: "onZoneEnter",
-    exitMessage: "onZoneExit",
-    once: false
-  };
-}
-function defaultMover() {
-  return {
-    enabled: true,
-    offset: [0, 3, 0],
-    duration: 2.5,
-    pause: 0.6,
-    pingPong: true,
-    autoPlay: true,
-    startMessage: "onActivateMover",
-    carryRadius: 1.6
-  };
-}
-function defaultCheckpoint() {
-  return {
-    enabled: true,
-    spawn: false,
-    radius: 2.5,
-    delay: 1.2,
-    abyssY: -12,
-    message: "onPlayerRespawned"
-  };
-}
-function defaultSoundSource() {
-  return {
-    enabled: true,
-    assetId: "",
-    loop: true,
-    volume: 1,
-    refDistance: 3,
-    rolloff: 1
-  };
-}
-function defaultScore() {
-  return {
-    enabled: true,
-    title: "\u5230\u8FBE\u76EE\u6807",
-    target: 100,
-    perInteract: 50,
-    timeLimit: 0,
-    victoryMessage: "onStageVictory",
-    defeatMessage: "onStageDefeat"
-  };
-}
-var RUNTIME_STAGE = {
-  PRE_PHYSICS: 10,
-  PHYSICS_NAV: 50,
-  POST_PHYSICS: 55,
-  ANIMATION: 60,
-  POST_ANIMATION: 70,
-  PRE_RENDER: 80
-};
-var systems = [];
-var postPhysicsSystems = [];
-var postAnimationSystems = [];
-function registerRuntimeSystem(id, order, step2) {
-  const target = order >= RUNTIME_STAGE.POST_ANIMATION ? postAnimationSystems : order >= RUNTIME_STAGE.PHYSICS_NAV ? postPhysicsSystems : systems;
-  const index = target.findIndex((item) => item.id === id);
-  if (index >= 0) target.splice(index, 1);
-  target.push({ id, order, step: step2 });
-  target.sort((a, b) => a.order - b.order);
-  return () => {
-    const idx = target.findIndex((item) => item.id === id);
-    if (idx >= 0) target.splice(idx, 1);
-  };
-}
-function stepSceneRuntime(dt, host) {
-  const scaled = scalePlayDt(dt);
-  for (const system of systems) {
-    measureCost(system.id, () => system.step(scaled, host));
-  }
-  measureCost("physics", () => tickPhysics(scaled, host.resolveObject));
-  measureCost("navigation", () => tickNavigation());
-  for (const system of postPhysicsSystems) {
-    measureCost(system.id, () => system.step(scaled, host));
-  }
-  if (host.ready) {
-    measureCost("animation", () => host.updateAnimations(scaled));
-    for (const system of postAnimationSystems) {
-      measureCost(system.id, () => system.step(scaled, host));
-    }
-    measureCost("particles", () => tickParticles(scaled, host.resolveObject));
-  }
-  consumeInputFrame();
-}
+init_sceneRuntime();
 
 // src/runtime/camera.ts
+init_juiceClock();
+init_sceneRuntime();
 init_world();
 var arms = /* @__PURE__ */ new Map();
 function stepCameras(dt, host) {
@@ -9716,37 +14901,6 @@ function spring(host, focus, desired, ignoreId, radius) {
 }
 registerRuntimeSystem("core.camera", 75, stepCameras);
 
-// src/runtime/ui/bindings.ts
-var EMPTY_UI_VALUES = { variables: {}, components: {}, screens: {} };
-
-// src/runtime/ui/values.ts
-var variables = {};
-var components = {};
-var screens = {};
-var snapshot = EMPTY_UI_VALUES;
-var listeners = /* @__PURE__ */ new Set();
-function publish() {
-  snapshot = {
-    variables: { ...variables },
-    components: Object.fromEntries(Object.entries(components).map(([id, fields]) => [id, { ...fields }])),
-    screens: { ...screens }
-  };
-  for (const listener2 of listeners) listener2();
-}
-function uiValues() {
-  return snapshot;
-}
-function writeUiVariable(varId, value) {
-  variables = { ...variables, [varId]: value };
-  publish();
-}
-function resetUiValues() {
-  variables = {};
-  components = {};
-  screens = {};
-  publish();
-}
-
 // src/editor/project/taxonomy.ts
 var TAG_ID_MAIN_CAMERA = "tag_main_camera";
 var TAG_NAME_MAIN_CAMERA = "MainCamera";
@@ -9775,11 +14929,11 @@ function ensureLayers(layers) {
 }
 
 // src/editor/scene/transform.ts
-import { Euler as Euler3, Matrix4 as Matrix42, Quaternion as Quaternion5, Vector3 as Vector38 } from "three";
+import { Euler as Euler3, Matrix4 as Matrix42, Quaternion as Quaternion6, Vector3 as Vector311 } from "three";
 var DEG2 = Math.PI / 180;
 var RAD = 180 / Math.PI;
 function eulerQuaternion2(rotation) {
-  return new Quaternion5().setFromEuler(new Euler3(rotation[0] * DEG2, rotation[1] * DEG2, rotation[2] * DEG2, "XYZ"));
+  return new Quaternion6().setFromEuler(new Euler3(rotation[0] * DEG2, rotation[1] * DEG2, rotation[2] * DEG2, "XYZ"));
 }
 function quaternionEuler(quaternion) {
   const euler = new Euler3().setFromQuaternion(quaternion, "XYZ");
@@ -9795,11 +14949,11 @@ function worldPose2(nodes, id) {
     current = current.parentId ? nodes[current.parentId] : void 0;
   }
   chain.reverse();
-  const position = new Vector38();
-  const quaternion = new Quaternion5();
-  const scale = new Vector38(1, 1, 1);
-  const localPosition = new Vector38();
-  const localScale = new Vector38();
+  const position = new Vector311();
+  const quaternion = new Quaternion6();
+  const scale = new Vector311(1, 1, 1);
+  const localPosition = new Vector311();
+  const localScale = new Vector311();
   for (const node of chain) {
     localPosition.set(node.position[0], node.position[1], node.position[2]).multiply(scale).applyQuaternion(quaternion);
     position.add(localPosition);
@@ -9814,7 +14968,7 @@ function safeDiv(value, scale) {
 }
 function worldPointToLocal(parent, point2) {
   const delta = point2.clone().sub(parent.position).applyQuaternion(parent.quaternion.clone().invert());
-  return new Vector38(
+  return new Vector311(
     safeDiv(delta.x, parent.scale.x),
     safeDiv(delta.y, parent.scale.y),
     safeDiv(delta.z, parent.scale.z)
@@ -9831,7 +14985,7 @@ function localPoseFromWorld(parent, world3) {
   return {
     position: worldPointToLocal(parent, world3.position),
     quaternion: parent.quaternion.clone().invert().multiply(world3.quaternion),
-    scale: new Vector38(
+    scale: new Vector311(
       safeDiv(world3.scale.x, parent.scale.x),
       safeDiv(world3.scale.y, parent.scale.y),
       safeDiv(world3.scale.z, parent.scale.z)
@@ -9881,6 +15035,8 @@ function placeViewportAt(position, quaternion) {
 }
 
 // src/editor/scene/store.ts
+init_archive();
+init_session4();
 var seed = createSeed();
 function bakeFollow(node) {
   const arm = cameraArmOf(node.id);
@@ -9928,7 +15084,7 @@ function pushHistory(set, entry) {
     future: []
   }));
 }
-var useEditorStore = create4((set, get) => ({
+var useEditorStore = create6((set, get) => ({
   nodes: seed.nodes,
   selection: [seed.selectedId],
   gizmoMode: "translate",
@@ -9995,6 +15151,20 @@ var useEditorStore = create4((set, get) => ({
   inspectAsset: (id) => set({ inspectedAssetId: id, selection: id ? [] : get().selection }),
   pingAsset: (id) => {
     const library = useAssetStore.getState();
+    if (id.startsWith("code:")) {
+      const parts = id.split(":");
+      const codeKind = parts[1] === "shader" ? "shader" : "script";
+      const codeId = parts.slice(2).join(":");
+      const codeAssets = useCodeAssetStore.getState().assets;
+      const record = codeAssets[codeId];
+      if (!record) return;
+      const storedDir = library.assetDirs[id];
+      const fallbackDir = record.relativePath.startsWith("Assets/") && record.relativePath.includes("/") ? record.relativePath.slice(0, record.relativePath.lastIndexOf("/")) : codeKind === "shader" ? "Assets/Shaders" : "Assets/Scripts";
+      library.setBrowseDir(storedDir || fallbackDir);
+      useCodeAssetStore.getState().selectAsset(codeId);
+      set({ inspectedAssetId: null, selection: [], assetPing: { id, nonce: Date.now() } });
+      return;
+    }
     if (!library.assets[id]) return;
     library.setBrowseDir(assetDirectory(id, library.assetDirs));
     set({ assetPing: { id, nonce: Date.now() } });
@@ -10033,8 +15203,8 @@ var useEditorStore = create4((set, get) => ({
     const parent = node.parentId ? worldPose2(nodes, node.parentId) : null;
     const current = worldPose2(nodes, id);
     const local = poseComponents(localPoseFromWorld(parent, {
-      position: new Vector39(view.position[0], view.position[1], view.position[2]),
-      quaternion: new Quaternion6(view.quaternion[0], view.quaternion[1], view.quaternion[2], view.quaternion[3]),
+      position: new Vector312(view.position[0], view.position[1], view.position[2]),
+      quaternion: new Quaternion7(view.quaternion[0], view.quaternion[1], view.quaternion[2], view.quaternion[3]),
       scale: current.scale
     }));
     get().beginGesture(translate("gesture.alignCamera"));
@@ -10104,7 +15274,7 @@ var useEditorStore = create4((set, get) => ({
       if (get().prefabSession && !parent) parent = Object.values(draft.nodes).find((node) => !node.parentId)?.id ?? null;
       const id = crypto.randomUUID();
       const name = uniqueName(draft.nodes, label);
-      const shaped = kind === "box" || kind === "sphere" || kind === "capsule" || kind === "cylinder" || kind === "cone";
+      const shaped = kind === "box" || kind === "sphere" || kind === "capsule" || kind === "cylinder" || kind === "cone" || kind === "plane";
       draft.nodes[id] = makeNode({
         id,
         name,
@@ -10356,7 +15526,7 @@ var useEditorStore = create4((set, get) => ({
       const sharedParent = draft.nodes[live[0]].parentId;
       const parentId = live.every((id) => draft.nodes[id].parentId === sharedParent) ? sharedParent : null;
       const worlds = new Map(live.map((id) => [id, worldPose2(draft.nodes, id)]));
-      const center = new Vector39();
+      const center = new Vector312();
       for (const id of live) center.add(worlds.get(id).position);
       center.multiplyScalar(1 / live.length);
       const parentPose = parentId ? worldPose2(draft.nodes, parentId) : null;
@@ -10945,9 +16115,9 @@ var useEditorStore = create4((set, get) => ({
         if (!node) continue;
         const parent = node.parentId ? worldPose2(nodes, node.parentId) : null;
         const local = localPoseFromWorld(parent, {
-          position: new Vector39(pose.position[0], pose.position[1], pose.position[2]),
-          quaternion: new Quaternion6(pose.rotation[0], pose.rotation[1], pose.rotation[2], pose.rotation[3]),
-          scale: new Vector39(node.scale[0], node.scale[1], node.scale[2])
+          position: new Vector312(pose.position[0], pose.position[1], pose.position[2]),
+          quaternion: new Quaternion7(pose.rotation[0], pose.rotation[1], pose.rotation[2], pose.rotation[3]),
+          scale: new Vector312(node.scale[0], node.scale[1], node.scale[2])
         });
         const parts = poseComponents(local);
         nodes[pose.id] = { ...node, position: parts.position, rotation: parts.rotation };
@@ -11309,19 +16479,52 @@ function selectedCameraId(state, editable) {
   if (editable && node.locked) return null;
   return id;
 }
+if (typeof window !== "undefined") {
+  window.addEventListener("t3d:load-scene", (ev) => {
+    const detail = ev.detail;
+    if (!detail?.sceneId) return;
+    const st = useEditorStore.getState();
+    if (st.playState === "playing") {
+      st.openScene(detail.sceneId);
+    }
+  });
+}
 
 // src/core/query/inspect.ts
+init_registry();
+function resolveCodeAssetFolder(kind, id, relativePath, assetDirs) {
+  const dirKey = codeAssetDirKey(kind, id);
+  if (assetDirs[dirKey]) return normalizeDir(assetDirs[dirKey]);
+  if (relativePath.startsWith(`${ASSETS_ROOT}/`) && relativePath.includes("/")) {
+    return normalizeDir(relativePath.slice(0, relativePath.lastIndexOf("/")));
+  }
+  return defaultCodeAssetDir(kind);
+}
 function queryProjectOverview() {
   const state = useEditorStore.getState();
-  const assets = Object.values(useAssetStore.getState().assets);
+  const assetState = useAssetStore.getState();
+  const assets = Object.values(assetState.assets);
   const assetCounts = {};
+  const folderCounts = {};
+  for (const f of assetState.folders) {
+    const dir = normalizeDir(f);
+    if (!(dir in folderCounts)) folderCounts[dir] = 0;
+  }
   const scenes = [];
   for (const asset of assets) {
     assetCounts[asset.kind] = (assetCounts[asset.kind] ?? 0) + 1;
+    const dir = assetDirectory(asset.id, assetState.assetDirs);
+    folderCounts[dir] = (folderCounts[dir] ?? 0) + 1;
     if (asset.kind === "scene") {
       scenes.push({ id: asset.id, name: asset.name, active: asset.id === state.activeSceneId });
     }
   }
+  for (const code of Object.values(useCodeAssetStore.getState().assets)) {
+    assetCounts[code.kind] = (assetCounts[code.kind] ?? 0) + 1;
+    const dir = resolveCodeAssetFolder(code.kind, code.id, code.relativePath, assetState.assetDirs);
+    folderCounts[dir] = (folderCounts[dir] ?? 0) + 1;
+  }
+  if (!(ASSETS_ROOT in folderCounts)) folderCounts[ASSETS_ROOT] = 0;
   const enabledCapabilities = CAPABILITIES.filter((c) => capabilityEnabled(state.capabilities, c.id)).map((c) => c.id);
   return {
     activeSceneId: state.activeSceneId,
@@ -11332,6 +16535,7 @@ function queryProjectOverview() {
     enabledCapabilities,
     enabledGameplayPacks: [...state.gameplayPacks],
     assetCounts,
+    assetFolders: Object.entries(folderCounts).sort(([a], [b]) => a.localeCompare(b, "zh")).map(([path, count]) => ({ path, count })),
     viewportStats: {
       triangles: state.viewportStats.triangles,
       calls: state.viewportStats.calls,
@@ -11403,19 +16607,39 @@ function queryNodeInspect(nodeId) {
     renderLayerId: node.renderLayerId ?? "default"
   };
 }
-function queryAssetSearch(query = "", kind) {
+function queryAssetSearch(query = "", kind, folder) {
   const q = query.trim().toLowerCase();
-  const assets = Object.values(useAssetStore.getState().assets);
-  return assets.filter((asset) => {
+  const assetState = useAssetStore.getState();
+  const assets = Object.values(assetState.assets);
+  const targetFolder = folder?.trim() ? normalizeDir(folder) : null;
+  const regularResults = assets.filter((asset) => {
     if (kind && asset.kind !== kind) return false;
+    const dir = assetDirectory(asset.id, assetState.assetDirs);
+    if (targetFolder && !isWithin(dir, targetFolder)) return false;
     if (!q) return true;
     return asset.name.toLowerCase().includes(q) || asset.id.toLowerCase().includes(q);
-  }).slice(0, 60).map((asset) => ({
+  }).map((asset) => ({
     id: asset.id,
     name: asset.name,
     kind: asset.kind,
+    folder: assetDirectory(asset.id, assetState.assetDirs),
     ...asset.kind === "model" ? { importScale: asset.importScale ?? 1, clipCount: asset.clipCatalog?.length ?? 0 } : {}
   }));
+  const codeResults = Object.values(useCodeAssetStore.getState().assets).filter((code) => {
+    if (kind && code.kind !== kind) return false;
+    const dir = resolveCodeAssetFolder(code.kind, code.id, code.relativePath, assetState.assetDirs);
+    if (targetFolder && !isWithin(dir, targetFolder)) return false;
+    if (!q) return true;
+    return code.name.toLowerCase().includes(q) || code.id.toLowerCase().includes(q) || code.relativePath.toLowerCase().includes(q);
+  }).map((code) => ({
+    id: code.id,
+    name: code.name,
+    kind: code.kind,
+    folder: resolveCodeAssetFolder(code.kind, code.id, code.relativePath, assetState.assetDirs),
+    relativePath: code.relativePath,
+    ok: code.ok
+  }));
+  return [...regularResults, ...codeResults].slice(0, 60);
 }
 function queryRegistryDescribe(category, id) {
   const out = {};
@@ -11455,10 +16679,12 @@ function queryDbRows(tableId, limit = 50) {
 }
 
 // src/core/query/diagnose.ts
-init_registry();
+init_registry2();
+init_actionMap();
 
 // src/core/preview/offscreenPreview.ts
 var activeBridge = null;
+var activeCompositeCapture = null;
 function getViewportBridge() {
   return activeBridge;
 }
@@ -11466,6 +16692,17 @@ function captureMainViewport(options) {
   if (!activeBridge) return null;
   activeBridge.renderNow();
   return activeBridge.captureDataUrl(options);
+}
+async function captureViewportComposite(options) {
+  if (activeBridge) activeBridge.renderNow();
+  if (activeCompositeCapture) {
+    try {
+      const composite = await activeCompositeCapture(options);
+      if (composite) return composite;
+    } catch {
+    }
+  }
+  return captureMainViewport(options);
 }
 function readMainRenderMetrics() {
   return activeBridge?.getRenderMetrics() ?? null;
@@ -11552,6 +16789,164 @@ function diagnoseProject(budget = DEFAULT_PERFORMANCE_BUDGET) {
             hint: `\u8C03\u7528 gameplay.setPackEnabled \u5F00\u542F "${packId}"`
           });
         }
+      }
+    }
+  }
+  const codeAssets = Object.values(useCodeAssetStore.getState().assets);
+  const scriptAssets = codeAssets.filter((a) => a.kind === "script");
+  const scriptById = new Map(scriptAssets.map((s) => [s.id, s]));
+  for (const script of scriptAssets) {
+    if (!script.ok) {
+      issues.push({
+        severity: "error",
+        category: "playability",
+        target: script.id,
+        message: `\u811A\u672C "${script.relativePath}" \u7F16\u8BD1\u5931\u8D25\uFF08${script.diagnostics[0]?.message ?? "\u5B58\u5728\u8BED\u6CD5\u6216\u7ED3\u6784\u9519\u8BEF"}\uFF09`,
+        hint: "\u8C03\u7528 query__code_read \u67E5\u770B\u6E90\u7801\u5E76\u7528 script.update / script.patch \u4FEE\u590D"
+      });
+    }
+  }
+  const mountedScriptIds = /* @__PURE__ */ new Set();
+  for (const node of nodes) {
+    const projectScripts = node.gameplay?.packs?.__project__;
+    if (!projectScripts || typeof projectScripts !== "object") continue;
+    for (const [scriptId, rawConfig] of Object.entries(projectScripts)) {
+      if (!rawConfig || typeof rawConfig !== "object") continue;
+      if (rawConfig.__enabled === false) continue;
+      mountedScriptIds.add(scriptId);
+      const scriptRecord = scriptById.get(scriptId);
+      if (!scriptRecord) {
+        issues.push({
+          severity: "error",
+          category: "reference",
+          target: node.id,
+          message: `\u8282\u70B9 "${node.name}" \u6302\u8F7D\u4E86\u4E0D\u5B58\u5728\u7684\u811A\u672C "${scriptId}"`,
+          hint: "\u68C0\u67E5 scriptId \u6216\u4ECE\u8282\u70B9\u79FB\u9664\u65E0\u6548\u811A\u672C"
+        });
+        continue;
+      }
+      const paramSchema = scriptRecord.compiledScript?.behavior?.params;
+      if (paramSchema && typeof paramSchema === "object") {
+        for (const [paramKey, rawDef] of Object.entries(paramSchema)) {
+          if (!rawDef || typeof rawDef !== "object") continue;
+          const def = rawDef;
+          if (def.type !== "ref") continue;
+          const val = rawConfig[paramKey] ?? def.default;
+          const strVal = typeof val === "string" ? val.trim() : "";
+          if (!strVal) {
+            if (!def.optional) {
+              issues.push({
+                severity: "warning",
+                category: "reference",
+                target: node.id,
+                message: `\u8282\u70B9 "${node.name}" \u4E0A\u7684\u811A\u672C "${scriptId}" \u7F3A\u5C11\u5F15\u7528\u53C2\u6570 "${paramKey}"\uFF08\u5F53\u524D\u4E3A\u7A7A\uFF09`,
+                hint: `\u8C03\u7528 script.attach \u4E3A "${node.name}" \u7684 ${scriptId}.params.${paramKey} \u4F20\u5165\u6709\u6548\u8282\u70B9\u6216\u8D44\u4EA7 ID`
+              });
+            }
+          } else if (def.target === "node" && !state.nodes[strVal]) {
+            issues.push({
+              severity: "error",
+              category: "reference",
+              target: node.id,
+              message: `\u8282\u70B9 "${node.name}" \u811A\u672C "${scriptId}" \u7684\u8282\u70B9\u5F15\u7528 "${paramKey}" \u6307\u5411\u4E86\u4E0D\u5B58\u5728\u7684\u8282\u70B9 "${strVal}"`,
+              hint: `\u8C03\u7528 script.attach \u66F4\u65B0 ${scriptId}.params.${paramKey} \u4E3A\u6709\u6548\u7684\u573A\u666F\u8282\u70B9 ID`
+            });
+          } else if (def.target === "asset" && !assets[strVal]) {
+            issues.push({
+              severity: "error",
+              category: "reference",
+              target: node.id,
+              message: `\u8282\u70B9 "${node.name}" \u811A\u672C "${scriptId}" \u7684\u8D44\u4EA7\u5F15\u7528 "${paramKey}" \u6307\u5411\u4E86\u4E0D\u5B58\u5728\u7684\u8D44\u4EA7 "${strVal}"`,
+              hint: `\u8C03\u7528 script.attach \u66F4\u65B0 ${scriptId}.params.${paramKey} \u4E3A\u6709\u6548\u7684\u8D44\u4EA7 ID`
+            });
+          }
+        }
+      }
+    }
+  }
+  const inputActions = getInputActionMap().actions;
+  const inputActionRe = /\b(?:self|world)\.input\.(?:isPressed|justPressed|justReleased|axis1D|axis2D)\(\s*["']([^"']+)["']/g;
+  const reportedMissingActions = /* @__PURE__ */ new Set();
+  for (const script of scriptAssets) {
+    if (!mountedScriptIds.has(script.id) && script.compiledScript?.kind !== "system") continue;
+    let m;
+    while ((m = inputActionRe.exec(script.source)) !== null) {
+      const actionName = m[1];
+      if (!inputActions[actionName] && !reportedMissingActions.has(actionName)) {
+        reportedMissingActions.add(actionName);
+        issues.push({
+          severity: "warning",
+          category: "playability",
+          target: script.id,
+          message: `\u811A\u672C "${script.id}" \u8BFB\u53D6\u4E86\u8F93\u5165\u52A8\u4F5C "${actionName}"\uFF0C\u4F46\u5DE5\u7A0B\u8F93\u5165\u914D\u7F6E\u4E2D\u672A\u6CE8\u518C\u8BE5\u52A8\u4F5C`,
+          hint: `\u8C03\u7528 input.setAction \u6CE8\u518C "${actionName}" \u7684\u6309\u952E\u6620\u5C04\uFF08\u6216\u6539\u7528\u5DF2\u6CE8\u518C\u52A8\u4F5C\uFF1A${Object.keys(inputActions).join(", ")}\uFF09`
+        });
+      }
+    }
+  }
+  const allScriptSources = scriptAssets.map((s) => s.source).join("\n");
+  const scriptSetVars = /* @__PURE__ */ new Set();
+  const setVarRe = /\bui\.setVar\(\s*["']([^"']+)["']/g;
+  let varMatch;
+  while ((varMatch = setVarRe.exec(allScriptSources)) !== null) {
+    scriptSetVars.add(varMatch[1]);
+  }
+  const scriptEventHandlers = /* @__PURE__ */ new Set();
+  const onEventRe = /\bui\.onEvent\(\s*["']([^"']+)["']/g;
+  let evMatch;
+  while ((evMatch = onEventRe.exec(allScriptSources)) !== null) {
+    scriptEventHandlers.add(evMatch[1]);
+  }
+  const uiBoundVars = /* @__PURE__ */ new Map();
+  const uiSentMessages = /* @__PURE__ */ new Map();
+  const uiSelfSetVars = /* @__PURE__ */ new Set();
+  const collectUiRefs = (uiNode, screenName) => {
+    if (Array.isArray(uiNode.bindings)) {
+      for (const b of uiNode.bindings) {
+        if (b?.source?.kind === "variable" && b.source.varId) {
+          uiBoundVars.set(b.source.varId, screenName);
+        }
+      }
+    }
+    if (uiNode.click?.kind === "sendMessage" && uiNode.click.message) {
+      uiSentMessages.set(uiNode.click.message, screenName);
+    } else if (uiNode.click?.kind === "setVariable" && uiNode.click.varId) {
+      uiSelfSetVars.add(uiNode.click.varId);
+    }
+    if (Array.isArray(uiNode.children)) {
+      for (const child of uiNode.children) collectUiRefs(child, screenName);
+    }
+  };
+  for (const node of nodes) {
+    if (node.kind === "screen" && node.screen?.documentId) {
+      const uiAsset = assets[node.screen.documentId];
+      if (uiAsset?.kind === "ui") {
+        collectUiRefs(uiAsset.document.root, uiAsset.name);
+      }
+    }
+  }
+  if (scriptAssets.length > 0) {
+    for (const [varId, uiName] of uiBoundVars.entries()) {
+      if (!scriptSetVars.has(varId) && !uiSelfSetVars.has(varId)) {
+        issues.push({
+          severity: "warning",
+          category: "ui",
+          target: varId,
+          message: `UI "${uiName}" \u7ED1\u5B9A\u4E86\u53D8\u91CF "${varId}"\uFF0C\u4F46\u6CA1\u6709\u4EFB\u4F55\u811A\u672C\u8C03\u7528 ui.setVar("${varId}", ...) \u66F4\u65B0\u5B83`,
+          hint: `\u5728\u76F8\u5173\u811A\u672C\u4E2D\u6DFB\u52A0 self.ui.setVar("${varId}", value)\uFF08\u6216 world.ui.setVar\uFF09`
+        });
+      }
+    }
+    for (const [msgName, uiName] of uiSentMessages.entries()) {
+      const quotedPresent = scriptEventHandlers.has(msgName) || allScriptSources.includes(`"${msgName}"`) || allScriptSources.includes(`'${msgName}'`);
+      if (!quotedPresent) {
+        issues.push({
+          severity: "warning",
+          category: "ui",
+          target: msgName,
+          message: `UI "${uiName}" \u7684\u6309\u94AE\u4F1A\u53D1\u9001\u4E8B\u4EF6 "${msgName}"\uFF0C\u4F46\u5F53\u524D\u6CA1\u6709\u811A\u672C\u76D1\u542C\u6216\u5904\u7406\u5B83`,
+          hint: `\u5728\u811A\u672C\u4E2D\u901A\u8FC7 self.ui.onEvent("${msgName}", () => { ... }) \u6216 onMessage \u54CD\u5E94\u6B64\u4E8B\u4EF6`
+        });
       }
     }
   }
@@ -11647,1224 +17042,8 @@ function diagnoseProject(budget = DEFAULT_PERFORMANCE_BUDGET) {
   };
 }
 
-// src/core/codeAssets/workspace.ts
-import { create as create6 } from "zustand";
-
-// src/editor/project/disk.ts
-import { create as create5 } from "zustand";
-
-// src/editor/project/electronBridge.ts
-function electronBridge() {
-  if (typeof window === "undefined") return null;
-  return window.__electron ?? null;
-}
-function joinProjectPath(root2, relative2) {
-  const rel = relative2.replace(/\\/g, "/").replace(/^\/+/, "");
-  const base = root2.replace(/[\\/]+$/, "");
-  return rel ? `${base}/${rel}` : base;
-}
-function toArrayBuffer(data) {
-  if (data instanceof ArrayBuffer) return data;
-  return data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength);
-}
-
-// src/editor/project/disk.ts
-var CACHE_ROOT = ".cache/t3d";
-var IMPORT_ARTIFACTS = `${CACHE_ROOT}/import-artifacts`;
-var TEXTURE_ARTIFACTS = `${CACHE_ROOT}/texture-artifacts`;
-var TEXTURE_ORIGINALS = `${CACHE_ROOT}/texture-originals`;
-var CACHE_INDEX_PATH = `${CACHE_ROOT}/editor-library/v1/cache-index.json`;
-var CACHE_INDEX_VERSION = 1;
-var useProjectDirectory = create5(() => ({
-  active: false,
-  name: ""
-}));
-var root = null;
-var projectName = "";
-var records = /* @__PURE__ */ new Map();
-var cacheIndex = emptyIndex();
-var ioChain = Promise.resolve();
-function directoryProjectName() {
-  return projectName;
-}
-function assetRecord(id) {
-  return records.get(id);
-}
-function projectDirectoryPath() {
-  return root?.kind === "path" ? root.path : null;
-}
-async function readAssetBytes(id) {
-  const record = records.get(id);
-  if (!record) return null;
-  return readBytes(requireRoot(), record.relativePath);
-}
-function emptyIndex() {
-  return { schemaVersion: CACHE_INDEX_VERSION, generatedAt: Date.now(), artifacts: {} };
-}
-function requireRoot() {
-  if (!root) throw new Error("\u6CA1\u6709\u6253\u5F00\u7684\u5DE5\u7A0B\u76EE\u5F55");
-  return root;
-}
-function normalizeLayoutPath(path) {
-  return path.replace(/\\/g, "/").split("/").filter((part) => part && part !== "." && part !== "..").join("/");
-}
-async function getDirectory(handle, path, create9) {
-  try {
-    const parts = normalizeLayoutPath(path).split("/").filter(Boolean);
-    let current = handle;
-    for (const part of parts) current = await current.getDirectoryHandle(part, { create: create9 });
-    return current;
-  } catch (error) {
-    if (!create9 && error instanceof DOMException && error.name === "NotFoundError") return null;
-    throw error;
-  }
-}
-async function getFile(handle, path, create9) {
-  const parts = normalizeLayoutPath(path).split("/").filter(Boolean);
-  const name = parts.pop();
-  if (!name) return null;
-  const parent = await getDirectory(handle, parts.join("/"), create9);
-  if (!parent) return null;
-  try {
-    return await parent.getFileHandle(name, { create: create9 });
-  } catch (error) {
-    if (!create9 && error instanceof DOMException && error.name === "NotFoundError") return null;
-    throw error;
-  }
-}
-async function readBytes(current, path) {
-  if (current.kind === "path") {
-    const desktop = electronBridge();
-    if (!desktop) return null;
-    const full = joinProjectPath(current.path, path);
-    try {
-      const data = await desktop.fs.readBinaryFile(full);
-      return data ? toArrayBuffer(data) : null;
-    } catch {
-      return null;
-    }
-  }
-  const file = await getFile(current.handle, path, false);
-  if (!file) return null;
-  return (await file.getFile()).arrayBuffer();
-}
-
-// src/runtime/audio.ts
-import { Audio, AudioListener, PositionalAudio } from "three";
-init_world();
-var MAX_SFX = 32;
-var buffers = /* @__PURE__ */ new Map();
-var listener = null;
-var voices = [];
-var nextId = 1;
-var musicId = 0;
-var heardPlay = false;
-var installed = false;
-var DEFAULT_MIX = { master: 1, music: 0.8, sfx: 1 };
-function readAudioMix(picture) {
-  return {
-    master: unit(picture.audio?.master, DEFAULT_MIX.master),
-    music: unit(picture.audio?.music, DEFAULT_MIX.music),
-    sfx: unit(picture.audio?.sfx, DEFAULT_MIX.sfx)
-  };
-}
-function unlockAudio() {
-  if (holdContext) return;
-  const ctx = ensureListener().context;
-  if (ctx.state === "suspended") void ctx.resume();
-}
-function playSound(options) {
-  installUnlock();
-  const id = nextId++;
-  const ticket = playTicket;
-  const ear = ensureListener();
-  const run = () => {
-    void start(id, options, ticket);
-  };
-  if (ear.context.state === "suspended" && !holdContext) void ear.context.resume().then(run);
-  else run();
-  return id;
-}
-function stopMusic() {
-  const voice = voices.find((item) => item.id === musicId);
-  if (voice) fadeStop(voice);
-  musicId = 0;
-}
-function stopAllSounds() {
-  playTicket += 1;
-  for (const voice of [...voices]) stopVoice(voice);
-  musicId = 0;
-  emitters.clear();
-  managed.clear();
-}
-var emitters = /* @__PURE__ */ new Map();
-var managed = /* @__PURE__ */ new Set();
-var playTicket = 0;
-var holdContext = false;
-function ownsEmitter(id) {
-  for (const current of emitters.values()) if (current.voice === id) return true;
-  return false;
-}
-function ensureListener() {
-  if (!listener) {
-    listener = new AudioListener();
-    listener.gain.gain.value = 1;
-  }
-  return listener;
-}
-function installUnlock() {
-  if (installed || typeof window === "undefined") return;
-  installed = true;
-  const once = () => unlockAudio();
-  window.addEventListener("pointerdown", once, { capture: true });
-  window.addEventListener("keydown", once, { capture: true });
-}
-async function start(id, options, ticket) {
-  const assetId = options.assetId.trim();
-  if (!assetId) return;
-  const world3 = getRuntimeWorld();
-  const asset = world3.getAsset(assetId);
-  if (!asset || asset.kind !== "audio") return;
-  const buffer = await bufferFor(assetId, "hash" in asset && typeof asset.hash === "string" ? asset.hash : assetId);
-  if (!buffer) return;
-  if (managed.has(id) && (ticket !== playTicket || !ownsEmitter(id))) {
-    managed.delete(id);
-    return;
-  }
-  if (managed.has(id) && options.parent && !options.parent.parent) {
-    emitters.forEach((current, nodeId) => {
-      if (current.voice === id) emitters.delete(nodeId);
-    });
-    managed.delete(id);
-    return;
-  }
-  const latestWorld = getRuntimeWorld();
-  if (options.bus === "music" && latestWorld.getPlayState() !== "playing") return;
-  const mix6 = readAudioMix(latestWorld.getPicture());
-  applyMix(mix6);
-  const bus = options.bus ?? "sfx";
-  if (bus === "sfx") trimSfx();
-  const ear = ensureListener();
-  const audio = options.parent ? new PositionalAudio(ear) : new Audio(ear);
-  audio.setBuffer(buffer);
-  audio.setLoop(options.loop === true);
-  const local = clamp4(options.volume ?? 1, 0, 4);
-  audio.setVolume(local * (bus === "music" ? mix6.music : mix6.sfx));
-  if (options.playbackRate && options.playbackRate > 0) audio.setPlaybackRate(options.playbackRate);
-  if (audio instanceof PositionalAudio && options.parent) {
-    audio.setRefDistance(Math.max(0.05, options.refDistance ?? 2));
-    audio.setRolloffFactor(Math.max(0, options.rolloff ?? 1));
-    audio.setDistanceModel("inverse");
-    options.parent.add(audio);
-  }
-  const voice = { id, audio, parent: options.parent ?? null, loop: options.loop === true, bus, local };
-  voices.push(voice);
-  if (bus === "music") {
-    const previous = voices.find((item) => item.id === musicId && item.id !== id);
-    if (previous) fadeStop(previous);
-    musicId = id;
-  }
-  audio.play();
-  const source = audio.source;
-  if (!voice.loop && source) source.onended = () => stopVoice(voice);
-}
-async function bufferFor(assetId, hash) {
-  const key = hash || assetId;
-  let pending3 = buffers.get(key);
-  if (!pending3) {
-    pending3 = (async () => {
-      const world3 = getRuntimeWorld();
-      const url = await world3.resolveAssetUrl?.(assetId) ?? world3.getAsset(assetId)?.url ?? "";
-      if (!url) return null;
-      const response = await fetch(url);
-      const data = await response.arrayBuffer();
-      return ensureListener().context.decodeAudioData(data.slice(0));
-    })().catch((error) => {
-      buffers.delete(key);
-      console.warn("[audio] \u89E3\u7801\u5931\u8D25", error);
-      return null;
-    });
-    buffers.set(key, pending3);
-  }
-  const buffer = await pending3;
-  return buffer && buffer.duration > 0 ? buffer : null;
-}
-function trimSfx() {
-  const live = voices.filter((item) => item.bus === "sfx" && !item.loop && !managed.has(item.id));
-  while (live.length >= MAX_SFX) {
-    const oldest = live.shift();
-    if (oldest) stopVoice(oldest);
-  }
-}
-function fadeStop(voice) {
-  try {
-    const gain = voice.audio.getOutput().gain;
-    const now = voice.audio.context.currentTime;
-    gain.cancelScheduledValues(now);
-    gain.setValueAtTime(gain.value, now);
-    gain.linearRampToValueAtTime(0, now + 0.35);
-  } catch {
-    stopVoice(voice);
-    return;
-  }
-  window.setTimeout(() => stopVoice(voice), 400);
-}
-function stopVoice(voice) {
-  const index = voices.indexOf(voice);
-  if (index >= 0) voices.splice(index, 1);
-  if (musicId === voice.id) musicId = 0;
-  try {
-    if (voice.audio.isPlaying) voice.audio.stop();
-  } catch {
-  }
-  voice.parent?.remove(voice.audio);
-  voice.audio.disconnect();
-}
-var appliedMix = "";
-function applyMix(mix6) {
-  const key = `${mix6.master}|${mix6.music}|${mix6.sfx}`;
-  if (key === appliedMix) return;
-  appliedMix = key;
-  const ear = listener;
-  if (ear) ear.gain.gain.value = mix6.master;
-  for (const voice of voices) {
-    voice.audio.setVolume(voice.local * (voice.bus === "music" ? mix6.music : mix6.sfx));
-  }
-}
-function unit(value, fallback) {
-  const number = typeof value === "number" ? value : Number(value);
-  return Number.isFinite(number) ? clamp4(number, 0, 1) : fallback;
-}
-function clamp4(value, min3, max4) {
-  return Math.min(max4, Math.max(min3, value));
-}
-var contextChain = Promise.resolve();
-function settleContext(paused) {
-  const ctx = listener?.context;
-  if (!ctx) return;
-  contextChain = contextChain.then(async () => {
-    if (paused !== holdContext) return;
-    if (paused && ctx.state === "running") await ctx.suspend();
-    if (!paused && ctx.state === "suspended") await ctx.resume();
-  }).catch(() => void 0);
-}
-registerRuntimeSystem("core.audio", 44, () => {
-  const world3 = getRuntimeWorld();
-  applyMix(readAudioMix(world3.getPicture()));
-  const playState = world3.getPlayState();
-  if (playState === "paused") {
-    heardPlay = true;
-    if (!holdContext) {
-      holdContext = true;
-      settleContext(true);
-    }
-    return;
-  }
-  if (holdContext) {
-    holdContext = false;
-    settleContext(false);
-  }
-  if (playState === "playing") {
-    heardPlay = true;
-    return;
-  }
-  if (!heardPlay) return;
-  heardPlay = false;
-  stopAllSounds();
-});
-installUnlock();
-
-// src/core/codeAssets/scriptRuntime.ts
-init_world();
-
-// src/core/codeAssets/compiler.ts
-import ts from "typescript";
-function diagnosticHint(code, message) {
-  if (message.includes("t3d/shader") || message.includes("t3d/runtime")) {
-    return '\u8BF7\u786E\u4FDD\u4ECE "t3d/shader" \u6216 "t3d/runtime" \u5BFC\u5165\u767D\u540D\u5355 API';
-  }
-  if (code === 2304) return "\u5B58\u5728\u672A\u5B9A\u4E49\u7684\u6807\u8BC6\u7B26\uFF0C\u8BF7\u68C0\u67E5\u62FC\u5199\u6216\u4ECE t3d/runtime / t3d/shader \u5BFC\u5165";
-  if (code === 2322 || code === 2345) return "\u7C7B\u578B\u4E0D\u5339\u914D\uFF0C\u8BF7\u68C0\u67E5\u53C2\u6570\u6216\u8FD4\u56DE\u503C\u7C7B\u578B\u662F\u5426\u7B26\u5408\u5951\u7EA6";
-  return "\u8BF7\u6839\u636E\u62A5\u9519\u884C\u53F7\u4FEE\u6B63\u8BED\u6CD5\u6216\u7C7B\u578B\u9519\u8BEF";
-}
-function checkAndTranspileTs(fileName, source) {
-  const compilerOptions = {
-    target: ts.ScriptTarget.ES2022,
-    module: ts.ModuleKind.CommonJS,
-    esModuleInterop: true,
-    strict: true,
-    skipLibCheck: true,
-    isolatedModules: true
-  };
-  const output = ts.transpileModule(source, {
-    fileName,
-    reportDiagnostics: true,
-    compilerOptions
-  });
-  const diagnostics = (output.diagnostics ?? []).map((diag) => {
-    const start2 = diag.start ?? 0;
-    const pos = diag.file ? diag.file.getLineAndCharacterOfPosition(start2) : { line: 0, character: 0 };
-    const msg = ts.flattenDiagnosticMessageText(diag.messageText, "\n");
-    return {
-      file: fileName,
-      line: pos.line + 1,
-      column: pos.character + 1,
-      severity: diag.category === ts.DiagnosticCategory.Warning ? "warning" : "error",
-      message: msg,
-      hint: diagnosticHint(diag.code, msg)
-    };
-  });
-  const hasError = diagnostics.some((d) => d.severity === "error");
-  if (hasError) {
-    return { ok: false, diagnostics };
-  }
-  return {
-    ok: true,
-    diagnostics,
-    jsCode: output.outputText
-  };
-}
-function evaluateTranspiledModule(fileName, jsCode, injectedModules) {
-  const moduleObj = { exports: {} };
-  const customRequire = (specifier) => {
-    if (specifier in injectedModules) {
-      return injectedModules[specifier];
-    }
-    throw new Error(`\u4E0D\u5141\u8BB8\u5BFC\u5165\u672A\u6388\u6743\u6A21\u5757 "${specifier}"\uFF08\u4EC5\u5141\u8BB8 ${Object.keys(injectedModules).join(", ")}\uFF09`);
-  };
-  try {
-    const fn = new Function("require", "module", "exports", jsCode);
-    fn(customRequire, moduleObj, moduleObj.exports);
-    const exported = moduleObj.exports.default ?? moduleObj.exports;
-    return {
-      ok: true,
-      diagnostics: [],
-      jsCode,
-      exports: exported
-    };
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    return {
-      ok: false,
-      diagnostics: [
-        {
-          file: fileName,
-          line: 1,
-          column: 1,
-          severity: "error",
-          message: `\u6A21\u5757\u6267\u884C\u5931\u8D25\uFF1A${message}`,
-          hint: "\u8BF7\u68C0\u67E5\u9876\u5C42\u4EE3\u7801\u662F\u5426\u5B58\u5728\u8FD0\u884C\u65F6\u5F02\u5E38\u6216\u975E\u6CD5\u6A21\u5757\u5BFC\u5165"
-        }
-      ]
-    };
-  }
-}
-
-// src/core/codeAssets/scriptRuntime.ts
-var compiledBehaviors = /* @__PURE__ */ new Map();
-var compiledSystems = /* @__PURE__ */ new Map();
-var instanceStates = /* @__PURE__ */ new Map();
-var messageQueue = [];
-var globalMemory = /* @__PURE__ */ new Map();
-var persistentMemory = /* @__PURE__ */ new Map();
-var simElapsed = 0;
-function instanceKey2(nodeId, scriptId) {
-  return `${nodeId}::${scriptId}`;
-}
-function toVec3Obj(tuple) {
-  return { x: tuple[0], y: tuple[1], z: tuple[2] };
-}
-function makeNodeHandle(nodeId, host) {
-  const world3 = getRuntimeWorld();
-  const node = world3.getNodes()[nodeId];
-  if (!node) return null;
-  const obj = host.resolveObject(nodeId);
-  const tags2 = [
-    ...node.tagId ? [node.tagId] : [],
-    ...node.tagIds ?? []
-  ];
-  return {
-    get id() {
-      return node.id;
-    },
-    get name() {
-      return node.name;
-    },
-    get tags() {
-      return tags2;
-    },
-    get position() {
-      return obj ? { x: obj.position.x, y: obj.position.y, z: obj.position.z } : toVec3Obj(node.position);
-    },
-    set position(val) {
-      if (obj) obj.position.set(val.x, val.y, val.z);
-      else world3.updateNode(nodeId, { position: [val.x, val.y, val.z] });
-    },
-    get rotation() {
-      return obj ? { x: obj.rotation.x, y: obj.rotation.y, z: obj.rotation.z } : {
-        x: node.rotation[0] * Math.PI / 180,
-        y: node.rotation[1] * Math.PI / 180,
-        z: node.rotation[2] * Math.PI / 180
-      };
-    },
-    set rotation(val) {
-      if (obj) obj.rotation.set(val.x, val.y, val.z);
-    },
-    get scale() {
-      return obj ? { x: obj.scale.x, y: obj.scale.y, z: obj.scale.z } : toVec3Obj(node.scale);
-    },
-    set scale(val) {
-      if (obj) obj.scale.set(val.x, val.y, val.z);
-    },
-    get visible() {
-      return obj ? obj.visible : node.visible;
-    },
-    set visible(val) {
-      if (obj) obj.visible = val;
-      world3.updateNode(nodeId, { visible: val });
-    },
-    hasTag: (tag) => tags2.includes(tag) || tags2.some((t) => t.startsWith(`${tag}.`)),
-    sendMessage: (name, payload) => {
-      messageQueue.push({ targetNodeId: nodeId, name, payload });
-    },
-    getBehavior: (behavior) => {
-      const targetEntry = Object.entries(node.gameplay?.packs?.__project__ ?? {}).find(
-        ([sid2]) => compiledBehaviors.get(sid2) === behavior || compiledBehaviors.get(sid2)?.name === behavior?.name
-      );
-      if (!targetEntry) return null;
-      const [sid, rawParams] = targetEntry;
-      const rec = instanceStates.get(instanceKey2(nodeId, sid));
-      if (!rec) return null;
-      const ctx = buildScriptContext(node, sid, rawParams, rec.state, host);
-      const wrapped = {};
-      for (const [mName, fn] of Object.entries(behavior.methods ?? {})) {
-        wrapped[mName] = (...args) => fn(ctx, ...args);
-      }
-      return wrapped;
-    },
-    destroy: () => {
-      const next = { ...world3.getNodes() };
-      delete next[nodeId];
-      world3.setNodes(next);
-    }
-  };
-}
-function buildScriptContext(node, scriptId, rawParams, stateObj, host) {
-  const world3 = getRuntimeWorld();
-  const def = compiledBehaviors.get(scriptId);
-  const resolvedParams = {};
-  const inputRecord = rawParams && typeof rawParams === "object" ? rawParams : {};
-  for (const [k, schema] of Object.entries(def?.params ?? {})) {
-    const val = k in inputRecord ? inputRecord[k] : defaultForSchema(schema);
-    if (schema.type === "vec2" && Array.isArray(val)) resolvedParams[k] = { x: Number(val[0]) || 0, y: Number(val[1]) || 0 };
-    else if (schema.type === "vec3" && Array.isArray(val)) resolvedParams[k] = { x: Number(val[0]) || 0, y: Number(val[1]) || 0, z: Number(val[2]) || 0 };
-    else if (schema.type === "ref" && schema.target === "node" && typeof val === "string") resolvedParams[k] = makeNodeHandle(val, host);
-    else resolvedParams[k] = val;
-  }
-  const handle = makeNodeHandle(node.id, host);
-  const obj = host.resolveObject(node.id);
-  return {
-    node: handle,
-    params: resolvedParams,
-    state: stateObj,
-    elapsedTime: simElapsed,
-    get position() {
-      return handle.position;
-    },
-    set position(v) {
-      handle.position = v;
-    },
-    get rotation() {
-      return handle.rotation;
-    },
-    set rotation(v) {
-      handle.rotation = v;
-    },
-    get scale() {
-      return handle.scale;
-    },
-    set scale(v) {
-      handle.scale = v;
-    },
-    get visible() {
-      return handle.visible;
-    },
-    set visible(v) {
-      handle.visible = v;
-    },
-    moveToward(target, maxDistance) {
-      const cur = handle.position;
-      const dx = target.x - cur.x;
-      const dy = target.y - cur.y;
-      const dz = target.z - cur.z;
-      const dist = Math.hypot(dx, dy, dz);
-      if (dist <= 1e-4 || dist <= maxDistance) {
-        handle.position = { x: target.x, y: target.y, z: target.z };
-        return true;
-      }
-      const ratio = maxDistance / dist;
-      handle.position = {
-        x: cur.x + dx * ratio,
-        y: cur.y + dy * ratio,
-        z: cur.z + dz * ratio
-      };
-      return false;
-    },
-    lookAt(target) {
-      if (obj) obj.lookAt(target.x, target.y, target.z);
-    },
-    sendMessage(name, payload) {
-      messageQueue.push({ targetNodeId: node.id, name, payload, senderId: node.id });
-    },
-    broadcast(name, payload) {
-      messageQueue.push({ targetNodeId: null, name, payload, senderId: node.id });
-    },
-    getBehavior: (behavior) => handle.getBehavior(behavior),
-    findNodeById: (id) => makeNodeHandle(id, host),
-    findNodesByTag: (tag) => Object.values(world3.getNodes()).filter((n) => n.tagId === tag || n.tagIds?.includes(tag)).map((n) => makeNodeHandle(n.id, host)).filter(Boolean),
-    findNodesInRadius: (center, radius, tag) => {
-      const r2 = radius * radius;
-      return Object.values(world3.getNodes()).filter((n) => {
-        if (tag && n.tagId !== tag && !n.tagIds?.includes(tag)) return false;
-        const p = host.resolveObject(n.id)?.position;
-        const x = p ? p.x : n.position[0];
-        const y = p ? p.y : n.position[1];
-        const z = p ? p.z : n.position[2];
-        const dx = x - center.x;
-        const dy = y - center.y;
-        const dz = z - center.z;
-        return dx * dx + dy * dy + dz * dz <= r2;
-      }).map((n) => makeNodeHandle(n.id, host)).filter(Boolean);
-    },
-    spawnPrefab: (prefabId, opts) => {
-      const pos = opts?.position ? [opts.position.x, opts.position.y, opts.position.z] : [0, 0, 0];
-      world3.instantiatePrefab?.(prefabId, { position: pos });
-      return null;
-    },
-    destroyNode: (target) => {
-      const next = { ...world3.getNodes() };
-      delete next[target.id];
-      world3.setNodes(next);
-    },
-    physics: {
-      raycast: (origin, dir, maxDistance) => {
-        const dist = host.probe?.(
-          [origin.x, origin.y, origin.z],
-          [dir.x, dir.y, dir.z],
-          maxDistance,
-          node.id
-        );
-        if (dist === null || dist === void 0) return null;
-        return {
-          node: handle,
-          point: {
-            x: origin.x + dir.x * dist,
-            y: origin.y + dir.y * dist,
-            z: origin.z + dir.z * dist
-          },
-          normal: { x: 0, y: 1, z: 0 },
-          distance: dist
-        };
-      },
-      sphereCast: () => [],
-      getVelocity: () => ({ x: 0, y: 0, z: 0 }),
-      setVelocity: () => {
-      },
-      applyImpulse: () => {
-      },
-      applyForce: () => {
-      }
-    },
-    nav: {
-      moveTo: (target) => {
-        const cur = handle.position;
-        const path = findNavigationPath([cur.x, cur.y, cur.z], [target.x, target.y, target.z]);
-        return Boolean(path && path.length > 0);
-      },
-      stop: () => {
-      },
-      isMoving: false
-    },
-    anim: {
-      playBody: (clipName, opts) => {
-        world3.playBody?.(node.id, clipName, opts);
-      },
-      playUpper: (clipName, opts) => {
-        world3.playUpper?.(node.id, clipName, opts);
-      },
-      stopUpper: (fade2) => world3.stopUpper?.(node.id, fade2)
-    },
-    audio: {
-      playSfx: (assetId, opts) => {
-        playSound({ assetId, bus: "sfx", volume: opts?.volume, playbackRate: opts?.pitch, parent: obj ?? void 0 });
-      },
-      playBgm: (assetId, opts) => {
-        playSound({ assetId, bus: "music", volume: opts?.volume, loop: opts?.loop ?? true });
-      },
-      stopBgm: () => stopMusic()
-    },
-    fx: { spawn: () => {
-    } },
-    input: {
-      isPressed: (action) => isActionPressed(action),
-      justPressed: (action) => wasActionTapped(action),
-      justReleased: () => false,
-      axis1D: (action) => isActionPressed(action) ? 1 : 0,
-      axis2D: (action) => getActionAxis2D(action)
-    },
-    ui: {
-      getVar: (key) => uiValues().variables[key],
-      setVar: (key, value) => writeUiVariable(key, value),
-      onEvent: () => () => {
-      }
-    },
-    scene: {
-      currentId: () => world3.getActiveSceneId(),
-      load: () => {
-      }
-    },
-    global: {
-      get: (key) => globalMemory.get(key),
-      set: (key, value) => {
-        globalMemory.set(key, value);
-      },
-      remove: (key) => {
-        globalMemory.delete(key);
-      }
-    },
-    storage: {
-      get: (key) => persistentMemory.get(key),
-      set: (key, value) => {
-        persistentMemory.set(key, value);
-      },
-      remove: (key) => {
-        persistentMemory.delete(key);
-      }
-    },
-    tables: {
-      getRow: (tableId, rowId) => findRow(world3.getGameDatabase(), tableId, rowId)?.fields ?? null
-    },
-    log: (...args) => world3.log("info", args.map(String).join(" ")),
-    warn: (...args) => world3.log("warn", args.map(String).join(" "))
-  };
-}
-function createRuntimeSdk() {
-  return {
-    defineBehavior: (def) => ({ __t3dKind: "behavior", ...def }),
-    defineSystem: (def) => ({ __t3dKind: "system", ...def })
-  };
-}
-function compileAndRegisterScript(id, fileName, source) {
-  const transpiled = checkAndTranspileTs(fileName, source);
-  if (!transpiled.ok || !transpiled.jsCode) {
-    return { ok: false, diagnostics: transpiled.diagnostics };
-  }
-  const evaluated = evaluateTranspiledModule(fileName, transpiled.jsCode, {
-    "t3d/runtime": createRuntimeSdk()
-  });
-  if (!evaluated.ok || !evaluated.exports) {
-    return { ok: false, diagnostics: evaluated.diagnostics };
-  }
-  const exp2 = evaluated.exports;
-  if (exp2.__t3dKind === "system") {
-    const def2 = exp2;
-    const prev = compiledSystems.get(id);
-    prev?.unregister();
-    const baseOrder = def2.stage === "postAnimation" ? RUNTIME_STAGE.POST_ANIMATION : def2.stage === "postPhysics" ? RUNTIME_STAGE.PHYSICS_NAV + 5 : RUNTIME_STAGE.PRE_PHYSICS + 1;
-    const unregister2 = registerRuntimeSystem(
-      `script.${id}`,
-      baseOrder + (def2.order ?? 0),
-      (dt, host) => {
-        if (getRuntimeWorld().getPlayState() !== "playing") return;
-        def2.onUpdate?.({ host, elapsedTime: simElapsed }, dt);
-      }
-    );
-    compiledSystems.set(id, { def: def2, unregister: unregister2 });
-    return {
-      ok: true,
-      diagnostics: transpiled.diagnostics,
-      jsCode: transpiled.jsCode,
-      exports: { id, file: fileName, kind: "system", system: def2 }
-    };
-  }
-  const def = exp2;
-  if (exp2.__t3dKind !== "behavior" || typeof def.name !== "string" || !def.name.trim()) {
-    return {
-      ok: false,
-      diagnostics: [
-        {
-          file: fileName,
-          line: 1,
-          column: 1,
-          severity: "error",
-          message: "\u811A\u672C\u5FC5\u987B\u901A\u8FC7 export default defineBehavior({ name, description, params, onUpdate }) \u6216 defineSystem(...) \u5BFC\u51FA",
-          hint: '\u8BF7\u4ECE "t3d/runtime" \u5BFC\u5165 defineBehavior\uFF0C\u5E76\u63D0\u4F9B name\uFF08\u4E2D\u6587\u6807\u9898\uFF09\u3001description\uFF08\u4F5C\u7528\u8BF4\u660E\uFF09\u548C onUpdate(self, dt) \u56DE\u8C03\uFF1B\u4FEE\u6539\u4F4D\u7F6E\u8BF7\u6574\u4F53\u8D4B\u503C self.position = { x, y, z }'
-        }
-      ]
-    };
-  }
-  compiledBehaviors.set(id, def);
-  return {
-    ok: true,
-    diagnostics: transpiled.diagnostics,
-    jsCode: transpiled.jsCode,
-    exports: { id, file: fileName, kind: "behavior", behavior: def }
-  };
-}
-function clearScriptRuntimeState() {
-  instanceStates.clear();
-  messageQueue.length = 0;
-  globalMemory.clear();
-  simElapsed = 0;
-}
-function stepProjectScripts(dt, host) {
-  const world3 = getRuntimeWorld();
-  if (world3.getPlayState() !== "playing") {
-    clearScriptRuntimeState();
-    return;
-  }
-  simElapsed += Math.max(0, dt);
-  const nodes = world3.getNodes();
-  const activeKeys = /* @__PURE__ */ new Set();
-  for (const node of Object.values(nodes)) {
-    const projectScripts = node.gameplay?.packs?.__project__;
-    if (!projectScripts || typeof projectScripts !== "object") continue;
-    for (const [scriptId, rawParams] of Object.entries(projectScripts)) {
-      const def = compiledBehaviors.get(scriptId);
-      if (!def) continue;
-      const key = instanceKey2(node.id, scriptId);
-      activeKeys.add(key);
-      let rec = instanceStates.get(key);
-      if (!rec) {
-        rec = {
-          nodeId: node.id,
-          scriptId,
-          started: false,
-          state: def.state ? { ...def.state() } : {}
-        };
-        instanceStates.set(key, rec);
-      }
-      const ctx = buildScriptContext(node, scriptId, rawParams, rec.state, host);
-      measureCost(`script:${scriptId}`, () => {
-        try {
-          if (!rec.started) {
-            rec.started = true;
-            def.onStart?.(ctx);
-          }
-          def.onUpdate?.(ctx, dt);
-        } catch (error) {
-          world3.log("error", `\u811A\u672C "${def.name}" \u8FD0\u884C\u9519\u8BEF: ${error instanceof Error ? error.message : String(error)}`);
-        }
-      });
-    }
-  }
-  if (messageQueue.length > 0) {
-    const batch = messageQueue.splice(0, messageQueue.length);
-    for (const msg of batch) {
-      for (const rec of instanceStates.values()) {
-        if (msg.targetNodeId && msg.targetNodeId !== rec.nodeId) continue;
-        const def = compiledBehaviors.get(rec.scriptId);
-        const node = nodes[rec.nodeId];
-        if (!def?.onMessage || !node) continue;
-        const rawParams = node.gameplay?.packs?.__project__?.[rec.scriptId];
-        const ctx = buildScriptContext(node, rec.scriptId, rawParams, rec.state, host);
-        const sender = msg.senderId ? makeNodeHandle(msg.senderId, host) : void 0;
-        try {
-          def.onMessage(ctx, { name: msg.name, payload: msg.payload, sender });
-        } catch (error) {
-          world3.log("error", `\u811A\u672C "${def.name}" \u6D88\u606F\u5904\u7406\u9519\u8BEF: ${error instanceof Error ? error.message : String(error)}`);
-        }
-      }
-    }
-  }
-  for (const [key, rec] of instanceStates.entries()) {
-    if (activeKeys.has(key)) continue;
-    const def = compiledBehaviors.get(rec.scriptId);
-    const node = nodes[rec.nodeId];
-    if (def?.onDestroy && node) {
-      const ctx = buildScriptContext(node, rec.scriptId, {}, rec.state, host);
-      try {
-        def.onDestroy(ctx);
-      } catch {
-      }
-    }
-    instanceStates.delete(key);
-  }
-}
-registerRuntimeSystem("core.projectScripts", RUNTIME_STAGE.PRE_PHYSICS + 2, stepProjectScripts);
-
-// src/core/codeAssets/shaderRuntime.ts
-import { Color as Color5 } from "three";
-import * as tsl from "three/tsl";
-import { MeshBasicNodeMaterial as MeshBasicNodeMaterial3, MeshStandardNodeMaterial } from "three/webgpu";
-function asNode(value) {
-  if (value === void 0 || value === null) return void 0;
-  if (typeof value === "number") return tsl.float(value);
-  if (typeof value === "boolean") return tsl.float(value ? 1 : 0);
-  if (typeof value === "string") return tsl.color(new Color5(value));
-  return value;
-}
-function paramToNode(schema, raw) {
-  const value = raw !== void 0 ? raw : defaultForSchema(schema);
-  if (schema.type === "number") return tsl.float(Number(value) || 0);
-  if (schema.type === "boolean") return tsl.float(value ? 1 : 0);
-  if (schema.type === "color") return tsl.color(new Color5(typeof value === "string" ? value : "#ffffff"));
-  if (schema.type === "vec2") {
-    const arr = Array.isArray(value) ? value : [0, 0];
-    return tsl.vec2(Number(arr[0]) || 0, Number(arr[1]) || 0);
-  }
-  if (schema.type === "vec3") {
-    const arr = Array.isArray(value) ? value : [0, 0, 0];
-    return tsl.vec3(Number(arr[0]) || 0, Number(arr[1]) || 0, Number(arr[2]) || 0);
-  }
-  if (schema.type === "vec4") {
-    const arr = Array.isArray(value) ? value : [0, 0, 0, 1];
-    return tsl.vec4(Number(arr[0]) || 0, Number(arr[1]) || 0, Number(arr[2]) || 0, Number(arr[3]) ?? 1);
-  }
-  return value;
-}
-function createShaderSdk() {
-  return {
-    defineShader: (def) => def,
-    float: (x = 0) => tsl.float(x),
-    vec2: (x = 0, y = 0) => tsl.vec2(x, y),
-    vec3: (x = 0, y = 0, z = 0) => tsl.vec3(x, y, z),
-    vec4: (x = 0, y = 0, z = 0, w = 1) => tsl.vec4(x, y, z, w),
-    color: (hexOrR, g, b) => typeof hexOrR === "string" ? tsl.color(new Color5(hexOrR)) : tsl.vec3(hexOrR, g ?? hexOrR, b ?? hexOrR),
-    mix: (a, b, t) => tsl.mix(asNode(a), asNode(b), asNode(t)),
-    clamp: (x, minVal, maxVal) => tsl.clamp(asNode(x), asNode(minVal), asNode(maxVal)),
-    smoothstep: (edge0, edge1, x) => tsl.smoothstep(asNode(edge0), asNode(edge1), asNode(x)),
-    step: (edge, x) => tsl.step(asNode(edge), asNode(x)),
-    sin: (x) => tsl.sin(asNode(x)),
-    cos: (x) => tsl.cos(asNode(x)),
-    abs: (x) => tsl.abs(asNode(x)),
-    floor: (x) => tsl.floor(asNode(x)),
-    ceil: (x) => tsl.ceil(asNode(x)),
-    fract: (x) => tsl.fract(asNode(x)),
-    pow: (x, y) => tsl.pow(asNode(x), asNode(y)),
-    sqrt: (x) => tsl.sqrt(asNode(x)),
-    min: (a, b) => tsl.min(asNode(a), asNode(b)),
-    max: (a, b) => tsl.max(asNode(a), asNode(b)),
-    dot: (a, b) => tsl.dot(asNode(a), asNode(b)),
-    cross: (a, b) => tsl.cross(asNode(a), asNode(b)),
-    normalize: (v) => tsl.normalize(asNode(v)),
-    length: (v) => tsl.length(asNode(v)),
-    uv: (index = 0) => tsl.uv(index),
-    time: tsl.time,
-    normalView: tsl.normalView,
-    normalWorld: tsl.normalWorld,
-    positionWorld: tsl.positionWorld,
-    positionLocal: tsl.positionLocal,
-    viewDirection: tsl.positionViewDirection,
-    texture: () => tsl.vec4(1, 1, 1, 1)
-  };
-}
-function buildMaterialFromShader(def, overrides) {
-  const paramValues = {};
-  const runtimeParams = {};
-  for (const [key, schema] of Object.entries(def.params ?? {})) {
-    const val = overrides && key in overrides ? overrides[key] : defaultForSchema(schema);
-    paramValues[key] = val;
-    runtimeParams[key] = paramToNode(schema, val);
-  }
-  const out = def.surface(runtimeParams);
-  const isUnlit = def.mode === "unlit";
-  const material = isUnlit ? new MeshBasicNodeMaterial3() : new MeshStandardNodeMaterial();
-  if (out.baseColor !== void 0) {
-    ;
-    material.colorNode = asNode(out.baseColor);
-  }
-  if (out.opacity !== void 0) {
-    ;
-    material.opacityNode = asNode(out.opacity);
-  }
-  if (out.vertexOffset !== void 0) {
-    ;
-    material.positionNode = tsl.positionLocal.add(asNode(out.vertexOffset));
-  }
-  if (!isUnlit && material instanceof MeshStandardNodeMaterial) {
-    if (out.roughness !== void 0) material.roughnessNode = asNode(out.roughness);
-    if (out.metalness !== void 0) material.metalnessNode = asNode(out.metalness);
-    if (out.emissive !== void 0) material.emissiveNode = asNode(out.emissive);
-    if (out.normal !== void 0) material.normalNode = asNode(out.normal);
-  }
-  if (def.transparent) material.transparent = true;
-  if (def.doubleSided) material.side = 2;
-  material.needsUpdate = true;
-  return { material, paramValues };
-}
-function compileShaderSource(id, fileName, source, overrides) {
-  const transpiled = checkAndTranspileTs(fileName, source);
-  if (!transpiled.ok || !transpiled.jsCode) {
-    return { ok: false, diagnostics: transpiled.diagnostics };
-  }
-  const sdk = createShaderSdk();
-  const evaluated = evaluateTranspiledModule(fileName, transpiled.jsCode, {
-    "t3d/shader": sdk
-  });
-  if (!evaluated.ok || !evaluated.exports || typeof evaluated.exports.surface !== "function") {
-    return {
-      ok: false,
-      diagnostics: evaluated.diagnostics.length ? evaluated.diagnostics : [
-        {
-          file: fileName,
-          line: 1,
-          column: 1,
-          severity: "error",
-          message: "\u7740\u8272\u5668\u5FC5\u987B\u901A\u8FC7 export default defineShader({ ... }) \u5BFC\u51FA",
-          hint: "\u8BF7\u68C0\u67E5\u9ED8\u8BA4\u5BFC\u51FA\u662F\u5426\u5305\u542B name\u3001params \u548C surface \u51FD\u6570"
-        }
-      ]
-    };
-  }
-  try {
-    const { material, paramValues } = buildMaterialFromShader(evaluated.exports, overrides);
-    return {
-      ok: true,
-      diagnostics: transpiled.diagnostics,
-      jsCode: transpiled.jsCode,
-      exports: {
-        id,
-        file: fileName,
-        definition: evaluated.exports,
-        material,
-        paramValues
-      }
-    };
-  } catch (error) {
-    const msg = error instanceof Error ? error.message : String(error);
-    return {
-      ok: false,
-      diagnostics: [
-        {
-          file: fileName,
-          line: 1,
-          column: 1,
-          severity: "error",
-          message: `TSL \u7740\u8272\u5668\u6784\u5EFA\u5931\u8D25\uFF1A${msg}`,
-          hint: "\u8BF7\u68C0\u67E5 surface() \u8FD4\u56DE\u7684\u8282\u70B9\u7C7B\u578B\u53CA\u8FD0\u7B97\u53C2\u6570"
-        }
-      ]
-    };
-  }
-}
-
-// src/core/codeAssets/workspace.ts
-var useCodeAssetStore = create6((set) => ({
-  assets: {},
-  selectedId: null,
-  revision: 0,
-  selectAsset: (id) => set({ selectedId: id }),
-  upsertAsset: (record) => set((state) => ({ assets: { ...state.assets, [record.id]: record }, revision: state.revision + 1 })),
-  removeAsset: (id) => set((state) => {
-    const next = { ...state.assets };
-    delete next[id];
-    return {
-      assets: next,
-      selectedId: state.selectedId === id ? null : state.selectedId,
-      revision: state.revision + 1
-    };
-  }),
-  clear: () => set((state) => ({ assets: {}, selectedId: null, revision: state.revision + 1 }))
-}));
-var PROJECT_TSCONFIG = `{
-  "compilerOptions": {
-    "target": "ES2022",
-    "module": "ESNext",
-    "moduleResolution": "Bundler",
-    "strict": true,
-    "noEmit": true,
-    "baseUrl": ".",
-    "paths": {
-      "t3d/runtime": [".t3d/runtime.d.ts"],
-      "t3d/shader": [".t3d/shader.d.ts"]
-    }
-  },
-  "include": ["scripts/**/*.ts", "shaders/**/*.ts", ".t3d/**/*.d.ts"]
-}
-`;
-var RUNTIME_DTS_SUMMARY = `export interface Vec2 { x: number; y: number }
-export interface Vec3 { x: number; y: number; z: number }
-export interface Vec4 { x: number; y: number; z: number; w: number }
-export type ScriptParamSchema = Record<string, unknown>
-export type ScriptParamMap = Record<string, ScriptParamSchema>
-export interface NodeHandle {
-  readonly id: string; readonly name: string; readonly tags: readonly string[]
-  position: Vec3; rotation: Vec3; scale: Vec3; visible: boolean
-  hasTag(tag: string): boolean
-  sendMessage(name: string, payload?: unknown): void
-  destroy(): void
-}
-export interface ScriptContext<P = Record<string, unknown>, S = Record<string, unknown>> {
-  readonly node: NodeHandle; readonly params: P; readonly state: S; readonly elapsedTime: number
-  position: Vec3; rotation: Vec3; scale: Vec3; visible: boolean
-  moveToward(target: Vec3, maxDistance: number): boolean
-  lookAt(target: Vec3): void
-  sendMessage(name: string, payload?: unknown): void
-  broadcast(name: string, payload?: unknown): void
-  findNodeById(id: string): NodeHandle | null
-  findNodesByTag(tag: string): readonly NodeHandle[]
-  findNodesInRadius(center: Vec3, radius: number, tag?: string): readonly NodeHandle[]
-  readonly input: { isPressed(a: string): boolean; justPressed(a: string): boolean; axis2D(a: string): Vec2 }
-  readonly ui: { getVar(k: string): unknown; setVar(k: string, v: unknown): void }
-  readonly audio: { playSfx(id: string, opts?: { volume?: number }): void; playBgm(id: string): void; stopBgm(): void }
-  log(...args: unknown[]): void
-  warn(...args: unknown[]): void
-}
-export function defineBehavior<P extends ScriptParamMap, S extends Record<string, unknown>>(def: {
-  name: string; description?: string; params?: P; state?: () => S
-  onStart?: (self: ScriptContext<Record<string, any>, S>) => void
-  onUpdate?: (self: ScriptContext<Record<string, any>, S>, dt: number) => void
-  onDestroy?: (self: ScriptContext<Record<string, any>, S>) => void
-  onMessage?: (self: ScriptContext<Record<string, any>, S>, msg: { name: string; payload?: unknown }) => void
-}): unknown
-export function defineSystem(def: {
-  name: string; stage?: 'prePhysics' | 'postPhysics' | 'postAnimation'; order?: number
-  onUpdate?: (api: unknown, dt: number) => void
-}): unknown
-`;
-var SHADER_DTS_SUMMARY = `export interface ShaderNode {
-  add(other: unknown): ShaderNode; sub(other: unknown): ShaderNode; mul(other: unknown): ShaderNode; div(other: unknown): ShaderNode
-  clamp(min?: unknown, max?: unknown): ShaderNode; abs(): ShaderNode; fract(): ShaderNode; floor(): ShaderNode
-}
-export function defineShader(def: {
-  name: string; mode?: 'lit' | 'unlit'; transparent?: boolean; doubleSided?: boolean
-  params: Record<string, unknown>
-  surface: (params: Record<string, any>) => {
-    baseColor?: unknown; normal?: unknown; roughness?: unknown; metalness?: unknown
-    emissive?: unknown; opacity?: unknown; vertexOffset?: unknown
-  }
-}): unknown
-export function float(x?: number): ShaderNode
-export function vec2(x?: number, y?: number): ShaderNode
-export function vec3(x?: number, y?: number, z?: number): ShaderNode
-export function vec4(x?: number, y?: number, z?: number, w?: number): ShaderNode
-export function color(hexOrR: string | number, g?: number, b?: number): ShaderNode
-export function mix(a: unknown, b: unknown, t: unknown): ShaderNode
-export function clamp(x: unknown, min: unknown, max: unknown): ShaderNode
-export function smoothstep(edge0: unknown, edge1: unknown, x: unknown): ShaderNode
-export function step(edge: unknown, x: unknown): ShaderNode
-export function sin(x: unknown): ShaderNode
-export function cos(x: unknown): ShaderNode
-export function abs(x: unknown): ShaderNode
-export function uv(index?: number): ShaderNode
-export const time: ShaderNode
-export const normalView: ShaderNode
-export const positionWorld: ShaderNode
-`;
-async function ensureCodeWorkspaceFiles(projectRoot) {
-  const dir = projectRoot ?? projectDirectoryPath();
-  if (!dir) return;
-  const bridge = electronBridge();
-  if (!bridge?.fs?.mkdir || !bridge?.fs?.writeTextFile) return;
-  await bridge.fs.mkdir(joinProjectPath(dir, ".t3d"));
-  await bridge.fs.mkdir(joinProjectPath(dir, "scripts"));
-  await bridge.fs.mkdir(joinProjectPath(dir, "shaders"));
-  await bridge.fs.writeTextFile(joinProjectPath(dir, ".t3d/runtime.d.ts"), RUNTIME_DTS_SUMMARY);
-  await bridge.fs.writeTextFile(joinProjectPath(dir, ".t3d/shader.d.ts"), SHADER_DTS_SUMMARY);
-  await bridge.fs.writeTextFile(joinProjectPath(dir, "tsconfig.json"), PROJECT_TSCONFIG);
-}
-function normalizeCodeAssetId(kind, nameOrId) {
-  const clean = nameOrId.trim().replace(/\.(shader\.ts|ts)$/i, "").replace(/[^a-zA-Z0-9_-]/g, "_");
-  return clean || `${kind}_${Date.now().toString(36)}`;
-}
-function codeAssetRelativePath(kind, id) {
-  return kind === "shader" ? `shaders/${id}.shader.ts` : `scripts/${id}.ts`;
-}
-function compileCodeAsset(kind, id, relativePath, source) {
-  if (kind === "shader") {
-    const res2 = compileShaderSource(id, relativePath, source);
-    const record2 = {
-      id,
-      kind,
-      name: res2.exports?.definition.name ?? id,
-      relativePath,
-      source,
-      diagnostics: res2.diagnostics,
-      ok: res2.ok,
-      updatedAt: Date.now(),
-      compiledShader: res2.exports
-    };
-    useCodeAssetStore.getState().upsertAsset(record2);
-    return record2;
-  }
-  const res = compileAndRegisterScript(id, relativePath, source);
-  const record = {
-    id,
-    kind,
-    name: res.exports?.behavior?.name ?? res.exports?.system?.name ?? id,
-    relativePath,
-    source,
-    diagnostics: res.diagnostics,
-    ok: res.ok,
-    updatedAt: Date.now(),
-    compiledScript: res.exports
-  };
-  useCodeAssetStore.getState().upsertAsset(record);
-  return record;
-}
-async function saveAndCompileCodeAsset(kind, idOrName, source) {
-  const id = normalizeCodeAssetId(kind, idOrName);
-  const rel = codeAssetRelativePath(kind, id);
-  const record = compileCodeAsset(kind, id, rel, source);
-  const dir = projectDirectoryPath();
-  const bridge = electronBridge();
-  if (dir && bridge?.fs) {
-    await ensureCodeWorkspaceFiles(dir);
-    await bridge.fs.writeTextFile(joinProjectPath(dir, rel), source);
-  }
-  if (!record.ok && record.diagnostics.length > 0) {
-    const first = record.diagnostics[0];
-    useEditorStore.getState().log("warn", `${rel}:${first.line} ${first.message}`);
-  } else {
-    useEditorStore.getState().log("info", `\u4EE3\u7801\u8D44\u4EA7\u5DF2\u7F16\u8BD1\u5E76\u70ED\u91CD\u8F7D\uFF1A${rel}`);
-  }
-  return record;
-}
-function defaultTemplateFor(kind, name) {
-  if (kind === "shader") {
-    return `import { defineShader, color, mix, sin, time, uv } from 't3d/shader'
-
-export default defineShader({
-  name: '${name}',
-  mode: 'lit',
-  params: {
-    baseColor: { type: 'color', default: '#4a9eff', label: '\u4E3B\u989C\u8272' },
-    glowColor: { type: 'color', default: '#93c5fd', label: '\u8109\u51B2\u989C\u8272' },
-    speed: { type: 'number', default: 2, min: 0, max: 20, label: '\u8109\u51B2\u901F\u5EA6' },
-  },
-  surface(p) {
-    const wave = sin(uv().y.mul(8).add(time.mul(p.speed))).mul(0.5).add(0.5)
-    return {
-      baseColor: mix(p.baseColor, p.glowColor, wave),
-      roughness: 0.35,
-      metalness: 0.1,
-    }
-  },
-})
-`;
-  }
-  return `import { defineBehavior } from 't3d/runtime'
-
-export default defineBehavior({
-  name: '${name}',
-  params: {
-    speed: { type: 'number', default: 2, min: 0, max: 30, label: '\u65CB\u8F6C\u901F\u5EA6' },
-  },
-  state: () => ({
-    elapsed: 0,
-  }),
-  onUpdate(self, dt) {
-    self.state.elapsed += dt
-    self.rotation = {
-      x: self.rotation.x,
-      y: self.rotation.y + self.params.speed * dt,
-      z: self.rotation.z,
-    }
-  },
-})
-`;
-}
+// src/ai/tools.ts
+init_fieldSchema();
 
 // src/core/project/checkpoints.ts
 import { create as create7 } from "zustand";
@@ -13067,7 +17246,11 @@ function trimCheckpoints() {
   }
 }
 
+// src/ai/tools.ts
+init_actionMap();
+
 // src/player/exporter.ts
+init_actionMap();
 function buildExportedProjectPayload(assetUrlOverrides) {
   const editor = useEditorStore.getState();
   const assets = useAssetStore.getState().assets;
@@ -13182,21 +17365,49 @@ async function exportWebPlayerBundle(targetDir) {
 }
 
 // src/playtest/session.ts
+init_actionMap();
 import { Group } from "three";
+init_sceneRuntime();
 init_world();
+function captureLogCursor() {
+  const logs = useEditorStore.getState().logs;
+  return logs.length > 0 ? logs[logs.length - 1].id : null;
+}
+function readLogsSince(cursor) {
+  const logs = useEditorStore.getState().logs;
+  if (!cursor) return logs;
+  const idx = logs.findIndex((item) => item.id === cursor);
+  return idx >= 0 ? logs.slice(idx + 1) : logs;
+}
+function summarizeRuntimeLogs(logs, maxEach = 8) {
+  const collect = (level) => {
+    const counts = /* @__PURE__ */ new Map();
+    for (const item of logs) {
+      if (item.level !== level) continue;
+      counts.set(item.message, (counts.get(item.message) ?? 0) + 1);
+    }
+    const total = Array.from(counts.values()).reduce((sum, n) => sum + n, 0);
+    const lines = Array.from(counts.entries()).slice(0, maxEach).map(([message, n]) => n > 1 ? `${message}\uFF08\u91CD\u590D ${n} \u6B21\uFF09` : message);
+    if (counts.size > maxEach) lines.push(`\u2026\u53E6\u6709 ${counts.size - maxEach} \u79CD\u4E0D\u540C\u6D88\u606F\u672A\u5217\u51FA`);
+    return { total, lines };
+  };
+  const errors = collect("error");
+  const warnings = collect("warn");
+  return { errorCount: errors.total, warningCount: warnings.total, errors: errors.lines, warnings: warnings.lines };
+}
 var PlaytestSession = class {
   active = false;
   startedFromStopped = false;
   elapsedSec = 0;
   stepsSimulated = 0;
-  logBaseline = 0;
+  logCursor = null;
   screenshots = [];
   assertions = [];
   headlessObjects = /* @__PURE__ */ new Map();
   start(options) {
     const autoPlay = options?.autoPlayEditor !== false;
     const store = useEditorStore.getState();
-    this.logBaseline = store.logs.length;
+    this.logCursor = captureLogCursor();
     this.elapsedSec = 0;
     this.stepsSimulated = 0;
     this.screenshots.length = 0;
@@ -13240,7 +17451,7 @@ var PlaytestSession = class {
       return uiValues().variables[query.name];
     }
     if (query.kind === "logs") {
-      const logs = useEditorStore.getState().logs.slice(this.logBaseline);
+      const logs = readLogsSince(this.logCursor);
       const limit = query.limit ?? 30;
       return logs.slice(-limit);
     }
@@ -13270,7 +17481,7 @@ var PlaytestSession = class {
       return this.elapsedSec >= condition.seconds;
     }
     if (condition.kind === "logContains") {
-      const logs = useEditorStore.getState().logs.slice(this.logBaseline);
+      const logs = readLogsSince(this.logCursor);
       return logs.some((item) => item.message.includes(condition.text));
     }
     if (condition.kind === "nodeExists") {
@@ -13278,6 +17489,12 @@ var PlaytestSession = class {
     }
     if (condition.kind === "nodeMissing") {
       return !this.read({ kind: "nodePose", nodeIdOrName: condition.nodeIdOrName });
+    }
+    if (condition.kind === "uiVarEquals") {
+      return this.read({ kind: "uiVar", name: condition.name }) === condition.value;
+    }
+    if (condition.kind === "nodeCountAtLeast") {
+      return Number(this.read({ kind: "nodeCount" })) >= condition.min;
     }
     const pose = this.read({ kind: "nodePose", nodeIdOrName: condition.nodeIdOrName });
     if (!pose) return false;
@@ -13300,7 +17517,7 @@ var PlaytestSession = class {
     return dataUrl;
   }
   report(budget = DEFAULT_PERFORMANCE_BUDGET) {
-    const logs = useEditorStore.getState().logs.slice(this.logBaseline);
+    const logs = readLogsSince(this.logCursor);
     const errors = logs.filter((item) => item.level === "error").map((item) => item.message);
     const warnings = logs.filter((item) => item.level === "warn").map((item) => item.message);
     const render = readMainRenderMetrics();
@@ -13348,9 +17565,18 @@ var PlaytestSession = class {
   runSmoke(steps, options) {
     this.start();
     try {
-      for (const step2 of steps) {
+      const effectiveSteps = steps.length > 0 ? steps : [{ action: "step", seconds: 0.5 }];
+      for (const step2 of effectiveSteps) {
         if (step2.action === "input") {
           this.input(step2.events);
+        } else if (step2.action === "uiClick") {
+          const hit = findMountedUiButton(step2.target);
+          if (hit && hit.click) {
+            dispatchUiClick(hit.click, hit.id);
+            this.assertions.push({ passed: true, message: `\u5DF2\u70B9\u51FB UI \u6309\u94AE "${hit.name || hit.text || hit.id}"` });
+          } else {
+            this.assertions.push({ passed: false, message: `\u672A\u627E\u5230\u53EF\u70B9\u51FB\u7684 UI \u6309\u94AE "${step2.target}"` });
+          }
         } else if (step2.action === "step") {
           this.step(step2.seconds, step2.fixedDt);
         } else if (step2.action === "waitFor") {
@@ -13369,6 +17595,9 @@ var PlaytestSession = class {
           this.capture(step2.options);
         }
       }
+      if (this.stepsSimulated === 0) {
+        this.step(0.25);
+      }
       return this.report(options?.budget);
     } finally {
       if (options?.autoStop !== false) {
@@ -13377,16 +17606,22 @@ var PlaytestSession = class {
     }
   }
   headlessHost() {
-    const nodes = getRuntimeWorld().getNodes();
     return {
       ready: true,
       resolveObject: (id) => {
-        const node = nodes[id];
+        const node = getRuntimeWorld().getNodes()[id];
         if (!node) return null;
         let obj = this.headlessObjects.get(id);
         if (!obj) {
           obj = new Group();
           obj.position.set(node.position[0], node.position[1], node.position[2]);
+          obj.rotation.set(
+            node.rotation[0] * Math.PI / 180,
+            node.rotation[1] * Math.PI / 180,
+            node.rotation[2] * Math.PI / 180
+          );
+          obj.scale.set(node.scale[0], node.scale[1], node.scale[2]);
+          obj.visible = node.visible;
           this.headlessObjects.set(id, obj);
         }
         return obj;
@@ -13398,13 +17633,624 @@ var PlaytestSession = class {
     };
   }
 };
+function findMountedUiButton(target) {
+  const q = target.trim();
+  if (!q) return null;
+  const nodes = getRuntimeWorld().getNodes();
+  const assets = useAssetStore.getState().assets;
+  const searchNode = (node) => {
+    if (node.type === "button" && node.click) {
+      if (node.id === q || node.name === q || node.text === q || node.click.kind === "sendMessage" && node.click.message === q) {
+        return node;
+      }
+    }
+    for (const child of node.children ?? []) {
+      const found = searchNode(child);
+      if (found) return found;
+    }
+    return null;
+  };
+  for (const sceneNode of Object.values(nodes)) {
+    if (sceneNode.kind !== "screen" || !sceneNode.visible || !sceneNode.screen?.documentId) continue;
+    const asset = assets[sceneNode.screen.documentId];
+    if (asset?.kind === "ui" && asset.document?.root) {
+      const hit = searchNode(asset.document.root);
+      if (hit) return hit;
+    }
+  }
+  return null;
+}
+
+// src/ai/knowledge/recipes.ts
+var THIRD_PERSON_CONTROLLER = `import { defineBehavior } from "t3d/runtime"
+
+export default defineBehavior({
+  name: "\u7B2C\u4E09\u4EBA\u79F0\u89D2\u8272\u63A7\u5236",
+  description: "WASD \u76F8\u5BF9\u76F8\u673A\u79FB\u52A8\u3001\u7A7A\u683C\u8DF3\u8DC3\u3001Shift \u5954\u8DD1\uFF0C\u5E76\u6309\u901F\u5EA6\u5207\u6362\u5F85\u673A/\u884C\u8D70/\u5954\u8DD1\u52A8\u753B",
+  params: {
+    camera: { type: "ref", target: "node", label: "\u76F8\u673A\u8282\u70B9", default: null },
+    idleClip: { type: "ref", target: "clip", label: "\u5F85\u673A\u526A\u8F91", default: null },
+    walkClip: { type: "ref", target: "clip", label: "\u884C\u8D70\u526A\u8F91", default: null },
+    runClip: { type: "ref", target: "clip", label: "\u5954\u8DD1\u526A\u8F91", default: null },
+    walkSpeed: { type: "number", label: "\u884C\u8D70\u901F\u5EA6", default: 3.2 },
+    runSpeed: { type: "number", label: "\u5954\u8DD1\u901F\u5EA6", default: 6.5 },
+    turnSpeed: { type: "number", label: "\u8F6C\u8EAB\u901F\u5EA6", default: 12 },
+    jumpSpeed: { type: "number", label: "\u8DF3\u8DC3\u521D\u901F", default: 5.2 },
+    gravity: { type: "number", label: "\u91CD\u529B\u52A0\u901F\u5EA6", default: 14 },
+    groundY: { type: "number", label: "\u5730\u9762\u9AD8\u5EA6", default: 0 },
+  },
+  state: () => ({ velY: 0, grounded: true, clip: "" }),
+  onStart(self) {
+    self.addTag("player")
+  },
+  onUpdate(self, dt) {
+    const p = self.params
+    const s = self.state
+    const pos = self.position
+
+    // 1) \u4EE5\u300C\u76F8\u673A\u6307\u5411\u89D2\u8272\u300D\u7684\u6C34\u5E73\u65B9\u5411\u4F5C\u4E3A\u524D\u65B9\uFF0C\u907F\u514D\u4F9D\u8D56\u76F8\u673A\u81EA\u8EAB\u7684\u671D\u5411\u7EA6\u5B9A
+    let fx = 0
+    let fz = 1
+    if (p.camera) {
+      const dx = pos.x - p.camera.position.x
+      const dz = pos.z - p.camera.position.z
+      const len = Math.hypot(dx, dz)
+      if (len > 0.001) {
+        fx = dx / len
+        fz = dz / len
+      }
+    }
+    // \u53F3\u65B9 = \u524D\u65B9 \xD7 \u4E0A\u65B9
+    const rx = -fz
+    const rz = fx
+
+    // 2) \u8F93\u5165\uFF1Aaxis2D \u7684 y \u5411\u524D\u4E3A\u6B63\u3001x \u5411\u53F3\u4E3A\u6B63
+    const axis = self.input.axis2D("Move")
+    let mx = fx * axis.y + rx * axis.x
+    let mz = fz * axis.y + rz * axis.x
+    const mLen = Math.hypot(mx, mz)
+    const moving = mLen > 0.05
+    const sprinting = moving && self.input.isPressed("Sprint")
+    const speed = sprinting ? p.runSpeed : p.walkSpeed
+    if (moving) {
+      mx /= mLen
+      mz /= mLen
+    }
+
+    // 3) \u8DF3\u8DC3\u4E0E\u91CD\u529B\uFF08\u624B\u52A8\u79EF\u5206\uFF0C\u4E0D\u4F9D\u8D56\u7269\u7406\u80FD\u529B\u5305\uFF09
+    if (s.grounded && self.input.justPressed("Jump")) {
+      s.velY = p.jumpSpeed
+      s.grounded = false
+    }
+    s.velY -= p.gravity * dt
+    let y = pos.y + s.velY * dt
+    if (y <= p.groundY) {
+      y = p.groundY
+      s.velY = 0
+      s.grounded = true
+    }
+
+    // 4) \u4F4D\u7F6E\u5FC5\u987B\u6574\u4F53\u8D4B\u503C
+    self.position = {
+      x: pos.x + (moving ? mx * speed * dt : 0),
+      y,
+      z: pos.z + (moving ? mz * speed * dt : 0),
+    }
+
+    // 5) \u5E73\u6ED1\u8F6C\u5411\u79FB\u52A8\u65B9\u5411\uFF08self.rotation \u4E3A\u5F27\u5EA6\uFF1Byaw=0 \u65F6\u671D +Z\uFF09
+    if (moving) {
+      const targetYaw = Math.atan2(mx, mz)
+      const rot = self.rotation
+      let diff = targetYaw - rot.y
+      while (diff > Math.PI) diff -= Math.PI * 2
+      while (diff < -Math.PI) diff += Math.PI * 2
+      const k = Math.min(1, p.turnSpeed * dt)
+      self.rotation = { x: rot.x, y: rot.y + diff * k, z: rot.z }
+    }
+
+    // 6) \u53EA\u5728\u76EE\u6807\u526A\u8F91\u53D8\u5316\u65F6\u5207\u6362\u52A8\u753B\uFF0C\u907F\u514D\u6BCF\u5E27\u91CD\u64AD
+    const next = moving ? (sprinting ? p.runClip || p.walkClip : p.walkClip) : p.idleClip
+    if (next && next !== s.clip) {
+      s.clip = next
+      self.anim.playBody(next, { loop: true, fade: 0.15 })
+    }
+  },
+})
+`;
+var FOLLOW_CAMERA = `import { defineBehavior } from "t3d/runtime"
+
+export default defineBehavior({
+  name: "\u8DDF\u968F\u76F8\u673A",
+  description: "\u5E73\u6ED1\u8DDF\u968F\u76EE\u6807\u5E76\u59CB\u7EC8\u770B\u5411\u5B83\uFF1B\u6309\u4F4F\u9F20\u6807\u53F3\u952E\u62D6\u52A8\u53EF\u73AF\u7ED5",
+  params: {
+    target: { type: "ref", target: "node", label: "\u8DDF\u968F\u76EE\u6807", default: null },
+    distance: { type: "number", label: "\u6C34\u5E73\u8DDD\u79BB", default: 6 },
+    height: { type: "number", label: "\u76F8\u673A\u9AD8\u5EA6", default: 3.2 },
+    lookHeight: { type: "number", label: "\u6CE8\u89C6\u70B9\u9AD8\u5EA6", default: 1.2 },
+    smooth: { type: "number", label: "\u8DDF\u968F\u5E73\u6ED1\u5EA6", default: 8 },
+    orbitSpeed: { type: "number", label: "\u73AF\u7ED5\u7075\u654F\u5EA6", default: 0.005 },
+  },
+  state: () => ({ yaw: 0 }),
+  onUpdate(self, dt) {
+    const p = self.params
+    const s = self.state
+    if (!p.target) return
+
+    if (self.input.isMouseButtonPressed(2)) {
+      s.yaw -= self.input.pointerDelta().x * p.orbitSpeed
+    }
+
+    const t = p.target.position
+    // yaw=0 \u65F6\u76F8\u673A\u4F4D\u4E8E\u76EE\u6807\u7684 -Z \u4FA7\uFF0C\u770B\u5411 +Z\uFF08\u4E0E\u89D2\u8272\u9ED8\u8BA4\u671D\u5411\u4E00\u81F4\uFF09
+    const want = {
+      x: t.x - Math.sin(s.yaw) * p.distance,
+      y: t.y + p.height,
+      z: t.z - Math.cos(s.yaw) * p.distance,
+    }
+    const k = 1 - Math.exp(-p.smooth * dt)
+    const cur = self.position
+    self.position = {
+      x: cur.x + (want.x - cur.x) * k,
+      y: cur.y + (want.y - cur.y) * k,
+      z: cur.z + (want.z - cur.z) * k,
+    }
+    self.lookAt({ x: t.x, y: t.y + p.lookHeight, z: t.z })
+  },
+})
+`;
+var WAVE_SPAWNER = `import { defineBehavior } from "t3d/runtime"
+
+export default defineBehavior({
+  name: "\u6CE2\u6B21\u5237\u602A",
+  description: "\u6309\u6CE2\u6B21\u4ECE\u9690\u85CF\u6A21\u677F\u8282\u70B9\u6C60\u5316\u751F\u6210\u654C\u4EBA\uFF0C\u5E76\u628A\u5F53\u524D\u6CE2\u6B21\u5199\u5165\u754C\u9762\u53D8\u91CF",
+  params: {
+    template: { type: "ref", target: "node", label: "\u654C\u4EBA\u6A21\u677F\uFF08\u9690\u85CF\u8282\u70B9\uFF09", default: null },
+    spawnRadius: { type: "number", label: "\u751F\u6210\u534A\u5F84", default: 12 },
+    firstWaveCount: { type: "number", label: "\u9996\u6CE2\u6570\u91CF", default: 3 },
+    countPerWave: { type: "number", label: "\u6BCF\u6CE2\u9012\u589E", default: 2 },
+    spawnInterval: { type: "number", label: "\u5355\u53EA\u95F4\u9694(\u79D2)", default: 0.6 },
+    waveGap: { type: "number", label: "\u6CE2\u6B21\u95F4\u9694(\u79D2)", default: 4 },
+    maxAlive: { type: "number", label: "\u540C\u5C4F\u4E0A\u9650", default: 20 },
+    waveVar: { type: "string", label: "\u6CE2\u6B21\u754C\u9762\u53D8\u91CF", default: "wave" },
+  },
+  state: () => ({ wave: 0, toSpawn: 0, spawnTimer: 0, gapTimer: 1 }),
+  onStart(self) {
+    if (self.params.template) self.pool.preload(self.params.template, 6)
+    self.ui.setVar(self.params.waveVar, 0)
+  },
+  onUpdate(self, dt) {
+    const p = self.params
+    const s = self.state
+    if (!p.template) return
+    const alive = self.pool.stats(p.template).active
+
+    // \u672C\u6CE2\u5DF2\u5237\u5B8C\u4E14\u573A\u4E0A\u6E05\u7A7A -> \u5012\u8BA1\u65F6\u8FDB\u5165\u4E0B\u4E00\u6CE2
+    if (s.toSpawn <= 0) {
+      if (alive > 0) return
+      s.gapTimer -= dt
+      if (s.gapTimer > 0) return
+      s.wave += 1
+      s.toSpawn = p.firstWaveCount + (s.wave - 1) * p.countPerWave
+      s.spawnTimer = 0
+      s.gapTimer = p.waveGap
+      self.ui.setVar(p.waveVar, s.wave)
+      self.broadcast("waveStarted", { wave: s.wave })
+      return
+    }
+
+    s.spawnTimer -= dt
+    if (s.spawnTimer > 0 || alive >= p.maxAlive) return
+    s.spawnTimer = p.spawnInterval
+    s.toSpawn -= 1
+
+    const angle = Math.random() * Math.PI * 2
+    const center = self.position
+    self.pool.acquire(p.template, {
+      position: {
+        x: center.x + Math.cos(angle) * p.spawnRadius,
+        y: center.y,
+        z: center.z + Math.sin(angle) * p.spawnRadius,
+      },
+      payload: { wave: s.wave },
+    })
+  },
+})
+`;
+var CHASE_ENEMY = `import { defineBehavior } from "t3d/runtime"
+
+export default defineBehavior({
+  name: "\u8FFD\u51FB\u654C\u4EBA",
+  description: "\u8FFD\u5411\u5E26\u6307\u5B9A\u6807\u7B7E\u7684\u76EE\u6807\uFF0C\u8D34\u8EAB\u540E\u6309\u95F4\u9694\u9020\u6210\u4F24\u5BB3\uFF1B\u6536\u5230 hit \u6D88\u606F\u6263\u8840\uFF0C\u6B7B\u4EA1\u540E\u56DE\u6C60",
+  params: {
+    targetTag: { type: "string", label: "\u76EE\u6807\u6807\u7B7E", default: "player" },
+    speed: { type: "number", label: "\u79FB\u52A8\u901F\u5EA6", default: 2.4 },
+    maxHp: { type: "number", label: "\u751F\u547D\u503C", default: 3 },
+    damage: { type: "number", label: "\u653B\u51FB\u4F24\u5BB3", default: 10 },
+    attackRange: { type: "number", label: "\u653B\u51FB\u8DDD\u79BB", default: 1.3 },
+    attackInterval: { type: "number", label: "\u653B\u51FB\u95F4\u9694(\u79D2)", default: 0.8 },
+    score: { type: "number", label: "\u51FB\u6740\u5F97\u5206", default: 10 },
+  },
+  state: () => ({ hp: 1, cooldown: 0, alive: false }),
+  onStart(self) {
+    // \u9690\u85CF\u7684\u6A21\u677F\u8282\u70B9\u81EA\u8EAB\u4E5F\u4F1A\u6267\u884C\u811A\u672C\uFF1A\u4E0D\u53EF\u89C1\u65F6\u4E0D\u8981\u6FC0\u6D3B\u3001\u66F4\u4E0D\u8981\u6253\u6807\u7B7E
+    if (!self.visible) return
+    self.state.hp = self.params.maxHp
+    self.state.alive = true
+    self.addTag("enemy")
+  },
+  onUpdate(self, dt) {
+    const p = self.params
+    const s = self.state
+    if (!s.alive || !self.visible) return
+
+    const target = self.findNodesByTag(p.targetTag)[0]
+    if (!target || !target.visible) return
+
+    s.cooldown -= dt
+    const dist = self.distanceTo(target)
+    if (dist > p.attackRange) {
+      self.moveToward(target, p.speed * dt, { faceTarget: true, planeXZ: true })
+      return
+    }
+    self.lookAt(target, { yOnly: true })
+    if (s.cooldown <= 0) {
+      s.cooldown = p.attackInterval
+      target.sendMessage("damage", { amount: p.damage })
+    }
+  },
+  onMessage(self, msg) {
+    const s = self.state
+    if (msg.name !== "hit" || !s.alive) return
+    const payload = msg.payload
+    const amount = payload && typeof payload === "object" && "damage" in payload ? Number(payload.damage) : 1
+    s.hp -= amount
+    self.tween.punchScale(0.25, 0.15)
+    if (s.hp > 0) return
+    s.alive = false
+    self.broadcast("enemyKilled", { score: self.params.score })
+    // \u6C60\u5316\u5BF9\u8C61\u8C03\u7528 destroy \u4F1A\u81EA\u52A8\u56DE\u6C60
+    self.node.destroy()
+  },
+})
+`;
+var PLAYER_SHOOTER = `import { defineBehavior } from "t3d/runtime"
+
+export default defineBehavior({
+  name: "\u73A9\u5BB6\u5C04\u51FB",
+  description: "\u6309\u4F4F\u653B\u51FB\u952E\u6CBF\u89D2\u8272\u671D\u5411\u8FDE\u7EED\u53D1\u5C04\u6C60\u5316\u5B50\u5F39",
+  params: {
+    bullet: { type: "ref", target: "node", label: "\u5B50\u5F39\u6A21\u677F\uFF08\u9690\u85CF\u8282\u70B9\uFF09", default: null },
+    fireInterval: { type: "number", label: "\u5C04\u51FB\u95F4\u9694(\u79D2)", default: 0.18 },
+    muzzleHeight: { type: "number", label: "\u67AA\u53E3\u9AD8\u5EA6", default: 1.1 },
+    muzzleForward: { type: "number", label: "\u67AA\u53E3\u524D\u4F38", default: 0.7 },
+  },
+  state: () => ({ cooldown: 0 }),
+  onStart(self) {
+    if (self.params.bullet) self.pool.preload(self.params.bullet, 12)
+  },
+  onUpdate(self, dt) {
+    const p = self.params
+    const s = self.state
+    s.cooldown -= dt
+    if (!p.bullet || s.cooldown > 0) return
+    if (!self.input.isPressed("Attack") && !self.input.isMouseButtonPressed(0)) return
+    s.cooldown = p.fireInterval
+
+    const pos = self.position
+    const dir = self.forward
+    self.pool.acquire(p.bullet, {
+      position: {
+        x: pos.x + dir.x * p.muzzleForward,
+        y: pos.y + p.muzzleHeight,
+        z: pos.z + dir.z * p.muzzleForward,
+      },
+      rotation: self.rotation,
+      payload: { dir },
+    })
+  },
+})
+`;
+var BULLET = `import { defineBehavior } from "t3d/runtime"
+
+export default defineBehavior({
+  name: "\u5B50\u5F39",
+  description: "\u6CBF\u53D1\u5C04\u65B9\u5411\u76F4\u7EBF\u98DE\u884C\uFF0C\u547D\u4E2D\u5E26\u76EE\u6807\u6807\u7B7E\u7684\u8282\u70B9\u540E\u53D1\u9001 hit \u6D88\u606F\u5E76\u56DE\u6C60",
+  params: {
+    speed: { type: "number", label: "\u98DE\u884C\u901F\u5EA6", default: 22 },
+    life: { type: "number", label: "\u5B58\u6D3B\u65F6\u95F4(\u79D2)", default: 2 },
+    damage: { type: "number", label: "\u4F24\u5BB3", default: 1 },
+    hitRadius: { type: "number", label: "\u547D\u4E2D\u534A\u5F84", default: 0.7 },
+    targetTag: { type: "string", label: "\u76EE\u6807\u6807\u7B7E", default: "enemy" },
+  },
+  state: () => ({ dx: 0, dz: 1, age: 0, live: false }),
+  onSpawn(self, payload) {
+    const s = self.state
+    const dir = payload && typeof payload === "object" && "dir" in payload ? payload.dir : null
+    const fallback = self.forward
+    s.dx = dir && typeof dir === "object" && "x" in dir ? Number(dir.x) : fallback.x
+    s.dz = dir && typeof dir === "object" && "z" in dir ? Number(dir.z) : fallback.z
+    s.age = 0
+    s.live = true
+  },
+  onUpdate(self, dt) {
+    const p = self.params
+    const s = self.state
+    // \u6A21\u677F\u8282\u70B9\u672C\u8EAB\u4E0D\u53EF\u89C1\u4E14\u4ECE\u672A\u88AB onSpawn \u6FC0\u6D3B\uFF0C\u76F4\u63A5\u8DF3\u8FC7
+    if (!s.live || !self.visible) return
+
+    self.translate({ x: s.dx * p.speed * dt, y: 0, z: s.dz * p.speed * dt }, "world")
+    s.age += dt
+
+    const hit = self.findNodesInRadius(self.position, p.hitRadius, p.targetTag)[0]
+    if (hit) {
+      hit.sendMessage("hit", { damage: p.damage })
+      s.live = false
+      self.node.destroy()
+      return
+    }
+    if (s.age >= p.life) {
+      s.live = false
+      self.node.destroy()
+    }
+  },
+})
+`;
+var PLAYER_HEALTH = `import { defineBehavior } from "t3d/runtime"
+
+export default defineBehavior({
+  name: "\u73A9\u5BB6\u751F\u547D",
+  description: "\u63A5\u6536 damage \u6D88\u606F\u6263\u8840\u5E76\u540C\u6B65\u5230\u754C\u9762\u8FDB\u5EA6\u6761\uFF080~1\uFF09\uFF0C\u6B7B\u4EA1\u65F6\u5E7F\u64AD playerDied",
+  params: {
+    maxHp: { type: "number", label: "\u6700\u5927\u751F\u547D", default: 100 },
+    hpVar: { type: "string", label: "\u751F\u547D\u754C\u9762\u53D8\u91CF(0~1)", default: "hp" },
+    invincibleTime: { type: "number", label: "\u53D7\u51FB\u65E0\u654C(\u79D2)", default: 0.4 },
+  },
+  state: () => ({ hp: 100, invincible: 0, dead: false }),
+  onStart(self) {
+    self.addTag("player")
+    self.state.hp = self.params.maxHp
+    self.ui.setVar(self.params.hpVar, 1)
+  },
+  onUpdate(self, dt) {
+    if (self.state.invincible > 0) self.state.invincible -= dt
+  },
+  onMessage(self, msg) {
+    const p = self.params
+    const s = self.state
+    if (msg.name !== "damage" || s.dead || s.invincible > 0) return
+    const payload = msg.payload
+    const amount = payload && typeof payload === "object" && "amount" in payload ? Number(payload.amount) : 10
+    s.hp = Math.max(0, s.hp - amount)
+    s.invincible = p.invincibleTime
+    // HUD \u6A21\u677F\u7684\u8FDB\u5EA6\u6761\u91CF\u7A0B\u662F 0~1
+    self.ui.setVar(p.hpVar, s.hp / p.maxHp)
+    self.tween.shakePosition(0.12, 0.2)
+    if (s.hp > 0) return
+    s.dead = true
+    self.visible = false
+    self.broadcast("playerDied")
+  },
+})
+`;
+var GAME_MANAGER = `import { defineBehavior } from "t3d/runtime"
+
+export default defineBehavior({
+  name: "\u5BF9\u5C40\u7BA1\u7406",
+  description: "\u6C47\u603B\u5F97\u5206\u3001\u5904\u7406\u80DC\u8D1F\u5E76\u63A7\u5236\u7ED3\u7B97\u754C\u9762\u7684\u663E\u793A",
+  params: {
+    scoreVar: { type: "string", label: "\u5F97\u5206\u754C\u9762\u53D8\u91CF", default: "score" },
+    targetScore: { type: "number", label: "\u80DC\u5229\u6240\u9700\u5F97\u5206(0=\u65E0\u4E0A\u9650)", default: 0 },
+    resultScreen: { type: "string", label: "\u7ED3\u7B97\u754C\u9762\u5C4F\u5E55\u540D\u79F0", default: "\u7ED3\u7B97\u754C\u9762" },
+    resultTitleVar: { type: "string", label: "\u7ED3\u7B97\u6807\u9898\u754C\u9762\u53D8\u91CF", default: "resultTitle" },
+  },
+  state: () => ({ score: 0, over: false }),
+  onStart(self) {
+    self.ui.setVar(self.params.scoreVar, 0)
+    self.ui.hideScreen(self.params.resultScreen)
+  },
+  onMessage(self, msg) {
+    const p = self.params
+    const s = self.state
+    if (s.over) return
+
+    if (msg.name === "enemyKilled" || msg.name === "collected") {
+      const payload = msg.payload
+      const gain = payload && typeof payload === "object" && "score" in payload ? Number(payload.score) : 1
+      s.score += gain
+      self.ui.setVar(p.scoreVar, s.score)
+      if (p.targetScore > 0 && s.score >= p.targetScore) {
+        s.over = true
+        self.ui.setVar(p.resultTitleVar, "\u80DC\u5229\uFF01")
+        self.ui.showScreen(p.resultScreen)
+        self.broadcast("gameOver", { win: true })
+      }
+      return
+    }
+
+    if (msg.name === "playerDied") {
+      s.over = true
+      self.ui.setVar(p.resultTitleVar, "\u5931\u8D25")
+      self.ui.showScreen(p.resultScreen)
+      self.broadcast("gameOver", { win: false })
+    }
+  },
+})
+`;
+var COLLECTIBLE = `import { defineBehavior } from "t3d/runtime"
+
+export default defineBehavior({
+  name: "\u53EF\u62FE\u53D6\u7269",
+  description: "\u539F\u5730\u65CB\u8F6C\u6D6E\u52A8\uFF0C\u5E26\u6307\u5B9A\u6807\u7B7E\u7684\u8282\u70B9\u9760\u8FD1\u540E\u5E7F\u64AD collected \u5E76\u6D88\u5931",
+  params: {
+    pickerTag: { type: "string", label: "\u62FE\u53D6\u8005\u6807\u7B7E", default: "player" },
+    radius: { type: "number", label: "\u62FE\u53D6\u534A\u5F84", default: 1.1 },
+    score: { type: "number", label: "\u5F97\u5206", default: 1 },
+    spinSpeed: { type: "number", label: "\u65CB\u8F6C\u901F\u5EA6(\u5F27\u5EA6/\u79D2)", default: 2.2 },
+    bobHeight: { type: "number", label: "\u6D6E\u52A8\u5E45\u5EA6", default: 0.18 },
+  },
+  state: () => ({ baseY: 0, taken: false }),
+  onStart(self) {
+    self.state.baseY = self.position.y
+  },
+  onUpdate(self, dt) {
+    const p = self.params
+    const s = self.state
+    if (s.taken) return
+
+    self.rotateY(p.spinSpeed * dt)
+    const pos = self.position
+    self.position = { x: pos.x, y: s.baseY + Math.sin(self.elapsedTime * 3) * p.bobHeight, z: pos.z }
+
+    const picker = self.findNodesInRadius(self.position, p.radius, p.pickerTag)[0]
+    if (!picker) return
+    s.taken = true
+    self.broadcast("collected", { score: p.score })
+    self.node.destroy()
+  },
+})
+`;
+var RECIPES = [
+  {
+    id: "third-person-controller",
+    title: "\u7B2C\u4E09\u4EBA\u79F0\u89D2\u8272\u63A7\u5236\uFF08\u79FB\u52A8 / \u8DF3\u8DC3 / \u52A8\u753B\u5207\u6362\uFF09",
+    summary: "WASD \u76F8\u5BF9\u76F8\u673A\u79FB\u52A8\u3001\u7A7A\u683C\u8DF3\u8DC3\u3001Shift \u5954\u8DD1\uFF0C\u6309\u72B6\u6001\u5207\u6362\u5F85\u673A/\u884C\u8D70/\u5954\u8DD1\u526A\u8F91",
+    setup: [
+      '\u89D2\u8272\u8282\u70B9\uFF1A\u5DF2\u6709\u8499\u76AE\u6A21\u578B\u5C31\u7528 kind:"model"\uFF1B\u6CA1\u6709\u6A21\u578B\u5C31\u7528 kind:"capsule"\uFF08\u6B64\u65F6\u4E09\u4E2A\u526A\u8F91\u53C2\u6570\u7559\u7A7A\u5373\u53EF\uFF09\u3002',
+      "\u573A\u666F\u91CC\u8981\u6709\u4E00\u4E2A\u76F8\u673A\u8282\u70B9\uFF08\u5EFA\u8BAE\u540C\u65F6\u6302 follow-camera \u8303\u4F8B\uFF09\u3002",
+      "script__create \u5199\u5165\u6E90\u7801\u540E\uFF0Cscript__attach \u5230\u89D2\u8272\uFF0Cparams \u4F20 camera\uFF08\u76F8\u673A\u8282\u70B9 ID \u6216\u540D\u79F0\uFF09\u4E0E\u4E09\u4E2A\u526A\u8F91\u540D\uFF08\u6765\u81EA\u6A21\u578B\u6216\u52A8\u753B\u8D44\u4EA7\u7684 clips \u5217\u8868\uFF09\u3002",
+      "\u5730\u9762\u4E0D\u5728 y=0 \u65F6\u628A groundY \u8BBE\u4E3A\u5730\u9762\u9AD8\u5EA6\u3002"
+    ],
+    files: [{ scriptId: "ThirdPersonController", attachTo: "\u73A9\u5BB6\u89D2\u8272\u8282\u70B9", source: THIRD_PERSON_CONTROLLER }],
+    verify: 'playtest__run_smoke\uFF1A\u5148 input \u6CE8\u5165 {type:"axis",action:"Move",x:0,y:1}\uFF0Cstep 1 \u79D2\uFF0C\u518D assert nodeMoved\uFF08from \u4E3A\u89D2\u8272\u521D\u59CB\u4F4D\u7F6E\uFF0CminDistance 1\uFF09\u3002',
+    pitfalls: [
+      '\u526A\u8F91\u53C2\u6570\u5FC5\u987B\u662F ref(target:"clip")\uFF0C\u76F4\u63A5\u628A\u53C2\u6570\u503C\u4F20\u7ED9 self.anim.playBody\uFF0C\u5F15\u64CE\u4F1A\u81EA\u52A8\u5728\u6A21\u578B\u4E0E\u5916\u90E8\u52A8\u753B\u8D44\u4EA7\u91CC\u627E\u540C\u540D\u526A\u8F91\u3002',
+      "\u4E0D\u8981\u6BCF\u5E27\u8C03\u7528 playBody\uFF0C\u53EA\u5728\u76EE\u6807\u526A\u8F91\u53D8\u5316\u65F6\u8C03\u7528\u3002"
+    ]
+  },
+  {
+    id: "follow-camera",
+    title: "\u8DDF\u968F\u76F8\u673A\uFF08\u5E73\u6ED1\u8DDF\u968F + \u53F3\u952E\u73AF\u7ED5\uFF09",
+    summary: "\u76F8\u673A\u5E73\u6ED1\u8DDF\u5728\u76EE\u6807\u8EAB\u540E\u5E76\u59CB\u7EC8\u6CE8\u89C6\u76EE\u6807",
+    setup: [
+      '\u521B\u5EFA kind:"camera" \u8282\u70B9\uFF0C\u521D\u59CB\u4F4D\u7F6E\u653E\u5728\u76EE\u6807\u540E\u4E0A\u65B9\u5373\u53EF\uFF08\u811A\u672C\u4F1A\u63A5\u7BA1\u4F4D\u7F6E\u4E0E\u671D\u5411\uFF09\u3002',
+      "script__attach \u5230\u76F8\u673A\u8282\u70B9\uFF0Cparams.target \u4F20\u88AB\u8DDF\u968F\u7684\u8282\u70B9\u3002"
+    ],
+    files: [{ scriptId: "FollowCamera", attachTo: "\u76F8\u673A\u8282\u70B9", source: FOLLOW_CAMERA }],
+    verify: "viewport__capture({ playSeconds: 0.8 })\uFF1A\u786E\u8BA4\u76EE\u6807\u4F4D\u4E8E\u753B\u9762\u4E2D\u4E0B\u90E8\u4E14\u6CA1\u6709\u88AB\u5730\u9762\u6216\u5899\u4F53\u906E\u6321\u3002",
+    pitfalls: ["\u76F8\u673A\u671D\u5411\u4E00\u5F8B\u7528 self.lookAt\uFF0C\u4E0D\u8981\u624B\u7B97\u6B27\u62C9\u89D2\u3002"]
+  },
+  {
+    id: "enemy-wave",
+    title: "\u6CE2\u6B21\u5237\u602A + \u8FFD\u51FB\u654C\u4EBA\uFF08\u5BF9\u8C61\u6C60\uFF09",
+    summary: "\u4ECE\u4E00\u4E2A\u9690\u85CF\u6A21\u677F\u8282\u70B9\u6C60\u5316\u751F\u6210\u654C\u4EBA\uFF0C\u654C\u4EBA\u8FFD\u51FB\u5E76\u653B\u51FB\u73A9\u5BB6\uFF0C\u53EF\u88AB hit \u6D88\u606F\u51FB\u6740",
+    setup: [
+      "\u654C\u4EBA\u6A21\u677F\uFF1A\u521B\u5EFA\u4E00\u4E2A\u654C\u4EBA\u8282\u70B9\uFF08\u6A21\u578B\u6216\u57FA\u7840\u51E0\u4F55\u4F53\uFF09\uFF0C\u6302 ChaseEnemy\uFF0C\u7136\u540E\u628A\u6A21\u677F\u7684 visible \u8BBE\u4E3A false \u5E76\u653E\u5728\u573A\u666F\u5916\u4FA7\u3002",
+      '\u5237\u602A\u70B9\uFF1A\u521B\u5EFA kind:"empty" \u8282\u70B9\u653E\u5728\u6218\u573A\u4E2D\u5FC3\uFF0C\u6302 WaveSpawner\uFF0Cparams.template \u4F20\u654C\u4EBA\u6A21\u677F\u8282\u70B9\u3002',
+      '\u73A9\u5BB6\u8282\u70B9\u9700\u8981\u5E26 "player" \u6807\u7B7E\uFF08third-person-controller \u4E0E health-score-hud \u8303\u4F8B\u90FD\u4F1A\u5728 onStart \u81EA\u52A8\u6253\uFF09\u3002'
+    ],
+    files: [
+      { scriptId: "ChaseEnemy", attachTo: "\u654C\u4EBA\u6A21\u677F\u8282\u70B9\uFF08\u9690\u85CF\uFF09", source: CHASE_ENEMY },
+      { scriptId: "WaveSpawner", attachTo: "\u6218\u573A\u4E2D\u5FC3\u7684\u7A7A\u8282\u70B9", source: WAVE_SPAWNER }
+    ],
+    verify: 'playtest__run_smoke\uFF1Astep 3 \u79D2\u540E assert uiVarEquals {name:"wave",value:1}\uFF0C\u5E76\u7528 nodeCountAtLeast \u65AD\u8A00\u8282\u70B9\u6570\u6BD4\u7F16\u8F91\u6001\u591A\uFF08\u5DF2\u751F\u6210\u654C\u4EBA\uFF09\u3002',
+    pitfalls: [
+      "\u9690\u85CF\u7684\u6A21\u677F\u8282\u70B9\u81EA\u8EAB\u4E5F\u4F1A\u6267\u884C\u811A\u672C\uFF0C\u6240\u4EE5\u811A\u672C\u91CC\u8981\u7528 if (!self.visible) return \u8DF3\u8FC7\uFF0C\u4E14\u53EA\u5728\u53EF\u89C1\u5B9E\u4F8B\u4E0A\u6253\u6807\u7B7E\u3002",
+      "\u6C60\u5316\u5BF9\u8C61\u7528 self.node.destroy() \u5373\u53EF\u81EA\u52A8\u56DE\u6C60\uFF0C\u4E0D\u8981\u624B\u5EFA\u4E00\u5806\u8282\u70B9\u5145\u5F53\u5BF9\u8C61\u6C60\u3002"
+    ]
+  },
+  {
+    id: "shooting",
+    title: "\u5C04\u51FB\uFF08\u73A9\u5BB6\u5F00\u706B + \u6C60\u5316\u5B50\u5F39\uFF09",
+    summary: '\u6309\u4F4F\u653B\u51FB\u952E\u6CBF\u89D2\u8272\u671D\u5411\u53D1\u5C04\u5B50\u5F39\uFF0C\u5B50\u5F39\u547D\u4E2D\u5E26 "enemy" \u6807\u7B7E\u7684\u8282\u70B9\u540E\u53D1\u9001 hit \u6D88\u606F',
+    setup: [
+      "\u5B50\u5F39\u6A21\u677F\uFF1A\u521B\u5EFA\u4E00\u4E2A\u5C0F\u7403/\u5C0F\u80F6\u56CA\u8282\u70B9\uFF0C\u6302 Bullet\uFF0Cvisible \u8BBE\u4E3A false\u3002",
+      "script__attach PlayerShooter \u5230\u73A9\u5BB6\u8282\u70B9\uFF0Cparams.bullet \u4F20\u5B50\u5F39\u6A21\u677F\u8282\u70B9\u3002",
+      '\u88AB\u51FB\u4E2D\u7684\u5BF9\u8C61\u9700\u8981\u5E26 "enemy" \u6807\u7B7E\u5E76\u5728 onMessage \u91CC\u5904\u7406 "hit"\uFF08\u89C1 enemy-wave \u8303\u4F8B\u7684 ChaseEnemy\uFF09\u3002'
+    ],
+    files: [
+      { scriptId: "Bullet", attachTo: "\u5B50\u5F39\u6A21\u677F\u8282\u70B9\uFF08\u9690\u85CF\uFF09", source: BULLET },
+      { scriptId: "PlayerShooter", attachTo: "\u73A9\u5BB6\u8282\u70B9", source: PLAYER_SHOOTER }
+    ],
+    verify: 'playtest__run_smoke\uFF1Ainput \u6CE8\u5165 {type:"actionDown",action:"Attack"}\uFF0Cstep 0.5 \u79D2\uFF0C\u7528 nodeCountAtLeast \u65AD\u8A00\u8282\u70B9\u6570\u589E\u52A0\uFF08\u5DF2\u751F\u6210\u5B50\u5F39\uFF09\u3002'
+  },
+  {
+    id: "health-score-hud",
+    title: "\u751F\u547D\u503C + \u5F97\u5206 + HUD / \u7ED3\u7B97\u754C\u9762",
+    summary: "\u73A9\u5BB6\u53D7\u51FB\u6263\u8840\u3001\u51FB\u6740\u4E0E\u62FE\u53D6\u52A0\u5206\uFF0C\u6570\u636E\u9A71\u52A8 HUD\uFF0C\u6B7B\u4EA1\u6216\u8FBE\u6807\u65F6\u5F39\u51FA\u7ED3\u7B97\u754C\u9762",
+    setup: [
+      'HUD\uFF1Aui__createFromTemplate({ template:"hud", varKey:"hp", scoreVarKey:"score" })\u3002',
+      '\u7ED3\u7B97\uFF1Aui__createFromTemplate({ template:"result", name:"\u7ED3\u7B97\u754C\u9762", scoreVarKey:"score" })\uFF0C\u6807\u9898\u6587\u672C\u53EF\u7528 ui__patchNode \u7ED1\u5B9A\u5230\u53D8\u91CF resultTitle\u3002',
+      "script__attach PlayerHealth \u5230\u73A9\u5BB6\u8282\u70B9\uFF1B\u521B\u5EFA\u4E00\u4E2A\u7A7A\u8282\u70B9 GameManager \u5E76\u6302 GameManager \u811A\u672C\uFF08resultScreen \u4F20\u7ED3\u7B97\u754C\u9762\u5C4F\u5E55\u8282\u70B9\u7684\u540D\u79F0\uFF09\u3002"
+    ],
+    files: [
+      { scriptId: "PlayerHealth", attachTo: "\u73A9\u5BB6\u8282\u70B9", source: PLAYER_HEALTH },
+      { scriptId: "GameManager", attachTo: "\u7A7A\u8282\u70B9 GameManager", source: GAME_MANAGER }
+    ],
+    verify: 'playtest__run_smoke\uFF1Astep 0.5 \u79D2\u540E assert uiVarEquals {name:"hp",value:1} \u4E0E {name:"score",value:0}\u3002',
+    pitfalls: [
+      "HUD \u6A21\u677F\u7684\u8FDB\u5EA6\u6761\u91CF\u7A0B\u662F 0~1\uFF0C\u5199\u5165\u754C\u9762\u53D8\u91CF\u65F6\u8981\u9664\u4EE5\u6700\u5927\u503C\u3002",
+      "\u8DE8\u8282\u70B9\u901A\u4FE1\u7528 self.broadcast / node.sendMessage + onMessage\uFF0C\u4E0D\u8981\u4E92\u76F8\u76F4\u63A5\u6539\u5BF9\u65B9\u7684 state\u3002"
+    ]
+  },
+  {
+    id: "collectible",
+    title: "\u53EF\u62FE\u53D6\u7269\uFF08\u91D1\u5E01 / \u9053\u5177\uFF09",
+    summary: "\u65CB\u8F6C\u6D6E\u52A8\u7684\u62FE\u53D6\u7269\uFF0C\u73A9\u5BB6\u9760\u8FD1\u540E\u52A0\u5206\u5E76\u6D88\u5931",
+    setup: [
+      "\u521B\u5EFA\u62FE\u53D6\u7269\u8282\u70B9\uFF08\u7403\u4F53/\u5706\u67F1\u6216\u6A21\u578B\uFF09\uFF0C\u6302 Collectible\uFF1B\u9700\u8981\u591A\u4E2A\u65F6\u76F4\u63A5\u590D\u5236\u8282\u70B9\u6216\u505A\u6210\u9884\u5236\u4F53\u3002",
+      "\u914D\u5408 health-score-hud \u8303\u4F8B\u7684 GameManager \u7EDF\u8BA1\u5F97\u5206\uFF08\u5B83\u4F1A\u5904\u7406 collected \u6D88\u606F\uFF09\u3002"
+    ],
+    files: [{ scriptId: "Collectible", attachTo: "\u62FE\u53D6\u7269\u8282\u70B9", source: COLLECTIBLE }],
+    verify: "playtest__run_smoke\uFF1A\u628A\u73A9\u5BB6\u653E\u5728\u62FE\u53D6\u7269\u65C1\uFF0C\u6CE8\u5165\u671D\u5411\u62FE\u53D6\u7269\u7684 Move \u8F93\u5165\u5E76 step 1.5 \u79D2\uFF0Cassert nodeMissing\uFF08\u62FE\u53D6\u7269\u540D\u79F0\uFF09\u4E0E uiVarEquals score\u3002"
+  }
+];
+function findRecipe(id) {
+  const key = id.trim().toLowerCase();
+  if (!key) return null;
+  return RECIPES.find((r) => r.id === key) ?? RECIPES.find((r) => r.files.some((f) => f.scriptId.toLowerCase() === key)) ?? null;
+}
+function listRecipeIndex() {
+  return RECIPES.map((r) => ({ id: r.id, title: r.title, summary: r.summary }));
+}
 
 // src/ai/tools.ts
+var taskPlanUpdater = null;
 function fromToolName(name) {
   return name.replace(/__/g, ".");
 }
 async function executeAiTool(toolName, args) {
+  try {
+    return await executeAiToolInner(toolName, args);
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    console.error(`[AI Tool] ${toolName} threw:`, error);
+    return {
+      ok: false,
+      toolName,
+      displayLabel: `${toolName} \u6267\u884C\u5F02\u5E38\uFF1A${msg}`,
+      data: { ok: false, error: msg }
+    };
+  }
+}
+async function executeAiToolInner(toolName, args) {
+  const resolvedArgs = resolveAiNodeArgs(toolName, args);
   switch (toolName) {
+    case "plan__set_tasks": {
+      const raw = Array.isArray(resolvedArgs.tasks) ? resolvedArgs.tasks : [];
+      const normalized = raw.filter((item) => Boolean(item && typeof item === "object")).slice(0, 12).map((item, idx) => ({
+        id: typeof item.id === "string" && item.id.trim() ? item.id.trim() : `t${idx + 1}`,
+        title: typeof item.title === "string" && item.title.trim() ? item.title.trim() : `\u6B65\u9AA4 ${idx + 1}`,
+        status: item.status === "done" || item.status === "in_progress" ? item.status : "pending"
+      }));
+      taskPlanUpdater?.(normalized);
+      const doneCount = normalized.filter((t) => t.status === "done").length;
+      return {
+        ok: true,
+        toolName,
+        displayLabel: `\u66F4\u65B0\u4EFB\u52A1\u8FDB\u5EA6 (${doneCount}/${normalized.length})`,
+        data: { ok: true, tasks: normalized, doneCount, total: normalized.length }
+      };
+    }
     case "query__project_overview":
       return {
         ok: true,
@@ -13418,19 +18264,23 @@ async function executeAiTool(toolName, args) {
         toolName,
         displayLabel: "\u67E5\u8BE2\u573A\u666F\u5C42\u7EA7",
         data: querySceneOutline(
-          typeof args.parentId === "string" ? args.parentId : null,
-          typeof args.depth === "number" ? args.depth : 3
+          typeof resolvedArgs.parentId === "string" ? resolvedArgs.parentId : null,
+          typeof resolvedArgs.depth === "number" ? resolvedArgs.depth : 3
         )
       };
     case "query__node_inspect": {
-      const nodeId = String(args.nodeId ?? "");
+      const nodeId = String(resolvedArgs.nodeId ?? "");
       const node = queryNodeInspect(nodeId);
       return {
         ok: Boolean(node),
         toolName,
         displayLabel: `\u68C0\u67E5\u8282\u70B9 ${node?.name ?? nodeId}`,
         targetNodeId: node ? nodeId : void 0,
-        data: node ?? { ok: false, message: `\u8282\u70B9 "${nodeId}" \u4E0D\u5B58\u5728` }
+        data: node ?? {
+          ok: false,
+          message: `\u8282\u70B9 "${nodeId}" \u4E0D\u5B58\u5728`,
+          availableNodes: listCompactNodes()
+        }
       };
     }
     case "query__asset_search":
@@ -13440,7 +18290,8 @@ async function executeAiTool(toolName, args) {
         displayLabel: `\u641C\u7D22\u8D44\u4EA7 ${String(args.query ?? "") || "\u5168\u90E8"}`,
         data: queryAssetSearch(
           typeof args.query === "string" ? args.query : "",
-          typeof args.kind === "string" ? args.kind : void 0
+          typeof args.kind === "string" ? args.kind : void 0,
+          typeof args.folder === "string" ? args.folder : void 0
         )
       };
     case "query__registry_describe":
@@ -13473,14 +18324,20 @@ async function executeAiTool(toolName, args) {
       };
     }
     case "query__code_assets": {
-      const items = Object.values(useCodeAssetStore.getState().assets).map((item) => ({
-        id: item.id,
-        kind: item.kind,
-        name: item.name,
-        relativePath: item.relativePath,
-        ok: item.ok,
-        diagnostics: item.diagnostics
-      }));
+      const assetDirs = useAssetStore.getState().assetDirs;
+      const items = Object.values(useCodeAssetStore.getState().assets).map((item) => {
+        const dirKey = `code:${item.kind}:${item.id}`;
+        const folder = assetDirs[dirKey] ?? (item.relativePath.startsWith("Assets/") && item.relativePath.includes("/") ? item.relativePath.slice(0, item.relativePath.lastIndexOf("/")) : item.kind === "shader" ? "Assets/Shaders" : "Assets/Scripts");
+        return {
+          id: item.id,
+          kind: item.kind,
+          name: item.name,
+          folder,
+          relativePath: item.relativePath,
+          ok: item.ok,
+          diagnostics: item.diagnostics
+        };
+      });
       return {
         ok: true,
         toolName,
@@ -13488,29 +18345,194 @@ async function executeAiTool(toolName, args) {
         data: items
       };
     }
+    case "query__ui_inspect": {
+      const assets = useAssetStore.getState().assets;
+      const id = typeof resolvedArgs.assetId === "string" ? resolvedArgs.assetId.trim() : "";
+      if (id) {
+        const hit = assets[id];
+        if (!hit || hit.kind !== "ui") {
+          const availableUiAssets = Object.values(assets).filter((a) => a.kind === "ui").map((a) => ({ id: a.id, name: a.name }));
+          return {
+            ok: false,
+            toolName,
+            displayLabel: `\u8BFB\u53D6 UI \u5931\u8D25\uFF1A${id} \u4E0D\u5B58\u5728`,
+            data: {
+              ok: false,
+              message: `UI \u8D44\u4EA7 "${id}" \u4E0D\u5B58\u5728\uFF08\u6CE8\u610F\uFF1Ascreen \u8282\u70B9 ID \u4E0D\u662F UI \u8D44\u4EA7 ID\uFF0C\u8BF7\u4F7F\u7528 availableUiAssets \u4E2D\u7684 id \u6216\u4E0D\u4F20 assetId \u5217\u51FA\u5168\u90E8\uFF09`,
+              availableUiAssets
+            }
+          };
+        }
+        return {
+          ok: true,
+          toolName,
+          displayLabel: `\u8BFB\u53D6 UI \u6587\u6863 ${hit.name}`,
+          data: { id: hit.id, name: hit.name, document: hit.document }
+        };
+      }
+      const list = Object.values(assets).filter((a) => a.kind === "ui").map((a) => ({ id: a.id, name: a.name }));
+      return {
+        ok: true,
+        toolName,
+        displayLabel: `UI \u8D44\u4EA7\u5217\u8868\uFF08${list.length} \u4E2A\uFF09`,
+        data: list
+      };
+    }
+    case "script__read":
+    case "shader__read": {
+      const kind = toolName === "shader__read" ? "shader" : "script";
+      const rawId = typeof resolvedArgs.id === "string" ? resolvedArgs.id.trim() : "";
+      const all = useCodeAssetStore.getState().assets;
+      const record = rawId ? all[rawId] ?? all[normalizeCodeAssetId(kind, rawId)] ?? Object.values(all).find((a) => a.kind === kind && a.name === rawId) : void 0;
+      if (!record || record.kind !== kind) {
+        return {
+          ok: false,
+          toolName,
+          displayLabel: `\u8BFB\u53D6${kind === "shader" ? "\u7740\u8272\u5668" : "\u811A\u672C"}\u5931\u8D25\uFF1A${rawId || "(\u7A7A)"} \u4E0D\u5B58\u5728`,
+          data: {
+            ok: false,
+            message: `${kind === "shader" ? "\u7740\u8272\u5668" : "\u811A\u672C"} "${rawId}" \u4E0D\u5B58\u5728`,
+            available: Object.values(all).filter((a) => a.kind === kind).map((a) => ({ id: a.id, name: a.name }))
+          }
+        };
+      }
+      return {
+        ok: true,
+        toolName,
+        displayLabel: `\u8BFB\u53D6${kind === "shader" ? "\u7740\u8272\u5668" : "\u811A\u672C"} ${record.relativePath}`,
+        targetAssetId: `code:${kind}:${record.id}`,
+        data: {
+          id: record.id,
+          name: record.name,
+          relativePath: record.relativePath,
+          compiled: record.ok,
+          diagnostics: record.diagnostics,
+          lineCount: record.source.split("\n").length,
+          source: record.source
+        }
+      };
+    }
+    case "kb__read": {
+      const id = typeof args.id === "string" ? args.id.trim() : "";
+      const recipe = findRecipe(id);
+      if (!recipe) {
+        return {
+          ok: false,
+          toolName,
+          displayLabel: `\u8303\u4F8B ${id || "(\u7A7A)"} \u4E0D\u5B58\u5728`,
+          data: { ok: false, message: `\u8303\u4F8B "${id}" \u4E0D\u5B58\u5728`, available: listRecipeIndex() }
+        };
+      }
+      return {
+        ok: true,
+        toolName,
+        displayLabel: `\u67E5\u9605\u8303\u4F8B\uFF1A${recipe.title}`,
+        data: recipe
+      };
+    }
     case "playtest__run_smoke": {
       const steps = Array.isArray(args.steps) ? args.steps : [];
       const session = new PlaytestSession();
-      const report = session.runSmoke(steps, {
-        autoStop: typeof args.autoStop === "boolean" ? args.autoStop : true
-      });
+      const autoStop = typeof args.autoStop === "boolean" ? args.autoStop : true;
+      const report = session.runSmoke(steps, { autoStop: false });
+      const watched = readWatchedNodes(session, args.watchNodes);
+      if (autoStop) session.stop();
+      const logSummary = summarizeRuntimeLogs([
+        ...report.errors.map((message) => ({ level: "error", message })),
+        ...report.warnings.map((message) => ({ level: "warn", message }))
+      ]);
+      const failedAssertion = report.assertions.find((a) => !a.passed);
+      const briefReason = logSummary.errors[0] || (failedAssertion ? `\u65AD\u8A00\u5931\u8D25: ${failedAssertion.message}` : "") || (!report.metrics.budgetPassed ? report.metrics.budgetNotes[0] || "\u6027\u80FD\u9884\u7B97\u8D85\u6807" : "");
+      const lastShot = report.screenshots[report.screenshots.length - 1];
       return {
         ok: report.ok,
         toolName,
-        displayLabel: `\u8BD5\u73A9\u5192\u70DF\uFF1A${report.ok ? "\u901A\u8FC7" : "\u53D1\u73B0\u95EE\u9898"}\uFF08${report.stepsSimulated} \u6B65 / ${report.elapsedSec}s\uFF09`,
-        data: report
+        displayLabel: report.ok ? `\u8BD5\u73A9\u5192\u70DF\uFF1A\u901A\u8FC7\uFF08${report.stepsSimulated} \u6B65 / ${report.elapsedSec}s\uFF09` : `\u8BD5\u73A9\u5192\u70DF\uFF1A${briefReason ? `${briefReason.slice(0, 42)}${briefReason.length > 42 ? "\u2026" : ""}` : `\u53D1\u73B0 ${report.errorCount} \u9879\u95EE\u9898`}\uFF08${report.stepsSimulated} \u6B65 / ${report.elapsedSec}s\uFF09`,
+        data: {
+          ok: report.ok,
+          elapsedSec: report.elapsedSec,
+          stepsSimulated: report.stepsSimulated,
+          runtimeErrorCount: logSummary.errorCount,
+          runtimeErrors: logSummary.errors,
+          runtimeWarnings: logSummary.warnings,
+          assertions: report.assertions,
+          metrics: report.metrics,
+          ...watched ? { watchedNodes: watched } : {},
+          ...lastShot ? { dataUrl: lastShot } : {}
+        }
       };
     }
+    case "playtest__control": {
+      const action = String(args.action ?? "").trim();
+      const store = useEditorStore.getState();
+      if (action === "play") {
+        if (store.playState === "stopped") manualPlayLogCursor = captureLogCursor();
+        if (store.playState === "stopped" || store.playState === "paused") store.play();
+      } else if (action === "pause") {
+        if (store.playState === "playing") store.pause();
+      } else if (action === "stop") {
+        if (store.playState !== "stopped") store.stop();
+      } else {
+        return { ok: false, toolName, displayLabel: `\u672A\u77E5\u8BD5\u73A9\u52A8\u4F5C\uFF1A${action}`, data: { error: "invalid action" } };
+      }
+      const waitSec = typeof args.waitSeconds === "number" && args.waitSeconds > 0 ? args.waitSeconds : 0.05;
+      await waitRealFrames(waitSec);
+      const nextState = useEditorStore.getState().playState;
+      const logSummary = summarizeRuntimeLogs(readLogsSince(manualPlayLogCursor));
+      return {
+        ok: true,
+        toolName,
+        displayLabel: nextState === "playing" ? "\u5DF2\u8FDB\u5165\u8BD5\u73A9\u72B6\u6001" : nextState === "paused" ? "\u5DF2\u6682\u505C\u8BD5\u73A9" : "\u5DF2\u9000\u51FA\u8BD5\u73A9",
+        data: {
+          playState: nextState,
+          runtimeErrorCount: logSummary.errorCount,
+          runtimeErrors: logSummary.errors,
+          runtimeWarnings: logSummary.warnings
+        }
+      };
+    }
+    case "viewport__capture":
     case "playtest__capture": {
-      const dataUrl = captureMainViewport({
-        width: typeof args.width === "number" ? args.width : void 0,
-        height: typeof args.height === "number" ? args.height : void 0
-      });
+      const playSec = typeof args.playSeconds === "number" && args.playSeconds > 0 ? args.playSeconds : 0;
+      const keepPlaying = args.keepPlaying === true;
+      const store = useEditorStore.getState();
+      const startedHere = playSec > 0 && store.playState === "stopped";
+      const logCursor = captureLogCursor();
+      if (startedHere) {
+        store.play();
+      }
+      if (playSec > 0 || store.playState === "playing") {
+        await waitRealFrames(playSec);
+      }
+      let dataUrl = null;
+      let watched = null;
+      try {
+        dataUrl = await captureViewportComposite({
+          width: typeof args.width === "number" ? args.width : void 0,
+          height: typeof args.height === "number" ? args.height : void 0
+        });
+        watched = readWatchedNodes(new PlaytestSession(), args.watchNodes);
+      } finally {
+        if (startedHere && !keepPlaying && useEditorStore.getState().playState !== "stopped") {
+          useEditorStore.getState().stop();
+        }
+      }
+      const played = startedHere || store.playState !== "stopped";
+      const logSummary = played ? summarizeRuntimeLogs(readLogsSince(logCursor)) : null;
       return {
         ok: Boolean(dataUrl),
         toolName,
-        displayLabel: dataUrl ? "\u89C6\u53E3\u622A\u56FE\u6210\u529F" : "\u89C6\u53E3\u672A\u5C31\u7EEA\uFF0C\u65E0\u6CD5\u622A\u56FE",
-        data: dataUrl ? { dataUrl } : { error: "viewport not ready" }
+        displayLabel: dataUrl ? `${startedHere ? "\u8BD5\u73A9\u5B9E\u666F\u622A\u56FE\u6210\u529F" : "\u89C6\u53E3\u622A\u56FE\u6210\u529F"}${logSummary && logSummary.errorCount > 0 ? `\uFF08\u8FD0\u884C\u65F6\u62A5\u9519 ${logSummary.errorCount} \u6761\uFF09` : ""}` : "\u89C6\u53E3\u672A\u5C31\u7EEA\uFF0C\u65E0\u6CD5\u622A\u56FE",
+        data: {
+          ...dataUrl ? { dataUrl } : { error: "viewport not ready" },
+          playState: useEditorStore.getState().playState,
+          ...logSummary ? {
+            runtimeErrorCount: logSummary.errorCount,
+            runtimeErrors: logSummary.errors,
+            runtimeWarnings: logSummary.warnings
+          } : {},
+          ...watched ? { watchedNodes: watched } : {}
+        }
       };
     }
     case "input__get_map": {
@@ -13587,21 +18609,237 @@ async function executeAiTool(toolName, args) {
   }
   const commandId = fromToolName(toolName);
   const cmd = commandBus.get(commandId);
-  const res = await commandBus.dispatch(commandId, args);
-  const targetNodeId = extractTargetNodeId(args, res.ok ? res.value : void 0);
+  const res = await commandBus.dispatch(commandId, resolvedArgs);
+  const targetNodeId = extractTargetNodeId(resolvedArgs, res.ok ? res.value : void 0);
+  const targetAssetId = res.ok ? extractTargetAssetId(toolName, resolvedArgs, res.value) : void 0;
   const summary = res.ok ? res.changed.summary || cmd?.title || commandId : `${cmd?.title ?? commandId} \u5931\u8D25\uFF1A${res.message}`;
+  const data = !res.ok && (res.code === "NOT_FOUND" || res.code === "node.notFound" || res.code === "asset.notFound" || res.message.includes("\u4E0D\u5B58\u5728") || toolName.startsWith("ui__") && res.message.includes("\u6821\u9A8C\u5931\u8D25")) ? {
+    ...res,
+    availableNodes: listCompactNodes(),
+    ...res.code === "asset.notFound" || toolName.startsWith("ui__") || toolName.startsWith("asset__") ? {
+      availableUiAssets: Object.values(useAssetStore.getState().assets).filter((a) => a.kind === "ui").map((a) => ({ id: a.id, name: a.name }))
+    } : {}
+  } : res;
   return {
     ok: res.ok,
     toolName,
     displayLabel: summary,
     targetNodeId,
-    data: res
+    targetAssetId,
+    data
   };
+}
+function resolveNodeIdFuzzy(raw) {
+  if (typeof raw !== "string") return String(raw ?? "");
+  const trimmed = raw.trim();
+  if (!trimmed) return raw;
+  const nodes = useEditorStore.getState().nodes;
+  if (nodes[trimmed]) return trimmed;
+  const all = Object.values(nodes);
+  const byExactName = all.filter((n) => n.name === trimmed);
+  if (byExactName.length === 1) return byExactName[0].id;
+  if (trimmed.length >= 6) {
+    const cleanPrefix = trimmed.replace(/\?+$/g, "").replace(/\.\.\.$/g, "");
+    if (cleanPrefix.length >= 6) {
+      const byPrefix = all.filter((n) => n.id.startsWith(cleanPrefix));
+      if (byPrefix.length === 1) return byPrefix[0].id;
+    }
+  }
+  const uuidHead = trimmed.match(/^([0-9a-fA-F]{8})-[0-9a-fA-F-]*/)?.[1];
+  if (uuidHead) {
+    const byHead = all.filter((n) => n.id.toLowerCase().startsWith(uuidHead.toLowerCase() + "-"));
+    if (byHead.length === 1) return byHead[0].id;
+  }
+  const uuidTail = trimmed.match(/([0-9a-fA-F]{12})$/)?.[1];
+  if (uuidTail) {
+    const byTail = all.filter((n) => n.id.toLowerCase().endsWith("-" + uuidTail.toLowerCase()));
+    if (byTail.length === 1) return byTail[0].id;
+  }
+  return raw;
+}
+function resolveAssetIdFuzzy(raw) {
+  if (typeof raw !== "string") return String(raw ?? "");
+  const trimmed = raw.trim();
+  if (!trimmed) return raw;
+  const assets = useAssetStore.getState().assets;
+  if (assets[trimmed]) return trimmed;
+  const nodes = useEditorStore.getState().nodes;
+  const maybeNode = nodes[trimmed] ?? Object.values(nodes).find((n) => n.kind === "screen" && n.name === trimmed);
+  if (maybeNode?.kind === "screen" && maybeNode.screen?.documentId && assets[maybeNode.screen.documentId]) {
+    return maybeNode.screen.documentId;
+  }
+  const all = Object.values(assets);
+  const byName = all.filter((a) => a.name === trimmed);
+  if (byName.length === 1) return byName[0].id;
+  if (trimmed.length >= 6) {
+    const cleanPrefix = trimmed.replace(/\?+$/g, "").replace(/\.\.\.$/g, "");
+    if (cleanPrefix.length >= 6) {
+      const byPrefix = all.filter((a) => a.id.startsWith(cleanPrefix));
+      if (byPrefix.length === 1) return byPrefix[0].id;
+    }
+  }
+  const uuidHead = trimmed.match(/^([0-9a-fA-F]{8})-[0-9a-fA-F-]*/)?.[1];
+  if (uuidHead) {
+    const byHead = all.filter((a) => a.id.toLowerCase().startsWith(uuidHead.toLowerCase() + "-"));
+    if (byHead.length === 1) return byHead[0].id;
+  }
+  const uuidTail = trimmed.match(/([0-9a-fA-F]{12})$/)?.[1];
+  if (uuidTail) {
+    const byTail = all.filter((a) => a.id.toLowerCase().endsWith("-" + uuidTail.toLowerCase()));
+    if (byTail.length === 1) return byTail[0].id;
+  }
+  return raw;
+}
+var manualPlayLogCursor = null;
+function readWatchedNodes(session, raw) {
+  if (!Array.isArray(raw) || raw.length === 0) return null;
+  return raw.filter((item) => typeof item === "string" && Boolean(item.trim())).slice(0, 12).map((query) => {
+    const pose = session.read({ kind: "nodePose", nodeIdOrName: query.trim() });
+    if (!pose) return { query, found: false };
+    return {
+      query,
+      found: true,
+      id: pose.id,
+      name: pose.name,
+      position: pose.position.map((v) => Number(v.toFixed(3)))
+    };
+  });
+}
+async function waitRealFrames(seconds) {
+  const ms = Math.max(0, Math.min(1e4, seconds * 1e3));
+  if (ms > 0) {
+    await new Promise((resolve) => setTimeout(resolve, ms));
+  }
+  await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+}
+function resolveAiNodeArgs(toolName, args) {
+  const next = { ...args };
+  if (toolName === "script__create" || toolName === "script__update" || toolName === "script__patch" || toolName === "script__check" || toolName === "script__read" || toolName === "shader__read" || toolName === "shader__create" || toolName === "shader__update" || toolName === "shader__check") {
+    const rawId = typeof next.id === "string" ? next.id.trim() : "";
+    if (!rawId) {
+      const alias = next.scriptId ?? next.shaderId ?? next.name ?? next.fileName ?? next.path;
+      if (typeof alias === "string" && alias.trim()) {
+        next.id = alias.trim().replace(/\\/g, "/").replace(/^(?:Assets\/(?:Scripts|Shaders)\/|scripts\/|shaders\/)/i, "").split("/").pop();
+      }
+    }
+  }
+  for (const objKey of ["patch", "row", "params", "document"]) {
+    const rawVal = next[objKey];
+    if (typeof rawVal === "string" && rawVal.trim().startsWith("{")) {
+      try {
+        const parsed = JSON.parse(rawVal);
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+          next[objKey] = parsed;
+        }
+      } catch {
+      }
+    }
+  }
+  if (toolName === "gameplay__setComponentData" || toolName === "capability__setNode" || toolName === "capability__setPicture") {
+    if (!next.patch || typeof next.patch !== "object" || Array.isArray(next.patch)) {
+      const alias = next.data ?? next.value ?? next.values ?? next.fields ?? next.config ?? next.componentData;
+      if (typeof alias === "string" && alias.trim().startsWith("{")) {
+        try {
+          const parsed = JSON.parse(alias);
+          if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+            next.patch = parsed;
+          }
+        } catch {
+        }
+      } else if (alias && typeof alias === "object" && !Array.isArray(alias)) {
+        next.patch = alias;
+      } else {
+        const reserved = /* @__PURE__ */ new Set(["nodeId", "packId", "componentId", "capabilityId", "patch"]);
+        const collected = {};
+        for (const [k, v] of Object.entries(next)) {
+          if (!reserved.has(k) && v !== void 0) collected[k] = v;
+        }
+        next.patch = collected;
+      }
+    }
+  }
+  if (toolName === "ui__updateDocument" || toolName === "ui__mountScreen" || toolName === "ui__patchNode") {
+    const rawAssetId = typeof next.assetId === "string" ? next.assetId.trim() : "";
+    if (!rawAssetId) {
+      const alias = toolName === "ui__patchNode" ? next.uiAssetId ?? next.documentId ?? next.id ?? next.screenNodeId : next.uiAssetId ?? next.documentId ?? next.id ?? next.screenNodeId ?? next.nodeId;
+      if (typeof alias === "string" && alias.trim()) {
+        next.assetId = alias.trim();
+      } else if (toolName === "ui__updateDocument" || toolName === "ui__patchNode") {
+        const uiAssets = Object.values(useAssetStore.getState().assets).filter((a) => a.kind === "ui");
+        if (typeof next.name === "string" && next.name.trim()) {
+          const byName = uiAssets.filter((a) => a.name === next.name.toString().trim());
+          if (byName.length === 1) next.assetId = byName[0].id;
+        }
+        if ((!next.assetId || !String(next.assetId).trim()) && uiAssets.length === 1) {
+          next.assetId = uiAssets[0].id;
+        }
+      }
+    }
+  }
+  const nodeRefKeys = toolName === "ui__patchNode" ? ["parentId", "targetNodeId", "sourceNodeId"] : ["nodeId", "parentId", "targetNodeId", "sourceNodeId"];
+  for (const key of nodeRefKeys) {
+    if (typeof next[key] === "string" && next[key]) {
+      next[key] = resolveNodeIdFuzzy(next[key]);
+    }
+  }
+  const assetRefKeys = ["assetId", "materialId"];
+  for (const key of assetRefKeys) {
+    if (typeof next[key] === "string" && next[key]) {
+      next[key] = resolveAssetIdFuzzy(next[key]);
+    }
+  }
+  if (Array.isArray(next.nodeIds)) {
+    next.nodeIds = next.nodeIds.map((id) => typeof id === "string" ? resolveNodeIdFuzzy(id) : id);
+  }
+  if (toolName === "script__attach" && typeof next.scriptId === "string" && next.params && typeof next.params === "object") {
+    const scriptId = next.scriptId.replace(/^(?:Assets\/Scripts\/|scripts\/)/i, "").replace(/\.ts$/, "");
+    const behavior = useCodeAssetStore.getState().assets[scriptId]?.compiledScript?.behavior;
+    if (behavior?.params) {
+      const resolvedParams = { ...next.params };
+      for (const [k, schema] of Object.entries(behavior.params)) {
+        if (typeof resolvedParams[k] !== "string" || !resolvedParams[k]) continue;
+        if (schema.type === "ref" && schema.target === "node") {
+          resolvedParams[k] = resolveNodeIdFuzzy(resolvedParams[k]);
+        } else if (schema.type === "ref" && schema.target === "asset" || schema.type === "texture") {
+          resolvedParams[k] = resolveAssetIdFuzzy(resolvedParams[k]);
+        }
+      }
+      next.params = resolvedParams;
+    }
+  }
+  return next;
+}
+function listCompactNodes() {
+  return Object.values(useEditorStore.getState().nodes).slice(0, 40).map((n) => ({ id: n.id, name: n.name, kind: n.kind }));
 }
 function extractTargetNodeId(args, value) {
   if (typeof args.nodeId === "string" && args.nodeId) return args.nodeId;
   if (value && typeof value === "object" && "nodeId" in value && typeof value.nodeId === "string") {
     return value.nodeId;
+  }
+  return void 0;
+}
+function extractTargetAssetId(toolName, args, value) {
+  const valObj = value && typeof value === "object" ? value : null;
+  if (toolName.startsWith("script__") && toolName !== "script__attach" && toolName !== "script__check" && toolName !== "script__read") {
+    const id = typeof valObj?.id === "string" ? valObj.id : typeof args.id === "string" ? args.id : "";
+    if (id) return `code:script:${id}`;
+  }
+  if (toolName.startsWith("shader__") && toolName !== "shader__check") {
+    const id = typeof valObj?.id === "string" ? valObj.id : typeof valObj?.shaderId === "string" ? valObj.shaderId : typeof args.shaderId === "string" ? args.shaderId : typeof args.id === "string" ? args.id : "";
+    if (id) return `code:shader:${id}`;
+  }
+  if (valObj && typeof valObj.assetId === "string" && valObj.assetId) {
+    return valObj.assetId;
+  }
+  if (typeof args.assetId === "string" && args.assetId) {
+    return args.assetId;
+  }
+  if (typeof args.materialId === "string" && args.materialId) {
+    return args.materialId;
+  }
+  if (toolName === "scene__createScene" && valObj && typeof valObj.sceneId === "string" && valObj.sceneId) {
+    return valObj.sceneId;
   }
   return void 0;
 }
@@ -13661,7 +18899,7 @@ function bindCommandBusToEditor() {
 var createMaterialCmd = {
   id: "asset.createMaterial",
   title: "\u65B0\u5EFA\u6750\u8D28\u8D44\u4EA7",
-  description: "\u521B\u5EFA\u4E00\u4E2A\u65B0\u7684 PBR \u6750\u8D28\u8D44\u4EA7\u5E76\u52A0\u5165\u8D44\u4EA7\u5E93\uFF08\u53EF\u9009\u76F4\u63A5\u7ED1\u5B9A\u81EA\u5B9A\u4E49\u7740\u8272\u5668 shaderId\uFF09",
+  description: "\u521B\u5EFA\u4E00\u4E2A\u65B0\u7684 PBR \u6750\u8D28\u8D44\u4EA7\u5E76\u52A0\u5165\u8D44\u4EA7\u5E93\uFF08\u53EF\u9009\u76F4\u63A5\u7ED1\u5B9A\u81EA\u5B9A\u4E49\u7740\u8272\u5668 shaderId \u4E0E\u5B58\u653E\u76EE\u5F55 folder\uFF09",
   risk: "safe",
   params: {
     type: "object",
@@ -13670,12 +18908,14 @@ var createMaterialCmd = {
       color: { type: "color", default: "#cccccc", label: "\u57FA\u7840\u989C\u8272" },
       roughness: { type: "number", default: 0.65, min: 0, max: 1, label: "\u7C97\u7CD9\u5EA6" },
       metalness: { type: "number", default: 0.04, min: 0, max: 1, label: "\u91D1\u5C5E\u5EA6" },
-      shaderId: { type: "string", default: "", label: "\u81EA\u5B9A\u4E49\u7740\u8272\u5668 ID\uFF08\u53EF\u9009\uFF09", optional: true }
+      shaderId: { type: "string", default: "", label: "\u81EA\u5B9A\u4E49\u7740\u8272\u5668 ID\uFF08\u53EF\u9009\uFF09", optional: true },
+      folder: { type: "string", default: "Assets/Materials", label: "\u5B58\u653E\u76EE\u5F55\uFF08\u5982 Assets/Materials/Props\uFF09", optional: true }
     }
   },
   run(_ctx, p) {
     const assetId = crypto.randomUUID();
     const cleanShaderId = typeof p.shaderId === "string" ? p.shaderId.trim() : "";
+    const targetDir = normalizeDir(p.folder?.trim() || "Assets/Materials");
     const slot = {
       name: p.name,
       color: p.color,
@@ -13692,16 +18932,19 @@ var createMaterialCmd = {
       aoAssetId: null,
       ...cleanShaderId ? { shader: `custom:${cleanShaderId}` } : {}
     };
-    useAssetStore.getState().add({
+    const store = useAssetStore.getState();
+    ensureAssetFolderPath(targetDir);
+    store.add({
       id: assetId,
       name: p.name,
       kind: "material",
       slot
     });
+    store.place(assetId, targetDir);
     return {
       ok: true,
-      value: { assetId, name: p.name },
-      changed: { assetsChanged: [assetId], summary: `\u65B0\u5EFA\u6750\u8D28\u8D44\u4EA7 ${p.name}` }
+      value: { assetId, name: p.name, folder: targetDir },
+      changed: { assetsChanged: [assetId], summary: `\u65B0\u5EFA\u6750\u8D28\u8D44\u4EA7 ${p.name} (${targetDir})` }
     };
   }
 };
@@ -13762,30 +19005,335 @@ var renameAssetCmd = {
     };
   }
 };
+function normalizeUiNode(raw, depth = 0) {
+  const src = raw && typeof raw === "object" ? raw : {};
+  const rawType = typeof src.type === "string" && UI_NODE_TYPES.includes(src.type) ? src.type : depth === 0 ? "panel" : "text";
+  const layoutSrc = src.layout && typeof src.layout === "object" ? src.layout : {};
+  const mode = layoutSrc.mode === "flex" ? "flex" : "anchor";
+  const children = Array.isArray(src.children) ? src.children.map((c) => normalizeUiNode(c, depth + 1)) : void 0;
+  return {
+    ...src,
+    id: typeof src.id === "string" && src.id.trim() ? src.id : crypto.randomUUID(),
+    type: rawType,
+    name: typeof src.name === "string" && src.name.trim() ? src.name : depth === 0 ? "Root" : rawType,
+    layout: {
+      ...layoutSrc,
+      mode,
+      ...depth === 0 && mode === "anchor" && !layoutSrc.anchorMin && !layoutSrc.anchorMax ? { anchorMin: { x: 0, y: 0 }, anchorMax: { x: 1, y: 1 }, pivot: { x: 0, y: 0 }, x: 0, y: 0 } : {}
+    },
+    ...children ? { children } : {}
+  };
+}
+function normalizeUiDocument(raw) {
+  const src = raw && typeof raw === "object" ? raw : {};
+  const rootRaw = src.root && typeof src.root === "object" ? src.root : src;
+  return {
+    schemaVersion: 1,
+    root: normalizeUiNode(rootRaw, 0)
+  };
+}
 var createUiDocCmd = {
   id: "ui.createDocument",
   title: "\u65B0\u5EFA\u754C\u9762\u6587\u6863\u8D44\u4EA7",
-  description: "\u521B\u5EFA\u4E00\u4E2A UiDocument \u754C\u9762\u8D44\u4EA7",
+  description: "\u521B\u5EFA\u4E00\u4E2A UiDocument \u754C\u9762\u8D44\u4EA7\uFF08\u652F\u6301\u53EF\u9009 mountToScene \u6302\u8F7D\u5230\u5F53\u524D\u573A\u666F\u4E0E\u5B58\u653E\u76EE\u5F55 folder\uFF09",
   risk: "safe",
   params: {
     type: "object",
     fields: {
       name: { type: "string", minLength: 1, default: "\u65B0\u754C\u9762", label: "\u754C\u9762\u540D\u79F0" },
-      document: { type: "object", fields: {}, label: "UiDocument \u6570\u636E" }
+      document: { type: "object", fields: {}, label: "UiDocument \u6570\u636E\uFF08\u542B schemaVersion: 1 \u548C root \u8282\u70B9\u6811\uFF09" },
+      mountToScene: { type: "boolean", default: false, optional: true, label: "\u7ACB\u5373\u6302\u8F7D\u5230\u573A\u666F" },
+      layer: {
+        type: "enum",
+        options: UI_LAYERS.map((l) => ({ value: l, label: l })),
+        default: "hud",
+        optional: true,
+        label: "\u6302\u8F7D\u5C42\u7EA7"
+      },
+      folder: { type: "string", default: "Assets/UI", optional: true, label: "\u5B58\u653E\u76EE\u5F55\uFF08\u5982 Assets/UI/Menus\uFF09" }
     }
   },
   run(_ctx, p) {
     const assetId = crypto.randomUUID();
-    useAssetStore.getState().add({
+    const doc = normalizeUiDocument(p.document);
+    const targetDir = normalizeDir(p.folder?.trim() || "Assets/UI");
+    const store = useAssetStore.getState();
+    ensureAssetFolderPath(targetDir);
+    store.add({
       id: assetId,
       name: p.name,
       kind: "ui",
-      document: p.document
+      document: doc
     });
+    store.place(assetId, targetDir);
+    if (p.mountToScene) {
+      useEditorStore.getState().mountScreen(assetId, [0, 0, 0]);
+      if (p.layer) {
+        const nodes = useEditorStore.getState().nodes;
+        const screenNode = Object.values(nodes).find((n) => n.kind === "screen" && n.screen?.documentId === assetId);
+        if (screenNode && screenNode.screen) {
+          useEditorStore.getState().updateNode(screenNode.id, {
+            name: p.name,
+            screen: { ...screenNode.screen, layer: p.layer }
+          });
+        }
+      }
+    }
+    const warnings = validateUiDocument(doc);
     return {
       ok: true,
-      value: { assetId, name: p.name },
-      changed: { assetsChanged: [assetId], summary: `\u65B0\u5EFA\u754C\u9762\u6587\u6863 ${p.name}` }
+      value: {
+        assetId,
+        name: p.name,
+        mounted: Boolean(p.mountToScene),
+        folder: targetDir,
+        ...warnings.length > 0 ? { warnings } : {}
+      },
+      changed: {
+        assetsChanged: [assetId],
+        summary: `\u65B0\u5EFA\u754C\u9762\u6587\u6863 ${p.name}${p.mountToScene ? " \u5E76\u6302\u8F7D\u5230\u573A\u666F" : ""}`
+      }
+    };
+  }
+};
+var updateUiDocCmd = {
+  id: "ui.updateDocument",
+  title: "\u66F4\u65B0\u754C\u9762\u6587\u6863\u8D44\u4EA7",
+  description: "\u66F4\u65B0\u5DF2\u6709 UiDocument \u754C\u9762\u8D44\u4EA7\u7684\u8282\u70B9\u6811\u7ED3\u6784\u6216\u540D\u79F0",
+  risk: "safe",
+  params: {
+    type: "object",
+    fields: {
+      assetId: { type: "ref", target: "asset", kinds: ["ui"], required: true, label: "\u754C\u9762\u8D44\u4EA7 ID" },
+      name: { type: "string", default: "", optional: true, label: "\u65B0\u540D\u79F0\uFF08\u53EF\u9009\uFF09" },
+      document: { type: "object", fields: {}, label: "\u66F4\u65B0\u540E\u7684 UiDocument \u6570\u636E" }
+    }
+  },
+  run(_ctx, p) {
+    const store = useAssetStore.getState();
+    const asset = store.assets[p.assetId];
+    if (!asset || asset.kind !== "ui") {
+      return { ok: false, code: "asset.notFound", message: `\u754C\u9762\u8D44\u4EA7 "${p.assetId}" \u4E0D\u5B58\u5728` };
+    }
+    const nextDoc = normalizeUiDocument(p.document);
+    const nextName = p.name && p.name.trim() ? p.name.trim() : asset.name;
+    store.updateUi(p.assetId, nextDoc);
+    if (nextName !== asset.name) {
+      store.rename(p.assetId, nextName);
+    }
+    const warnings = validateUiDocument(nextDoc);
+    return {
+      ok: true,
+      value: { assetId: p.assetId, name: nextName, ...warnings.length > 0 ? { warnings } : {} },
+      changed: { assetsChanged: [p.assetId], summary: `\u66F4\u65B0\u754C\u9762\u6587\u6863 ${nextName}` }
+    };
+  }
+};
+function collectUiNodeMatches(node, key, matches) {
+  if (node.id === key || node.name === key) matches.push(node);
+  if (Array.isArray(node.children)) {
+    for (const child of node.children) collectUiNodeMatches(child, key, matches);
+  }
+}
+function cloneAndPatchUiTree(node, targetId, opts) {
+  if (node.id === targetId) {
+    if (opts.remove) return { node: null, changed: true };
+    const p = opts.patch ?? {};
+    const next = { ...node };
+    if (typeof p.name === "string") next.name = p.name;
+    if (typeof p.text === "string") next.text = p.text;
+    if (typeof p.imageId === "string") next.imageId = p.imageId;
+    if (typeof p.visible === "boolean") next.visible = p.visible;
+    if (typeof p.enabled === "boolean") next.enabled = p.enabled;
+    if (p.style && typeof p.style === "object") {
+      next.style = { ...node.style ?? {}, ...p.style };
+    }
+    if (p.layout && typeof p.layout === "object") {
+      const incoming = p.layout;
+      next.layout = {
+        ...node.layout ?? {},
+        ...incoming,
+        mode: incoming.mode ?? node.layout?.mode ?? "anchor"
+      };
+    }
+    if (p.stateStyles && typeof p.stateStyles === "object") {
+      next.stateStyles = { ...node.stateStyles ?? {}, ...p.stateStyles };
+    }
+    if (p.progress && typeof p.progress === "object") {
+      next.progress = { ...node.progress ?? { min: 0, max: 100, value: 100 }, ...p.progress };
+    }
+    if (Array.isArray(p.bindings)) next.bindings = p.bindings;
+    if (p.click !== void 0) next.click = p.click;
+    if (opts.appendChildren && opts.appendChildren.length > 0) {
+      next.children = [...node.children ?? [], ...opts.appendChildren];
+    }
+    return { node: next, changed: true };
+  }
+  if (!Array.isArray(node.children) || node.children.length === 0) {
+    return { node, changed: false };
+  }
+  let anyChanged = false;
+  const nextChildren = [];
+  for (const child of node.children) {
+    const res = cloneAndPatchUiTree(child, targetId, opts);
+    if (res.changed) anyChanged = true;
+    if (res.node) nextChildren.push(res.node);
+  }
+  return anyChanged ? { node: { ...node, children: nextChildren }, changed: true } : { node, changed: false };
+}
+var patchUiNodeCmd = {
+  id: "ui.patchNode",
+  title: "\u5C40\u90E8\u4FEE\u6539\u754C\u9762\u8282\u70B9",
+  description: "\u6309 UI \u8282\u70B9 ID\uFF08\u6216\u552F\u4E00\u540D\u79F0\uFF09\u5C40\u90E8\u4FEE\u6539\u6587\u672C\u3001\u6837\u5F0F\u3001\u5E03\u5C40\u3001\u7ED1\u5B9A\u3001\u70B9\u51FB\u4E8B\u4EF6\uFF0C\u6216\u8FFD\u52A0/\u5220\u9664\u5B50\u8282\u70B9\uFF0C\u65E0\u9700\u6574\u68F5\u91CD\u5199 UiDocument",
+  risk: "safe",
+  params: {
+    type: "object",
+    fields: {
+      assetId: { type: "ref", target: "asset", kinds: ["ui"], required: true, label: "\u754C\u9762\u8D44\u4EA7 ID" },
+      nodeId: { type: "string", default: "", label: "\u76EE\u6807 UI \u8282\u70B9 ID \u6216\u552F\u4E00\u540D\u79F0\uFF08\u5982 root\uFF09" },
+      patch: { type: "object", fields: {}, optional: true, label: "\u8981\u5408\u5E76\u4FEE\u6539\u7684\u5B57\u6BB5\uFF08text/style/layout/visible/enabled/bindings/click/progress\uFF09" },
+      appendChildren: {
+        type: "list",
+        item: { type: "object", fields: {}, label: "UI \u5B50\u8282\u70B9" },
+        default: [],
+        label: "\u8981\u8FFD\u52A0\u7684\u5B50\u8282\u70B9\u5217\u8868"
+      },
+      remove: { type: "boolean", default: false, optional: true, label: "\u662F\u5426\u5220\u9664\u8BE5\u8282\u70B9\uFF08\u4E0D\u53EF\u5220\u9664 root\uFF09" }
+    }
+  },
+  run(_ctx, p) {
+    const store = useAssetStore.getState();
+    const asset = store.assets[p.assetId];
+    if (!asset || asset.kind !== "ui") {
+      return { ok: false, code: "asset.notFound", message: `\u754C\u9762\u8D44\u4EA7 "${p.assetId}" \u4E0D\u5B58\u5728` };
+    }
+    const key = String(p.nodeId || "").trim();
+    if (!key) {
+      return { ok: false, code: "INVALID_ARGS", message: "nodeId \u4E0D\u80FD\u4E3A\u7A7A" };
+    }
+    const matches = [];
+    collectUiNodeMatches(asset.document.root, key, matches);
+    const exactIdMatch = matches.find((m) => m.id === key);
+    const target = exactIdMatch ?? (matches.length === 1 ? matches[0] : null);
+    if (!target) {
+      return {
+        ok: false,
+        code: "NOT_FOUND",
+        message: matches.length > 1 ? `UI \u8282\u70B9\u540D\u79F0 "${key}" \u5339\u914D\u5230 ${matches.length} \u4E2A\u8282\u70B9\uFF0C\u8BF7\u6539\u7528\u7CBE\u786E id` : `\u5728\u754C\u9762 "${asset.name}" \u4E2D\u672A\u627E\u5230 UI \u8282\u70B9 "${key}"`
+      };
+    }
+    if (p.remove && target.id === asset.document.root.id) {
+      return { ok: false, code: "INVALID_ARGS", message: "\u4E0D\u5141\u8BB8\u5220\u9664 UI \u6839\u8282\u70B9 root" };
+    }
+    const appended = Array.isArray(p.appendChildren) ? p.appendChildren.map((raw) => normalizeUiNode(raw)) : void 0;
+    const patched = cloneAndPatchUiTree(asset.document.root, target.id, {
+      patch: p.patch,
+      appendChildren: appended,
+      remove: p.remove
+    });
+    if (!patched.changed || !patched.node) {
+      return { ok: false, code: "NOT_FOUND", message: `\u672A\u80FD\u66F4\u65B0 UI \u8282\u70B9 "${key}"` };
+    }
+    const nextDoc = { schemaVersion: 1, root: patched.node };
+    store.updateUi(p.assetId, nextDoc);
+    const warnings = validateUiDocument(nextDoc);
+    return {
+      ok: true,
+      value: { assetId: p.assetId, nodeId: target.id, ...warnings.length > 0 ? { warnings } : {} },
+      changed: { assetsChanged: [p.assetId], summary: `\u5C40\u90E8\u4FEE\u6539\u754C\u9762 ${asset.name} \u8282\u70B9 ${target.name ?? target.id}` }
+    };
+  }
+};
+var createUiFromTemplateCmd = {
+  id: "ui.createFromTemplate",
+  title: "\u4ECE\u6807\u51C6\u6A21\u677F\u521B\u5EFA\u754C\u9762",
+  description: "\u57FA\u4E8E\u5185\u7F6E\u9AD8\u53EF\u8BFB\u6027\u6392\u7248\u6A21\u677F\uFF08hud / menu / dialog / result\uFF09\u5FEB\u901F\u521B\u5EFA UI \u754C\u9762\u8D44\u4EA7\uFF0C\u81EA\u52A8\u505A\u597D\u5B89\u5168\u8FB9\u8DDD\u3001Flex \u5BF9\u9F50\u3001\u534A\u900F\u660E\u5361\u7247\u4E0E\u54CD\u5E94\u5F0F\u951A\u70B9\u3002\u63A8\u8350\u4F18\u5148\u4F7F\u7528\u6B64\u5DE5\u5177\u518D\u7528 ui.updateDocument \u5FAE\u8C03\u3002",
+  risk: "safe",
+  params: {
+    type: "object",
+    fields: {
+      template: {
+        type: "enum",
+        options: [
+          { value: "hud", label: "\u6E38\u620F\u5185 HUD\uFF08\u8840\u6761+\u8BA1\u5206+\u5E95\u90E8\u63D0\u793A\uFF09" },
+          { value: "menu", label: "\u5C45\u4E2D\u4E3B\u83DC\u5355/\u6682\u505C\u83DC\u5355" },
+          { value: "dialog", label: "\u5C45\u4E2D\u5F39\u7A97/\u5BF9\u8BDD\u6846" },
+          { value: "result", label: "\u5C45\u4E2D\u7ED3\u7B97\u9762\u677F" }
+        ],
+        default: "hud",
+        label: "\u6A21\u677F\u7C7B\u578B"
+      },
+      name: { type: "string", default: "", optional: true, label: "\u754C\u9762\u540D\u79F0" },
+      title: { type: "string", default: "", optional: true, label: "\u4E3B\u6807\u9898" },
+      subtitle: { type: "string", default: "", optional: true, label: "\u526F\u6807\u9898/\u6B63\u6587/\u64CD\u4F5C\u63D0\u793A" },
+      primaryText: { type: "string", default: "", optional: true, label: "\u4E3B\u6309\u94AE\u6587\u5B57" },
+      secondaryText: { type: "string", default: "", optional: true, label: "\u6B21\u6309\u94AE\u6587\u5B57" },
+      primaryMessage: { type: "string", default: "", optional: true, label: "\u4E3B\u6309\u94AE\u53D1\u9001\u6D88\u606F\u540D" },
+      secondaryMessage: { type: "string", default: "", optional: true, label: "\u6B21\u6309\u94AE\u53D1\u9001\u6D88\u606F\u540D" },
+      varKey: { type: "string", default: "hp", optional: true, label: "HUD \u8FDB\u5EA6\u6761\u7ED1\u5B9A\u53D8\u91CF\u540D" },
+      scoreVarKey: { type: "string", default: "score", optional: true, label: "HUD/\u7ED3\u7B97\u5206\u6570\u7ED1\u5B9A\u53D8\u91CF\u540D" },
+      accentColor: { type: "color", default: "#3b82f6", optional: true, label: "\u4E3B\u9898\u5F3A\u8C03\u8272" },
+      mountToScene: { type: "boolean", default: true, optional: true, label: "\u7ACB\u5373\u6302\u8F7D\u5230\u573A\u666F" },
+      layer: {
+        type: "enum",
+        options: UI_LAYERS.map((l) => ({ value: l, label: l })),
+        default: "hud",
+        optional: true,
+        label: "\u6302\u8F7D\u5C42\u7EA7"
+      },
+      folder: { type: "string", default: "Assets/UI", optional: true, label: "\u5B58\u653E\u76EE\u5F55" }
+    }
+  },
+  run(_ctx, p) {
+    const assetId = crypto.randomUUID();
+    const doc = createUiTemplateDocument(p.template, {
+      title: p.title,
+      subtitle: p.subtitle,
+      primaryText: p.primaryText,
+      secondaryText: p.secondaryText,
+      primaryMessage: p.primaryMessage,
+      secondaryMessage: p.secondaryMessage,
+      varKey: p.varKey,
+      scoreVarKey: p.scoreVarKey,
+      accentColor: p.accentColor
+    });
+    const defaultNames = {
+      hud: "\u6E38\u620FHUD",
+      menu: "\u4E3B\u83DC\u5355",
+      dialog: "\u63D0\u793A\u5F39\u7A97",
+      result: "\u7ED3\u7B97\u754C\u9762"
+    };
+    const name = p.name?.trim() || defaultNames[p.template] || "\u65B0\u754C\u9762";
+    const targetDir = normalizeDir(p.folder?.trim() || "Assets/UI");
+    const store = useAssetStore.getState();
+    ensureAssetFolderPath(targetDir);
+    store.add({
+      id: assetId,
+      name,
+      kind: "ui",
+      document: doc
+    });
+    store.place(assetId, targetDir);
+    const shouldMount = p.mountToScene ?? true;
+    if (shouldMount) {
+      useEditorStore.getState().mountScreen(assetId, [0, 0, 0]);
+      const layer = p.layer ?? (p.template === "hud" ? "hud" : p.template === "dialog" ? "popup" : "menu");
+      const nodes = useEditorStore.getState().nodes;
+      const screenNode = Object.values(nodes).find((n) => n.kind === "screen" && n.screen?.documentId === assetId);
+      if (screenNode && screenNode.screen) {
+        useEditorStore.getState().updateNode(screenNode.id, {
+          name,
+          screen: { ...screenNode.screen, layer }
+        });
+      }
+    }
+    return {
+      ok: true,
+      value: { assetId, name, mounted: shouldMount, folder: targetDir, document: doc },
+      changed: {
+        assetsChanged: [assetId],
+        summary: `\u4ECE\u6A21\u677F(${p.template})\u521B\u5EFA\u754C\u9762 ${name}${shouldMount ? " \u5E76\u6302\u8F7D\u5230\u573A\u666F" : ""}`
+      }
     };
   }
 };
@@ -13797,7 +19345,16 @@ var mountScreenCmd = {
     type: "object",
     fields: {
       assetId: { type: "ref", target: "asset", kinds: ["ui"], required: true, label: "\u754C\u9762\u8D44\u4EA7 ID" },
-      point: { type: "vec3", default: [0, 0, 0], optional: true, label: "\u653E\u7F6E\u4F4D\u7F6E" }
+      point: { type: "vec3", default: [0, 0, 0], optional: true, label: "\u653E\u7F6E\u4F4D\u7F6E" },
+      layer: {
+        type: "enum",
+        options: UI_LAYERS.map((l) => ({ value: l, label: l })),
+        default: "hud",
+        optional: true,
+        label: "UI \u5C42\u7EA7"
+      },
+      visibleOnPlay: { type: "boolean", default: true, optional: true, label: "\u8BD5\u73A9\u65F6\u9ED8\u8BA4\u663E\u793A" },
+      name: { type: "string", default: "", optional: true, label: "\u5C4F\u5E55\u8282\u70B9\u540D\u79F0\uFF08\u53EF\u9009\uFF09" }
     }
   },
   run(_ctx, p) {
@@ -13805,11 +19362,165 @@ var mountScreenCmd = {
     if (!asset || asset.kind !== "ui") {
       return { ok: false, code: "asset.notFound", message: `\u754C\u9762\u8D44\u4EA7 "${p.assetId}" \u4E0D\u5B58\u5728` };
     }
-    useEditorStore.getState().mountScreen(p.assetId, p.point ?? [0, 0, 0]);
+    const editor = useEditorStore.getState();
+    const beforeIds = new Set(Object.keys(editor.nodes));
+    editor.mountScreen(p.assetId, p.point ?? [0, 0, 0]);
+    const afterNodes = useEditorStore.getState().nodes;
+    const created = Object.values(afterNodes).find((n) => !beforeIds.has(n.id) && n.kind === "screen");
+    if (created && created.screen) {
+      useEditorStore.getState().updateNode(created.id, {
+        ...p.name && p.name.trim() ? { name: p.name.trim() } : {},
+        screen: {
+          ...created.screen,
+          ...p.layer ? { layer: p.layer } : {},
+          ...typeof p.visibleOnPlay === "boolean" ? { visibleOnPlay: p.visibleOnPlay } : {}
+        }
+      });
+    }
     return {
       ok: true,
-      value: { assetId: p.assetId },
-      changed: { summary: `\u6302\u8F7D\u754C\u9762 ${asset.name}` }
+      value: { assetId: p.assetId, nodeId: created?.id },
+      changed: {
+        ...created ? { nodeIds: [created.id] } : {},
+        summary: `\u6302\u8F7D\u754C\u9762 ${asset.name}`
+      }
+    };
+  }
+};
+function ensureAssetFolderPath(rawPath) {
+  const normalized = normalizeDir(rawPath);
+  if (normalized === ASSETS_ROOT) return ASSETS_ROOT;
+  const parts = normalized.split("/");
+  const toAdd = [];
+  let cur = parts[0] || ASSETS_ROOT;
+  for (let i = 1; i < parts.length; i += 1) {
+    cur = `${cur}/${parts[i]}`;
+    toAdd.push(cur);
+  }
+  const store = useAssetStore.getState();
+  const merged = [.../* @__PURE__ */ new Set([...store.folders.map(normalizeDir), ...toAdd])].filter((f) => f !== ASSETS_ROOT);
+  if (merged.length !== store.folders.length) {
+    useAssetStore.setState((s) => ({ folders: merged, revision: s.revision + 1 }));
+  }
+  return normalized;
+}
+var createFolderCmd = {
+  id: "asset.createFolder",
+  title: "\u521B\u5EFA\u8D44\u6E90\u76EE\u5F55",
+  description: "\u5728\u5DE5\u7A0B\u8D44\u6E90\u5E93\u4E2D\u521B\u5EFA\u6307\u5B9A\u8DEF\u5F84\u7684\u76EE\u5F55\uFF08\u81EA\u52A8\u8865\u5168\u591A\u7EA7\u7236\u76EE\u5F55\uFF0C\u5982 Assets/Materials/Enemies\uFF09",
+  risk: "safe",
+  params: {
+    type: "object",
+    fields: {
+      path: { type: "string", minLength: 1, default: "Assets/Props", label: "\u76EE\u5F55\u8DEF\u5F84" }
+    }
+  },
+  run(_ctx, p) {
+    const dir = ensureAssetFolderPath(p.path);
+    return {
+      ok: true,
+      value: { path: dir },
+      changed: { summary: `\u521B\u5EFA\u8D44\u6E90\u76EE\u5F55 ${dir}` }
+    };
+  }
+};
+var moveToFolderCmd = {
+  id: "asset.moveToFolder",
+  title: "\u79FB\u52A8\u8D44\u4EA7\u5230\u76EE\u5F55",
+  description: "\u5C06\u6307\u5B9A\u7684\u8D44\u4EA7\u6279\u91CF\u5F52\u7C7B\u79FB\u52A8\u5230\u6307\u5B9A\u8D44\u6E90\u76EE\u5F55\uFF08\u76EE\u5F55\u4E0D\u5B58\u5728\u65F6\u81EA\u52A8\u521B\u5EFA\uFF09",
+  risk: "safe",
+  params: {
+    type: "object",
+    fields: {
+      assetIds: {
+        type: "list",
+        item: { type: "ref", target: "asset", label: "\u8D44\u4EA7 ID" },
+        label: "\u8D44\u4EA7 ID \u5217\u8868"
+      },
+      folder: { type: "string", minLength: 1, default: "Assets", label: "\u76EE\u6807\u76EE\u5F55\u8DEF\u5F84" }
+    }
+  },
+  run(_ctx, p) {
+    const targetDir = ensureAssetFolderPath(p.folder);
+    const store = useAssetStore.getState();
+    const codeAssets = useCodeAssetStore.getState().assets;
+    const movedIds = [];
+    for (const id of p.assetIds ?? []) {
+      if (store.assets[id]) {
+        store.place(id, targetDir);
+        movedIds.push(id);
+        continue;
+      }
+      if (id.startsWith("code:script:") || id.startsWith("code:shader:")) {
+        const codeId = id.slice(id.lastIndexOf(":") + 1);
+        const rec = codeAssets[codeId];
+        if (rec) {
+          store.place(codeAssetDirKey(rec.kind, rec.id), targetDir);
+          movedIds.push(id);
+          continue;
+        }
+      }
+      if (codeAssets[id]) {
+        const rec = codeAssets[id];
+        store.place(codeAssetDirKey(rec.kind, rec.id), targetDir);
+        movedIds.push(id);
+      }
+    }
+    if (movedIds.length === 0) {
+      return { ok: false, code: "asset.notFound", message: "\u672A\u627E\u5230\u4EFB\u4F55\u53EF\u79FB\u52A8\u7684\u6709\u6548\u8D44\u4EA7 ID" };
+    }
+    return {
+      ok: true,
+      value: { folder: targetDir, movedIds },
+      changed: { assetsChanged: movedIds, summary: `\u5C06 ${movedIds.length} \u4E2A\u8D44\u4EA7\u79FB\u5165 ${targetDir}` }
+    };
+  }
+};
+var createPrefabCmd = {
+  id: "asset.createPrefab",
+  title: "\u5C06\u8282\u70B9\u5236\u4F5C\u6210\u9884\u5236\u4F53",
+  description: "\u628A\u6307\u5B9A\u573A\u666F\u8282\u70B9\u53CA\u5176\u5B8C\u6574\u5B50\u6811\u6253\u5305\u4E3A\u53EF\u590D\u7528\u9884\u5236\u4F53\uFF08Prefab\uFF09\u8D44\u4EA7\uFF0C\u4F9B\u8FD0\u884C\u65F6 spawnPrefab / pool.acquire \u52A8\u6001\u5B9E\u4F8B\u5316",
+  risk: "safe",
+  params: {
+    type: "object",
+    fields: {
+      nodeId: { type: "ref", target: "node", required: true, label: "\u6E90\u8282\u70B9 ID" },
+      name: { type: "string", default: "", label: "\u9884\u5236\u4F53\u540D\u79F0\uFF08\u53EF\u9009\uFF0C\u9ED8\u8BA4\u53D6\u8282\u70B9\u540D\uFF09", optional: true },
+      folder: { type: "string", default: "Assets/Prefabs", label: "\u5B58\u653E\u76EE\u5F55\uFF08\u5982 Assets/Prefabs/Enemies\uFF09", optional: true }
+    }
+  },
+  run(_ctx, p) {
+    const editor = useEditorStore.getState();
+    const node = editor.nodes[p.nodeId];
+    if (!node) {
+      return { ok: false, code: "node.notFound", message: `\u8282\u70B9 "${p.nodeId}" \u4E0D\u5B58\u5728` };
+    }
+    if (node.prefabInstanceId === node.id && node.prefabAssetId) {
+      const existing = useAssetStore.getState().assets[node.prefabAssetId];
+      if (existing) {
+        return {
+          ok: true,
+          value: { assetId: existing.id, name: existing.name, folder: ASSETS_ROOT },
+          changed: { summary: `\u8282\u70B9\u5DF2\u662F\u9884\u5236\u4F53 "${existing.name}" \u7684\u5B9E\u4F8B` }
+        };
+      }
+    }
+    const targetDir = p.folder?.trim() ? ensureAssetFolderPath(p.folder) : ensureAssetFolderPath("Assets/Prefabs");
+    const beforeIds = new Set(Object.keys(useAssetStore.getState().assets));
+    editor.createPrefabFromSelection(p.name?.trim() || void 0, p.nodeId, targetDir);
+    const afterAssets = useAssetStore.getState().assets;
+    const created = Object.values(afterAssets).find((a) => a.kind === "prefab" && !beforeIds.has(a.id));
+    if (!created) {
+      return { ok: false, code: "prefab.createFailed", message: "\u521B\u5EFA\u9884\u5236\u4F53\u5931\u8D25\uFF0C\u8BF7\u786E\u8BA4\u5F53\u524D\u672A\u5904\u4E8E\u8BD5\u73A9\u6216\u9884\u5236\u4F53\u7F16\u8F91\u72B6\u6001" };
+    }
+    return {
+      ok: true,
+      value: { assetId: created.id, name: created.name, folder: targetDir },
+      changed: {
+        assetsChanged: [created.id],
+        nodesChanged: [p.nodeId],
+        summary: `\u5DF2\u5C06 "${node.name}" \u6253\u5305\u4E3A\u9884\u5236\u4F53 "${created.name}"\uFF08${targetDir}\uFF09`
+      }
     };
   }
 };
@@ -13818,14 +19529,20 @@ function registerAssetAndUiCommands() {
     commandBus.register(createMaterialCmd),
     commandBus.register(assignMaterialCmd),
     commandBus.register(renameAssetCmd),
+    commandBus.register(createFolderCmd),
+    commandBus.register(moveToFolderCmd),
+    commandBus.register(createPrefabCmd),
     commandBus.register(createUiDocCmd),
+    commandBus.register(createUiFromTemplateCmd),
+    commandBus.register(updateUiDocCmd),
+    commandBus.register(patchUiNodeCmd),
     commandBus.register(mountScreenCmd)
   ];
   return () => unsubs.forEach((fn) => fn());
 }
 
 // src/core/commands/domains/capability.ts
-init_registry();
+init_registry2();
 var setCapabilityEnabledCmd = {
   id: "capability.setEnabled",
   title: "\u5F00\u5173\u5DE5\u7A0B\u7EA7\u80FD\u529B\u5305",
@@ -13945,17 +19662,139 @@ function registerCapabilityCommands() {
   return () => unsubs.forEach((fn) => fn());
 }
 
+// src/core/codeAssets/scriptLint.ts
+function lineColumnAt(source, index) {
+  let line = 1;
+  let lastNewline = -1;
+  for (let i = 0; i < index && i < source.length; i += 1) {
+    if (source.charCodeAt(i) === 10) {
+      line += 1;
+      lastNewline = i;
+    }
+  }
+  return { line, column: index - lastNewline };
+}
+function lintScriptSource(source, file = "script.ts") {
+  const issues = [];
+  const text = String(source ?? "");
+  if (!text.trim()) return issues;
+  if (!/\bdefine(?:Behavior|System)\s*\(/.test(text)) {
+    issues.push({
+      file,
+      severity: "error",
+      line: 1,
+      column: 1,
+      message: '[T3D\u89C4\u8303] \u811A\u672C\u5FC5\u987B\u4ECE "t3d/runtime" \u5BFC\u5165\u5E76\u4F7F\u7528 export default defineBehavior(...) \u6216 defineSystem(...)',
+      hint: '\u6DFB\u52A0 import { defineBehavior } from "t3d/runtime" \u5E76\u5BFC\u51FA export default defineBehavior({ ... })'
+    });
+  }
+  const vecAssignRe = /\bself\.(position|rotation|scale)\.[xyz]\s*(?:[+\-*/%]?=|\+\+|--)(?!=)/g;
+  let match;
+  while ((match = vecAssignRe.exec(text)) !== null) {
+    const pos = lineColumnAt(text, match.index);
+    issues.push({
+      file,
+      severity: "error",
+      line: pos.line,
+      column: pos.column,
+      message: `[T3D\u89C4\u8303] \u7981\u6B62\u76F4\u63A5\u4FEE\u6539 self.${match[1]} \u7684\u5355\u4E2A\u5206\u91CF\uFF08${match[0].trim()}\uFF09\uFF0C\u5FC5\u987B\u6574\u4F53\u8D4B\u503C`,
+      hint: `\u6539\u4E3A\u6574\u4F53\u8D4B\u503C\uFF0C\u4F8B\u5982\uFF1Aself.${match[1]} = { ...self.${match[1]}, x: ... }`
+    });
+  }
+  const wrongNodeHandleRe = /\b(?!self\b)([a-zA-Z_$][\w$]*)\.node\.(addTag|removeTag|hasTag|position|rotation|scale|destroy|sendMessage|getChildren|visible|name)\b/g;
+  while ((match = wrongNodeHandleRe.exec(text)) !== null) {
+    const pos = lineColumnAt(text, match.index);
+    issues.push({
+      file,
+      severity: "error",
+      line: pos.line,
+      column: pos.column,
+      message: `[T3D\u89C4\u8303] pool.acquire / cloneNode / spawnPrefab / findNodeById \u8FD4\u56DE\u7684\u76F4\u63A5\u5C31\u662F NodeHandle`,
+      hint: `\u8BF7\u76F4\u63A5\u5199 ${match[1]}.${match[2]}\uFF0C\u4E0D\u8981\u5199 ${match[1]}.node.${match[2]}`
+    });
+  }
+  const forbiddenGlobalRe = /(?:^|[^\w$.])(window|document|localStorage|sessionStorage)\s*\./gm;
+  while ((match = forbiddenGlobalRe.exec(text)) !== null) {
+    const idx = match.index + match[0].indexOf(match[1]);
+    const pos = lineColumnAt(text, idx);
+    issues.push({
+      file,
+      severity: "error",
+      line: pos.line,
+      column: pos.column,
+      message: `[T3D\u89C4\u8303] \u4E25\u7981\u76F4\u63A5\u8BBF\u95EE\u6D4F\u89C8\u5668\u5168\u5C40\u5BF9\u8C61 "${match[1]}"`,
+      hint: "\u8BF7\u6539\u7528 self.input / self.storage / self.ui \u7B49\u8FD0\u884C\u65F6\u63A5\u53E3"
+    });
+  }
+  const paramsBlockMatch = /\bparams\s*:\s*\{([\s\S]*?)\n\s*\}/.exec(text);
+  if (paramsBlockMatch) {
+    const blockBody = paramsBlockMatch[1];
+    const bodyStartIdx = paramsBlockMatch.index + paramsBlockMatch[0].length;
+    const restText = text.slice(bodyStartIdx);
+    const keyRe = /^\s*([a-zA-Z_$][\w$]*)\s*:\s*\{/gm;
+    let keyMatch;
+    while ((keyMatch = keyRe.exec(blockBody)) !== null) {
+      const keyName = keyMatch[1];
+      const usedRe = new RegExp(`\\b${keyName}\\b`);
+      if (!usedRe.test(restText)) {
+        const pos = lineColumnAt(text, paramsBlockMatch.index + keyMatch.index);
+        issues.push({
+          file,
+          severity: "warning",
+          line: pos.line,
+          column: pos.column,
+          message: `[T3D\u63D0\u793A] \u58F0\u660E\u4E86\u53C2\u6570 "${keyName}" \u4F46\u811A\u672C\u903B\u8F91\u4E2D\u5C1A\u672A\u4F7F\u7528`,
+          hint: `\u8BF7\u68C0\u67E5\u662F\u5426\u9057\u6F0F\u4E86 self.params.${keyName}`
+        });
+      }
+    }
+    const refLikeKeyRe = /(?:^|_)(?:node|target|parent|spawn|path|prefab|model|clip|anim|animation|audio|sfx|bgm|sound|effect|fx|material|texture|tex|ui|screen|scene|asset)(?:Id|Ref|Asset)?$/i;
+    const stringParamRe = /^\s*([a-zA-Z_$][\w$]*)\s*:\s*\{[^}]*\btype\s*:\s*['"]string['"]/gm;
+    let strMatch;
+    while ((strMatch = stringParamRe.exec(blockBody)) !== null) {
+      const keyName = strMatch[1];
+      if (!refLikeKeyRe.test(keyName)) continue;
+      const lower = keyName.toLowerCase();
+      let suggest = `{ type: 'ref', target: 'asset', label: '...', default: null }`;
+      if (lower.includes("clip") || lower.includes("anim")) {
+        suggest = `{ type: 'ref', target: 'clip', label: '...', default: null }`;
+      } else if (lower.includes("tex")) {
+        suggest = `{ type: 'texture', label: '...', default: null }`;
+      } else if (lower.includes("node") || lower.includes("target") || lower.includes("parent") || lower.includes("spawn") || lower.includes("path")) {
+        suggest = `{ type: 'ref', target: 'node', label: '...', default: null }`;
+      } else if (lower.includes("prefab")) {
+        suggest = `{ type: 'ref', target: 'asset', kinds: ['prefab'], label: '...', default: null }`;
+      } else if (lower.includes("audio") || lower.includes("sfx") || lower.includes("bgm") || lower.includes("sound")) {
+        suggest = `{ type: 'ref', target: 'asset', kinds: ['audio'], label: '...', default: null }`;
+      } else if (lower.includes("effect") || lower.includes("fx")) {
+        suggest = `{ type: 'ref', target: 'asset', kinds: ['effect'], label: '...', default: null }`;
+      }
+      const pos = lineColumnAt(text, paramsBlockMatch.index + strMatch.index);
+      issues.push({
+        file,
+        severity: "warning",
+        line: pos.line,
+        column: pos.column,
+        message: `[T3D\u89C4\u8303] \u53C2\u6570 "${keyName}" \u770B\u8D77\u6765\u662F\u8D44\u6E90\u6216\u8282\u70B9\u5F15\u7528\uFF0C\u8BF7\u52FF\u4F7F\u7528 type: "string" \u624B\u586B ID`,
+        hint: `\u8BF7\u6539\u4E3A ${suggest}\uFF0C\u4EE5\u4FBF\u5C5E\u6027\u9762\u677F\u6E32\u67D3\u4E3A\u5F39\u7A97\u9009\u62E9\u5668\u4E0E\u62D6\u653E\u69FD\u4F4D`
+      });
+    }
+  }
+  return issues;
+}
+
 // src/core/commands/domains/codeAssets.ts
 function registerCodeAssetCommands() {
   const shaderCreateCmd = {
     id: "shader.create",
     title: "\u65B0\u5EFA\u7740\u8272\u5668\u8D44\u4EA7",
-    description: "\u521B\u5EFA\u4E00\u4E2A TSL \u8868\u9762\u7740\u8272\u5668\u6587\u4EF6\uFF08shaders/<id>.shader.ts\uFF09\u5E76\u7ACB\u5373\u7F16\u8BD1\u68C0\u67E5",
+    description: "\u521B\u5EFA\u4E00\u4E2A TSL \u8868\u9762\u7740\u8272\u5668\u6587\u4EF6\uFF08\u9ED8\u8BA4\u4FDD\u5B58\u5728 Assets/Shaders/<id>.shader.ts\uFF0C\u53EF\u901A\u8FC7 folder \u6307\u5B9A\u5B50\u76EE\u5F55\uFF09\u5E76\u7ACB\u5373\u7F16\u8BD1\u68C0\u67E5",
     params: {
       type: "object",
       fields: {
         id: { type: "string", default: "", label: "\u7740\u8272\u5668 ID \u6216\u540D\u79F0" },
-        source: { type: "string", default: "", label: "TSL \u7740\u8272\u5668\u6E90\u7801\uFF08\u7559\u7A7A\u5219\u751F\u6210\u6A21\u677F\uFF09", optional: true }
+        source: { type: "string", default: "", label: "TSL \u7740\u8272\u5668\u6E90\u7801\uFF08\u7559\u7A7A\u5219\u751F\u6210\u6A21\u677F\uFF09", optional: true },
+        folder: { type: "string", default: "Assets/Shaders", label: "\u5B58\u653E\u76EE\u5F55\uFF08\u9ED8\u8BA4 Assets/Shaders\uFF09", optional: true }
       }
     },
     risk: "safe",
@@ -13964,7 +19803,7 @@ function registerCodeAssetCommands() {
       if (!rawId) return { ok: false, code: "INVALID_ARGS", message: "\u7740\u8272\u5668 ID \u4E0D\u80FD\u4E3A\u7A7A" };
       const id = normalizeCodeAssetId("shader", rawId);
       const source = typeof params.source === "string" && params.source.trim() ? params.source : defaultTemplateFor("shader", id);
-      const record = await saveAndCompileCodeAsset("shader", id, source);
+      const record = await saveAndCompileCodeAsset("shader", id, source, params.folder);
       return {
         ok: true,
         value: {
@@ -13993,7 +19832,9 @@ function registerCodeAssetCommands() {
     },
     risk: "safe",
     async run(_ctx, params) {
-      const id = normalizeCodeAssetId("shader", String(params.id || ""));
+      const rawId = String(params.id || "").trim();
+      if (!rawId) return { ok: false, code: "INVALID_ARGS", message: "\u7740\u8272\u5668 ID \u4E0D\u80FD\u4E3A\u7A7A" };
+      const id = normalizeCodeAssetId("shader", rawId);
       const record = await saveAndCompileCodeAsset("shader", id, String(params.source ?? ""));
       return {
         ok: true,
@@ -14038,12 +19879,13 @@ function registerCodeAssetCommands() {
   const scriptCreateCmd = {
     id: "script.create",
     title: "\u65B0\u5EFA\u811A\u672C\u8D44\u4EA7",
-    description: "\u521B\u5EFA\u4E00\u4E2A t3d/runtime TypeScript \u811A\u672C\uFF08scripts/<id>.ts\uFF09\u5E76\u7ACB\u5373\u7F16\u8BD1\u6CE8\u518C",
+    description: "\u521B\u5EFA\u4E00\u4E2A t3d/runtime TypeScript \u811A\u672C\uFF08\u9ED8\u8BA4\u4FDD\u5B58\u5728 Assets/Scripts/<id>.ts\uFF0C\u53EF\u901A\u8FC7 folder \u6307\u5B9A\u5B50\u76EE\u5F55\uFF09\u5E76\u7ACB\u5373\u7F16\u8BD1\u6CE8\u518C",
     params: {
       type: "object",
       fields: {
         id: { type: "string", default: "", label: "\u811A\u672C ID \u6216\u540D\u79F0" },
-        source: { type: "string", default: "", label: "\u811A\u672C\u6E90\u7801\uFF08\u7559\u7A7A\u5219\u751F\u6210\u884C\u4E3A\u6A21\u677F\uFF09", optional: true }
+        source: { type: "string", default: "", label: "\u811A\u672C\u6E90\u7801\uFF08\u7559\u7A7A\u5219\u751F\u6210\u884C\u4E3A\u6A21\u677F\uFF09", optional: true },
+        folder: { type: "string", default: "Assets/Scripts", label: "\u5B58\u653E\u76EE\u5F55\uFF08\u9ED8\u8BA4 Assets/Scripts\uFF09", optional: true }
       }
     },
     risk: "safe",
@@ -14052,18 +19894,21 @@ function registerCodeAssetCommands() {
       if (!rawId) return { ok: false, code: "INVALID_ARGS", message: "\u811A\u672C ID \u4E0D\u80FD\u4E3A\u7A7A" };
       const id = normalizeCodeAssetId("script", rawId);
       const source = typeof params.source === "string" && params.source.trim() ? params.source : defaultTemplateFor("script", id);
-      const record = await saveAndCompileCodeAsset("script", id, source);
+      const record = await saveAndCompileCodeAsset("script", id, source, params.folder);
+      const lintIssues = lintScriptSource(source);
+      const diagnostics = [...record.diagnostics, ...lintIssues];
+      const hasErrors = !record.ok || lintIssues.some((d) => d.severity === "error");
       return {
         ok: true,
         value: {
           id: record.id,
           relativePath: record.relativePath,
-          ok: record.ok,
-          diagnostics: record.diagnostics
+          ok: !hasErrors,
+          diagnostics
         },
         changed: {
           projectChanged: true,
-          summary: `\u65B0\u5EFA\u811A\u672C\u8D44\u4EA7 ${record.relativePath}`
+          summary: hasErrors ? `\u65B0\u5EFA\u811A\u672C\u8D44\u4EA7 ${record.relativePath}\uFF08\u53D1\u73B0 ${diagnostics.length} \u6761\u9519\u8BEF/\u8B66\u544A\uFF0C\u8BF7\u7ACB\u5373\u4FEE\u590D\uFF09` : `\u65B0\u5EFA\u811A\u672C\u8D44\u4EA7 ${record.relativePath}`
         }
       };
     }
@@ -14081,19 +19926,110 @@ function registerCodeAssetCommands() {
     },
     risk: "safe",
     async run(_ctx, params) {
-      const id = normalizeCodeAssetId("script", String(params.id || ""));
-      const record = await saveAndCompileCodeAsset("script", id, String(params.source ?? ""));
+      const rawId = String(params.id || "").trim();
+      if (!rawId) return { ok: false, code: "INVALID_ARGS", message: "\u811A\u672C ID \u4E0D\u80FD\u4E3A\u7A7A" };
+      const id = normalizeCodeAssetId("script", rawId);
+      const source = String(params.source ?? "");
+      const record = await saveAndCompileCodeAsset("script", id, source);
+      const lintIssues = lintScriptSource(source);
+      const diagnostics = [...record.diagnostics, ...lintIssues];
+      const hasErrors = !record.ok || lintIssues.some((d) => d.severity === "error");
       return {
         ok: true,
         value: {
           id: record.id,
           relativePath: record.relativePath,
-          ok: record.ok,
-          diagnostics: record.diagnostics
+          ok: !hasErrors,
+          diagnostics
         },
         changed: {
           projectChanged: true,
-          summary: `\u66F4\u65B0\u5E76\u70ED\u91CD\u8F7D\u811A\u672C ${record.relativePath}`
+          summary: hasErrors ? `\u66F4\u65B0\u811A\u672C ${record.relativePath}\uFF08\u53D1\u73B0 ${diagnostics.length} \u6761\u9519\u8BEF/\u8B66\u544A\uFF0C\u8BF7\u7ACB\u5373\u4FEE\u590D\uFF09` : `\u66F4\u65B0\u5E76\u70ED\u91CD\u8F7D\u811A\u672C ${record.relativePath}`
+        }
+      };
+    }
+  };
+  const scriptPatchCmd = {
+    id: "script.patch",
+    title: "\u5C40\u90E8\u4FEE\u6539\u811A\u672C",
+    description: "\u6309\u7CBE\u786E\u7247\u6BB5\u66FF\u6362\uFF08find -> replace\uFF09\u5C40\u90E8\u4FEE\u6539\u5DF2\u6709\u811A\u672C\u6E90\u7801\uFF0C\u65E0\u9700\u5168\u91CF\u91CD\u5199\uFF0C\u6539\u5B8C\u81EA\u52A8\u7F16\u8BD1\u5E76\u68C0\u67E5 T3D \u53CD\u6A21\u5F0F",
+    params: {
+      type: "object",
+      fields: {
+        id: { type: "string", default: "", label: "\u811A\u672C ID" },
+        patches: {
+          type: "list",
+          default: [],
+          label: "\u66FF\u6362\u7247\u6BB5\u5217\u8868\uFF08[{ find, replace, replaceAll? }]\uFF09",
+          item: {
+            type: "object",
+            fields: {
+              find: { type: "string", default: "", label: "\u8981\u66FF\u6362\u7684\u539F\u4EE3\u7801\u7247\u6BB5" },
+              replace: { type: "string", default: "", label: "\u66FF\u6362\u540E\u7684\u65B0\u4EE3\u7801\u7247\u6BB5" },
+              replaceAll: { type: "boolean", default: false, optional: true, label: "\u662F\u5426\u66FF\u6362\u5168\u90E8\u5339\u914D" }
+            }
+          }
+        }
+      }
+    },
+    risk: "safe",
+    async run(_ctx, params) {
+      const rawId = String(params.id || "").trim();
+      if (!rawId) return { ok: false, code: "INVALID_ARGS", message: "\u811A\u672C ID \u4E0D\u80FD\u4E3A\u7A7A" };
+      const id = normalizeCodeAssetId("script", rawId);
+      const existing = useCodeAssetStore.getState().assets[id];
+      if (!existing || existing.kind !== "script") {
+        return { ok: false, code: "NOT_FOUND", message: `\u811A\u672C "${id}" \u4E0D\u5B58\u5728` };
+      }
+      const patches = Array.isArray(params.patches) ? params.patches : [];
+      if (patches.length === 0) {
+        return { ok: false, code: "INVALID_ARGS", message: "patches \u4E0D\u80FD\u4E3A\u7A7A" };
+      }
+      let nextSource = existing.source;
+      for (let i = 0; i < patches.length; i += 1) {
+        const p = patches[i];
+        const find = typeof p?.find === "string" ? p.find : "";
+        const replace = typeof p?.replace === "string" ? p.replace : "";
+        if (!find) {
+          return { ok: false, code: "INVALID_ARGS", message: `\u7B2C ${i + 1} \u6761 patch \u7684 find \u4E0D\u80FD\u4E3A\u7A7A` };
+        }
+        const firstIdx = nextSource.indexOf(find);
+        if (firstIdx < 0) {
+          return {
+            ok: false,
+            code: "PATCH_MISMATCH",
+            message: `\u7B2C ${i + 1} \u6761 patch \u672A\u5728\u811A\u672C "${id}" \u4E2D\u627E\u5230\u5339\u914D\u7247\u6BB5\uFF1B\u8BF7\u5148\u8C03\u7528 query__code_read \u6838\u5BF9\u5F53\u524D\u6E90\u7801`
+          };
+        }
+        if (p.replaceAll) {
+          nextSource = nextSource.split(find).join(replace);
+        } else {
+          const secondIdx = nextSource.indexOf(find, firstIdx + find.length);
+          if (secondIdx >= 0) {
+            return {
+              ok: false,
+              code: "PATCH_AMBIGUOUS",
+              message: `\u7B2C ${i + 1} \u6761 patch \u5728\u811A\u672C "${id}" \u4E2D\u5339\u914D\u5230\u591A\u5904\uFF0C\u8BF7\u63D0\u4F9B\u66F4\u591A\u4E0A\u4E0B\u6587\u6216\u8BBE\u7F6E replaceAll: true`
+            };
+          }
+          nextSource = nextSource.slice(0, firstIdx) + replace + nextSource.slice(firstIdx + find.length);
+        }
+      }
+      const record = await saveAndCompileCodeAsset("script", id, nextSource);
+      const lintIssues = lintScriptSource(nextSource);
+      const diagnostics = [...record.diagnostics, ...lintIssues];
+      const hasErrors = !record.ok || lintIssues.some((d) => d.severity === "error");
+      return {
+        ok: true,
+        value: {
+          id: record.id,
+          relativePath: record.relativePath,
+          ok: !hasErrors,
+          diagnostics
+        },
+        changed: {
+          projectChanged: true,
+          summary: hasErrors ? `\u5C40\u90E8\u66F4\u65B0\u811A\u672C ${record.relativePath}\uFF08\u53D1\u73B0 ${diagnostics.length} \u6761\u9519\u8BEF/\u8B66\u544A\uFF0C\u8BF7\u7ACB\u5373\u4FEE\u590D\uFF09` : `\u5C40\u90E8\u66F4\u65B0\u5E76\u70ED\u91CD\u8F7D\u811A\u672C ${record.relativePath}`
         }
       };
     }
@@ -14113,12 +20049,16 @@ function registerCodeAssetCommands() {
     run(_ctx, params) {
       const id = normalizeCodeAssetId("script", String(params.id || "check"));
       const rel = codeAssetRelativePath("script", id);
-      const record = compileCodeAsset("script", id, rel, String(params.source ?? ""));
+      const source = String(params.source ?? "");
+      const record = compileCodeAsset("script", id, rel, source);
+      const lintIssues = lintScriptSource(source);
+      const diagnostics = [...record.diagnostics, ...lintIssues];
+      const hasErrors = !record.ok || lintIssues.some((d) => d.severity === "error");
       return {
         ok: true,
-        value: { ok: record.ok, diagnostics: record.diagnostics },
+        value: { ok: !hasErrors, diagnostics },
         changed: {
-          summary: record.ok ? "\u811A\u672C\u68C0\u67E5\u901A\u8FC7" : `\u53D1\u73B0 ${record.diagnostics.length} \u6761\u8BCA\u65AD`
+          summary: !hasErrors ? "\u811A\u672C\u68C0\u67E5\u901A\u8FC7" : `\u53D1\u73B0 ${diagnostics.length} \u6761\u8BCA\u65AD`
         }
       };
     }
@@ -14130,7 +20070,7 @@ function registerCodeAssetCommands() {
     params: {
       type: "object",
       fields: {
-        nodeId: { type: "string", default: "", label: "\u76EE\u6807\u8282\u70B9 ID" },
+        nodeId: { type: "ref", target: "node", default: "", label: "\u76EE\u6807\u8282\u70B9 ID" },
         scriptId: { type: "string", default: "", label: "\u811A\u672C ID" },
         params: { type: "object", fields: {}, label: "\u811A\u672C\u53C2\u6570", optional: true }
       }
@@ -14281,6 +20221,7 @@ function registerCodeAssetCommands() {
     commandBus.register(shaderBindCmd),
     commandBus.register(scriptCreateCmd),
     commandBus.register(scriptUpdateCmd),
+    commandBus.register(scriptPatchCmd),
     commandBus.register(scriptCheckCmd),
     commandBus.register(scriptAttachCmd),
     commandBus.register(openExternalCmd)
@@ -14289,6 +20230,7 @@ function registerCodeAssetCommands() {
 }
 
 // src/core/commands/domains/gameplay.ts
+init_registry();
 var setPackEnabledCmd = {
   id: "gameplay.setPackEnabled",
   title: "\u5F00\u5173\u73A9\u6CD5\u5305",
@@ -14336,7 +20278,7 @@ var setComponentDataCmd = {
       nodeId: { type: "ref", target: "node", required: true, label: "\u8282\u70B9 ID" },
       packId: { type: "string", minLength: 1, default: "core", label: "\u73A9\u6CD5\u5305 ID" },
       componentId: { type: "string", minLength: 1, default: "", label: "\u7EC4\u4EF6 ID" },
-      patch: { type: "object", fields: {}, label: "\u7EC4\u4EF6\u5B57\u6BB5\u8865\u4E01" }
+      patch: { type: "object", fields: {}, optional: true, label: "\u7EC4\u4EF6\u5B57\u6BB5\u8865\u4E01\uFF08\u7559\u7A7A\u5219\u4EC5\u6302\u8F7D\u9ED8\u8BA4\u7EC4\u4EF6\uFF09" }
     }
   },
   run(_ctx, p) {
@@ -14349,6 +20291,7 @@ var setComponentDataCmd = {
     const prevPacks = prevGameplay.packs ?? {};
     const prevPackData = prevPacks[p.packId] ?? {};
     const prevComp = prevPackData[p.componentId] ?? {};
+    const patchObj = p.patch && typeof p.patch === "object" ? p.patch : {};
     const nextNode = {
       ...node,
       gameplay: {
@@ -14359,7 +20302,7 @@ var setComponentDataCmd = {
             ...prevPackData,
             [p.componentId]: {
               ...prevComp,
-              ...p.patch
+              ...patchObj
             }
           }
         }
@@ -14462,8 +20405,9 @@ function registerGameplayCommands() {
 }
 
 // src/core/packs/manager.ts
-init_registry();
+init_registry2();
 import { create as create8 } from "zustand";
+init_registry();
 var BUILTIN_RECIPES = [
   {
     id: "official.platformer-starter",
@@ -15117,6 +21061,27 @@ function registerPictureAndProjectCommands() {
 }
 
 // src/core/commands/domains/scene.ts
+import { Euler as Euler4, Matrix4 as Matrix43, Quaternion as Quaternion8, Vector3 as Vector313 } from "three";
+var RAD_TO_DEG = 180 / Math.PI;
+function computeLookAtRotationDeg(kind, from, target) {
+  const eye = new Vector313(from[0], from[1], from[2]);
+  const tgt = new Vector313(target[0], target[1], target[2]);
+  const dir = tgt.clone().sub(eye);
+  if (dir.lengthSq() < 1e-8) return [0, 0, 0];
+  dir.normalize();
+  const round2 = (n) => Math.round(n * 100) / 100;
+  if (kind === "directional-light" || kind === "spot-light") {
+    const q = new Quaternion8().setFromUnitVectors(new Vector313(0, -1, 0), dir);
+    const e2 = new Euler4().setFromQuaternion(q, "XYZ");
+    return [round2(e2.x * RAD_TO_DEG), round2(e2.y * RAD_TO_DEG), round2(e2.z * RAD_TO_DEG)];
+  }
+  const up = Math.abs(dir.y) > 0.99 ? new Vector313(0, 0, 1) : new Vector313(0, 1, 0);
+  const mat = new Matrix43();
+  if (kind === "camera") mat.lookAt(eye, tgt, up);
+  else mat.lookAt(tgt, eye, up);
+  const e = new Euler4().setFromRotationMatrix(mat, "XYZ");
+  return [round2(e.x * RAD_TO_DEG), round2(e.y * RAD_TO_DEG), round2(e.z * RAD_TO_DEG)];
+}
 var VALID_KINDS = [
   { value: "empty", label: "\u7A7A\u8282\u70B9" },
   { value: "box", label: "\u7ACB\u65B9\u4F53" },
@@ -15132,12 +21097,13 @@ var VALID_KINDS = [
   { value: "hemisphere-light", label: "\u534A\u7403\u5149" },
   { value: "camera", label: "\u76F8\u673A" },
   { value: "effect", label: "\u7279\u6548" },
-  { value: "screen", label: "\u754C\u9762\u5C4F\u5E55" }
+  { value: "screen", label: "\u754C\u9762\u5C4F\u5E55" },
+  { value: "spline", label: "Spline \u66F2\u7EBF" }
 ];
 var createNodeCmd = {
   id: "scene.createNode",
   title: "\u521B\u5EFA\u573A\u666F\u8282\u70B9",
-  description: "\u5728\u5F53\u524D\u573A\u666F\u4E2D\u521B\u5EFA\u4E00\u4E2A\u6307\u5B9A\u79CD\u7C7B\u7684\u8282\u70B9\uFF0C\u53EF\u6307\u5B9A\u540D\u79F0\u3001\u7236\u8282\u70B9\u3001\u53D8\u6362\u4E0E\u662F\u5426\u8D34\u5730",
+  description: "\u5728\u5F53\u524D\u573A\u666F\u4E2D\u521B\u5EFA\u4E00\u4E2A\u6307\u5B9A\u79CD\u7C7B\u7684\u8282\u70B9\uFF0C\u53EF\u6307\u5B9A\u540D\u79F0\u3001\u7236\u8282\u70B9\u3001\u53D8\u6362\u3001\u671D\u5411\u76EE\u6807\u70B9(lookAt)\u4E0E\u662F\u5426\u8D34\u5730",
   risk: "safe",
   params: {
     type: "object",
@@ -15146,8 +21112,9 @@ var createNodeCmd = {
       name: { type: "string", default: "", label: "\u540D\u79F0" },
       parentId: { type: "ref", target: "node", default: null, label: "\u7236\u8282\u70B9 ID" },
       position: { type: "vec3", default: [0, 0, 0], label: "\u4F4D\u7F6E" },
-      rotation: { type: "vec3", default: [0, 0, 0], label: "\u65CB\u8F6C\uFF08\u5F27\u5EA6\uFF09" },
+      rotation: { type: "vec3", default: [0, 0, 0], label: "\u65CB\u8F6C\uFF08\u89D2\u5EA6/\u5EA6\uFF09" },
       scale: { type: "vec3", default: [1, 1, 1], label: "\u7F29\u653E" },
+      lookAt: { type: "vec3", default: [0, 0, 0], optional: true, label: "\u671D\u5411\u76EE\u6807\u4E16\u754C\u5750\u6807\uFF08\u8BBE\u7F6E\u540E\u81EA\u52A8\u8BA1\u7B97\u65CB\u8F6C\uFF0C\u63A8\u8350\u7528\u4E8E\u76F8\u673A\u4E0E\u805A\u5149\u706F\uFF09" },
       snapToGround: { type: "boolean", default: false, label: "\u521B\u5EFA\u540E\u8D34\u5730\u653E\u7F6E" }
     }
   },
@@ -15163,16 +21130,19 @@ var createNodeCmd = {
     }
     const nextNodes = { ...state.nodes };
     const defaultLabel = VALID_KINDS.find((k) => k.value === p.kind)?.label ?? p.kind;
-    const baseName = p.name.trim() || defaultLabel;
+    const baseName = (typeof p.name === "string" ? p.name.trim() : "") || defaultLabel;
+    const pos = Array.isArray(p.position) && p.position.length === 3 ? [...p.position] : [0, 0, 0];
+    const rot = Array.isArray(p.lookAt) && p.lookAt.length === 3 ? computeLookAtRotationDeg(p.kind, pos, p.lookAt) : Array.isArray(p.rotation) && p.rotation.length === 3 ? [...p.rotation] : [0, 0, 0];
+    const scl = Array.isArray(p.scale) && p.scale.length === 3 ? [...p.scale] : [1, 1, 1];
     const baseNode = makeNode({
       id: crypto.randomUUID(),
       kind: p.kind,
       name: uniqueName(nextNodes, baseName),
-      parentId: p.parentId,
-      order: nextOrder(nextNodes, p.parentId),
-      position: [...p.position],
-      rotation: [...p.rotation],
-      scale: [...p.scale]
+      parentId: p.parentId ?? null,
+      order: nextOrder(nextNodes, p.parentId ?? null),
+      position: pos,
+      rotation: rot,
+      scale: scl
     });
     nextNodes[baseNode.id] = baseNode;
     useEditorStore.setState({ nodes: nextNodes, selection: [baseNode.id] });
@@ -15249,15 +21219,16 @@ var deleteNodesCmd = {
 var setTransformCmd = {
   id: "scene.setTransform",
   title: "\u4FEE\u6539\u8282\u70B9\u53D8\u6362",
-  description: "\u4FEE\u6539\u8282\u70B9\u7684\u4F4D\u7F6E\u3001\u65CB\u8F6C\uFF08\u5F27\u5EA6\uFF09\u6216\u7F29\u653E\uFF0C\u652F\u6301\u8D34\u5730\u653E\u7F6E",
+  description: "\u4FEE\u6539\u8282\u70B9\u7684\u4F4D\u7F6E\u3001\u65CB\u8F6C\uFF08\u89D2\u5EA6/\u5EA6\uFF09\u3001\u7F29\u653E\uFF0C\u652F\u6301 lookAt \u81EA\u52A8\u5BF9\u51C6\u76EE\u6807\u70B9\u4E0E\u8D34\u5730\u653E\u7F6E",
   risk: "safe",
   params: {
     type: "object",
     fields: {
       nodeId: { type: "ref", target: "node", required: true, label: "\u8282\u70B9 ID" },
       position: { type: "vec3", default: [0, 0, 0], optional: true, label: "\u4F4D\u7F6E" },
-      rotation: { type: "vec3", default: [0, 0, 0], optional: true, label: "\u65CB\u8F6C\uFF08\u5F27\u5EA6\uFF09" },
+      rotation: { type: "vec3", default: [0, 0, 0], optional: true, label: "\u65CB\u8F6C\uFF08\u89D2\u5EA6/\u5EA6\uFF09" },
       scale: { type: "vec3", default: [1, 1, 1], optional: true, label: "\u7F29\u653E" },
+      lookAt: { type: "vec3", default: [0, 0, 0], optional: true, label: "\u671D\u5411\u76EE\u6807\u4E16\u754C\u5750\u6807\uFF08\u8BBE\u7F6E\u540E\u81EA\u52A8\u8BA1\u7B97\u65CB\u8F6C\uFF0C\u63A8\u8350\u7528\u4E8E\u76F8\u673A\u4E0E\u706F\u5149\uFF09" },
       snapToGround: { type: "boolean", default: false, optional: true, label: "\u8D34\u5730\u653E\u7F6E" }
     }
   },
@@ -15272,10 +21243,12 @@ var setTransformCmd = {
         hint: "\u8BF7\u901A\u8FC7 scene.outline \u83B7\u53D6\u6709\u6548\u7684\u8282\u70B9 ID"
       };
     }
+    const nextPos = p.position ? [...p.position] : [...node.position];
+    const nextRot = Array.isArray(p.lookAt) && p.lookAt.length === 3 ? computeLookAtRotationDeg(node.kind, nextPos, p.lookAt) : p.rotation ? [...p.rotation] : [...node.rotation];
     const nextNode = {
       ...node,
-      position: p.position ? [...p.position] : [...node.position],
-      rotation: p.rotation ? [...p.rotation] : [...node.rotation],
+      position: nextPos,
+      rotation: nextRot,
       scale: p.scale ? [...p.scale] : [...node.scale]
     };
     useEditorStore.setState({
@@ -15408,6 +21381,7 @@ function ensureCoreCommandsRegistered() {
 }
 
 // tests/phase4-packs-branches.test.ts
+init_registry();
 ensureCoreCommandsRegistered();
 test("\u9636\u6BB5 4: \u8F7B\u91CF\u5B9E\u9A8C\u5206\u652F A/B \u5207\u6362\u4E0E\u8BBE\u4E3A\u4E3B\u7EBF", () => {
   useEditorStore.getState().newScene();

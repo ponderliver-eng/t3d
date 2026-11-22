@@ -11,6 +11,8 @@ import { useAssetStore } from '../editor/assets/library'
 import { useEditorStore } from '../editor/scene/store'
 import { useAgentStore, type AiActionPill, type AiRefItem } from './agentLoop'
 import { parseImportedAiHistory, serializeAiHistoryForExport } from './historyStorage'
+// 副作用导入：在 window 上注册开发用评测入口 __t3dAiEval
+import './evals/runner'
 
 export default function AiWorkbenchPanel() {
   const panelOpen = useAgentStore((s) => s.panelOpen)
@@ -1171,7 +1173,17 @@ export default function AiWorkbenchPanel() {
               >
                 <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {turn.role === 'assistant' && turn.usage?.model
-                    ? `${turn.usage.model} · ${(turn.usage.inputTokens ?? 0) + (turn.usage.outputTokens ?? 0)} tok`
+                    ? [
+                        turn.usage.model,
+                        `${(turn.usage.inputTokens ?? 0) + (turn.usage.outputTokens ?? 0)} tok`,
+                        turn.usage.cachedTokens && turn.usage.inputTokens
+                          ? `缓存 ${Math.round((turn.usage.cachedTokens / turn.usage.inputTokens) * 100)}%`
+                          : '',
+                        turn.usage.steps ? `${turn.usage.steps} 步` : '',
+                        turn.usage.durationMs ? `${(turn.usage.durationMs / 1000).toFixed(0)}s` : '',
+                      ]
+                        .filter(Boolean)
+                        .join(' · ')
                     : ''}
                 </span>
                 <div style={{ display: 'inline-flex', alignItems: 'center', gap: '10px', flexShrink: 0 }}>

@@ -2,21 +2,21 @@ import { create } from 'zustand'
 import { commandBus } from '../core/commands/bus'
 import { useCodeAssetStore } from '../core/codeAssets/workspace'
 import { createCheckpoint, formatDesignMarkdown, getDesignDoc, restoreCheckpoint } from '../core/project'
-import { queryNodeInspect, queryProjectOverview } from '../core/query'
+import { diagnoseProject, queryNodeInspect, queryProjectOverview } from '../core/query'
 import { useAssetStore } from '../editor/assets/library'
 import { electronBridge } from '../editor/project/electronBridge'
 import { useEditorStore } from '../editor/scene/store'
 import { clearInflightBackup, initAiHistorySync, saveAiHistory, saveInflightBackup } from './historyStorage'
+import { formatRecipeIndexForPrompt } from './knowledge/recipes'
 import {
-  AI_TOOL_DOMAIN_META,
   buildAiToolSpecs,
   executeAiTool,
-  inferInitialToolDomains,
   isConfirmRequiredTool,
   registerTaskPlanUpdater,
   type AiTaskPlanItem,
-  type AiToolDomain,
 } from './tools'
+import { finalizeAiTrace, recordAiTrace, summarizeAiTrace, type AiTraceDraft } from './trace'
+import { PlaytestSession, summarizeRuntimeLogs } from '../playtest/session'
 
 export interface AiActionPill {
   id: string
@@ -44,7 +44,15 @@ export interface AiTurnItem {
   refs?: AiRefItem[]
   actions?: AiActionPill[]
   checkpointId?: string
-  usage?: { inputTokens?: number; outputTokens?: number; model?: string }
+  usage?: {
+    inputTokens?: number
+    outputTokens?: number
+    /** 输入中命中提示缓存的 token 数 */
+    cachedTokens?: number
+    model?: string
+    steps?: number
+    durationMs?: number
+  }
   error?: string
   stopReason?: 'completed' | 'max-steps' | 'paused-with-plan' | 'interrupted'
   pendingTasksCount?: number
@@ -349,39 +357,52 @@ export const useAgentStore = create<AgentState>((set, get) => ({
     saveInflightBackup(get().turns)
     void saveAiHistory(get().turns)
 
-    const activeDomains = inferInitialToolDomains(
-      text,
-      mergedRefs.map((r) => r.kind),
-    )
-    const chatMessages: Array<
-      | { role: 'user'; text: string; images?: string[] }
-      | { role: 'assistant'; text: string; toolCalls?: Array<{ id: string; name: string; arguments: Record<string, unknown> }> }
-      | { role: 'tool'; toolCallId: string; name: string; content: string }
-    > = buildHistoryMessages(get().turns, currentAssistantId)
+    const chatMessages: LoopMessage[] = buildHistoryMessages(get().turns, currentAssistantId)
+    // 动态工程上下文只在本轮开头注入一次，追加在用户消息尾部：
+    // 系统提示与工具定义保持逐字不变，才能让提示缓存覆盖「系统提示 + 工具 + 之前全部对话」
+    const turnContext = buildTurnContext(mergedRefs)
+    const lastHistoryMessage = chatMessages[chatMessages.length - 1]
+    if (lastHistoryMessage && lastHistoryMessage.role === 'user') {
+      lastHistoryMessage.text = `${lastHistoryMessage.text}\n\n${turnContext}`
+    } else {
+      chatMessages.push({ role: 'user', text: `${text}\n\n${turnContext}` })
+    }
+    const systemPrompt = buildSystemPrompt()
+    const tools = buildAiToolSpecs()
+    const baselineDiagnoseErrors = new Set(collectDiagnoseErrors())
 
     commandBus.beginTransaction(`AI：${text.slice(0, 32)}`)
     let actions: AiActionPill[] = []
     let finalText = ''
     let totalIn = 0
     let totalOut = 0
+    let totalCached = 0
     let usedModel = ''
     let txCommitted = false
     let stopReason: AiTurnItem['stopReason'] = 'completed'
-    let autoNudges = 0
-    let writesSinceVerify = 0
-    let hasVerifiedInTurn = false
+    let planNudges = 0
+    let lengthNudges = 0
+    let autoVerifyRounds = 0
+    /** 自上次验收以来是否改过工程 / 是否改过会影响运行逻辑的内容 */
+    let dirtySinceVerify = false
+    let logicDirtySinceSmoke = false
     let completedNormally = false
+    const trace: AiTraceDraft = {
+      prompt: text.slice(0, 200),
+      startedAt: Date.now(),
+      steps: [],
+      toolCalls: 0,
+      toolFailures: 0,
+      truncations: 0,
+      autoVerifyRounds: 0,
+      compactions: 0,
+    }
 
     const consumeSteerQueue = () => {
       const queued = get().steerQueue
       if (queued.length === 0) return false
       set({ steerQueue: [] })
       for (const item of queued) {
-        const inferred = inferInitialToolDomains(
-          item.text,
-          (item.refs ?? []).map((r) => r.kind),
-        )
-        for (const d of inferred) activeDomains.add(d)
         const refCtx = item.refs && item.refs.length > 0 ? `\n${formatRefsContext(item.refs)}` : ''
         chatMessages.push({
           role: 'user',
@@ -408,11 +429,12 @@ export const useAgentStore = create<AgentState>((set, get) => ({
       for (let step = 0; step < MAX_TOOL_STEPS; step += 1) {
         if (get().status === 'idle') break
         consumeSteerQueue()
+        if (compactMessagesInPlace(chatMessages)) trace.compactions += 1
         const reqId = `req_${Date.now()}_${step}`
         set({
           activeRequestId: reqId,
           streamingText: '',
-          phaseText: step === 0 ? '正在思考方案…' : `正在思考下一步（第 ${step + 1}/${MAX_TOOL_STEPS} 步）…`,
+          phaseText: step === 0 ? '正在思考方案…' : `正在思考下一步（第 ${step + 1} 步）…`,
         })
 
         const unsub = ai.onDelta((delta) => {
@@ -422,18 +444,22 @@ export const useAgentStore = create<AgentState>((set, get) => ({
               phaseText: '正在输出思路与说明…',
               streamingText: s.streamingText + delta.text,
             }))
+          } else if (delta.type === 'reasoning') {
+            if (get().phaseText !== '正在深入思考…' && !get().streamingText) set({ phaseText: '正在深入思考…' })
+          } else if (delta.type === 'tool' && delta.toolName) {
+            // 工具参数（如整段脚本源码）开始流式生成时就给出进度，而不是等整段写完
+            set({ phaseText: toolPhaseLabel(delta.toolName) })
           }
         })
 
+        const stepStartedAt = Date.now()
         let result: Awaited<ReturnType<typeof ai.chat>>
         try {
-          const systemPrompt = buildSystemPrompt(mergedRefs, activeDomains)
-          const tools = buildAiToolSpecs(activeDomains)
           result = await ai.chat(reqId, {
             providerId: turnProviderId,
             ...(turnModel ? { model: turnModel } : {}),
             system: systemPrompt,
-            messages: compactMessagesForStep(chatMessages),
+            messages: chatMessages,
             tools,
           })
         } finally {
@@ -444,6 +470,15 @@ export const useAgentStore = create<AgentState>((set, get) => ({
         usedModel = result.model
         totalIn += result.usage?.inputTokens ?? 0
         totalOut += result.usage?.outputTokens ?? 0
+        totalCached += result.usage?.cachedTokens ?? 0
+        trace.steps.push({
+          ms: Date.now() - stepStartedAt,
+          inputTokens: result.usage?.inputTokens ?? 0,
+          outputTokens: result.usage?.outputTokens ?? 0,
+          cachedTokens: result.usage?.cachedTokens ?? 0,
+          tools: result.toolCalls.map((tc) => tc.name),
+          stopReason: result.stopReason ?? 'stop',
+        })
         if (result.text) {
           finalText = finalText ? `${finalText}\n${result.text}` : result.text
           set((s) => ({
@@ -454,33 +489,43 @@ export const useAgentStore = create<AgentState>((set, get) => ({
         }
 
         if (result.toolCalls.length === 0) {
+          // 纯文本回复被长度上限截断：让模型接着写，而不是把半截内容当成最终答复
+          if (result.stopReason === 'length' && lengthNudges < 2 && step + 1 < MAX_TOOL_STEPS) {
+            lengthNudges += 1
+            trace.truncations += 1
+            chatMessages.push({ role: 'assistant', text: result.text || '（输出被截断）', providerState: result.providerState })
+            chatMessages.push({
+              role: 'user',
+              text: '[系统] 上一条回复因输出长度上限被截断。请从中断处继续，不要重复已输出的内容；如果是要写很长的脚本或 UI，请拆成多次工具调用（先 script__create 写骨架，再用 script__patch 分段补充）。',
+            })
+            continue
+          }
           if (consumeSteerQueue()) {
             continue
           }
           const remainingPlan = get().taskPlan.filter((t) => t.status !== 'done')
-          if (remainingPlan.length > 0 && autoNudges < 1 && step + 1 < MAX_TOOL_STEPS) {
-            autoNudges += 1
-            chatMessages.push({ role: 'assistant', text: result.text || '（正在继续推进任务）' })
+          if (remainingPlan.length > 0 && planNudges < 1 && step + 1 < MAX_TOOL_STEPS) {
+            planNudges += 1
+            chatMessages.push({ role: 'assistant', text: result.text || '（正在继续推进任务）', providerState: result.providerState })
             chatMessages.push({
               role: 'user',
-              text: `[系统自动续推] 当前任务清单仍有 ${remainingPlan.length} 项未完成（下一项：${remainingPlan[0].title}）。请勿提前停下等待，继续调用工具推进执行，完成阶段后同步更新 plan__set_tasks；仅在全部完成或必须由用户做关键决策时再结束。`,
+              text: `[系统自动续推] 任务清单仍有 ${remainingPlan.length} 项未完成（下一项：${remainingPlan[0].title}）。请继续调用工具推进，完成后用 plan__set_tasks 更新状态；只有全部完成或必须由用户做关键决策时才结束。`,
             })
             continue
           }
-          if (
-            remainingPlan.length === 0 &&
-            writesSinceVerify >= 5 &&
-            !hasVerifiedInTurn &&
-            autoNudges < 1 &&
-            step + 1 < MAX_TOOL_STEPS
-          ) {
-            autoNudges += 1
-            chatMessages.push({ role: 'assistant', text: result.text || '（准备收尾验收）' })
-            chatMessages.push({
-              role: 'user',
-              text: '[阶段收尾门禁] 本轮已执行多处场景/脚本/UI修改，但尚未运行工程体检或视口截图验收。请先调用 query__project_diagnose（排查脚本引用/输入映射/UI变量断链）并调用 viewport__capture({ playSeconds: 0.8 }) 观察实景效果，确认无误后再总结交付。',
-            })
-            continue
+          // 确定性验收由循环自己执行（零模型开销），只有真的发现问题才回灌给模型修复
+          if (dirtySinceVerify && autoVerifyRounds < 2 && step + 1 < MAX_TOOL_STEPS && get().status !== 'idle') {
+            set({ phaseText: '正在自动验收（工程体检 + 试玩）…' })
+            const feedback = runAutoVerify(baselineDiagnoseErrors, logicDirtySinceSmoke)
+            dirtySinceVerify = false
+            logicDirtySinceSmoke = false
+            if (feedback) {
+              autoVerifyRounds += 1
+              trace.autoVerifyRounds += 1
+              chatMessages.push({ role: 'assistant', text: result.text || '（准备收尾）', providerState: result.providerState })
+              chatMessages.push({ role: 'user', text: feedback })
+              continue
+            }
           }
           stopReason = remainingPlan.length > 0 ? 'paused-with-plan' : 'completed'
           completedNormally = true
@@ -491,10 +536,39 @@ export const useAgentStore = create<AgentState>((set, get) => ({
           role: 'assistant',
           text: result.text,
           toolCalls: result.toolCalls,
+          providerState: result.providerState,
         })
 
         const stepCapturedImages: string[] = []
         for (const tc of result.toolCalls) {
+          trace.toolCalls += 1
+          // 参数 JSON 不完整（输出被截断）：绝不带着空参数去执行，明确告诉模型拆小重试
+          if (tc.invalid) {
+            trace.truncations += 1
+            trace.toolFailures += 1
+            actions.push({
+              id: tc.id,
+              toolName: tc.name,
+              label: `${tc.name.replace(/__/g, '.')} 未执行：参数被截断`,
+              ok: false,
+              pending: false,
+            })
+            set((s) => ({
+              turns: s.turns.map((t) => (t.id === currentAssistantId ? { ...t, actions: [...actions] } : t)),
+            }))
+            chatMessages.push({
+              role: 'tool',
+              toolCallId: tc.id,
+              name: tc.name,
+              content: JSON.stringify({
+                ok: false,
+                executed: false,
+                message: `${tc.invalid}，本次调用没有执行。请把内容拆小后重试：脚本先用 script__create 写一个能编译的骨架，再用多次 script__patch 逐段补充；UI 先建骨架再用 ui__patchNode 的 appendChildren 分块追加。`,
+              }),
+            })
+            continue
+          }
+
           if (isConfirmRequiredTool(tc.name)) {
             const approved = await new Promise<boolean>((resolve) => {
               set({
@@ -536,24 +610,16 @@ export const useAgentStore = create<AgentState>((set, get) => ({
           }))
 
           const execRes = await executeAiTool(tc.name, tc.arguments)
-          if (
-            tc.name === 'viewport__capture' ||
-            tc.name === 'playtest__capture' ||
-            tc.name === 'playtest__run_smoke' ||
-            tc.name === 'query__project_diagnose'
-          ) {
-            hasVerifiedInTurn = true
-            writesSinceVerify = 0
+          if (!execRes.ok) trace.toolFailures += 1
+          if (!isReadOnlyTool(tc.name)) {
+            dirtySinceVerify = true
+            if (affectsRuntimeLogic(tc.name)) logicDirtySinceSmoke = true
           } else if (
-            tc.name.startsWith('scene__') ||
-            tc.name.startsWith('script__') ||
-            tc.name.startsWith('ui__') ||
-            tc.name.startsWith('shader__')
+            tc.name === 'playtest__run_smoke' ||
+            (tc.name === 'viewport__capture' && typeof tc.arguments.playSeconds === 'number' && tc.arguments.playSeconds > 0)
           ) {
-            writesSinceVerify += 1
-          }
-          if (execRes.enabledDomains) {
-            for (const d of execRes.enabledDomains) activeDomains.add(d)
+            // 模型自己已经在最新状态上跑过试玩，收尾时不必再重复
+            logicDirtySinceSmoke = false
           }
           if (execRes.targetNodeId) {
             set({ activeNodeIds: [execRes.targetNodeId] })
@@ -566,7 +632,8 @@ export const useAgentStore = create<AgentState>((set, get) => ({
             pending: false,
             targetNodeId: execRes.targetNodeId,
             targetAssetId: execRes.targetAssetId,
-            detail: execRes.data,
+            // 只为失败的操作保留详情（面板用于展示报错）；成功结果可能是整段源码，不写进对话历史
+            detail: execRes.ok ? undefined : stripImagePayload(execRes.data).payload,
           })
           set((s) => ({
             turns: s.turns.map((t) =>
@@ -575,27 +642,17 @@ export const useAgentStore = create<AgentState>((set, get) => ({
           }))
           saveInflightBackup(get().turns)
 
-          let toolPayload: unknown = execRes.data
-          if (
-            execRes.ok &&
-            execRes.data &&
-            typeof execRes.data === 'object' &&
-            'dataUrl' in execRes.data &&
-            typeof (execRes.data as { dataUrl?: unknown }).dataUrl === 'string'
-          ) {
-            const url = (execRes.data as { dataUrl: string }).dataUrl
-            if (url.startsWith('data:image/')) {
-              stepCapturedImages.push(url)
-              toolPayload = { captured: true, note: '视口截图已附在接下来的图片消息中，请直接观察画面效果。' }
-            }
-          }
-          const serialized = JSON.stringify(toolPayload)
+          // 截图以图片消息形式单独附上；其余字段（运行时报错、断言结果等）照常返回给模型
+          const stripped = stripImagePayload(execRes.data)
+          if (stripped.image) stepCapturedImages.push(stripped.image)
+          const serialized = JSON.stringify(stripped.payload)
+          const limit = toolResultCharLimit(tc.name)
           chatMessages.push({
             role: 'tool',
             toolCallId: tc.id,
             name: tc.name,
-            content: serialized.length > 6000
-              ? `${serialized.slice(0, 6000)}...(结果已截断，请使用具体查询工具获取细节)`
+            content: serialized.length > limit
+              ? `${serialized.slice(0, limit)}...(结果过长已截断，请用更具体的查询获取细节)`
               : serialized,
           })
         }
@@ -627,7 +684,14 @@ export const useAgentStore = create<AgentState>((set, get) => ({
                 ...t,
                 text: finalText || (actions.length > 0 ? '已完成本轮操作。' : ''),
                 actions,
-                usage: { inputTokens: totalIn, outputTokens: totalOut, model: usedModel },
+                usage: {
+                  inputTokens: totalIn,
+                  outputTokens: totalOut,
+                  cachedTokens: totalCached,
+                  model: usedModel,
+                  steps: trace.steps.length,
+                  durationMs: Date.now() - trace.startedAt,
+                },
                 stopReason,
                 pendingTasksCount,
                 inProgress: undefined,
@@ -637,6 +701,9 @@ export const useAgentStore = create<AgentState>((set, get) => ({
       }))
       clearInflightBackup()
       void saveAiHistory(get().turns)
+      const traceRecord = finalizeAiTrace(trace, { model: usedModel, stopReason: stopReason ?? 'completed' })
+      recordAiTrace(traceRecord)
+      console.info(`[AI] 本轮：${summarizeAiTrace(traceRecord)}`)
     } catch (error) {
       if (!txCommitted && commandBus.hasActiveTransaction()) {
         await commandBus.rollbackTransaction()
@@ -655,6 +722,7 @@ export const useAgentStore = create<AgentState>((set, get) => ({
       }))
       clearInflightBackup()
       void saveAiHistory(get().turns)
+      recordAiTrace(finalizeAiTrace(trace, { model: usedModel, stopReason: 'error', error: msg }))
     }
   },
 }))
@@ -688,6 +756,9 @@ registerTaskPlanUpdater((tasks) => {
 function toolPhaseLabel(toolName: string): string {
   if (toolName === 'plan__set_tasks') return '正在规划 / 更新任务进度…'
   if (toolName === 'script__patch') return '正在局部修改并热重载脚本…'
+  if (toolName === 'script__read' || toolName === 'shader__read') return '正在读取源码…'
+  if (toolName === 'kb__read') return '正在查阅范例库…'
+  if (toolName === 'script__attach') return '正在挂载脚本…'
   if (toolName.startsWith('script__')) return '正在生成 / 编译脚本…'
   if (toolName.startsWith('shader__')) return '正在生成 / 编译着色器…'
   if (toolName.startsWith('scene__')) return '正在搭建 / 修改场景节点…'
@@ -712,7 +783,7 @@ function toolPhaseLabel(toolName: string): string {
 function buildHistoryMessages(
   turns: AiTurnItem[],
   excludeId: string,
-): Array<{ role: 'user' | 'assistant'; text: string; images?: string[] }> {
+): LoopMessage[] {
   const MAX_TURNS = 24
   const MAX_CHARS = 18000
   const MIN_KEEP = 4
@@ -725,7 +796,7 @@ function buildHistoryMessages(
       (t.text.trim() || t.imageDataUrl || (t.actions && t.actions.length > 0) || t.stopReason === 'interrupted'),
   )
 
-  const picked: Array<{ role: 'user' | 'assistant'; text: string; images?: string[] }> = []
+  const picked: LoopMessage[] = []
   let totalChars = 0
   let imagesUsed = 0
 
@@ -766,13 +837,126 @@ function buildHistoryMessages(
   return picked.reverse()
 }
 
-function compactMessagesForStep<
-  T extends
-    | { role: 'user'; text: string; images?: string[] }
-    | { role: 'assistant'; text: string; toolCalls?: Array<{ id: string; name: string; arguments: Record<string, unknown> }> }
-    | { role: 'tool'; toolCallId: string; name: string; content: string },
->(messages: T[]): T[] {
-  // 保留最近两轮助手工具调用的完整返回，更早步骤的超长工具 JSON 做折叠以控制 Token 消耗
+type LoopToolCall = { id: string; name: string; arguments: Record<string, unknown>; invalid?: string }
+
+type LoopMessage =
+  | { role: 'user'; text: string; images?: string[] }
+  | { role: 'assistant'; text: string; toolCalls?: LoopToolCall[]; providerState?: unknown }
+  | { role: 'tool'; toolCallId: string; name: string; content: string }
+
+/** 只读工具：不改工程，不触发收尾验收 */
+function isReadOnlyTool(toolName: string): boolean {
+  return (
+    toolName.startsWith('query__') ||
+    toolName.startsWith('kb__') ||
+    toolName.startsWith('plan__') ||
+    toolName.startsWith('viewport__') ||
+    toolName.startsWith('playtest__') ||
+    toolName === 'script__read' ||
+    toolName === 'shader__read' ||
+    toolName === 'script__check' ||
+    toolName === 'shader__check' ||
+    toolName === 'input__get_map' ||
+    toolName === 'branch__list' ||
+    toolName === 'project__design__get'
+  )
+}
+
+/** 会改变试玩行为的写操作：收尾时需要实际跑一下确认没有运行时报错 */
+function affectsRuntimeLogic(toolName: string): boolean {
+  return (
+    toolName.startsWith('script__') ||
+    toolName.startsWith('gameplay__') ||
+    toolName.startsWith('capability__') ||
+    toolName.startsWith('input__') ||
+    toolName === 'scene__deleteNodes' ||
+    toolName === 'ui__mountScreen' ||
+    toolName === 'ui__createFromTemplate'
+  )
+}
+
+function toolResultCharLimit(toolName: string): number {
+  // 源码与范例必须完整返回，否则 script__patch 的 find 片段无法逐字匹配
+  if (toolName === 'script__read' || toolName === 'shader__read' || toolName === 'kb__read') return 60000
+  return 16000
+}
+
+/** 把工具返回里的截图 DataURL 拆出来，其余字段原样保留 */
+function stripImagePayload(data: unknown): { payload: unknown; image: string | null } {
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return { payload: data, image: null }
+  const record = data as Record<string, unknown>
+  const url = record.dataUrl
+  if (typeof url !== 'string' || !url.startsWith('data:image/')) return { payload: data, image: null }
+  const { dataUrl: _omit, ...rest } = record
+  void _omit
+  return {
+    payload: { ...rest, captured: true, note: '截图已附在随后的图片消息中，请直接观察画面。' },
+    image: url,
+  }
+}
+
+function collectDiagnoseErrors(): string[] {
+  try {
+    return diagnoseProject()
+      .issues.filter((issue) => issue.severity === 'error')
+      .map((issue) => `[${issue.category}] ${issue.target ? `${issue.target}：` : ''}${issue.message}${issue.hint ? `（${issue.hint}）` : ''}`)
+  } catch {
+    return []
+  }
+}
+
+/**
+ * 收尾自动验收：由循环直接执行确定性检查（工程体检 + 1 秒试玩），不消耗模型步数。
+ * 只把「本轮新引入」的体检错误与运行时报错回灌给模型；全部通过时返回 null。
+ */
+function runAutoVerify(baselineErrors: ReadonlySet<string>, runSmoke: boolean): string | null {
+  const sections: string[] = []
+  const newErrors = collectDiagnoseErrors().filter((line) => !baselineErrors.has(line))
+  if (newErrors.length > 0) {
+    sections.push(`工程体检发现本轮新增的 ${newErrors.length} 个错误：\n${newErrors.slice(0, 8).map((line) => `- ${line}`).join('\n')}`)
+  }
+  if (runSmoke && useEditorStore.getState().playState === 'stopped') {
+    try {
+      const report = new PlaytestSession().runSmoke([{ action: 'step', seconds: 1 }])
+      const summary = summarizeRuntimeLogs(report.errors.map((message) => ({ level: 'error', message })))
+      if (summary.errorCount > 0) {
+        sections.push(`自动试玩 1 秒出现 ${summary.errorCount} 条运行时报错：\n${summary.errors.map((line) => `- ${line}`).join('\n')}`)
+      }
+    } catch (error) {
+      console.warn('[AI] 自动试玩验收跳过：', error)
+    }
+  }
+  if (sections.length === 0) return null
+  return [
+    '[自动验收未通过]',
+    ...sections,
+    '请直接修复以上问题：先用 script__read 查看相关脚本的当前源码，再用 script__patch 修改；不要新建测试或探测脚本。若某条报错确实与本轮改动无关，在总结里说明即可。修复后给出简短总结。',
+  ].join('\n')
+}
+
+const COMPACT_TRIGGER_CHARS = 180_000
+const IMAGE_CHAR_COST = 6000
+
+function estimateMessageChars(m: LoopMessage): number {
+  if (m.role === 'tool') return m.content.length
+  if (m.role === 'user') return m.text.length + (m.images?.length ?? 0) * IMAGE_CHAR_COST
+  let size = m.text.length
+  for (const tc of m.toolCalls ?? []) size += JSON.stringify(tc.arguments).length
+  return size
+}
+
+/**
+ * 上下文折叠（原地、仅在超出预算时触发一次）。
+ *
+ * 不再每一步都滑动折叠窗口：那样会逐步改写历史消息，使提示缓存前缀每步失效。
+ * 现在历史只追加不改写，直到总量超过预算才一次性折叠早期的大块内容，之后又恢复为只追加。
+ */
+function compactMessagesInPlace(messages: LoopMessage[]): boolean {
+  let total = 0
+  for (const m of messages) total += estimateMessageChars(m)
+  if (total < COMPACT_TRIGGER_CHARS) return false
+
+  // 保留最近两组工具调用及其结果的完整内容
   let assistantWithToolsSeen = 0
   let cutoffIndex = 0
   for (let i = messages.length - 1; i >= 0; i -= 1) {
@@ -785,48 +969,48 @@ function compactMessagesForStep<
       }
     }
   }
-  if (cutoffIndex === 0) return messages
+  if (cutoffIndex === 0) return false
 
-  return messages.map((m, idx) => {
-    if (idx >= cutoffIndex) return m
-    if (m.role === 'tool' && m.content.length > 800) {
-      return {
-        ...m,
-        content: `[早先工具 ${m.name} 返回已折叠（原长 ${m.content.length} 字符），如需细节可重新查询]`,
+  let changed = false
+  for (let idx = 0; idx < cutoffIndex; idx += 1) {
+    const m = messages[idx]
+    if (m.role === 'tool') {
+      if (m.content.length > 800) {
+        const readHint =
+          m.name === 'script__read' || m.name === 'shader__read' || m.name === 'kb__read'
+            ? '需要时请重新调用该工具读取最新内容'
+            : '如需细节可重新查询'
+        messages[idx] = { ...m, content: `[早先工具 ${m.name} 的返回已折叠（原长 ${m.content.length} 字符），${readHint}]` }
+        changed = true
       }
-    }
-    if (m.role === 'assistant') {
-      let nextText = m.text
-      if (nextText && nextText.length > 600) {
-        nextText = `${nextText.slice(0, 300)}...(早先思考过程已折叠)`
+    } else if (m.role === 'user') {
+      if (m.images && m.images.length > 0) {
+        messages[idx] = { role: 'user', text: `${m.text}\n（早先的截图已省略）` }
+        changed = true
       }
-      let nextToolCalls = m.toolCalls
-      if (nextToolCalls && nextToolCalls.length > 0) {
-        let changed = false
-        nextToolCalls = nextToolCalls.map((tc) => {
-          const args = tc.arguments
-          if (!args || typeof args !== 'object') return tc
-          const nextArgs: Record<string, unknown> = { ...args }
-          let argChanged = false
-          for (const largeKey of ['source', 'document']) {
-            const val = nextArgs[largeKey]
-            const strLen = typeof val === 'string' ? val.length : val && typeof val === 'object' ? JSON.stringify(val).length : 0
-            if (strLen > 1200) {
-              nextArgs[largeKey] = `[已折叠 ${largeKey}（原长 ${strLen} 字符），当前内容可通过 query 工具读取]`
-              argChanged = true
-            }
+    } else if (m.toolCalls && m.toolCalls.length > 0) {
+      let callChanged = false
+      const nextToolCalls = m.toolCalls.map((tc) => {
+        const nextArgs: Record<string, unknown> = { ...tc.arguments }
+        let argChanged = false
+        for (const largeKey of ['source', 'document', 'patches', 'appendChildren']) {
+          const val = nextArgs[largeKey]
+          const strLen = typeof val === 'string' ? val.length : val && typeof val === 'object' ? JSON.stringify(val).length : 0
+          if (strLen > 1200) {
+            nextArgs[largeKey] = `[已折叠 ${largeKey}（原长 ${strLen} 字符）；当前内容请用 script__read / shader__read / query__ui_inspect 读取]`
+            argChanged = true
           }
-          if (argChanged) changed = true
-          return argChanged ? { ...tc, arguments: nextArgs } : tc
-        })
-        if (!changed) nextToolCalls = m.toolCalls
-      }
-      if (nextText !== m.text || nextToolCalls !== m.toolCalls) {
-        return { ...m, text: nextText, ...(nextToolCalls ? { toolCalls: nextToolCalls } : {}) }
+        }
+        if (argChanged) callChanged = true
+        return argChanged ? { ...tc, arguments: nextArgs } : tc
+      })
+      if (callChanged) {
+        messages[idx] = { ...m, toolCalls: nextToolCalls }
+        changed = true
       }
     }
-    return m
-  })
+  }
+  return changed
 }
 
 function formatRefsContext(attachedRefs: AiRefItem[]): string {
@@ -894,54 +1078,101 @@ function formatRefsContext(attachedRefs: AiRefItem[]): string {
   return `${selectedText}${codeText}${assetText}`
 }
 
-function buildSystemPrompt(attachedRefs: AiRefItem[], activeDomains: Set<AiToolDomain>): string {
+/** 本轮开始时的工程快照。追加在用户消息尾部，而不是放进系统提示，以保持系统提示逐字稳定 */
+function buildTurnContext(attachedRefs: AiRefItem[]): string {
   const designMd = formatDesignMarkdown(getDesignDoc())
   const overview = JSON.stringify(queryProjectOverview())
   const sceneNodes = Object.values(useEditorStore.getState().nodes)
+  const NODE_INDEX_LIMIT = 60
   const nodeIndexText = sceneNodes.length > 0
-    ? `\n当前场景节点索引（名称 -> ID，共 ${sceneNodes.length} 个）：\n${sceneNodes
-        .slice(0, 30)
+    ? `场景节点索引（名称 -> ID，共 ${sceneNodes.length} 个）：\n${sceneNodes
+        .slice(0, NODE_INDEX_LIMIT)
         .map((n) => {
           const extra = n.kind === 'screen' && n.screen?.documentId ? `, uiAssetId=${n.screen.documentId}` : ''
           return `- ${n.name} (${n.kind}${extra}): ${n.id}`
         })
-        .join('\n')}${sceneNodes.length > 30 ? '\n- ...（更多节点请调用 query__scene_outline）' : ''}`
+        .join('\n')}${sceneNodes.length > NODE_INDEX_LIMIT ? '\n- ...（更多节点请调用 query__scene_outline）' : ''}`
+    : '场景节点索引：当前场景为空。'
+
+  const codeAssets = Object.values(useCodeAssetStore.getState().assets)
+  const codeIndexText = codeAssets.length > 0
+    ? `代码资产索引：${codeAssets
+        .slice(0, 40)
+        .map((a) => `${a.kind}:${a.id}${a.ok ? '' : '(编译失败)'}`)
+        .join('、')}`
     : ''
 
-  const refsContext = formatRefsContext(attachedRefs)
+  const refsContext = formatRefsContext(attachedRefs).trim()
   const activePlan = useAgentStore.getState().taskPlan
   const planText = activePlan.length > 0
-    ? `\n当前进行中的任务计划清单：\n${activePlan
-        .map((t) => `- [${t.status}] (${t.id}) ${t.title}`)
-        .join('\n')}`
+    ? `进行中的任务清单：\n${activePlan.map((t) => `- [${t.status}] (${t.id}) ${t.title}`).join('\n')}`
     : ''
 
-  const disabledDomains = (Object.keys(AI_TOOL_DOMAIN_META) as Array<Exclude<AiToolDomain, 'core'>>)
-    .filter((d) => !activeDomains.has(d))
-  const domainHint = disabledDomains.length > 0
-    ? `当前按需开启了 [${Array.from(activeDomains).join(', ')}] 工具域；若需要以下未开启域的工具，请先调用 tools__enable_domain 开启：${disabledDomains.map((d) => `${d}(${AI_TOOL_DOMAIN_META[d].label})`).join('、')}。`
-    : '当前已开启全部工具域。'
+  return [
+    '<工程上下文>',
+    '（以下是本轮开始时的快照；之后发生的变化以工具返回为准）',
+    `设计规范（design.md）：\n${designMd}`,
+    `工程概览：${overview}`,
+    nodeIndexText,
+    codeIndexText,
+    refsContext,
+    planText,
+    '</工程上下文>',
+  ]
+    .filter(Boolean)
+    .join('\n')
+}
 
+let cachedSystemPrompt: string | null = null
+
+/**
+ * 系统提示：完全静态（不含任何工程状态），整段可被提示缓存命中。
+ * 需要告诉模型的工程现状一律走 buildTurnContext 或工具返回。
+ */
+function buildSystemPrompt(): string {
+  if (cachedSystemPrompt) return cachedSystemPrompt
   const lines: string[] = [
-    '你是 T3D 游戏工程管理器的内置 AI 创作助手。',
-    '核心原则：',
-    '1. 长任务规划与三阶段小步验收工作流：接到“做一个游戏/完整 Demo”或包含多个模块的任务时，第一步先调用 plan__set_tasks 拆解为清晰阶段（建议：阶段1 舞台与镜头 → 阶段2 核心玩法与脚本 → 阶段3 UI 与收尾），然后连续调用工具推进，**不要一口气建完所有东西才检查**：',
-    '   - 阶段1（舞台/光源/相机）完成后，调用 viewport__capture 确认构图正常；',
-    '   - 阶段2（核心实体/脚本/输入配置）完成后，调用 query__project_diagnose 排查脚本引用/输入映射断链，并调用 viewport__capture({ playSeconds: 0.8 }) 实景试玩验收；',
-    '   - 阶段3（UI 与交互收尾）完成后，再次运行 query__project_diagnose + viewport__capture({ playSeconds: 1.0 }) 验收交付。',
-    '   不要刚建完几个节点或目录就提前停下汇报“已完成第一步”，除非需要用户做关键方向决策。',
-    '2. 只能通过提供的工具读取或修改工程数据，严格使用工具返回的准确节点 ID 或资产 ID（节点名称唯一时也可直接传节点名称），切勿凭记忆猜测或删改 UUID。',
-    '3. 局部优先：修改已有脚本优先用 script__patch（按片段精确替换，无需重写全文）；修改已有 UI 优先用 ui__patchNode（按节点 ID 或唯一名称局部改文本/样式/绑定/子节点，无需重写整棵树）。',
-    '4. 工程规划与层级规范：',
-    '   - 遇到多模块/多关卡或资产较多（>5 个）时，先用 project__design__update 规划目录规范，再用 asset__createFolder 建立 Assets/Scripts/<模块>、Assets/Shaders/<模块>、Assets/Materials/<模块>、Assets/UI/<模块>、Assets/Prefabs/<模块> 等目录树（script__create / shader__create 可直接传 folder 指定子目录，默认存放在 Assets/Scripts 与 Assets/Shaders）；用空节点（kind: "empty"）做模块分组，但严禁堆砌无意义的空节点充当装饰或伪对象池。',
-    '   - 放置模型或物体到地面时，优先开启 snapToGround: true。',
-    '   - 坐标系与相机摆放铁律：场景节点的 rotation 单位为**角度（度）**（脚本内 self.rotation 为弧度）；摆放相机（camera）、方向光或聚光灯时，**优先直接传 lookAt: [x, y, z] 目标世界坐标**让引擎自动计算朝向（如 position: [0, 8, 12], lookAt: [0, 1, 0]），切勿手猜相机欧拉角。',
-    '   - 视觉自检（支持自动试玩截图）：随时可调用 viewport__capture 抓取当前视口画面；若需要查看真实试玩效果（如 UI 渲染、角色落地、物理与脚本运行效果），可直接传 viewport__capture({ playSeconds: 0.8 })，系统会自动开启试玩运行 0.8 秒并截取含 UI 的实景图后**自动退出试玩**。注意：系统要求**必须退出试玩后才能修改工程数据**，若通过 playtest__control({ action: "play" }) 手动开启了试玩，修改前务必先调用 playtest__control({ action: "stop" }) 退出试玩。',
+    '你是 T3D 游戏工程管理器的内置 AI 创作助手，通过工具直接读取和修改用户的工程。始终用简体中文回复。',
+    '',
+    '【工作方式】',
+    '1. 按任务规模行事：',
+    '   - 小改动（调参数、修一个脚本问题、改一个节点、回答问题）：直接动手，改完用一两句话说明。不要调用 plan__set_tasks，不要做与改动无关的体检或截图。',
+    '   - 中等任务（一个完整功能，例如“加一个会追玩家的敌人”）：连续调用工具做完，最后做一次与该功能对应的验收。',
+    '   - 大任务（完整游戏 / Demo / 多个模块）：先用 plan__set_tasks 拆成 3~6 个阶段，然后连续推进到全部完成，每完成一个阶段更新一次状态。不要中途停下来汇报进度，除非需要用户做方向性决策。',
+    '2. 先看再改：修改已有脚本前先 script__read，修改已有着色器前先 shader__read，修改已有 UI 前先 query__ui_inspect。不要凭记忆改写。',
+    '3. 先查范例：实现下方「范例库」覆盖的玩法时，先用 kb__read 读取范例，在它的基础上按需求改写。范例已在真实运行时里验证过，从它出发比从零写更快也更可靠。',
+    '4. 一步多调用：互不依赖的查询或创建（例如同时创建地面、灯光、相机，或同时读取两个脚本），在同一步里一次发出多个工具调用。',
+    '5. 局部修改优先：改已有脚本用 script__patch（find 片段必须与 script__read 返回的源码逐字一致），改已有 UI 用 ui__patchNode。单个脚本超过约 150 行时，先 script__create 写出能编译的骨架，再用 script__patch 分段补充，避免一次输出过长被截断。',
+    '6. 验收看状态：',
+    '   - 玩法逻辑用 playtest__run_smoke 验收（注入输入，再断言节点位置 / 界面变量 / 日志），它是确定性的，比截图可靠。',
+    '   - 相机构图、物体朝向、UI 排版才用 viewport__capture；需要看试玩中的画面时传 playSeconds。',
+    '   - 试玩类工具的返回里已经带有运行时报错。出现报错时直接 script__read 定位并修复，不要新建测试或探测脚本去试。',
+    '   - 你结束时系统会自动做一次工程体检；改过脚本或玩法时还会自动试玩 1 秒。有问题会反馈给你，所以不必为了保险重复体检。',
+    '7. ID 一律使用工具返回或工程上下文里的准确值；节点名称唯一时可以直接传名称。不要凭记忆拼写 UUID。',
+    '8. 修改工程前必须处于非试玩状态。viewport__capture({ playSeconds }) 与 playtest__run_smoke 会自动退出试玩；只有手动 playtest__control({ action: "play" }) 之后才需要先 stop。',
+    '',
+    '【Demo 质量底线】做完整玩法或 Demo 时，交付前逐条确认：',
+    '   - 有明确目标和反馈闭环：玩家知道要做什么，做了有得分 / 血量 / 胜负变化。',
+    '   - 玩家输入有即时可见的响应（移动、攻击、拾取）。',
+    '   - 舞台完整：地面、主光源、能看清主角与活动区域的相机。',
+    '   - HUD 显示关键数值，结束时有结算界面。',
+    '   - 不同对象用不同颜色的材质区分（asset__createMaterial + asset__assignMaterial），不要满屏默认灰白几何体。',
+    '   - 总结里写明操作方式（按键）和玩法规则。',
+    '',
+    '【场景与工程规范】',
+    '   - 场景节点的 rotation 单位是角度（度）；脚本内 self.rotation 是弧度。',
+    '   - 摆放相机、方向光、聚光灯时直接传 lookAt: [x, y, z]，让引擎计算朝向（例如 position: [0, 8, 12], lookAt: [0, 1, 0]），不要手算欧拉角。',
+    '   - 把物体放到地面上时传 snapToGround: true。',
+    '   - 资产较多（超过 5 个）或多模块时，按 Assets/Scripts/<模块>、Assets/Materials/<模块>、Assets/UI/<模块>、Assets/Prefabs/<模块> 分目录（script__create / shader__create 可传 folder）；用空节点（kind: "empty"）给场景对象分组。',
+    '   - 需要大量同类对象（子弹、敌人、特效）时，建 1 个隐藏模板节点或预制体，用 self.pool 复用；不要手建几十个节点充当对象池。',
+    '',
+    '【范例库】（用 kb__read({ id }) 读取完整源码与搭建步骤）',
+    formatRecipeIndexForPrompt(),
+    '',
   ]
 
-  if (activeDomains.has('script')) {
-    lines.push(
-      '5. 编写节点行为脚本（script__create / script__update）时，必须从 "t3d/runtime" 导入 defineBehavior，并严格使用：',
+  lines.push(
+      '【脚本】编写节点行为脚本（script__create / script__update）时，必须从 "t3d/runtime" 导入 defineBehavior，并严格使用：',
       '   export default defineBehavior({ name: "简短中文标题", description: "一句话介绍脚本作用", params: { ... }, state: () => ({ ... }), onStart(self) {}, onSpawn(self, payload) {}, onUpdate(self, dt) { ... }, onMessage(self, msg) {}, onDestroy(self) {}, onDrawGizmos(self, gizmos) {} })',
       '   脚本完整可用 API（严禁编造 window.__t3dKeys 等全局变量）：',
       '   - 变换与状态：self.position / self.rotation（弧度）/ self.scale（必须整体赋值，如 self.position = { x, y, z }，不要写 self.position.x = ...）、self.visible、self.elapsedTime、self.state、self.node。',
@@ -967,23 +1198,25 @@ function buildSystemPrompt(attachedRefs: AiRefItem[], activeDomains: Set<AiToolD
       '   - 全局系统（无需挂节点，适合波次/经济/胜负状态机）：也可使用 defineSystem({ name, stage?: "prePhysics"|"postPhysics"|"postAnimation"|"preRender", state: () => ({...}), onMount(world, state) {}, onUpdate(world, state, dt) {}, onDispose(world, state) {} })，world 提供 pool/cloneNode/spawnPrefab/findNodesByTag/after/every/ui/input/global 等完整全局 API。',
       '   - 存储与策划表：self.global / self.storage (get/set/remove)、self.tables.getRow(tableId, rowId)、self.scene.currentId() / load(id)、self.log(...)、self.warn(...)。',
       '   - 参数（params）类型与引用规范：number / boolean / string / color / vec2 / vec3 / vec4 / enum / texture / ref（target: "node" | "asset" | "clip" | "tableRow"，asset 可带 kinds: ["prefab"|"model"|"audio"|"effect"|"material"|"ui"|"scene"]）。**铁律**：凡是引用场景节点、预制体、模型、动画片段(clip)、音效、特效、材质、贴图或数据表行的参数，一律必须声明为 `{ type: "ref", target: ..., kinds?: [...], label, default: null }`（或 `type: "texture"`），严禁用 `type: "string"` 让用户手填字符串 ID，这样属性面板才会显示弹窗选择器和拖放槽位！vec2/vec3/vec4 必须提供数组形式 default（如 [0,0,0]）。',
-      '   - 编辑器专用 Gizmo（试玩自动隐藏）：onDrawGizmos(self, gizmos) 支持 gizmos.isSelected、line、arrow、wireSphere、wireBox、disc、radiusHandle、positionHandle。',
+      '   - 运行时约定（容易踩坑）：',
+      '     · 方向：yaw=0 时 self.forward 指向 +Z；self.input.axis2D("Move") 的 y 向前（W）为正、x 向右（D）为正。默认已注册的输入动作：Move / Jump / Sprint / Dash / Interact / Attack，其它动作先用 input__set_action 注册。',
+      '     · 消息：self.broadcast(name, payload) 会送达所有脚本的 onMessage；node.sendMessage 只送达该节点；UI 按钮的 sendMessage 点击同样以广播形式送达 onMessage（也可用 self.ui.onEvent 监听）。',
+      '     · 对象池：隐藏的模板节点自身也会执行脚本，池化实体的脚本要在 onUpdate 开头写 if (!self.visible) return，并且只在可见实例上打标签；pool.acquire 会依次触发实例的 onStart 与 onSpawn(self, payload)，state 会重置。',
+      '     · self.physics.raycast 目前只可靠返回 distance 与 point（命中的是哪个节点不可靠）；需要知道：onDrawGizmos(self, gizmos) 支持 gizmos.isSelected、line、arrow、wireSphere、wireBox、disc、radiusHandle、positionHandle。',
     )
-  }
 
-  if (activeDomains.has('shader')) {
-    lines.push(
-      '6. 编写自定义着色器（shader__create / shader__update）时，必须从 "t3d/shader" 导入 defineShader 与 TSL 节点函数，并严格使用：',
+  lines.push(
+      '',
+      '【着色器】编写自定义着色器（shader__create / shader__update）时，必须从 "t3d/shader" 导入 defineShader 与 TSL 节点函数，并严格使用：',
       '   export default defineShader({ name: "中文名称", mode: "lit" | "unlit", transparent?: true, doubleSided?: false, params: { ... }, surface(p) { return { baseColor, emissive, roughness, metalness, opacity, normal, vertexOffset } } })',
       '   - 严格规则：返回键名必须是 baseColor（不是 color）；params 中声明的所有参数必须在 surface(p) 中实际参与计算；使用 opacity 时需设置 transparent: true。',
       '   - 可用节点（从 "t3d/shader" 导入）：uv(index?)、time、deltaTime、normalView、normalWorld、normalLocal、positionWorld、positionLocal、viewDirection、cameraPosition、screenUV、vertexColor()；构造：float、vec2、vec3、vec4、color；函数：mix、clamp、smoothstep、step、saturate、sin、cos、tan、abs、sign、floor、ceil、fract、pow、sqrt、exp、log、min、max、dot、cross、normalize、length、distance、reflect、fwidth、fresnel(normal, viewDir, power?)（支持 .add/.sub/.mul/.div/.pow/.min/.max/.clamp/.abs/.floor/.ceil/.fract/.saturate/.oneMinus/.negate）。',
       '   - 编写完成后，可用 shader__bind 绑定到指定材质或节点。',
     )
-  }
 
-  if (activeDomains.has('ui')) {
-    lines.push(
-      '7. 创建/修改 UI 界面（推荐优先 ui__createFromTemplate，再按需 ui__updateDocument / query__ui_inspect）：',
+  lines.push(
+      '',
+      '【UI】创建/修改 UI 界面（推荐优先 ui__createFromTemplate，再按需 ui__updateDocument / query__ui_inspect）：',
       '   - 优先使用 ui__createFromTemplate({ template: "hud"|"menu"|"dialog"|"result", title, subtitle, primaryText, secondaryText, varKey, scoreVarKey, accentColor, mountToScene: true }) 生成规范版式骨架，避免从零手算坐标出错。',
       '   - 手写或修改 UiDocument（{ schemaVersion: 1, root: UiNode }）排版铁律：',
       '     · 根节点 root 必须全屏铺满（mode: "anchor", anchorMin: {x:0,y:0}, anchorMax: {x:1,y:1}, pivot: {x:0,y:0}）。',
@@ -991,23 +1224,12 @@ function buildSystemPrompt(attachedRefs: AiRefItem[], activeDomains: Set<AiToolD
       '     · 视觉规范：卡片深色半透明（rgba(15,23,42,0.82)）+ borderRadius: 8~12 + borderWidth: 1；正文 ≥14px、标题 20~28px、按钮高 36~44px。',
       '   - 数据绑定：bindings: [{ id: "b1", target: "text"|"visible"|"enabled"|"progress.value"|"opacity", source: { kind: "variable", varId: "hp" } }]；按钮事件：click: { kind: "sendMessage", message: "start_game" } 或 { kind: "setVariable", varId: "...", value: "..." }。',
     )
-  }
-
-  if (activeDomains.has('capability')) {
-    lines.push(
-      '8. 能力包与玩法包：挂载物理、粒子、水面、天空、导航等能力前，建议先调用 query__registry_describe（指定 category）确认能力 ID 与参数 Schema。',
-    )
-  }
 
   lines.push(
-    '',
-    '--- 当前工程动态上下文 ---',
-    `工具域状态：${domainHint}`,
-    '当前工程设计规范（design.md）：',
-    designMd,
-    '',
-    `当前工程概览：${overview}${nodeIndexText}${refsContext}${planText}`,
-  )
+      '',
+      '【能力包】能力包与玩法包：挂载物理、粒子、水面、天空、导航等能力前，建议先调用 query__registry_describe（指定 category）确认能力 ID 与参数 Schema。',
+    )
 
-  return lines.join('\n')
+  cachedSystemPrompt = lines.join('\n')
+  return cachedSystemPrompt
 }

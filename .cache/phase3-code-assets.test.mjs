@@ -503,6 +503,16 @@ async function createRapierWorld() {
       if (!live || live.kind !== "dynamic") return;
       live.body.addTorque({ x: torque[0], y: torque[1], z: torque[2] }, true);
     },
+    setLinearVelocity(id, velocity) {
+      const live = bodies.get(id);
+      if (!live || live.kind !== "dynamic") return;
+      live.body.setLinvel({ x: velocity[0], y: velocity[1], z: velocity[2] }, true);
+    },
+    applyImpulse(id, impulse) {
+      const live = bodies.get(id);
+      if (!live || live.kind !== "dynamic") return;
+      live.body.applyImpulse({ x: impulse[0], y: impulse[1], z: impulse[2] }, true);
+    },
     dispose() {
       controller2.free();
       puppets.clear();
@@ -667,6 +677,20 @@ function registerPhysicsExtension(id, order, step2) {
     if (idx >= 0) extensions.splice(idx, 1);
   };
 }
+function getPhysicsBodyState(id) {
+  return world?.bodyState(id) ?? null;
+}
+function setPhysicsVelocity(id, velocity) {
+  world?.setLinearVelocity(id, velocity);
+}
+function applyPhysicsImpulse(id, impulse) {
+  world?.applyImpulse(id, impulse);
+}
+function applyPhysicsForce(id, force) {
+  const st = world?.bodyState(id);
+  if (!st || !world) return;
+  world.applyForceAtPoint(id, force, st.position);
+}
 function tickPhysics(dt, resolveObject) {
   const runtime2 = getRuntimeWorld();
   const enabled = capabilityEnabled(runtime2.getCapabilities(), "physics");
@@ -772,7 +796,7 @@ var world, booting, lastInspectorSync, meshCache, extensions;
 var init_session = __esm({
   "src/capabilities/physics/session.ts"() {
     "use strict";
-    init_registry();
+    init_registry2();
     init_transform();
     init_world();
     init_meshCollect();
@@ -1114,16 +1138,16 @@ function defaultWaterNormalTexture() {
       data[o + 3] = 255;
     }
   }
-  const texture3 = new DataTexture(data, size, size, RGBAFormat, UnsignedByteType);
-  texture3.colorSpace = NoColorSpace;
-  texture3.wrapS = RepeatWrapping;
-  texture3.wrapT = RepeatWrapping;
-  texture3.minFilter = LinearMipmapLinearFilter;
-  texture3.magFilter = LinearFilter;
-  texture3.generateMipmaps = true;
-  texture3.needsUpdate = true;
-  cachedNormal = texture3;
-  return texture3;
+  const texture4 = new DataTexture(data, size, size, RGBAFormat, UnsignedByteType);
+  texture4.colorSpace = NoColorSpace;
+  texture4.wrapS = RepeatWrapping;
+  texture4.wrapT = RepeatWrapping;
+  texture4.minFilter = LinearMipmapLinearFilter;
+  texture4.magFilter = LinearFilter;
+  texture4.generateMipmaps = true;
+  texture4.needsUpdate = true;
+  cachedNormal = texture4;
+  return texture4;
 }
 function cellularWeb(u, v, period, pts, thickness) {
   const gx = Math.floor(u * period);
@@ -1200,16 +1224,16 @@ function defaultWaterFoamTexture() {
       data[o + 3] = 255;
     }
   }
-  const texture3 = new DataTexture(data, size, size, RGBAFormat, UnsignedByteType);
-  texture3.colorSpace = NoColorSpace;
-  texture3.wrapS = RepeatWrapping;
-  texture3.wrapT = RepeatWrapping;
-  texture3.minFilter = LinearMipmapLinearFilter;
-  texture3.magFilter = LinearFilter;
-  texture3.generateMipmaps = true;
-  texture3.needsUpdate = true;
-  cachedFoam = texture3;
-  return texture3;
+  const texture4 = new DataTexture(data, size, size, RGBAFormat, UnsignedByteType);
+  texture4.colorSpace = NoColorSpace;
+  texture4.wrapS = RepeatWrapping;
+  texture4.wrapT = RepeatWrapping;
+  texture4.minFilter = LinearMipmapLinearFilter;
+  texture4.magFilter = LinearFilter;
+  texture4.generateMipmaps = true;
+  texture4.needsUpdate = true;
+  cachedFoam = texture4;
+  return texture4;
 }
 function defaultWaterCausticsTexture() {
   if (cachedCaustics) return cachedCaustics;
@@ -1261,16 +1285,16 @@ function defaultWaterCausticsTexture() {
       data[o + 3] = 255;
     }
   }
-  const texture3 = new DataTexture(data, size, size, RGBAFormat, UnsignedByteType);
-  texture3.colorSpace = NoColorSpace;
-  texture3.wrapS = RepeatWrapping;
-  texture3.wrapT = RepeatWrapping;
-  texture3.minFilter = LinearMipmapLinearFilter;
-  texture3.magFilter = LinearFilter;
-  texture3.generateMipmaps = true;
-  texture3.needsUpdate = true;
-  cachedCaustics = texture3;
-  return texture3;
+  const texture4 = new DataTexture(data, size, size, RGBAFormat, UnsignedByteType);
+  texture4.colorSpace = NoColorSpace;
+  texture4.wrapS = RepeatWrapping;
+  texture4.wrapT = RepeatWrapping;
+  texture4.minFilter = LinearMipmapLinearFilter;
+  texture4.magFilter = LinearFilter;
+  texture4.generateMipmaps = true;
+  texture4.needsUpdate = true;
+  cachedCaustics = texture4;
+  return texture4;
 }
 var cachedNormal, cachedFoam, cachedCaustics;
 var init_proceduralTextures = __esm({
@@ -2430,7 +2454,7 @@ var init_session2 = __esm({
   "src/capabilities/water/session.ts"() {
     "use strict";
     init_world();
-    init_registry();
+    init_registry2();
     init_defaults();
     init_waterMaterial();
     init_waves();
@@ -2662,706 +2686,334 @@ var init_session3 = __esm({
   }
 });
 
-// src/capabilities/sky/defaults.ts
-function defaultSkySettings() {
+// src/runtime/motion.ts
+function evalEasing(name, rawT) {
+  const t = Math.max(0, Math.min(1, Number.isFinite(rawT) ? rawT : 0));
+  switch (name) {
+    case "inQuad":
+      return t * t;
+    case "outQuad":
+      return 1 - (1 - t) * (1 - t);
+    case "inOutQuad":
+      return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+    case "inCubic":
+      return t * t * t;
+    case "outCubic":
+      return 1 - Math.pow(1 - t, 3);
+    case "inOutCubic":
+      return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+    case "inOutSine":
+      return -(Math.cos(Math.PI * t) - 1) / 2;
+    case "outBack": {
+      const c1 = 1.70158;
+      const c3 = c1 + 1;
+      return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2);
+    }
+    case "inOutBack": {
+      const c1 = 1.70158;
+      const c2 = c1 * 1.525;
+      return t < 0.5 ? Math.pow(2 * t, 2) * ((c2 + 1) * 2 * t - c2) / 2 : (Math.pow(2 * t - 2, 2) * ((c2 + 1) * (t * 2 - 2) + c2) + 2) / 2;
+    }
+    case "outBounce": {
+      const n1 = 7.5625;
+      const d1 = 2.75;
+      if (t < 1 / d1) return n1 * t * t;
+      if (t < 2 / d1) {
+        const u2 = t - 1.5 / d1;
+        return n1 * u2 * u2 + 0.75;
+      }
+      if (t < 2.5 / d1) {
+        const u2 = t - 2.25 / d1;
+        return n1 * u2 * u2 + 0.9375;
+      }
+      const u = t - 2.625 / d1;
+      return n1 * u * u + 0.984375;
+    }
+    case "outElastic": {
+      if (t === 0 || t === 1) return t;
+      const c4 = 2 * Math.PI / 3;
+      return Math.pow(2, -10 * t) * Math.sin((t * 10 - 0.75) * c4) + 1;
+    }
+    case "linear":
+    default:
+      return t;
+  }
+}
+function normalizeCurveKeys(rawKeys) {
+  const out = [];
+  for (const k of rawKeys) {
+    if (Array.isArray(k)) {
+      const t = Number(k[0]);
+      const v = Number(k[1]);
+      if (Number.isFinite(t) && Number.isFinite(v)) {
+        out.push({ t, v, mode: "smooth" });
+      }
+    } else if (k && typeof k === "object") {
+      const obj = k;
+      const t = Number(obj.t);
+      const v = Number(obj.v);
+      const mode = obj.mode === "linear" || obj.mode === "step" ? obj.mode : "smooth";
+      if (Number.isFinite(t) && Number.isFinite(v)) {
+        out.push({ t, v, mode });
+      }
+    }
+  }
+  out.sort((a, b) => a.t - b.t);
+  return out;
+}
+function evalCurveKeys(keys, rawT, wrapMode = "clamp") {
+  if (keys.length === 0) return 0;
+  if (keys.length === 1) return keys[0].v;
+  const minT = keys[0].t;
+  const maxT = keys[keys.length - 1].t;
+  const span = maxT - minT;
+  let t = Number.isFinite(rawT) ? rawT : minT;
+  if (span > 1e-6) {
+    if (wrapMode === "loop") {
+      const offset = ((t - minT) % span + span) % span;
+      t = minT + offset;
+    } else if (wrapMode === "pingPong") {
+      const cycle = span * 2;
+      const offset = ((t - minT) % cycle + cycle) % cycle;
+      t = offset <= span ? minT + offset : maxT - (offset - span);
+    } else {
+      t = Math.max(minT, Math.min(maxT, t));
+    }
+  } else {
+    return keys[0].v;
+  }
+  for (let i = 0; i < keys.length - 1; i += 1) {
+    const a = keys[i];
+    const b = keys[i + 1];
+    if (t <= b.t || i === keys.length - 2) {
+      const segLen = b.t - a.t;
+      if (segLen <= 1e-6) return b.v;
+      const u = Math.max(0, Math.min(1, (t - a.t) / segLen));
+      if (a.mode === "step") return a.v;
+      if (a.mode === "linear") return a.v + (b.v - a.v) * u;
+      const s = u * u * (3 - 2 * u);
+      return a.v + (b.v - a.v) * s;
+    }
+  }
+  return keys[keys.length - 1].v;
+}
+function createAnimationCurve(rawKeys, options) {
+  const keys = normalizeCurveKeys(rawKeys);
+  const wrap = options?.wrap ?? "clamp";
   return {
-    timeOfDay: 15,
-    latitude: 35,
-    dayOfYear: 172,
-    north: "+Z",
-    exposure: 2.5,
-    turbidity: 1,
-    groundAlbedo: 0.3,
-    sunDisc: true,
-    sunAngularDiameter: 0.53,
-    sunIntensity: 0.12,
-    sunShadow: true,
-    fog: false,
-    fogDensity: 0.3,
-    fogHeightFalloff: 300,
-    fogBaseHeight: 0,
-    fogMaxOpacity: 1,
-    fogColor: "#c9d6e6",
-    fogSkyColor: true,
-    haze: false,
-    hazeStrength: 1,
-    hazeNear: 200,
-    stars: false,
-    starIntensity: 1,
-    starSize: 0.7,
-    milkyWay: 0.25,
-    moon: false,
-    moonAngularDiameter: 0.53,
-    moonPhase: 0.5,
-    moonLight: 1,
-    mirrorBelowHorizon: false
+    keys,
+    eval: (t) => evalCurveKeys(keys, t, wrap)
   };
 }
-function normalizeSkySettings(value) {
-  const base = defaultSkySettings();
-  if (!value || typeof value !== "object") return base;
-  const raw = value;
-  return {
-    timeOfDay: clamp3(raw.timeOfDay, base.timeOfDay, 0, 24),
-    latitude: clamp3(raw.latitude, base.latitude, -90, 90),
-    dayOfYear: Math.round(clamp3(raw.dayOfYear, base.dayOfYear, 1, 365)),
-    north: typeof raw.north === "string" && NORTH.includes(raw.north) ? raw.north : base.north,
-    exposure: clamp3(raw.exposure, base.exposure, 0, 120),
-    turbidity: clamp3(raw.turbidity, base.turbidity, 0, 12),
-    groundAlbedo: clamp3(raw.groundAlbedo, base.groundAlbedo, 0, 1),
-    sunDisc: bool(raw.sunDisc, base.sunDisc),
-    sunAngularDiameter: clamp3(raw.sunAngularDiameter, base.sunAngularDiameter, 0.05, 12),
-    sunIntensity: clamp3(raw.sunIntensity, base.sunIntensity, 0, 4),
-    sunShadow: bool(raw.sunShadow, base.sunShadow),
-    fog: bool(raw.fog, base.fog),
-    fogDensity: clamp3(raw.fogDensity, base.fogDensity, 0, 12),
-    fogHeightFalloff: clamp3(raw.fogHeightFalloff, base.fogHeightFalloff, 1, 8e3),
-    fogBaseHeight: clamp3(raw.fogBaseHeight, base.fogBaseHeight, -500, 8e3),
-    fogMaxOpacity: clamp3(raw.fogMaxOpacity, base.fogMaxOpacity, 0, 1),
-    fogColor: colorOf(raw.fogColor, base.fogColor),
-    fogSkyColor: bool(raw.fogSkyColor, base.fogSkyColor),
-    haze: bool(raw.haze, base.haze),
-    hazeStrength: clamp3(raw.hazeStrength, base.hazeStrength, 0, 3),
-    hazeNear: clamp3(raw.hazeNear, base.hazeNear, 1, 1e3),
-    stars: bool(raw.stars, base.stars),
-    starIntensity: clamp3(raw.starIntensity, base.starIntensity, 0, 4),
-    starSize: clamp3(raw.starSize, base.starSize, 0.2, 3),
-    milkyWay: clamp3(raw.milkyWay, base.milkyWay, 0, 2),
-    moon: bool(raw.moon, base.moon),
-    moonAngularDiameter: clamp3(raw.moonAngularDiameter, base.moonAngularDiameter, 0.05, 12),
-    moonPhase: clamp3(raw.moonPhase, base.moonPhase, 0, 1),
-    moonLight: clamp3(raw.moonLight, base.moonLight, 0, 3),
-    mirrorBelowHorizon: bool(raw.mirrorBelowHorizon, base.mirrorBelowHorizon)
-  };
+function catmullRomValue(p0, p1, p2, p3, t, tension) {
+  const t2 = t * t;
+  const t3 = t2 * t;
+  const m1 = tension * (p2 - p0);
+  const m2 = tension * (p3 - p1);
+  const a = 2 * p1 - 2 * p2 + m1 + m2;
+  const b = -3 * p1 + 3 * p2 - 2 * m1 - m2;
+  return a * t3 + b * t2 + m1 * t + p1;
 }
-function clamp3(value, fallback, min3, max4) {
-  const next = typeof value === "number" && Number.isFinite(value) ? value : fallback;
-  return Math.min(max4, Math.max(min3, next));
-}
-function bool(value, fallback) {
-  return typeof value === "boolean" ? value : fallback;
-}
-function colorOf(value, fallback) {
-  return typeof value === "string" && /^#[0-9a-fA-F]{6}$/.test(value) ? value : fallback;
-}
-var SKY_CAPABILITY_ID, NORTH;
-var init_defaults3 = __esm({
-  "src/capabilities/sky/defaults.ts"() {
-    "use strict";
-    SKY_CAPABILITY_ID = "sky";
-    NORTH = ["+X", "-X", "+Z", "-Z"];
-  }
-});
-
-// src/core/layers.ts
-var EDITOR_HELPER_LAYER;
-var init_layers = __esm({
-  "src/core/layers.ts"() {
-    "use strict";
-    EDITOR_HELPER_LAYER = 31;
-  }
-});
-
-// src/capabilities/sky/runtime.ts
-var runtime_exports = {};
-__export(runtime_exports, {
-  createSkyDriver: () => createSkyDriver
-});
-import { Color as Color3, OrthographicCamera } from "three";
-import { mix as mix3, uniform as uniform2, vec4 as vec42 } from "three/tsl";
-import { Sky } from "@pmndrs/sky";
-function createSkyDriver(renderer, scene2) {
-  return new SkyRuntime(renderer, scene2);
-}
-function degreesToRadians(degrees) {
-  return degrees * Math.PI / 180;
-}
-function fogChanged(prev, next) {
-  return prev.fog !== next.fog || prev.fogDensity !== next.fogDensity || prev.fogHeightFalloff !== next.fogHeightFalloff || prev.fogBaseHeight !== next.fogBaseHeight || prev.fogMaxOpacity !== next.fogMaxOpacity;
-}
-function lightUserLayers(light) {
-  light.layers.disableAll();
-  for (let bit = 0; bit < EDITOR_HELPER_LAYER; bit += 1) light.layers.enable(bit);
-}
-function configureShadow(light) {
-  light.shadow.mapSize.set(2048, 2048);
-  light.shadow.bias = -15e-5;
-  light.shadow.normalBias = 0.04;
-  const camera = light.shadow.camera;
-  if (camera instanceof OrthographicCamera) {
-    camera.near = 0.5;
-    camera.far = 160;
-    camera.left = -40;
-    camera.right = 40;
-    camera.top = 40;
-    camera.bottom = -40;
-    camera.updateProjectionMatrix();
-  }
-}
-var SkyRuntime;
-var init_runtime = __esm({
-  "src/capabilities/sky/runtime.ts"() {
-    "use strict";
-    init_layers();
-    init_session4();
-    SkyRuntime = class {
-      constructor(renderer, scene2) {
-        this.scene = scene2;
-        this.sky = new Sky(renderer, {
-          preset: "earth",
-          sunColor: "bruneton",
-          enableAerialPerspective: true
-        });
-        this.sky.attach(scene2);
-        this.sun = this.sky.createSun({
-          physical: true,
-          intensity: 0.12,
-          castShadow: true,
-          horizonFade: true
-        });
-        lightUserLayers(this.sun.light);
-        configureShadow(this.sun.light);
-        this.sun.attach(scene2);
-      }
-      scene;
-      sky;
-      sun;
-      moon = null;
-      applied = null;
-      starsWanted = false;
-      starsReady = false;
-      starsPending = false;
-      starToken = 0;
-      night = null;
-      starLook = null;
-      fogTint = uniform2(new Color3("#c9d6e6"));
-      fogUseColor = uniform2(0);
-      hazeOn = false;
-      fogOn = false;
-      apKey = "";
-      applyFogNode = (colorNode, scenePass) => {
-        let node = colorNode;
-        if (this.hazeOn && this.sky.aerialPerspectiveTexture) {
-          this.sky.setHazePolicy("ap");
-          node = this.sky.applyHaze(node, {
-            scenePass,
-            policy: "ap",
-            raymarchFallback: false,
-            // 编辑器远平面只有两千米。不传这个的话，远处地面的深度会被当成天空，雾气在合成时被减掉。
-            useCameraFar: true
-          });
-        }
-        if (!this.fogOn) return node;
-        const skyFog = this.sky.applyFog(node, { scenePass });
-        const amount = this.sky.applyFog(node, { scenePass, debugMode: "fog-amount" });
-        const base = node;
-        const flat = mix3(base.rgb, this.fogTint, amount.r);
-        return vec42(mix3(skyFog.rgb, flat, this.fogUseColor), skyFog.a);
-      };
-      /** 构造时库自己已经开始编译。这里只取那一份 Promise，避免和主绘制抢渲染器。 */
-      compile() {
-        return this.sky.compileAsync();
-      }
-      hazeReady() {
-        return Boolean(this.sky.aerialPerspectiveTexture);
-      }
-      sync(settings, camera) {
-        const prev = this.applied;
-        if (!prev || prev.timeOfDay !== settings.timeOfDay) this.sky.setTimeOfDay(settings.timeOfDay);
-        if (!prev || prev.latitude !== settings.latitude) this.sky.setLatitude(settings.latitude);
-        if (!prev || prev.dayOfYear !== settings.dayOfYear) this.sky.setDayOfYear(settings.dayOfYear);
-        if (!prev || prev.north !== settings.north) this.sky.setNorth(settings.north);
-        if (!prev || prev.exposure !== settings.exposure) this.sky.setExposure(settings.exposure);
-        if (!prev || prev.turbidity !== settings.turbidity) this.sky.setTurbidity(settings.turbidity);
-        if (!prev || prev.groundAlbedo !== settings.groundAlbedo) this.sky.setGroundAlbedo(settings.groundAlbedo);
-        if (!prev || prev.sunDisc !== settings.sunDisc || prev.sunAngularDiameter !== settings.sunAngularDiameter) {
-          this.sky.setSunDisc({
-            visible: settings.sunDisc,
-            angularDiameter: degreesToRadians(settings.sunAngularDiameter)
-          });
-        }
-        if (!prev || prev.mirrorBelowHorizon !== settings.mirrorBelowHorizon) this.sky.setMirrorBelowHorizon(settings.mirrorBelowHorizon);
-        if (!prev || prev.sunIntensity !== settings.sunIntensity) this.sun.setIntensity(settings.sunIntensity);
-        if (!prev || prev.sunShadow !== settings.sunShadow) this.sun.castShadow = settings.sunShadow;
-        if (!prev || fogChanged(prev, settings)) {
-          this.sky.setFog({
-            density: settings.fogDensity,
-            heightFalloff: settings.fogHeightFalloff,
-            baseHeight: settings.fogBaseHeight,
-            maxOpacity: settings.fog ? settings.fogMaxOpacity : 0
-          });
-        }
-        this.fogTint.value.set(settings.fogColor);
-        this.fogUseColor.value = settings.fogSkyColor ? 0 : 1;
-        if (!prev || prev.hazeStrength !== settings.hazeStrength) this.sky.setHazeStrength(settings.hazeStrength);
-        if (!prev || prev.hazeNear !== settings.hazeNear) this.sky.setAerialPerspectiveDistanceScale(settings.hazeNear);
-        this.hazeOn = settings.haze;
-        this.fogOn = settings.fog;
-        this.syncMoon(settings);
-        this.syncStars(settings);
-        this.applied = settings;
-        this.sky.update(camera);
-        this.applyCelestialFade(settings, prev);
-        if (settings.haze && this.hazeReady()) {
-          const e = camera.matrixWorld.elements;
-          const nextApKey = `${e[0].toFixed(3)},${e[4].toFixed(3)},${e[8].toFixed(3)},${e[12].toFixed(2)},${e[13].toFixed(2)},${e[14].toFixed(2)}|${settings.timeOfDay}|${settings.latitude}|${settings.dayOfYear}|${settings.north}|${settings.turbidity}|${settings.groundAlbedo}`;
-          if (nextApKey !== this.apKey) {
-            this.apKey = nextApKey;
-            void this.sky.updateAerialPerspective();
-          }
-        } else {
-          this.apKey = "";
-        }
-        const atmosphere = settings.fog || settings.haze;
-        setSkyViewState({
-          owns: true,
-          fog: atmosphere,
-          apply: atmosphere ? this.applyFogNode : null,
-          signature: `${settings.haze ? 1 : 0}${settings.fog ? 1 : 0}`
-        });
-      }
-      dispose() {
-        this.starToken += 1;
-        this.starsWanted = false;
-        if (this.starsReady) this.sky.disableStars();
-        this.starsReady = false;
-        this.night = null;
-        this.moon?.dispose();
-        this.moon = null;
-        this.sun.dispose();
-        this.sky.detach();
-        this.sky.dispose();
-        setSkyViewState({ owns: false, fog: false, apply: null });
-      }
-      syncMoon(settings) {
-        if (!settings.moon) {
-          this.moon?.dispose();
-          this.moon = null;
-          return;
-        }
-        if (!this.moon) {
-          this.moon = this.sky.createMoonlight({
-            skyFill: false,
-            castShadow: false,
-            phase: settings.moonPhase,
-            discAngularDiameter: degreesToRadians(settings.moonAngularDiameter)
-          });
-          lightUserLayers(this.moon.moon.light);
-          this.moon.attach(this.scene);
-          this.moon.setIntensity(settings.moonLight);
-          this.moon.moon.setDiscIntensity(3);
-          return;
-        }
-        const prev = this.applied;
-        if (!prev || prev.moonLight !== settings.moonLight) this.moon.setIntensity(settings.moonLight);
-        if (!prev || prev.moonPhase !== settings.moonPhase) this.moon.setPhase(settings.moonPhase);
-        if (!prev || prev.moonAngularDiameter !== settings.moonAngularDiameter) {
-          this.moon.moon.setDiscAngularDiameter(degreesToRadians(settings.moonAngularDiameter));
-        }
-        this.moon.moon.setDiscIntensity(3);
-      }
-      syncStars(settings) {
-        const enabled = settings.stars;
-        if (enabled) this.starLook = settings;
-        if (enabled === this.starsWanted && (!enabled || this.starsReady || this.starsPending)) {
-          if (enabled && this.night) this.applyStarLook(settings);
-          return;
-        }
-        this.starsWanted = enabled;
-        this.starToken += 1;
-        if (!enabled) {
-          if (this.starsReady) this.sky.disableStars();
-          this.starsReady = false;
-          this.starsPending = false;
-          this.night = null;
-          return;
-        }
-        const token = this.starToken;
-        this.starsPending = true;
-        void this.sky.enableStars({
-          intensity: settings.starIntensity,
-          size: settings.starSize,
-          milkyWay: settings.milkyWay
-        }).then((night) => {
-          if (token !== this.starToken) {
-            this.sky.disableStars();
-            this.starsReady = false;
-            this.starsPending = false;
-            this.night = null;
-            return;
-          }
-          this.night = night;
-          this.starsPending = false;
-          this.starsReady = true;
-          if (this.starLook) this.applyStarLook(this.starLook, true);
-        }).catch((error) => {
-          if (token === this.starToken) this.starsPending = false;
-          console.warn("[sky] \u661F\u7A7A\u52A0\u8F7D\u5931\u8D25", error);
-        });
-      }
-      applyStarLook(settings, force = false) {
-        const night = this.night;
-        if (!night) return;
-        const prev = force ? null : this.applied;
-        if (!prev || prev.starIntensity !== settings.starIntensity) night.setIntensity(settings.starIntensity);
-        if (!prev || prev.starSize !== settings.starSize) night.setSize(settings.starSize);
-        if (!prev || prev.milkyWay !== settings.milkyWay) night.setMilkyWay(settings.milkyWay);
-        this.applyStarContrast(settings, prev);
-      }
-      /**
-       * 星星按天空亮度淡出，和夜空示例一样。
-       * 库的阈值按曝光 40 调过。这里曝光低得多，要按同样比例放大，否则白天也看得见。
-       * 月面不要再乘太阳高度：那会在白天把月盘亮度写成 0。月亮跟着月相转到地平线以下时，本来就看不到。
-       */
-      applyCelestialFade(settings, prev) {
-        this.applyStarContrast(settings, prev);
-      }
-      applyStarContrast(settings, prev) {
-        const night = this.night;
-        if (!night || prev && prev.exposure === settings.exposure) return;
-        const scale = 40 / Math.max(settings.exposure, 0.05);
-        night.setContrast(40 * scale);
-        night.setMilkyWayContrast(20 * scale);
-      }
+function createSplinePath(rawPoints, options) {
+  const points = rawPoints.map((p) => ({ x: p.x, y: p.y, z: p.z }));
+  const closed = Boolean(options?.closed);
+  const tension = Number.isFinite(options?.tension) ? Number(options?.tension) : 0.5;
+  const samplesPerSegment = Math.max(4, Math.min(64, Math.floor(options?.samplesPerSegment ?? 16)));
+  if (points.length === 0) {
+    const zero = { x: 0, y: 0, z: 0 };
+    return {
+      length: 0,
+      points,
+      closed,
+      pointAt: () => ({ ...zero }),
+      tangentAt: () => ({ x: 0, y: 0, z: 1 }),
+      pointAtDistance: () => ({ ...zero }),
+      tangentAtDistance: () => ({ x: 0, y: 0, z: 1 })
     };
   }
-});
-
-// src/capabilities/sky/session.ts
-var session_exports3 = {};
-__export(session_exports3, {
-  composeSkyFog: () => composeSkyFog,
-  dispose: () => dispose3,
-  mount: () => mount3,
-  releaseSkyResources: () => releaseSkyResources,
-  setSkyViewState: () => setSkyViewState,
-  skyBlocksFrame: () => skyBlocksFrame,
-  skyFogActive: () => skyFogActive,
-  skyFogRevision: () => skyFogRevision,
-  skyOwnsSceneSlots: () => skyOwnsSceneSlots
-});
-function skyOwnsSceneSlots() {
-  return ownsSlots;
-}
-function skyBlocksFrame() {
-  return compiling;
-}
-function skyFogActive() {
-  return fogActive;
-}
-function skyFogRevision() {
-  return fogRevision;
-}
-function composeSkyFog(colorNode, scenePass) {
-  return fogApply ? fogApply(colorNode, scenePass) : colorNode;
-}
-function setSkyViewState(next) {
-  ownsSlots = next.owns;
-  const signature = next.signature ?? "";
-  if (fogActive === next.fog && fogApply === next.apply && fogSignature === signature) return;
-  fogActive = next.fog;
-  fogApply = next.apply;
-  fogSignature = signature;
-  fogRevision += 1;
-}
-function releaseSkyResources() {
-  bootToken += 1;
-  booting2 = false;
-  compiling = false;
-  driver?.dispose();
-  driver = null;
-  setSkyViewState({ owns: false, fog: false, apply: null });
-}
-function mount3() {
-  if (removeHook) return () => shutdown();
-  removeHook = getRuntimeWorld().registerBeforeRenderHook?.("sky", 20, (ctx) => onBeforeRender2(ctx)) ?? null;
-  return () => shutdown();
-}
-function dispose3() {
-  shutdown();
-}
-function shutdown() {
-  removeHook?.();
-  removeHook = null;
-  releaseSkyResources();
-}
-function onBeforeRender2(ctx) {
-  pending = ctx;
-  try {
-    const runtime2 = getRuntimeWorld();
-    if (!capabilityEnabled(runtime2.getCapabilities(), SKY_CAPABILITY_ID)) {
-      if (driver || booting2 || compiling) releaseSkyResources();
-      return;
-    }
-    const settings = normalizeSkySettings(runtime2.getPicture().capabilities?.[SKY_CAPABILITY_ID]);
-    if (!driver) {
-      ensure();
-      return;
-    }
-    if (compiling) return;
-    if (settings.haze && !driver.hazeReady()) {
-      driver.dispose();
-      driver = null;
-      ensure();
-      return;
-    }
-    driver.sync(settings, ctx.camera);
-  } catch (error) {
-    console.warn("[sky] \u5929\u7A7A\u66F4\u65B0\u5931\u8D25", error);
-  } finally {
-    restoreCanvas(ctx);
+  if (points.length === 1) {
+    const only = points[0];
+    return {
+      length: 0,
+      points,
+      closed,
+      pointAt: () => ({ ...only }),
+      tangentAt: () => ({ x: 0, y: 0, z: 1 }),
+      pointAtDistance: () => ({ ...only }),
+      tangentAtDistance: () => ({ x: 0, y: 0, z: 1 })
+    };
   }
-}
-function restoreCanvas(ctx) {
-  try {
-    ctx.renderer.setRenderTarget(null);
-  } catch {
-  }
-}
-function ensure() {
-  if (booting2 || !pending) return;
-  booting2 = true;
-  const token = ++bootToken;
-  const ctx = pending;
-  void Promise.resolve().then(() => (init_runtime(), runtime_exports)).then((module) => {
-    if (token !== bootToken) return;
-    booting2 = false;
-    const runtime2 = getRuntimeWorld();
-    if (!capabilityEnabled(runtime2.getCapabilities(), SKY_CAPABILITY_ID) || !pending) return;
-    let created;
-    try {
-      created = module.createSkyDriver(ctx.renderer, ctx.scene);
-    } catch (error) {
-      console.warn("[sky] \u5929\u7A7A\u521B\u5EFA\u5931\u8D25", error);
-      return;
+  const segCount = closed ? points.length : points.length - 1;
+  const getCtrl = (idx) => {
+    if (closed) {
+      const wrapped = (idx % points.length + points.length) % points.length;
+      return points[wrapped];
     }
-    driver = created;
-    compiling = true;
-    void created.compile().then(() => {
-      if (token !== bootToken || driver !== created || !pending) return;
-      const latest = getRuntimeWorld();
-      if (!capabilityEnabled(latest.getCapabilities(), SKY_CAPABILITY_ID)) return;
-      created.sync(normalizeSkySettings(latest.getPicture().capabilities?.[SKY_CAPABILITY_ID]), pending.camera);
-    }).catch((error) => {
-      console.warn("[sky] \u7740\u8272\u5668\u7F16\u8BD1\u5931\u8D25", error);
-    }).finally(() => {
-      if (token === bootToken) compiling = false;
-    });
-  }).catch((error) => {
-    if (token === bootToken) booting2 = false;
-    console.warn("[sky] \u5929\u7A7A\u52A0\u8F7D\u5931\u8D25", error);
-  });
+    const clamped = Math.max(0, Math.min(points.length - 1, idx));
+    return points[clamped];
+  };
+  const rawPointAt = (uRaw) => {
+    const u = closed ? (uRaw % 1 + 1) % 1 : Math.max(0, Math.min(1, uRaw));
+    const scaled = u * segCount;
+    const segIdx = Math.min(segCount - 1, Math.floor(scaled));
+    const localT = scaled - segIdx;
+    const p0 = getCtrl(segIdx - 1);
+    const p1 = getCtrl(segIdx);
+    const p2 = getCtrl(segIdx + 1);
+    const p3 = getCtrl(segIdx + 2);
+    return {
+      x: catmullRomValue(p0.x, p1.x, p2.x, p3.x, localT, tension),
+      y: catmullRomValue(p0.y, p1.y, p2.y, p3.y, localT, tension),
+      z: catmullRomValue(p0.z, p1.z, p2.z, p3.z, localT, tension)
+    };
+  };
+  const totalSamples = segCount * samplesPerSegment;
+  const lutU = [0];
+  const lutDist = [0];
+  let acc = 0;
+  let prev = rawPointAt(0);
+  for (let i = 1; i <= totalSamples; i += 1) {
+    const u = i / totalSamples;
+    const cur = rawPointAt(u);
+    acc += Math.hypot(cur.x - prev.x, cur.y - prev.y, cur.z - prev.z);
+    lutU.push(u);
+    lutDist.push(acc);
+    prev = cur;
+  }
+  const totalLength = acc;
+  const distanceToU = (distRaw) => {
+    if (totalLength <= 1e-6) return 0;
+    const d = closed ? (distRaw % totalLength + totalLength) % totalLength : Math.max(0, Math.min(totalLength, distRaw));
+    let lo = 0;
+    let hi = lutDist.length - 1;
+    while (lo < hi - 1) {
+      const mid = lo + hi >> 1;
+      if (lutDist[mid] <= d) lo = mid;
+      else hi = mid;
+    }
+    const d0 = lutDist[lo];
+    const d1 = lutDist[hi];
+    const ratio = d1 > d0 + 1e-6 ? (d - d0) / (d1 - d0) : 0;
+    return lutU[lo] + (lutU[hi] - lutU[lo]) * ratio;
+  };
+  const tangentFromU = (u) => {
+    const eps = 1 / Math.max(100, totalSamples * 2);
+    const a = rawPointAt(u - eps);
+    const b = rawPointAt(u + eps);
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const dz = b.z - a.z;
+    const len = Math.hypot(dx, dy, dz);
+    if (len <= 1e-6) return { x: 0, y: 0, z: 1 };
+    return { x: dx / len, y: dy / len, z: dz / len };
+  };
+  return {
+    length: totalLength,
+    points,
+    closed,
+    pointAt: (t) => rawPointAt(distanceToU((closed ? (t % 1 + 1) % 1 : Math.max(0, Math.min(1, t))) * totalLength)),
+    tangentAt: (t) => tangentFromU(distanceToU((closed ? (t % 1 + 1) % 1 : Math.max(0, Math.min(1, t))) * totalLength)),
+    pointAtDistance: (distance2) => rawPointAt(distanceToU(distance2)),
+    tangentAtDistance: (distance2) => tangentFromU(distanceToU(distance2))
+  };
 }
-var ownsSlots, fogActive, fogApply, fogSignature, fogRevision, removeHook, driver, booting2, bootToken, pending, compiling;
-var init_session4 = __esm({
-  "src/capabilities/sky/session.ts"() {
+var init_motion = __esm({
+  "src/runtime/motion.ts"() {
     "use strict";
-    init_registry();
-    init_world();
-    init_defaults3();
-    ownsSlots = false;
-    fogActive = false;
-    fogApply = null;
-    fogSignature = "";
-    fogRevision = 0;
-    removeHook = null;
-    driver = null;
-    booting2 = false;
-    bootToken = 0;
-    pending = null;
-    compiling = false;
   }
 });
 
-// src/capabilities/registry.ts
-function allCapabilityManifests() {
-  return [...CAPABILITIES, ...dynamicCapabilities.values()];
+// src/capabilities/particles/readQuarks.ts
+function readQuarksDocument(json) {
+  if (!json || typeof json !== "object") return null;
+  const record = json;
+  if (record.version === "3.0" && record.shape && typeof record.shape === "object") {
+    const body = { ...record };
+    delete body.material;
+    delete body.texture;
+    return {
+      simulation: { format: "system", body },
+      appearance: appearanceFromFields(record, DEFAULT_APPEARANCE)
+    };
+  }
+  if (record.object && typeof record.object === "object") {
+    const system = findSystem(record.object);
+    return {
+      simulation: { format: "loader", body: record },
+      appearance: appearanceFromLoader(record, system)
+    };
+  }
+  return null;
 }
-function defaultCapabilities() {
-  const base = Object.fromEntries(CAPABILITIES.map((item) => [item.id, item.defaultEnabled]));
-  for (const item of dynamicCapabilities.values()) base[item.id] = item.defaultEnabled;
-  return base;
+function asSimulation(value) {
+  if (!value || typeof value !== "object") return null;
+  const record = value;
+  if ((record.format === "system" || record.format === "loader") && record.body && typeof record.body === "object") {
+    return { format: record.format, body: record.body };
+  }
+  return readQuarksDocument(value)?.simulation ?? null;
 }
-function capabilityEnabled(capabilities, id) {
-  const defaults = defaultCapabilities();
-  if (!capabilities || typeof capabilities[id] !== "boolean") return defaults[id] ?? false;
-  const manifest = allCapabilityManifests().find((item) => item.id === id);
-  if (manifest?.dependencies) {
-    for (const dep of manifest.dependencies) {
-      if (!capabilityEnabled(capabilities, dep)) return false;
+function appearanceFromLoader(root, system) {
+  const materials = Array.isArray(root.materials) ? root.materials : [];
+  const materialId = system && typeof system.material === "string" ? system.material : "";
+  const material = materials.find((item) => item && typeof item === "object" && item.uuid === materialId);
+  const appearance = appearanceFromFields(material ?? system ?? {}, DEFAULT_APPEARANCE);
+  appearance.image = firstImage(root);
+  return appearance;
+}
+function appearanceFromFields(source, fallback) {
+  const premultiplied = source.premultipliedAlpha === true;
+  return {
+    color: cssColor(source.color) ?? fallback.color,
+    blend: premultiplied ? "premultiply" : blendFromThree(source.blending, fallback.blend),
+    opacity: typeof source.opacity === "number" ? source.opacity : fallback.opacity,
+    depthWrite: typeof source.depthWrite === "boolean" ? source.depthWrite : fallback.depthWrite,
+    image: fallback.image
+  };
+}
+function blendFromThree(value, fallback) {
+  if (value === 2) return "additive";
+  if (value === 4) return "multiply";
+  if (value === 1) return "alpha";
+  if (value === 5) return "premultiply";
+  return fallback;
+}
+function cssColor(value) {
+  if (typeof value !== "number" || !Number.isFinite(value)) return null;
+  return `#${Math.max(0, Math.min(16777215, value)).toString(16).padStart(6, "0")}`;
+}
+function firstImage(root) {
+  if (!Array.isArray(root.images)) return null;
+  for (const image of root.images) {
+    if (image && typeof image === "object" && typeof image.url === "string") {
+      const url = image.url;
+      if (url.length > 0) return url;
     }
   }
-  return capabilities[id];
+  return null;
 }
-var CAPABILITIES, dynamicCapabilities;
-var init_registry = __esm({
-  "src/capabilities/registry.ts"() {
-    "use strict";
-    CAPABILITIES = [
-      { id: "physics", defaultEnabled: true, category: "physics" },
-      { id: "buoyancy", defaultEnabled: true, category: "physics", dependencies: ["physics"], loadRuntime: () => Promise.resolve().then(() => (init_session3(), session_exports2)) },
-      { id: "navigation", defaultEnabled: true, category: "physics" },
-      { id: "particles", defaultEnabled: false, category: "scene-object" },
-      { id: "sky", defaultEnabled: false, category: "environment", loadRuntime: () => Promise.resolve().then(() => (init_session4(), session_exports3)) },
-      { id: "water", defaultEnabled: false, category: "environment", loadRuntime: () => Promise.resolve().then(() => (init_session2(), session_exports)) }
-    ];
-    dynamicCapabilities = /* @__PURE__ */ new Map();
+function findSystem(value) {
+  if (!value || typeof value !== "object") return null;
+  const record = value;
+  if (record.ps && typeof record.ps === "object") return record.ps;
+  if (Array.isArray(record.children)) {
+    for (const child of record.children) {
+      const found = findSystem(child);
+      if (found) return found;
+    }
   }
-});
-
-// src/capabilities/navigation/recastNav.ts
-var recastNav_exports = {};
-__export(recastNav_exports, {
-  createRecastNavigation: () => createRecastNavigation
-});
-import {
-  exportNavMesh,
-  exportTileCache,
-  getNavMeshPositionsAndIndices,
-  importNavMesh,
-  importTileCache,
-  init,
-  NavMeshQuery
-} from "recast-navigation";
-import { createDefaultTileCacheMeshProcess } from "recast-navigation/generators";
-async function createRecastNavigation() {
-  await init();
-  return new RecastNavigation();
+  return null;
 }
-function abortError() {
-  const error = new Error("aborted");
-  error.name = "AbortError";
-  return error;
-}
-var RecastNavigation;
-var init_recastNav = __esm({
-  "src/capabilities/navigation/recastNav.ts"() {
+var DEFAULT_APPEARANCE;
+var init_readQuarks = __esm({
+  "src/capabilities/particles/readQuarks.ts"() {
     "use strict";
-    RecastNavigation = class {
-      navMesh = null;
-      tileCache = null;
-      query = null;
-      retained = [];
-      carved = /* @__PURE__ */ new Map();
-      worker = null;
-      mode = "solo";
-      async bake(positions, indices, config, signal) {
-        if (signal.aborted) throw abortError();
-        this.worker?.terminate();
-        const worker = new Worker(new URL("./bake.worker.ts", import.meta.url), { type: "module" });
-        this.worker = worker;
-        const response = await new Promise((resolve, reject) => {
-          const stop = () => {
-            worker.terminate();
-            reject(abortError());
-          };
-          if (signal.aborted) {
-            stop();
-            return;
-          }
-          signal.addEventListener("abort", stop, { once: true });
-          worker.onmessage = (event) => {
-            signal.removeEventListener("abort", stop);
-            resolve(event.data);
-          };
-          worker.onerror = () => {
-            signal.removeEventListener("abort", stop);
-            reject(new Error("navigation worker failed"));
-          };
-          const positionCopy = new Float32Array(positions);
-          const indexCopy = new Uint32Array(indices);
-          worker.postMessage(
-            { positions: positionCopy, indices: indexCopy, config },
-            [positionCopy.buffer, indexCopy.buffer]
-          );
-        });
-        if (this.worker === worker) this.worker = null;
-        worker.terminate();
-        if (signal.aborted) throw abortError();
-        if (!response.ok) throw new Error(response.error || "bake failed");
-        await this.restore({ bytes: response.bytes, mode: response.mode });
-      }
-      async restore(record) {
-        this.releaseMesh();
-        if (record.mode === "tileCache") {
-          const imported = importTileCache(record.bytes, createDefaultTileCacheMeshProcess());
-          this.navMesh = imported.navMesh;
-          this.tileCache = imported.tileCache;
-          this.retained = [imported.allocator, imported.compressor];
-          this.mode = "tileCache";
-        } else {
-          this.navMesh = importNavMesh(record.bytes).navMesh;
-          this.mode = "solo";
-        }
-        this.query = new NavMeshQuery(this.navMesh);
-        this.query.defaultQueryHalfExtents = { x: 2, y: 4, z: 2 };
-      }
-      clear() {
-        this.releaseMesh();
-      }
-      obstacles(items) {
-        const cache = this.tileCache;
-        const mesh = this.navMesh;
-        if (!cache || !mesh || this.mode !== "tileCache") return;
-        let changed = this.carved.size > 0 || items.length > 0;
-        for (const obstacle of this.carved.values()) cache.removeObstacle(obstacle);
-        this.carved.clear();
-        for (const item of items) {
-          const added = cache.addCylinderObstacle(
-            { x: item.position[0], y: item.position[1], z: item.position[2] },
-            item.radius,
-            item.height
-          );
-          if (!added.success || !added.obstacle) continue;
-          this.carved.set(item.id, added.obstacle);
-        }
-        if (!changed) return;
-        for (let step2 = 0; step2 < 8; step2 += 1) {
-          const updated = cache.update(mesh);
-          if (updated.upToDate) break;
-        }
-      }
-      findPath(start2, end) {
-        if (!this.query) return null;
-        const result = this.query.computePath(
-          { x: start2[0], y: start2[1], z: start2[2] },
-          { x: end[0], y: end[1], z: end[2] }
-        );
-        if (!result.success || result.path.length === 0) return null;
-        return result.path.map((point2) => [point2.x, point2.y, point2.z]);
-      }
-      debug() {
-        if (!this.navMesh) return null;
-        const [positions, indices] = getNavMeshPositionsAndIndices(this.navMesh);
-        if (positions.length === 0 || indices.length === 0) return null;
-        return {
-          positions: Float32Array.from(positions),
-          indices: Uint32Array.from(indices)
-        };
-      }
-      exportRecord() {
-        if (!this.navMesh) return null;
-        if (this.mode === "tileCache" && this.tileCache) {
-          return { bytes: new Uint8Array(exportTileCache(this.navMesh, this.tileCache)), mode: "tileCache" };
-        }
-        return { bytes: new Uint8Array(exportNavMesh(this.navMesh)), mode: "solo" };
-      }
-      dispose() {
-        this.worker?.terminate();
-        this.worker = null;
-        this.releaseMesh();
-      }
-      releaseMesh() {
-        this.carved.clear();
-        this.query?.destroy();
-        this.query = null;
-        this.tileCache?.destroy();
-        this.tileCache = null;
-        this.navMesh?.destroy();
-        this.navMesh = null;
-        this.retained.splice(0, this.retained.length);
-        this.mode = "solo";
-      }
+    DEFAULT_APPEARANCE = {
+      color: "#ff8c33",
+      blend: "additive",
+      opacity: 1,
+      depthWrite: false,
+      image: null
     };
   }
 });
@@ -3406,7 +3058,7 @@ var init_simulationForm = __esm({
 // src/capabilities/particles/tslBatch.ts
 import {
   AdditiveBlending,
-  Color as Color4,
+  Color as Color3,
   CustomBlending,
   MultiplyBlending,
   NormalBlending,
@@ -3425,17 +3077,17 @@ import {
   fract,
   length as length2,
   max as max2,
-  mix as mix4,
+  mix as mix3,
   mod,
   modelWorldMatrix as modelWorldMatrix2,
   normalize as normalize2,
   positionGeometry as positionGeometry2,
   texture as texture2,
-  uniform as uniform3,
+  uniform as uniform2,
   uv,
   vec2 as vec22,
   vec3 as vec32,
-  vec4 as vec43
+  vec4 as vec42
 } from "three/tsl";
 import { MeshBasicNodeMaterial as MeshBasicNodeMaterial2 } from "three/webgpu";
 import {
@@ -3460,15 +3112,15 @@ function createSpriteMaterial(settings) {
   const particleColor = attr(PARTICLE_ATTR.color, "vec4");
   const uvTile = attr(PARTICLE_ATTR.uvTile, "float");
   const tiles = uni(new Vector22(settings.uTileCount, settings.vTileCount));
-  const tint = uni(new Color4(source.color?.r ?? 1, source.color?.g ?? 1, source.color?.b ?? 1));
+  const tint = uni(new Color3(source.color?.r ?? 1, source.color?.g ?? 1, source.color?.b ?? 1));
   const tintOpacity = uni(source.opacity ?? 1);
   const baseUv = tiledUv(uv(), uvTile, tiles);
-  let sampled = vec43(1, 1, 1, 1);
+  let sampled = vec42(1, 1, 1, 1);
   if (source.map) {
     const current = texture2(source.map, baseUv);
     if (settings.blendTiles) {
       const nextUv = tiledUv(uv(), floor(uvTile).add(1), tiles);
-      sampled = mix4(current, texture2(source.map, nextUv), fract(uvTile));
+      sampled = mix3(current, texture2(source.map, nextUv), fract(uvTile));
     } else {
       sampled = current;
     }
@@ -3484,9 +3136,9 @@ function createTrailMaterial(source) {
   copySurface(material, source);
   const particleColor = attr(PARTICLE_ATTR.color, "vec4");
   const map = source.map;
-  const sampled = map ? texture2(map, uv()) : vec43(1, 1, 1, 1);
+  const sampled = map ? texture2(map, uv()) : vec42(1, 1, 1, 1);
   const color2 = source.color;
-  const tint = uni(new Color4(color2?.r ?? 1, color2?.g ?? 1, color2?.b ?? 1));
+  const tint = uni(new Color3(color2?.r ?? 1, color2?.g ?? 1, color2?.b ?? 1));
   material.colorNode = sampled.rgb.mul(particleColor.rgb).mul(tint);
   material.opacityNode = sampled.a.mul(particleColor.a);
   material.vertexNode = trailClip();
@@ -3517,12 +3169,12 @@ function attr(name, type) {
   return attribute(name, type);
 }
 function uni(value) {
-  return uniform3(value);
+  return uniform2(value);
 }
 function spriteClip(mode) {
   const offset = attr(PARTICLE_ATTR.offset, "vec3");
   const size = attr(PARTICLE_ATTR.size, "vec3");
-  const world3 = modelWorldMatrix2.mul(vec43(offset, 1));
+  const world3 = modelWorldMatrix2.mul(vec42(offset, 1));
   if (mode === RenderMode.Mesh) return meshClip(offset, size);
   if (mode === RenderMode.Trail) return trailClip();
   const rotation = attr(PARTICLE_ATTR.rotation, "float");
@@ -3531,33 +3183,33 @@ function spriteClip(mode) {
   const s = rotation.sin();
   const rotated = vec22(c.mul(aligned.x).sub(s.mul(aligned.y)), s.mul(aligned.x).add(c.mul(aligned.y)));
   if (mode === RenderMode.HorizontalBillBoard) {
-    const shifted = vec43(world3.x.add(rotated.x), world3.y, world3.z.sub(rotated.y), world3.w);
+    const shifted = vec42(world3.x.add(rotated.x), world3.y, world3.z.sub(rotated.y), world3.w);
     return cameraProjectionMatrix.mul(cameraViewMatrix.mul(shifted));
   }
   if (mode === RenderMode.VerticalBillBoard) {
-    const raised = vec43(world3.x, world3.y.add(rotated.y), world3.z, world3.w);
+    const raised = vec42(world3.x, world3.y.add(rotated.y), world3.z, world3.w);
     const view2 = cameraViewMatrix.mul(raised);
-    return cameraProjectionMatrix.mul(vec43(view2.x.add(rotated.x), view2.y, view2.z, view2.w));
+    return cameraProjectionMatrix.mul(vec42(view2.x.add(rotated.x), view2.y, view2.z, view2.w));
   }
   if (mode === RenderMode.StretchedBillBoard) return stretchedClip(world3, size);
   const view = cameraViewMatrix.mul(world3);
-  return cameraProjectionMatrix.mul(vec43(view.x.add(rotated.x), view.y.add(rotated.y), view.z, view.w));
+  return cameraProjectionMatrix.mul(vec42(view.x.add(rotated.x), view.y.add(rotated.y), view.z, view.w));
 }
 function stretchedClip(world3, size) {
   const velocity = attr(PARTICLE_ATTR.velocity, "vec4");
   const view = cameraViewMatrix.mul(world3);
-  const viewVelocity = cameraViewMatrix.mul(vec43(velocity.x, velocity.y, velocity.z, 0)).xyz;
+  const viewVelocity = cameraViewMatrix.mul(vec42(velocity.x, velocity.y, velocity.z, 0)).xyz;
   const vlength = max2(length2(viewVelocity), float2(1e-4));
   const avg = size.x.add(size.y).mul(0.5);
   const side = normalize2(cross(view.xyz, viewVelocity));
   const stretched = view.xyz.add(side.mul(positionGeometry2.y).mul(avg)).sub(viewVelocity.mul(positionGeometry2.x.add(0.5)).mul(float2(1).add(velocity.w.div(vlength))).mul(avg));
-  return cameraProjectionMatrix.mul(vec43(stretched, view.w));
+  return cameraProjectionMatrix.mul(vec42(stretched, view.w));
 }
 function meshClip(offset, size) {
   const rotation = attr(PARTICLE_ATTR.rotation, "vec4");
   const scaled = vec32(positionGeometry2.x.mul(size.x), positionGeometry2.y.mul(size.y), positionGeometry2.z.mul(size.z));
   const spun = rotateByQuat(rotation, scaled);
-  const local = vec43(spun.x.add(offset.x), spun.y.add(offset.y), spun.z.add(offset.z), 1);
+  const local = vec42(spun.x.add(offset.x), spun.y.add(offset.y), spun.z.add(offset.z), 1);
   return cameraProjectionMatrix.mul(cameraViewMatrix.mul(modelWorldMatrix2.mul(local)));
 }
 function trailClip() {
@@ -3565,14 +3217,14 @@ function trailClip() {
   const next = attr(PARTICLE_ATTR.next, "vec3");
   const side = attr(PARTICLE_ATTR.side, "float");
   const width = attr(PARTICLE_ATTR.width, "float");
-  const world3 = modelWorldMatrix2.mul(vec43(positionGeometry2, 1)).xyz;
-  const worldPrev = modelWorldMatrix2.mul(vec43(previous, 1)).xyz;
-  const worldNext = modelWorldMatrix2.mul(vec43(next, 1)).xyz;
+  const world3 = modelWorldMatrix2.mul(vec42(positionGeometry2, 1)).xyz;
+  const worldPrev = modelWorldMatrix2.mul(vec42(previous, 1)).xyz;
+  const worldNext = modelWorldMatrix2.mul(vec42(next, 1)).xyz;
   const tangent = normalize2(worldNext.sub(worldPrev).add(vec32(0, 1e-4, 0)));
   const toCamera = normalize2(cameraPosition2.sub(world3));
   const binormal = normalize2(cross(tangent, toCamera));
   const placed = world3.add(binormal.mul(side).mul(width));
-  return cameraProjectionMatrix.mul(cameraViewMatrix.mul(vec43(placed, 1)));
+  return cameraProjectionMatrix.mul(cameraViewMatrix.mul(vec42(placed, 1)));
 }
 function rotateByQuat(q, v) {
   const t = cross(q.xyz, v).mul(2);
@@ -3837,103 +3489,2107 @@ var init_quarksRuntime = __esm({
   }
 });
 
-// tests/phase3-code-assets.test.ts
-import assert from "node:assert/strict";
-import test from "node:test";
-import { Group } from "three";
-
-// src/core/codeAssets/compiler.ts
-import ts from "typescript";
-function diagnosticHint(code, message) {
-  if (message.includes("t3d/shader") || message.includes("t3d/runtime")) {
-    return '\u8BF7\u786E\u4FDD\u4ECE "t3d/shader" \u6216 "t3d/runtime" \u5BFC\u5165\u767D\u540D\u5355 API';
+// src/capabilities/particles/session.ts
+function tickParticles(dt, parentOf) {
+  const runtimeWorld = getRuntimeWorld();
+  if (!capabilityEnabled(runtimeWorld.getCapabilities(), "particles") || !scene) {
+    disposeParticles();
+    return;
   }
-  if (code === 2304) return "\u5B58\u5728\u672A\u5B9A\u4E49\u7684\u6807\u8BC6\u7B26\uFF0C\u8BF7\u68C0\u67E5\u62FC\u5199\u6216\u4ECE t3d/runtime / t3d/shader \u5BFC\u5165";
-  if (code === 2322 || code === 2345) return "\u7C7B\u578B\u4E0D\u5339\u914D\uFF0C\u8BF7\u68C0\u67E5\u53C2\u6570\u6216\u8FD4\u56DE\u503C\u7C7B\u578B\u662F\u5426\u7B26\u5408\u5951\u7EA6";
-  return "\u8BF7\u6839\u636E\u62A5\u9519\u884C\u53F7\u4FEE\u6B63\u8BED\u6CD5\u6216\u7C7B\u578B\u9519\u8BEF";
+  if (!runtime) {
+    ensureRuntime();
+    return;
+  }
+  const instances = [];
+  for (const node of Object.values(runtimeWorld.getNodes())) {
+    if (node.kind !== "effect" || !node.effect) continue;
+    const parent = parentOf(node.id);
+    if (!parent || !rootedInScene(parent)) continue;
+    const resolved = resolveInstance(node.id, node.effect, node.visible, parent);
+    if (resolved) instances.push(resolved);
+  }
+  runtime.sync(instances);
+  runtime.update(dt);
 }
-function checkAndTranspileTs(fileName, source) {
-  const compilerOptions = {
-    target: ts.ScriptTarget.ES2022,
-    module: ts.ModuleKind.CommonJS,
-    esModuleInterop: true,
-    strict: true,
-    skipLibCheck: true,
-    isolatedModules: true
-  };
-  const output = ts.transpileModule(source, {
-    fileName,
-    reportDiagnostics: true,
-    compilerOptions
+function disposeParticles() {
+  generation += 1;
+  runtime?.dispose();
+  runtime = null;
+  loading = null;
+}
+function ensureRuntime() {
+  if (loading || !scene) return;
+  const token = generation;
+  const root = scene;
+  loading = Promise.resolve().then(() => (init_quarksRuntime(), quarksRuntime_exports)).then((module) => {
+    if (token !== generation) return;
+    runtime = module.createQuarksRuntime(root);
+  }).catch((error) => {
+    console.warn("[particles] three.quarks \u52A0\u8F7D\u5931\u8D25", error);
+  }).finally(() => {
+    if (token === generation) loading = null;
   });
-  const diagnostics = (output.diagnostics ?? []).map((diag) => {
-    const start2 = diag.start ?? 0;
-    const pos = diag.file ? diag.file.getLineAndCharacterOfPosition(start2) : { line: 0, character: 0 };
-    const msg = ts.flattenDiagnosticMessageText(diag.messageText, "\n");
-    return {
-      file: fileName,
-      line: pos.line + 1,
-      column: pos.character + 1,
-      severity: diag.category === ts.DiagnosticCategory.Warning ? "warning" : "error",
-      message: msg,
-      hint: diagnosticHint(diag.code, msg)
-    };
-  });
-  const hasError = diagnostics.some((d) => d.severity === "error");
-  if (hasError) {
-    return { ok: false, diagnostics };
+}
+function rootedInScene(object) {
+  let current = object;
+  while (current.parent) current = current.parent;
+  return current.type === "Scene";
+}
+function resolveInstance(id, effect, visible, parent) {
+  const runtimeWorld = getRuntimeWorld();
+  let simulation = effect.simulation;
+  let materialId = effect.materialAssetId;
+  if (effect.assetId) {
+    const asset = runtimeWorld.getAsset(effect.assetId);
+    if (!asset || asset.kind !== "effect") return null;
+    simulation = asset.simulation;
+    materialId = effect.materialAssetId ?? asset.materialAssetId ?? null;
   }
+  const stored = asSimulation(simulation);
+  if (!stored) return null;
+  const material = runtimeWorld.resolveParticleDesc?.(materialId) ?? null;
+  if (material === "incompatible") return null;
   return {
-    ok: true,
-    diagnostics,
-    jsCode: output.outputText
+    id,
+    parent,
+    simulation: stored,
+    material,
+    playing: effect.playing !== false,
+    visible
   };
 }
-function evaluateTranspiledModule(fileName, jsCode, injectedModules) {
-  const moduleObj = { exports: {} };
-  const customRequire = (specifier) => {
-    if (specifier in injectedModules) {
-      return injectedModules[specifier];
+var runtime, loading, scene, generation;
+var init_session4 = __esm({
+  "src/capabilities/particles/session.ts"() {
+    "use strict";
+    init_registry2();
+    init_world();
+    init_readQuarks();
+    runtime = null;
+    loading = null;
+    scene = null;
+    generation = 0;
+  }
+});
+
+// src/gameplay/juiceClock.ts
+function scalePlayDt(dt, now = performance.now() / 1e3) {
+  if (now < holdUntil) return 0;
+  return dt;
+}
+var holdUntil;
+var init_juiceClock = __esm({
+  "src/gameplay/juiceClock.ts"() {
+    "use strict";
+    holdUntil = 0;
+  }
+});
+
+// src/core/input/actionMap.ts
+function cloneDefaultMap() {
+  return structuredClone(DEFAULT_INPUT_MAP);
+}
+function isKeyHeld(code) {
+  return physicalKeys.has(code) || virtualKeys.has(code);
+}
+function wasKeyTapped(code) {
+  return tappedKeys.has(code);
+}
+function activeGamepad() {
+  if (typeof navigator === "undefined" || typeof navigator.getGamepads !== "function") return null;
+  const pads = navigator.getGamepads();
+  for (const pad of pads) {
+    if (pad && pad.connected) return pad;
+  }
+  return null;
+}
+function isActionPressed(actionName) {
+  if (virtualActions.has(actionName)) return true;
+  const binding = currentMap.actions[actionName];
+  if (!binding) return false;
+  if (binding.keys?.some((code) => isKeyHeld(code))) return true;
+  if (typeof binding.gamepadButton === "number") {
+    const pad = activeGamepad();
+    if (pad?.buttons[binding.gamepadButton]?.pressed) return true;
+  }
+  return false;
+}
+function wasActionTapped(actionName) {
+  if (tappedActions.has(actionName)) return true;
+  const binding = currentMap.actions[actionName];
+  if (!binding) return false;
+  return Boolean(binding.keys?.some((code) => tappedKeys.has(code)));
+}
+function getActionAxis2D(actionName) {
+  const vAxis = virtualAxes.get(actionName);
+  let x = vAxis?.x ?? 0;
+  let y = vAxis?.y ?? 0;
+  const binding = currentMap.actions[actionName];
+  if (binding?.axis) {
+    if (binding.axis.right?.some((c) => isKeyHeld(c))) x += 1;
+    if (binding.axis.left?.some((c) => isKeyHeld(c))) x -= 1;
+    if (binding.axis.up?.some((c) => isKeyHeld(c))) y += 1;
+    if (binding.axis.down?.some((c) => isKeyHeld(c))) y -= 1;
+  }
+  if (binding?.gamepadAxes) {
+    const pad = activeGamepad();
+    if (pad) {
+      const gx = pad.axes[binding.gamepadAxes.x] ?? 0;
+      const gyRaw = pad.axes[binding.gamepadAxes.y] ?? 0;
+      const gy = binding.gamepadAxes.invertY ? -gyRaw : gyRaw;
+      if (Math.abs(gx) > currentMap.deadzone) x += gx;
+      if (Math.abs(gy) > currentMap.deadzone) y += gy;
     }
-    throw new Error(`\u4E0D\u5141\u8BB8\u5BFC\u5165\u672A\u6388\u6743\u6A21\u5757 "${specifier}"\uFF08\u4EC5\u5141\u8BB8 ${Object.keys(injectedModules).join(", ")}\uFF09`);
-  };
-  try {
-    const fn = new Function("require", "module", "exports", jsCode);
-    fn(customRequire, moduleObj, moduleObj.exports);
-    const exported = moduleObj.exports.default ?? moduleObj.exports;
-    return {
-      ok: true,
-      diagnostics: [],
-      jsCode,
-      exports: exported
-    };
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    return {
-      ok: false,
-      diagnostics: [
-        {
-          file: fileName,
-          line: 1,
-          column: 1,
-          severity: "error",
-          message: `\u6A21\u5757\u6267\u884C\u5931\u8D25\uFF1A${message}`,
-          hint: "\u8BF7\u68C0\u67E5\u9876\u5C42\u4EE3\u7801\u662F\u5426\u5B58\u5728\u8FD0\u884C\u65F6\u5F02\u5E38\u6216\u975E\u6CD5\u6A21\u5757\u5BFC\u5165"
+  }
+  const len = Math.hypot(x, y);
+  if (len > 1) {
+    x /= len;
+    y /= len;
+  }
+  return { x, y };
+}
+function consumeInputFrame() {
+  tappedKeys.clear();
+  tappedActions.clear();
+}
+var DEFAULT_INPUT_MAP, currentMap, physicalKeys, virtualKeys, tappedKeys, virtualActions, tappedActions, virtualAxes;
+var init_actionMap = __esm({
+  "src/core/input/actionMap.ts"() {
+    "use strict";
+    DEFAULT_INPUT_MAP = {
+      version: 1,
+      deadzone: 0.15,
+      actions: {
+        Move: {
+          type: "axis2d",
+          label: "\u79FB\u52A8",
+          axis: {
+            up: ["KeyW", "ArrowUp"],
+            down: ["KeyS", "ArrowDown"],
+            left: ["KeyA", "ArrowLeft"],
+            right: ["KeyD", "ArrowRight"]
+          },
+          gamepadAxes: { x: 0, y: 1, invertY: true },
+          touchControl: "joystick"
+        },
+        Jump: {
+          type: "button",
+          label: "\u8DF3\u8DC3",
+          keys: ["Space"],
+          gamepadButton: 0,
+          touchControl: "button",
+          touchLabel: "\u8DF3"
+        },
+        Sprint: {
+          type: "button",
+          label: "\u51B2\u523A\u8DD1",
+          keys: ["ShiftLeft", "ShiftRight"],
+          gamepadButton: 4
+        },
+        Dash: {
+          type: "button",
+          label: "\u95EA\u907F",
+          keys: ["KeyC"],
+          gamepadButton: 1,
+          touchControl: "button",
+          touchLabel: "\u95EA"
+        },
+        Interact: {
+          type: "button",
+          label: "\u4EA4\u4E92",
+          keys: ["KeyE"],
+          gamepadButton: 2,
+          touchControl: "button",
+          touchLabel: "\u4EA4\u4E92"
+        },
+        Attack: {
+          type: "button",
+          label: "\u653B\u51FB/\u5F00\u706B",
+          keys: ["KeyJ"],
+          gamepadButton: 7,
+          touchControl: "button",
+          touchLabel: "\u653B"
         }
-      ]
+      }
     };
+    currentMap = cloneDefaultMap();
+    physicalKeys = /* @__PURE__ */ new Set();
+    virtualKeys = /* @__PURE__ */ new Set();
+    tappedKeys = /* @__PURE__ */ new Set();
+    virtualActions = /* @__PURE__ */ new Set();
+    tappedActions = /* @__PURE__ */ new Set();
+    virtualAxes = /* @__PURE__ */ new Map();
+  }
+});
+
+// src/runtime/frameProfile.ts
+function measureCost(id, run) {
+  const start2 = performance.now();
+  try {
+    run();
+  } finally {
+    const ms = performance.now() - start2;
+    buckets.set(id, (buckets.get(id) ?? 0) + ms);
+    if (capture) capture.set(id, (capture.get(id) ?? 0) + ms);
   }
 }
+var buckets, capture;
+var init_frameProfile = __esm({
+  "src/runtime/frameProfile.ts"() {
+    "use strict";
+    buckets = /* @__PURE__ */ new Map();
+    capture = null;
+  }
+});
 
-// src/capabilities/navigation/session.ts
-init_registry();
-init_transform();
-init_world();
-import { create } from "zustand";
+// src/runtime/sceneRuntime.ts
+function registerRuntimeSystem(id, order, step2) {
+  const target = order >= RUNTIME_STAGE.POST_ANIMATION ? postAnimationSystems : order >= RUNTIME_STAGE.PHYSICS_NAV ? postPhysicsSystems : systems;
+  const index = target.findIndex((item) => item.id === id);
+  if (index >= 0) target.splice(index, 1);
+  target.push({ id, order, step: step2 });
+  target.sort((a, b) => a.order - b.order);
+  return () => {
+    const idx = target.findIndex((item) => item.id === id);
+    if (idx >= 0) target.splice(idx, 1);
+  };
+}
+function stepSceneRuntime(dt, host) {
+  const scaled = scalePlayDt(dt);
+  for (const system of systems) {
+    measureCost(system.id, () => system.step(scaled, host));
+  }
+  measureCost("physics", () => tickPhysics(scaled, host.resolveObject));
+  measureCost("navigation", () => tickNavigation());
+  for (const system of postPhysicsSystems) {
+    measureCost(system.id, () => system.step(scaled, host));
+  }
+  if (host.ready) {
+    measureCost("animation", () => host.updateAnimations(scaled));
+    for (const system of postAnimationSystems) {
+      measureCost(system.id, () => system.step(scaled, host));
+    }
+    measureCost("particles", () => tickParticles(scaled, host.resolveObject));
+  }
+  consumeInputFrame();
+}
+var RUNTIME_STAGE, systems, postPhysicsSystems, postAnimationSystems;
+var init_sceneRuntime = __esm({
+  "src/runtime/sceneRuntime.ts"() {
+    "use strict";
+    init_session();
+    init_session10();
+    init_session4();
+    init_juiceClock();
+    init_actionMap();
+    init_frameProfile();
+    RUNTIME_STAGE = {
+      PRE_PHYSICS: 10,
+      PHYSICS_NAV: 50,
+      POST_PHYSICS: 55,
+      ANIMATION: 60,
+      POST_ANIMATION: 70,
+      PRE_RENDER: 80
+    };
+    systems = [];
+    postPhysicsSystems = [];
+    postAnimationSystems = [];
+  }
+});
+
+// src/core/schema/fieldSchema.ts
+function safeVecDefault(type, rawDefault) {
+  const len = type === "vec2" ? 2 : type === "vec3" ? 3 : 4;
+  if (Array.isArray(rawDefault)) {
+    return Array.from({ length: len }, (_, i) => {
+      const v = rawDefault[i];
+      return typeof v === "number" && Number.isFinite(v) ? v : 0;
+    });
+  }
+  if (rawDefault && typeof rawDefault === "object") {
+    const obj = rawDefault;
+    const keys = ["x", "y", "z", "w"];
+    return Array.from({ length: len }, (_, i) => {
+      const v = obj[keys[i]];
+      return typeof v === "number" && Number.isFinite(v) ? v : 0;
+    });
+  }
+  return Array.from({ length: len }, () => 0);
+}
+function defaultForSchema(schema) {
+  switch (schema.type) {
+    case "number":
+    case "boolean":
+    case "string":
+    case "color":
+    case "enum":
+      return schema.default;
+    case "vec2":
+    case "vec3":
+    case "vec4":
+      return safeVecDefault(schema.type, schema.default);
+    case "texture":
+    case "ref":
+      return schema.default ?? null;
+    case "list":
+      return schema.default ? structuredClone(schema.default) : [];
+    case "object": {
+      const out = {};
+      for (const [key, child] of Object.entries(schema.fields)) {
+        out[key] = defaultForSchema(child);
+      }
+      return out;
+    }
+  }
+}
+function normalizeBySchema(schema, raw, options) {
+  const clampNumbers = options?.clampNumbers ?? true;
+  switch (schema.type) {
+    case "number": {
+      const num = typeof raw === "number" && Number.isFinite(raw) ? raw : schema.default;
+      if (!clampNumbers) return num;
+      let next = num;
+      if (schema.min !== void 0) next = Math.max(schema.min, next);
+      if (schema.max !== void 0) next = Math.min(schema.max, next);
+      return next;
+    }
+    case "boolean":
+      return typeof raw === "boolean" ? raw : schema.default;
+    case "string":
+      return typeof raw === "string" ? raw : schema.default;
+    case "color":
+      return typeof raw === "string" && /^#[0-9a-fA-F]{3,8}$/.test(raw) ? raw : schema.default;
+    case "vec2":
+    case "vec3":
+    case "vec4": {
+      const len = schema.type === "vec2" ? 2 : schema.type === "vec3" ? 3 : 4;
+      const fallback = safeVecDefault(schema.type, schema.default);
+      if (!Array.isArray(raw)) return fallback;
+      const out = [];
+      for (let i = 0; i < len; i += 1) {
+        const v = raw[i];
+        out.push(typeof v === "number" && Number.isFinite(v) ? v : fallback[i]);
+      }
+      return out;
+    }
+    case "enum": {
+      if (typeof raw === "string" && schema.options.some((opt) => opt.value === raw)) {
+        return raw;
+      }
+      return schema.default;
+    }
+    case "texture":
+    case "ref":
+      return typeof raw === "string" && raw.length > 0 ? raw : null;
+    case "list": {
+      if (!Array.isArray(raw)) return defaultForSchema(schema);
+      return raw.map((entry) => normalizeBySchema(schema.item, entry, options));
+    }
+    case "object": {
+      const src = raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
+      const out = {};
+      for (const [key, child] of Object.entries(schema.fields)) {
+        out[key] = normalizeBySchema(child, src[key], options);
+      }
+      return out;
+    }
+  }
+}
+var init_fieldSchema = __esm({
+  "src/core/schema/fieldSchema.ts"() {
+    "use strict";
+  }
+});
+
+// src/capabilities/spline/schema.ts
+function defaultSplinePath() {
+  return {
+    points: [
+      [0, 0, 0],
+      [3, 0, 2],
+      [6, 0, -2],
+      [9, 0, 0]
+    ],
+    closed: false,
+    tension: 0.5,
+    color: "#34d399"
+  };
+}
+function normalizeSplinePath(raw) {
+  const def = defaultSplinePath();
+  if (!raw || typeof raw !== "object") return def;
+  const obj = raw;
+  const pts = Array.isArray(obj.points) ? obj.points.filter((p) => Array.isArray(p) && p.length >= 3).map((p) => [
+    Number.isFinite(Number(p[0])) ? Number(p[0]) : 0,
+    Number.isFinite(Number(p[1])) ? Number(p[1]) : 0,
+    Number.isFinite(Number(p[2])) ? Number(p[2]) : 0
+  ]) : def.points;
+  return {
+    points: pts.length >= 2 ? pts : def.points,
+    closed: typeof obj.closed === "boolean" ? obj.closed : def.closed,
+    tension: typeof obj.tension === "number" && Number.isFinite(obj.tension) ? Math.max(0, Math.min(1, obj.tension)) : def.tension,
+    color: typeof obj.color === "string" && /^#[0-9a-fA-F]{3,8}$/.test(obj.color) ? obj.color : def.color
+  };
+}
+function normalizeSpline(raw) {
+  return normalizeBySchema(SPLINE_SCHEMA, raw);
+}
+var SPLINE_CAPABILITY_ID, SPLINE_PATH_CAPABILITY_ID, SPLINE_SCHEMA;
+var init_schema = __esm({
+  "src/capabilities/spline/schema.ts"() {
+    "use strict";
+    init_fieldSchema();
+    SPLINE_CAPABILITY_ID = "spline";
+    SPLINE_PATH_CAPABILITY_ID = "splinePath";
+    SPLINE_SCHEMA = {
+      type: "object",
+      label: "Spline \u8DEF\u5F84\u8FD0\u52A8",
+      fields: {
+        enabled: { type: "boolean", default: true, label: "\u542F\u7528" },
+        pathNodeId: { type: "ref", target: "node", kinds: ["spline"], default: null, label: "Spline \u66F2\u7EBF\u8282\u70B9" },
+        mode: {
+          type: "enum",
+          default: "loop",
+          label: "\u8FD0\u884C\u6A21\u5F0F",
+          options: [
+            { value: "once", label: "\u5355\u6B21\u5230\u8FBE" },
+            { value: "loop", label: "\u5FAA\u73AF" },
+            { value: "pingPong", label: "\u5F80\u8FD4" }
+          ]
+        },
+        speed: { type: "number", default: 4, min: 0.05, max: 200, step: 0.5, label: "\u79FB\u52A8\u901F\u5EA6 (m/s)" },
+        tension: { type: "number", default: 0.5, min: 0, max: 1, step: 0.05, label: "\u66F2\u7EBF\u5F20\u529B" },
+        closed: { type: "boolean", default: false, label: "\u95ED\u5408\u66F2\u7EBF" },
+        faceDirection: { type: "boolean", default: true, label: "\u671D\u5411\u8DEF\u5F84\u5207\u7EBF" },
+        planeXZ: { type: "boolean", default: false, label: "\u4FDD\u6301\u5F53\u524D\u9AD8\u5EA6 (XZ)" },
+        autoStart: { type: "boolean", default: true, label: "\u8BD5\u73A9\u81EA\u52A8\u542F\u52A8" },
+        startProgress: { type: "number", default: 0, min: 0, max: 1, step: 0.05, label: "\u8D77\u59CB\u8FDB\u5EA6 (0~1)" }
+      }
+    };
+  }
+});
+
+// src/capabilities/spline/session.ts
+var session_exports3 = {};
+__export(session_exports3, {
+  default: () => session_default3,
+  dispose: () => dispose3,
+  mount: () => mount3
+});
+import { Vector3 as Vector37 } from "three";
+function specOf3(raw) {
+  if (!raw || typeof raw !== "object") return normalizeSpline(raw);
+  const cached = specCache3.get(raw);
+  if (cached) return cached;
+  const next = normalizeSpline(raw);
+  specCache3.set(raw, next);
+  return next;
+}
+function collectWaypoints(nodes, host, ownerNode, spec) {
+  const pathParentId = spec.pathNodeId || ownerNode.id;
+  const pathNode = nodes[pathParentId];
+  const rawSplinePath = pathNode?.capabilities?.[SPLINE_PATH_CAPABILITY_ID];
+  if (pathNode && (pathNode.kind === "spline" || rawSplinePath)) {
+    const pathData = normalizeSplinePath(rawSplinePath);
+    const pathObj = host.resolveObject(pathNode.id);
+    if (pathObj) pathObj.updateMatrixWorld();
+    const tmp = new Vector37();
+    const points2 = [];
+    const closed2 = spec.closed || pathData.closed || spec.mode === "loop";
+    const tension = Number.isFinite(pathData.tension) ? pathData.tension : spec.tension;
+    const keyParts2 = [pathNode.id, closed2 ? "1" : "0", String(tension)];
+    for (let i = 0; i < pathData.points.length; i += 1) {
+      const pt = pathData.points[i];
+      if (pathObj) {
+        tmp.set(pt[0], pt[1], pt[2]).applyMatrix4(pathObj.matrixWorld);
+      } else {
+        tmp.set(pathNode.position[0] + pt[0], pathNode.position[1] + pt[1], pathNode.position[2] + pt[2]);
+      }
+      points2.push({ x: tmp.x, y: tmp.y, z: tmp.z });
+      keyParts2.push(`${i}:${tmp.x.toFixed(2)},${tmp.y.toFixed(2)},${tmp.z.toFixed(2)}`);
+    }
+    return { key: keyParts2.join("|"), points: points2, closed: closed2, tension };
+  }
+  const children = Object.values(nodes).filter((n) => n.parentId === pathParentId && n.id !== ownerNode.id).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  const points = [];
+  const closed = spec.closed || spec.mode === "loop";
+  const keyParts = [pathParentId, closed ? "1" : "0", String(spec.tension)];
+  for (const child of children) {
+    const obj = host.resolveObject(child.id);
+    const p = obj ? { x: obj.position.x, y: obj.position.y, z: obj.position.z } : { x: child.position[0], y: child.position[1], z: child.position[2] };
+    points.push(p);
+    keyParts.push(`${child.id}:${p.x.toFixed(2)},${p.y.toFixed(2)},${p.z.toFixed(2)}`);
+  }
+  return { key: keyParts.join("|"), points, closed, tension: spec.tension };
+}
+function stepSplineCapability(dt, host) {
+  const runtime2 = getRuntimeWorld();
+  if (runtime2.getPlayState() !== "playing") {
+    if (agents.size > 0) agents.clear();
+    return;
+  }
+  const nodes = runtime2.getNodes();
+  const activeIds = /* @__PURE__ */ new Set();
+  for (const node of Object.values(nodes)) {
+    const raw = node.capabilities?.[SPLINE_CAPABILITY_ID];
+    if (!raw) continue;
+    const spec = specOf3(raw);
+    if (!spec.enabled || !spec.autoStart) continue;
+    const obj = host.resolveObject(node.id);
+    if (!obj) continue;
+    activeIds.add(node.id);
+    const { key, points, closed, tension } = collectWaypoints(nodes, host, node, spec);
+    if (points.length < 2) continue;
+    let agent = agents.get(node.id);
+    if (!agent || agent.pathKey !== key) {
+      const spline = createSplinePath(points, {
+        closed,
+        tension
+      });
+      const startDist = Math.max(0, Math.min(1, spec.startProgress)) * spline.length;
+      agent = {
+        pathKey: key,
+        spline,
+        distance: startDist,
+        direction: 1,
+        finished: false
+      };
+      agents.set(node.id, agent);
+      const startPt = spline.pointAtDistance(startDist);
+      obj.position.set(startPt.x, spec.planeXZ ? obj.position.y : startPt.y, startPt.z);
+    }
+    if (agent.finished || dt <= 0 || agent.spline.length <= 1e-6) continue;
+    const totalLen = agent.spline.length;
+    let nextDist = agent.distance + spec.speed * dt * agent.direction;
+    if (spec.mode === "loop") {
+      nextDist = (nextDist % totalLen + totalLen) % totalLen;
+    } else if (spec.mode === "pingPong") {
+      if (nextDist >= totalLen) {
+        nextDist = totalLen - (nextDist - totalLen);
+        agent.direction = -1;
+      } else if (nextDist <= 0) {
+        nextDist = -nextDist;
+        agent.direction = 1;
+      }
+    } else {
+      if (nextDist >= totalLen) {
+        nextDist = totalLen;
+        agent.finished = true;
+      } else if (nextDist <= 0) {
+        nextDist = 0;
+        agent.finished = true;
+      }
+    }
+    agent.distance = nextDist;
+    const pt = agent.spline.pointAtDistance(nextDist);
+    obj.position.set(pt.x, spec.planeXZ ? obj.position.y : pt.y, pt.z);
+    if (spec.faceDirection) {
+      const tan2 = agent.spline.tangentAtDistance(nextDist);
+      const tx = tan2.x * agent.direction;
+      const tz = tan2.z * agent.direction;
+      if (Math.abs(tx) > 1e-5 || Math.abs(tz) > 1e-5) {
+        obj.rotation.y = Math.atan2(tx, tz);
+      }
+    }
+  }
+  for (const id of agents.keys()) {
+    if (!activeIds.has(id)) agents.delete(id);
+  }
+}
+function mount3() {
+  if (!unregister2) {
+    unregister2 = registerRuntimeSystem(
+      "capability.spline",
+      RUNTIME_STAGE.PRE_PHYSICS + 2,
+      stepSplineCapability
+    );
+  }
+  return dispose3;
+}
+function dispose3() {
+  unregister2?.();
+  unregister2 = null;
+  agents.clear();
+}
+var unregister2, agents, specCache3, splineRuntimeModule, session_default3;
+var init_session5 = __esm({
+  "src/capabilities/spline/session.ts"() {
+    "use strict";
+    init_motion();
+    init_sceneRuntime();
+    init_world();
+    init_schema();
+    unregister2 = null;
+    agents = /* @__PURE__ */ new Map();
+    specCache3 = /* @__PURE__ */ new WeakMap();
+    splineRuntimeModule = { mount: mount3, dispose: dispose3 };
+    session_default3 = splineRuntimeModule;
+  }
+});
+
+// src/capabilities/tween/schema.ts
+function normalizeTween(raw) {
+  return normalizeBySchema(TWEEN_SCHEMA, raw);
+}
+var TWEEN_CAPABILITY_ID, TWEEN_SCHEMA;
+var init_schema2 = __esm({
+  "src/capabilities/tween/schema.ts"() {
+    "use strict";
+    init_fieldSchema();
+    TWEEN_CAPABILITY_ID = "tween";
+    TWEEN_SCHEMA = {
+      type: "object",
+      label: "Tween \u8865\u95F4\u52A8\u6548",
+      fields: {
+        enabled: { type: "boolean", default: true, label: "\u542F\u7528" },
+        property: {
+          type: "enum",
+          default: "floatBob",
+          label: "\u52A8\u6548\u7C7B\u578B",
+          options: [
+            { value: "floatBob", label: "\u60AC\u6D6E\u6D6E\u52A8 (PingPong)" },
+            { value: "positionOffset", label: "\u4F4D\u7F6E\u504F\u79FB" },
+            { value: "rotationOffset", label: "\u65CB\u8F6C\u89D2\u5EA6 (\u5EA6)" },
+            { value: "scaleMultiplier", label: "\u7F29\u653E\u500D\u7387\u53D8\u5316" }
+          ]
+        },
+        delta: { type: "vec3", default: [0, 0.35, 0], label: "\u53D8\u5316\u91CF (X/Y/Z)" },
+        duration: { type: "number", default: 1.2, min: 0.05, max: 60, step: 0.1, label: "\u5355\u7A0B\u65F6\u957F (\u79D2)" },
+        delay: { type: "number", default: 0, min: 0, max: 30, step: 0.1, label: "\u8D77\u59CB\u5EF6\u8FDF (\u79D2)" },
+        ease: {
+          type: "enum",
+          default: "inOutSine",
+          label: "\u7F13\u52A8\u66F2\u7EBF",
+          options: [
+            { value: "linear", label: "\u7EBF\u6027 (Linear)" },
+            { value: "inOutSine", label: "\u6B63\u5F26\u7F13\u5165\u7F13\u51FA (Sine)" },
+            { value: "outQuad", label: "\u4E8C\u6B21\u7F13\u51FA (OutQuad)" },
+            { value: "inOutQuad", label: "\u4E8C\u6B21\u7F13\u5165\u7F13\u51FA (InOutQuad)" },
+            { value: "outCubic", label: "\u4E09\u6B21\u7F13\u51FA (OutCubic)" },
+            { value: "inOutCubic", label: "\u4E09\u6B21\u7F13\u5165\u7F13\u51FA (InOutCubic)" },
+            { value: "outBack", label: "\u56DE\u5F39 (OutBack)" },
+            { value: "outBounce", label: "\u5F39\u8DF3 (OutBounce)" },
+            { value: "outElastic", label: "\u5F39\u6027 (OutElastic)" }
+          ]
+        },
+        loopMode: {
+          type: "enum",
+          default: "pingPong",
+          label: "\u5FAA\u73AF\u6A21\u5F0F",
+          options: [
+            { value: "once", label: "\u5355\u6B21" },
+            { value: "loop", label: "\u4ECE\u5934\u5FAA\u73AF" },
+            { value: "pingPong", label: "\u5F80\u8FD4 (PingPong)" }
+          ]
+        },
+        autoStart: { type: "boolean", default: true, label: "\u8BD5\u73A9\u81EA\u52A8\u64AD\u653E" }
+      }
+    };
+  }
+});
+
+// src/capabilities/tween/session.ts
+var session_exports4 = {};
+__export(session_exports4, {
+  default: () => session_default4,
+  dispose: () => dispose4,
+  mount: () => mount4
+});
+function specOf4(raw) {
+  if (!raw || typeof raw !== "object") return normalizeTween(raw);
+  const cached = specCache4.get(raw);
+  if (cached) return cached;
+  const next = normalizeTween(raw);
+  specCache4.set(raw, next);
+  return next;
+}
+function stepTweenCapability(dt, host) {
+  const runtime2 = getRuntimeWorld();
+  if (runtime2.getPlayState() !== "playing") {
+    if (agents2.size > 0) agents2.clear();
+    return;
+  }
+  const nodes = runtime2.getNodes();
+  const activeIds = /* @__PURE__ */ new Set();
+  for (const node of Object.values(nodes)) {
+    const raw = node.capabilities?.[TWEEN_CAPABILITY_ID];
+    if (!raw) continue;
+    const spec = specOf4(raw);
+    if (!spec.enabled || !spec.autoStart) continue;
+    const obj = host.resolveObject(node.id);
+    if (!obj) continue;
+    activeIds.add(node.id);
+    let agent = agents2.get(node.id);
+    if (!agent) {
+      agent = {
+        basePos: [obj.position.x, obj.position.y, obj.position.z],
+        baseRot: [obj.rotation.x, obj.rotation.y, obj.rotation.z],
+        baseScale: [obj.scale.x, obj.scale.y, obj.scale.z],
+        delayLeft: Math.max(0, spec.delay),
+        elapsed: 0,
+        reversed: false,
+        finished: false
+      };
+      agents2.set(node.id, agent);
+    }
+    if (agent.finished || dt <= 0) continue;
+    if (agent.delayLeft > 0) {
+      agent.delayLeft -= dt;
+      if (agent.delayLeft > 0) continue;
+      agent.elapsed += -agent.delayLeft;
+      agent.delayLeft = 0;
+    } else {
+      agent.elapsed += dt;
+    }
+    const dur = Math.max(0.05, spec.duration);
+    let rawT = agent.elapsed / dur;
+    const effectiveLoop = spec.property === "floatBob" && spec.loopMode === "once" ? "pingPong" : spec.loopMode;
+    if (rawT >= 1) {
+      if (effectiveLoop === "loop") {
+        agent.elapsed = agent.elapsed % dur;
+        rawT = agent.elapsed / dur;
+      } else if (effectiveLoop === "pingPong") {
+        const cycles = Math.floor(rawT);
+        if (cycles % 2 === 1) agent.reversed = !agent.reversed;
+        agent.elapsed = agent.elapsed % dur;
+        rawT = agent.elapsed / dur;
+      } else {
+        rawT = 1;
+        agent.finished = true;
+      }
+    }
+    const progress = agent.reversed ? 1 - rawT : rawT;
+    const eased = evalEasing(spec.ease, progress);
+    const [dx, dy, dz] = spec.delta;
+    if (spec.property === "positionOffset" || spec.property === "floatBob") {
+      obj.position.set(
+        agent.basePos[0] + dx * eased,
+        agent.basePos[1] + dy * eased,
+        agent.basePos[2] + dz * eased
+      );
+    } else if (spec.property === "rotationOffset") {
+      const rx = dx * Math.PI / 180;
+      const ry = dy * Math.PI / 180;
+      const rz = dz * Math.PI / 180;
+      obj.rotation.set(
+        agent.baseRot[0] + rx * eased,
+        agent.baseRot[1] + ry * eased,
+        agent.baseRot[2] + rz * eased
+      );
+    } else if (spec.property === "scaleMultiplier") {
+      obj.scale.set(
+        agent.baseScale[0] * (1 + dx * eased),
+        agent.baseScale[1] * (1 + dy * eased),
+        agent.baseScale[2] * (1 + dz * eased)
+      );
+    }
+  }
+  for (const id of agents2.keys()) {
+    if (!activeIds.has(id)) agents2.delete(id);
+  }
+}
+function mount4() {
+  if (!unregister3) {
+    unregister3 = registerRuntimeSystem(
+      "capability.tween",
+      RUNTIME_STAGE.PRE_PHYSICS + 3,
+      stepTweenCapability
+    );
+  }
+  return dispose4;
+}
+function dispose4() {
+  unregister3?.();
+  unregister3 = null;
+  agents2.clear();
+}
+var unregister3, agents2, specCache4, tweenRuntimeModule, session_default4;
+var init_session6 = __esm({
+  "src/capabilities/tween/session.ts"() {
+    "use strict";
+    init_motion();
+    init_sceneRuntime();
+    init_world();
+    init_schema2();
+    unregister3 = null;
+    agents2 = /* @__PURE__ */ new Map();
+    specCache4 = /* @__PURE__ */ new WeakMap();
+    tweenRuntimeModule = { mount: mount4, dispose: dispose4 };
+    session_default4 = tweenRuntimeModule;
+  }
+});
+
+// src/capabilities/crowd/schema.ts
+function normalizeCrowd(raw) {
+  return normalizeBySchema(CROWD_SCHEMA, raw);
+}
+var CROWD_CAPABILITY_ID, CROWD_SCHEMA;
+var init_schema3 = __esm({
+  "src/capabilities/crowd/schema.ts"() {
+    "use strict";
+    init_fieldSchema();
+    CROWD_CAPABILITY_ID = "crowd";
+    CROWD_SCHEMA = {
+      type: "object",
+      label: "\u7FA4\u4F53\u907F\u8BA9 (Crowd)",
+      fields: {
+        enabled: { type: "boolean", default: true, label: "\u542F\u7528" },
+        radius: { type: "number", default: 0.8, min: 0.2, max: 10, step: 0.1, label: "\u907F\u8BA9\u534A\u5F84 (m)" },
+        maxSpeed: { type: "number", default: 4.5, min: 0.1, max: 50, step: 0.5, label: "\u6700\u5927\u901F\u5EA6 (m/s)" },
+        separationWeight: { type: "number", default: 1.8, min: 0, max: 10, step: 0.1, label: "\u5206\u79BB\u6743\u91CD" },
+        cohesionWeight: { type: "number", default: 0.25, min: 0, max: 5, step: 0.05, label: "\u51DD\u805A\u6743\u91CD" },
+        alignmentWeight: { type: "number", default: 0.35, min: 0, max: 5, step: 0.05, label: "\u5BF9\u9F50\u6743\u91CD" },
+        planeXZ: { type: "boolean", default: true, label: "XZ \u5E73\u9762\u79FB\u52A8" },
+        faceDirection: { type: "boolean", default: true, label: "\u671D\u5411\u79FB\u52A8\u65B9\u5411" }
+      }
+    };
+  }
+});
+
+// src/capabilities/crowd/session.ts
+var session_exports5 = {};
+__export(session_exports5, {
+  crowdRuntimeModule: () => crowdRuntimeModule,
+  dispose: () => dispose5,
+  ensureCrowdRuntime: () => ensureCrowdRuntime,
+  getCrowdStats: () => getCrowdStats,
+  isCrowdMoving: () => isCrowdMoving,
+  mount: () => mount5,
+  setCrowdFormation: () => setCrowdFormation,
+  setCrowdTarget: () => setCrowdTarget,
+  stopCrowdAgent: () => stopCrowdAgent
+});
+function readNodePosition(host, node) {
+  const obj = host.resolveObject(node.id);
+  if (obj) return { x: obj.position.x, y: obj.position.y, z: obj.position.z };
+  return { x: node.position[0], y: node.position[1], z: node.position[2] };
+}
+function writeNodePosition(host, node, x, y, z) {
+  const obj = host.resolveObject(node.id);
+  if (obj) obj.position.set(x, y, z);
+  node.position = [x, y, z];
+}
+function writeNodeYaw(host, node, dx, dz) {
+  if (dx * dx + dz * dz < 1e-6) return;
+  const yawRad = Math.atan2(dx, dz);
+  const obj = host.resolveObject(node.id);
+  if (obj) obj.rotation.y = yawRad;
+  node.rotation = [node.rotation[0], yawRad * 180 / Math.PI, node.rotation[2]];
+}
+function setCrowdTarget(nodeId, target, options) {
+  const existing = agents3.get(nodeId);
+  if (existing) {
+    existing.target = { x: target.x, y: target.y, z: target.z };
+    existing.arriveDist = Math.max(0.05, options?.arriveDist ?? 0.35);
+    existing.speedOverride = options?.speed;
+    existing.onArrive = options?.onArrive;
+  } else {
+    agents3.set(nodeId, {
+      nodeId,
+      vx: 0,
+      vy: 0,
+      vz: 0,
+      target: { x: target.x, y: target.y, z: target.z },
+      arriveDist: Math.max(0.05, options?.arriveDist ?? 0.35),
+      speedOverride: options?.speed,
+      onArrive: options?.onArrive
+    });
+  }
+}
+function stopCrowdAgent(nodeId) {
+  const agent = agents3.get(nodeId);
+  if (!agent) return;
+  agent.target = null;
+  agent.vx = 0;
+  agent.vy = 0;
+  agent.vz = 0;
+  agent.onArrive = void 0;
+}
+function isCrowdMoving(nodeId) {
+  const agent = agents3.get(nodeId);
+  return Boolean(agent && agent.target);
+}
+function getCrowdStats() {
+  let moving = 0;
+  for (const agent of agents3.values()) {
+    if (agent.target) moving += 1;
+  }
+  return { total: agents3.size, moving };
+}
+function setCrowdFormation(nodeIds, center, options) {
+  const count = nodeIds.length;
+  if (count === 0) return;
+  const formation = options?.formation ?? "grid";
+  const spacing = Math.max(0.5, options?.spacing ?? 1.8);
+  const yaw = options?.facingYaw ?? 0;
+  const cos3 = Math.cos(yaw);
+  const sin3 = Math.sin(yaw);
+  const rotateOffset = (lx, lz) => ({
+    x: center.x + lx * cos3 + lz * sin3,
+    y: center.y,
+    z: center.z - lx * sin3 + lz * cos3
+  });
+  if (formation === "line") {
+    const half = (count - 1) * 0.5;
+    for (let i = 0; i < count; i += 1) {
+      const target = rotateOffset((i - half) * spacing, 0);
+      setCrowdTarget(nodeIds[i], target, options);
+    }
+    return;
+  }
+  if (formation === "wedge") {
+    for (let i = 0; i < count; i += 1) {
+      if (i === 0) {
+        setCrowdTarget(nodeIds[i], rotateOffset(0, 0), options);
+      } else {
+        const rank = Math.ceil(i / 2);
+        const side = i % 2 === 1 ? -1 : 1;
+        setCrowdTarget(nodeIds[i], rotateOffset(side * rank * spacing * 0.85, -rank * spacing), options);
+      }
+    }
+    return;
+  }
+  if (formation === "circle") {
+    const radius = Math.max(spacing, count * spacing / (Math.PI * 2));
+    for (let i = 0; i < count; i += 1) {
+      const angle = i / count * Math.PI * 2;
+      setCrowdTarget(
+        nodeIds[i],
+        rotateOffset(Math.cos(angle) * radius, Math.sin(angle) * radius),
+        options
+      );
+    }
+    return;
+  }
+  const cols = Math.max(1, Math.ceil(Math.sqrt(count)));
+  const rows = Math.ceil(count / cols);
+  for (let i = 0; i < count; i += 1) {
+    const col = i % cols;
+    const row = Math.floor(i / cols);
+    const lx = (col - (cols - 1) * 0.5) * spacing;
+    const lz = -(row - (rows - 1) * 0.5) * spacing;
+    setCrowdTarget(nodeIds[i], rotateOffset(lx, lz), options);
+  }
+}
+function stepCrowdRuntime(dt, host) {
+  const world3 = getRuntimeWorld();
+  const nodes = world3.getNodes();
+  const entries = [];
+  let maxRadius = 1;
+  for (const node of Object.values(nodes)) {
+    const raw = node.capabilities?.[CROWD_CAPABILITY_ID];
+    if (!raw || !node.visible) continue;
+    const spec = normalizeCrowd(raw);
+    if (!spec.enabled) continue;
+    let agent = agents3.get(node.id);
+    if (!agent) {
+      agent = {
+        nodeId: node.id,
+        vx: 0,
+        vy: 0,
+        vz: 0,
+        target: null,
+        arriveDist: 0.35
+      };
+      agents3.set(node.id, agent);
+    }
+    if (spec.radius > maxRadius) maxRadius = spec.radius;
+    entries.push({
+      node,
+      spec,
+      pos: readNodePosition(host, node),
+      agent
+    });
+  }
+  const activeSet = new Set(entries.map((e) => e.node.id));
+  for (const id of agents3.keys()) {
+    if (!activeSet.has(id)) agents3.delete(id);
+  }
+  if (entries.length === 0) return;
+  const cellSize = Math.max(1.2, maxRadius * 2.4);
+  const grid = /* @__PURE__ */ new Map();
+  for (let i = 0; i < entries.length; i += 1) {
+    const p = entries[i].pos;
+    const cx = Math.floor(p.x / cellSize);
+    const cz = Math.floor(p.z / cellSize);
+    const key = `${cx},${cz}`;
+    let bucket = grid.get(key);
+    if (!bucket) {
+      bucket = [];
+      grid.set(key, bucket);
+    }
+    bucket.push(i);
+  }
+  const safeDt = Math.min(0.05, Math.max(1e-4, dt));
+  for (let i = 0; i < entries.length; i += 1) {
+    const { node, spec, pos, agent } = entries[i];
+    const maxSpeed = Math.max(0.1, agent.speedOverride ?? spec.maxSpeed);
+    let desiredVx = 0;
+    let desiredVy = 0;
+    let desiredVz = 0;
+    let hasGoal = false;
+    if (agent.target) {
+      const gx = agent.target.x - pos.x;
+      const gy = spec.planeXZ ? 0 : agent.target.y - pos.y;
+      const gz = agent.target.z - pos.z;
+      const dist = Math.hypot(gx, gy, gz);
+      if (dist <= agent.arriveDist) {
+        agent.target = null;
+        agent.vx = 0;
+        agent.vy = 0;
+        agent.vz = 0;
+        const cb = agent.onArrive;
+        agent.onArrive = void 0;
+        if (cb) {
+          try {
+            cb();
+          } catch (err) {
+            console.warn("[Crowd] onArrive \u56DE\u8C03\u5F02\u5E38:", err);
+          }
+        }
+      } else {
+        hasGoal = true;
+        const slowRadius = Math.max(agent.arriveDist * 2.5, 1);
+        const speed = dist < slowRadius ? maxSpeed * (dist / slowRadius) : maxSpeed;
+        desiredVx = gx / dist * speed;
+        desiredVy = gy / dist * speed;
+        desiredVz = gz / dist * speed;
+      }
+    }
+    let sepX = 0;
+    let sepY = 0;
+    let sepZ = 0;
+    let cohX = 0;
+    let cohY = 0;
+    let cohZ = 0;
+    let aliX = 0;
+    let aliY = 0;
+    let aliZ = 0;
+    let neighborCount = 0;
+    const cx = Math.floor(pos.x / cellSize);
+    const cz = Math.floor(pos.z / cellSize);
+    for (let ox = -1; ox <= 1; ox += 1) {
+      for (let oz = -1; oz <= 1; oz += 1) {
+        const bucket = grid.get(`${cx + ox},${cz + oz}`);
+        if (!bucket) continue;
+        for (const j of bucket) {
+          if (j === i) continue;
+          const other = entries[j];
+          const dx = pos.x - other.pos.x;
+          const dy = spec.planeXZ ? 0 : pos.y - other.pos.y;
+          const dz = pos.z - other.pos.z;
+          const d2 = dx * dx + dy * dy + dz * dz;
+          const minDist = spec.radius + other.spec.radius;
+          if (d2 > minDist * minDist * 2.25) continue;
+          const d = Math.sqrt(d2);
+          if (d < minDist) {
+            if (d > 1e-4) {
+              const push = (minDist - d) / minDist * maxSpeed;
+              sepX += dx / d * push;
+              sepY += dy / d * push;
+              sepZ += dz / d * push;
+            } else {
+              const angle = i * 2.39996 % (Math.PI * 2);
+              sepX += Math.cos(angle) * maxSpeed * 0.5;
+              sepZ += Math.sin(angle) * maxSpeed * 0.5;
+            }
+          }
+          neighborCount += 1;
+          cohX += other.pos.x;
+          cohY += other.pos.y;
+          cohZ += other.pos.z;
+          aliX += other.agent.vx;
+          aliY += other.agent.vy;
+          aliZ += other.agent.vz;
+        }
+      }
+    }
+    let steerVx = desiredVx + sepX * spec.separationWeight;
+    let steerVy = desiredVy + sepY * spec.separationWeight;
+    let steerVz = desiredVz + sepZ * spec.separationWeight;
+    if (neighborCount > 0 && hasGoal) {
+      const inv = 1 / neighborCount;
+      const cxAvg = cohX * inv - pos.x;
+      const cyAvg = spec.planeXZ ? 0 : cohY * inv - pos.y;
+      const czAvg = cohZ * inv - pos.z;
+      const cLen = Math.hypot(cxAvg, cyAvg, czAvg);
+      if (cLen > 1e-4) {
+        steerVx += cxAvg / cLen * maxSpeed * spec.cohesionWeight * 0.5;
+        steerVy += cyAvg / cLen * maxSpeed * spec.cohesionWeight * 0.5;
+        steerVz += czAvg / cLen * maxSpeed * spec.cohesionWeight * 0.5;
+      }
+      steerVx += aliX * inv * spec.alignmentWeight * 0.4;
+      steerVy += aliY * inv * spec.alignmentWeight * 0.4;
+      steerVz += aliZ * inv * spec.alignmentWeight * 0.4;
+    }
+    const spd = Math.hypot(steerVx, steerVy, steerVz);
+    if (spd > maxSpeed) {
+      const k = maxSpeed / spd;
+      steerVx *= k;
+      steerVy *= k;
+      steerVz *= k;
+    }
+    const blend = Math.min(1, safeDt * 10);
+    agent.vx += (steerVx - agent.vx) * blend;
+    agent.vy += (steerVy - agent.vy) * blend;
+    agent.vz += (steerVz - agent.vz) * blend;
+    const moved = Math.hypot(agent.vx, agent.vy, agent.vz);
+    if (moved < 0.01 && !hasGoal) {
+      agent.vx = 0;
+      agent.vy = 0;
+      agent.vz = 0;
+      continue;
+    }
+    const nx = pos.x + agent.vx * safeDt;
+    const ny = spec.planeXZ ? pos.y : pos.y + agent.vy * safeDt;
+    const nz = pos.z + agent.vz * safeDt;
+    writeNodePosition(host, node, nx, ny, nz);
+    if (spec.faceDirection && agent.vx * agent.vx + agent.vz * agent.vz > 0.04) {
+      writeNodeYaw(host, node, agent.vx, agent.vz);
+    }
+  }
+}
+function ensureCrowdRuntime() {
+  if (unregisterCrowd) return;
+  unregisterCrowd = registerRuntimeSystem(
+    "capability.crowd",
+    RUNTIME_STAGE.PRE_PHYSICS + 4,
+    stepCrowdRuntime
+  );
+}
+function mount5() {
+  ensureCrowdRuntime();
+  return dispose5;
+}
+function dispose5() {
+  unregisterCrowd?.();
+  unregisterCrowd = null;
+  agents3.clear();
+}
+var agents3, unregisterCrowd, crowdRuntimeModule;
+var init_session7 = __esm({
+  "src/capabilities/crowd/session.ts"() {
+    "use strict";
+    init_sceneRuntime();
+    init_world();
+    init_schema3();
+    agents3 = /* @__PURE__ */ new Map();
+    unregisterCrowd = null;
+    crowdRuntimeModule = {
+      mount: mount5,
+      dispose: dispose5
+    };
+  }
+});
+
+// src/gameplay/types.ts
+var init_types = __esm({
+  "src/gameplay/types.ts"() {
+    "use strict";
+  }
+});
+
+// src/gameplay/registry.ts
+function tableSchema(tableId) {
+  for (const pack of packs.values()) {
+    const found = pack.tables?.find((table) => table.tableId === tableId);
+    if (found) return found;
+  }
+  return void 0;
+}
+function defaultRows(tableId) {
+  return structuredClone(tableSchema(tableId)?.defaultRows ?? []);
+}
+function tableRows(database, tableId) {
+  const existing = database?.tables?.[tableId];
+  if (existing) return existing;
+  return defaultRows(tableId);
+}
+function findRow(database, tableId, id) {
+  const key = id.trim();
+  if (!key) return void 0;
+  return tableRows(database, tableId).find((row) => row.id === key);
+}
+var packs;
+var init_registry = __esm({
+  "src/gameplay/registry.ts"() {
+    "use strict";
+    init_types();
+    packs = /* @__PURE__ */ new Map();
+  }
+});
+
+// src/gameplay/runtimeTags.ts
+function matchesTag(actual, query) {
+  if (!actual || !query) return false;
+  const have = actual.trim();
+  let want = query.trim();
+  if (!have || !want) return false;
+  if (want.endsWith(".*")) want = want.slice(0, -2);
+  if (have === want) return true;
+  return have.startsWith(`${want}.`);
+}
+function listRuntimeTags(nodeId, now = performance.now() / 1e3) {
+  const bag = bags.get(nodeId);
+  if (!bag) return [];
+  return [...bag.entries()].map(([tag, until]) => ({
+    tag,
+    remaining: until > 0 ? Math.max(0, until - now) : null
+  }));
+}
+function nodeHasTag(node, query) {
+  if (!query.trim()) return false;
+  if (matchesTag(node.tagId, query)) return true;
+  for (const tag of node.tagIds ?? []) {
+    if (matchesTag(tag, query)) return true;
+  }
+  const bag = bags.get(node.id);
+  if (!bag) return false;
+  for (const tag of bag.keys()) {
+    if (matchesTag(tag, query)) return true;
+  }
+  return false;
+}
+var bags;
+var init_runtimeTags = __esm({
+  "src/gameplay/runtimeTags.ts"() {
+    "use strict";
+    init_world();
+    init_registry();
+    bags = /* @__PURE__ */ new Map();
+  }
+});
+
+// src/capabilities/projectile/schema.ts
+function normalizeProjectile(raw) {
+  return normalizeBySchema(PROJECTILE_SCHEMA, raw);
+}
+var PROJECTILE_CAPABILITY_ID, PROJECTILE_SCHEMA;
+var init_schema4 = __esm({
+  "src/capabilities/projectile/schema.ts"() {
+    "use strict";
+    init_fieldSchema();
+    PROJECTILE_CAPABILITY_ID = "projectile";
+    PROJECTILE_SCHEMA = {
+      type: "object",
+      label: "\u901A\u7528\u5F39\u9053 (Projectile)",
+      fields: {
+        enabled: { type: "boolean", default: true, label: "\u542F\u7528" },
+        mode: {
+          type: "enum",
+          default: "linear",
+          label: "\u5F39\u9053\u6A21\u5F0F",
+          options: [
+            { value: "linear", label: "\u76F4\u7EBF\u98DE\u884C" },
+            { value: "homing", label: "\u81EA\u52A8\u8FFD\u8E2A" },
+            { value: "ballistic", label: "\u629B\u7269\u7EBF" }
+          ]
+        },
+        speed: { type: "number", default: 22, min: 0.5, max: 200, step: 1, label: "\u98DE\u884C\u901F\u5EA6 (m/s)" },
+        gravity: { type: "number", default: 9.8, min: 0, max: 50, step: 0.5, label: "\u91CD\u529B\u52A0\u901F\u5EA6" },
+        turnRate: { type: "number", default: 6, min: 0.1, max: 30, step: 0.5, label: "\u8FFD\u8E2A\u8F6C\u5411\u7387 (rad/s)" },
+        maxLifetime: { type: "number", default: 3, min: 0.1, max: 60, step: 0.2, label: "\u6700\u5927\u5BFF\u547D (s)" },
+        hitRadius: { type: "number", default: 0.65, min: 0.05, max: 10, step: 0.05, label: "\u547D\u4E2D\u5224\u5B9A\u534A\u5F84 (m)" },
+        targetTag: { type: "string", default: "enemy", label: "\u76EE\u6807\u6807\u7B7E" },
+        damage: { type: "number", default: 10, min: 0, max: 9999, step: 1, label: "\u4F24\u5BB3\u503C" },
+        destroyOnHit: { type: "boolean", default: true, label: "\u547D\u4E2D\u540E\u56DE\u6C60/\u9500\u6BC1" }
+      }
+    };
+  }
+});
+
+// src/capabilities/projectile/session.ts
+var session_exports6 = {};
+__export(session_exports6, {
+  bindProjectileRuntimeHooks: () => bindProjectileRuntimeHooks,
+  dispose: () => dispose6,
+  ensureProjectileRuntime: () => ensureProjectileRuntime,
+  launchProjectile: () => launchProjectile,
+  mount: () => mount6,
+  projectileRuntimeModule: () => projectileRuntimeModule,
+  resetProjectileState: () => resetProjectileState
+});
+import { Quaternion as Quaternion4, Vector3 as Vector38 } from "three";
+function bindProjectileRuntimeHooks(next) {
+  hooks = next;
+}
+function readPos(host, node) {
+  const obj = host.resolveObject(node.id);
+  if (obj) return { x: obj.position.x, y: obj.position.y, z: obj.position.z };
+  return { x: node.position[0], y: node.position[1], z: node.position[2] };
+}
+function writePos(host, node, x, y, z) {
+  const obj = host.resolveObject(node.id);
+  if (obj) obj.position.set(x, y, z);
+  node.position = [x, y, z];
+}
+function orientAlongVelocity(host, node, vx, vy, vz) {
+  const lenSq = vx * vx + vy * vy + vz * vz;
+  if (lenSq < 1e-6) return;
+  tmpDir.set(vx, vy, vz).normalize();
+  tmpQuat2.setFromUnitVectors(tmpForward, tmpDir);
+  const obj = host.resolveObject(node.id);
+  if (obj) {
+    obj.quaternion.copy(tmpQuat2);
+    node.rotation = [
+      obj.rotation.x * 180 / Math.PI,
+      obj.rotation.y * 180 / Math.PI,
+      obj.rotation.z * 180 / Math.PI
+    ];
+  }
+}
+function defaultDirectionForNode(node) {
+  const yaw = (node.rotation?.[1] ?? 0) * Math.PI / 180;
+  return { x: Math.sin(yaw), y: 0, z: Math.cos(yaw) };
+}
+function launchProjectile(nodeId, options) {
+  const world3 = getRuntimeWorld();
+  const node = world3.getNodes()[nodeId];
+  const rawSpec = node?.capabilities?.[PROJECTILE_CAPABILITY_ID];
+  const spec = normalizeProjectile(rawSpec);
+  const speed = Math.max(0.1, options?.speed ?? spec.speed);
+  const dir = options?.direction ?? (node ? defaultDirectionForNode(node) : { x: 0, y: 0, z: 1 });
+  const len = Math.hypot(dir.x, dir.y, dir.z) || 1;
+  activeProjectiles.set(nodeId, {
+    nodeId,
+    vx: dir.x / len * speed,
+    vy: dir.y / len * speed,
+    vz: dir.z / len * speed,
+    elapsed: 0,
+    mode: options?.mode,
+    speed: options?.speed,
+    gravity: options?.gravity,
+    turnRate: options?.turnRate,
+    maxLifetime: options?.maxLifetime,
+    hitRadius: options?.hitRadius,
+    targetTag: options?.targetTag,
+    damage: options?.damage,
+    destroyOnHit: options?.destroyOnHit,
+    targetId: options?.targetId,
+    ownerId: options?.ownerId,
+    onHit: options?.onHit
+  });
+}
+function resetProjectileState(nodeId) {
+  activeProjectiles.delete(nodeId);
+}
+function stepProjectileRuntime(dt, host) {
+  const world3 = getRuntimeWorld();
+  const nodes = world3.getNodes();
+  const safeDt = Math.min(0.05, Math.max(1e-4, dt));
+  for (const node of Object.values(nodes)) {
+    const raw = node.capabilities?.[PROJECTILE_CAPABILITY_ID];
+    if (!raw) continue;
+    if (!node.visible || hooks.isNodeInactive?.(node.id, nodes)) {
+      activeProjectiles.delete(node.id);
+      continue;
+    }
+    const spec = normalizeProjectile(raw);
+    if (!spec.enabled) continue;
+    if (!activeProjectiles.has(node.id)) {
+      const dir = defaultDirectionForNode(node);
+      activeProjectiles.set(node.id, {
+        nodeId: node.id,
+        vx: dir.x * spec.speed,
+        vy: dir.y * spec.speed,
+        vz: dir.z * spec.speed,
+        elapsed: 0
+      });
+    }
+  }
+  for (const [id, state] of [...activeProjectiles.entries()]) {
+    const node = nodes[id];
+    if (!node || !node.visible || hooks.isNodeInactive?.(id, nodes)) {
+      activeProjectiles.delete(id);
+      continue;
+    }
+    const spec = normalizeProjectile(node.capabilities?.[PROJECTILE_CAPABILITY_ID]);
+    const mode = state.mode ?? spec.mode;
+    const speed = Math.max(0.1, state.speed ?? spec.speed);
+    const gravity = state.gravity ?? spec.gravity;
+    const turnRate = state.turnRate ?? spec.turnRate;
+    const maxLifetime = Math.max(0.05, state.maxLifetime ?? spec.maxLifetime);
+    const hitRadius = Math.max(0.02, state.hitRadius ?? spec.hitRadius);
+    const targetTag = (state.targetTag ?? spec.targetTag).trim();
+    const damage = state.damage ?? spec.damage;
+    const destroyOnHit = state.destroyOnHit ?? spec.destroyOnHit;
+    state.elapsed += safeDt;
+    if (state.elapsed >= maxLifetime) {
+      activeProjectiles.delete(id);
+      hooks.onRecycle?.(id, host);
+      continue;
+    }
+    const pos = readPos(host, node);
+    if (mode === "homing" && state.targetId) {
+      const targetNode = nodes[state.targetId];
+      if (targetNode && targetNode.visible && !hooks.isNodeInactive?.(targetNode.id, nodes)) {
+        const tp = readPos(host, targetNode);
+        const dx = tp.x - pos.x;
+        const dy = tp.y - pos.y;
+        const dz = tp.z - pos.z;
+        const dist = Math.hypot(dx, dy, dz);
+        if (dist > 1e-4) {
+          const desiredVx = dx / dist * speed;
+          const desiredVy = dy / dist * speed;
+          const desiredVz = dz / dist * speed;
+          const blend = Math.min(1, turnRate * safeDt);
+          state.vx += (desiredVx - state.vx) * blend;
+          state.vy += (desiredVy - state.vy) * blend;
+          state.vz += (desiredVz - state.vz) * blend;
+          const curSpd = Math.hypot(state.vx, state.vy, state.vz) || 1;
+          state.vx = state.vx / curSpd * speed;
+          state.vy = state.vy / curSpd * speed;
+          state.vz = state.vz / curSpd * speed;
+        }
+      }
+    } else if (mode === "ballistic") {
+      state.vy -= gravity * safeDt;
+    }
+    const nx = pos.x + state.vx * safeDt;
+    const ny = pos.y + state.vy * safeDt;
+    const nz = pos.z + state.vz * safeDt;
+    writePos(host, node, nx, ny, nz);
+    orientAlongVelocity(host, node, state.vx, state.vy, state.vz);
+    let hitNode = null;
+    if (state.targetId) {
+      const t = nodes[state.targetId];
+      if (t && t.visible && !hooks.isNodeInactive?.(t.id, nodes)) {
+        const tp = readPos(host, t);
+        const d = Math.hypot(tp.x - nx, tp.y - ny, tp.z - nz);
+        if (d <= hitRadius) hitNode = t;
+      }
+    }
+    if (!hitNode && targetTag) {
+      const r2 = hitRadius * hitRadius;
+      for (const candidate of Object.values(nodes)) {
+        if (candidate.id === id || candidate.id === state.ownerId) continue;
+        if (!candidate.visible || hooks.isNodeInactive?.(candidate.id, nodes)) continue;
+        if (!nodeHasTag(candidate, targetTag)) continue;
+        const cp = readPos(host, candidate);
+        const dx = cp.x - nx;
+        const dy = cp.y - ny;
+        const dz = cp.z - nz;
+        if (dx * dx + dy * dy + dz * dz <= r2) {
+          hitNode = candidate;
+          break;
+        }
+      }
+    }
+    if (hitNode) {
+      const hitPos = { x: nx, y: ny, z: nz };
+      try {
+        state.onHit?.(hitNode.id, hitPos);
+      } catch (err) {
+        console.warn("[Projectile] onHit \u56DE\u8C03\u5F02\u5E38:", err);
+      }
+      try {
+        hooks.onHit?.({
+          projectileId: id,
+          targetId: hitNode.id,
+          ownerId: state.ownerId,
+          damage,
+          position: hitPos
+        });
+      } catch (err) {
+        console.warn("[Projectile] hooks.onHit \u5F02\u5E38:", err);
+      }
+      if (destroyOnHit) {
+        activeProjectiles.delete(id);
+        hooks.onRecycle?.(id, host);
+      }
+    }
+  }
+}
+function ensureProjectileRuntime() {
+  if (unregisterProjectile) return;
+  unregisterProjectile = registerRuntimeSystem(
+    "capability.projectile",
+    RUNTIME_STAGE.PRE_PHYSICS + 5,
+    stepProjectileRuntime
+  );
+}
+function mount6() {
+  ensureProjectileRuntime();
+  return dispose6;
+}
+function dispose6() {
+  unregisterProjectile?.();
+  unregisterProjectile = null;
+  activeProjectiles.clear();
+}
+var activeProjectiles, unregisterProjectile, hooks, tmpDir, tmpQuat2, tmpForward, projectileRuntimeModule;
+var init_session8 = __esm({
+  "src/capabilities/projectile/session.ts"() {
+    "use strict";
+    init_runtimeTags();
+    init_sceneRuntime();
+    init_world();
+    init_schema4();
+    activeProjectiles = /* @__PURE__ */ new Map();
+    unregisterProjectile = null;
+    hooks = {};
+    tmpDir = new Vector38();
+    tmpQuat2 = new Quaternion4();
+    tmpForward = new Vector38(0, 0, 1);
+    projectileRuntimeModule = {
+      mount: mount6,
+      dispose: dispose6
+    };
+  }
+});
+
+// src/capabilities/sky/defaults.ts
+function defaultSkySettings() {
+  return {
+    timeOfDay: 15,
+    latitude: 35,
+    dayOfYear: 172,
+    north: "+Z",
+    exposure: 2.5,
+    turbidity: 1,
+    groundAlbedo: 0.3,
+    sunDisc: true,
+    sunAngularDiameter: 0.53,
+    sunIntensity: 0.12,
+    sunShadow: true,
+    fog: false,
+    fogDensity: 0.3,
+    fogHeightFalloff: 300,
+    fogBaseHeight: 0,
+    fogMaxOpacity: 1,
+    fogColor: "#c9d6e6",
+    fogSkyColor: true,
+    haze: false,
+    hazeStrength: 1,
+    hazeNear: 200,
+    stars: false,
+    starIntensity: 1,
+    starSize: 0.7,
+    milkyWay: 0.25,
+    moon: false,
+    moonAngularDiameter: 0.53,
+    moonPhase: 0.5,
+    moonLight: 1,
+    mirrorBelowHorizon: false
+  };
+}
+function normalizeSkySettings(value) {
+  const base = defaultSkySettings();
+  if (!value || typeof value !== "object") return base;
+  const raw = value;
+  return {
+    timeOfDay: clamp3(raw.timeOfDay, base.timeOfDay, 0, 24),
+    latitude: clamp3(raw.latitude, base.latitude, -90, 90),
+    dayOfYear: Math.round(clamp3(raw.dayOfYear, base.dayOfYear, 1, 365)),
+    north: typeof raw.north === "string" && NORTH.includes(raw.north) ? raw.north : base.north,
+    exposure: clamp3(raw.exposure, base.exposure, 0, 120),
+    turbidity: clamp3(raw.turbidity, base.turbidity, 0, 12),
+    groundAlbedo: clamp3(raw.groundAlbedo, base.groundAlbedo, 0, 1),
+    sunDisc: bool(raw.sunDisc, base.sunDisc),
+    sunAngularDiameter: clamp3(raw.sunAngularDiameter, base.sunAngularDiameter, 0.05, 12),
+    sunIntensity: clamp3(raw.sunIntensity, base.sunIntensity, 0, 4),
+    sunShadow: bool(raw.sunShadow, base.sunShadow),
+    fog: bool(raw.fog, base.fog),
+    fogDensity: clamp3(raw.fogDensity, base.fogDensity, 0, 12),
+    fogHeightFalloff: clamp3(raw.fogHeightFalloff, base.fogHeightFalloff, 1, 8e3),
+    fogBaseHeight: clamp3(raw.fogBaseHeight, base.fogBaseHeight, -500, 8e3),
+    fogMaxOpacity: clamp3(raw.fogMaxOpacity, base.fogMaxOpacity, 0, 1),
+    fogColor: colorOf(raw.fogColor, base.fogColor),
+    fogSkyColor: bool(raw.fogSkyColor, base.fogSkyColor),
+    haze: bool(raw.haze, base.haze),
+    hazeStrength: clamp3(raw.hazeStrength, base.hazeStrength, 0, 3),
+    hazeNear: clamp3(raw.hazeNear, base.hazeNear, 1, 1e3),
+    stars: bool(raw.stars, base.stars),
+    starIntensity: clamp3(raw.starIntensity, base.starIntensity, 0, 4),
+    starSize: clamp3(raw.starSize, base.starSize, 0.2, 3),
+    milkyWay: clamp3(raw.milkyWay, base.milkyWay, 0, 2),
+    moon: bool(raw.moon, base.moon),
+    moonAngularDiameter: clamp3(raw.moonAngularDiameter, base.moonAngularDiameter, 0.05, 12),
+    moonPhase: clamp3(raw.moonPhase, base.moonPhase, 0, 1),
+    moonLight: clamp3(raw.moonLight, base.moonLight, 0, 3),
+    mirrorBelowHorizon: bool(raw.mirrorBelowHorizon, base.mirrorBelowHorizon)
+  };
+}
+function clamp3(value, fallback, min3, max4) {
+  const next = typeof value === "number" && Number.isFinite(value) ? value : fallback;
+  return Math.min(max4, Math.max(min3, next));
+}
+function bool(value, fallback) {
+  return typeof value === "boolean" ? value : fallback;
+}
+function colorOf(value, fallback) {
+  return typeof value === "string" && /^#[0-9a-fA-F]{6}$/.test(value) ? value : fallback;
+}
+var SKY_CAPABILITY_ID, NORTH;
+var init_defaults3 = __esm({
+  "src/capabilities/sky/defaults.ts"() {
+    "use strict";
+    SKY_CAPABILITY_ID = "sky";
+    NORTH = ["+X", "-X", "+Z", "-Z"];
+  }
+});
+
+// src/core/layers.ts
+var EDITOR_HELPER_LAYER;
+var init_layers = __esm({
+  "src/core/layers.ts"() {
+    "use strict";
+    EDITOR_HELPER_LAYER = 31;
+  }
+});
+
+// src/capabilities/sky/runtime.ts
+var runtime_exports = {};
+__export(runtime_exports, {
+  createSkyDriver: () => createSkyDriver
+});
+import { Color as Color4, OrthographicCamera } from "three";
+import { mix as mix4, uniform as uniform3, vec4 as vec43 } from "three/tsl";
+import { Sky } from "@pmndrs/sky";
+function createSkyDriver(renderer, scene2) {
+  return new SkyRuntime(renderer, scene2);
+}
+function degreesToRadians(degrees) {
+  return degrees * Math.PI / 180;
+}
+function fogChanged(prev, next) {
+  return prev.fog !== next.fog || prev.fogDensity !== next.fogDensity || prev.fogHeightFalloff !== next.fogHeightFalloff || prev.fogBaseHeight !== next.fogBaseHeight || prev.fogMaxOpacity !== next.fogMaxOpacity;
+}
+function lightUserLayers(light) {
+  light.layers.disableAll();
+  for (let bit = 0; bit < EDITOR_HELPER_LAYER; bit += 1) light.layers.enable(bit);
+}
+function configureShadow(light) {
+  light.shadow.mapSize.set(2048, 2048);
+  light.shadow.bias = -15e-5;
+  light.shadow.normalBias = 0.04;
+  const camera = light.shadow.camera;
+  if (camera instanceof OrthographicCamera) {
+    camera.near = 0.5;
+    camera.far = 160;
+    camera.left = -40;
+    camera.right = 40;
+    camera.top = 40;
+    camera.bottom = -40;
+    camera.updateProjectionMatrix();
+  }
+}
+var SkyRuntime;
+var init_runtime = __esm({
+  "src/capabilities/sky/runtime.ts"() {
+    "use strict";
+    init_layers();
+    init_session9();
+    SkyRuntime = class {
+      constructor(renderer, scene2) {
+        this.scene = scene2;
+        this.sky = new Sky(renderer, {
+          preset: "earth",
+          sunColor: "bruneton",
+          enableAerialPerspective: true
+        });
+        this.sky.attach(scene2);
+        this.sun = this.sky.createSun({
+          physical: true,
+          intensity: 0.12,
+          castShadow: true,
+          horizonFade: true
+        });
+        lightUserLayers(this.sun.light);
+        configureShadow(this.sun.light);
+        this.sun.attach(scene2);
+      }
+      scene;
+      sky;
+      sun;
+      moon = null;
+      applied = null;
+      starsWanted = false;
+      starsReady = false;
+      starsPending = false;
+      starToken = 0;
+      night = null;
+      starLook = null;
+      fogTint = uniform3(new Color4("#c9d6e6"));
+      fogUseColor = uniform3(0);
+      hazeOn = false;
+      fogOn = false;
+      apKey = "";
+      applyFogNode = (colorNode, scenePass) => {
+        let node = colorNode;
+        if (this.hazeOn && this.sky.aerialPerspectiveTexture) {
+          this.sky.setHazePolicy("ap");
+          node = this.sky.applyHaze(node, {
+            scenePass,
+            policy: "ap",
+            raymarchFallback: false,
+            // 编辑器远平面只有两千米。不传这个的话，远处地面的深度会被当成天空，雾气在合成时被减掉。
+            useCameraFar: true
+          });
+        }
+        if (!this.fogOn) return node;
+        const skyFog = this.sky.applyFog(node, { scenePass });
+        const amount = this.sky.applyFog(node, { scenePass, debugMode: "fog-amount" });
+        const base = node;
+        const flat = mix4(base.rgb, this.fogTint, amount.r);
+        return vec43(mix4(skyFog.rgb, flat, this.fogUseColor), skyFog.a);
+      };
+      /** 构造时库自己已经开始编译。这里只取那一份 Promise，避免和主绘制抢渲染器。 */
+      compile() {
+        return this.sky.compileAsync();
+      }
+      hazeReady() {
+        return Boolean(this.sky.aerialPerspectiveTexture);
+      }
+      sync(settings, camera) {
+        const prev = this.applied;
+        if (!prev || prev.timeOfDay !== settings.timeOfDay) this.sky.setTimeOfDay(settings.timeOfDay);
+        if (!prev || prev.latitude !== settings.latitude) this.sky.setLatitude(settings.latitude);
+        if (!prev || prev.dayOfYear !== settings.dayOfYear) this.sky.setDayOfYear(settings.dayOfYear);
+        if (!prev || prev.north !== settings.north) this.sky.setNorth(settings.north);
+        if (!prev || prev.exposure !== settings.exposure) this.sky.setExposure(settings.exposure);
+        if (!prev || prev.turbidity !== settings.turbidity) this.sky.setTurbidity(settings.turbidity);
+        if (!prev || prev.groundAlbedo !== settings.groundAlbedo) this.sky.setGroundAlbedo(settings.groundAlbedo);
+        if (!prev || prev.sunDisc !== settings.sunDisc || prev.sunAngularDiameter !== settings.sunAngularDiameter) {
+          this.sky.setSunDisc({
+            visible: settings.sunDisc,
+            angularDiameter: degreesToRadians(settings.sunAngularDiameter)
+          });
+        }
+        if (!prev || prev.mirrorBelowHorizon !== settings.mirrorBelowHorizon) this.sky.setMirrorBelowHorizon(settings.mirrorBelowHorizon);
+        if (!prev || prev.sunIntensity !== settings.sunIntensity) this.sun.setIntensity(settings.sunIntensity);
+        if (!prev || prev.sunShadow !== settings.sunShadow) this.sun.castShadow = settings.sunShadow;
+        if (!prev || fogChanged(prev, settings)) {
+          this.sky.setFog({
+            density: settings.fogDensity,
+            heightFalloff: settings.fogHeightFalloff,
+            baseHeight: settings.fogBaseHeight,
+            maxOpacity: settings.fog ? settings.fogMaxOpacity : 0
+          });
+        }
+        this.fogTint.value.set(settings.fogColor);
+        this.fogUseColor.value = settings.fogSkyColor ? 0 : 1;
+        if (!prev || prev.hazeStrength !== settings.hazeStrength) this.sky.setHazeStrength(settings.hazeStrength);
+        if (!prev || prev.hazeNear !== settings.hazeNear) this.sky.setAerialPerspectiveDistanceScale(settings.hazeNear);
+        this.hazeOn = settings.haze;
+        this.fogOn = settings.fog;
+        this.syncMoon(settings);
+        this.syncStars(settings);
+        this.applied = settings;
+        this.sky.update(camera);
+        this.applyCelestialFade(settings, prev);
+        if (settings.haze && this.hazeReady()) {
+          const e = camera.matrixWorld.elements;
+          const nextApKey = `${e[0].toFixed(3)},${e[4].toFixed(3)},${e[8].toFixed(3)},${e[12].toFixed(2)},${e[13].toFixed(2)},${e[14].toFixed(2)}|${settings.timeOfDay}|${settings.latitude}|${settings.dayOfYear}|${settings.north}|${settings.turbidity}|${settings.groundAlbedo}`;
+          if (nextApKey !== this.apKey) {
+            this.apKey = nextApKey;
+            void this.sky.updateAerialPerspective();
+          }
+        } else {
+          this.apKey = "";
+        }
+        const atmosphere = settings.fog || settings.haze;
+        setSkyViewState({
+          owns: true,
+          fog: atmosphere,
+          apply: atmosphere ? this.applyFogNode : null,
+          signature: `${settings.haze ? 1 : 0}${settings.fog ? 1 : 0}`
+        });
+      }
+      dispose() {
+        this.starToken += 1;
+        this.starsWanted = false;
+        if (this.starsReady) this.sky.disableStars();
+        this.starsReady = false;
+        this.night = null;
+        this.moon?.dispose();
+        this.moon = null;
+        this.sun.dispose();
+        this.sky.detach();
+        this.sky.dispose();
+        setSkyViewState({ owns: false, fog: false, apply: null });
+      }
+      syncMoon(settings) {
+        if (!settings.moon) {
+          this.moon?.dispose();
+          this.moon = null;
+          return;
+        }
+        if (!this.moon) {
+          this.moon = this.sky.createMoonlight({
+            skyFill: false,
+            castShadow: false,
+            phase: settings.moonPhase,
+            discAngularDiameter: degreesToRadians(settings.moonAngularDiameter)
+          });
+          lightUserLayers(this.moon.moon.light);
+          this.moon.attach(this.scene);
+          this.moon.setIntensity(settings.moonLight);
+          this.moon.moon.setDiscIntensity(3);
+          return;
+        }
+        const prev = this.applied;
+        if (!prev || prev.moonLight !== settings.moonLight) this.moon.setIntensity(settings.moonLight);
+        if (!prev || prev.moonPhase !== settings.moonPhase) this.moon.setPhase(settings.moonPhase);
+        if (!prev || prev.moonAngularDiameter !== settings.moonAngularDiameter) {
+          this.moon.moon.setDiscAngularDiameter(degreesToRadians(settings.moonAngularDiameter));
+        }
+        this.moon.moon.setDiscIntensity(3);
+      }
+      syncStars(settings) {
+        const enabled = settings.stars;
+        if (enabled) this.starLook = settings;
+        if (enabled === this.starsWanted && (!enabled || this.starsReady || this.starsPending)) {
+          if (enabled && this.night) this.applyStarLook(settings);
+          return;
+        }
+        this.starsWanted = enabled;
+        this.starToken += 1;
+        if (!enabled) {
+          if (this.starsReady) this.sky.disableStars();
+          this.starsReady = false;
+          this.starsPending = false;
+          this.night = null;
+          return;
+        }
+        const token = this.starToken;
+        this.starsPending = true;
+        void this.sky.enableStars({
+          intensity: settings.starIntensity,
+          size: settings.starSize,
+          milkyWay: settings.milkyWay
+        }).then((night) => {
+          if (token !== this.starToken) {
+            this.sky.disableStars();
+            this.starsReady = false;
+            this.starsPending = false;
+            this.night = null;
+            return;
+          }
+          this.night = night;
+          this.starsPending = false;
+          this.starsReady = true;
+          if (this.starLook) this.applyStarLook(this.starLook, true);
+        }).catch((error) => {
+          if (token === this.starToken) this.starsPending = false;
+          console.warn("[sky] \u661F\u7A7A\u52A0\u8F7D\u5931\u8D25", error);
+        });
+      }
+      applyStarLook(settings, force = false) {
+        const night = this.night;
+        if (!night) return;
+        const prev = force ? null : this.applied;
+        if (!prev || prev.starIntensity !== settings.starIntensity) night.setIntensity(settings.starIntensity);
+        if (!prev || prev.starSize !== settings.starSize) night.setSize(settings.starSize);
+        if (!prev || prev.milkyWay !== settings.milkyWay) night.setMilkyWay(settings.milkyWay);
+        this.applyStarContrast(settings, prev);
+      }
+      /**
+       * 星星按天空亮度淡出，和夜空示例一样。
+       * 库的阈值按曝光 40 调过。这里曝光低得多，要按同样比例放大，否则白天也看得见。
+       * 月面不要再乘太阳高度：那会在白天把月盘亮度写成 0。月亮跟着月相转到地平线以下时，本来就看不到。
+       */
+      applyCelestialFade(settings, prev) {
+        this.applyStarContrast(settings, prev);
+      }
+      applyStarContrast(settings, prev) {
+        const night = this.night;
+        if (!night || prev && prev.exposure === settings.exposure) return;
+        const scale = 40 / Math.max(settings.exposure, 0.05);
+        night.setContrast(40 * scale);
+        night.setMilkyWayContrast(20 * scale);
+      }
+    };
+  }
+});
+
+// src/capabilities/sky/session.ts
+var session_exports7 = {};
+__export(session_exports7, {
+  composeSkyFog: () => composeSkyFog,
+  dispose: () => dispose7,
+  mount: () => mount7,
+  releaseSkyResources: () => releaseSkyResources,
+  setSkyViewState: () => setSkyViewState,
+  skyBlocksFrame: () => skyBlocksFrame,
+  skyFogActive: () => skyFogActive,
+  skyFogRevision: () => skyFogRevision,
+  skyOwnsSceneSlots: () => skyOwnsSceneSlots
+});
+function skyOwnsSceneSlots() {
+  return ownsSlots;
+}
+function skyBlocksFrame() {
+  return compiling;
+}
+function skyFogActive() {
+  return fogActive;
+}
+function skyFogRevision() {
+  return fogRevision;
+}
+function composeSkyFog(colorNode, scenePass) {
+  return fogApply ? fogApply(colorNode, scenePass) : colorNode;
+}
+function setSkyViewState(next) {
+  ownsSlots = next.owns;
+  const signature = next.signature ?? "";
+  if (fogActive === next.fog && fogApply === next.apply && fogSignature === signature) return;
+  fogActive = next.fog;
+  fogApply = next.apply;
+  fogSignature = signature;
+  fogRevision += 1;
+}
+function releaseSkyResources() {
+  bootToken += 1;
+  booting2 = false;
+  compiling = false;
+  driver?.dispose();
+  driver = null;
+  setSkyViewState({ owns: false, fog: false, apply: null });
+}
+function mount7() {
+  if (removeHook) return () => shutdown();
+  removeHook = getRuntimeWorld().registerBeforeRenderHook?.("sky", 20, (ctx) => onBeforeRender2(ctx)) ?? null;
+  return () => shutdown();
+}
+function dispose7() {
+  shutdown();
+}
+function shutdown() {
+  removeHook?.();
+  removeHook = null;
+  releaseSkyResources();
+}
+function onBeforeRender2(ctx) {
+  pending = ctx;
+  try {
+    const runtime2 = getRuntimeWorld();
+    if (!capabilityEnabled(runtime2.getCapabilities(), SKY_CAPABILITY_ID)) {
+      if (driver || booting2 || compiling) releaseSkyResources();
+      return;
+    }
+    const settings = normalizeSkySettings(runtime2.getPicture().capabilities?.[SKY_CAPABILITY_ID]);
+    if (!driver) {
+      ensure();
+      return;
+    }
+    if (compiling) return;
+    if (settings.haze && !driver.hazeReady()) {
+      driver.dispose();
+      driver = null;
+      ensure();
+      return;
+    }
+    driver.sync(settings, ctx.camera);
+  } catch (error) {
+    console.warn("[sky] \u5929\u7A7A\u66F4\u65B0\u5931\u8D25", error);
+  } finally {
+    restoreCanvas(ctx);
+  }
+}
+function restoreCanvas(ctx) {
+  try {
+    ctx.renderer.setRenderTarget(null);
+  } catch {
+  }
+}
+function ensure() {
+  if (booting2 || !pending) return;
+  booting2 = true;
+  const token = ++bootToken;
+  const ctx = pending;
+  void Promise.resolve().then(() => (init_runtime(), runtime_exports)).then((module) => {
+    if (token !== bootToken) return;
+    booting2 = false;
+    const runtime2 = getRuntimeWorld();
+    if (!capabilityEnabled(runtime2.getCapabilities(), SKY_CAPABILITY_ID) || !pending) return;
+    let created;
+    try {
+      created = module.createSkyDriver(ctx.renderer, ctx.scene);
+    } catch (error) {
+      console.warn("[sky] \u5929\u7A7A\u521B\u5EFA\u5931\u8D25", error);
+      return;
+    }
+    driver = created;
+    compiling = true;
+    void created.compile().then(() => {
+      if (token !== bootToken || driver !== created || !pending) return;
+      const latest = getRuntimeWorld();
+      if (!capabilityEnabled(latest.getCapabilities(), SKY_CAPABILITY_ID)) return;
+      created.sync(normalizeSkySettings(latest.getPicture().capabilities?.[SKY_CAPABILITY_ID]), pending.camera);
+    }).catch((error) => {
+      console.warn("[sky] \u7740\u8272\u5668\u7F16\u8BD1\u5931\u8D25", error);
+    }).finally(() => {
+      if (token === bootToken) compiling = false;
+    });
+  }).catch((error) => {
+    if (token === bootToken) booting2 = false;
+    console.warn("[sky] \u5929\u7A7A\u52A0\u8F7D\u5931\u8D25", error);
+  });
+}
+var ownsSlots, fogActive, fogApply, fogSignature, fogRevision, removeHook, driver, booting2, bootToken, pending, compiling;
+var init_session9 = __esm({
+  "src/capabilities/sky/session.ts"() {
+    "use strict";
+    init_registry2();
+    init_world();
+    init_defaults3();
+    ownsSlots = false;
+    fogActive = false;
+    fogApply = null;
+    fogSignature = "";
+    fogRevision = 0;
+    removeHook = null;
+    driver = null;
+    booting2 = false;
+    bootToken = 0;
+    pending = null;
+    compiling = false;
+  }
+});
+
+// src/capabilities/registry.ts
+function allCapabilityManifests() {
+  return [...CAPABILITIES, ...dynamicCapabilities.values()];
+}
+function defaultCapabilities() {
+  const base = Object.fromEntries(CAPABILITIES.map((item) => [item.id, item.defaultEnabled]));
+  for (const item of dynamicCapabilities.values()) base[item.id] = item.defaultEnabled;
+  return base;
+}
+function capabilityEnabled(capabilities, id) {
+  const defaults = defaultCapabilities();
+  if (!capabilities || typeof capabilities[id] !== "boolean") return defaults[id] ?? false;
+  const manifest = allCapabilityManifests().find((item) => item.id === id);
+  if (manifest?.dependencies) {
+    for (const dep of manifest.dependencies) {
+      if (!capabilityEnabled(capabilities, dep)) return false;
+    }
+  }
+  return capabilities[id];
+}
+var CAPABILITIES, dynamicCapabilities;
+var init_registry2 = __esm({
+  "src/capabilities/registry.ts"() {
+    "use strict";
+    CAPABILITIES = [
+      { id: "physics", defaultEnabled: true, category: "physics" },
+      { id: "buoyancy", defaultEnabled: true, category: "physics", dependencies: ["physics"], loadRuntime: () => Promise.resolve().then(() => (init_session3(), session_exports2)) },
+      { id: "navigation", defaultEnabled: true, category: "physics" },
+      { id: "spline", defaultEnabled: true, category: "animation", loadRuntime: () => Promise.resolve().then(() => (init_session5(), session_exports3)) },
+      { id: "tween", defaultEnabled: true, category: "animation", loadRuntime: () => Promise.resolve().then(() => (init_session6(), session_exports4)) },
+      { id: "crowd", defaultEnabled: true, category: "physics", loadRuntime: () => Promise.resolve().then(() => (init_session7(), session_exports5)) },
+      { id: "projectile", defaultEnabled: true, category: "physics", loadRuntime: () => Promise.resolve().then(() => (init_session8(), session_exports6)) },
+      { id: "particles", defaultEnabled: false, category: "scene-object" },
+      { id: "sky", defaultEnabled: false, category: "environment", loadRuntime: () => Promise.resolve().then(() => (init_session9(), session_exports7)) },
+      { id: "water", defaultEnabled: false, category: "environment", loadRuntime: () => Promise.resolve().then(() => (init_session2(), session_exports)) }
+    ];
+    dynamicCapabilities = /* @__PURE__ */ new Map();
+  }
+});
 
 // src/capabilities/navigation/archive.ts
-var saved = /* @__PURE__ */ new Map();
-var epoch = 0;
 function navEpoch() {
   return epoch;
 }
@@ -3946,28 +5602,184 @@ function decodeBytes(value) {
   for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
   return bytes;
 }
+var saved, epoch;
+var init_archive = __esm({
+  "src/capabilities/navigation/archive.ts"() {
+    "use strict";
+    saved = /* @__PURE__ */ new Map();
+    epoch = 0;
+  }
+});
+
+// src/capabilities/navigation/defaults.ts
+var init_defaults4 = __esm({
+  "src/capabilities/navigation/defaults.ts"() {
+    "use strict";
+  }
+});
+
+// src/capabilities/navigation/recastNav.ts
+var recastNav_exports = {};
+__export(recastNav_exports, {
+  createRecastNavigation: () => createRecastNavigation
+});
+import {
+  exportNavMesh,
+  exportTileCache,
+  getNavMeshPositionsAndIndices,
+  importNavMesh,
+  importTileCache,
+  init,
+  NavMeshQuery
+} from "recast-navigation";
+import { createDefaultTileCacheMeshProcess } from "recast-navigation/generators";
+async function createRecastNavigation() {
+  await init();
+  return new RecastNavigation();
+}
+function abortError() {
+  const error = new Error("aborted");
+  error.name = "AbortError";
+  return error;
+}
+var RecastNavigation;
+var init_recastNav = __esm({
+  "src/capabilities/navigation/recastNav.ts"() {
+    "use strict";
+    RecastNavigation = class {
+      navMesh = null;
+      tileCache = null;
+      query = null;
+      retained = [];
+      carved = /* @__PURE__ */ new Map();
+      worker = null;
+      mode = "solo";
+      async bake(positions, indices, config, signal) {
+        if (signal.aborted) throw abortError();
+        this.worker?.terminate();
+        const worker = new Worker(new URL("./bake.worker.ts", import.meta.url), { type: "module" });
+        this.worker = worker;
+        const response = await new Promise((resolve, reject) => {
+          const stop = () => {
+            worker.terminate();
+            reject(abortError());
+          };
+          if (signal.aborted) {
+            stop();
+            return;
+          }
+          signal.addEventListener("abort", stop, { once: true });
+          worker.onmessage = (event) => {
+            signal.removeEventListener("abort", stop);
+            resolve(event.data);
+          };
+          worker.onerror = () => {
+            signal.removeEventListener("abort", stop);
+            reject(new Error("navigation worker failed"));
+          };
+          const positionCopy = new Float32Array(positions);
+          const indexCopy = new Uint32Array(indices);
+          worker.postMessage(
+            { positions: positionCopy, indices: indexCopy, config },
+            [positionCopy.buffer, indexCopy.buffer]
+          );
+        });
+        if (this.worker === worker) this.worker = null;
+        worker.terminate();
+        if (signal.aborted) throw abortError();
+        if (!response.ok) throw new Error(response.error || "bake failed");
+        await this.restore({ bytes: response.bytes, mode: response.mode });
+      }
+      async restore(record) {
+        this.releaseMesh();
+        if (record.mode === "tileCache") {
+          const imported = importTileCache(record.bytes, createDefaultTileCacheMeshProcess());
+          this.navMesh = imported.navMesh;
+          this.tileCache = imported.tileCache;
+          this.retained = [imported.allocator, imported.compressor];
+          this.mode = "tileCache";
+        } else {
+          this.navMesh = importNavMesh(record.bytes).navMesh;
+          this.mode = "solo";
+        }
+        this.query = new NavMeshQuery(this.navMesh);
+        this.query.defaultQueryHalfExtents = { x: 2, y: 4, z: 2 };
+      }
+      clear() {
+        this.releaseMesh();
+      }
+      obstacles(items) {
+        const cache = this.tileCache;
+        const mesh = this.navMesh;
+        if (!cache || !mesh || this.mode !== "tileCache") return;
+        let changed = this.carved.size > 0 || items.length > 0;
+        for (const obstacle of this.carved.values()) cache.removeObstacle(obstacle);
+        this.carved.clear();
+        for (const item of items) {
+          const added = cache.addCylinderObstacle(
+            { x: item.position[0], y: item.position[1], z: item.position[2] },
+            item.radius,
+            item.height
+          );
+          if (!added.success || !added.obstacle) continue;
+          this.carved.set(item.id, added.obstacle);
+        }
+        if (!changed) return;
+        for (let step2 = 0; step2 < 8; step2 += 1) {
+          const updated = cache.update(mesh);
+          if (updated.upToDate) break;
+        }
+      }
+      findPath(start2, end) {
+        if (!this.query) return null;
+        const result = this.query.computePath(
+          { x: start2[0], y: start2[1], z: start2[2] },
+          { x: end[0], y: end[1], z: end[2] }
+        );
+        if (!result.success || result.path.length === 0) return null;
+        return result.path.map((point2) => [point2.x, point2.y, point2.z]);
+      }
+      debug() {
+        if (!this.navMesh) return null;
+        const [positions, indices] = getNavMeshPositionsAndIndices(this.navMesh);
+        if (positions.length === 0 || indices.length === 0) return null;
+        return {
+          positions: Float32Array.from(positions),
+          indices: Uint32Array.from(indices)
+        };
+      }
+      exportRecord() {
+        if (!this.navMesh) return null;
+        if (this.mode === "tileCache" && this.tileCache) {
+          return { bytes: new Uint8Array(exportTileCache(this.navMesh, this.tileCache)), mode: "tileCache" };
+        }
+        return { bytes: new Uint8Array(exportNavMesh(this.navMesh)), mode: "solo" };
+      }
+      dispose() {
+        this.worker?.terminate();
+        this.worker = null;
+        this.releaseMesh();
+      }
+      releaseMesh() {
+        this.carved.clear();
+        this.query?.destroy();
+        this.query = null;
+        this.tileCache?.destroy();
+        this.tileCache = null;
+        this.navMesh?.destroy();
+        this.navMesh = null;
+        this.retained.splice(0, this.retained.length);
+        this.mode = "solo";
+      }
+    };
+  }
+});
 
 // src/capabilities/navigation/session.ts
+import { create } from "zustand";
 function tr(key, fallback) {
   return getRuntimeWorld().translate?.(key) ?? fallback;
 }
-var useNavUi = create(() => ({
-  phase: "idle",
-  text: "",
-  sceneId: "",
-  signature: "",
-  triangles: 0
-}));
-var instance = null;
-var opening = null;
-var life = 0;
-var loadedScene = "";
-var seenEpoch = -1;
-var activating = false;
-var controller = null;
-var pending2 = null;
-var obstacleKey = "";
-var debugMesh = null;
 function cancelNavBake() {
   controller?.abort();
   controller = null;
@@ -4101,400 +5913,136 @@ function abortError2() {
   error.name = "AbortError";
   return error;
 }
-
-// src/gameplay/registry.ts
-var packs = /* @__PURE__ */ new Map();
-function tableSchema(tableId) {
-  for (const pack of packs.values()) {
-    const found = pack.tables?.find((table) => table.tableId === tableId);
-    if (found) return found;
+var useNavUi, instance, opening, life, loadedScene, seenEpoch, activating, controller, pending2, obstacleKey, debugMesh;
+var init_session10 = __esm({
+  "src/capabilities/navigation/session.ts"() {
+    "use strict";
+    init_registry2();
+    init_transform();
+    init_world();
+    init_archive();
+    init_defaults4();
+    useNavUi = create(() => ({
+      phase: "idle",
+      text: "",
+      sceneId: "",
+      signature: "",
+      triangles: 0
+    }));
+    instance = null;
+    opening = null;
+    life = 0;
+    loadedScene = "";
+    seenEpoch = -1;
+    activating = false;
+    controller = null;
+    pending2 = null;
+    obstacleKey = "";
+    debugMesh = null;
   }
-  return void 0;
-}
-function defaultRows(tableId) {
-  return structuredClone(tableSchema(tableId)?.defaultRows ?? []);
-}
-function tableRows(database, tableId) {
-  const existing = database?.tables?.[tableId];
-  if (existing) return existing;
-  return defaultRows(tableId);
-}
-function findRow(database, tableId, id) {
-  const key = id.trim();
-  if (!key) return void 0;
-  return tableRows(database, tableId).find((row) => row.id === key);
-}
+});
 
-// src/runtime/audio.ts
-import { Audio, AudioListener, PositionalAudio } from "three";
+// tests/phase3-code-assets.test.ts
+import assert from "node:assert/strict";
+import test from "node:test";
+import { Group } from "three";
 
-// src/runtime/sceneRuntime.ts
-init_session();
-
-// src/capabilities/particles/session.ts
-init_registry();
-init_world();
-
-// src/capabilities/particles/readQuarks.ts
-var DEFAULT_APPEARANCE = {
-  color: "#ff8c33",
-  blend: "additive",
-  opacity: 1,
-  depthWrite: false,
-  image: null
-};
-function readQuarksDocument(json) {
-  if (!json || typeof json !== "object") return null;
-  const record = json;
-  if (record.version === "3.0" && record.shape && typeof record.shape === "object") {
-    const body = { ...record };
-    delete body.material;
-    delete body.texture;
-    return {
-      simulation: { format: "system", body },
-      appearance: appearanceFromFields(record, DEFAULT_APPEARANCE)
-    };
+// src/core/codeAssets/compiler.ts
+import ts from "typescript";
+function diagnosticHint(code, message) {
+  if (message.includes("t3d/shader") || message.includes("t3d/runtime")) {
+    return '\u8BF7\u786E\u4FDD\u4ECE "t3d/shader" \u6216 "t3d/runtime" \u5BFC\u5165\u767D\u540D\u5355 API';
   }
-  if (record.object && typeof record.object === "object") {
-    const system = findSystem(record.object);
-    return {
-      simulation: { format: "loader", body: record },
-      appearance: appearanceFromLoader(record, system)
-    };
-  }
-  return null;
+  if (code === 2304) return "\u5B58\u5728\u672A\u5B9A\u4E49\u7684\u6807\u8BC6\u7B26\uFF0C\u8BF7\u68C0\u67E5\u62FC\u5199\u6216\u4ECE t3d/runtime / t3d/shader \u5BFC\u5165";
+  if (code === 2322 || code === 2345) return "\u7C7B\u578B\u4E0D\u5339\u914D\uFF0C\u8BF7\u68C0\u67E5\u53C2\u6570\u6216\u8FD4\u56DE\u503C\u7C7B\u578B\u662F\u5426\u7B26\u5408\u5951\u7EA6";
+  return "\u8BF7\u6839\u636E\u62A5\u9519\u884C\u53F7\u4FEE\u6B63\u8BED\u6CD5\u6216\u7C7B\u578B\u9519\u8BEF";
 }
-function asSimulation(value) {
-  if (!value || typeof value !== "object") return null;
-  const record = value;
-  if ((record.format === "system" || record.format === "loader") && record.body && typeof record.body === "object") {
-    return { format: record.format, body: record.body };
-  }
-  return readQuarksDocument(value)?.simulation ?? null;
-}
-function appearanceFromLoader(root, system) {
-  const materials = Array.isArray(root.materials) ? root.materials : [];
-  const materialId = system && typeof system.material === "string" ? system.material : "";
-  const material = materials.find((item) => item && typeof item === "object" && item.uuid === materialId);
-  const appearance = appearanceFromFields(material ?? system ?? {}, DEFAULT_APPEARANCE);
-  appearance.image = firstImage(root);
-  return appearance;
-}
-function appearanceFromFields(source, fallback) {
-  const premultiplied = source.premultipliedAlpha === true;
-  return {
-    color: cssColor(source.color) ?? fallback.color,
-    blend: premultiplied ? "premultiply" : blendFromThree(source.blending, fallback.blend),
-    opacity: typeof source.opacity === "number" ? source.opacity : fallback.opacity,
-    depthWrite: typeof source.depthWrite === "boolean" ? source.depthWrite : fallback.depthWrite,
-    image: fallback.image
+function checkAndTranspileTs(fileName, source) {
+  const compilerOptions = {
+    target: ts.ScriptTarget.ES2022,
+    module: ts.ModuleKind.CommonJS,
+    esModuleInterop: true,
+    strict: true,
+    skipLibCheck: true,
+    isolatedModules: true
   };
-}
-function blendFromThree(value, fallback) {
-  if (value === 2) return "additive";
-  if (value === 4) return "multiply";
-  if (value === 1) return "alpha";
-  if (value === 5) return "premultiply";
-  return fallback;
-}
-function cssColor(value) {
-  if (typeof value !== "number" || !Number.isFinite(value)) return null;
-  return `#${Math.max(0, Math.min(16777215, value)).toString(16).padStart(6, "0")}`;
-}
-function firstImage(root) {
-  if (!Array.isArray(root.images)) return null;
-  for (const image of root.images) {
-    if (image && typeof image === "object" && typeof image.url === "string") {
-      const url = image.url;
-      if (url.length > 0) return url;
-    }
-  }
-  return null;
-}
-function findSystem(value) {
-  if (!value || typeof value !== "object") return null;
-  const record = value;
-  if (record.ps && typeof record.ps === "object") return record.ps;
-  if (Array.isArray(record.children)) {
-    for (const child of record.children) {
-      const found = findSystem(child);
-      if (found) return found;
-    }
-  }
-  return null;
-}
-
-// src/capabilities/particles/session.ts
-var runtime = null;
-var loading = null;
-var scene = null;
-var generation = 0;
-function tickParticles(dt, parentOf) {
-  const runtimeWorld = getRuntimeWorld();
-  if (!capabilityEnabled(runtimeWorld.getCapabilities(), "particles") || !scene) {
-    disposeParticles();
-    return;
-  }
-  if (!runtime) {
-    ensureRuntime();
-    return;
-  }
-  const instances = [];
-  for (const node of Object.values(runtimeWorld.getNodes())) {
-    if (node.kind !== "effect" || !node.effect) continue;
-    const parent = parentOf(node.id);
-    if (!parent || !rootedInScene(parent)) continue;
-    const resolved = resolveInstance(node.id, node.effect, node.visible, parent);
-    if (resolved) instances.push(resolved);
-  }
-  runtime.sync(instances);
-  runtime.update(dt);
-}
-function disposeParticles() {
-  generation += 1;
-  runtime?.dispose();
-  runtime = null;
-  loading = null;
-}
-function ensureRuntime() {
-  if (loading || !scene) return;
-  const token = generation;
-  const root = scene;
-  loading = Promise.resolve().then(() => (init_quarksRuntime(), quarksRuntime_exports)).then((module) => {
-    if (token !== generation) return;
-    runtime = module.createQuarksRuntime(root);
-  }).catch((error) => {
-    console.warn("[particles] three.quarks \u52A0\u8F7D\u5931\u8D25", error);
-  }).finally(() => {
-    if (token === generation) loading = null;
+  const output = ts.transpileModule(source, {
+    fileName,
+    reportDiagnostics: true,
+    compilerOptions
   });
-}
-function rootedInScene(object) {
-  let current = object;
-  while (current.parent) current = current.parent;
-  return current.type === "Scene";
-}
-function resolveInstance(id, effect, visible, parent) {
-  const runtimeWorld = getRuntimeWorld();
-  let simulation = effect.simulation;
-  let materialId = effect.materialAssetId;
-  if (effect.assetId) {
-    const asset = runtimeWorld.getAsset(effect.assetId);
-    if (!asset || asset.kind !== "effect") return null;
-    simulation = asset.simulation;
-    materialId = effect.materialAssetId ?? asset.materialAssetId ?? null;
+  const diagnostics = (output.diagnostics ?? []).map((diag) => {
+    const start2 = diag.start ?? 0;
+    const pos = diag.file ? diag.file.getLineAndCharacterOfPosition(start2) : { line: 0, character: 0 };
+    const msg = ts.flattenDiagnosticMessageText(diag.messageText, "\n");
+    return {
+      file: fileName,
+      line: pos.line + 1,
+      column: pos.character + 1,
+      severity: diag.category === ts.DiagnosticCategory.Warning ? "warning" : "error",
+      message: msg,
+      hint: diagnosticHint(diag.code, msg)
+    };
+  });
+  const hasError = diagnostics.some((d) => d.severity === "error");
+  if (hasError) {
+    return { ok: false, diagnostics };
   }
-  const stored = asSimulation(simulation);
-  if (!stored) return null;
-  const material = runtimeWorld.resolveParticleDesc?.(materialId) ?? null;
-  if (material === "incompatible") return null;
   return {
-    id,
-    parent,
-    simulation: stored,
-    material,
-    playing: effect.playing !== false,
-    visible
+    ok: true,
+    diagnostics,
+    jsCode: output.outputText
   };
 }
-
-// src/gameplay/juiceClock.ts
-var holdUntil = 0;
-function scalePlayDt(dt, now = performance.now() / 1e3) {
-  if (now < holdUntil) return 0;
-  return dt;
-}
-
-// src/core/input/actionMap.ts
-var DEFAULT_INPUT_MAP = {
-  version: 1,
-  deadzone: 0.15,
-  actions: {
-    Move: {
-      type: "axis2d",
-      label: "\u79FB\u52A8",
-      axis: {
-        up: ["KeyW", "ArrowUp"],
-        down: ["KeyS", "ArrowDown"],
-        left: ["KeyA", "ArrowLeft"],
-        right: ["KeyD", "ArrowRight"]
-      },
-      gamepadAxes: { x: 0, y: 1, invertY: true },
-      touchControl: "joystick"
-    },
-    Jump: {
-      type: "button",
-      label: "\u8DF3\u8DC3",
-      keys: ["Space"],
-      gamepadButton: 0,
-      touchControl: "button",
-      touchLabel: "\u8DF3"
-    },
-    Sprint: {
-      type: "button",
-      label: "\u51B2\u523A\u8DD1",
-      keys: ["ShiftLeft", "ShiftRight"],
-      gamepadButton: 4
-    },
-    Dash: {
-      type: "button",
-      label: "\u95EA\u907F",
-      keys: ["KeyC"],
-      gamepadButton: 1,
-      touchControl: "button",
-      touchLabel: "\u95EA"
-    },
-    Interact: {
-      type: "button",
-      label: "\u4EA4\u4E92",
-      keys: ["KeyE"],
-      gamepadButton: 2,
-      touchControl: "button",
-      touchLabel: "\u4EA4\u4E92"
-    },
-    Attack: {
-      type: "button",
-      label: "\u653B\u51FB/\u5F00\u706B",
-      keys: ["KeyJ"],
-      gamepadButton: 7,
-      touchControl: "button",
-      touchLabel: "\u653B"
+function evaluateTranspiledModule(fileName, jsCode, injectedModules) {
+  const moduleObj = { exports: {} };
+  const customRequire = (specifier) => {
+    if (specifier in injectedModules) {
+      return injectedModules[specifier];
     }
-  }
-};
-function cloneDefaultMap() {
-  return structuredClone(DEFAULT_INPUT_MAP);
-}
-var currentMap = cloneDefaultMap();
-var physicalKeys = /* @__PURE__ */ new Set();
-var virtualKeys = /* @__PURE__ */ new Set();
-var tappedKeys = /* @__PURE__ */ new Set();
-var virtualActions = /* @__PURE__ */ new Set();
-var tappedActions = /* @__PURE__ */ new Set();
-var virtualAxes = /* @__PURE__ */ new Map();
-function isKeyHeld(code) {
-  return physicalKeys.has(code) || virtualKeys.has(code);
-}
-function wasKeyTapped(code) {
-  return tappedKeys.has(code);
-}
-function activeGamepad() {
-  if (typeof navigator === "undefined" || typeof navigator.getGamepads !== "function") return null;
-  const pads = navigator.getGamepads();
-  for (const pad of pads) {
-    if (pad && pad.connected) return pad;
-  }
-  return null;
-}
-function isActionPressed(actionName) {
-  if (virtualActions.has(actionName)) return true;
-  const binding = currentMap.actions[actionName];
-  if (!binding) return false;
-  if (binding.keys?.some((code) => isKeyHeld(code))) return true;
-  if (typeof binding.gamepadButton === "number") {
-    const pad = activeGamepad();
-    if (pad?.buttons[binding.gamepadButton]?.pressed) return true;
-  }
-  return false;
-}
-function wasActionTapped(actionName) {
-  if (tappedActions.has(actionName)) return true;
-  const binding = currentMap.actions[actionName];
-  if (!binding) return false;
-  return Boolean(binding.keys?.some((code) => tappedKeys.has(code)));
-}
-function getActionAxis2D(actionName) {
-  const vAxis = virtualAxes.get(actionName);
-  let x = vAxis?.x ?? 0;
-  let y = vAxis?.y ?? 0;
-  const binding = currentMap.actions[actionName];
-  if (binding?.axis) {
-    if (binding.axis.right?.some((c) => isKeyHeld(c))) x += 1;
-    if (binding.axis.left?.some((c) => isKeyHeld(c))) x -= 1;
-    if (binding.axis.up?.some((c) => isKeyHeld(c))) y += 1;
-    if (binding.axis.down?.some((c) => isKeyHeld(c))) y -= 1;
-  }
-  if (binding?.gamepadAxes) {
-    const pad = activeGamepad();
-    if (pad) {
-      const gx = pad.axes[binding.gamepadAxes.x] ?? 0;
-      const gyRaw = pad.axes[binding.gamepadAxes.y] ?? 0;
-      const gy = binding.gamepadAxes.invertY ? -gyRaw : gyRaw;
-      if (Math.abs(gx) > currentMap.deadzone) x += gx;
-      if (Math.abs(gy) > currentMap.deadzone) y += gy;
-    }
-  }
-  const len = Math.hypot(x, y);
-  if (len > 1) {
-    x /= len;
-    y /= len;
-  }
-  return { x, y };
-}
-function consumeInputFrame() {
-  tappedKeys.clear();
-  tappedActions.clear();
-}
-
-// src/runtime/frameProfile.ts
-var buckets = /* @__PURE__ */ new Map();
-var capture = null;
-function measureCost(id, run) {
-  const start2 = performance.now();
+    throw new Error(`\u4E0D\u5141\u8BB8\u5BFC\u5165\u672A\u6388\u6743\u6A21\u5757 "${specifier}"\uFF08\u4EC5\u5141\u8BB8 ${Object.keys(injectedModules).join(", ")}\uFF09`);
+  };
   try {
-    run();
-  } finally {
-    const ms = performance.now() - start2;
-    buckets.set(id, (buckets.get(id) ?? 0) + ms);
-    if (capture) capture.set(id, (capture.get(id) ?? 0) + ms);
+    const fn = new Function("require", "module", "exports", jsCode);
+    fn(customRequire, moduleObj, moduleObj.exports);
+    const exported = moduleObj.exports.default ?? moduleObj.exports;
+    return {
+      ok: true,
+      diagnostics: [],
+      jsCode,
+      exports: exported
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return {
+      ok: false,
+      diagnostics: [
+        {
+          file: fileName,
+          line: 1,
+          column: 1,
+          severity: "error",
+          message: `\u6A21\u5757\u6267\u884C\u5931\u8D25\uFF1A${message}`,
+          hint: "\u8BF7\u68C0\u67E5\u9876\u5C42\u4EE3\u7801\u662F\u5426\u5B58\u5728\u8FD0\u884C\u65F6\u5F02\u5E38\u6216\u975E\u6CD5\u6A21\u5757\u5BFC\u5165"
+        }
+      ]
+    };
   }
 }
 
-// src/runtime/sceneRuntime.ts
-var RUNTIME_STAGE = {
-  PRE_PHYSICS: 10,
-  PHYSICS_NAV: 50,
-  POST_PHYSICS: 55,
-  ANIMATION: 60,
-  POST_ANIMATION: 70,
-  PRE_RENDER: 80
-};
-var systems = [];
-var postPhysicsSystems = [];
-var postAnimationSystems = [];
-function registerRuntimeSystem(id, order, step2) {
-  const target = order >= RUNTIME_STAGE.POST_ANIMATION ? postAnimationSystems : order >= RUNTIME_STAGE.PHYSICS_NAV ? postPhysicsSystems : systems;
-  const index = target.findIndex((item) => item.id === id);
-  if (index >= 0) target.splice(index, 1);
-  target.push({ id, order, step: step2 });
-  target.sort((a, b) => a.order - b.order);
-  return () => {
-    const idx = target.findIndex((item) => item.id === id);
-    if (idx >= 0) target.splice(idx, 1);
-  };
-}
-function stepSceneRuntime(dt, host) {
-  const scaled = scalePlayDt(dt);
-  for (const system of systems) {
-    measureCost(system.id, () => system.step(scaled, host));
-  }
-  measureCost("physics", () => tickPhysics(scaled, host.resolveObject));
-  measureCost("navigation", () => tickNavigation());
-  for (const system of postPhysicsSystems) {
-    measureCost(system.id, () => system.step(scaled, host));
-  }
-  if (host.ready) {
-    measureCost("animation", () => host.updateAnimations(scaled));
-    for (const system of postAnimationSystems) {
-      measureCost(system.id, () => system.step(scaled, host));
-    }
-    measureCost("particles", () => tickParticles(scaled, host.resolveObject));
-  }
-  consumeInputFrame();
-}
+// src/core/codeAssets/scriptRuntime.ts
+init_session10();
+init_runtimeTags();
+init_session7();
+init_session8();
+init_session();
+init_registry();
+import { Vector3 as Vector39 } from "three";
 
 // src/runtime/audio.ts
+init_sceneRuntime();
 init_world();
+import { Audio, AudioListener, PositionalAudio } from "three";
 var MAX_SFX = 32;
 var buffers = /* @__PURE__ */ new Map();
 var listener = null;
@@ -4548,9 +6096,26 @@ function ownsEmitter(id) {
   for (const current of emitters.values()) if (current.voice === id) return true;
   return false;
 }
+function guardAudioMatrixUpdate(node) {
+  const original = node.updateMatrixWorld.bind(node);
+  node.updateMatrixWorld = function safeAudioUpdateMatrixWorld(force) {
+    Object.getPrototypeOf(Object.getPrototypeOf(node)).updateMatrixWorld.call(node, force);
+    const now = node.context?.currentTime;
+    if (typeof now !== "number" || !Number.isFinite(now)) return;
+    const elements = node.matrixWorld.elements;
+    for (let i = 0; i < elements.length; i += 1) {
+      if (!Number.isFinite(elements[i])) return;
+    }
+    try {
+      original(force);
+    } catch {
+    }
+  };
+  return node;
+}
 function ensureListener() {
   if (!listener) {
-    listener = new AudioListener();
+    listener = guardAudioMatrixUpdate(new AudioListener());
     listener.gain.gain.value = 1;
   }
   return listener;
@@ -4588,7 +6153,7 @@ async function start(id, options, ticket) {
   const bus = options.bus ?? "sfx";
   if (bus === "sfx") trimSfx();
   const ear = ensureListener();
-  const audio = options.parent ? new PositionalAudio(ear) : new Audio(ear);
+  const audio = options.parent ? guardAudioMatrixUpdate(new PositionalAudio(ear)) : new Audio(ear);
   audio.setBuffer(buffer);
   audio.setLoop(options.loop === true);
   const local = clamp4(options.volume ?? 1, 0, 4);
@@ -4643,6 +6208,10 @@ function fadeStop(voice) {
   try {
     const gain = voice.audio.getOutput().gain;
     const now = voice.audio.context.currentTime;
+    if (!Number.isFinite(now) || !Number.isFinite(gain.value)) {
+      stopVoice(voice);
+      return;
+    }
     gain.cancelScheduledValues(now);
     gain.setValueAtTime(gain.value, now);
     gain.linearRampToValueAtTime(0, now + 0.35);
@@ -4717,6 +6286,11 @@ registerRuntimeSystem("core.audio", 44, () => {
 });
 installUnlock();
 
+// src/core/codeAssets/scriptRuntime.ts
+init_frameProfile();
+init_motion();
+init_sceneRuntime();
+
 // src/runtime/ui/bindings.ts
 var EMPTY_UI_VALUES = { variables: {}, components: {}, screens: {} };
 
@@ -4753,36 +6327,8 @@ function onUiClick(listener2) {
 
 // src/core/codeAssets/scriptRuntime.ts
 init_world();
-
-// src/core/schema/fieldSchema.ts
-function defaultForSchema(schema) {
-  switch (schema.type) {
-    case "number":
-    case "boolean":
-    case "string":
-    case "color":
-    case "enum":
-      return schema.default;
-    case "vec2":
-    case "vec3":
-    case "vec4":
-      return [...schema.default];
-    case "texture":
-    case "ref":
-      return schema.default ?? null;
-    case "list":
-      return schema.default ? structuredClone(schema.default) : [];
-    case "object": {
-      const out = {};
-      for (const [key, child] of Object.entries(schema.fields)) {
-        out[key] = defaultForSchema(child);
-      }
-      return out;
-    }
-  }
-}
-
-// src/core/codeAssets/scriptRuntime.ts
+init_actionMap();
+init_fieldSchema();
 var compiledBehaviors = /* @__PURE__ */ new Map();
 var compiledSystems = /* @__PURE__ */ new Map();
 var instanceStates = /* @__PURE__ */ new Map();
@@ -4792,15 +6338,31 @@ var uiEventQueue = [];
 var uiClickSubscribed = false;
 var globalMemory = /* @__PURE__ */ new Map();
 var persistentMemory = /* @__PURE__ */ new Map();
+var navAgents = /* @__PURE__ */ new Map();
+var pooledInactive = /* @__PURE__ */ new Set();
+var nodePoolKey = /* @__PURE__ */ new Map();
+var poolBuckets = /* @__PURE__ */ new Map();
+var scriptTimers = /* @__PURE__ */ new Map();
+var splineFollowAgents = /* @__PURE__ */ new Map();
+var activeTweens = /* @__PURE__ */ new Map();
+var sfxCooldownAt = /* @__PURE__ */ new Map();
+var nextTimerId = 1;
+var nextTweenId = 1;
 function ensureUiClickBridge() {
   if (uiClickSubscribed) return;
   uiClickSubscribed = true;
   onUiClick((action, uiNodeId) => {
     if (getRuntimeWorld().getPlayState() !== "playing") return;
     if (action.kind === "sendMessage" && action.message) {
+      const payload = { nodeId: uiNodeId, kind: action.kind };
       uiEventQueue.push({
         eventName: action.message,
-        payload: { nodeId: uiNodeId, kind: action.kind }
+        payload
+      });
+      messageQueue.push({
+        targetNodeId: null,
+        name: action.message,
+        payload
       });
     } else if (action.kind === "setVariable" && action.varId) {
       uiEventQueue.push({
@@ -4853,10 +6415,19 @@ function makeNodeHandle(nodeId, host) {
   const node = world3.getNodes()[nodeId];
   if (!node) return null;
   const obj = host.resolveObject(nodeId);
-  const tags = [
-    ...node.tagId ? [node.tagId] : [],
-    ...node.tagIds ?? []
-  ];
+  const collectTags = () => {
+    const out = [];
+    if (node.tagId && !out.includes(node.tagId)) out.push(node.tagId);
+    if (Array.isArray(node.tagIds)) {
+      for (const t of node.tagIds) {
+        if (t && !out.includes(t)) out.push(t);
+      }
+    }
+    for (const rt of listRuntimeTags(node.id)) {
+      if (rt.tag && !out.includes(rt.tag)) out.push(rt.tag);
+    }
+    return out;
+  };
   return {
     get id() {
       return node.id;
@@ -4865,14 +6436,19 @@ function makeNodeHandle(nodeId, host) {
       return node.name;
     },
     get tags() {
-      return tags;
+      return collectTags();
+    },
+    get parent() {
+      return node.parentId ? makeNodeHandle(node.parentId, host) : null;
     },
     get position() {
       return obj ? { x: obj.position.x, y: obj.position.y, z: obj.position.z } : toVec3Obj(node.position);
     },
     set position(val) {
       if (obj) obj.position.set(val.x, val.y, val.z);
-      else world3.updateNode(nodeId, { position: [val.x, val.y, val.z] });
+      node.position[0] = val.x;
+      node.position[1] = val.y;
+      node.position[2] = val.z;
     },
     get rotation() {
       return obj ? { x: obj.rotation.x, y: obj.rotation.y, z: obj.rotation.z } : {
@@ -4883,21 +6459,52 @@ function makeNodeHandle(nodeId, host) {
     },
     set rotation(val) {
       if (obj) obj.rotation.set(val.x, val.y, val.z);
+      node.rotation[0] = val.x * 180 / Math.PI;
+      node.rotation[1] = val.y * 180 / Math.PI;
+      node.rotation[2] = val.z * 180 / Math.PI;
     },
     get scale() {
       return obj ? { x: obj.scale.x, y: obj.scale.y, z: obj.scale.z } : toVec3Obj(node.scale);
     },
     set scale(val) {
       if (obj) obj.scale.set(val.x, val.y, val.z);
+      node.scale[0] = val.x;
+      node.scale[1] = val.y;
+      node.scale[2] = val.z;
     },
     get visible() {
+      if (pooledInactive.has(nodeId)) return false;
       return obj ? obj.visible : node.visible;
     },
     set visible(val) {
       if (obj) obj.visible = val;
-      world3.updateNode(nodeId, { visible: val });
+      node.visible = val;
+      if (!nodePoolKey.has(nodeId)) {
+        world3.updateNode(nodeId, { visible: val });
+      }
     },
-    hasTag: (tag) => tags.includes(tag) || tags.some((t) => t.startsWith(`${tag}.`)),
+    hasTag: (tag) => nodeHasTag(node, String(tag ?? "")),
+    addTag: (tag) => {
+      const t = String(tag ?? "").trim();
+      if (!t) return;
+      const list = Array.isArray(node.tagIds) ? [...node.tagIds] : [];
+      if (!list.includes(t)) {
+        list.push(t);
+        node.tagIds = list;
+      }
+    },
+    removeTag: (tag) => {
+      const t = String(tag ?? "").trim();
+      if (!t) return;
+      if (node.tagId === t) node.tagId = void 0;
+      if (Array.isArray(node.tagIds)) {
+        node.tagIds = node.tagIds.filter((x) => x !== t);
+      }
+    },
+    getChildren: () => {
+      const all = world3.getNodes();
+      return Object.values(all).filter((c) => c.parentId === node.id && !isNodePooledInactive(c.id, all)).sort((a, b) => (a.order ?? 0) - (b.order ?? 0)).map((c) => makeNodeHandle(c.id, host)).filter(Boolean);
+    },
     sendMessage: (name, payload) => {
       messageQueue.push({ targetNodeId: nodeId, name, payload });
     },
@@ -4917,11 +6524,331 @@ function makeNodeHandle(nodeId, host) {
       return wrapped;
     },
     destroy: () => {
-      const next = { ...world3.getNodes() };
-      delete next[nodeId];
-      world3.setNodes(next);
+      destroyOrReleaseNode(nodeId, host);
     }
   };
+}
+function cancelTimersForNode(nodeId) {
+  for (const [tid, t] of scriptTimers.entries()) {
+    if (t.nodeId === nodeId) scriptTimers.delete(tid);
+  }
+  splineFollowAgents.delete(nodeId);
+  for (const [twId, tw] of activeTweens.entries()) {
+    if (tw.ownerNodeId === nodeId) activeTweens.delete(twId);
+  }
+}
+function resolveSplinePointsInput(input, host) {
+  const world3 = getRuntimeWorld();
+  const nodes = world3.getNodes();
+  if (Array.isArray(input)) {
+    const pts = [];
+    for (const item of input) {
+      const v = resolveVec3Input(item);
+      if (v) pts.push(v);
+    }
+    return { points: pts };
+  }
+  const parentNode = resolveTemplateNode(input, nodes);
+  if (!parentNode) return { points: [] };
+  const rawSplinePath = parentNode.capabilities?.splinePath;
+  if (parentNode.kind === "spline" || rawSplinePath) {
+    const pathObj = host.resolveObject(parentNode.id);
+    if (pathObj) pathObj.updateMatrixWorld();
+    const rawPts = Array.isArray(rawSplinePath?.points) ? rawSplinePath.points : [];
+    const pts = [];
+    for (const p of rawPts) {
+      if (!Array.isArray(p) || p.length < 3) continue;
+      const lx = Number(p[0]) || 0;
+      const ly = Number(p[1]) || 0;
+      const lz = Number(p[2]) || 0;
+      if (pathObj) {
+        const v = new Vector39(lx, ly, lz).applyMatrix4(pathObj.matrixWorld);
+        pts.push({ x: v.x, y: v.y, z: v.z });
+      } else {
+        pts.push({
+          x: parentNode.position[0] + lx,
+          y: parentNode.position[1] + ly,
+          z: parentNode.position[2] + lz
+        });
+      }
+    }
+    return {
+      points: pts,
+      closed: typeof rawSplinePath?.closed === "boolean" ? rawSplinePath.closed : void 0,
+      tension: typeof rawSplinePath?.tension === "number" ? rawSplinePath.tension : void 0
+    };
+  }
+  const children = Object.values(nodes).filter((n) => n.parentId === parentNode.id && !isNodePooledInactive(n.id, nodes)).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  const targets = children.length > 0 ? children : [parentNode];
+  return {
+    points: targets.map((n) => {
+      const obj = host.resolveObject(n.id);
+      return obj ? { x: obj.position.x, y: obj.position.y, z: obj.position.z } : toVec3Obj(n.position);
+    })
+  };
+}
+function buildCurveApi() {
+  return {
+    create: (keys, options) => createAnimationCurve(keys, options),
+    eval: (keys, t, options) => createAnimationCurve(keys, options).eval(t),
+    ease: (name, t) => evalEasing(name, t),
+    parabola: (t, height = 1) => {
+      const u = Math.max(0, Math.min(1, Number.isFinite(t) ? t : 0));
+      return 4 * u * (1 - u) * height;
+    },
+    pulse: (t) => {
+      const u = Math.max(0, Math.min(1, Number.isFinite(t) ? t : 0));
+      return Math.sin(u * Math.PI);
+    }
+  };
+}
+function isNodePooledInactive(nodeId, nodes) {
+  let cur = nodeId;
+  let guard = 0;
+  while (cur && guard < 16) {
+    if (pooledInactive.has(cur)) return true;
+    cur = nodes[cur]?.parentId ?? null;
+    guard += 1;
+  }
+  return false;
+}
+function resolveTemplateNode(templateOrName, nodes) {
+  if (!templateOrName) return null;
+  if (typeof templateOrName === "object" && typeof templateOrName.id === "string") {
+    return nodes[templateOrName.id] ?? null;
+  }
+  if (typeof templateOrName === "string") {
+    const key = templateOrName.trim();
+    if (!key) return null;
+    if (nodes[key]) return nodes[key];
+    return Object.values(nodes).find((n) => n.name === key) ?? null;
+  }
+  return null;
+}
+function cloneSceneSubtree(templateNode, options, host) {
+  const world3 = getRuntimeWorld();
+  const allNodes = world3.getNodes();
+  const clonedMap = {};
+  const idMap = /* @__PURE__ */ new Map();
+  const collect = (srcId) => {
+    const src = allNodes[srcId];
+    if (!src) return;
+    const nextId2 = typeof crypto !== "undefined" && typeof crypto.randomUUID === "function" ? crypto.randomUUID() : `rt_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    idMap.set(srcId, nextId2);
+    for (const child of Object.values(allNodes)) {
+      if (child.parentId === srcId) collect(child.id);
+    }
+  };
+  collect(templateNode.id);
+  if (idMap.size === 0) return null;
+  const rootNewId = idMap.get(templateNode.id);
+  const parentOpt = options?.parent;
+  const resolvedParentId = parentOpt === void 0 ? templateNode.parentId : parentOpt === null ? null : typeof parentOpt === "string" ? allNodes[parentOpt]?.id ?? Object.values(allNodes).find((n) => n.name === parentOpt)?.id ?? null : parentOpt.id ?? null;
+  for (const [oldId, newId] of idMap.entries()) {
+    const src = allNodes[oldId];
+    const copy = structuredClone(src);
+    copy.id = newId;
+    if (oldId === templateNode.id) {
+      copy.parentId = resolvedParentId;
+      copy.visible = options?.visible !== void 0 ? options.visible : true;
+      if (options?.name) copy.name = options.name;
+      else copy.name = `${src.name}_${newId.slice(0, 4)}`;
+      const posVec = resolveVec3Input(options?.position);
+      if (posVec) copy.position = [posVec.x, posVec.y, posVec.z];
+      const rotVec = resolveVec3Input(options?.rotation);
+      if (rotVec) {
+        copy.rotation = [
+          rotVec.x * 180 / Math.PI,
+          rotVec.y * 180 / Math.PI,
+          rotVec.z * 180 / Math.PI
+        ];
+      }
+      const scaleVec = resolveVec3Input(options?.scale);
+      if (scaleVec) copy.scale = [scaleVec.x, scaleVec.y, scaleVec.z];
+    } else {
+      copy.parentId = src.parentId ? idMap.get(src.parentId) ?? null : null;
+    }
+    delete copy.prefabAssetId;
+    delete copy.prefabInstanceId;
+    delete copy.prefabTemplateId;
+    delete copy.prefabHostTemplateId;
+    clonedMap[newId] = copy;
+  }
+  world3.setNodes({ ...allNodes, ...clonedMap });
+  const spawnedObj = host.resolveObject(rootNewId);
+  if (spawnedObj) {
+    const rootNode = clonedMap[rootNewId];
+    spawnedObj.visible = rootNode.visible;
+    spawnedObj.position.set(rootNode.position[0], rootNode.position[1], rootNode.position[2]);
+    spawnedObj.rotation.set(
+      rootNode.rotation[0] * Math.PI / 180,
+      rootNode.rotation[1] * Math.PI / 180,
+      rootNode.rotation[2] * Math.PI / 180
+    );
+    spawnedObj.scale.set(rootNode.scale[0], rootNode.scale[1], rootNode.scale[2]);
+  }
+  return rootNewId;
+}
+function spawnFromTemplateOrPrefab(templateOrPrefab, options, host) {
+  const world3 = getRuntimeWorld();
+  const nodes = world3.getNodes();
+  const tplNode = resolveTemplateNode(templateOrPrefab, nodes);
+  if (tplNode) {
+    const rootId = cloneSceneSubtree(tplNode, options, host);
+    if (!rootId) return null;
+    return {
+      rootId,
+      templatePos: [...tplNode.position],
+      templateRotDeg: [...tplNode.rotation],
+      templateScale: [...tplNode.scale],
+      templateTagId: tplNode.tagId,
+      templateTagIds: tplNode.tagIds ? [...tplNode.tagIds] : void 0
+    };
+  }
+  if (typeof templateOrPrefab === "string" && templateOrPrefab.trim()) {
+    const posVec = resolveVec3Input(options?.position);
+    const pos = posVec ? [posVec.x, posVec.y, posVec.z] : [0, 0, 0];
+    const parentOpt = options?.parent;
+    const parentId = typeof parentOpt === "string" ? parentOpt : parentOpt && "id" in parentOpt ? parentOpt.id ?? null : null;
+    const rootId = world3.instantiatePrefab?.(templateOrPrefab.trim(), { parentId, position: pos }) ?? null;
+    if (!rootId) return null;
+    const spawned = world3.getNodes()[rootId];
+    if (spawned) {
+      if (options?.visible !== void 0) spawned.visible = options.visible;
+      if (options?.name) spawned.name = options.name;
+      const rotVec = resolveVec3Input(optsOrRot(options?.rotation));
+      if (rotVec) {
+        spawned.rotation = [rotVec.x * 180 / Math.PI, rotVec.y * 180 / Math.PI, rotVec.z * 180 / Math.PI];
+      }
+      const scaleVec = resolveVec3Input(options?.scale);
+      if (scaleVec) spawned.scale = [scaleVec.x, scaleVec.y, scaleVec.z];
+      const spawnedObj = host.resolveObject(rootId);
+      if (spawnedObj) {
+        spawnedObj.visible = spawned.visible;
+        spawnedObj.position.set(spawned.position[0], spawned.position[1], spawned.position[2]);
+        spawnedObj.rotation.set(
+          spawned.rotation[0] * Math.PI / 180,
+          spawned.rotation[1] * Math.PI / 180,
+          spawned.rotation[2] * Math.PI / 180
+        );
+        spawnedObj.scale.set(spawned.scale[0], spawned.scale[1], spawned.scale[2]);
+      }
+      return {
+        rootId,
+        templatePos: [0, 0, 0],
+        templateRotDeg: [...spawned.rotation],
+        templateScale: [...spawned.scale],
+        templateTagId: spawned.tagId,
+        templateTagIds: spawned.tagIds ? [...spawned.tagIds] : void 0
+      };
+    }
+    return { rootId };
+  }
+  return null;
+}
+function optsOrRot(rot) {
+  return rot;
+}
+function resetAndInvokeSpawn(nodeId, payload, host) {
+  const nodes = getRuntimeWorld().getNodes();
+  const targetNode = nodes[nodeId];
+  if (!targetNode) return;
+  const subtreeIds = [];
+  const collectSubtree = (id) => {
+    subtreeIds.push(id);
+    for (const candidate of Object.values(nodes)) {
+      if (candidate.parentId === id) collectSubtree(candidate.id);
+    }
+  };
+  collectSubtree(nodeId);
+  for (const subId of subtreeIds) {
+    const subNode = nodes[subId];
+    if (!subNode) continue;
+    const projectScripts = subNode.gameplay?.packs?.__project__;
+    if (!projectScripts || typeof projectScripts !== "object") continue;
+    for (const [sid, rawParams] of Object.entries(projectScripts)) {
+      if (rawParams && typeof rawParams === "object" && rawParams.__enabled === false) continue;
+      const def = compiledBehaviors.get(sid);
+      if (!def) continue;
+      const key = instanceKey2(subId, sid);
+      const rec = {
+        nodeId: subId,
+        scriptId: sid,
+        started: true,
+        state: def.state ? { ...def.state() } : {}
+      };
+      instanceStates.set(key, rec);
+      const ctx = buildScriptContext(subNode, sid, rawParams, rec.state, host);
+      try {
+        def.onStart?.(ctx);
+        def.onSpawn?.(ctx, payload);
+      } catch (error) {
+        getRuntimeWorld().log("error", `\u811A\u672C "${def.name}" \u6FC0\u6D3B\u9519\u8BEF: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+  }
+}
+function releaseToPool(nodeId, host) {
+  const pKey = nodePoolKey.get(nodeId);
+  if (!pKey) return false;
+  const bucket = poolBuckets.get(pKey);
+  if (!bucket) return false;
+  if (pooledInactive.has(nodeId)) return true;
+  pooledInactive.add(nodeId);
+  const nodes = getRuntimeWorld().getNodes();
+  const resetSubtree = (id) => {
+    cancelTimersForNode(id);
+    navAgents.delete(id);
+    resetProjectileState(id);
+    stopCrowdAgent(id);
+    splineFollowAgents.delete(id);
+    for (const [tid, tw] of activeTweens.entries()) {
+      if (tw.ownerNodeId === id) activeTweens.delete(tid);
+    }
+    if (nodes[id]?.physics) {
+      setPhysicsVelocity(id, [0, 0, 0]);
+    }
+    for (const child of Object.values(nodes)) {
+      if (child.parentId === id) resetSubtree(child.id);
+    }
+  };
+  resetSubtree(nodeId);
+  const obj = host.resolveObject(nodeId);
+  if (obj) obj.visible = false;
+  const n = nodes[nodeId];
+  if (n) n.visible = false;
+  if (!bucket.idle.includes(nodeId)) {
+    bucket.idle.push(nodeId);
+  }
+  return true;
+}
+function destroyOrReleaseNode(nodeId, host) {
+  if (releaseToPool(nodeId, host)) return;
+  cancelTimersForNode(nodeId);
+  navAgents.delete(nodeId);
+  const world3 = getRuntimeWorld();
+  const prev = world3.getNodes();
+  if (!prev[nodeId]) return;
+  const next = { ...prev };
+  const removeTree = (id) => {
+    delete next[id];
+    cancelTimersForNode(id);
+    for (const child of Object.values(prev)) {
+      if (child.parentId === id) removeTree(child.id);
+    }
+  };
+  removeTree(nodeId);
+  world3.setNodes(next);
+}
+function resolvePoolKey(templateOrPrefab) {
+  if (!templateOrPrefab) return null;
+  if (typeof templateOrPrefab === "object" && typeof templateOrPrefab.id === "string") {
+    return `node:${templateOrPrefab.id}`;
+  }
+  if (typeof templateOrPrefab === "string" && templateOrPrefab.trim()) {
+    return `ref:${templateOrPrefab.trim()}`;
+  }
+  return null;
 }
 function buildScriptContext(node, scriptId, rawParams, stateObj, host) {
   const world3 = getRuntimeWorld();
@@ -4966,16 +6893,66 @@ function buildScriptContext(node, scriptId, rawParams, stateObj, host) {
     set visible(v) {
       handle.visible = v;
     },
-    moveToward(target, maxDistance) {
+    hasTag: (tag) => handle.hasTag(tag),
+    addTag: (tag) => handle.addTag(tag),
+    removeTag: (tag) => handle.removeTag(tag),
+    get forward() {
+      const yaw = handle.rotation.y;
+      return { x: Math.sin(yaw), y: 0, z: Math.cos(yaw) };
+    },
+    get right() {
+      const yaw = handle.rotation.y;
+      return { x: Math.cos(yaw), y: 0, z: -Math.sin(yaw) };
+    },
+    distanceTo(target) {
+      const vec = resolveVec3Input(target);
+      if (!vec) return Number.POSITIVE_INFINITY;
+      const cur = handle.position;
+      return Math.hypot(vec.x - cur.x, vec.y - cur.y, vec.z - cur.z);
+    },
+    directionTo(target, options) {
+      const vec = resolveVec3Input(target);
+      if (!vec) return { x: 0, y: 0, z: 1 };
+      const cur = handle.position;
+      const dx = vec.x - cur.x;
+      const dy = options?.planeXZ ? 0 : vec.y - cur.y;
+      const dz = vec.z - cur.z;
+      const len = Math.hypot(dx, dy, dz);
+      if (len <= 1e-6) return { x: 0, y: 0, z: 1 };
+      return { x: dx / len, y: dy / len, z: dz / len };
+    },
+    translate(delta, space = "world") {
+      const cur = handle.position;
+      if (space === "local") {
+        const yaw = handle.rotation.y;
+        const sinY = Math.sin(yaw);
+        const cosY = Math.cos(yaw);
+        const wx = delta.x * cosY + delta.z * sinY;
+        const wz = -delta.x * sinY + delta.z * cosY;
+        handle.position = { x: cur.x + wx, y: cur.y + delta.y, z: cur.z + wz };
+      } else {
+        handle.position = { x: cur.x + delta.x, y: cur.y + delta.y, z: cur.z + delta.z };
+      }
+    },
+    rotateY(radians) {
+      const rot = handle.rotation;
+      handle.rotation = { x: rot.x, y: rot.y + radians, z: rot.z };
+    },
+    moveToward(target, maxDistance, options) {
       const vec = resolveVec3Input(target);
       if (!vec) return false;
       const cur = handle.position;
       const dx = vec.x - cur.x;
-      const dy = vec.y - cur.y;
+      const dy = options?.planeXZ ? 0 : vec.y - cur.y;
       const dz = vec.z - cur.z;
       const dist = Math.hypot(dx, dy, dz);
+      if (options?.faceTarget && (Math.abs(dx) > 1e-5 || Math.abs(dz) > 1e-5)) {
+        const yaw = Math.atan2(dx, dz);
+        const r = handle.rotation;
+        handle.rotation = { x: r.x, y: yaw, z: r.z };
+      }
       if (dist <= 1e-4 || dist <= maxDistance) {
-        handle.position = { x: vec.x, y: vec.y, z: vec.z };
+        handle.position = { x: vec.x, y: options?.planeXZ ? cur.y : vec.y, z: vec.z };
         return true;
       }
       const ratio = maxDistance / dist;
@@ -4986,15 +6963,38 @@ function buildScriptContext(node, scriptId, rawParams, stateObj, host) {
       };
       return false;
     },
-    lookAt(target) {
+    lookAt(target, options) {
       const vec = resolveVec3Input(target);
-      if (!obj || !vec || !Number.isFinite(vec.x) || !Number.isFinite(vec.y) || !Number.isFinite(vec.z)) return;
+      if (!vec || !Number.isFinite(vec.x) || !Number.isFinite(vec.y) || !Number.isFinite(vec.z)) return;
+      const cur = handle.position;
+      if (options?.yOnly) {
+        const dx = vec.x - cur.x;
+        const dz = vec.z - cur.z;
+        if (Math.abs(dx) > 1e-5 || Math.abs(dz) > 1e-5) {
+          const r = handle.rotation;
+          handle.rotation = { x: r.x, y: Math.atan2(dx, dz), z: r.z };
+        }
+        return;
+      }
+      if (!obj) {
+        const dx = vec.x - cur.x;
+        const dz = vec.z - cur.z;
+        const dy = vec.y - cur.y;
+        const horiz = Math.hypot(dx, dz);
+        const yaw = Math.atan2(dx, dz);
+        const pitch = -Math.atan2(dy, Math.max(1e-5, horiz));
+        handle.rotation = { x: pitch, y: yaw, z: 0 };
+        return;
+      }
       if (node.kind === "camera") {
         const p = obj.position;
         obj.lookAt(2 * p.x - vec.x, 2 * p.y - vec.y, 2 * p.z - vec.z);
       } else {
         obj.lookAt(vec.x, vec.y, vec.z);
       }
+      node.rotation[0] = obj.rotation.x * 180 / Math.PI;
+      node.rotation[1] = obj.rotation.y * 180 / Math.PI;
+      node.rotation[2] = obj.rotation.z * 180 / Math.PI;
     },
     sendMessage(name, payload) {
       messageQueue.push({ targetNodeId: node.id, name, payload, senderId: node.id });
@@ -5004,11 +7004,16 @@ function buildScriptContext(node, scriptId, rawParams, stateObj, host) {
     },
     getBehavior: (behavior) => handle.getBehavior(behavior),
     findNodeById: (id) => makeNodeHandle(id, host),
-    findNodesByTag: (tag) => Object.values(world3.getNodes()).filter((n) => n.tagId === tag || n.tagIds?.includes(tag)).map((n) => makeNodeHandle(n.id, host)).filter(Boolean),
+    findNodesByTag: (tag) => {
+      const all = world3.getNodes();
+      return Object.values(all).filter((n) => !isNodePooledInactive(n.id, all) && nodeHasTag(n, tag)).map((n) => makeNodeHandle(n.id, host)).filter(Boolean);
+    },
     findNodesInRadius: (center, radius, tag) => {
       const r2 = radius * radius;
-      return Object.values(world3.getNodes()).filter((n) => {
-        if (tag && n.tagId !== tag && !n.tagIds?.includes(tag)) return false;
+      const all = world3.getNodes();
+      return Object.values(all).filter((n) => {
+        if (isNodePooledInactive(n.id, all)) return false;
+        if (tag && !nodeHasTag(n, tag)) return false;
         const p = host.resolveObject(n.id)?.position;
         const x = p ? p.x : n.position[0];
         const y = p ? p.y : n.position[1];
@@ -5019,15 +7024,162 @@ function buildScriptContext(node, scriptId, rawParams, stateObj, host) {
         return dx * dx + dy * dy + dz * dz <= r2;
       }).map((n) => makeNodeHandle(n.id, host)).filter(Boolean);
     },
+    cloneNode: (templateOrName, opts) => {
+      const tpl = resolveTemplateNode(templateOrName, world3.getNodes());
+      if (!tpl) return null;
+      const spawnedId = cloneSceneSubtree(tpl, opts, host);
+      if (!spawnedId) return null;
+      if (opts?.initMessage) {
+        messageQueue.push({ targetNodeId: spawnedId, name: opts.initMessage, payload: opts.initPayload, senderId: node.id });
+      }
+      return makeNodeHandle(spawnedId, host);
+    },
     spawnPrefab: (prefabId, opts) => {
-      const pos = opts?.position ? [opts.position.x, opts.position.y, opts.position.z] : [0, 0, 0];
-      world3.instantiatePrefab?.(prefabId, { position: pos });
-      return null;
+      const posVec = resolveVec3Input(opts?.position);
+      const pos = posVec ? [posVec.x, posVec.y, posVec.z] : [0, 0, 0];
+      const parentId = typeof opts?.parent === "string" ? opts.parent : opts?.parent && typeof opts.parent === "object" ? opts.parent.id ?? null : null;
+      const spawnedId = world3.instantiatePrefab?.(prefabId, { parentId, position: pos }) ?? null;
+      if (!spawnedId) return null;
+      const spawnedNode = world3.getNodes()[spawnedId];
+      if (spawnedNode) {
+        if (opts?.name) spawnedNode.name = opts.name;
+        const rotVec = resolveVec3Input(opts?.rotation);
+        if (rotVec) {
+          spawnedNode.rotation = [rotVec.x * 180 / Math.PI, rotVec.y * 180 / Math.PI, rotVec.z * 180 / Math.PI];
+        }
+        const scaleVec = resolveVec3Input(opts?.scale);
+        if (scaleVec) spawnedNode.scale = [scaleVec.x, scaleVec.y, scaleVec.z];
+      }
+      return makeNodeHandle(spawnedId, host);
     },
     destroyNode: (target) => {
-      const next = { ...world3.getNodes() };
-      delete next[target.id];
-      world3.setNodes(next);
+      const targetId = typeof target === "string" ? target : target?.id;
+      if (targetId) destroyOrReleaseNode(targetId, host);
+    },
+    pool: {
+      preload: (templateOrPrefab, count) => {
+        const key = resolvePoolKey(templateOrPrefab);
+        if (!key) return;
+        const targetCount = Math.max(0, Math.min(200, Math.floor(count)));
+        let bucket = poolBuckets.get(key);
+        if (!bucket) {
+          bucket = { all: [], idle: [] };
+          poolBuckets.set(key, bucket);
+        }
+        while (bucket.all.length < targetCount) {
+          const spawned = spawnFromTemplateOrPrefab(templateOrPrefab, { visible: false }, host);
+          if (!spawned) break;
+          if (!bucket.templatePos && spawned.templatePos) bucket.templatePos = spawned.templatePos;
+          if (!bucket.templateRotDeg && spawned.templateRotDeg) bucket.templateRotDeg = spawned.templateRotDeg;
+          if (!bucket.templateScale && spawned.templateScale) bucket.templateScale = spawned.templateScale;
+          if (bucket.templateTagId === void 0 && spawned.templateTagId !== void 0) bucket.templateTagId = spawned.templateTagId;
+          if (bucket.templateTagIds === void 0 && spawned.templateTagIds !== void 0) bucket.templateTagIds = spawned.templateTagIds;
+          pooledInactive.add(spawned.rootId);
+          nodePoolKey.set(spawned.rootId, key);
+          bucket.all.push(spawned.rootId);
+          bucket.idle.push(spawned.rootId);
+        }
+      },
+      acquire: (templateOrPrefab, opts) => {
+        const key = resolvePoolKey(templateOrPrefab);
+        if (!key) return null;
+        let bucket = poolBuckets.get(key);
+        if (!bucket) {
+          bucket = { all: [], idle: [] };
+          poolBuckets.set(key, bucket);
+        }
+        const allNodes = world3.getNodes();
+        let pickedId = null;
+        while (bucket.idle.length > 0) {
+          const cand = bucket.idle.pop();
+          if (allNodes[cand]) {
+            pickedId = cand;
+            break;
+          }
+        }
+        if (!pickedId) {
+          const spawned = spawnFromTemplateOrPrefab(templateOrPrefab, {
+            position: opts?.position,
+            rotation: opts?.rotation,
+            scale: opts?.scale,
+            visible: true
+          }, host);
+          if (!spawned) return null;
+          if (!bucket.templatePos && spawned.templatePos) bucket.templatePos = spawned.templatePos;
+          if (!bucket.templateRotDeg && spawned.templateRotDeg) bucket.templateRotDeg = spawned.templateRotDeg;
+          if (!bucket.templateScale && spawned.templateScale) bucket.templateScale = spawned.templateScale;
+          if (bucket.templateTagId === void 0 && spawned.templateTagId !== void 0) bucket.templateTagId = spawned.templateTagId;
+          if (bucket.templateTagIds === void 0 && spawned.templateTagIds !== void 0) bucket.templateTagIds = spawned.templateTagIds;
+          pickedId = spawned.rootId;
+          nodePoolKey.set(pickedId, key);
+          bucket.all.push(pickedId);
+        } else {
+          pooledInactive.delete(pickedId);
+          const n = world3.getNodes()[pickedId];
+          const objTarget = host.resolveObject(pickedId);
+          const posVec = resolveVec3Input(opts?.position);
+          const rotVec = resolveVec3Input(opts?.rotation);
+          const scaleVec = resolveVec3Input(opts?.scale);
+          if (n) {
+            n.visible = true;
+            n.tagId = bucket.templateTagId;
+            n.tagIds = bucket.templateTagIds ? [...bucket.templateTagIds] : void 0;
+            if (posVec) n.position = [posVec.x, posVec.y, posVec.z];
+            else if (bucket.templatePos) n.position = [...bucket.templatePos];
+            if (rotVec) n.rotation = [rotVec.x * 180 / Math.PI, rotVec.y * 180 / Math.PI, rotVec.z * 180 / Math.PI];
+            else if (bucket.templateRotDeg) n.rotation = [...bucket.templateRotDeg];
+            if (scaleVec) n.scale = [scaleVec.x, scaleVec.y, scaleVec.z];
+            else if (bucket.templateScale) n.scale = [...bucket.templateScale];
+          }
+          if (objTarget && n) {
+            objTarget.visible = true;
+            objTarget.position.set(n.position[0], n.position[1], n.position[2]);
+            objTarget.rotation.set(
+              n.rotation[0] * Math.PI / 180,
+              n.rotation[1] * Math.PI / 180,
+              n.rotation[2] * Math.PI / 180
+            );
+            objTarget.scale.set(n.scale[0], n.scale[1], n.scale[2]);
+          }
+        }
+        resetAndInvokeSpawn(pickedId, opts?.payload, host);
+        return makeNodeHandle(pickedId, host);
+      },
+      release: (target) => {
+        const targetId = typeof target === "string" ? target : target?.id;
+        if (targetId) destroyOrReleaseNode(targetId, host);
+      },
+      stats: (templateOrPrefab) => {
+        if (templateOrPrefab) {
+          const key = resolvePoolKey(templateOrPrefab);
+          const b = key ? poolBuckets.get(key) : void 0;
+          const total2 = b ? b.all.length : 0;
+          const pooled2 = b ? b.idle.length : 0;
+          return { active: Math.max(0, total2 - pooled2), pooled: pooled2, total: total2 };
+        }
+        let total = 0;
+        let pooled = 0;
+        for (const b of poolBuckets.values()) {
+          total += b.all.length;
+          pooled += b.idle.length;
+        }
+        return { active: Math.max(0, total - pooled), pooled, total };
+      }
+    },
+    after: (seconds, callback) => {
+      const id = nextTimerId++;
+      const delay = Math.max(0, Number(seconds) || 0);
+      scriptTimers.set(id, { id, nodeId: node.id, scriptId, remaining: delay, interval: delay, repeat: false, callback });
+      return id;
+    },
+    every: (seconds, callback) => {
+      const id = nextTimerId++;
+      const interval = Math.max(0.016, Number(seconds) || 0.1);
+      scriptTimers.set(id, { id, nodeId: node.id, scriptId, remaining: interval, interval, repeat: true, callback });
+      return id;
+    },
+    cancelTimer: (timerId) => {
+      scriptTimers.delete(timerId);
     },
     physics: {
       raycast: (origin, dir, maxDistance) => {
@@ -5049,24 +7201,301 @@ function buildScriptContext(node, scriptId, rawParams, stateObj, host) {
           distance: dist
         };
       },
-      sphereCast: () => [],
-      getVelocity: () => ({ x: 0, y: 0, z: 0 }),
-      setVelocity: () => {
+      sphereCast: (center, radius, options) => {
+        const nodes = world3.getNodes();
+        const r2 = radius * radius;
+        const hits = [];
+        for (const n of Object.values(nodes)) {
+          if (!n.visible || n.id === node.id || isNodePooledInactive(n.id, nodes)) continue;
+          if (options?.tag && n.tagId !== options.tag && !n.tagIds?.includes(options.tag)) continue;
+          const o = host.resolveObject(n.id);
+          const px = o ? o.position.x : n.position[0];
+          const py = o ? o.position.y : n.position[1];
+          const pz = o ? o.position.z : n.position[2];
+          const dx = px - center.x;
+          const dy = py - center.y;
+          const dz = pz - center.z;
+          if (dx * dx + dy * dy + dz * dz <= r2) {
+            const h = makeNodeHandle(n.id, host);
+            if (h) hits.push(h);
+          }
+        }
+        return hits;
       },
-      applyImpulse: () => {
+      getVelocity: () => {
+        const st = getPhysicsBodyState(node.id);
+        if (!st) return { x: 0, y: 0, z: 0 };
+        return { x: st.linvel[0], y: st.linvel[1], z: st.linvel[2] };
       },
-      applyForce: () => {
+      setVelocity: (velocity) => {
+        setPhysicsVelocity(node.id, [velocity.x, velocity.y, velocity.z]);
+      },
+      applyImpulse: (impulse) => {
+        applyPhysicsImpulse(node.id, [impulse.x, impulse.y, impulse.z]);
+      },
+      applyForce: (force) => {
+        applyPhysicsForce(node.id, [force.x, force.y, force.z]);
       }
     },
     nav: {
-      moveTo: (target) => {
+      moveTo: (target, speed = 3.5) => {
         const cur = handle.position;
         const path = findNavigationPath([cur.x, cur.y, cur.z], [target.x, target.y, target.z]);
-        return Boolean(path && path.length > 0);
+        if (!path || path.length === 0) {
+          navAgents.delete(node.id);
+          return false;
+        }
+        navAgents.set(node.id, { path, index: 0, speed: Math.max(0.1, speed) });
+        return true;
       },
       stop: () => {
+        navAgents.delete(node.id);
       },
-      isMoving: false
+      get isMoving() {
+        return navAgents.has(node.id);
+      }
+    },
+    spline: {
+      create: (pointsOrParent, options) => {
+        const resolved = resolveSplinePointsInput(pointsOrParent, host);
+        return createSplinePath(resolved.points, {
+          closed: options?.closed ?? resolved.closed,
+          tension: options?.tension ?? resolved.tension
+        });
+      },
+      follow: (pointsOrParent, options) => {
+        let spline;
+        if (pointsOrParent && typeof pointsOrParent === "object" && "pointAtDistance" in pointsOrParent) {
+          spline = pointsOrParent;
+        } else {
+          const resolved = resolveSplinePointsInput(pointsOrParent, host);
+          spline = createSplinePath(resolved.points, {
+            closed: options?.closed ?? options?.loop ?? resolved.closed,
+            tension: options?.tension ?? resolved.tension
+          });
+        }
+        if (spline.points.length === 0) {
+          splineFollowAgents.delete(node.id);
+          return false;
+        }
+        const startT = Math.max(0, Math.min(1, Number(options?.startProgress ?? 0)));
+        const startDist = startT * spline.length;
+        const startPos = spline.pointAtDistance(startDist);
+        handle.position = {
+          x: startPos.x,
+          y: options?.planeXZ ? handle.position.y : startPos.y,
+          z: startPos.z
+        };
+        splineFollowAgents.set(node.id, {
+          nodeId: node.id,
+          spline,
+          distance: startDist,
+          speed: Math.max(0.01, Number(options?.speed ?? 4)),
+          direction: 1,
+          loop: Boolean(options?.loop),
+          pingPong: Boolean(options?.pingPong),
+          faceDirection: options?.faceDirection !== false,
+          planeXZ: Boolean(options?.planeXZ),
+          onArrive: options?.onArrive
+        });
+        return true;
+      },
+      stop: () => {
+        splineFollowAgents.delete(node.id);
+      },
+      get isFollowing() {
+        return splineFollowAgents.has(node.id);
+      },
+      get progress() {
+        const ag = splineFollowAgents.get(node.id);
+        if (!ag || ag.spline.length <= 1e-6) return 0;
+        return Math.max(0, Math.min(1, ag.distance / ag.spline.length));
+      }
+    },
+    tween: {
+      to: (target, props, duration, options) => {
+        const targetHandle = target && typeof target === "object" && "id" in target && typeof target.id === "string" ? makeNodeHandle(target.id, host) ?? target : target;
+        if (!targetHandle) return -1;
+        const startPos = props.position && targetHandle.position ? { ...targetHandle.position } : null;
+        const startRot = props.rotation && targetHandle.rotation ? { ...targetHandle.rotation } : null;
+        const startScale = props.scale && targetHandle.scale ? { ...targetHandle.scale } : null;
+        const endPos = resolveVec3Input(props.position);
+        const endRot = resolveVec3Input(props.rotation);
+        const endScale = resolveVec3Input(props.scale);
+        const id = nextTweenId++;
+        const dur = Math.max(1e-3, Number(duration) || 1e-3);
+        activeTweens.set(id, {
+          id,
+          ownerNodeId: node.id,
+          delayRemaining: Math.max(0, Number(options?.delay ?? 0)),
+          elapsed: 0,
+          duration: dur,
+          ease: options?.ease ?? "outQuad",
+          repeat: Math.max(0, Math.floor(options?.repeat ?? 0)),
+          yoyo: Boolean(options?.yoyo),
+          reversed: false,
+          completedCount: 0,
+          apply: (t) => {
+            if (startPos && endPos) {
+              targetHandle.position = {
+                x: startPos.x + (endPos.x - startPos.x) * t,
+                y: startPos.y + (endPos.y - startPos.y) * t,
+                z: startPos.z + (endPos.z - startPos.z) * t
+              };
+            }
+            if (startRot && endRot) {
+              targetHandle.rotation = {
+                x: startRot.x + (endRot.x - startRot.x) * t,
+                y: startRot.y + (endRot.y - startRot.y) * t,
+                z: startRot.z + (endRot.z - startRot.z) * t
+              };
+            }
+            if (startScale && endScale) {
+              targetHandle.scale = {
+                x: startScale.x + (endScale.x - startScale.x) * t,
+                y: startScale.y + (endScale.y - startScale.y) * t,
+                z: startScale.z + (endScale.z - startScale.z) * t
+              };
+            }
+          },
+          onUpdate: options?.onUpdate,
+          onComplete: options?.onComplete
+        });
+        return id;
+      },
+      value: (from, to, duration, onUpdate, options) => {
+        const id = nextTweenId++;
+        const dur = Math.max(1e-3, Number(duration) || 1e-3);
+        activeTweens.set(id, {
+          id,
+          ownerNodeId: node.id,
+          delayRemaining: Math.max(0, Number(options?.delay ?? 0)),
+          elapsed: 0,
+          duration: dur,
+          ease: options?.ease ?? "outQuad",
+          repeat: Math.max(0, Math.floor(options?.repeat ?? 0)),
+          yoyo: Boolean(options?.yoyo),
+          reversed: false,
+          completedCount: 0,
+          apply: (t) => {
+            onUpdate(from + (to - from) * t);
+          },
+          onComplete: options?.onComplete
+        });
+        return id;
+      },
+      punchScale: (strength = 0.25, duration = 0.22) => {
+        const base = { ...handle.scale };
+        const id = nextTweenId++;
+        const dur = Math.max(0.05, Number(duration) || 0.22);
+        activeTweens.set(id, {
+          id,
+          ownerNodeId: node.id,
+          delayRemaining: 0,
+          elapsed: 0,
+          duration: dur,
+          ease: "linear",
+          repeat: 0,
+          yoyo: false,
+          reversed: false,
+          completedCount: 0,
+          apply: (t) => {
+            const pulse = Math.sin(t * Math.PI) * strength;
+            handle.scale = {
+              x: base.x * (1 + pulse),
+              y: base.y * (1 + pulse),
+              z: base.z * (1 + pulse)
+            };
+          },
+          onComplete: () => {
+            handle.scale = base;
+          }
+        });
+        return id;
+      },
+      shakePosition: (intensity = 0.18, duration = 0.25) => {
+        const base = { ...handle.position };
+        const id = nextTweenId++;
+        const dur = Math.max(0.05, Number(duration) || 0.25);
+        activeTweens.set(id, {
+          id,
+          ownerNodeId: node.id,
+          delayRemaining: 0,
+          elapsed: 0,
+          duration: dur,
+          ease: "linear",
+          repeat: 0,
+          yoyo: false,
+          reversed: false,
+          completedCount: 0,
+          apply: (t) => {
+            const decay = 1 - t;
+            const amp = intensity * decay;
+            handle.position = {
+              x: base.x + (Math.random() * 2 - 1) * amp,
+              y: base.y + (Math.random() * 2 - 1) * amp,
+              z: base.z + (Math.random() * 2 - 1) * amp
+            };
+          },
+          onComplete: () => {
+            handle.position = base;
+          }
+        });
+        return id;
+      },
+      cancel: (tweenId) => {
+        activeTweens.delete(tweenId);
+      },
+      cancelAll: () => {
+        for (const [twId, tw] of activeTweens.entries()) {
+          if (tw.ownerNodeId === node.id) activeTweens.delete(twId);
+        }
+      }
+    },
+    curve: buildCurveApi(),
+    crowd: {
+      moveTo: (target, options) => {
+        const v = resolveVec3Input(target);
+        if (!v) return;
+        setCrowdTarget(node.id, v, options);
+      },
+      stop: () => stopCrowdAgent(node.id),
+      get isMoving() {
+        return isCrowdMoving(node.id);
+      },
+      formation: (units, center, options) => {
+        const c = resolveVec3Input(center);
+        if (!c) return;
+        const nodes = world3.getNodes();
+        const ids = units.map((u) => resolveTemplateNode(u, nodes)?.id ?? (typeof u === "string" ? u : u?.id)).filter((id) => Boolean(id));
+        setCrowdFormation(ids, c, options);
+      },
+      stats: () => getCrowdStats()
+    },
+    projectile: {
+      launch: (options) => {
+        const nodes = world3.getNodes();
+        const targetId = options?.target ? resolveTemplateNode(options.target, nodes)?.id ?? (typeof options.target === "string" ? options.target : options.target?.id) : null;
+        const ownerId = options?.owner ? resolveTemplateNode(options.owner, nodes)?.id ?? (typeof options.owner === "string" ? options.owner : options.owner?.id) : node.id;
+        launchProjectile(node.id, {
+          direction: options?.direction ? resolveVec3Input(options.direction) ?? void 0 : void 0,
+          targetId,
+          ownerId,
+          mode: options?.mode,
+          speed: options?.speed,
+          gravity: options?.gravity,
+          turnRate: options?.turnRate,
+          maxLifetime: options?.maxLifetime,
+          hitRadius: options?.hitRadius,
+          targetTag: options?.targetTag,
+          damage: options?.damage,
+          destroyOnHit: options?.destroyOnHit,
+          onHit: options?.onHit ? (hitNodeId, pos) => {
+            options.onHit(makeNodeHandle(hitNodeId, host), pos);
+          } : void 0
+        });
+      },
+      reset: () => resetProjectileState(node.id)
     },
     anim: {
       playBody: (clipName, opts) => {
@@ -5079,6 +7508,10 @@ function buildScriptContext(node, scriptId, rawParams, stateObj, host) {
     },
     audio: {
       playSfx: (assetId, opts) => {
+        const now = typeof performance !== "undefined" ? performance.now() : Date.now();
+        const last = sfxCooldownAt.get(assetId) ?? 0;
+        if (now - last < 40) return;
+        sfxCooldownAt.set(assetId, now);
         playSound({ assetId, bus: "sfx", volume: opts?.volume, playbackRate: opts?.pitch, parent: obj ?? void 0 });
       },
       playBgm: (assetId, opts) => {
@@ -5086,8 +7519,52 @@ function buildScriptContext(node, scriptId, rawParams, stateObj, host) {
       },
       stopBgm: () => stopMusic()
     },
-    fx: { spawn: () => {
-    } },
+    fx: {
+      spawn: (effectId, position, options) => {
+        const nodes = world3.getNodes();
+        const id = `fx_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+        const s = options?.scale ?? 1;
+        const fxNode = {
+          ...node,
+          id,
+          name: `FX_${effectId.slice(0, 8)}`,
+          kind: "effect",
+          parentId: null,
+          visible: true,
+          locked: false,
+          position: [position.x, position.y, position.z],
+          rotation: [0, 0, 0],
+          scale: [s, s, s],
+          castShadow: false,
+          receiveShadow: false,
+          assetId: effectId,
+          slots: [],
+          gameplay: {},
+          physics: void 0,
+          effect: {
+            assetId: effectId,
+            quarksVersion: "1.0",
+            playing: true,
+            materialAssetId: null,
+            simulation: null
+          }
+        };
+        world3.setNodes({ ...nodes, [id]: fxNode });
+        const ttl = options?.autoDestroySec !== void 0 ? options.autoDestroySec : 3;
+        if (ttl > 0) {
+          const tid = nextTimerId++;
+          scriptTimers.set(tid, {
+            id: tid,
+            nodeId: id,
+            scriptId,
+            remaining: ttl,
+            interval: ttl,
+            repeat: false,
+            callback: () => destroyOrReleaseNode(id, host)
+          });
+        }
+      }
+    },
     input: {
       isPressed: (actionOrKey) => isActionPressed(actionOrKey) || isKeyHeld(actionOrKey) || isKeyHeld(`Key${actionOrKey.toUpperCase()}`),
       justPressed: (actionOrKey) => wasActionTapped(actionOrKey) || wasKeyTapped(actionOrKey) || wasKeyTapped(`Key${actionOrKey.toUpperCase()}`),
@@ -5145,11 +7622,350 @@ function buildScriptContext(node, scriptId, rawParams, stateObj, host) {
         const nodeTarget = world3.getNodes()[sid];
         const curMap = uiValues().screens;
         return sid in curMap ? curMap[sid] : Boolean(nodeTarget?.screen?.visibleOnPlay ?? true);
+      },
+      worldToScreen: (position) => {
+        const vec = resolveVec3Input(position);
+        if (!vec || !host.worldToScreen) return null;
+        return host.worldToScreen([vec.x, vec.y, vec.z]);
       }
     },
     scene: {
       currentId: () => world3.getActiveSceneId(),
-      load: () => {
+      load: (sceneId, options) => {
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new CustomEvent("t3d:load-scene", { detail: { sceneId, spawnPoint: options?.spawnPoint } }));
+        }
+      }
+    },
+    global: {
+      get: (key) => globalMemory.get(key),
+      set: (key, value) => {
+        globalMemory.set(key, value);
+      },
+      remove: (key) => {
+        globalMemory.delete(key);
+      }
+    },
+    storage: {
+      get: (key) => persistentMemory.get(key),
+      set: (key, value) => {
+        persistentMemory.set(key, value);
+      },
+      remove: (key) => {
+        persistentMemory.delete(key);
+      }
+    },
+    tables: {
+      getRow: (tableId, rowId) => findRow(world3.getGameDatabase(), tableId, rowId)?.fields ?? null
+    },
+    log: (...args) => world3.log("info", args.map(String).join(" ")),
+    warn: (...args) => world3.log("warn", args.map(String).join(" "))
+  };
+}
+function buildSystemWorldApi(systemId, host) {
+  const world3 = getRuntimeWorld();
+  const sysNodeId = `__system__:${systemId}`;
+  const poolHelpers = {
+    preload: (templateOrPrefab, count) => {
+      const key = resolvePoolKey(templateOrPrefab);
+      if (!key) return;
+      const targetCount = Math.max(0, Math.min(200, Math.floor(count)));
+      let bucket = poolBuckets.get(key);
+      if (!bucket) {
+        bucket = { all: [], idle: [] };
+        poolBuckets.set(key, bucket);
+      }
+      while (bucket.all.length < targetCount) {
+        const spawned = spawnFromTemplateOrPrefab(templateOrPrefab, { visible: false }, host);
+        if (!spawned) break;
+        if (!bucket.templatePos && spawned.templatePos) bucket.templatePos = spawned.templatePos;
+        if (!bucket.templateRotDeg && spawned.templateRotDeg) bucket.templateRotDeg = spawned.templateRotDeg;
+        if (!bucket.templateScale && spawned.templateScale) bucket.templateScale = spawned.templateScale;
+        if (bucket.templateTagId === void 0 && spawned.templateTagId !== void 0) bucket.templateTagId = spawned.templateTagId;
+        if (bucket.templateTagIds === void 0 && spawned.templateTagIds !== void 0) bucket.templateTagIds = spawned.templateTagIds;
+        pooledInactive.add(spawned.rootId);
+        nodePoolKey.set(spawned.rootId, key);
+        bucket.all.push(spawned.rootId);
+        bucket.idle.push(spawned.rootId);
+      }
+    },
+    acquire: (templateOrPrefab, opts) => {
+      const key = resolvePoolKey(templateOrPrefab);
+      if (!key) return null;
+      let bucket = poolBuckets.get(key);
+      if (!bucket) {
+        bucket = { all: [], idle: [] };
+        poolBuckets.set(key, bucket);
+      }
+      const allNodes = world3.getNodes();
+      let pickedId = null;
+      while (bucket.idle.length > 0) {
+        const cand = bucket.idle.pop();
+        if (allNodes[cand]) {
+          pickedId = cand;
+          break;
+        }
+      }
+      if (!pickedId) {
+        const spawned = spawnFromTemplateOrPrefab(templateOrPrefab, {
+          position: opts?.position,
+          rotation: opts?.rotation,
+          scale: opts?.scale,
+          visible: true
+        }, host);
+        if (!spawned) return null;
+        if (!bucket.templatePos && spawned.templatePos) bucket.templatePos = spawned.templatePos;
+        if (!bucket.templateRotDeg && spawned.templateRotDeg) bucket.templateRotDeg = spawned.templateRotDeg;
+        if (!bucket.templateScale && spawned.templateScale) bucket.templateScale = spawned.templateScale;
+        if (bucket.templateTagId === void 0 && spawned.templateTagId !== void 0) bucket.templateTagId = spawned.templateTagId;
+        if (bucket.templateTagIds === void 0 && spawned.templateTagIds !== void 0) bucket.templateTagIds = spawned.templateTagIds;
+        pickedId = spawned.rootId;
+        nodePoolKey.set(pickedId, key);
+        bucket.all.push(pickedId);
+      } else {
+        pooledInactive.delete(pickedId);
+        const n = world3.getNodes()[pickedId];
+        const objTarget = host.resolveObject(pickedId);
+        const posVec = resolveVec3Input(opts?.position);
+        const rotVec = resolveVec3Input(opts?.rotation);
+        const scaleVec = resolveVec3Input(opts?.scale);
+        if (n) {
+          n.visible = true;
+          n.tagId = bucket.templateTagId;
+          n.tagIds = bucket.templateTagIds ? [...bucket.templateTagIds] : void 0;
+          if (posVec) n.position = [posVec.x, posVec.y, posVec.z];
+          else if (bucket.templatePos) n.position = [...bucket.templatePos];
+          if (rotVec) n.rotation = [rotVec.x * 180 / Math.PI, rotVec.y * 180 / Math.PI, rotVec.z * 180 / Math.PI];
+          else if (bucket.templateRotDeg) n.rotation = [...bucket.templateRotDeg];
+          if (scaleVec) n.scale = [scaleVec.x, scaleVec.y, scaleVec.z];
+          else if (bucket.templateScale) n.scale = [...bucket.templateScale];
+        }
+        if (objTarget && n) {
+          objTarget.visible = true;
+          objTarget.position.set(n.position[0], n.position[1], n.position[2]);
+          objTarget.rotation.set(
+            n.rotation[0] * Math.PI / 180,
+            n.rotation[1] * Math.PI / 180,
+            n.rotation[2] * Math.PI / 180
+          );
+          objTarget.scale.set(n.scale[0], n.scale[1], n.scale[2]);
+        }
+      }
+      resetAndInvokeSpawn(pickedId, opts?.payload, host);
+      return makeNodeHandle(pickedId, host);
+    },
+    release: (target) => {
+      const targetId = typeof target === "string" ? target : target?.id;
+      if (targetId) destroyOrReleaseNode(targetId, host);
+    },
+    stats: (templateOrPrefab) => {
+      if (templateOrPrefab) {
+        const key = resolvePoolKey(templateOrPrefab);
+        const b = key ? poolBuckets.get(key) : void 0;
+        const total2 = b ? b.all.length : 0;
+        const pooled2 = b ? b.idle.length : 0;
+        return { active: Math.max(0, total2 - pooled2), pooled: pooled2, total: total2 };
+      }
+      let total = 0;
+      let pooled = 0;
+      for (const b of poolBuckets.values()) {
+        total += b.all.length;
+        pooled += b.idle.length;
+      }
+      return { active: Math.max(0, total - pooled), pooled, total };
+    }
+  };
+  return {
+    get elapsedTime() {
+      return simElapsed;
+    },
+    findNodeById: (id) => makeNodeHandle(id, host),
+    findNodesByTag: (tag) => {
+      const all = world3.getNodes();
+      return Object.values(all).filter((n) => !isNodePooledInactive(n.id, all) && nodeHasTag(n, tag)).map((n) => makeNodeHandle(n.id, host)).filter(Boolean);
+    },
+    findNodesInRadius: (center, radius, tag) => {
+      const r2 = radius * radius;
+      const all = world3.getNodes();
+      return Object.values(all).filter((n) => {
+        if (isNodePooledInactive(n.id, all)) return false;
+        if (tag && !nodeHasTag(n, tag)) return false;
+        const p = host.resolveObject(n.id)?.position;
+        const x = p ? p.x : n.position[0];
+        const y = p ? p.y : n.position[1];
+        const z = p ? p.z : n.position[2];
+        const dx = x - center.x;
+        const dy = y - center.y;
+        const dz = z - center.z;
+        return dx * dx + dy * dy + dz * dz <= r2;
+      }).map((n) => makeNodeHandle(n.id, host)).filter(Boolean);
+    },
+    cloneNode: (templateOrName, opts) => {
+      const tpl = resolveTemplateNode(templateOrName, world3.getNodes());
+      if (!tpl) return null;
+      const spawnedId = cloneSceneSubtree(tpl, opts, host);
+      if (!spawnedId) return null;
+      const initMsg = typeof opts?.initMessage === "string" ? opts.initMessage : void 0;
+      if (initMsg) {
+        messageQueue.push({ targetNodeId: spawnedId, name: initMsg, payload: opts?.initPayload });
+      }
+      return makeNodeHandle(spawnedId, host);
+    },
+    spawnPrefab: (prefabId, opts) => {
+      const posVec = resolveVec3Input(opts?.position);
+      const pos = posVec ? [posVec.x, posVec.y, posVec.z] : [0, 0, 0];
+      const spawnedId = world3.instantiatePrefab?.(prefabId, { position: pos }) ?? null;
+      if (!spawnedId) return null;
+      const spawnedNode = world3.getNodes()[spawnedId];
+      if (spawnedNode && opts?.name) spawnedNode.name = opts.name;
+      return makeNodeHandle(spawnedId, host);
+    },
+    destroyNode: (target) => {
+      const targetId = typeof target === "string" ? target : target?.id;
+      if (targetId) destroyOrReleaseNode(targetId, host);
+    },
+    pool: poolHelpers,
+    broadcast: (name, payload) => {
+      messageQueue.push({ targetNodeId: null, name, payload });
+    },
+    after: (seconds, callback) => {
+      const id = nextTimerId++;
+      const delay = Math.max(0, Number(seconds) || 0);
+      scriptTimers.set(id, { id, nodeId: sysNodeId, scriptId: systemId, remaining: delay, interval: delay, repeat: false, callback });
+      return id;
+    },
+    every: (seconds, callback) => {
+      const id = nextTimerId++;
+      const interval = Math.max(0.016, Number(seconds) || 0.1);
+      scriptTimers.set(id, { id, nodeId: sysNodeId, scriptId: systemId, remaining: interval, interval, repeat: true, callback });
+      return id;
+    },
+    cancelTimer: (timerId) => {
+      scriptTimers.delete(timerId);
+    },
+    curve: buildCurveApi(),
+    crowd: {
+      moveTo: (targetNode, target, options) => {
+        const nodes = world3.getNodes();
+        const id = resolveTemplateNode(targetNode, nodes)?.id ?? (typeof targetNode === "string" ? targetNode : targetNode?.id);
+        const v = resolveVec3Input(target);
+        if (id && v) setCrowdTarget(id, v, options);
+      },
+      stop: (targetNode) => {
+        const nodes = world3.getNodes();
+        const id = resolveTemplateNode(targetNode, nodes)?.id ?? (typeof targetNode === "string" ? targetNode : targetNode?.id);
+        if (id) stopCrowdAgent(id);
+      },
+      formation: (units, center, options) => {
+        const c = resolveVec3Input(center);
+        if (!c) return;
+        const nodes = world3.getNodes();
+        const ids = units.map((u) => resolveTemplateNode(u, nodes)?.id ?? (typeof u === "string" ? u : u?.id)).filter((id) => Boolean(id));
+        setCrowdFormation(ids, c, options);
+      },
+      stats: () => getCrowdStats()
+    },
+    projectile: {
+      launch: (projNode, options) => {
+        const nodes = world3.getNodes();
+        const id = resolveTemplateNode(projNode, nodes)?.id ?? (typeof projNode === "string" ? projNode : projNode?.id);
+        if (!id) return;
+        const targetId = options?.target ? resolveTemplateNode(options.target, nodes)?.id ?? (typeof options.target === "string" ? options.target : options.target?.id) : null;
+        const ownerId = options?.owner ? resolveTemplateNode(options.owner, nodes)?.id ?? (typeof options.owner === "string" ? options.owner : options.owner?.id) : null;
+        launchProjectile(id, {
+          direction: options?.direction ? resolveVec3Input(options.direction) ?? void 0 : void 0,
+          targetId,
+          ownerId,
+          mode: options?.mode,
+          speed: options?.speed,
+          gravity: options?.gravity,
+          turnRate: options?.turnRate,
+          maxLifetime: options?.maxLifetime,
+          hitRadius: options?.hitRadius,
+          targetTag: options?.targetTag,
+          damage: options?.damage,
+          destroyOnHit: options?.destroyOnHit,
+          onHit: options?.onHit ? (hitNodeId, pos) => {
+            options.onHit(makeNodeHandle(hitNodeId, host), pos);
+          } : void 0
+        });
+      },
+      reset: (projNode) => {
+        const nodes = world3.getNodes();
+        const id = resolveTemplateNode(projNode, nodes)?.id ?? (typeof projNode === "string" ? projNode : projNode?.id);
+        if (id) resetProjectileState(id);
+      }
+    },
+    input: {
+      isPressed: (actionOrKey) => isActionPressed(actionOrKey) || isKeyHeld(actionOrKey) || isKeyHeld(`Key${actionOrKey.toUpperCase()}`),
+      justPressed: (actionOrKey) => wasActionTapped(actionOrKey) || wasKeyTapped(actionOrKey) || wasKeyTapped(`Key${actionOrKey.toUpperCase()}`),
+      isKeyPressed: (code) => isKeyHeld(code) || isKeyHeld(`Key${code.toUpperCase()}`),
+      justReleased: () => false,
+      axis1D: (action) => isActionPressed(action) ? 1 : 0,
+      axis2D: (action) => getActionAxis2D(action),
+      pointerDelta: () => ({ ...framePointerDelta }),
+      pointerPosition: () => ({ ...framePointerPos }),
+      wheelDelta: () => frameWheelDelta,
+      isMouseButtonPressed: (button) => (currMouseButtons & mouseButtonMask(button)) !== 0,
+      justPressedMouseButton: (button) => (currMouseButtons & mouseButtonMask(button)) !== 0 && (prevMouseButtons & mouseButtonMask(button)) === 0,
+      justReleasedMouseButton: (button) => (currMouseButtons & mouseButtonMask(button)) === 0 && (prevMouseButtons & mouseButtonMask(button)) !== 0
+    },
+    ui: {
+      getVar: (key) => uiValues().variables[key],
+      setVar: (key, value) => writeUiVariable(key, value),
+      onEvent: (eventName, handler) => {
+        ensureUiClickBridge();
+        const instKey = `sys:${systemId}`;
+        let byEvent = uiEventHandlers.get(instKey);
+        if (!byEvent) {
+          byEvent = /* @__PURE__ */ new Map();
+          uiEventHandlers.set(instKey, byEvent);
+        }
+        let set = byEvent.get(eventName);
+        if (!set) {
+          set = /* @__PURE__ */ new Set();
+          byEvent.set(eventName, set);
+        }
+        set.add(handler);
+        return () => {
+          set?.delete(handler);
+        };
+      },
+      showScreen: (screenIdOrName) => {
+        const sid = resolveScreenNodeId(screenIdOrName);
+        if (sid) setScreenVisible(sid, true);
+      },
+      hideScreen: (screenIdOrName) => {
+        const sid = resolveScreenNodeId(screenIdOrName);
+        if (sid) setScreenVisible(sid, false);
+      },
+      toggleScreen: (screenIdOrName) => {
+        const sid = resolveScreenNodeId(screenIdOrName);
+        if (!sid) return;
+        const nodeTarget = world3.getNodes()[sid];
+        const curMap = uiValues().screens;
+        const cur = sid in curMap ? curMap[sid] : Boolean(nodeTarget?.screen?.visibleOnPlay ?? true);
+        setScreenVisible(sid, !cur);
+      },
+      isScreenVisible: (screenIdOrName) => {
+        const sid = resolveScreenNodeId(screenIdOrName);
+        if (!sid) return false;
+        const nodeTarget = world3.getNodes()[sid];
+        const curMap = uiValues().screens;
+        return sid in curMap ? curMap[sid] : Boolean(nodeTarget?.screen?.visibleOnPlay ?? true);
+      },
+      worldToScreen: (position) => {
+        const vec = resolveVec3Input(position);
+        if (!vec || !host.worldToScreen) return null;
+        return host.worldToScreen([vec.x, vec.y, vec.z]);
+      }
+    },
+    scene: {
+      currentId: () => world3.getActiveSceneId(),
+      load: (sceneId, options) => {
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new CustomEvent("t3d:load-scene", { detail: { sceneId, spawnPoint: options?.spawnPoint } }));
+        }
       }
     },
     global: {
@@ -5194,21 +8010,41 @@ function compileAndRegisterScript(id, fileName, source) {
   if (!evaluated.ok || !evaluated.exports) {
     return { ok: false, diagnostics: evaluated.diagnostics };
   }
-  const exp2 = evaluated.exports;
-  if (exp2.__t3dKind === "system") {
-    const def2 = exp2;
+  const exp3 = evaluated.exports;
+  if (exp3.__t3dKind === "system") {
+    const def2 = exp3;
     const prev = compiledSystems.get(id);
     prev?.unregister();
-    const baseOrder = def2.stage === "postAnimation" ? RUNTIME_STAGE.POST_ANIMATION : def2.stage === "postPhysics" ? RUNTIME_STAGE.PHYSICS_NAV + 5 : RUNTIME_STAGE.PRE_PHYSICS + 1;
-    const unregister2 = registerRuntimeSystem(
+    const baseOrder = def2.stage === "preRender" ? RUNTIME_STAGE.PRE_RENDER - 1 : def2.stage === "postAnimation" ? RUNTIME_STAGE.POST_ANIMATION : def2.stage === "postPhysics" ? RUNTIME_STAGE.PHYSICS_NAV + 5 : RUNTIME_STAGE.PRE_PHYSICS + 1;
+    const sysEntry = {
+      def: def2,
+      mounted: false,
+      state: def2.createState ? { ...def2.createState() } : def2.state ? { ...def2.state() } : {},
+      unregister: () => {
+      }
+    };
+    const unregister4 = registerRuntimeSystem(
       `script.${id}`,
       baseOrder + (def2.order ?? 0),
       (dt, host) => {
         if (getRuntimeWorld().getPlayState() !== "playing") return;
-        def2.onUpdate?.({ host, elapsedTime: simElapsed }, dt);
+        const api = buildSystemWorldApi(id, host);
+        try {
+          if (!sysEntry.mounted) {
+            sysEntry.mounted = true;
+            sysEntry.state = def2.createState ? { ...def2.createState() } : def2.state ? { ...def2.state() } : {};
+            def2.onMount?.(api, sysEntry.state);
+            def2.onInit?.(api, sysEntry.state);
+          }
+          def2.onStep?.(api, sysEntry.state, dt);
+          def2.onUpdate?.(api, sysEntry.state, dt);
+        } catch (error) {
+          getRuntimeWorld().log("error", `\u7CFB\u7EDF "${def2.name}" \u8FD0\u884C\u9519\u8BEF: ${error instanceof Error ? error.message : String(error)}`);
+        }
       }
     );
-    compiledSystems.set(id, { def: def2, unregister: unregister2 });
+    sysEntry.unregister = unregister4;
+    compiledSystems.set(id, sysEntry);
     return {
       ok: true,
       diagnostics: transpiled.diagnostics,
@@ -5216,8 +8052,8 @@ function compileAndRegisterScript(id, fileName, source) {
       exports: { id, file: fileName, kind: "system", system: def2 }
     };
   }
-  const def = exp2;
-  if (exp2.__t3dKind !== "behavior" || typeof def.name !== "string" || !def.name.trim()) {
+  const def = exp3;
+  if (exp3.__t3dKind !== "behavior" || typeof def.name !== "string" || !def.name.trim()) {
     return {
       ok: false,
       diagnostics: [
@@ -5241,11 +8077,35 @@ function compileAndRegisterScript(id, fileName, source) {
   };
 }
 function clearScriptRuntimeState() {
+  for (const [sysId, sys] of compiledSystems.entries()) {
+    if (sys.mounted) {
+      sys.mounted = false;
+      const noopHost = { ready: false, resolveObject: () => null, updateAnimations: () => {
+      } };
+      const api = buildSystemWorldApi(sysId, noopHost);
+      try {
+        sys.def.onDispose?.(api, sys.state);
+        sys.def.onDestroy?.(api, sys.state);
+      } catch {
+      }
+      sys.state = {};
+    }
+  }
   instanceStates.clear();
   messageQueue.length = 0;
   uiEventHandlers.clear();
   uiEventQueue.length = 0;
   globalMemory.clear();
+  navAgents.clear();
+  pooledInactive.clear();
+  nodePoolKey.clear();
+  poolBuckets.clear();
+  scriptTimers.clear();
+  splineFollowAgents.clear();
+  activeTweens.clear();
+  sfxCooldownAt.clear();
+  nextTimerId = 1;
+  nextTweenId = 1;
   simElapsed = 0;
   framePointerDelta = { x: 0, y: 0 };
   framePointerPos = { x: 0, y: 0 };
@@ -5259,6 +8119,27 @@ function stepProjectScripts(dt, host) {
     clearScriptRuntimeState();
     return;
   }
+  ensureUiClickBridge();
+  bindProjectileRuntimeHooks({
+    onHit: ({ projectileId, targetId, ownerId, damage, position }) => {
+      messageQueue.push({
+        targetNodeId: targetId,
+        name: "onProjectileHit",
+        payload: { projectileId, targetId, ownerId, damage, position },
+        senderId: projectileId
+      });
+      messageQueue.push({
+        targetNodeId: projectileId,
+        name: "onProjectileHit",
+        payload: { projectileId, targetId, ownerId, damage, position },
+        senderId: projectileId
+      });
+    },
+    onRecycle: (nodeId, runtimeHost) => {
+      destroyOrReleaseNode(nodeId, runtimeHost);
+    },
+    isNodeInactive: (nodeId, nodes2) => isNodePooledInactive(nodeId, nodes2)
+  });
   simElapsed += Math.max(0, dt);
   framePointerDelta = host.peekPointerDelta?.() ?? host.pointerDelta?.() ?? { x: 0, y: 0 };
   framePointerPos = host.pointerNormalized?.() ?? { x: 0, y: 0 };
@@ -5267,7 +8148,45 @@ function stepProjectScripts(dt, host) {
   currMouseButtons = host.mouseButtons ? host.mouseButtons() : host.rightHeld?.() ? 2 : 0;
   const nodes = world3.getNodes();
   const activeKeys = /* @__PURE__ */ new Set();
+  for (const sysId of compiledSystems.keys()) {
+    activeKeys.add(`sys:${sysId}`);
+  }
+  if (navAgents.size > 0 && dt > 0) {
+    for (const [agentId, agent] of navAgents) {
+      const obj = host.resolveObject(agentId);
+      const n = nodes[agentId];
+      if (!obj && !n) {
+        navAgents.delete(agentId);
+        continue;
+      }
+      const targetPt = agent.path[agent.index];
+      if (!targetPt) {
+        navAgents.delete(agentId);
+        continue;
+      }
+      const curX = obj ? obj.position.x : n.position[0];
+      const curY = obj ? obj.position.y : n.position[1];
+      const curZ = obj ? obj.position.z : n.position[2];
+      const dx = targetPt[0] - curX;
+      const dy = targetPt[1] - curY;
+      const dz = targetPt[2] - curZ;
+      const dist = Math.hypot(dx, dy, dz);
+      const stepDist = agent.speed * dt;
+      if (dist <= Math.max(0.05, stepDist)) {
+        if (obj) obj.position.set(targetPt[0], targetPt[1], targetPt[2]);
+        agent.index += 1;
+        if (agent.index >= agent.path.length) navAgents.delete(agentId);
+      } else {
+        const inv = stepDist / dist;
+        if (obj) {
+          obj.position.set(curX + dx * inv, curY + dy * inv, curZ + dz * inv);
+          obj.rotation.y = Math.atan2(dx, dz);
+        }
+      }
+    }
+  }
   for (const node of Object.values(nodes)) {
+    if (isNodePooledInactive(node.id, nodes)) continue;
     const projectScripts = node.gameplay?.packs?.__project__;
     if (!projectScripts || typeof projectScripts !== "object") continue;
     for (const [scriptId, rawParams] of Object.entries(projectScripts)) {
@@ -5300,6 +8219,133 @@ function stepProjectScripts(dt, host) {
           world3.log("error", `\u811A\u672C "${def.name}" \u8FD0\u884C\u9519\u8BEF: ${error instanceof Error ? error.message : String(error)}`);
         }
       });
+    }
+  }
+  if (splineFollowAgents.size > 0 && dt > 0) {
+    for (const [agentId, ag] of Array.from(splineFollowAgents.entries())) {
+      const n = nodes[agentId];
+      const h = makeNodeHandle(agentId, host);
+      if (!n || !h || isNodePooledInactive(agentId, nodes)) {
+        splineFollowAgents.delete(agentId);
+        continue;
+      }
+      const totalLen = ag.spline.length;
+      if (totalLen <= 1e-6) {
+        splineFollowAgents.delete(agentId);
+        ag.onArrive?.();
+        continue;
+      }
+      let nextDist = ag.distance + ag.speed * dt * ag.direction;
+      let arrived = false;
+      if (ag.loop) {
+        nextDist = (nextDist % totalLen + totalLen) % totalLen;
+      } else if (ag.pingPong) {
+        if (nextDist >= totalLen) {
+          nextDist = totalLen - (nextDist - totalLen);
+          ag.direction = -1;
+        } else if (nextDist <= 0) {
+          nextDist = -nextDist;
+          ag.direction = 1;
+        }
+      } else {
+        if (nextDist >= totalLen) {
+          nextDist = totalLen;
+          arrived = true;
+        } else if (nextDist <= 0) {
+          nextDist = 0;
+          arrived = true;
+        }
+      }
+      ag.distance = nextDist;
+      const pt = ag.spline.pointAtDistance(nextDist);
+      const cur = h.position;
+      h.position = { x: pt.x, y: ag.planeXZ ? cur.y : pt.y, z: pt.z };
+      if (ag.faceDirection) {
+        const tan2 = ag.spline.tangentAtDistance(nextDist);
+        const tx = tan2.x * ag.direction;
+        const tz = tan2.z * ag.direction;
+        if (Math.abs(tx) > 1e-5 || Math.abs(tz) > 1e-5) {
+          const r = h.rotation;
+          h.rotation = { x: r.x, y: Math.atan2(tx, tz), z: r.z };
+        }
+      }
+      if (arrived) {
+        splineFollowAgents.delete(agentId);
+        try {
+          ag.onArrive?.();
+        } catch (error) {
+          world3.log("error", `Spline \u5230\u8FBE\u56DE\u8C03\u9519\u8BEF: ${error instanceof Error ? error.message : String(error)}`);
+        }
+      }
+    }
+  }
+  if (activeTweens.size > 0 && dt > 0) {
+    for (const tw of Array.from(activeTweens.values())) {
+      if (!activeTweens.has(tw.id)) continue;
+      const ownerExists = tw.ownerNodeId.startsWith("__system__:") || Boolean(nodes[tw.ownerNodeId]) && !isNodePooledInactive(tw.ownerNodeId, nodes);
+      if (!ownerExists) {
+        activeTweens.delete(tw.id);
+        continue;
+      }
+      if (tw.delayRemaining > 0) {
+        tw.delayRemaining -= dt;
+        if (tw.delayRemaining > 0) continue;
+        tw.elapsed += -tw.delayRemaining;
+        tw.delayRemaining = 0;
+      } else {
+        tw.elapsed += dt;
+      }
+      const rawT = Math.min(1, tw.elapsed / tw.duration);
+      const progress = tw.reversed ? 1 - rawT : rawT;
+      const eased = evalEasing(tw.ease, progress);
+      try {
+        tw.apply(eased);
+        tw.onUpdate?.(eased);
+      } catch (error) {
+        world3.log("error", `Tween \u66F4\u65B0\u9519\u8BEF: ${error instanceof Error ? error.message : String(error)}`);
+        activeTweens.delete(tw.id);
+        continue;
+      }
+      if (rawT >= 1) {
+        if (tw.completedCount < tw.repeat) {
+          tw.completedCount += 1;
+          tw.elapsed = 0;
+          if (tw.yoyo) tw.reversed = !tw.reversed;
+        } else {
+          activeTweens.delete(tw.id);
+          try {
+            tw.onComplete?.();
+          } catch (error) {
+            world3.log("error", `Tween \u5B8C\u6210\u56DE\u8C03\u9519\u8BEF: ${error instanceof Error ? error.message : String(error)}`);
+          }
+        }
+      }
+    }
+  }
+  if (scriptTimers.size > 0 && dt > 0) {
+    const timerSnapshot = Array.from(scriptTimers.values());
+    for (const timer of timerSnapshot) {
+      if (!scriptTimers.has(timer.id)) continue;
+      const isSystemTimer = timer.nodeId.startsWith("__system__:");
+      const tNode = isSystemTimer ? null : nodes[timer.nodeId];
+      if (!isSystemTimer && (!tNode || isNodePooledInactive(timer.nodeId, nodes))) {
+        scriptTimers.delete(timer.id);
+        continue;
+      }
+      timer.remaining -= dt;
+      if (timer.remaining <= 0) {
+        if (timer.repeat) {
+          timer.remaining += timer.interval;
+          if (timer.remaining <= 0) timer.remaining = timer.interval;
+        } else {
+          scriptTimers.delete(timer.id);
+        }
+        try {
+          timer.callback();
+        } catch (error) {
+          world3.log("error", `\u811A\u672C\u5B9A\u65F6\u5668\u56DE\u8C03\u9519\u8BEF: ${error instanceof Error ? error.message : String(error)}`);
+        }
+      }
     }
   }
   if (messageQueue.length > 0) {
@@ -5357,9 +8403,33 @@ function stepProjectScripts(dt, host) {
 registerRuntimeSystem("core.projectScripts", RUNTIME_STAGE.PRE_PHYSICS + 2, stepProjectScripts);
 
 // src/core/codeAssets/shaderRuntime.ts
-import { Color as Color5 } from "three";
+init_fieldSchema();
+import { Color as Color5, DataTexture as DataTexture2, RGBAFormat as RGBAFormat2 } from "three";
 import * as tsl from "three/tsl";
 import { MeshBasicNodeMaterial as MeshBasicNodeMaterial3, MeshStandardNodeMaterial } from "three/webgpu";
+var textureResolver = null;
+var cachedFallbackTex = null;
+function fallbackWhiteTexture() {
+  if (!cachedFallbackTex) {
+    cachedFallbackTex = new DataTexture2(new Uint8Array([255, 255, 255, 255]), 1, 1, RGBAFormat2);
+    cachedFallbackTex.needsUpdate = true;
+  }
+  return cachedFallbackTex;
+}
+function resolveTextureAsset(raw) {
+  if (typeof raw === "string" && raw.trim() && textureResolver) {
+    const tex = textureResolver(raw.trim());
+    if (tex) return tex;
+  }
+  if (raw && typeof raw === "object" && "isTexture" in raw) {
+    return raw;
+  }
+  if (raw && typeof raw === "object" && "value" in raw) {
+    const val = raw.value;
+    if (val && typeof val === "object" && "isTexture" in val) return val;
+  }
+  return fallbackWhiteTexture();
+}
 function asNode(value) {
   if (value === void 0 || value === null) return void 0;
   if (typeof value === "number") return tsl.float(value);
@@ -5384,6 +8454,9 @@ function paramToNode(schema, raw) {
     const arr = Array.isArray(value) ? value : [0, 0, 0, 1];
     return tsl.vec4(Number(arr[0]) || 0, Number(arr[1]) || 0, Number(arr[2]) || 0, Number(arr[3]) ?? 1);
   }
+  if (schema.type === "texture" || schema.type === "ref" && schema.target === "asset") {
+    return tsl.texture(resolveTextureAsset(value));
+  }
   return value;
 }
 function createShaderSdk() {
@@ -5398,44 +8471,141 @@ function createShaderSdk() {
     clamp: (x, minVal, maxVal) => tsl.clamp(asNode(x), asNode(minVal), asNode(maxVal)),
     smoothstep: (edge0, edge1, x) => tsl.smoothstep(asNode(edge0), asNode(edge1), asNode(x)),
     step: (edge, x) => tsl.step(asNode(edge), asNode(x)),
+    tan: (x) => tsl.tan(asNode(x)),
     sin: (x) => tsl.sin(asNode(x)),
     cos: (x) => tsl.cos(asNode(x)),
     abs: (x) => tsl.abs(asNode(x)),
+    sign: (x) => tsl.sign(asNode(x)),
     floor: (x) => tsl.floor(asNode(x)),
     ceil: (x) => tsl.ceil(asNode(x)),
     fract: (x) => tsl.fract(asNode(x)),
     pow: (x, y) => tsl.pow(asNode(x), asNode(y)),
     sqrt: (x) => tsl.sqrt(asNode(x)),
+    exp: (x) => tsl.exp(asNode(x)),
+    log: (x) => tsl.log(asNode(x)),
+    saturate: (x) => tsl.saturate(asNode(x)),
     min: (a, b) => tsl.min(asNode(a), asNode(b)),
     max: (a, b) => tsl.max(asNode(a), asNode(b)),
     dot: (a, b) => tsl.dot(asNode(a), asNode(b)),
     cross: (a, b) => tsl.cross(asNode(a), asNode(b)),
     normalize: (v) => tsl.normalize(asNode(v)),
     length: (v) => tsl.length(asNode(v)),
+    distance: (a, b) => tsl.distance(asNode(a), asNode(b)),
+    reflect: (incident, normal) => tsl.reflect(asNode(incident), asNode(normal)),
+    fwidth: (x) => tsl.fwidth(asNode(x)),
+    fresnel: (normalNode, viewDirNode, power = 3) => {
+      const n = tsl.normalize(asNode(normalNode));
+      const v = tsl.normalize(asNode(viewDirNode));
+      const ndotv = tsl.clamp(
+        tsl.dot(n, v),
+        0,
+        1
+      );
+      return tsl.pow(ndotv.oneMinus(), asNode(power));
+    },
     uv: (index = 0) => tsl.uv(index),
     time: tsl.time,
+    deltaTime: tsl.deltaTime,
     normalView: tsl.normalView,
     normalWorld: tsl.normalWorld,
+    normalLocal: tsl.normalLocal,
     positionWorld: tsl.positionWorld,
     positionLocal: tsl.positionLocal,
     viewDirection: tsl.positionViewDirection,
-    texture: () => tsl.vec4(1, 1, 1, 1)
+    cameraPosition: tsl.cameraPosition,
+    screenUV: tsl.screenUV,
+    vertexColor: () => tsl.vertexColor(),
+    texture: (texRef, uvNode) => {
+      const tex = resolveTextureAsset(texRef);
+      return uvNode !== void 0 ? tsl.texture(tex, asNode(uvNode)) : tsl.texture(tex);
+    }
   };
 }
-function buildMaterialFromShader(def, overrides) {
+var VALID_SURFACE_KEYS = /* @__PURE__ */ new Set([
+  "baseColor",
+  "normal",
+  "roughness",
+  "metalness",
+  "emissive",
+  "opacity",
+  "vertexOffset"
+]);
+function buildMaterialFromShader(def, overrides, options) {
   const paramValues = {};
   const runtimeParams = {};
+  const accessedParams = /* @__PURE__ */ new Set();
+  const declaredKeys = Object.keys(def.params ?? {});
   for (const [key, schema] of Object.entries(def.params ?? {})) {
     const val = overrides && key in overrides ? overrides[key] : defaultForSchema(schema);
     paramValues[key] = val;
     runtimeParams[key] = paramToNode(schema, val);
   }
-  const out = def.surface(runtimeParams);
+  const trackedParams = new Proxy(runtimeParams, {
+    get(target, prop, receiver) {
+      if (typeof prop === "string") accessedParams.add(prop);
+      return Reflect.get(target, prop, receiver);
+    }
+  });
+  const surfaceArg = new Proxy(
+    {
+      params: trackedParams,
+      uv: tsl.uv(0),
+      time: tsl.time,
+      deltaTime: tsl.deltaTime,
+      positionLocal: tsl.positionLocal,
+      positionWorld: tsl.positionWorld,
+      normalLocal: tsl.normalLocal,
+      normalView: tsl.normalView,
+      normalWorld: tsl.normalWorld,
+      viewDirection: tsl.positionViewDirection,
+      cameraPosition: tsl.cameraPosition,
+      screenUV: tsl.screenUV,
+      vertexColor: tsl.vertexColor()
+    },
+    {
+      get(target, prop, receiver) {
+        if (typeof prop === "string" && prop in runtimeParams) {
+          return Reflect.get(trackedParams, prop);
+        }
+        return Reflect.get(target, prop, receiver);
+      }
+    }
+  );
+  const out = def.surface(surfaceArg);
+  const warnings = [];
+  if (!out || typeof out !== "object") {
+    throw new Error("surface() \u5FC5\u987B\u8FD4\u56DE\u4E00\u4E2A\u5305\u542B\u8868\u9762\u8F93\u51FA\u5C5E\u6027\u7684\u5BF9\u8C61");
+  }
+  const outKeys = Object.keys(out).filter((k) => out[k] !== void 0);
+  const unknownKeys = outKeys.filter((k) => !VALID_SURFACE_KEYS.has(k));
+  if (unknownKeys.length > 0) {
+    const mapped = unknownKeys.map((k) => k === "color" ? "color\uFF08\u5E94\u4E3A baseColor\uFF09" : k).join("\u3001");
+    if (options?.strict) {
+      throw new Error(`surface() \u8FD4\u56DE\u4E86\u65E0\u6548\u5B57\u6BB5\uFF1A${mapped}`);
+    }
+    warnings.push(`surface() \u8FD4\u56DE\u4E86\u672A\u8BC6\u522B\u5B57\u6BB5\uFF1A${mapped}`);
+  }
+  const validCount = outKeys.filter((k) => VALID_SURFACE_KEYS.has(k)).length;
+  if (validCount === 0 && !out.color) {
+    throw new Error("surface() \u672A\u8FD4\u56DE\u4EFB\u4F55\u6709\u6548\u8F93\u51FA\u5B57\u6BB5\uFF08\u5982 baseColor / emissive / roughness / opacity\uFF09");
+  }
+  const unusedParams = declaredKeys.filter((k) => !accessedParams.has(k));
+  if (unusedParams.length > 0) {
+    const msg = `params \u4E2D\u58F0\u660E\u4E86 ${unusedParams.join("\u3001")}\uFF0C\u4F46 surface() \u4E2D\u672A\u4F7F\u7528`;
+    if (options?.strict) {
+      throw new Error(msg);
+    }
+    warnings.push(msg);
+  }
+  if (out.opacity !== void 0 && !def.transparent) {
+    warnings.push("surface() \u8FD4\u56DE\u4E86 opacity\uFF0C\u5EFA\u8BAE\u8BBE\u7F6E transparent: true \u624D\u4F1A\u751F\u6548");
+  }
   const isUnlit = def.mode === "unlit";
   const material = isUnlit ? new MeshBasicNodeMaterial3() : new MeshStandardNodeMaterial();
-  if (out.baseColor !== void 0) {
+  const baseColorNode = out.baseColor !== void 0 ? out.baseColor : out.color;
+  if (baseColorNode !== void 0) {
     ;
-    material.colorNode = asNode(out.baseColor);
+    material.colorNode = asNode(baseColorNode);
   }
   if (out.opacity !== void 0) {
     ;
@@ -5454,7 +8624,7 @@ function buildMaterialFromShader(def, overrides) {
   if (def.transparent) material.transparent = true;
   if (def.doubleSided) material.side = 2;
   material.needsUpdate = true;
-  return { material, paramValues };
+  return { material, paramValues, warnings };
 }
 function compileShaderSource(id, fileName, source, overrides) {
   const transpiled = checkAndTranspileTs(fileName, source);
@@ -5481,7 +8651,7 @@ function compileShaderSource(id, fileName, source, overrides) {
     };
   }
   try {
-    const { material, paramValues } = buildMaterialFromShader(evaluated.exports, overrides);
+    const { material, paramValues } = buildMaterialFromShader(evaluated.exports, overrides, { strict: true });
     return {
       ok: true,
       diagnostics: transpiled.diagnostics,
@@ -5513,6 +8683,7 @@ function compileShaderSource(id, fileName, source, overrides) {
 }
 
 // tests/phase3-code-assets.test.ts
+init_sceneRuntime();
 init_world();
 test("checkAndTranspileTs \u8FD4\u56DE\u7EDF\u4E00\u8BCA\u65AD\u683C\u5F0F", () => {
   const bad = checkAndTranspileTs("scripts/broken.ts", "export const x = ;");

@@ -10,11 +10,14 @@ T3D 的 AI 系统横跨「主进程代理 → 渲染进程状态循环 → 核�
 
 | 层级 | 文件路径 | 核心职责 |
 |---|---|---|
-| **主进程（模型与密钥）** | `electron/services/modelProviders.ts` | 统一适配器（`openai-compatible` / `openai` / `anthropic` / `gemini`），流式增量推送（`delta`）与工具调用解析 |
+| **主进程（模型与密钥）** | `electron/services/modelProviders.ts` | 统一适配器（`openai-compatible` / `openai` / `anthropic` / `gemini`）：全通道流式、截断检测、思考内容回传、提示缓存断点、能力探测式降级 |
 | | `electron/services/secretStore.ts` | 使用 Electron `safeStorage` 加密存储各 Provider 的 API Key，密钥永不进入渲染进程 |
 | | `electron/services/pathGuard.ts` | 工程目录访问白名单校验（重启恢复工程时需先 `authorizeRoot`） |
-| **AI 运行循环** | `src/ai/agentLoop.ts` | `useAgentStore`、多步工具推理循环（`MAX_TOOL_STEPS = 16`）、System Prompt 构建、历史消息裁剪、每轮 Checkpoint 自动备份与回退 |
+| **AI 运行循环** | `src/ai/agentLoop.ts` | `useAgentStore`、多步工具推理循环（`MAX_TOOL_STEPS = 40`）、静态 System Prompt 与每轮工程上下文、收尾自动验收、历史裁剪与原地折叠、每轮 Checkpoint 自动备份与回退 |
 | | `src/ai/tools.ts` | `buildAiToolSpecs()` 工具声明、`executeAiTool()` 执行分发、`resolveAiNodeArgs()` 节点 ID/名称容错解析 |
+| | `src/ai/knowledge/recipes.ts` | 范例库：经运行时仿真验证的完整脚本 + 搭建步骤，AI 通过 `kb__read` 取用 |
+| | `src/ai/trace.ts` | 每轮运行轨迹（步数 / 耗时 / token / 缓存命中 / 失败与截断），写入 `.t3d/ai-traces.jsonl` |
+| | `src/ai/evals/` | 固定评测任务集与运行器（控制台 `__t3dAiEval.run()`） |
 | | `src/ai/historyStorage.ts` | 对话记录持久化（磁盘工程存 `.t3d/ai-history.json`，草稿存 `localStorage`，另存工程时自动迁移）与 JSON 导入导出 |
 | | `src/ai/AiWorkbenchPanel.tsx` | 右侧/悬浮 AI 指挥台 UI：实时阶段提示与计时、流式输出、动作胶囊、划词/一键复制、高风险确认、模型配置抽屉 |
 | **核心底座（AI 读写边界）** | `src/core/commands/` | 所有修改工程状态的指令注册中心（`commandBus`），AI 严禁直接修改 `useEditorStore` |
@@ -25,50 +28,50 @@ T3D 的 AI 系统横跨「主进程代理 → 渲染进程状态循环 → 核�
 
 ---
 
-## 2. 上下文工程与 Token 控制（`src/ai/agentLoop.ts`）
+## 2. Agent 循环设计（`src/ai/agentLoop.ts`）
 
-大模型本身无状态，每次调用 `ai.chat` 的上下文质量与成本由以下 4 项机制共同决定：
+设计目标按优先级：**单步快（缓存命中）→ 步数少（工具信息充分、确定性检查不占模型步数）→ 结果可靠（看状态验收）→ 可度量（轨迹 + 评测）**。改动 AI 模块前先理解下面五条约束，它们互相支撑。
 
-### 2.1 System Prompt 注入（`buildSystemPrompt`）
-每轮推理动态拼装：
-1. **核心原则**：严禁编造 ID、改完场景必调 `query__project_diagnose`、优先 `snapToGround: true`、查询登记清单优先按具体 `category` 而不是全量 `all`。
-2. **脚本 API 强约束**（防止模型自行编造全局变量）：
-   - 必须从 `"t3d/runtime"` 导入 `defineBehavior`。
-   - 位置/旋转/缩放必须**整体赋值**（`self.position = { x, y, z }`），禁止 `self.position.x = ...`。
-   - 输入通过 `self.input.axis2D("Move")`、`self.input.isPressed(...)`、`self.input.isKeyPressed("KeyW")` 读取。
-   - 节点/资产引用参数必须声明为 `{ type: "ref", target: "node" | "asset", label, default: null }`。
-3. **持久化记忆**：`design.md` 全文（`getDesignDoc()`）+ `queryProjectOverview()`。
-4. **场景节点索引**：直接附上当前场景前 30 个节点的 `name (kind): id`，减少 `query__scene_outline` 往返。
-5. **选中节点快照**：用户 `@` 或在视口选中的节点，直接内嵌 `id / name / kind / parentId / position / assetId / packs / capabilities`，跳过一次 `query__node_inspect`。
+### 2.1 提示缓存：前缀必须逐字稳定
+模型按「工具定义 → 系统提示 → 消息」的前缀计费与缓存。任何对前缀的改动都会让其后的全部内容按全价重算。因此：
 
-### 2.2 跨轮历史裁剪（`buildHistoryMessages`）
-- **动态预算**：从最新往回取，最多保留 **24 条**、总字符上限 **18,000**（至少保底 4 条）。
-- **跨轮动作记忆**：过滤掉纯报错轮次，并将每轮 `assistant` 的 `actions` 压缩成一行摘要（如 `[本轮已执行操作: ✓ 新建脚本 ...]`）附在消息末尾，避免下一轮 AI 忘记刚创建的脚本路径或节点 ID。
+- **系统提示完全静态**（`buildSystemPrompt()`，带进程内缓存）：只含工作方式、规范、脚本/着色器/UI API 速查、范例目录。**严禁**往里拼工程概览、节点索引、任务清单等任何会变的内容。
+- **工具全集常驻**（`buildAiToolSpecs()`）：不再有“工具域”按需开关。中途增删工具会让整段缓存失效，还要多花一步去开域。
+- **动态上下文只注入一次**（`buildTurnContext()`）：`design.md`、工程概览、节点索引、代码资产索引、`@` 引用、任务清单，在每轮开头追加到**用户消息尾部**的 `<工程上下文>` 块里。之后的变化由工具返回告知模型。
+- **历史只追加不改写**（`compactMessagesInPlace()`）：不再每步滑动折叠。只有总量超过 `COMPACT_TRIGGER_CHARS` 时才一次性原地折叠早期的大块工具返回 / 源码入参 / 截图，之后恢复只追加。
+- Anthropic 通道在系统提示与最后一条 user 消息上打 `cache_control` 断点；OpenAI 兼容与 Gemini 依赖各自的自动前缀缓存。
 
-### 2.3 单轮多步工具折叠（`compactMessagesForStep`）
-- 在 `for (step = 0..MAX_TOOL_STEPS)` 循环中，若历史消息不断累积，`query__registry_describe(all)` 等大段 JSON 会在每一步被重复计费。
-- `compactMessagesForStep` 只保留**最近 2 轮工具调用**的完整返回，更早步骤中超过 800 字符的 `tool` 消息自动折叠为占位提示。
+验证方式：每轮结束控制台会打印 `[AI] 本轮：… 缓存命中 xx% …`，对话卡片底部也会显示。多步任务的命中率应明显高于 50%，否则说明有人破坏了前缀稳定性。
 
-### 2.4 工具域按需分类与自动激活（`src/ai/tools.ts` + `src/ai/agentLoop.ts`）
-为避免每轮请求把 ~56 个工具的 JSON Schema 全量塞入上下文导致高 Token 消耗，工具集划分为 `core`（常驻）+ 5 个按需专业域：
-- `core`（常驻）：基础查询（`query__*`）、节点/场景增删改、资源、脚本挂载、`tools__enable_domain`。
-- `script`：脚本创建/读写/校验。
-- `shader`：着色器与材质、资产目录整理。
-- `ui`：UI 屏幕、HUD 绑定与输入动作配置。
-- `capability`：工程级与节点级能力包（`physics` / `navigation` / `spline` / `tween` / `crowd` / `projectile` / `water` / `sky` / `particles` / `buoyancy`）、玩法包、数据表、环境参数。
-- `playtest`：自动试玩、冒烟测试、视口截图、实验分支、多场景与导出。
+### 2.2 模型适配层（`electron/services/modelProviders.ts`）
+- 三个通道**全部流式**，并发出 `text` / `reasoning` / `tool` 三类增量（`tool` 在模型开始生成某个工具的参数时就发出，用于界面进度）。
+- **截断必须可见**：返回 `stopReason`（`stop` / `tool` / `length` / `other`）；工具参数 JSON 解析失败时在该调用上标记 `invalid`，**绝不**静默变成 `{}`。循环遇到 `invalid` 不执行工具，而是告诉模型拆小重试。
+- **思考内容原样回传**：`ChatResult.providerState` 由循环原封不动放回下一步的 assistant 消息（Anthropic 的 thinking 块含签名、OpenAI 兼容的 `reasoning_content`、Gemini 的 `thoughtSignature`）。
+- **能力探测式降级**：Anthropic 依次尝试 `adaptive` 思考 → 固定预算思考 → 关闭，输出上限 32000 → 16000 → 8192 → 4096；OpenAI 兼容在 400 时去掉扩展字段重试。可用形态按「接口 + 模型」记忆，不会每次都先失败一轮。
+- 主进程代码不在 `tsc --noEmit` 范围内，改动后必须跑 `npm run test:ai`（`tests/ai-providers.test.ts` 用模拟流式响应覆盖以上行为）。
 
-**激活方式是「自动预开 + 运行中按需自开」双重机制（无需用户手动开关）**：
-1. **自动预开（`inferInitialToolDomains`）**：发送消息时根据用户提示词关键字与 `@` 引用类型自动识别并预开相关域（如提到“做个游戏”会预开全部核心域；提到“样条/弹道/群体”自动预开 `capability` 域）。
-2. **AI 自助按需开启（`tools__enable_domain`）**：对于未预开的域，System Prompt 会附带一份简短索引；AI 若判断需要某个域，会在推理第一步主动调用 `tools__enable_domain({ domains: [...] })`，下一轮循环立即解锁该域工具与对应的 API 速查。
+### 2.3 确定性检查由循环执行，不占模型步数
+- **写入即检查**：`script.create/update/patch` 的返回值自带编译诊断与 `lintScriptSource` 反模式检查。
+- **收尾自动验收**（`runAutoVerify()`）：模型准备结束时，若本轮改过工程，循环自己跑 `diagnoseProject()`（只报相对本轮开始时**新增**的错误）；若改过脚本/玩法/输入，再跑 1 秒 `PlaytestSession.runSmoke`。全部通过则零开销结束；有问题才把报错回灌给模型修复（最多 2 轮）。
+- 因此提示词里**不再**要求模型“每阶段体检 + 截图”，也没有“连续写 N 次强制验收”的门禁。
 
-> 注意：这里的「工具域」控制的是**AI 能不能看到工具**；而工程里的**能力包本身（`capabilities`）**，默认常用的（`physics` / `navigation` / `spline` / `tween` / `crowd` / `projectile` / `buoyancy`）已开启，重型环境能力（`water` / `sky` / `particles`）默认关闭，用户可在 **项目设置（ProjectSettingsDialog）** 手动开关，AI 也可在开启 `capability` 域后通过 `capability__setEnabled` 自动开关。
+### 2.4 让模型拿得到信息
+- `script__read` / `shader__read`：返回完整当前源码。`script__patch` 的 `find` 必须与它逐字一致，所以这两个工具的返回不截断（上限 60000 字符）。
+- 试玩类工具（`playtest__run_smoke`、`viewport__capture({ playSeconds })`、`playtest__control`）统一返回**去重计数后的运行时报错**，并可用 `watchNodes` 回报节点实时位置。模型不需要写探测脚本。
+- `kb__read`：范例库，见第 4.3 节。
+- 日志游标：`store.logs` 是 300 条的环形窗口，取“某时刻之后的日志”必须用 `captureLogCursor()` / `readLogsSince()`（按日志 id），不能用数组下标。
+
+### 2.5 流程控制
+- `MAX_TOOL_STEPS = 40`。
+- 任务规模自适应写在系统提示里：小改动直接做、不规划；大任务才 `plan__set_tasks`。任务清单有未完成项时循环会自动续推一次。
+- 纯文本回复被截断（`stopReason === 'length'`）时自动让模型续写（最多 2 次）。
+- 跨轮历史（`buildHistoryMessages`）：最多 24 条 / 18,000 字符，assistant 轮附带动作摘要。
 
 ---
 
 ## 3. 工具执行与防幻觉机制（`src/ai/tools.ts`）
 
-1. **只读查询工具（`QUERY_TOOLS`）**：不走 `commandBus`，不触发撤回事务，直接读取当前状态或运行冒烟测试（`playtest__run_smoke`、`playtest__capture`）。
+1. **只读查询工具（`QUERY_TOOLS`）**：不走 `commandBus`，不触发撤回事务，直接读取当前状态或运行冒烟测试（`playtest__run_smoke`、`viewport__capture`）。新增只读工具时要同步加进 `agentLoop.ts` 的 `isReadOnlyTool()`，否则会被当成写操作触发收尾验收。
 2. **写操作工具**：自动映射 `commandBus.list()` 中的所有指令（`domain.action` → `domain__action`），参数由 `fieldSchemaToJsonSchema` 自动生成。
    - 若指令 `risk === 'confirm'`，在 `agentLoop` 中挂起 `status: 'awaiting-confirm'` 等待用户点击「确认执行」或「取消」。
    - 整轮工具执行包裹在 `commandBus.beginTransaction` / `commitTransaction` 中，并提前调用 `createCheckpoint`，支持对话卡片底部「回退本轮」。
@@ -106,8 +109,24 @@ T3D 的 AI 系统横跨「主进程代理 → 渲染进程状态循环 → 核�
 2. `src/ai/tools.ts` 的 `buildAiToolSpecs()` 会自动将其映射为 `domain__action` 工具暴露给大模型；仅需在 `toolPhaseLabel()`（`src/ai/agentLoop.ts`）补充一句中文状态提示即可。
 3. 若属于只读查询或独立工作流（无需撤销栈），直接加在 `src/ai/tools.ts` 的 `QUERY_TOOLS` 与 `executeAiTool` `switch` 分支中。
 
----
+### 4.3 范例库（`src/ai/knowledge/recipes.ts`）
 
+Demo 质量的主要杠杆不是更长的提示词，而是**让 AI 从验证过的实现出发**。范例库每条包含：完整脚本源码、场景搭建与挂载步骤、验收用的冒烟步骤、常见坑。系统提示里只放一行目录，正文由 AI 用 `kb__read({ id })` 按需读取。
+
+- 这**不是**积木/拼装系统：范例只是参考源码，AI 读取后用 `script__create` 落成工程里的普通 `.ts` 脚本并按需求改写。
+- 新增或修改范例必须同时在 `tests/ai-knowledge.test.ts` 里补用例。该测试会真实编译每份脚本、跑 `lintScriptSource`，并在无头运行时里做行为仿真（移动、射击击杀加分、受击死亡）。**没有通过测试的范例不得入库**——错误的范例比没有范例更糟。
+- 发现 AI 反复在某类玩法上摸索时，优先考虑补一条范例，而不是往系统提示里加禁令。
+
+### 4.4 评测与轨迹（`src/ai/evals/`、`src/ai/trace.ts`）
+
+调优必须有数据。任何对系统提示、工具、适配层的改动，都应前后各跑一次评测再下结论。
+
+- **轨迹**：每轮对话结束自动记录到 `<工程>/.t3d/ai-traces.jsonl`，并在控制台打印一行摘要。字段包括每步耗时与 token、缓存命中率、工具调用/失败次数、截断次数、自动返修轮数。
+- **评测**：在 Electron 桌面端打开一个**空白测试工程**，开发者工具控制台执行 `await __t3dAiEval.run()`（可传 `{ ids: [...] }` 或 `{ sizes: ['small'] }`）。任务集见 `src/ai/evals/tasks.ts`，覆盖小改动（建节点、改参数、修运行时报错）、单功能（移动、跟随相机、HUD、收集金币）和完整 Demo（俯视角射击）。每个任务有步数预算、静态检查和试玩断言，结果写入 `.t3d/ai-eval-<时间戳>.json`。
+- 评测会真实调用当前模型并产生费用；快照回滚不会删除磁盘上的脚本文件，所以只在测试工程里跑。
+- 新增能力时同步加一个评测任务；修复一类失败时把它固化成任务，防止回退。
+
+---
 ## 5. UI 状态反馈与对话持久化
 
 1. **实时执行状态（`agentLoop.ts` + `AiWorkbenchPanel.tsx`）**：
@@ -134,17 +153,18 @@ T3D 的 AI 系统横跨「主进程代理 → 渲染进程状态循环 → 核�
   2. 再查 `contracts/t3d/runtime.d.ts` 与 `src/core/codeAssets/workspace.ts`（类型契约是否同步）。
   3. 最后查 `src/ai/agentLoop.ts` 的 `buildSystemPrompt`（提示词是否明确告知了真实 API 和单位）。
   4. **每次修复完底层坑，务必回写更新本节避坑清单，保持跨设备记忆一致。**
-- **Shell 命令规范**：Windows PowerShell 环境下多命令用 `;` 分隔，不要用 `&&`。
+- **不要用提示词禁令修工具缺陷**：AI 反复做某件蠢事时，先问：Windows PowerShell 环境下多命令用 `;` 分隔，不要用 `&&`。
 
 ---
 
 ## 7. 后续演进路线与优化方向
 
-### 7.1 立即可做的 AI 体验打磨
-- **按需注入 Shader API 规范**：当前 `buildSystemPrompt` 重点约束了脚本 API；若后续高频让 AI 写复杂 TSL Shader，可在 `shader__create` / `buildSystemPrompt` 补充 `t3d/shader` 的常用节点示例与白名单说明。
-- **单步工具结果摘要化**：针对 `query__registry_describe` 等大数据查询，除截断外，可按类别返回精简索引，进一步压低多轮对话的 Token 消耗。
-- **Markdown 富文本渲染**：目前对话气泡使用 `whiteSpace: 'pre-wrap'` 纯文本渲染，后续可接入轻量 Markdown 渲染（支持代码块高亮与独立复制按钮）。
-
+### 7.1 下一步（按收益排序）
+- **先跑评测建立基线**：当前的循环改造尚未用真实模型跑过 `__t3dAiEval.run()`。先拿到各任务的通过率、步数与缓存命中率，再决定后续投入。
+- **扩充范例库**：按评测与真实使用中暴露的短板补充（如物理刚体角色、导航寻路 AI、对话/任务、存档、菜单流程与重开），每条都要有仿真测试。
+- **对齐类型契约**：统一 `contracts/t3d/runtime.d.ts`、`RUNTIME_DTS_SUMMARY` 与运行时实现，之后可以让应用内编译器做真正的类型检查，把“调用了不存在的 API”拦在写入时。
+- **修 `physics.raycast` 的命中节点**：宿主 `probe` 返回命中节点 ID 后，射击/交互类范例可以改用射线。
+- **子代理 / 多 agent 编排**：评测显示单 agent 在大任务上的瓶颈确实是上下文而非信息或工具时再考虑。
 ### 7.2 阶段 5 规划衔接（参见 `docs/ai-mode-plan.md`）
 阶段 4（工作台视图、视口指点、实验分支、全层级能力沉淀）已基本就绪，下一步 **阶段 5** 的核心切入点：
 1. **第三方生成能力模块**：在主进程新增生成任务队列与适配器（图片 / 3D 模型 / 动画 / UI），自动附带 `design.md` 风格词，在 `src/ai/tools.ts` 暴露异步生成工具。
@@ -165,4 +185,5 @@ npm run test:core
 npm run test:phase2
 npm run test:phase3
 npm run test:phase4
+npm run test:ai
 ```

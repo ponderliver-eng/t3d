@@ -4,6 +4,24 @@ import path2 from "node:path";
 import test from "node:test";
 
 // src/core/schema/fieldSchema.ts
+function safeVecDefault(type, rawDefault) {
+  const len = type === "vec2" ? 2 : type === "vec3" ? 3 : 4;
+  if (Array.isArray(rawDefault)) {
+    return Array.from({ length: len }, (_, i) => {
+      const v = rawDefault[i];
+      return typeof v === "number" && Number.isFinite(v) ? v : 0;
+    });
+  }
+  if (rawDefault && typeof rawDefault === "object") {
+    const obj = rawDefault;
+    const keys = ["x", "y", "z", "w"];
+    return Array.from({ length: len }, (_, i) => {
+      const v = obj[keys[i]];
+      return typeof v === "number" && Number.isFinite(v) ? v : 0;
+    });
+  }
+  return Array.from({ length: len }, () => 0);
+}
 function defaultForSchema(schema) {
   switch (schema.type) {
     case "number":
@@ -15,7 +33,7 @@ function defaultForSchema(schema) {
     case "vec2":
     case "vec3":
     case "vec4":
-      return [...schema.default];
+      return safeVecDefault(schema.type, schema.default);
     case "texture":
     case "ref":
       return schema.default ?? null;
@@ -51,11 +69,12 @@ function normalizeBySchema(schema, raw, options) {
     case "vec3":
     case "vec4": {
       const len = schema.type === "vec2" ? 2 : schema.type === "vec3" ? 3 : 4;
-      if (!Array.isArray(raw)) return [...schema.default];
+      const fallback = safeVecDefault(schema.type, schema.default);
+      if (!Array.isArray(raw)) return fallback;
       const out = [];
       for (let i = 0; i < len; i += 1) {
         const v = raw[i];
-        out.push(typeof v === "number" && Number.isFinite(v) ? v : schema.default[i]);
+        out.push(typeof v === "number" && Number.isFinite(v) ? v : fallback[i]);
       }
       return out;
     }
@@ -128,7 +147,7 @@ function validateInner(schema, raw, path3, issues) {
       return raw;
     }
     case "string": {
-      if (raw === void 0) return schema.default;
+      if (raw === void 0 || schema.optional && raw === null) return schema.default;
       if (typeof raw !== "string") {
         issues.push({ path: loc, message: `${schema.label} \u5FC5\u987B\u662F\u5B57\u7B26\u4E32` });
         return schema.default;
@@ -152,15 +171,16 @@ function validateInner(schema, raw, path3, issues) {
     case "vec2":
     case "vec3":
     case "vec4": {
-      if (raw === void 0) return [...schema.default];
+      const fallback = safeVecDefault(schema.type, schema.default);
+      if (raw === void 0) return fallback;
       const expected = schema.type === "vec2" ? 2 : schema.type === "vec3" ? 3 : 4;
       if (!Array.isArray(raw) || raw.length !== expected || raw.some((v) => typeof v !== "number" || !Number.isFinite(v))) {
         issues.push({
           path: loc,
           message: `${schema.label} \u5FC5\u987B\u662F\u957F\u5EA6\u4E3A ${expected} \u7684\u6570\u5B57\u6570\u7EC4`,
-          hint: `\u793A\u4F8B\uFF1A${JSON.stringify(schema.default)}`
+          hint: `\u793A\u4F8B\uFF1A${JSON.stringify(fallback)}`
         });
-        return [...schema.default];
+        return fallback;
       }
       return [...raw];
     }
@@ -212,11 +232,21 @@ function validateInner(schema, raw, path3, issues) {
       return raw.map((item, idx) => validateInner(schema.item, item, `${path3}[${idx}]`, issues));
     }
     case "object": {
-      if (raw !== void 0 && (raw === null || typeof raw !== "object" || Array.isArray(raw))) {
+      let objRaw = raw;
+      if (typeof objRaw === "string" && Object.keys(schema.fields).length === 0) {
+        try {
+          objRaw = JSON.parse(objRaw);
+        } catch {
+        }
+      }
+      if (objRaw !== void 0 && (objRaw === null || typeof objRaw !== "object" || Array.isArray(objRaw))) {
         issues.push({ path: loc, message: `${schema.label ?? loc} \u5FC5\u987B\u662F\u5BF9\u8C61` });
         return defaultForSchema(schema);
       }
-      const src = raw ?? {};
+      const src = objRaw ?? {};
+      if (Object.keys(schema.fields).length === 0) {
+        return { ...src };
+      }
       const out = {};
       for (const [key, child] of Object.entries(schema.fields)) {
         if (child.optional && src[key] === void 0) {
@@ -262,7 +292,7 @@ function fieldSchemaToJsonSchema(schema) {
         items: { type: "number" },
         minItems: len,
         maxItems: len,
-        default: [...schema.default]
+        default: safeVecDefault(schema.type, schema.default)
       };
     }
     case "enum":
@@ -286,9 +316,17 @@ function fieldSchemaToJsonSchema(schema) {
         items: fieldSchemaToJsonSchema(schema.item)
       };
     case "object": {
+      const entries = Object.entries(schema.fields);
+      if (entries.length === 0) {
+        return {
+          type: "object",
+          ...desc ? { description: desc } : {},
+          additionalProperties: true
+        };
+      }
       const properties = {};
       const required = [];
-      for (const [key, child] of Object.entries(schema.fields)) {
+      for (const [key, child] of entries) {
         properties[key] = fieldSchemaToJsonSchema(child);
         if (!child.optional && child.type === "ref" && child.required) {
           required.push(key);
@@ -413,7 +451,7 @@ var CommandBus = class {
         ok: false,
         code: "play.locked",
         message: `\u8BD5\u73A9\u8FDB\u884C\u4E2D\uFF0C\u7981\u6B62\u6267\u884C\u4FEE\u6539\u5DE5\u7A0B\u7684\u6307\u4EE4 "${commandId}"`,
-        hint: "\u8BF7\u5148\u505C\u6B62\u8BD5\u73A9\uFF0C\u6216\u53EA\u8C03\u7528\u53EA\u8BFB\u67E5\u8BE2/\u8BD5\u73A9\u63A2\u9488\u63A5\u53E3"
+        hint: '\u7CFB\u7EDF\u8981\u6C42\u5FC5\u987B\u9000\u51FA\u8BD5\u73A9\u540E\u624D\u80FD\u4FEE\u6539\u5DE5\u7A0B\u3002\u8BF7\u5148\u8C03\u7528 playtest__control({ action: "stop" }) \u9000\u51FA\u8BD5\u73A9\uFF0C\u518D\u91CD\u8BD5\u4FEE\u6539\u6307\u4EE4\u3002'
       });
     }
     const validated = validateBySchema(cmd.params, rawParams);
@@ -445,6 +483,7 @@ var CommandBus = class {
     try {
       result = await cmd.run(ctx, validated.value);
     } catch (error) {
+      console.error("[CommandBus]", commandId, rawParams, error);
       result = {
         ok: false,
         code: "command.exception",
@@ -574,7 +613,8 @@ var CACHE_INDEX_PATH = `${CACHE_ROOT}/editor-library/v1/cache-index.json`;
 var CACHE_INDEX_VERSION = 1;
 var useProjectDirectory = create(() => ({
   active: false,
-  name: ""
+  name: "",
+  epoch: 0
 }));
 var cacheIndex = emptyIndex();
 var ioChain = Promise.resolve();

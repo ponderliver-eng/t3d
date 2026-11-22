@@ -62,15 +62,18 @@ export interface ElectronBridge {
     setActiveProvider: (id: string, model?: string) => Promise<string | { activeProviderId: string; providers: unknown[] }>
     chat: (requestId: string, request: unknown) => Promise<{
       text: string
-      toolCalls: Array<{ id: string; name: string; arguments: Record<string, unknown> }>
-      usage?: { inputTokens?: number; outputTokens?: number }
+      toolCalls: Array<{ id: string; name: string; arguments: Record<string, unknown>; invalid?: string }>
+      usage?: { inputTokens?: number; outputTokens?: number; cachedTokens?: number }
       model: string
+      stopReason?: 'stop' | 'tool' | 'length' | 'other'
+      providerState?: unknown
     }>
     abort: (requestId: string) => Promise<void>
     onDelta: (handler: (delta: {
       requestId: string
-      type: 'text' | 'done' | 'error'
+      type: 'text' | 'reasoning' | 'tool' | 'done' | 'error'
       text?: string
+      toolName?: string
       error?: string
     }) => void) => () => void
   }

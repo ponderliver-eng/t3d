@@ -43,6 +43,9 @@ function normalizeInputMap(raw) {
   }
   return { version: 1, deadzone, actions };
 }
+function getInputActionMap() {
+  return currentMap;
+}
 function setInputActionMap(next) {
   currentMap = normalizeInputMap(next);
 }
@@ -88,6 +91,9 @@ function clearAllVirtualInput() {
 }
 function isKeyHeld(code) {
   return physicalKeys.has(code) || virtualKeys.has(code);
+}
+function wasKeyTapped(code) {
+  return tappedKeys.has(code);
 }
 function activeGamepad() {
   if (typeof navigator === "undefined" || typeof navigator.getGamepads !== "function") return null;
@@ -705,6 +711,16 @@ async function createRapierWorld() {
       if (!live || live.kind !== "dynamic") return;
       live.body.addTorque({ x: torque[0], y: torque[1], z: torque[2] }, true);
     },
+    setLinearVelocity(id, velocity) {
+      const live = bodies.get(id);
+      if (!live || live.kind !== "dynamic") return;
+      live.body.setLinvel({ x: velocity[0], y: velocity[1], z: velocity[2] }, true);
+    },
+    applyImpulse(id, impulse) {
+      const live = bodies.get(id);
+      if (!live || live.kind !== "dynamic") return;
+      live.body.applyImpulse({ x: impulse[0], y: impulse[1], z: impulse[2] }, true);
+    },
     dispose() {
       controller2.free();
       puppets.clear();
@@ -859,15 +875,29 @@ var init_rapierWorld = __esm({
 });
 
 // src/capabilities/physics/session.ts
-function registerPhysicsExtension(id, order, step) {
+function registerPhysicsExtension(id, order, step2) {
   const index = extensions.findIndex((item) => item.id === id);
   if (index >= 0) extensions.splice(index, 1);
-  extensions.push({ id, order, step });
+  extensions.push({ id, order, step: step2 });
   extensions.sort((a, b) => a.order - b.order);
   return () => {
     const idx = extensions.findIndex((item) => item.id === id);
     if (idx >= 0) extensions.splice(idx, 1);
   };
+}
+function getPhysicsBodyState(id) {
+  return world?.bodyState(id) ?? null;
+}
+function setPhysicsVelocity(id, velocity) {
+  world?.setLinearVelocity(id, velocity);
+}
+function applyPhysicsImpulse(id, impulse) {
+  world?.applyImpulse(id, impulse);
+}
+function applyPhysicsForce(id, force) {
+  const st = world?.bodyState(id);
+  if (!st || !world) return;
+  world.applyForceAtPoint(id, force, st.position);
 }
 function tickPhysics(dt, resolveObject) {
   const runtime2 = getRuntimeWorld();
@@ -974,7 +1004,7 @@ var world, booting, lastInspectorSync, meshCache, extensions;
 var init_session = __esm({
   "src/capabilities/physics/session.ts"() {
     "use strict";
-    init_registry();
+    init_registry2();
     init_transform();
     init_world();
     init_meshCollect();
@@ -1065,9 +1095,9 @@ function normalizeWater(raw) {
     foamMapAssetId: typeof record.foamMapAssetId === "string" ? record.foamMapAssetId : null
   };
 }
-function finite(value, fallback, min2, max3) {
+function finite(value, fallback, min3, max4) {
   if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
-  return Math.min(max3, Math.max(min2, value));
+  return Math.min(max4, Math.max(min3, value));
 }
 var WATER_CAPABILITY_ID, WATER_DEBUG_VIEWS, WATER_QUALITY_PRESETS, WATER_STYLE_PRESETS;
 var init_defaults = __esm({
@@ -1316,16 +1346,16 @@ function defaultWaterNormalTexture() {
       data[o + 3] = 255;
     }
   }
-  const texture3 = new DataTexture(data, size, size, RGBAFormat, UnsignedByteType);
-  texture3.colorSpace = NoColorSpace;
-  texture3.wrapS = RepeatWrapping;
-  texture3.wrapT = RepeatWrapping;
-  texture3.minFilter = LinearMipmapLinearFilter;
-  texture3.magFilter = LinearFilter;
-  texture3.generateMipmaps = true;
-  texture3.needsUpdate = true;
-  cachedNormal = texture3;
-  return texture3;
+  const texture4 = new DataTexture(data, size, size, RGBAFormat, UnsignedByteType);
+  texture4.colorSpace = NoColorSpace;
+  texture4.wrapS = RepeatWrapping;
+  texture4.wrapT = RepeatWrapping;
+  texture4.minFilter = LinearMipmapLinearFilter;
+  texture4.magFilter = LinearFilter;
+  texture4.generateMipmaps = true;
+  texture4.needsUpdate = true;
+  cachedNormal = texture4;
+  return texture4;
 }
 function cellularWeb(u, v, period, pts, thickness) {
   const gx = Math.floor(u * period);
@@ -1402,16 +1432,16 @@ function defaultWaterFoamTexture() {
       data[o + 3] = 255;
     }
   }
-  const texture3 = new DataTexture(data, size, size, RGBAFormat, UnsignedByteType);
-  texture3.colorSpace = NoColorSpace;
-  texture3.wrapS = RepeatWrapping;
-  texture3.wrapT = RepeatWrapping;
-  texture3.minFilter = LinearMipmapLinearFilter;
-  texture3.magFilter = LinearFilter;
-  texture3.generateMipmaps = true;
-  texture3.needsUpdate = true;
-  cachedFoam = texture3;
-  return texture3;
+  const texture4 = new DataTexture(data, size, size, RGBAFormat, UnsignedByteType);
+  texture4.colorSpace = NoColorSpace;
+  texture4.wrapS = RepeatWrapping;
+  texture4.wrapT = RepeatWrapping;
+  texture4.minFilter = LinearMipmapLinearFilter;
+  texture4.magFilter = LinearFilter;
+  texture4.generateMipmaps = true;
+  texture4.needsUpdate = true;
+  cachedFoam = texture4;
+  return texture4;
 }
 function defaultWaterCausticsTexture() {
   if (cachedCaustics) return cachedCaustics;
@@ -1463,16 +1493,16 @@ function defaultWaterCausticsTexture() {
       data[o + 3] = 255;
     }
   }
-  const texture3 = new DataTexture(data, size, size, RGBAFormat, UnsignedByteType);
-  texture3.colorSpace = NoColorSpace;
-  texture3.wrapS = RepeatWrapping;
-  texture3.wrapT = RepeatWrapping;
-  texture3.minFilter = LinearMipmapLinearFilter;
-  texture3.magFilter = LinearFilter;
-  texture3.generateMipmaps = true;
-  texture3.needsUpdate = true;
-  cachedCaustics = texture3;
-  return texture3;
+  const texture4 = new DataTexture(data, size, size, RGBAFormat, UnsignedByteType);
+  texture4.colorSpace = NoColorSpace;
+  texture4.wrapS = RepeatWrapping;
+  texture4.wrapT = RepeatWrapping;
+  texture4.minFilter = LinearMipmapLinearFilter;
+  texture4.magFilter = LinearFilter;
+  texture4.generateMipmaps = true;
+  texture4.needsUpdate = true;
+  cachedCaustics = texture4;
+  return texture4;
 }
 var cachedNormal, cachedFoam, cachedCaustics;
 var init_proceduralTextures = __esm({
@@ -1488,14 +1518,14 @@ var init_proceduralTextures = __esm({
 function swellGroupInfo(group) {
   const a = VERTEX_WAVES[group * 2];
   const b = VERTEX_WAVES[group * 2 + 1] ?? a;
-  const length3 = (a.length + b.length) / 2;
-  const k = Math.PI * 2 / length3;
+  const length4 = (a.length + b.length) / 2;
+  const k = Math.PI * 2 / length4;
   const speed = Math.sqrt(GRAVITY / k);
   return {
     crestSpeed: speed,
     overtake: speed * PACKET_OVERTAKE,
-    kAlong: Math.PI * 2 / (length3 * PACKET_SPACING),
-    kAcross: Math.PI * 2 / (length3 * PACKET_WIDTH)
+    kAlong: Math.PI * 2 / (length4 * PACKET_SPACING),
+    kAcross: Math.PI * 2 / (length4 * PACKET_WIDTH)
   };
 }
 function smoothstep(edge0, edge1, x) {
@@ -2142,9 +2172,9 @@ function createWaterMaterial(options) {
       normalTexNode.value = customNormal ?? defaultNormal;
       foamTexNode.value = customFoam ?? defaultFoam;
     },
-    setTime(time, waveTime, swellTime) {
+    setTime(time2, waveTime, swellTime) {
       uSwellTime.value = swellTime;
-      uTime.value = time;
+      uTime.value = time2;
       uWaveTime.value = waveTime;
     },
     setInvScale(worldScale) {
@@ -2160,10 +2190,10 @@ function createWaterMaterial(options) {
     setGridCenter(localX, localY) {
       uGridCenter.value.set(localX, localY);
     },
-    setSun(direction, color, intensity, skyHorizon, skyTop) {
+    setSun(direction, color2, intensity, skyHorizon, skyTop) {
       uSunDir.value.copy(direction).normalize();
       const boost = Math.min(2, Math.max(0.2, intensity));
-      uSunColor.value.copy(color).multiplyScalar(boost);
+      uSunColor.value.copy(color2).multiplyScalar(boost);
       if (skyHorizon) uSkyHorizonColor.value.copy(skyHorizon);
       if (skyTop) uSkyTopColor.value.copy(skyTop);
     },
@@ -2232,12 +2262,12 @@ function getFollowGeometry() {
   const half = [];
   let at = 0;
   let lastStep = 0;
-  for (const [step, count2] of FOLLOW_GRID.bands) {
+  for (const [step2, count2] of FOLLOW_GRID.bands) {
     for (let i = 0; i < count2; i += 1) {
-      at += step;
-      half.push({ at, step });
+      at += step2;
+      half.push({ at, step: step2 });
     }
-    lastStep = step;
+    lastStep = step2;
   }
   for (let i = 0; i < FOLLOW_GRID.doublingSteps; i += 1) {
     lastStep *= 2;
@@ -2632,7 +2662,7 @@ var init_session2 = __esm({
   "src/capabilities/water/session.ts"() {
     "use strict";
     init_world();
-    init_registry();
+    init_registry2();
     init_defaults();
     init_waterMaterial();
     init_waves();
@@ -2680,8 +2710,8 @@ function defaultBuoyancy() {
     draftDepth: 0
   };
 }
-function clamp2(value, min2, max3) {
-  return Math.max(min2, Math.min(max3, value));
+function clamp2(value, min3, max4) {
+  return Math.max(min3, Math.min(max4, value));
 }
 function finite2(value, fallback) {
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
@@ -2864,6 +2894,2860 @@ var init_session3 = __esm({
   }
 });
 
+// src/runtime/motion.ts
+function evalEasing(name, rawT) {
+  const t = Math.max(0, Math.min(1, Number.isFinite(rawT) ? rawT : 0));
+  switch (name) {
+    case "inQuad":
+      return t * t;
+    case "outQuad":
+      return 1 - (1 - t) * (1 - t);
+    case "inOutQuad":
+      return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+    case "inCubic":
+      return t * t * t;
+    case "outCubic":
+      return 1 - Math.pow(1 - t, 3);
+    case "inOutCubic":
+      return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+    case "inOutSine":
+      return -(Math.cos(Math.PI * t) - 1) / 2;
+    case "outBack": {
+      const c1 = 1.70158;
+      const c3 = c1 + 1;
+      return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2);
+    }
+    case "inOutBack": {
+      const c1 = 1.70158;
+      const c2 = c1 * 1.525;
+      return t < 0.5 ? Math.pow(2 * t, 2) * ((c2 + 1) * 2 * t - c2) / 2 : (Math.pow(2 * t - 2, 2) * ((c2 + 1) * (t * 2 - 2) + c2) + 2) / 2;
+    }
+    case "outBounce": {
+      const n1 = 7.5625;
+      const d1 = 2.75;
+      if (t < 1 / d1) return n1 * t * t;
+      if (t < 2 / d1) {
+        const u2 = t - 1.5 / d1;
+        return n1 * u2 * u2 + 0.75;
+      }
+      if (t < 2.5 / d1) {
+        const u2 = t - 2.25 / d1;
+        return n1 * u2 * u2 + 0.9375;
+      }
+      const u = t - 2.625 / d1;
+      return n1 * u * u + 0.984375;
+    }
+    case "outElastic": {
+      if (t === 0 || t === 1) return t;
+      const c4 = 2 * Math.PI / 3;
+      return Math.pow(2, -10 * t) * Math.sin((t * 10 - 0.75) * c4) + 1;
+    }
+    case "linear":
+    default:
+      return t;
+  }
+}
+function normalizeCurveKeys(rawKeys) {
+  const out = [];
+  for (const k of rawKeys) {
+    if (Array.isArray(k)) {
+      const t = Number(k[0]);
+      const v = Number(k[1]);
+      if (Number.isFinite(t) && Number.isFinite(v)) {
+        out.push({ t, v, mode: "smooth" });
+      }
+    } else if (k && typeof k === "object") {
+      const obj = k;
+      const t = Number(obj.t);
+      const v = Number(obj.v);
+      const mode = obj.mode === "linear" || obj.mode === "step" ? obj.mode : "smooth";
+      if (Number.isFinite(t) && Number.isFinite(v)) {
+        out.push({ t, v, mode });
+      }
+    }
+  }
+  out.sort((a, b) => a.t - b.t);
+  return out;
+}
+function evalCurveKeys(keys, rawT, wrapMode = "clamp") {
+  if (keys.length === 0) return 0;
+  if (keys.length === 1) return keys[0].v;
+  const minT = keys[0].t;
+  const maxT = keys[keys.length - 1].t;
+  const span = maxT - minT;
+  let t = Number.isFinite(rawT) ? rawT : minT;
+  if (span > 1e-6) {
+    if (wrapMode === "loop") {
+      const offset = ((t - minT) % span + span) % span;
+      t = minT + offset;
+    } else if (wrapMode === "pingPong") {
+      const cycle = span * 2;
+      const offset = ((t - minT) % cycle + cycle) % cycle;
+      t = offset <= span ? minT + offset : maxT - (offset - span);
+    } else {
+      t = Math.max(minT, Math.min(maxT, t));
+    }
+  } else {
+    return keys[0].v;
+  }
+  for (let i = 0; i < keys.length - 1; i += 1) {
+    const a = keys[i];
+    const b = keys[i + 1];
+    if (t <= b.t || i === keys.length - 2) {
+      const segLen = b.t - a.t;
+      if (segLen <= 1e-6) return b.v;
+      const u = Math.max(0, Math.min(1, (t - a.t) / segLen));
+      if (a.mode === "step") return a.v;
+      if (a.mode === "linear") return a.v + (b.v - a.v) * u;
+      const s = u * u * (3 - 2 * u);
+      return a.v + (b.v - a.v) * s;
+    }
+  }
+  return keys[keys.length - 1].v;
+}
+function createAnimationCurve(rawKeys, options) {
+  const keys = normalizeCurveKeys(rawKeys);
+  const wrap = options?.wrap ?? "clamp";
+  return {
+    keys,
+    eval: (t) => evalCurveKeys(keys, t, wrap)
+  };
+}
+function catmullRomValue(p0, p1, p2, p3, t, tension) {
+  const t2 = t * t;
+  const t3 = t2 * t;
+  const m1 = tension * (p2 - p0);
+  const m2 = tension * (p3 - p1);
+  const a = 2 * p1 - 2 * p2 + m1 + m2;
+  const b = -3 * p1 + 3 * p2 - 2 * m1 - m2;
+  return a * t3 + b * t2 + m1 * t + p1;
+}
+function createSplinePath(rawPoints, options) {
+  const points = rawPoints.map((p) => ({ x: p.x, y: p.y, z: p.z }));
+  const closed = Boolean(options?.closed);
+  const tension = Number.isFinite(options?.tension) ? Number(options?.tension) : 0.5;
+  const samplesPerSegment = Math.max(4, Math.min(64, Math.floor(options?.samplesPerSegment ?? 16)));
+  if (points.length === 0) {
+    const zero = { x: 0, y: 0, z: 0 };
+    return {
+      length: 0,
+      points,
+      closed,
+      pointAt: () => ({ ...zero }),
+      tangentAt: () => ({ x: 0, y: 0, z: 1 }),
+      pointAtDistance: () => ({ ...zero }),
+      tangentAtDistance: () => ({ x: 0, y: 0, z: 1 })
+    };
+  }
+  if (points.length === 1) {
+    const only = points[0];
+    return {
+      length: 0,
+      points,
+      closed,
+      pointAt: () => ({ ...only }),
+      tangentAt: () => ({ x: 0, y: 0, z: 1 }),
+      pointAtDistance: () => ({ ...only }),
+      tangentAtDistance: () => ({ x: 0, y: 0, z: 1 })
+    };
+  }
+  const segCount = closed ? points.length : points.length - 1;
+  const getCtrl = (idx) => {
+    if (closed) {
+      const wrapped = (idx % points.length + points.length) % points.length;
+      return points[wrapped];
+    }
+    const clamped = Math.max(0, Math.min(points.length - 1, idx));
+    return points[clamped];
+  };
+  const rawPointAt = (uRaw) => {
+    const u = closed ? (uRaw % 1 + 1) % 1 : Math.max(0, Math.min(1, uRaw));
+    const scaled = u * segCount;
+    const segIdx = Math.min(segCount - 1, Math.floor(scaled));
+    const localT = scaled - segIdx;
+    const p0 = getCtrl(segIdx - 1);
+    const p1 = getCtrl(segIdx);
+    const p2 = getCtrl(segIdx + 1);
+    const p3 = getCtrl(segIdx + 2);
+    return {
+      x: catmullRomValue(p0.x, p1.x, p2.x, p3.x, localT, tension),
+      y: catmullRomValue(p0.y, p1.y, p2.y, p3.y, localT, tension),
+      z: catmullRomValue(p0.z, p1.z, p2.z, p3.z, localT, tension)
+    };
+  };
+  const totalSamples = segCount * samplesPerSegment;
+  const lutU = [0];
+  const lutDist = [0];
+  let acc = 0;
+  let prev = rawPointAt(0);
+  for (let i = 1; i <= totalSamples; i += 1) {
+    const u = i / totalSamples;
+    const cur = rawPointAt(u);
+    acc += Math.hypot(cur.x - prev.x, cur.y - prev.y, cur.z - prev.z);
+    lutU.push(u);
+    lutDist.push(acc);
+    prev = cur;
+  }
+  const totalLength = acc;
+  const distanceToU = (distRaw) => {
+    if (totalLength <= 1e-6) return 0;
+    const d = closed ? (distRaw % totalLength + totalLength) % totalLength : Math.max(0, Math.min(totalLength, distRaw));
+    let lo = 0;
+    let hi = lutDist.length - 1;
+    while (lo < hi - 1) {
+      const mid = lo + hi >> 1;
+      if (lutDist[mid] <= d) lo = mid;
+      else hi = mid;
+    }
+    const d0 = lutDist[lo];
+    const d1 = lutDist[hi];
+    const ratio = d1 > d0 + 1e-6 ? (d - d0) / (d1 - d0) : 0;
+    return lutU[lo] + (lutU[hi] - lutU[lo]) * ratio;
+  };
+  const tangentFromU = (u) => {
+    const eps = 1 / Math.max(100, totalSamples * 2);
+    const a = rawPointAt(u - eps);
+    const b = rawPointAt(u + eps);
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const dz = b.z - a.z;
+    const len = Math.hypot(dx, dy, dz);
+    if (len <= 1e-6) return { x: 0, y: 0, z: 1 };
+    return { x: dx / len, y: dy / len, z: dz / len };
+  };
+  return {
+    length: totalLength,
+    points,
+    closed,
+    pointAt: (t) => rawPointAt(distanceToU((closed ? (t % 1 + 1) % 1 : Math.max(0, Math.min(1, t))) * totalLength)),
+    tangentAt: (t) => tangentFromU(distanceToU((closed ? (t % 1 + 1) % 1 : Math.max(0, Math.min(1, t))) * totalLength)),
+    pointAtDistance: (distance2) => rawPointAt(distanceToU(distance2)),
+    tangentAtDistance: (distance2) => tangentFromU(distanceToU(distance2))
+  };
+}
+var init_motion = __esm({
+  "src/runtime/motion.ts"() {
+    "use strict";
+  }
+});
+
+// src/capabilities/navigation/archive.ts
+function navEpoch() {
+  return epoch;
+}
+function navRecord(sceneId) {
+  return saved.get(sceneId) ?? null;
+}
+function forgetNavMesh(sceneId) {
+  saved.delete(sceneId);
+}
+function hydrateNavMeshes(value) {
+  saved.clear();
+  epoch += 1;
+  if (!value || typeof value !== "object") return;
+  for (const [id, record] of Object.entries(value)) {
+    const cleaned = cleanRecord(record);
+    if (cleaned) saved.set(id, cleaned);
+  }
+}
+function decodeBytes(value) {
+  const binary = atob(value);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
+  return bytes;
+}
+function cleanRecord(value) {
+  if (!value || typeof value !== "object") return null;
+  const record = value;
+  if (typeof record.bytes !== "string" || record.bytes.length === 0) return null;
+  if (record.mode !== "solo" && record.mode !== "tileCache") return null;
+  if (typeof record.signature !== "string") return null;
+  return {
+    bytes: record.bytes,
+    mode: record.mode,
+    signature: record.signature,
+    triangles: typeof record.triangles === "number" ? record.triangles : 0
+  };
+}
+var saved, epoch;
+var init_archive = __esm({
+  "src/capabilities/navigation/archive.ts"() {
+    "use strict";
+    saved = /* @__PURE__ */ new Map();
+    epoch = 0;
+  }
+});
+
+// src/capabilities/navigation/defaults.ts
+var init_defaults3 = __esm({
+  "src/capabilities/navigation/defaults.ts"() {
+    "use strict";
+  }
+});
+
+// src/capabilities/navigation/recastNav.ts
+var recastNav_exports = {};
+__export(recastNav_exports, {
+  createRecastNavigation: () => createRecastNavigation
+});
+import {
+  exportNavMesh,
+  exportTileCache,
+  getNavMeshPositionsAndIndices,
+  importNavMesh,
+  importTileCache,
+  init,
+  NavMeshQuery
+} from "recast-navigation";
+import { createDefaultTileCacheMeshProcess } from "recast-navigation/generators";
+async function createRecastNavigation() {
+  await init();
+  return new RecastNavigation();
+}
+function abortError() {
+  const error = new Error("aborted");
+  error.name = "AbortError";
+  return error;
+}
+var RecastNavigation;
+var init_recastNav = __esm({
+  "src/capabilities/navigation/recastNav.ts"() {
+    "use strict";
+    RecastNavigation = class {
+      navMesh = null;
+      tileCache = null;
+      query = null;
+      retained = [];
+      carved = /* @__PURE__ */ new Map();
+      worker = null;
+      mode = "solo";
+      async bake(positions, indices, config, signal) {
+        if (signal.aborted) throw abortError();
+        this.worker?.terminate();
+        const worker = new Worker(new URL("./bake.worker.ts", import.meta.url), { type: "module" });
+        this.worker = worker;
+        const response = await new Promise((resolve, reject) => {
+          const stop = () => {
+            worker.terminate();
+            reject(abortError());
+          };
+          if (signal.aborted) {
+            stop();
+            return;
+          }
+          signal.addEventListener("abort", stop, { once: true });
+          worker.onmessage = (event) => {
+            signal.removeEventListener("abort", stop);
+            resolve(event.data);
+          };
+          worker.onerror = () => {
+            signal.removeEventListener("abort", stop);
+            reject(new Error("navigation worker failed"));
+          };
+          const positionCopy = new Float32Array(positions);
+          const indexCopy = new Uint32Array(indices);
+          worker.postMessage(
+            { positions: positionCopy, indices: indexCopy, config },
+            [positionCopy.buffer, indexCopy.buffer]
+          );
+        });
+        if (this.worker === worker) this.worker = null;
+        worker.terminate();
+        if (signal.aborted) throw abortError();
+        if (!response.ok) throw new Error(response.error || "bake failed");
+        await this.restore({ bytes: response.bytes, mode: response.mode });
+      }
+      async restore(record) {
+        this.releaseMesh();
+        if (record.mode === "tileCache") {
+          const imported = importTileCache(record.bytes, createDefaultTileCacheMeshProcess());
+          this.navMesh = imported.navMesh;
+          this.tileCache = imported.tileCache;
+          this.retained = [imported.allocator, imported.compressor];
+          this.mode = "tileCache";
+        } else {
+          this.navMesh = importNavMesh(record.bytes).navMesh;
+          this.mode = "solo";
+        }
+        this.query = new NavMeshQuery(this.navMesh);
+        this.query.defaultQueryHalfExtents = { x: 2, y: 4, z: 2 };
+      }
+      clear() {
+        this.releaseMesh();
+      }
+      obstacles(items) {
+        const cache = this.tileCache;
+        const mesh = this.navMesh;
+        if (!cache || !mesh || this.mode !== "tileCache") return;
+        let changed = this.carved.size > 0 || items.length > 0;
+        for (const obstacle of this.carved.values()) cache.removeObstacle(obstacle);
+        this.carved.clear();
+        for (const item of items) {
+          const added = cache.addCylinderObstacle(
+            { x: item.position[0], y: item.position[1], z: item.position[2] },
+            item.radius,
+            item.height
+          );
+          if (!added.success || !added.obstacle) continue;
+          this.carved.set(item.id, added.obstacle);
+        }
+        if (!changed) return;
+        for (let step2 = 0; step2 < 8; step2 += 1) {
+          const updated = cache.update(mesh);
+          if (updated.upToDate) break;
+        }
+      }
+      findPath(start2, end) {
+        if (!this.query) return null;
+        const result = this.query.computePath(
+          { x: start2[0], y: start2[1], z: start2[2] },
+          { x: end[0], y: end[1], z: end[2] }
+        );
+        if (!result.success || result.path.length === 0) return null;
+        return result.path.map((point2) => [point2.x, point2.y, point2.z]);
+      }
+      debug() {
+        if (!this.navMesh) return null;
+        const [positions, indices] = getNavMeshPositionsAndIndices(this.navMesh);
+        if (positions.length === 0 || indices.length === 0) return null;
+        return {
+          positions: Float32Array.from(positions),
+          indices: Uint32Array.from(indices)
+        };
+      }
+      exportRecord() {
+        if (!this.navMesh) return null;
+        if (this.mode === "tileCache" && this.tileCache) {
+          return { bytes: new Uint8Array(exportTileCache(this.navMesh, this.tileCache)), mode: "tileCache" };
+        }
+        return { bytes: new Uint8Array(exportNavMesh(this.navMesh)), mode: "solo" };
+      }
+      dispose() {
+        this.worker?.terminate();
+        this.worker = null;
+        this.releaseMesh();
+      }
+      releaseMesh() {
+        this.carved.clear();
+        this.query?.destroy();
+        this.query = null;
+        this.tileCache?.destroy();
+        this.tileCache = null;
+        this.navMesh?.destroy();
+        this.navMesh = null;
+        this.retained.splice(0, this.retained.length);
+        this.mode = "solo";
+      }
+    };
+  }
+});
+
+// src/capabilities/navigation/session.ts
+import { create } from "zustand";
+function tr(key, fallback) {
+  return getRuntimeWorld().translate?.(key) ?? fallback;
+}
+function hydrateNavigation(value) {
+  hydrateNavMeshes(value);
+  loadedScene = "";
+}
+function cancelNavBake() {
+  controller?.abort();
+  controller = null;
+  pending = null;
+  if (useNavUi.getState().phase === "baking") {
+    useNavUi.setState({ phase: "idle", text: "" });
+  }
+}
+function findNavigationPath(start2, end) {
+  const runtime2 = getRuntimeWorld();
+  if (!capabilityEnabled(runtime2.getCapabilities(), "navigation")) return null;
+  return instance?.findPath(start2, end) ?? null;
+}
+function tickNavigation() {
+  const runtime2 = getRuntimeWorld();
+  if (!capabilityEnabled(runtime2.getCapabilities(), "navigation")) {
+    if (instance || controller || debugMesh || loadedScene) disposeWorld();
+    return;
+  }
+  const sceneId = runtime2.getActiveSceneId();
+  const ui = useNavUi.getState();
+  if (ui.phase === "baking" && ui.sceneId !== sceneId) cancelNavBake();
+  if (!activating && (loadedScene !== sceneId || seenEpoch !== navEpoch())) {
+    activating = true;
+    void activate(sceneId).finally(() => {
+      activating = false;
+    });
+  }
+  if (!instance || loadedScene !== sceneId) return;
+  applyObstacles(runtime2.getPlayState() === "playing" ? collectObstacles(runtime2.getNodes()) : []);
+}
+async function activate(sceneId) {
+  const ticket = life;
+  const record = navRecord(sceneId);
+  seenEpoch = navEpoch();
+  if (useNavUi.getState().phase === "baking" && useNavUi.getState().sceneId === sceneId) {
+    loadedScene = sceneId;
+    return;
+  }
+  if (!record) {
+    instance?.clear();
+    loadedScene = sceneId;
+    obstacleKey = "";
+    pullDebug();
+    if (useNavUi.getState().phase !== "baking") {
+      useNavUi.setState({ phase: "idle", text: "", sceneId, signature: "", triangles: 0 });
+    }
+    return;
+  }
+  try {
+    const nav = await world2();
+    if (ticket !== life || getRuntimeWorld().getActiveSceneId() !== sceneId) return;
+    await nav.restore({ bytes: decodeBytes(record.bytes), mode: record.mode });
+    if (ticket !== life || getRuntimeWorld().getActiveSceneId() !== sceneId) return;
+    loadedScene = sceneId;
+    obstacleKey = "";
+    pullDebug();
+    useNavUi.setState({
+      phase: "ready",
+      text: tr("navigation.ready", "Navigation ready"),
+      sceneId,
+      signature: record.signature,
+      triangles: record.triangles
+    });
+  } catch (error) {
+    if (ticket !== life) return;
+    const text = error instanceof Error ? error.message : String(error);
+    useNavUi.setState({ phase: "error", text, sceneId });
+  }
+}
+async function world2() {
+  if (instance) return instance;
+  const ticket = life;
+  if (!opening) opening = Promise.resolve().then(() => (init_recastNav(), recastNav_exports)).then((module) => module.createRecastNavigation());
+  const created = await opening;
+  opening = null;
+  if (ticket !== life || !capabilityEnabled(getRuntimeWorld().getCapabilities(), "navigation")) {
+    created.dispose();
+    throw abortError2();
+  }
+  if (instance && instance !== created) created.dispose();
+  instance ??= created;
+  return instance;
+}
+function applyObstacles(items) {
+  const key = items.map((item) => [
+    item.id,
+    item.position.map((value) => value.toFixed(2)).join(","),
+    item.radius.toFixed(2),
+    item.height.toFixed(2)
+  ].join(":")).join("|");
+  if (key === obstacleKey) return;
+  obstacleKey = key;
+  instance?.obstacles(items);
+  pullDebug();
+}
+function collectObstacles(nodes) {
+  const items = [];
+  for (const node of Object.values(nodes)) {
+    if (!node.visible || node.navigation?.role !== "obstacle") continue;
+    const pose = worldPose(nodes, node.id);
+    const radius = Math.max(0.05, node.navigation.radius) * Math.max(Math.abs(pose.scale.x), Math.abs(pose.scale.z));
+    const height = Math.max(0.05, node.navigation.height) * Math.abs(pose.scale.y);
+    items.push({
+      id: node.id,
+      position: [pose.position.x, pose.position.y - height / 2, pose.position.z],
+      radius,
+      height
+    });
+  }
+  return items;
+}
+function pullDebug() {
+  debugMesh = instance?.debug() ?? null;
+}
+function disposeWorld() {
+  life += 1;
+  controller?.abort();
+  controller = null;
+  pending = null;
+  instance?.dispose();
+  instance = null;
+  opening = null;
+  loadedScene = "";
+  obstacleKey = "";
+  debugMesh = null;
+  if (useNavUi.getState().phase === "baking") useNavUi.setState({ phase: "idle", text: "" });
+}
+function abortError2() {
+  const error = new Error("aborted");
+  error.name = "AbortError";
+  return error;
+}
+var useNavUi, instance, opening, life, loadedScene, seenEpoch, activating, controller, pending, obstacleKey, debugMesh;
+var init_session4 = __esm({
+  "src/capabilities/navigation/session.ts"() {
+    "use strict";
+    init_registry2();
+    init_transform();
+    init_world();
+    init_archive();
+    init_defaults3();
+    useNavUi = create(() => ({
+      phase: "idle",
+      text: "",
+      sceneId: "",
+      signature: "",
+      triangles: 0
+    }));
+    instance = null;
+    opening = null;
+    life = 0;
+    loadedScene = "";
+    seenEpoch = -1;
+    activating = false;
+    controller = null;
+    pending = null;
+    obstacleKey = "";
+    debugMesh = null;
+  }
+});
+
+// src/capabilities/particles/readQuarks.ts
+function readQuarksDocument(json) {
+  if (!json || typeof json !== "object") return null;
+  const record = json;
+  if (record.version === "3.0" && record.shape && typeof record.shape === "object") {
+    const body = { ...record };
+    delete body.material;
+    delete body.texture;
+    return {
+      simulation: { format: "system", body },
+      appearance: appearanceFromFields(record, DEFAULT_APPEARANCE)
+    };
+  }
+  if (record.object && typeof record.object === "object") {
+    const system = findSystem(record.object);
+    return {
+      simulation: { format: "loader", body: record },
+      appearance: appearanceFromLoader(record, system)
+    };
+  }
+  return null;
+}
+function asSimulation(value) {
+  if (!value || typeof value !== "object") return null;
+  const record = value;
+  if ((record.format === "system" || record.format === "loader") && record.body && typeof record.body === "object") {
+    return { format: record.format, body: record.body };
+  }
+  return readQuarksDocument(value)?.simulation ?? null;
+}
+function appearanceFromLoader(root, system) {
+  const materials = Array.isArray(root.materials) ? root.materials : [];
+  const materialId = system && typeof system.material === "string" ? system.material : "";
+  const material = materials.find((item) => item && typeof item === "object" && item.uuid === materialId);
+  const appearance = appearanceFromFields(material ?? system ?? {}, DEFAULT_APPEARANCE);
+  appearance.image = firstImage(root);
+  return appearance;
+}
+function appearanceFromFields(source, fallback) {
+  const premultiplied = source.premultipliedAlpha === true;
+  return {
+    color: cssColor(source.color) ?? fallback.color,
+    blend: premultiplied ? "premultiply" : blendFromThree(source.blending, fallback.blend),
+    opacity: typeof source.opacity === "number" ? source.opacity : fallback.opacity,
+    depthWrite: typeof source.depthWrite === "boolean" ? source.depthWrite : fallback.depthWrite,
+    image: fallback.image
+  };
+}
+function blendFromThree(value, fallback) {
+  if (value === 2) return "additive";
+  if (value === 4) return "multiply";
+  if (value === 1) return "alpha";
+  if (value === 5) return "premultiply";
+  return fallback;
+}
+function cssColor(value) {
+  if (typeof value !== "number" || !Number.isFinite(value)) return null;
+  return `#${Math.max(0, Math.min(16777215, value)).toString(16).padStart(6, "0")}`;
+}
+function firstImage(root) {
+  if (!Array.isArray(root.images)) return null;
+  for (const image of root.images) {
+    if (image && typeof image === "object" && typeof image.url === "string") {
+      const url = image.url;
+      if (url.length > 0) return url;
+    }
+  }
+  return null;
+}
+function findSystem(value) {
+  if (!value || typeof value !== "object") return null;
+  const record = value;
+  if (record.ps && typeof record.ps === "object") return record.ps;
+  if (Array.isArray(record.children)) {
+    for (const child of record.children) {
+      const found = findSystem(child);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+var DEFAULT_APPEARANCE;
+var init_readQuarks = __esm({
+  "src/capabilities/particles/readQuarks.ts"() {
+    "use strict";
+    DEFAULT_APPEARANCE = {
+      color: "#ff8c33",
+      blend: "additive",
+      opacity: 1,
+      depthWrite: false,
+      image: null
+    };
+  }
+});
+
+// src/capabilities/particles/simulationForm.ts
+function readRange(value) {
+  if (!value || typeof value !== "object") return { min: 0, max: 0, curve: false };
+  const record = value;
+  if (record.type === "ConstantValue" && typeof record.value === "number") return { min: record.value, max: record.value, curve: false };
+  if (record.type === "IntervalValue" && typeof record.a === "number" && typeof record.b === "number") {
+    return { min: record.a, max: record.b, curve: false };
+  }
+  return { min: 0, max: 0, curve: true };
+}
+function systemBodyForPlayback(body) {
+  if (!body || typeof body !== "object") return body;
+  const record = body;
+  if (record.renderMode !== 3) return body;
+  const settings = settingsOf(record);
+  const stored = readRange(settings.startLength);
+  if (stored.curve || stored.min >= 2) return body;
+  return {
+    ...record,
+    rendererEmitterSettings: {
+      ...settings,
+      startLength: { type: "ConstantValue", value: TRAIL_SAMPLES },
+      followLocalOrigin: settings.followLocalOrigin === true
+    }
+  };
+}
+function settingsOf(record) {
+  return record.rendererEmitterSettings && typeof record.rendererEmitterSettings === "object" ? record.rendererEmitterSettings : {};
+}
+var TRAIL_SAMPLES;
+var init_simulationForm = __esm({
+  "src/capabilities/particles/simulationForm.ts"() {
+    "use strict";
+    TRAIL_SAMPLES = 30;
+  }
+});
+
+// src/capabilities/particles/tslBatch.ts
+import {
+  AdditiveBlending,
+  Color as Color3,
+  CustomBlending,
+  MultiplyBlending,
+  NormalBlending,
+  OneFactor,
+  OneMinusSrcAlphaFactor,
+  Vector2 as Vector22
+} from "three";
+import {
+  attribute,
+  cameraPosition as cameraPosition2,
+  cameraProjectionMatrix,
+  cameraViewMatrix,
+  cross,
+  float as float2,
+  floor,
+  fract,
+  length as length2,
+  max as max2,
+  mix as mix3,
+  mod,
+  modelWorldMatrix as modelWorldMatrix2,
+  normalize as normalize2,
+  positionGeometry as positionGeometry2,
+  texture as texture2,
+  uniform as uniform2,
+  uv,
+  vec2 as vec22,
+  vec3 as vec32,
+  vec4 as vec42
+} from "three/tsl";
+import { MeshBasicNodeMaterial as MeshBasicNodeMaterial2 } from "three/webgpu";
+import {
+  BatchedRenderer,
+  RenderMode,
+  SpriteBatch,
+  TrailBatch
+} from "three.quarks";
+function sameColor(a, b) {
+  const left = a.color;
+  const right = b.color;
+  if (!left || !right) return left === right;
+  return left.r === right.r && left.g === right.g && left.b === right.b;
+}
+function sameBatch(a, b) {
+  return a.material.side === b.material.side && a.material.blending === b.material.blending && a.material.blendSrc === b.material.blendSrc && a.material.blendDst === b.material.blendDst && a.material.blendEquation === b.material.blendEquation && a.material.premultipliedAlpha === b.material.premultipliedAlpha && a.material.transparent === b.material.transparent && a.material.depthTest === b.material.depthTest && a.material.depthWrite === b.material.depthWrite && a.material.opacity === b.material.opacity && sameColor(a.material, b.material) && a.material.type === b.material.type && a.material.alphaTest === b.material.alphaTest && a.material.map === b.material.map && a.renderMode === b.renderMode && a.blendTiles === b.blendTiles && a.softParticles === b.softParticles && a.softFarFade === b.softFarFade && a.softNearFade === b.softNearFade && a.uTileCount === b.uTileCount && a.vTileCount === b.vTileCount && a.instancingGeometry === b.instancingGeometry && a.renderOrder === b.renderOrder && a.layers.mask === b.layers.mask;
+}
+function createSpriteMaterial(settings) {
+  const source = settings.material;
+  const material = new MeshBasicNodeMaterial2();
+  copySurface(material, source);
+  const particleColor = attr(PARTICLE_ATTR.color, "vec4");
+  const uvTile = attr(PARTICLE_ATTR.uvTile, "float");
+  const tiles = uni(new Vector22(settings.uTileCount, settings.vTileCount));
+  const tint = uni(new Color3(source.color?.r ?? 1, source.color?.g ?? 1, source.color?.b ?? 1));
+  const tintOpacity = uni(source.opacity ?? 1);
+  const baseUv = tiledUv(uv(), uvTile, tiles);
+  let sampled = vec42(1, 1, 1, 1);
+  if (source.map) {
+    const current = texture2(source.map, baseUv);
+    if (settings.blendTiles) {
+      const nextUv = tiledUv(uv(), floor(uvTile).add(1), tiles);
+      sampled = mix3(current, texture2(source.map, nextUv), fract(uvTile));
+    } else {
+      sampled = current;
+    }
+  }
+  material.colorNode = sampled.rgb.mul(particleColor.rgb).mul(tint);
+  material.opacityNode = sampled.a.mul(particleColor.a).mul(tintOpacity);
+  material.vertexNode = spriteClip(settings.renderMode);
+  material.alphaTest = source.alphaTest;
+  return material;
+}
+function createTrailMaterial(source) {
+  const material = new MeshBasicNodeMaterial2();
+  copySurface(material, source);
+  const particleColor = attr(PARTICLE_ATTR.color, "vec4");
+  const map = source.map;
+  const sampled = map ? texture2(map, uv()) : vec42(1, 1, 1, 1);
+  const color2 = source.color;
+  const tint = uni(new Color3(color2?.r ?? 1, color2?.g ?? 1, color2?.b ?? 1));
+  material.colorNode = sampled.rgb.mul(particleColor.rgb).mul(tint);
+  material.opacityNode = sampled.a.mul(particleColor.a);
+  material.vertexNode = trailClip();
+  material.side = 2;
+  return material;
+}
+function copySurface(material, source) {
+  material.transparent = source.transparent;
+  material.opacity = source.opacity;
+  material.depthWrite = source.depthWrite;
+  material.depthTest = source.depthTest;
+  material.blending = source.blending;
+  material.blendSrc = source.blendSrc;
+  material.blendDst = source.blendDst;
+  material.blendEquation = source.blendEquation;
+  material.premultipliedAlpha = source.premultipliedAlpha;
+  material.side = source.side;
+  material.toneMapped = true;
+  material.vertexColors = false;
+}
+function tiledUv(base, tileIndex, tiles) {
+  const index = floor(tileIndex);
+  const col = mod(index, tiles.x);
+  const row = tiles.y.sub(floor(index.div(tiles.x))).sub(1);
+  return base.div(tiles).add(vec22(col.div(tiles.x), row.div(tiles.y)));
+}
+function attr(name, type) {
+  return attribute(name, type);
+}
+function uni(value) {
+  return uniform2(value);
+}
+function spriteClip(mode) {
+  const offset = attr(PARTICLE_ATTR.offset, "vec3");
+  const size = attr(PARTICLE_ATTR.size, "vec3");
+  const world3 = modelWorldMatrix2.mul(vec42(offset, 1));
+  if (mode === RenderMode.Mesh) return meshClip(offset, size);
+  if (mode === RenderMode.Trail) return trailClip();
+  const rotation = attr(PARTICLE_ATTR.rotation, "float");
+  const aligned = vec22(positionGeometry2.x.mul(size.x), positionGeometry2.y.mul(size.y));
+  const c = rotation.cos();
+  const s = rotation.sin();
+  const rotated = vec22(c.mul(aligned.x).sub(s.mul(aligned.y)), s.mul(aligned.x).add(c.mul(aligned.y)));
+  if (mode === RenderMode.HorizontalBillBoard) {
+    const shifted = vec42(world3.x.add(rotated.x), world3.y, world3.z.sub(rotated.y), world3.w);
+    return cameraProjectionMatrix.mul(cameraViewMatrix.mul(shifted));
+  }
+  if (mode === RenderMode.VerticalBillBoard) {
+    const raised = vec42(world3.x, world3.y.add(rotated.y), world3.z, world3.w);
+    const view2 = cameraViewMatrix.mul(raised);
+    return cameraProjectionMatrix.mul(vec42(view2.x.add(rotated.x), view2.y, view2.z, view2.w));
+  }
+  if (mode === RenderMode.StretchedBillBoard) return stretchedClip(world3, size);
+  const view = cameraViewMatrix.mul(world3);
+  return cameraProjectionMatrix.mul(vec42(view.x.add(rotated.x), view.y.add(rotated.y), view.z, view.w));
+}
+function stretchedClip(world3, size) {
+  const velocity = attr(PARTICLE_ATTR.velocity, "vec4");
+  const view = cameraViewMatrix.mul(world3);
+  const viewVelocity = cameraViewMatrix.mul(vec42(velocity.x, velocity.y, velocity.z, 0)).xyz;
+  const vlength = max2(length2(viewVelocity), float2(1e-4));
+  const avg = size.x.add(size.y).mul(0.5);
+  const side = normalize2(cross(view.xyz, viewVelocity));
+  const stretched = view.xyz.add(side.mul(positionGeometry2.y).mul(avg)).sub(viewVelocity.mul(positionGeometry2.x.add(0.5)).mul(float2(1).add(velocity.w.div(vlength))).mul(avg));
+  return cameraProjectionMatrix.mul(vec42(stretched, view.w));
+}
+function meshClip(offset, size) {
+  const rotation = attr(PARTICLE_ATTR.rotation, "vec4");
+  const scaled = vec32(positionGeometry2.x.mul(size.x), positionGeometry2.y.mul(size.y), positionGeometry2.z.mul(size.z));
+  const spun = rotateByQuat(rotation, scaled);
+  const local = vec42(spun.x.add(offset.x), spun.y.add(offset.y), spun.z.add(offset.z), 1);
+  return cameraProjectionMatrix.mul(cameraViewMatrix.mul(modelWorldMatrix2.mul(local)));
+}
+function trailClip() {
+  const previous = attr(PARTICLE_ATTR.previous, "vec3");
+  const next = attr(PARTICLE_ATTR.next, "vec3");
+  const side = attr(PARTICLE_ATTR.side, "float");
+  const width = attr(PARTICLE_ATTR.width, "float");
+  const world3 = modelWorldMatrix2.mul(vec42(positionGeometry2, 1)).xyz;
+  const worldPrev = modelWorldMatrix2.mul(vec42(previous, 1)).xyz;
+  const worldNext = modelWorldMatrix2.mul(vec42(next, 1)).xyz;
+  const tangent = normalize2(worldNext.sub(worldPrev).add(vec32(0, 1e-4, 0)));
+  const toCamera = normalize2(cameraPosition2.sub(world3));
+  const binormal = normalize2(cross(tangent, toCamera));
+  const placed = world3.add(binormal.mul(side).mul(width));
+  return cameraProjectionMatrix.mul(cameraViewMatrix.mul(vec42(placed, 1)));
+}
+function rotateByQuat(q, v) {
+  const t = cross(q.xyz, v).mul(2);
+  return v.add(t.mul(q.w)).add(cross(q.xyz, t));
+}
+function surfaceBlending(blend) {
+  if (blend === "alpha") return { blending: NormalBlending, premultipliedAlpha: false };
+  if (blend === "multiply") return { blending: MultiplyBlending, premultipliedAlpha: false };
+  if (blend === "premultiply") {
+    return {
+      blending: CustomBlending,
+      premultipliedAlpha: true,
+      blendSrc: OneFactor,
+      blendDst: OneMinusSrcAlphaFactor
+    };
+  }
+  return { blending: AdditiveBlending, premultipliedAlpha: false };
+}
+var PARTICLE_ATTR, TslSpriteBatch, TslTrailBatch, TslBatchedRenderer;
+var init_tslBatch = __esm({
+  "src/capabilities/particles/tslBatch.ts"() {
+    "use strict";
+    PARTICLE_ATTR = {
+      offset: "offset",
+      rotation: "rotation",
+      size: "size",
+      color: "color",
+      uvTile: "uvTile",
+      velocity: "velocity",
+      previous: "previous",
+      next: "next",
+      side: "side",
+      width: "width"
+    };
+    TslSpriteBatch = class extends SpriteBatch {
+      rebuildMaterial() {
+        this.layers.mask = this.settings.layers.mask;
+        this.frustumCulled = false;
+        this.renderOrder = this.settings.renderOrder;
+        this.material = createSpriteMaterial(this.settings);
+      }
+      applyDepthTexture() {
+      }
+    };
+    TslTrailBatch = class extends TrailBatch {
+      rebuildMaterial() {
+        this.layers.mask = this.settings.layers.mask;
+        this.frustumCulled = false;
+        this.renderOrder = this.settings.renderOrder;
+        this.material = createTrailMaterial(this.settings.material);
+      }
+      applyDepthTexture() {
+      }
+    };
+    TslBatchedRenderer = class extends BatchedRenderer {
+      addSystem(system) {
+        const particle = system;
+        particle._renderer = this;
+        const settings = particle.getRendererSettings();
+        for (let i = 0; i < this.batches.length; i += 1) {
+          if (sameBatch(this.batches[i].settings, settings)) {
+            this.batches[i].addSystem(system);
+            this.systemToBatchIndex.set(system, i);
+            return;
+          }
+        }
+        const batch = settings.renderMode === RenderMode.Trail ? new TslTrailBatch(settings) : new TslSpriteBatch(settings);
+        batch.addSystem(system);
+        this.batches.push(batch);
+        this.systemToBatchIndex.set(system, this.batches.length - 1);
+        this.add(batch);
+      }
+    };
+  }
+});
+
+// src/capabilities/particles/quarksRuntime.ts
+var quarksRuntime_exports = {};
+__export(quarksRuntime_exports, {
+  createQuarksRuntime: () => createQuarksRuntime,
+  simulationOf: () => simulationOf
+});
+import {
+  DoubleSide as DoubleSide2,
+  MeshBasicMaterial
+} from "three";
+import {
+  ParticleSystem,
+  QuarksLoader,
+  QuarksUtil
+} from "three.quarks";
+function createQuarksRuntime(scene2) {
+  const batch = new TslBatchedRenderer();
+  batch.name = "particles";
+  scene2.add(batch);
+  const lives = /* @__PURE__ */ new Map();
+  const issues = /* @__PURE__ */ new Map();
+  return {
+    sync(instances) {
+      const seen = /* @__PURE__ */ new Set();
+      for (const instance2 of instances) {
+        seen.add(instance2.id);
+        const key = instanceKey(instance2);
+        let live = lives.get(instance2.id);
+        if (!live || live.key !== key) {
+          detach(live);
+          const spawned = spawn(instance2, batch, issues);
+          if (!spawned) {
+            lives.delete(instance2.id);
+            continue;
+          }
+          live = spawned;
+          lives.set(instance2.id, live);
+        } else {
+          issues.delete(instance2.id);
+        }
+        if (live.root.parent !== instance2.parent) instance2.parent.add(live.root);
+        instance2.parent.updateWorldMatrix(true, false);
+        setEmitterVisible(live.root, instance2.visible);
+        if (!rendererOf(live)) {
+          detach(live);
+          lives.delete(instance2.id);
+          const spawned = spawn(instance2, batch, issues);
+          if (!spawned) continue;
+          live = spawned;
+          lives.set(instance2.id, live);
+          if (live.root.parent !== instance2.parent) instance2.parent.add(live.root);
+          instance2.parent.updateWorldMatrix(true, false);
+          setEmitterVisible(live.root, instance2.visible);
+        }
+        if (live.playing !== instance2.playing) {
+          if (instance2.playing) QuarksUtil.play(live.root);
+          else QuarksUtil.pause(live.root);
+          live.playing = instance2.playing;
+        }
+      }
+      for (const [id, live] of lives) {
+        if (seen.has(id)) continue;
+        detach(live);
+        lives.delete(id);
+        issues.delete(id);
+      }
+    },
+    update(dt) {
+      batch.update(dt);
+    },
+    dispose() {
+      for (const live of lives.values()) detach(live);
+      lives.clear();
+      issues.clear();
+      batch.removeFromParent();
+    },
+    issue(id) {
+      return issues.get(id) ?? null;
+    }
+  };
+}
+function spawn(instance2, batch, issues) {
+  try {
+    const root = instance2.simulation.format === "loader" ? spawnLoader(instance2, batch) : spawnSystem(instance2, batch);
+    if (!instance2.playing) QuarksUtil.pause(root);
+    issues.delete(instance2.id);
+    return { id: instance2.id, root, key: instanceKey(instance2), playing: instance2.playing };
+  } catch (error) {
+    issues.set(instance2.id, error instanceof Error ? error.message : String(error));
+    return null;
+  }
+}
+function spawnSystem(instance2, batch) {
+  const body = systemBodyForPlayback(instance2.simulation.body);
+  const system = ParticleSystem.fromJSON(body, { geometries: {}, materials: {}, textures: {}, images: {} }, {});
+  system.material = makeMaterial(instance2.material);
+  system.emitter.position.set(0, 0, 0);
+  batch.addSystem(system);
+  return system.emitter;
+}
+function spawnLoader(instance2, batch) {
+  const root = new QuarksLoader().parse(instance2.simulation.body);
+  QuarksUtil.runOnAllParticleEmitters(root, (emitter) => {
+    const system = emitter.system;
+    if (instance2.material) system.material = makeMaterial(instance2.material);
+    batch.addSystem(system);
+  });
+  return root;
+}
+function makeMaterial(desc) {
+  const appearance = desc ?? {
+    color: "#ffffff",
+    opacity: 1,
+    map: null,
+    blend: "additive",
+    depthWrite: false,
+    depthTest: true,
+    side: DoubleSide2
+  };
+  const blend = surfaceBlending(appearance.blend);
+  const material = new MeshBasicMaterial({
+    color: appearance.color,
+    map: appearance.map,
+    transparent: true,
+    opacity: appearance.opacity,
+    depthWrite: appearance.depthWrite,
+    depthTest: appearance.depthTest,
+    side: appearance.side,
+    blending: blend.blending,
+    premultipliedAlpha: blend.premultipliedAlpha
+  });
+  if (blend.blendSrc) material.blendSrc = blend.blendSrc;
+  if (blend.blendDst) material.blendDst = blend.blendDst;
+  return material;
+}
+function rendererOf(live) {
+  let attached = false;
+  QuarksUtil.runOnAllParticleEmitters(live.root, (emitter) => {
+    if (emitter.system._renderer) attached = true;
+  });
+  return attached;
+}
+function detach(live) {
+  if (!live) return;
+  QuarksUtil.runOnAllParticleEmitters(live.root, (emitter) => {
+    const system = emitter.system;
+    system._renderer?.deleteSystem(system);
+    system.dispose();
+  });
+  live.root.removeFromParent();
+}
+function setEmitterVisible(root, visible) {
+  root.visible = visible;
+  QuarksUtil.runOnAllParticleEmitters(root, (emitter) => {
+    emitter.visible = visible;
+  });
+}
+function instanceKey(instance2) {
+  const material = instance2.material;
+  return JSON.stringify({
+    simulation: instance2.simulation,
+    playingShape: material && {
+      color: material.color,
+      opacity: material.opacity,
+      blend: material.blend,
+      depthWrite: material.depthWrite,
+      depthTest: material.depthTest,
+      side: material.side,
+      map: material.map?.uuid ?? ""
+    }
+  });
+}
+function simulationOf(value) {
+  if (!value || typeof value !== "object") return null;
+  const record = value;
+  if ((record.format === "system" || record.format === "loader") && record.body && typeof record.body === "object") {
+    return { format: record.format, body: record.body };
+  }
+  return null;
+}
+var init_quarksRuntime = __esm({
+  "src/capabilities/particles/quarksRuntime.ts"() {
+    "use strict";
+    init_simulationForm();
+    init_tslBatch();
+  }
+});
+
+// src/capabilities/particles/session.ts
+function tickParticles(dt, parentOf) {
+  const runtimeWorld = getRuntimeWorld();
+  if (!capabilityEnabled(runtimeWorld.getCapabilities(), "particles") || !scene) {
+    disposeParticles();
+    return;
+  }
+  if (!runtime) {
+    ensureRuntime();
+    return;
+  }
+  const instances = [];
+  for (const node of Object.values(runtimeWorld.getNodes())) {
+    if (node.kind !== "effect" || !node.effect) continue;
+    const parent = parentOf(node.id);
+    if (!parent || !rootedInScene(parent)) continue;
+    const resolved = resolveInstance(node.id, node.effect, node.visible, parent);
+    if (resolved) instances.push(resolved);
+  }
+  runtime.sync(instances);
+  runtime.update(dt);
+}
+function disposeParticles() {
+  generation += 1;
+  runtime?.dispose();
+  runtime = null;
+  loading = null;
+}
+function ensureRuntime() {
+  if (loading || !scene) return;
+  const token = generation;
+  const root = scene;
+  loading = Promise.resolve().then(() => (init_quarksRuntime(), quarksRuntime_exports)).then((module) => {
+    if (token !== generation) return;
+    runtime = module.createQuarksRuntime(root);
+  }).catch((error) => {
+    console.warn("[particles] three.quarks \u52A0\u8F7D\u5931\u8D25", error);
+  }).finally(() => {
+    if (token === generation) loading = null;
+  });
+}
+function rootedInScene(object) {
+  let current = object;
+  while (current.parent) current = current.parent;
+  return current.type === "Scene";
+}
+function resolveInstance(id, effect, visible, parent) {
+  const runtimeWorld = getRuntimeWorld();
+  let simulation = effect.simulation;
+  let materialId = effect.materialAssetId;
+  if (effect.assetId) {
+    const asset = runtimeWorld.getAsset(effect.assetId);
+    if (!asset || asset.kind !== "effect") return null;
+    simulation = asset.simulation;
+    materialId = effect.materialAssetId ?? asset.materialAssetId ?? null;
+  }
+  const stored = asSimulation(simulation);
+  if (!stored) return null;
+  const material = runtimeWorld.resolveParticleDesc?.(materialId) ?? null;
+  if (material === "incompatible") return null;
+  return {
+    id,
+    parent,
+    simulation: stored,
+    material,
+    playing: effect.playing !== false,
+    visible
+  };
+}
+var runtime, loading, scene, generation;
+var init_session5 = __esm({
+  "src/capabilities/particles/session.ts"() {
+    "use strict";
+    init_registry2();
+    init_world();
+    init_readQuarks();
+    runtime = null;
+    loading = null;
+    scene = null;
+    generation = 0;
+  }
+});
+
+// src/gameplay/juiceClock.ts
+function scalePlayDt(dt, now = performance.now() / 1e3) {
+  if (now < holdUntil) return 0;
+  return dt;
+}
+function juiceShake(now = performance.now() / 1e3) {
+  if (now >= shakeUntil || shakeAmp <= 0) return { x: 0, y: 0 };
+  return { x: (Math.random() - 0.5) * shakeAmp, y: (Math.random() - 0.5) * shakeAmp };
+}
+var holdUntil, shakeAmp, shakeUntil;
+var init_juiceClock = __esm({
+  "src/gameplay/juiceClock.ts"() {
+    "use strict";
+    holdUntil = 0;
+    shakeAmp = 0;
+    shakeUntil = 0;
+  }
+});
+
+// src/runtime/frameProfile.ts
+function measureCost(id, run) {
+  const start2 = performance.now();
+  try {
+    run();
+  } finally {
+    const ms = performance.now() - start2;
+    buckets.set(id, (buckets.get(id) ?? 0) + ms);
+    if (capture) capture.set(id, (capture.get(id) ?? 0) + ms);
+  }
+}
+var buckets, capture;
+var init_frameProfile = __esm({
+  "src/runtime/frameProfile.ts"() {
+    "use strict";
+    buckets = /* @__PURE__ */ new Map();
+    capture = null;
+  }
+});
+
+// src/runtime/sceneRuntime.ts
+function defaultCharacter() {
+  return {
+    enabled: true,
+    driver: "capsule",
+    mode: "adventure",
+    clickButton: "right",
+    clickStop: 0.35,
+    moveSpeed: 4.5,
+    turnSpeed: 540,
+    sprintMultiplier: 1.6,
+    jumpSpeed: 6.5,
+    maxJumps: 2,
+    coyoteTime: 0.12,
+    jumpBuffer: 0.12,
+    gravity: 18,
+    radius: 0.35,
+    height: 1.7,
+    capsuleOffset: [0, 0, 0],
+    physicsInteract: false,
+    mass: 65,
+    pushStrength: 1,
+    swim: true,
+    swimSpeedMultiplier: 0.65,
+    swimHeightOffset: 0,
+    dash: true,
+    dashKey: "KeyC",
+    dashDistance: 4,
+    dashDuration: 0.22,
+    dashInvincible: 0.35,
+    dashCooldown: 0.8,
+    footstepDistance: 1.6,
+    footstepJuice: "",
+    lockTargetId: "",
+    lockTargetName: "",
+    idleClip: "",
+    idleClipAssetId: "",
+    walkClip: "",
+    walkClipAssetId: "",
+    runClip: "",
+    runClipAssetId: "",
+    jumpClip: "",
+    jumpClipAssetId: "",
+    airClip: "",
+    airClipAssetId: "",
+    landClip: "",
+    landClipAssetId: "",
+    dodgeClip: "",
+    dodgeClipAssetId: "",
+    swimIdleClip: "",
+    swimIdleClipAssetId: "",
+    swimClip: "",
+    swimClipAssetId: ""
+  };
+}
+function defaultCameraFollow() {
+  return {
+    enabled: true,
+    targetId: "",
+    targetName: "",
+    offset: [0, 1.8, -4.2],
+    pivot: [0, 1.4, 0],
+    orbit: "rightDrag",
+    sensitivity: 0.25,
+    minPitch: -35,
+    maxPitch: 70,
+    collision: true,
+    collisionRadius: 0.2,
+    localOffset: false,
+    damping: 8,
+    lookAtTarget: true,
+    fov: 60,
+    zoom: true,
+    zoomSpeed: 0.18,
+    minDistance: 0.8,
+    maxDistance: 18
+  };
+}
+function cameraPresetForMode(mode) {
+  if (mode === "strafe") return { offset: [0.65, 0.45, -2.2], pivot: [0, 1.5, 0], orbit: "mouse", localOffset: false, lookAtTarget: true, fov: 55, collision: true };
+  if (mode === "lockOn") return { offset: [0.35, 2.2, -4.8], pivot: [0, 1.35, 0], orbit: "rightDrag", localOffset: false, lookAtTarget: true, fov: 58, collision: true };
+  if (mode === "pointAndClick") return { offset: [0, 10.5, -7.2], pivot: [0, 0.8, 0], orbit: "none", localOffset: false, lookAtTarget: true, fov: 48, collision: false };
+  if (mode === "topDown") return { offset: [0, 9.5, -6.5], pivot: [0, 0.8, 0], orbit: "none", localOffset: false, lookAtTarget: true, fov: 50, collision: false };
+  if (mode === "side25d") return { offset: [0, 1.6, -7.5], pivot: [0, 1.2, 0], orbit: "none", localOffset: false, lookAtTarget: true, fov: 45, collision: false };
+  if (mode === "firstPerson") return { offset: [0, 0, 0.12], pivot: [0, 1.65, 0], orbit: "mouse", localOffset: false, lookAtTarget: false, fov: 72, collision: false, zoom: false, damping: 0, minPitch: -85, maxPitch: 85 };
+  return { offset: [0, 1.8, -4.2], pivot: [0, 1.4, 0], orbit: "rightDrag", localOffset: false, lookAtTarget: true, fov: 60, collision: true };
+}
+function resolveCharacterCamera(character, raw) {
+  const mode = character.mode;
+  const preset = cameraPresetForMode(mode);
+  const base = { ...defaultCameraFollow(), ...preset, ...raw, preset: mode };
+  base.targetId = "";
+  base.targetName = "";
+  base.lookAtTarget = true;
+  if (mode === "pointAndClick" || mode === "topDown" || mode === "side25d") {
+    base.orbit = "none";
+    base.localOffset = false;
+    base.collision = false;
+    return base;
+  }
+  if (mode === "firstPerson") {
+    base.orbit = "mouse";
+    base.localOffset = false;
+    base.collision = false;
+    base.zoom = false;
+    base.lookAtTarget = false;
+    base.damping = 0;
+    if (base.minPitch === -35 && base.maxPitch === 70) {
+      base.minPitch = -85;
+      base.maxPitch = 85;
+    }
+    if (base.offset[1] > 0.4 && Math.abs(base.offset[1] - base.pivot[1]) < 0.05) {
+      base.offset = [base.offset[0], 0, base.offset[2]];
+    }
+    return base;
+  }
+  if (mode === "strafe") {
+    base.orbit = "mouse";
+    base.localOffset = false;
+    return base;
+  }
+  base.localOffset = false;
+  if (base.orbit === "none") base.orbit = "rightDrag";
+  if (character.driver !== "capsule" && character.clickButton === "right" && base.orbit === "rightDrag") {
+    base.orbit = "mouse";
+  }
+  return base;
+}
+function defaultInteract() {
+  return {
+    enabled: true,
+    prompt: "\u6309 E \u4EA4\u4E92",
+    key: "KeyE",
+    radius: 2.5,
+    filterTagId: "",
+    message: "onInteract",
+    once: false
+  };
+}
+function defaultTrigger() {
+  return {
+    enabled: true,
+    radius: 3,
+    filterTagId: "",
+    enterMessage: "onZoneEnter",
+    exitMessage: "onZoneExit",
+    once: false
+  };
+}
+function defaultMover() {
+  return {
+    enabled: true,
+    offset: [0, 3, 0],
+    duration: 2.5,
+    pause: 0.6,
+    pingPong: true,
+    autoPlay: true,
+    startMessage: "onActivateMover",
+    carryRadius: 1.6
+  };
+}
+function defaultCheckpoint() {
+  return {
+    enabled: true,
+    spawn: false,
+    radius: 2.5,
+    delay: 1.2,
+    abyssY: -12,
+    message: "onPlayerRespawned"
+  };
+}
+function defaultSoundSource() {
+  return {
+    enabled: true,
+    assetId: "",
+    loop: true,
+    volume: 1,
+    refDistance: 3,
+    rolloff: 1
+  };
+}
+function defaultScore() {
+  return {
+    enabled: true,
+    title: "\u5230\u8FBE\u76EE\u6807",
+    target: 100,
+    perInteract: 50,
+    timeLimit: 0,
+    victoryMessage: "onStageVictory",
+    defeatMessage: "onStageDefeat"
+  };
+}
+function registerRuntimeSystem(id, order, step2) {
+  const target = order >= RUNTIME_STAGE.POST_ANIMATION ? postAnimationSystems : order >= RUNTIME_STAGE.PHYSICS_NAV ? postPhysicsSystems : systems;
+  const index = target.findIndex((item) => item.id === id);
+  if (index >= 0) target.splice(index, 1);
+  target.push({ id, order, step: step2 });
+  target.sort((a, b) => a.order - b.order);
+  return () => {
+    const idx = target.findIndex((item) => item.id === id);
+    if (idx >= 0) target.splice(idx, 1);
+  };
+}
+function stepSceneRuntime(dt, host) {
+  const scaled = scalePlayDt(dt);
+  for (const system of systems) {
+    measureCost(system.id, () => system.step(scaled, host));
+  }
+  measureCost("physics", () => tickPhysics(scaled, host.resolveObject));
+  measureCost("navigation", () => tickNavigation());
+  for (const system of postPhysicsSystems) {
+    measureCost(system.id, () => system.step(scaled, host));
+  }
+  if (host.ready) {
+    measureCost("animation", () => host.updateAnimations(scaled));
+    for (const system of postAnimationSystems) {
+      measureCost(system.id, () => system.step(scaled, host));
+    }
+    measureCost("particles", () => tickParticles(scaled, host.resolveObject));
+  }
+  consumeInputFrame();
+}
+var RUNTIME_STAGE, systems, postPhysicsSystems, postAnimationSystems;
+var init_sceneRuntime = __esm({
+  "src/runtime/sceneRuntime.ts"() {
+    "use strict";
+    init_session();
+    init_session4();
+    init_session5();
+    init_juiceClock();
+    init_actionMap();
+    init_frameProfile();
+    RUNTIME_STAGE = {
+      PRE_PHYSICS: 10,
+      PHYSICS_NAV: 50,
+      POST_PHYSICS: 55,
+      ANIMATION: 60,
+      POST_ANIMATION: 70,
+      PRE_RENDER: 80
+    };
+    systems = [];
+    postPhysicsSystems = [];
+    postAnimationSystems = [];
+  }
+});
+
+// src/core/schema/fieldSchema.ts
+function safeVecDefault(type, rawDefault) {
+  const len = type === "vec2" ? 2 : type === "vec3" ? 3 : 4;
+  if (Array.isArray(rawDefault)) {
+    return Array.from({ length: len }, (_, i) => {
+      const v = rawDefault[i];
+      return typeof v === "number" && Number.isFinite(v) ? v : 0;
+    });
+  }
+  if (rawDefault && typeof rawDefault === "object") {
+    const obj = rawDefault;
+    const keys = ["x", "y", "z", "w"];
+    return Array.from({ length: len }, (_, i) => {
+      const v = obj[keys[i]];
+      return typeof v === "number" && Number.isFinite(v) ? v : 0;
+    });
+  }
+  return Array.from({ length: len }, () => 0);
+}
+function defaultForSchema(schema) {
+  switch (schema.type) {
+    case "number":
+    case "boolean":
+    case "string":
+    case "color":
+    case "enum":
+      return schema.default;
+    case "vec2":
+    case "vec3":
+    case "vec4":
+      return safeVecDefault(schema.type, schema.default);
+    case "texture":
+    case "ref":
+      return schema.default ?? null;
+    case "list":
+      return schema.default ? structuredClone(schema.default) : [];
+    case "object": {
+      const out = {};
+      for (const [key, child] of Object.entries(schema.fields)) {
+        out[key] = defaultForSchema(child);
+      }
+      return out;
+    }
+  }
+}
+function normalizeBySchema(schema, raw, options) {
+  const clampNumbers = options?.clampNumbers ?? true;
+  switch (schema.type) {
+    case "number": {
+      const num = typeof raw === "number" && Number.isFinite(raw) ? raw : schema.default;
+      if (!clampNumbers) return num;
+      let next = num;
+      if (schema.min !== void 0) next = Math.max(schema.min, next);
+      if (schema.max !== void 0) next = Math.min(schema.max, next);
+      return next;
+    }
+    case "boolean":
+      return typeof raw === "boolean" ? raw : schema.default;
+    case "string":
+      return typeof raw === "string" ? raw : schema.default;
+    case "color":
+      return typeof raw === "string" && /^#[0-9a-fA-F]{3,8}$/.test(raw) ? raw : schema.default;
+    case "vec2":
+    case "vec3":
+    case "vec4": {
+      const len = schema.type === "vec2" ? 2 : schema.type === "vec3" ? 3 : 4;
+      const fallback = safeVecDefault(schema.type, schema.default);
+      if (!Array.isArray(raw)) return fallback;
+      const out = [];
+      for (let i = 0; i < len; i += 1) {
+        const v = raw[i];
+        out.push(typeof v === "number" && Number.isFinite(v) ? v : fallback[i]);
+      }
+      return out;
+    }
+    case "enum": {
+      if (typeof raw === "string" && schema.options.some((opt) => opt.value === raw)) {
+        return raw;
+      }
+      return schema.default;
+    }
+    case "texture":
+    case "ref":
+      return typeof raw === "string" && raw.length > 0 ? raw : null;
+    case "list": {
+      if (!Array.isArray(raw)) return defaultForSchema(schema);
+      return raw.map((entry) => normalizeBySchema(schema.item, entry, options));
+    }
+    case "object": {
+      const src = raw && typeof raw === "object" && !Array.isArray(raw) ? raw : {};
+      const out = {};
+      for (const [key, child] of Object.entries(schema.fields)) {
+        out[key] = normalizeBySchema(child, src[key], options);
+      }
+      return out;
+    }
+  }
+}
+var init_fieldSchema = __esm({
+  "src/core/schema/fieldSchema.ts"() {
+    "use strict";
+  }
+});
+
+// src/capabilities/spline/schema.ts
+function defaultSplinePath() {
+  return {
+    points: [
+      [0, 0, 0],
+      [3, 0, 2],
+      [6, 0, -2],
+      [9, 0, 0]
+    ],
+    closed: false,
+    tension: 0.5,
+    color: "#34d399"
+  };
+}
+function normalizeSplinePath(raw) {
+  const def = defaultSplinePath();
+  if (!raw || typeof raw !== "object") return def;
+  const obj = raw;
+  const pts = Array.isArray(obj.points) ? obj.points.filter((p) => Array.isArray(p) && p.length >= 3).map((p) => [
+    Number.isFinite(Number(p[0])) ? Number(p[0]) : 0,
+    Number.isFinite(Number(p[1])) ? Number(p[1]) : 0,
+    Number.isFinite(Number(p[2])) ? Number(p[2]) : 0
+  ]) : def.points;
+  return {
+    points: pts.length >= 2 ? pts : def.points,
+    closed: typeof obj.closed === "boolean" ? obj.closed : def.closed,
+    tension: typeof obj.tension === "number" && Number.isFinite(obj.tension) ? Math.max(0, Math.min(1, obj.tension)) : def.tension,
+    color: typeof obj.color === "string" && /^#[0-9a-fA-F]{3,8}$/.test(obj.color) ? obj.color : def.color
+  };
+}
+function normalizeSpline(raw) {
+  return normalizeBySchema(SPLINE_SCHEMA, raw);
+}
+var SPLINE_CAPABILITY_ID, SPLINE_PATH_CAPABILITY_ID, SPLINE_SCHEMA;
+var init_schema = __esm({
+  "src/capabilities/spline/schema.ts"() {
+    "use strict";
+    init_fieldSchema();
+    SPLINE_CAPABILITY_ID = "spline";
+    SPLINE_PATH_CAPABILITY_ID = "splinePath";
+    SPLINE_SCHEMA = {
+      type: "object",
+      label: "Spline \u8DEF\u5F84\u8FD0\u52A8",
+      fields: {
+        enabled: { type: "boolean", default: true, label: "\u542F\u7528" },
+        pathNodeId: { type: "ref", target: "node", kinds: ["spline"], default: null, label: "Spline \u66F2\u7EBF\u8282\u70B9" },
+        mode: {
+          type: "enum",
+          default: "loop",
+          label: "\u8FD0\u884C\u6A21\u5F0F",
+          options: [
+            { value: "once", label: "\u5355\u6B21\u5230\u8FBE" },
+            { value: "loop", label: "\u5FAA\u73AF" },
+            { value: "pingPong", label: "\u5F80\u8FD4" }
+          ]
+        },
+        speed: { type: "number", default: 4, min: 0.05, max: 200, step: 0.5, label: "\u79FB\u52A8\u901F\u5EA6 (m/s)" },
+        tension: { type: "number", default: 0.5, min: 0, max: 1, step: 0.05, label: "\u66F2\u7EBF\u5F20\u529B" },
+        closed: { type: "boolean", default: false, label: "\u95ED\u5408\u66F2\u7EBF" },
+        faceDirection: { type: "boolean", default: true, label: "\u671D\u5411\u8DEF\u5F84\u5207\u7EBF" },
+        planeXZ: { type: "boolean", default: false, label: "\u4FDD\u6301\u5F53\u524D\u9AD8\u5EA6 (XZ)" },
+        autoStart: { type: "boolean", default: true, label: "\u8BD5\u73A9\u81EA\u52A8\u542F\u52A8" },
+        startProgress: { type: "number", default: 0, min: 0, max: 1, step: 0.05, label: "\u8D77\u59CB\u8FDB\u5EA6 (0~1)" }
+      }
+    };
+  }
+});
+
+// src/capabilities/spline/session.ts
+var session_exports3 = {};
+__export(session_exports3, {
+  default: () => session_default3,
+  dispose: () => dispose3,
+  mount: () => mount3
+});
+import { Vector3 as Vector37 } from "three";
+function specOf3(raw) {
+  if (!raw || typeof raw !== "object") return normalizeSpline(raw);
+  const cached = specCache3.get(raw);
+  if (cached) return cached;
+  const next = normalizeSpline(raw);
+  specCache3.set(raw, next);
+  return next;
+}
+function collectWaypoints(nodes, host, ownerNode, spec) {
+  const pathParentId = spec.pathNodeId || ownerNode.id;
+  const pathNode = nodes[pathParentId];
+  const rawSplinePath = pathNode?.capabilities?.[SPLINE_PATH_CAPABILITY_ID];
+  if (pathNode && (pathNode.kind === "spline" || rawSplinePath)) {
+    const pathData = normalizeSplinePath(rawSplinePath);
+    const pathObj = host.resolveObject(pathNode.id);
+    if (pathObj) pathObj.updateMatrixWorld();
+    const tmp = new Vector37();
+    const points2 = [];
+    const closed2 = spec.closed || pathData.closed || spec.mode === "loop";
+    const tension = Number.isFinite(pathData.tension) ? pathData.tension : spec.tension;
+    const keyParts2 = [pathNode.id, closed2 ? "1" : "0", String(tension)];
+    for (let i = 0; i < pathData.points.length; i += 1) {
+      const pt = pathData.points[i];
+      if (pathObj) {
+        tmp.set(pt[0], pt[1], pt[2]).applyMatrix4(pathObj.matrixWorld);
+      } else {
+        tmp.set(pathNode.position[0] + pt[0], pathNode.position[1] + pt[1], pathNode.position[2] + pt[2]);
+      }
+      points2.push({ x: tmp.x, y: tmp.y, z: tmp.z });
+      keyParts2.push(`${i}:${tmp.x.toFixed(2)},${tmp.y.toFixed(2)},${tmp.z.toFixed(2)}`);
+    }
+    return { key: keyParts2.join("|"), points: points2, closed: closed2, tension };
+  }
+  const children = Object.values(nodes).filter((n) => n.parentId === pathParentId && n.id !== ownerNode.id).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  const points = [];
+  const closed = spec.closed || spec.mode === "loop";
+  const keyParts = [pathParentId, closed ? "1" : "0", String(spec.tension)];
+  for (const child of children) {
+    const obj = host.resolveObject(child.id);
+    const p = obj ? { x: obj.position.x, y: obj.position.y, z: obj.position.z } : { x: child.position[0], y: child.position[1], z: child.position[2] };
+    points.push(p);
+    keyParts.push(`${child.id}:${p.x.toFixed(2)},${p.y.toFixed(2)},${p.z.toFixed(2)}`);
+  }
+  return { key: keyParts.join("|"), points, closed, tension: spec.tension };
+}
+function stepSplineCapability(dt, host) {
+  const runtime2 = getRuntimeWorld();
+  if (runtime2.getPlayState() !== "playing") {
+    if (agents.size > 0) agents.clear();
+    return;
+  }
+  const nodes = runtime2.getNodes();
+  const activeIds = /* @__PURE__ */ new Set();
+  for (const node of Object.values(nodes)) {
+    const raw = node.capabilities?.[SPLINE_CAPABILITY_ID];
+    if (!raw) continue;
+    const spec = specOf3(raw);
+    if (!spec.enabled || !spec.autoStart) continue;
+    const obj = host.resolveObject(node.id);
+    if (!obj) continue;
+    activeIds.add(node.id);
+    const { key, points, closed, tension } = collectWaypoints(nodes, host, node, spec);
+    if (points.length < 2) continue;
+    let agent = agents.get(node.id);
+    if (!agent || agent.pathKey !== key) {
+      const spline = createSplinePath(points, {
+        closed,
+        tension
+      });
+      const startDist = Math.max(0, Math.min(1, spec.startProgress)) * spline.length;
+      agent = {
+        pathKey: key,
+        spline,
+        distance: startDist,
+        direction: 1,
+        finished: false
+      };
+      agents.set(node.id, agent);
+      const startPt = spline.pointAtDistance(startDist);
+      obj.position.set(startPt.x, spec.planeXZ ? obj.position.y : startPt.y, startPt.z);
+    }
+    if (agent.finished || dt <= 0 || agent.spline.length <= 1e-6) continue;
+    const totalLen = agent.spline.length;
+    let nextDist = agent.distance + spec.speed * dt * agent.direction;
+    if (spec.mode === "loop") {
+      nextDist = (nextDist % totalLen + totalLen) % totalLen;
+    } else if (spec.mode === "pingPong") {
+      if (nextDist >= totalLen) {
+        nextDist = totalLen - (nextDist - totalLen);
+        agent.direction = -1;
+      } else if (nextDist <= 0) {
+        nextDist = -nextDist;
+        agent.direction = 1;
+      }
+    } else {
+      if (nextDist >= totalLen) {
+        nextDist = totalLen;
+        agent.finished = true;
+      } else if (nextDist <= 0) {
+        nextDist = 0;
+        agent.finished = true;
+      }
+    }
+    agent.distance = nextDist;
+    const pt = agent.spline.pointAtDistance(nextDist);
+    obj.position.set(pt.x, spec.planeXZ ? obj.position.y : pt.y, pt.z);
+    if (spec.faceDirection) {
+      const tan2 = agent.spline.tangentAtDistance(nextDist);
+      const tx = tan2.x * agent.direction;
+      const tz = tan2.z * agent.direction;
+      if (Math.abs(tx) > 1e-5 || Math.abs(tz) > 1e-5) {
+        obj.rotation.y = Math.atan2(tx, tz);
+      }
+    }
+  }
+  for (const id of agents.keys()) {
+    if (!activeIds.has(id)) agents.delete(id);
+  }
+}
+function mount3() {
+  if (!unregister2) {
+    unregister2 = registerRuntimeSystem(
+      "capability.spline",
+      RUNTIME_STAGE.PRE_PHYSICS + 2,
+      stepSplineCapability
+    );
+  }
+  return dispose3;
+}
+function dispose3() {
+  unregister2?.();
+  unregister2 = null;
+  agents.clear();
+}
+var unregister2, agents, specCache3, splineRuntimeModule, session_default3;
+var init_session6 = __esm({
+  "src/capabilities/spline/session.ts"() {
+    "use strict";
+    init_motion();
+    init_sceneRuntime();
+    init_world();
+    init_schema();
+    unregister2 = null;
+    agents = /* @__PURE__ */ new Map();
+    specCache3 = /* @__PURE__ */ new WeakMap();
+    splineRuntimeModule = { mount: mount3, dispose: dispose3 };
+    session_default3 = splineRuntimeModule;
+  }
+});
+
+// src/capabilities/tween/schema.ts
+function normalizeTween(raw) {
+  return normalizeBySchema(TWEEN_SCHEMA, raw);
+}
+var TWEEN_CAPABILITY_ID, TWEEN_SCHEMA;
+var init_schema2 = __esm({
+  "src/capabilities/tween/schema.ts"() {
+    "use strict";
+    init_fieldSchema();
+    TWEEN_CAPABILITY_ID = "tween";
+    TWEEN_SCHEMA = {
+      type: "object",
+      label: "Tween \u8865\u95F4\u52A8\u6548",
+      fields: {
+        enabled: { type: "boolean", default: true, label: "\u542F\u7528" },
+        property: {
+          type: "enum",
+          default: "floatBob",
+          label: "\u52A8\u6548\u7C7B\u578B",
+          options: [
+            { value: "floatBob", label: "\u60AC\u6D6E\u6D6E\u52A8 (PingPong)" },
+            { value: "positionOffset", label: "\u4F4D\u7F6E\u504F\u79FB" },
+            { value: "rotationOffset", label: "\u65CB\u8F6C\u89D2\u5EA6 (\u5EA6)" },
+            { value: "scaleMultiplier", label: "\u7F29\u653E\u500D\u7387\u53D8\u5316" }
+          ]
+        },
+        delta: { type: "vec3", default: [0, 0.35, 0], label: "\u53D8\u5316\u91CF (X/Y/Z)" },
+        duration: { type: "number", default: 1.2, min: 0.05, max: 60, step: 0.1, label: "\u5355\u7A0B\u65F6\u957F (\u79D2)" },
+        delay: { type: "number", default: 0, min: 0, max: 30, step: 0.1, label: "\u8D77\u59CB\u5EF6\u8FDF (\u79D2)" },
+        ease: {
+          type: "enum",
+          default: "inOutSine",
+          label: "\u7F13\u52A8\u66F2\u7EBF",
+          options: [
+            { value: "linear", label: "\u7EBF\u6027 (Linear)" },
+            { value: "inOutSine", label: "\u6B63\u5F26\u7F13\u5165\u7F13\u51FA (Sine)" },
+            { value: "outQuad", label: "\u4E8C\u6B21\u7F13\u51FA (OutQuad)" },
+            { value: "inOutQuad", label: "\u4E8C\u6B21\u7F13\u5165\u7F13\u51FA (InOutQuad)" },
+            { value: "outCubic", label: "\u4E09\u6B21\u7F13\u51FA (OutCubic)" },
+            { value: "inOutCubic", label: "\u4E09\u6B21\u7F13\u5165\u7F13\u51FA (InOutCubic)" },
+            { value: "outBack", label: "\u56DE\u5F39 (OutBack)" },
+            { value: "outBounce", label: "\u5F39\u8DF3 (OutBounce)" },
+            { value: "outElastic", label: "\u5F39\u6027 (OutElastic)" }
+          ]
+        },
+        loopMode: {
+          type: "enum",
+          default: "pingPong",
+          label: "\u5FAA\u73AF\u6A21\u5F0F",
+          options: [
+            { value: "once", label: "\u5355\u6B21" },
+            { value: "loop", label: "\u4ECE\u5934\u5FAA\u73AF" },
+            { value: "pingPong", label: "\u5F80\u8FD4 (PingPong)" }
+          ]
+        },
+        autoStart: { type: "boolean", default: true, label: "\u8BD5\u73A9\u81EA\u52A8\u64AD\u653E" }
+      }
+    };
+  }
+});
+
+// src/capabilities/tween/session.ts
+var session_exports4 = {};
+__export(session_exports4, {
+  default: () => session_default4,
+  dispose: () => dispose4,
+  mount: () => mount4
+});
+function specOf4(raw) {
+  if (!raw || typeof raw !== "object") return normalizeTween(raw);
+  const cached = specCache4.get(raw);
+  if (cached) return cached;
+  const next = normalizeTween(raw);
+  specCache4.set(raw, next);
+  return next;
+}
+function stepTweenCapability(dt, host) {
+  const runtime2 = getRuntimeWorld();
+  if (runtime2.getPlayState() !== "playing") {
+    if (agents2.size > 0) agents2.clear();
+    return;
+  }
+  const nodes = runtime2.getNodes();
+  const activeIds = /* @__PURE__ */ new Set();
+  for (const node of Object.values(nodes)) {
+    const raw = node.capabilities?.[TWEEN_CAPABILITY_ID];
+    if (!raw) continue;
+    const spec = specOf4(raw);
+    if (!spec.enabled || !spec.autoStart) continue;
+    const obj = host.resolveObject(node.id);
+    if (!obj) continue;
+    activeIds.add(node.id);
+    let agent = agents2.get(node.id);
+    if (!agent) {
+      agent = {
+        basePos: [obj.position.x, obj.position.y, obj.position.z],
+        baseRot: [obj.rotation.x, obj.rotation.y, obj.rotation.z],
+        baseScale: [obj.scale.x, obj.scale.y, obj.scale.z],
+        delayLeft: Math.max(0, spec.delay),
+        elapsed: 0,
+        reversed: false,
+        finished: false
+      };
+      agents2.set(node.id, agent);
+    }
+    if (agent.finished || dt <= 0) continue;
+    if (agent.delayLeft > 0) {
+      agent.delayLeft -= dt;
+      if (agent.delayLeft > 0) continue;
+      agent.elapsed += -agent.delayLeft;
+      agent.delayLeft = 0;
+    } else {
+      agent.elapsed += dt;
+    }
+    const dur = Math.max(0.05, spec.duration);
+    let rawT = agent.elapsed / dur;
+    const effectiveLoop = spec.property === "floatBob" && spec.loopMode === "once" ? "pingPong" : spec.loopMode;
+    if (rawT >= 1) {
+      if (effectiveLoop === "loop") {
+        agent.elapsed = agent.elapsed % dur;
+        rawT = agent.elapsed / dur;
+      } else if (effectiveLoop === "pingPong") {
+        const cycles = Math.floor(rawT);
+        if (cycles % 2 === 1) agent.reversed = !agent.reversed;
+        agent.elapsed = agent.elapsed % dur;
+        rawT = agent.elapsed / dur;
+      } else {
+        rawT = 1;
+        agent.finished = true;
+      }
+    }
+    const progress = agent.reversed ? 1 - rawT : rawT;
+    const eased = evalEasing(spec.ease, progress);
+    const [dx, dy, dz] = spec.delta;
+    if (spec.property === "positionOffset" || spec.property === "floatBob") {
+      obj.position.set(
+        agent.basePos[0] + dx * eased,
+        agent.basePos[1] + dy * eased,
+        agent.basePos[2] + dz * eased
+      );
+    } else if (spec.property === "rotationOffset") {
+      const rx = dx * Math.PI / 180;
+      const ry = dy * Math.PI / 180;
+      const rz = dz * Math.PI / 180;
+      obj.rotation.set(
+        agent.baseRot[0] + rx * eased,
+        agent.baseRot[1] + ry * eased,
+        agent.baseRot[2] + rz * eased
+      );
+    } else if (spec.property === "scaleMultiplier") {
+      obj.scale.set(
+        agent.baseScale[0] * (1 + dx * eased),
+        agent.baseScale[1] * (1 + dy * eased),
+        agent.baseScale[2] * (1 + dz * eased)
+      );
+    }
+  }
+  for (const id of agents2.keys()) {
+    if (!activeIds.has(id)) agents2.delete(id);
+  }
+}
+function mount4() {
+  if (!unregister3) {
+    unregister3 = registerRuntimeSystem(
+      "capability.tween",
+      RUNTIME_STAGE.PRE_PHYSICS + 3,
+      stepTweenCapability
+    );
+  }
+  return dispose4;
+}
+function dispose4() {
+  unregister3?.();
+  unregister3 = null;
+  agents2.clear();
+}
+var unregister3, agents2, specCache4, tweenRuntimeModule, session_default4;
+var init_session7 = __esm({
+  "src/capabilities/tween/session.ts"() {
+    "use strict";
+    init_motion();
+    init_sceneRuntime();
+    init_world();
+    init_schema2();
+    unregister3 = null;
+    agents2 = /* @__PURE__ */ new Map();
+    specCache4 = /* @__PURE__ */ new WeakMap();
+    tweenRuntimeModule = { mount: mount4, dispose: dispose4 };
+    session_default4 = tweenRuntimeModule;
+  }
+});
+
+// src/capabilities/crowd/schema.ts
+function normalizeCrowd(raw) {
+  return normalizeBySchema(CROWD_SCHEMA, raw);
+}
+var CROWD_CAPABILITY_ID, CROWD_SCHEMA;
+var init_schema3 = __esm({
+  "src/capabilities/crowd/schema.ts"() {
+    "use strict";
+    init_fieldSchema();
+    CROWD_CAPABILITY_ID = "crowd";
+    CROWD_SCHEMA = {
+      type: "object",
+      label: "\u7FA4\u4F53\u907F\u8BA9 (Crowd)",
+      fields: {
+        enabled: { type: "boolean", default: true, label: "\u542F\u7528" },
+        radius: { type: "number", default: 0.8, min: 0.2, max: 10, step: 0.1, label: "\u907F\u8BA9\u534A\u5F84 (m)" },
+        maxSpeed: { type: "number", default: 4.5, min: 0.1, max: 50, step: 0.5, label: "\u6700\u5927\u901F\u5EA6 (m/s)" },
+        separationWeight: { type: "number", default: 1.8, min: 0, max: 10, step: 0.1, label: "\u5206\u79BB\u6743\u91CD" },
+        cohesionWeight: { type: "number", default: 0.25, min: 0, max: 5, step: 0.05, label: "\u51DD\u805A\u6743\u91CD" },
+        alignmentWeight: { type: "number", default: 0.35, min: 0, max: 5, step: 0.05, label: "\u5BF9\u9F50\u6743\u91CD" },
+        planeXZ: { type: "boolean", default: true, label: "XZ \u5E73\u9762\u79FB\u52A8" },
+        faceDirection: { type: "boolean", default: true, label: "\u671D\u5411\u79FB\u52A8\u65B9\u5411" }
+      }
+    };
+  }
+});
+
+// src/capabilities/crowd/session.ts
+var session_exports5 = {};
+__export(session_exports5, {
+  crowdRuntimeModule: () => crowdRuntimeModule,
+  dispose: () => dispose5,
+  ensureCrowdRuntime: () => ensureCrowdRuntime,
+  getCrowdStats: () => getCrowdStats,
+  isCrowdMoving: () => isCrowdMoving,
+  mount: () => mount5,
+  setCrowdFormation: () => setCrowdFormation,
+  setCrowdTarget: () => setCrowdTarget,
+  stopCrowdAgent: () => stopCrowdAgent
+});
+function readNodePosition(host, node) {
+  const obj = host.resolveObject(node.id);
+  if (obj) return { x: obj.position.x, y: obj.position.y, z: obj.position.z };
+  return { x: node.position[0], y: node.position[1], z: node.position[2] };
+}
+function writeNodePosition(host, node, x, y, z) {
+  const obj = host.resolveObject(node.id);
+  if (obj) obj.position.set(x, y, z);
+  node.position = [x, y, z];
+}
+function writeNodeYaw(host, node, dx, dz) {
+  if (dx * dx + dz * dz < 1e-6) return;
+  const yawRad = Math.atan2(dx, dz);
+  const obj = host.resolveObject(node.id);
+  if (obj) obj.rotation.y = yawRad;
+  node.rotation = [node.rotation[0], yawRad * 180 / Math.PI, node.rotation[2]];
+}
+function setCrowdTarget(nodeId, target, options) {
+  const existing = agents3.get(nodeId);
+  if (existing) {
+    existing.target = { x: target.x, y: target.y, z: target.z };
+    existing.arriveDist = Math.max(0.05, options?.arriveDist ?? 0.35);
+    existing.speedOverride = options?.speed;
+    existing.onArrive = options?.onArrive;
+  } else {
+    agents3.set(nodeId, {
+      nodeId,
+      vx: 0,
+      vy: 0,
+      vz: 0,
+      target: { x: target.x, y: target.y, z: target.z },
+      arriveDist: Math.max(0.05, options?.arriveDist ?? 0.35),
+      speedOverride: options?.speed,
+      onArrive: options?.onArrive
+    });
+  }
+}
+function stopCrowdAgent(nodeId) {
+  const agent = agents3.get(nodeId);
+  if (!agent) return;
+  agent.target = null;
+  agent.vx = 0;
+  agent.vy = 0;
+  agent.vz = 0;
+  agent.onArrive = void 0;
+}
+function isCrowdMoving(nodeId) {
+  const agent = agents3.get(nodeId);
+  return Boolean(agent && agent.target);
+}
+function getCrowdStats() {
+  let moving = 0;
+  for (const agent of agents3.values()) {
+    if (agent.target) moving += 1;
+  }
+  return { total: agents3.size, moving };
+}
+function setCrowdFormation(nodeIds, center, options) {
+  const count = nodeIds.length;
+  if (count === 0) return;
+  const formation = options?.formation ?? "grid";
+  const spacing = Math.max(0.5, options?.spacing ?? 1.8);
+  const yaw = options?.facingYaw ?? 0;
+  const cos3 = Math.cos(yaw);
+  const sin3 = Math.sin(yaw);
+  const rotateOffset = (lx, lz) => ({
+    x: center.x + lx * cos3 + lz * sin3,
+    y: center.y,
+    z: center.z - lx * sin3 + lz * cos3
+  });
+  if (formation === "line") {
+    const half = (count - 1) * 0.5;
+    for (let i = 0; i < count; i += 1) {
+      const target = rotateOffset((i - half) * spacing, 0);
+      setCrowdTarget(nodeIds[i], target, options);
+    }
+    return;
+  }
+  if (formation === "wedge") {
+    for (let i = 0; i < count; i += 1) {
+      if (i === 0) {
+        setCrowdTarget(nodeIds[i], rotateOffset(0, 0), options);
+      } else {
+        const rank = Math.ceil(i / 2);
+        const side = i % 2 === 1 ? -1 : 1;
+        setCrowdTarget(nodeIds[i], rotateOffset(side * rank * spacing * 0.85, -rank * spacing), options);
+      }
+    }
+    return;
+  }
+  if (formation === "circle") {
+    const radius = Math.max(spacing, count * spacing / (Math.PI * 2));
+    for (let i = 0; i < count; i += 1) {
+      const angle = i / count * Math.PI * 2;
+      setCrowdTarget(
+        nodeIds[i],
+        rotateOffset(Math.cos(angle) * radius, Math.sin(angle) * radius),
+        options
+      );
+    }
+    return;
+  }
+  const cols = Math.max(1, Math.ceil(Math.sqrt(count)));
+  const rows = Math.ceil(count / cols);
+  for (let i = 0; i < count; i += 1) {
+    const col = i % cols;
+    const row = Math.floor(i / cols);
+    const lx = (col - (cols - 1) * 0.5) * spacing;
+    const lz = -(row - (rows - 1) * 0.5) * spacing;
+    setCrowdTarget(nodeIds[i], rotateOffset(lx, lz), options);
+  }
+}
+function stepCrowdRuntime(dt, host) {
+  const world3 = getRuntimeWorld();
+  const nodes = world3.getNodes();
+  const entries = [];
+  let maxRadius = 1;
+  for (const node of Object.values(nodes)) {
+    const raw = node.capabilities?.[CROWD_CAPABILITY_ID];
+    if (!raw || !node.visible) continue;
+    const spec = normalizeCrowd(raw);
+    if (!spec.enabled) continue;
+    let agent = agents3.get(node.id);
+    if (!agent) {
+      agent = {
+        nodeId: node.id,
+        vx: 0,
+        vy: 0,
+        vz: 0,
+        target: null,
+        arriveDist: 0.35
+      };
+      agents3.set(node.id, agent);
+    }
+    if (spec.radius > maxRadius) maxRadius = spec.radius;
+    entries.push({
+      node,
+      spec,
+      pos: readNodePosition(host, node),
+      agent
+    });
+  }
+  const activeSet = new Set(entries.map((e) => e.node.id));
+  for (const id of agents3.keys()) {
+    if (!activeSet.has(id)) agents3.delete(id);
+  }
+  if (entries.length === 0) return;
+  const cellSize = Math.max(1.2, maxRadius * 2.4);
+  const grid = /* @__PURE__ */ new Map();
+  for (let i = 0; i < entries.length; i += 1) {
+    const p = entries[i].pos;
+    const cx = Math.floor(p.x / cellSize);
+    const cz = Math.floor(p.z / cellSize);
+    const key = `${cx},${cz}`;
+    let bucket = grid.get(key);
+    if (!bucket) {
+      bucket = [];
+      grid.set(key, bucket);
+    }
+    bucket.push(i);
+  }
+  const safeDt = Math.min(0.05, Math.max(1e-4, dt));
+  for (let i = 0; i < entries.length; i += 1) {
+    const { node, spec, pos, agent } = entries[i];
+    const maxSpeed = Math.max(0.1, agent.speedOverride ?? spec.maxSpeed);
+    let desiredVx = 0;
+    let desiredVy = 0;
+    let desiredVz = 0;
+    let hasGoal = false;
+    if (agent.target) {
+      const gx = agent.target.x - pos.x;
+      const gy = spec.planeXZ ? 0 : agent.target.y - pos.y;
+      const gz = agent.target.z - pos.z;
+      const dist = Math.hypot(gx, gy, gz);
+      if (dist <= agent.arriveDist) {
+        agent.target = null;
+        agent.vx = 0;
+        agent.vy = 0;
+        agent.vz = 0;
+        const cb = agent.onArrive;
+        agent.onArrive = void 0;
+        if (cb) {
+          try {
+            cb();
+          } catch (err) {
+            console.warn("[Crowd] onArrive \u56DE\u8C03\u5F02\u5E38:", err);
+          }
+        }
+      } else {
+        hasGoal = true;
+        const slowRadius = Math.max(agent.arriveDist * 2.5, 1);
+        const speed = dist < slowRadius ? maxSpeed * (dist / slowRadius) : maxSpeed;
+        desiredVx = gx / dist * speed;
+        desiredVy = gy / dist * speed;
+        desiredVz = gz / dist * speed;
+      }
+    }
+    let sepX = 0;
+    let sepY = 0;
+    let sepZ = 0;
+    let cohX = 0;
+    let cohY = 0;
+    let cohZ = 0;
+    let aliX = 0;
+    let aliY = 0;
+    let aliZ = 0;
+    let neighborCount = 0;
+    const cx = Math.floor(pos.x / cellSize);
+    const cz = Math.floor(pos.z / cellSize);
+    for (let ox = -1; ox <= 1; ox += 1) {
+      for (let oz = -1; oz <= 1; oz += 1) {
+        const bucket = grid.get(`${cx + ox},${cz + oz}`);
+        if (!bucket) continue;
+        for (const j of bucket) {
+          if (j === i) continue;
+          const other = entries[j];
+          const dx = pos.x - other.pos.x;
+          const dy = spec.planeXZ ? 0 : pos.y - other.pos.y;
+          const dz = pos.z - other.pos.z;
+          const d2 = dx * dx + dy * dy + dz * dz;
+          const minDist = spec.radius + other.spec.radius;
+          if (d2 > minDist * minDist * 2.25) continue;
+          const d = Math.sqrt(d2);
+          if (d < minDist) {
+            if (d > 1e-4) {
+              const push = (minDist - d) / minDist * maxSpeed;
+              sepX += dx / d * push;
+              sepY += dy / d * push;
+              sepZ += dz / d * push;
+            } else {
+              const angle = i * 2.39996 % (Math.PI * 2);
+              sepX += Math.cos(angle) * maxSpeed * 0.5;
+              sepZ += Math.sin(angle) * maxSpeed * 0.5;
+            }
+          }
+          neighborCount += 1;
+          cohX += other.pos.x;
+          cohY += other.pos.y;
+          cohZ += other.pos.z;
+          aliX += other.agent.vx;
+          aliY += other.agent.vy;
+          aliZ += other.agent.vz;
+        }
+      }
+    }
+    let steerVx = desiredVx + sepX * spec.separationWeight;
+    let steerVy = desiredVy + sepY * spec.separationWeight;
+    let steerVz = desiredVz + sepZ * spec.separationWeight;
+    if (neighborCount > 0 && hasGoal) {
+      const inv = 1 / neighborCount;
+      const cxAvg = cohX * inv - pos.x;
+      const cyAvg = spec.planeXZ ? 0 : cohY * inv - pos.y;
+      const czAvg = cohZ * inv - pos.z;
+      const cLen = Math.hypot(cxAvg, cyAvg, czAvg);
+      if (cLen > 1e-4) {
+        steerVx += cxAvg / cLen * maxSpeed * spec.cohesionWeight * 0.5;
+        steerVy += cyAvg / cLen * maxSpeed * spec.cohesionWeight * 0.5;
+        steerVz += czAvg / cLen * maxSpeed * spec.cohesionWeight * 0.5;
+      }
+      steerVx += aliX * inv * spec.alignmentWeight * 0.4;
+      steerVy += aliY * inv * spec.alignmentWeight * 0.4;
+      steerVz += aliZ * inv * spec.alignmentWeight * 0.4;
+    }
+    const spd = Math.hypot(steerVx, steerVy, steerVz);
+    if (spd > maxSpeed) {
+      const k = maxSpeed / spd;
+      steerVx *= k;
+      steerVy *= k;
+      steerVz *= k;
+    }
+    const blend = Math.min(1, safeDt * 10);
+    agent.vx += (steerVx - agent.vx) * blend;
+    agent.vy += (steerVy - agent.vy) * blend;
+    agent.vz += (steerVz - agent.vz) * blend;
+    const moved = Math.hypot(agent.vx, agent.vy, agent.vz);
+    if (moved < 0.01 && !hasGoal) {
+      agent.vx = 0;
+      agent.vy = 0;
+      agent.vz = 0;
+      continue;
+    }
+    const nx = pos.x + agent.vx * safeDt;
+    const ny = spec.planeXZ ? pos.y : pos.y + agent.vy * safeDt;
+    const nz = pos.z + agent.vz * safeDt;
+    writeNodePosition(host, node, nx, ny, nz);
+    if (spec.faceDirection && agent.vx * agent.vx + agent.vz * agent.vz > 0.04) {
+      writeNodeYaw(host, node, agent.vx, agent.vz);
+    }
+  }
+}
+function ensureCrowdRuntime() {
+  if (unregisterCrowd) return;
+  unregisterCrowd = registerRuntimeSystem(
+    "capability.crowd",
+    RUNTIME_STAGE.PRE_PHYSICS + 4,
+    stepCrowdRuntime
+  );
+}
+function mount5() {
+  ensureCrowdRuntime();
+  return dispose5;
+}
+function dispose5() {
+  unregisterCrowd?.();
+  unregisterCrowd = null;
+  agents3.clear();
+}
+var agents3, unregisterCrowd, crowdRuntimeModule;
+var init_session8 = __esm({
+  "src/capabilities/crowd/session.ts"() {
+    "use strict";
+    init_sceneRuntime();
+    init_world();
+    init_schema3();
+    agents3 = /* @__PURE__ */ new Map();
+    unregisterCrowd = null;
+    crowdRuntimeModule = {
+      mount: mount5,
+      dispose: dispose5
+    };
+  }
+});
+
+// src/gameplay/types.ts
+var CORE_GAMEPLAY_PACK_ID;
+var init_types = __esm({
+  "src/gameplay/types.ts"() {
+    "use strict";
+    CORE_GAMEPLAY_PACK_ID = "t3d.core";
+  }
+});
+
+// src/gameplay/registry.ts
+function registerGameplayPack(pack) {
+  packs.set(pack.id, pack);
+}
+function resolveEnabledPackIds(enabled) {
+  const next = /* @__PURE__ */ new Set([CORE_GAMEPLAY_PACK_ID, ...enabled ?? []]);
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const id of [...next]) {
+      for (const dep of packs.get(id)?.dependencies ?? []) {
+        if (!next.has(dep)) {
+          next.add(dep);
+          changed = true;
+        }
+      }
+    }
+  }
+  return next;
+}
+function listEnabledTableSchemas(enabled) {
+  const on = resolveEnabledPackIds(enabled);
+  const schemas = [];
+  for (const pack of packs.values()) {
+    if (!on.has(pack.id)) continue;
+    for (const table of pack.tables ?? []) schemas.push(table);
+  }
+  return schemas;
+}
+function tableSchema(tableId) {
+  for (const pack of packs.values()) {
+    const found = pack.tables?.find((table) => table.tableId === tableId);
+    if (found) return found;
+  }
+  return void 0;
+}
+function defaultRows(tableId) {
+  return structuredClone(tableSchema(tableId)?.defaultRows ?? []);
+}
+function tableRows(database, tableId) {
+  const existing = database?.tables?.[tableId];
+  if (existing) return existing;
+  return defaultRows(tableId);
+}
+function createDefaultGameDatabase(enabled) {
+  const tables = {};
+  for (const schema of listEnabledTableSchemas(enabled)) {
+    tables[schema.tableId] = structuredClone(schema.defaultRows ?? []);
+  }
+  return { tables };
+}
+function ensureGameDatabase(value, enabled) {
+  const base = createDefaultGameDatabase(enabled);
+  if (!value || typeof value !== "object") return base;
+  const tables = value.tables;
+  if (!tables || typeof tables !== "object") return base;
+  for (const [tableId, rows] of Object.entries(tables)) {
+    if (!Array.isArray(rows)) continue;
+    base.tables[tableId] = rows.flatMap((row) => cleanRow(row));
+  }
+  return base;
+}
+function cleanRow(value) {
+  if (!value || typeof value !== "object") return [];
+  const row = value;
+  if (typeof row.id !== "string" || typeof row.name !== "string") return [];
+  return [{
+    id: row.id,
+    name: row.name,
+    category: typeof row.category === "string" ? row.category : "",
+    description: typeof row.description === "string" ? row.description : "",
+    fields: row.fields && typeof row.fields === "object" ? { ...row.fields } : {}
+  }];
+}
+function findRow(database, tableId, id) {
+  const key = id.trim();
+  if (!key) return void 0;
+  return tableRows(database, tableId).find((row) => row.id === key);
+}
+var packs;
+var init_registry = __esm({
+  "src/gameplay/registry.ts"() {
+    "use strict";
+    init_types();
+    packs = /* @__PURE__ */ new Map();
+  }
+});
+
+// src/gameplay/runtimeTags.ts
+function matchesTag(actual, query) {
+  if (!actual || !query) return false;
+  const have = actual.trim();
+  let want = query.trim();
+  if (!have || !want) return false;
+  if (want.endsWith(".*")) want = want.slice(0, -2);
+  if (have === want) return true;
+  return have.startsWith(`${want}.`);
+}
+function listRuntimeTags(nodeId, now = performance.now() / 1e3) {
+  const bag = bags.get(nodeId);
+  if (!bag) return [];
+  return [...bag.entries()].map(([tag, until]) => ({
+    tag,
+    remaining: until > 0 ? Math.max(0, until - now) : null
+  }));
+}
+function nodeHasTag(node, query) {
+  if (!query.trim()) return false;
+  if (matchesTag(node.tagId, query)) return true;
+  for (const tag of node.tagIds ?? []) {
+    if (matchesTag(tag, query)) return true;
+  }
+  const bag = bags.get(node.id);
+  if (!bag) return false;
+  for (const tag of bag.keys()) {
+    if (matchesTag(tag, query)) return true;
+  }
+  return false;
+}
+var bags;
+var init_runtimeTags = __esm({
+  "src/gameplay/runtimeTags.ts"() {
+    "use strict";
+    init_world();
+    init_registry();
+    bags = /* @__PURE__ */ new Map();
+  }
+});
+
+// src/capabilities/projectile/schema.ts
+function normalizeProjectile(raw) {
+  return normalizeBySchema(PROJECTILE_SCHEMA, raw);
+}
+var PROJECTILE_CAPABILITY_ID, PROJECTILE_SCHEMA;
+var init_schema4 = __esm({
+  "src/capabilities/projectile/schema.ts"() {
+    "use strict";
+    init_fieldSchema();
+    PROJECTILE_CAPABILITY_ID = "projectile";
+    PROJECTILE_SCHEMA = {
+      type: "object",
+      label: "\u901A\u7528\u5F39\u9053 (Projectile)",
+      fields: {
+        enabled: { type: "boolean", default: true, label: "\u542F\u7528" },
+        mode: {
+          type: "enum",
+          default: "linear",
+          label: "\u5F39\u9053\u6A21\u5F0F",
+          options: [
+            { value: "linear", label: "\u76F4\u7EBF\u98DE\u884C" },
+            { value: "homing", label: "\u81EA\u52A8\u8FFD\u8E2A" },
+            { value: "ballistic", label: "\u629B\u7269\u7EBF" }
+          ]
+        },
+        speed: { type: "number", default: 22, min: 0.5, max: 200, step: 1, label: "\u98DE\u884C\u901F\u5EA6 (m/s)" },
+        gravity: { type: "number", default: 9.8, min: 0, max: 50, step: 0.5, label: "\u91CD\u529B\u52A0\u901F\u5EA6" },
+        turnRate: { type: "number", default: 6, min: 0.1, max: 30, step: 0.5, label: "\u8FFD\u8E2A\u8F6C\u5411\u7387 (rad/s)" },
+        maxLifetime: { type: "number", default: 3, min: 0.1, max: 60, step: 0.2, label: "\u6700\u5927\u5BFF\u547D (s)" },
+        hitRadius: { type: "number", default: 0.65, min: 0.05, max: 10, step: 0.05, label: "\u547D\u4E2D\u5224\u5B9A\u534A\u5F84 (m)" },
+        targetTag: { type: "string", default: "enemy", label: "\u76EE\u6807\u6807\u7B7E" },
+        damage: { type: "number", default: 10, min: 0, max: 9999, step: 1, label: "\u4F24\u5BB3\u503C" },
+        destroyOnHit: { type: "boolean", default: true, label: "\u547D\u4E2D\u540E\u56DE\u6C60/\u9500\u6BC1" }
+      }
+    };
+  }
+});
+
+// src/capabilities/projectile/session.ts
+var session_exports6 = {};
+__export(session_exports6, {
+  bindProjectileRuntimeHooks: () => bindProjectileRuntimeHooks,
+  dispose: () => dispose6,
+  ensureProjectileRuntime: () => ensureProjectileRuntime,
+  launchProjectile: () => launchProjectile,
+  mount: () => mount6,
+  projectileRuntimeModule: () => projectileRuntimeModule,
+  resetProjectileState: () => resetProjectileState
+});
+import { Quaternion as Quaternion4, Vector3 as Vector38 } from "three";
+function bindProjectileRuntimeHooks(next) {
+  hooks = next;
+}
+function readPos(host, node) {
+  const obj = host.resolveObject(node.id);
+  if (obj) return { x: obj.position.x, y: obj.position.y, z: obj.position.z };
+  return { x: node.position[0], y: node.position[1], z: node.position[2] };
+}
+function writePos(host, node, x, y, z) {
+  const obj = host.resolveObject(node.id);
+  if (obj) obj.position.set(x, y, z);
+  node.position = [x, y, z];
+}
+function orientAlongVelocity(host, node, vx, vy, vz) {
+  const lenSq = vx * vx + vy * vy + vz * vz;
+  if (lenSq < 1e-6) return;
+  tmpDir.set(vx, vy, vz).normalize();
+  tmpQuat2.setFromUnitVectors(tmpForward, tmpDir);
+  const obj = host.resolveObject(node.id);
+  if (obj) {
+    obj.quaternion.copy(tmpQuat2);
+    node.rotation = [
+      obj.rotation.x * 180 / Math.PI,
+      obj.rotation.y * 180 / Math.PI,
+      obj.rotation.z * 180 / Math.PI
+    ];
+  }
+}
+function defaultDirectionForNode(node) {
+  const yaw = (node.rotation?.[1] ?? 0) * Math.PI / 180;
+  return { x: Math.sin(yaw), y: 0, z: Math.cos(yaw) };
+}
+function launchProjectile(nodeId, options) {
+  const world3 = getRuntimeWorld();
+  const node = world3.getNodes()[nodeId];
+  const rawSpec = node?.capabilities?.[PROJECTILE_CAPABILITY_ID];
+  const spec = normalizeProjectile(rawSpec);
+  const speed = Math.max(0.1, options?.speed ?? spec.speed);
+  const dir = options?.direction ?? (node ? defaultDirectionForNode(node) : { x: 0, y: 0, z: 1 });
+  const len = Math.hypot(dir.x, dir.y, dir.z) || 1;
+  activeProjectiles.set(nodeId, {
+    nodeId,
+    vx: dir.x / len * speed,
+    vy: dir.y / len * speed,
+    vz: dir.z / len * speed,
+    elapsed: 0,
+    mode: options?.mode,
+    speed: options?.speed,
+    gravity: options?.gravity,
+    turnRate: options?.turnRate,
+    maxLifetime: options?.maxLifetime,
+    hitRadius: options?.hitRadius,
+    targetTag: options?.targetTag,
+    damage: options?.damage,
+    destroyOnHit: options?.destroyOnHit,
+    targetId: options?.targetId,
+    ownerId: options?.ownerId,
+    onHit: options?.onHit
+  });
+}
+function resetProjectileState(nodeId) {
+  activeProjectiles.delete(nodeId);
+}
+function stepProjectileRuntime(dt, host) {
+  const world3 = getRuntimeWorld();
+  const nodes = world3.getNodes();
+  const safeDt = Math.min(0.05, Math.max(1e-4, dt));
+  for (const node of Object.values(nodes)) {
+    const raw = node.capabilities?.[PROJECTILE_CAPABILITY_ID];
+    if (!raw) continue;
+    if (!node.visible || hooks.isNodeInactive?.(node.id, nodes)) {
+      activeProjectiles.delete(node.id);
+      continue;
+    }
+    const spec = normalizeProjectile(raw);
+    if (!spec.enabled) continue;
+    if (!activeProjectiles.has(node.id)) {
+      const dir = defaultDirectionForNode(node);
+      activeProjectiles.set(node.id, {
+        nodeId: node.id,
+        vx: dir.x * spec.speed,
+        vy: dir.y * spec.speed,
+        vz: dir.z * spec.speed,
+        elapsed: 0
+      });
+    }
+  }
+  for (const [id, state] of [...activeProjectiles.entries()]) {
+    const node = nodes[id];
+    if (!node || !node.visible || hooks.isNodeInactive?.(id, nodes)) {
+      activeProjectiles.delete(id);
+      continue;
+    }
+    const spec = normalizeProjectile(node.capabilities?.[PROJECTILE_CAPABILITY_ID]);
+    const mode = state.mode ?? spec.mode;
+    const speed = Math.max(0.1, state.speed ?? spec.speed);
+    const gravity = state.gravity ?? spec.gravity;
+    const turnRate = state.turnRate ?? spec.turnRate;
+    const maxLifetime = Math.max(0.05, state.maxLifetime ?? spec.maxLifetime);
+    const hitRadius = Math.max(0.02, state.hitRadius ?? spec.hitRadius);
+    const targetTag = (state.targetTag ?? spec.targetTag).trim();
+    const damage = state.damage ?? spec.damage;
+    const destroyOnHit = state.destroyOnHit ?? spec.destroyOnHit;
+    state.elapsed += safeDt;
+    if (state.elapsed >= maxLifetime) {
+      activeProjectiles.delete(id);
+      hooks.onRecycle?.(id, host);
+      continue;
+    }
+    const pos = readPos(host, node);
+    if (mode === "homing" && state.targetId) {
+      const targetNode = nodes[state.targetId];
+      if (targetNode && targetNode.visible && !hooks.isNodeInactive?.(targetNode.id, nodes)) {
+        const tp = readPos(host, targetNode);
+        const dx = tp.x - pos.x;
+        const dy = tp.y - pos.y;
+        const dz = tp.z - pos.z;
+        const dist = Math.hypot(dx, dy, dz);
+        if (dist > 1e-4) {
+          const desiredVx = dx / dist * speed;
+          const desiredVy = dy / dist * speed;
+          const desiredVz = dz / dist * speed;
+          const blend = Math.min(1, turnRate * safeDt);
+          state.vx += (desiredVx - state.vx) * blend;
+          state.vy += (desiredVy - state.vy) * blend;
+          state.vz += (desiredVz - state.vz) * blend;
+          const curSpd = Math.hypot(state.vx, state.vy, state.vz) || 1;
+          state.vx = state.vx / curSpd * speed;
+          state.vy = state.vy / curSpd * speed;
+          state.vz = state.vz / curSpd * speed;
+        }
+      }
+    } else if (mode === "ballistic") {
+      state.vy -= gravity * safeDt;
+    }
+    const nx = pos.x + state.vx * safeDt;
+    const ny = pos.y + state.vy * safeDt;
+    const nz = pos.z + state.vz * safeDt;
+    writePos(host, node, nx, ny, nz);
+    orientAlongVelocity(host, node, state.vx, state.vy, state.vz);
+    let hitNode = null;
+    if (state.targetId) {
+      const t = nodes[state.targetId];
+      if (t && t.visible && !hooks.isNodeInactive?.(t.id, nodes)) {
+        const tp = readPos(host, t);
+        const d = Math.hypot(tp.x - nx, tp.y - ny, tp.z - nz);
+        if (d <= hitRadius) hitNode = t;
+      }
+    }
+    if (!hitNode && targetTag) {
+      const r2 = hitRadius * hitRadius;
+      for (const candidate of Object.values(nodes)) {
+        if (candidate.id === id || candidate.id === state.ownerId) continue;
+        if (!candidate.visible || hooks.isNodeInactive?.(candidate.id, nodes)) continue;
+        if (!nodeHasTag(candidate, targetTag)) continue;
+        const cp = readPos(host, candidate);
+        const dx = cp.x - nx;
+        const dy = cp.y - ny;
+        const dz = cp.z - nz;
+        if (dx * dx + dy * dy + dz * dz <= r2) {
+          hitNode = candidate;
+          break;
+        }
+      }
+    }
+    if (hitNode) {
+      const hitPos = { x: nx, y: ny, z: nz };
+      try {
+        state.onHit?.(hitNode.id, hitPos);
+      } catch (err) {
+        console.warn("[Projectile] onHit \u56DE\u8C03\u5F02\u5E38:", err);
+      }
+      try {
+        hooks.onHit?.({
+          projectileId: id,
+          targetId: hitNode.id,
+          ownerId: state.ownerId,
+          damage,
+          position: hitPos
+        });
+      } catch (err) {
+        console.warn("[Projectile] hooks.onHit \u5F02\u5E38:", err);
+      }
+      if (destroyOnHit) {
+        activeProjectiles.delete(id);
+        hooks.onRecycle?.(id, host);
+      }
+    }
+  }
+}
+function ensureProjectileRuntime() {
+  if (unregisterProjectile) return;
+  unregisterProjectile = registerRuntimeSystem(
+    "capability.projectile",
+    RUNTIME_STAGE.PRE_PHYSICS + 5,
+    stepProjectileRuntime
+  );
+}
+function mount6() {
+  ensureProjectileRuntime();
+  return dispose6;
+}
+function dispose6() {
+  unregisterProjectile?.();
+  unregisterProjectile = null;
+  activeProjectiles.clear();
+}
+var activeProjectiles, unregisterProjectile, hooks, tmpDir, tmpQuat2, tmpForward, projectileRuntimeModule;
+var init_session9 = __esm({
+  "src/capabilities/projectile/session.ts"() {
+    "use strict";
+    init_runtimeTags();
+    init_sceneRuntime();
+    init_world();
+    init_schema4();
+    activeProjectiles = /* @__PURE__ */ new Map();
+    unregisterProjectile = null;
+    hooks = {};
+    tmpDir = new Vector38();
+    tmpQuat2 = new Quaternion4();
+    tmpForward = new Vector38(0, 0, 1);
+    projectileRuntimeModule = {
+      mount: mount6,
+      dispose: dispose6
+    };
+  }
+});
+
 // src/capabilities/sky/defaults.ts
 function defaultSkySettings() {
   return {
@@ -2936,9 +5820,9 @@ function normalizeSkySettings(value) {
     mirrorBelowHorizon: bool(raw.mirrorBelowHorizon, base.mirrorBelowHorizon)
   };
 }
-function clamp3(value, fallback, min2, max3) {
+function clamp3(value, fallback, min3, max4) {
   const next = typeof value === "number" && Number.isFinite(value) ? value : fallback;
-  return Math.min(max3, Math.max(min2, next));
+  return Math.min(max4, Math.max(min3, next));
 }
 function bool(value, fallback) {
   return typeof value === "boolean" ? value : fallback;
@@ -2947,7 +5831,7 @@ function colorOf(value, fallback) {
   return typeof value === "string" && /^#[0-9a-fA-F]{6}$/.test(value) ? value : fallback;
 }
 var SKY_CAPABILITY_ID, NORTH;
-var init_defaults3 = __esm({
+var init_defaults4 = __esm({
   "src/capabilities/sky/defaults.ts"() {
     "use strict";
     SKY_CAPABILITY_ID = "sky";
@@ -2969,8 +5853,8 @@ var runtime_exports = {};
 __export(runtime_exports, {
   createSkyDriver: () => createSkyDriver
 });
-import { Color as Color3, OrthographicCamera } from "three";
-import { mix as mix3, uniform as uniform2, vec4 as vec42 } from "three/tsl";
+import { Color as Color4, OrthographicCamera } from "three";
+import { mix as mix4, uniform as uniform3, vec4 as vec43 } from "three/tsl";
 import { Sky } from "@pmndrs/sky";
 function createSkyDriver(renderer, scene2) {
   return new SkyRuntime(renderer, scene2);
@@ -3005,7 +5889,7 @@ var init_runtime = __esm({
   "src/capabilities/sky/runtime.ts"() {
     "use strict";
     init_layers();
-    init_session4();
+    init_session10();
     SkyRuntime = class {
       constructor(renderer, scene2) {
         this.scene = scene2;
@@ -3036,8 +5920,8 @@ var init_runtime = __esm({
       starToken = 0;
       night = null;
       starLook = null;
-      fogTint = uniform2(new Color3("#c9d6e6"));
-      fogUseColor = uniform2(0);
+      fogTint = uniform3(new Color4("#c9d6e6"));
+      fogUseColor = uniform3(0);
       hazeOn = false;
       fogOn = false;
       apKey = "";
@@ -3057,8 +5941,8 @@ var init_runtime = __esm({
         const skyFog = this.sky.applyFog(node, { scenePass });
         const amount = this.sky.applyFog(node, { scenePass, debugMode: "fog-amount" });
         const base = node;
-        const flat = mix3(base.rgb, this.fogTint, amount.r);
-        return vec42(mix3(skyFog.rgb, flat, this.fogUseColor), skyFog.a);
+        const flat = mix4(base.rgb, this.fogTint, amount.r);
+        return vec43(mix4(skyFog.rgb, flat, this.fogUseColor), skyFog.a);
       };
       /** 构造时库自己已经开始编译。这里只取那一份 Promise，避免和主绘制抢渲染器。 */
       compile() {
@@ -3230,11 +6114,11 @@ var init_runtime = __esm({
 });
 
 // src/capabilities/sky/session.ts
-var session_exports3 = {};
-__export(session_exports3, {
+var session_exports7 = {};
+__export(session_exports7, {
   composeSkyFog: () => composeSkyFog,
-  dispose: () => dispose3,
-  mount: () => mount3,
+  dispose: () => dispose7,
+  mount: () => mount7,
   releaseSkyResources: () => releaseSkyResources,
   setSkyViewState: () => setSkyViewState,
   skyBlocksFrame: () => skyBlocksFrame,
@@ -3274,12 +6158,12 @@ function releaseSkyResources() {
   driver = null;
   setSkyViewState({ owns: false, fog: false, apply: null });
 }
-function mount3() {
+function mount7() {
   if (removeHook) return () => shutdown();
   removeHook = getRuntimeWorld().registerBeforeRenderHook?.("sky", 20, (ctx) => onBeforeRender2(ctx)) ?? null;
   return () => shutdown();
 }
-function dispose3() {
+function dispose7() {
   shutdown();
 }
 function shutdown() {
@@ -3288,7 +6172,7 @@ function shutdown() {
   releaseSkyResources();
 }
 function onBeforeRender2(ctx) {
-  pending = ctx;
+  pending2 = ctx;
   try {
     const runtime2 = getRuntimeWorld();
     if (!capabilityEnabled(runtime2.getCapabilities(), SKY_CAPABILITY_ID)) {
@@ -3321,15 +6205,15 @@ function restoreCanvas(ctx) {
   }
 }
 function ensure() {
-  if (booting2 || !pending) return;
+  if (booting2 || !pending2) return;
   booting2 = true;
   const token = ++bootToken;
-  const ctx = pending;
+  const ctx = pending2;
   void Promise.resolve().then(() => (init_runtime(), runtime_exports)).then((module) => {
     if (token !== bootToken) return;
     booting2 = false;
     const runtime2 = getRuntimeWorld();
-    if (!capabilityEnabled(runtime2.getCapabilities(), SKY_CAPABILITY_ID) || !pending) return;
+    if (!capabilityEnabled(runtime2.getCapabilities(), SKY_CAPABILITY_ID) || !pending2) return;
     let created;
     try {
       created = module.createSkyDriver(ctx.renderer, ctx.scene);
@@ -3340,10 +6224,10 @@ function ensure() {
     driver = created;
     compiling = true;
     void created.compile().then(() => {
-      if (token !== bootToken || driver !== created || !pending) return;
+      if (token !== bootToken || driver !== created || !pending2) return;
       const latest = getRuntimeWorld();
       if (!capabilityEnabled(latest.getCapabilities(), SKY_CAPABILITY_ID)) return;
-      created.sync(normalizeSkySettings(latest.getPicture().capabilities?.[SKY_CAPABILITY_ID]), pending.camera);
+      created.sync(normalizeSkySettings(latest.getPicture().capabilities?.[SKY_CAPABILITY_ID]), pending2.camera);
     }).catch((error) => {
       console.warn("[sky] \u7740\u8272\u5668\u7F16\u8BD1\u5931\u8D25", error);
     }).finally(() => {
@@ -3354,13 +6238,13 @@ function ensure() {
     console.warn("[sky] \u5929\u7A7A\u52A0\u8F7D\u5931\u8D25", error);
   });
 }
-var ownsSlots, fogActive, fogApply, fogSignature, fogRevision, removeHook, driver, booting2, bootToken, pending, compiling;
-var init_session4 = __esm({
+var ownsSlots, fogActive, fogApply, fogSignature, fogRevision, removeHook, driver, booting2, bootToken, pending2, compiling;
+var init_session10 = __esm({
   "src/capabilities/sky/session.ts"() {
     "use strict";
-    init_registry();
+    init_registry2();
     init_world();
-    init_defaults3();
+    init_defaults4();
     ownsSlots = false;
     fogActive = false;
     fogApply = null;
@@ -3370,7 +6254,7 @@ var init_session4 = __esm({
     driver = null;
     booting2 = false;
     bootToken = 0;
-    pending = null;
+    pending2 = null;
     compiling = false;
   }
 });
@@ -3405,15 +6289,19 @@ function capabilityEnabled(capabilities, id) {
   return capabilities[id];
 }
 var CAPABILITIES, dynamicCapabilities;
-var init_registry = __esm({
+var init_registry2 = __esm({
   "src/capabilities/registry.ts"() {
     "use strict";
     CAPABILITIES = [
       { id: "physics", defaultEnabled: true, category: "physics" },
       { id: "buoyancy", defaultEnabled: true, category: "physics", dependencies: ["physics"], loadRuntime: () => Promise.resolve().then(() => (init_session3(), session_exports2)) },
       { id: "navigation", defaultEnabled: true, category: "physics" },
+      { id: "spline", defaultEnabled: true, category: "animation", loadRuntime: () => Promise.resolve().then(() => (init_session6(), session_exports3)) },
+      { id: "tween", defaultEnabled: true, category: "animation", loadRuntime: () => Promise.resolve().then(() => (init_session7(), session_exports4)) },
+      { id: "crowd", defaultEnabled: true, category: "physics", loadRuntime: () => Promise.resolve().then(() => (init_session8(), session_exports5)) },
+      { id: "projectile", defaultEnabled: true, category: "physics", loadRuntime: () => Promise.resolve().then(() => (init_session9(), session_exports6)) },
       { id: "particles", defaultEnabled: false, category: "scene-object" },
-      { id: "sky", defaultEnabled: false, category: "environment", loadRuntime: () => Promise.resolve().then(() => (init_session4(), session_exports3)) },
+      { id: "sky", defaultEnabled: false, category: "environment", loadRuntime: () => Promise.resolve().then(() => (init_session10(), session_exports7)) },
       { id: "water", defaultEnabled: false, category: "environment", loadRuntime: () => Promise.resolve().then(() => (init_session2(), session_exports)) }
     ];
     dynamicCapabilities = /* @__PURE__ */ new Map();
@@ -3506,7 +6394,7 @@ var init_folders = __esm({
 });
 
 // src/editor/assets/library.ts
-import { create } from "zustand";
+import { create as create2 } from "zustand";
 function assetDirectory(id, assetDirs) {
   return normalizeDir(assetDirs[id] ?? ASSETS_ROOT);
 }
@@ -3515,7 +6403,7 @@ var init_library = __esm({
   "src/editor/assets/library.ts"() {
     "use strict";
     init_folders();
-    useAssetStore = create((set, get) => ({
+    useAssetStore = create2((set, get) => ({
       assets: {},
       folders: [],
       assetDirs: {},
@@ -3664,6 +6552,44 @@ var init_spawn = __esm({
   }
 });
 
+// src/capabilities/physics/defaults.ts
+function defaultNodePhysics(kind) {
+  if (kind === "plane") {
+    return { ...SHARED, body: "static", shape: "box", size: [1, 1, 0.05] };
+  }
+  if (kind === "sphere") {
+    return { ...SHARED, body: "dynamic", shape: "sphere", size: [0.5, 0.5, 0.5] };
+  }
+  if (kind === "capsule") {
+    return { ...SHARED, body: "dynamic", shape: "capsule", size: [0.3, 1.1, 0.3] };
+  }
+  if (kind === "cylinder") {
+    return { ...SHARED, body: "dynamic", shape: "cylinder", size: [0.5, 1, 0.5] };
+  }
+  if (kind === "cone") {
+    return { ...SHARED, body: "dynamic", shape: "cone", size: [0.5, 1, 0.5] };
+  }
+  if (kind === "model") {
+    return { ...SHARED, body: "static", shape: "convex", size: [1, 1, 1] };
+  }
+  return { ...SHARED, body: "dynamic", shape: "box", size: [1, 1, 1] };
+}
+var SHARED;
+var init_defaults5 = __esm({
+  "src/capabilities/physics/defaults.ts"() {
+    "use strict";
+    SHARED = {
+      trigger: false,
+      mass: 1,
+      friction: 0.7,
+      restitution: 0.05,
+      linearDamping: 0.1,
+      angularDamping: 0.1,
+      gravityScale: 1
+    };
+  }
+});
+
 // src/capabilities/particles/defaults.ts
 function defaultNodeEffect() {
   return {
@@ -3675,7 +6601,7 @@ function defaultNodeEffect() {
   };
 }
 var QUARKS_VERSION, DEFAULT_SIMULATION;
-var init_defaults4 = __esm({
+var init_defaults6 = __esm({
   "src/capabilities/particles/defaults.ts"() {
     "use strict";
     QUARKS_VERSION = "0.17.1";
@@ -3757,6 +6683,8 @@ function defaultColor(kind) {
       return "#b0b0b0";
     case "screen":
       return "#4a9eff";
+    case "spline":
+      return "#34d399";
     default:
       return "#d5dde6";
   }
@@ -3789,6 +6717,7 @@ function restHeight(kind) {
     case "model":
     case "plane":
     case "empty":
+    case "spline":
       return 0;
     case "effect":
     case "screen":
@@ -3844,6 +6773,7 @@ function makeNode(partial) {
     wireframe: false,
     effect: kind === "effect" ? defaultNodeEffect() : null,
     screen: kind === "screen" ? defaultNodeScreen() : null,
+    capabilities: kind === "spline" ? { [SPLINE_PATH_CAPABILITY_ID]: defaultSplinePath(), ...partial.capabilities ?? {} } : partial.capabilities,
     slots: [],
     castShadow: kind === "directional-light" || kind === "spot-light" || (isMesh(kind) || kind === "model") && kind !== "plane",
     receiveShadow: isMesh(kind) || kind === "model",
@@ -3862,12 +6792,12 @@ function childrenOf(nodes, parentId) {
   return Object.values(nodes).filter((node) => node.parentId === parentId).sort((a, b) => a.order - b.order || a.name.localeCompare(b.name, "zh"));
 }
 function nextOrder(nodes, parentId, exceptId) {
-  let max3 = 0;
+  let max4 = 0;
   for (const node of Object.values(nodes)) {
     if (node.id === exceptId || node.parentId !== parentId) continue;
-    if (node.order >= max3) max3 = node.order + 1;
+    if (node.order >= max4) max4 = node.order + 1;
   }
-  return max3;
+  return max4;
 }
 function uniqueName(nodes, base) {
   const names = new Set(Object.values(nodes).map((node) => node.name));
@@ -3894,7 +6824,8 @@ var MESH_KINDS;
 var init_kinds = __esm({
   "src/editor/scene/kinds.ts"() {
     "use strict";
-    init_defaults4();
+    init_defaults6();
+    init_schema();
     init_spec();
     MESH_KINDS = ["box", "sphere", "plane", "capsule", "cylinder", "cone"];
   }
@@ -3945,7 +6876,7 @@ function normalizeEditorView(value) {
   };
 }
 var DEFAULT_NAV, TONE_MAPS, DEFAULT_PICTURE_AUDIO, DEFAULT_PICTURE, EDITOR_VIEWS;
-var init_types = __esm({
+var init_types2 = __esm({
   "src/editor/scene/types.ts"() {
     "use strict";
     DEFAULT_NAV = {
@@ -4006,10 +6937,10 @@ var init_types = __esm({
 });
 
 // src/editor/scene/seed.ts
-import { Euler as Euler2, Quaternion as Quaternion4, Vector3 as Vector37 } from "three";
+import { Euler as Euler2, Quaternion as Quaternion5, Vector3 as Vector39 } from "three";
 function aimDownY(from, to) {
   const direction = to.clone().sub(from).normalize();
-  const quaternion = new Quaternion4().setFromUnitVectors(new Vector37(0, -1, 0), direction);
+  const quaternion = new Quaternion5().setFromUnitVectors(new Vector39(0, -1, 0), direction);
   const euler = new Euler2().setFromQuaternion(quaternion, "XYZ");
   return [euler.x * 180 / Math.PI, euler.y * 180 / Math.PI, euler.z * 180 / Math.PI];
 }
@@ -4022,7 +6953,7 @@ function createSeed() {
       kind: "directional-light",
       order: 0,
       position: sunPosition,
-      rotation: aimDownY(new Vector37(...sunPosition), new Vector37(0, 0.5, 0))
+      rotation: aimDownY(new Vector39(...sunPosition), new Vector39(0, 0.5, 0))
     }),
     "seed-sky": makeNode({
       id: "seed-sky",
@@ -4038,7 +6969,8 @@ function createSeed() {
       order: 2,
       position: [0, 0, 0],
       rotation: [-90, 0, 0],
-      scale: [40, 40, 1]
+      scale: [40, 40, 1],
+      physics: defaultNodePhysics("plane")
     }),
     "seed-cube": makeNode({
       id: "seed-cube",
@@ -4072,8 +7004,2427 @@ function createFreshScene(name) {
 var init_seed = __esm({
   "src/editor/scene/seed.ts"() {
     "use strict";
+    init_defaults5();
     init_kinds();
-    init_types();
+    init_types2();
+  }
+});
+
+// src/editor/project/electronBridge.ts
+var init_electronBridge = __esm({
+  "src/editor/project/electronBridge.ts"() {
+    "use strict";
+  }
+});
+
+// src/editor/project/disk.ts
+import { create as create3 } from "zustand";
+function emptyIndex() {
+  return { schemaVersion: CACHE_INDEX_VERSION, generatedAt: Date.now(), artifacts: {} };
+}
+var CACHE_ROOT, IMPORT_ARTIFACTS, TEXTURE_ARTIFACTS, TEXTURE_ORIGINALS, CACHE_INDEX_PATH, CACHE_INDEX_VERSION, useProjectDirectory, cacheIndex, ioChain;
+var init_disk = __esm({
+  "src/editor/project/disk.ts"() {
+    "use strict";
+    init_folders();
+    init_electronBridge();
+    CACHE_ROOT = ".cache/t3d";
+    IMPORT_ARTIFACTS = `${CACHE_ROOT}/import-artifacts`;
+    TEXTURE_ARTIFACTS = `${CACHE_ROOT}/texture-artifacts`;
+    TEXTURE_ORIGINALS = `${CACHE_ROOT}/texture-originals`;
+    CACHE_INDEX_PATH = `${CACHE_ROOT}/editor-library/v1/cache-index.json`;
+    CACHE_INDEX_VERSION = 1;
+    useProjectDirectory = create3(() => ({
+      active: false,
+      name: "",
+      epoch: 0
+    }));
+    cacheIndex = emptyIndex();
+    ioChain = Promise.resolve();
+  }
+});
+
+// src/runtime/audio.ts
+import { Audio, AudioListener, PositionalAudio } from "three";
+function readAudioMix(picture) {
+  return {
+    master: unit(picture.audio?.master, DEFAULT_MIX.master),
+    music: unit(picture.audio?.music, DEFAULT_MIX.music),
+    sfx: unit(picture.audio?.sfx, DEFAULT_MIX.sfx)
+  };
+}
+function unlockAudio() {
+  if (holdContext) return;
+  const ctx = ensureListener().context;
+  if (ctx.state === "suspended") void ctx.resume();
+}
+function playSound(options) {
+  installUnlock();
+  const id = nextId++;
+  const ticket = playTicket;
+  const ear = ensureListener();
+  const run = () => {
+    void start(id, options, ticket);
+  };
+  if (ear.context.state === "suspended" && !holdContext) void ear.context.resume().then(run);
+  else run();
+  return id;
+}
+function stopMusic() {
+  const voice = voices.find((item) => item.id === musicId);
+  if (voice) fadeStop(voice);
+  musicId = 0;
+}
+function stopAllSounds() {
+  playTicket += 1;
+  for (const voice of [...voices]) stopVoice(voice);
+  musicId = 0;
+  emitters.clear();
+  managed.clear();
+}
+function ownsEmitter(id) {
+  for (const current of emitters.values()) if (current.voice === id) return true;
+  return false;
+}
+function guardAudioMatrixUpdate(node) {
+  const original = node.updateMatrixWorld.bind(node);
+  node.updateMatrixWorld = function safeAudioUpdateMatrixWorld(force) {
+    Object.getPrototypeOf(Object.getPrototypeOf(node)).updateMatrixWorld.call(node, force);
+    const now = node.context?.currentTime;
+    if (typeof now !== "number" || !Number.isFinite(now)) return;
+    const elements = node.matrixWorld.elements;
+    for (let i = 0; i < elements.length; i += 1) {
+      if (!Number.isFinite(elements[i])) return;
+    }
+    try {
+      original(force);
+    } catch {
+    }
+  };
+  return node;
+}
+function ensureListener() {
+  if (!listener) {
+    listener = guardAudioMatrixUpdate(new AudioListener());
+    listener.gain.gain.value = 1;
+  }
+  return listener;
+}
+function installUnlock() {
+  if (installed || typeof window === "undefined") return;
+  installed = true;
+  const once = () => unlockAudio();
+  window.addEventListener("pointerdown", once, { capture: true });
+  window.addEventListener("keydown", once, { capture: true });
+}
+async function start(id, options, ticket) {
+  const assetId = options.assetId.trim();
+  if (!assetId) return;
+  const world3 = getRuntimeWorld();
+  const asset = world3.getAsset(assetId);
+  if (!asset || asset.kind !== "audio") return;
+  const buffer = await bufferFor(assetId, "hash" in asset && typeof asset.hash === "string" ? asset.hash : assetId);
+  if (!buffer) return;
+  if (managed.has(id) && (ticket !== playTicket || !ownsEmitter(id))) {
+    managed.delete(id);
+    return;
+  }
+  if (managed.has(id) && options.parent && !options.parent.parent) {
+    emitters.forEach((current, nodeId) => {
+      if (current.voice === id) emitters.delete(nodeId);
+    });
+    managed.delete(id);
+    return;
+  }
+  const latestWorld = getRuntimeWorld();
+  if (options.bus === "music" && latestWorld.getPlayState() !== "playing") return;
+  const mix6 = readAudioMix(latestWorld.getPicture());
+  applyMix(mix6);
+  const bus = options.bus ?? "sfx";
+  if (bus === "sfx") trimSfx();
+  const ear = ensureListener();
+  const audio = options.parent ? guardAudioMatrixUpdate(new PositionalAudio(ear)) : new Audio(ear);
+  audio.setBuffer(buffer);
+  audio.setLoop(options.loop === true);
+  const local = clamp4(options.volume ?? 1, 0, 4);
+  audio.setVolume(local * (bus === "music" ? mix6.music : mix6.sfx));
+  if (options.playbackRate && options.playbackRate > 0) audio.setPlaybackRate(options.playbackRate);
+  if (audio instanceof PositionalAudio && options.parent) {
+    audio.setRefDistance(Math.max(0.05, options.refDistance ?? 2));
+    audio.setRolloffFactor(Math.max(0, options.rolloff ?? 1));
+    audio.setDistanceModel("inverse");
+    options.parent.add(audio);
+  }
+  const voice = { id, audio, parent: options.parent ?? null, loop: options.loop === true, bus, local };
+  voices.push(voice);
+  if (bus === "music") {
+    const previous = voices.find((item) => item.id === musicId && item.id !== id);
+    if (previous) fadeStop(previous);
+    musicId = id;
+  }
+  audio.play();
+  const source = audio.source;
+  if (!voice.loop && source) source.onended = () => stopVoice(voice);
+}
+async function bufferFor(assetId, hash) {
+  const key = hash || assetId;
+  let pending3 = buffers.get(key);
+  if (!pending3) {
+    pending3 = (async () => {
+      const world3 = getRuntimeWorld();
+      const url = await world3.resolveAssetUrl?.(assetId) ?? world3.getAsset(assetId)?.url ?? "";
+      if (!url) return null;
+      const response = await fetch(url);
+      const data = await response.arrayBuffer();
+      return ensureListener().context.decodeAudioData(data.slice(0));
+    })().catch((error) => {
+      buffers.delete(key);
+      console.warn("[audio] \u89E3\u7801\u5931\u8D25", error);
+      return null;
+    });
+    buffers.set(key, pending3);
+  }
+  const buffer = await pending3;
+  return buffer && buffer.duration > 0 ? buffer : null;
+}
+function trimSfx() {
+  const live = voices.filter((item) => item.bus === "sfx" && !item.loop && !managed.has(item.id));
+  while (live.length >= MAX_SFX) {
+    const oldest = live.shift();
+    if (oldest) stopVoice(oldest);
+  }
+}
+function fadeStop(voice) {
+  try {
+    const gain = voice.audio.getOutput().gain;
+    const now = voice.audio.context.currentTime;
+    if (!Number.isFinite(now) || !Number.isFinite(gain.value)) {
+      stopVoice(voice);
+      return;
+    }
+    gain.cancelScheduledValues(now);
+    gain.setValueAtTime(gain.value, now);
+    gain.linearRampToValueAtTime(0, now + 0.35);
+  } catch {
+    stopVoice(voice);
+    return;
+  }
+  window.setTimeout(() => stopVoice(voice), 400);
+}
+function stopVoice(voice) {
+  const index = voices.indexOf(voice);
+  if (index >= 0) voices.splice(index, 1);
+  if (musicId === voice.id) musicId = 0;
+  try {
+    if (voice.audio.isPlaying) voice.audio.stop();
+  } catch {
+  }
+  voice.parent?.remove(voice.audio);
+  voice.audio.disconnect();
+}
+function applyMix(mix6) {
+  const key = `${mix6.master}|${mix6.music}|${mix6.sfx}`;
+  if (key === appliedMix) return;
+  appliedMix = key;
+  const ear = listener;
+  if (ear) ear.gain.gain.value = mix6.master;
+  for (const voice of voices) {
+    voice.audio.setVolume(voice.local * (voice.bus === "music" ? mix6.music : mix6.sfx));
+  }
+}
+function unit(value, fallback) {
+  const number = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(number) ? clamp4(number, 0, 1) : fallback;
+}
+function clamp4(value, min3, max4) {
+  return Math.min(max4, Math.max(min3, value));
+}
+function settleContext(paused) {
+  const ctx = listener?.context;
+  if (!ctx) return;
+  contextChain = contextChain.then(async () => {
+    if (paused !== holdContext) return;
+    if (paused && ctx.state === "running") await ctx.suspend();
+    if (!paused && ctx.state === "suspended") await ctx.resume();
+  }).catch(() => void 0);
+}
+var MAX_SFX, buffers, listener, voices, nextId, musicId, heardPlay, installed, DEFAULT_MIX, emitters, managed, playTicket, holdContext, appliedMix, contextChain;
+var init_audio = __esm({
+  "src/runtime/audio.ts"() {
+    "use strict";
+    init_sceneRuntime();
+    init_world();
+    MAX_SFX = 32;
+    buffers = /* @__PURE__ */ new Map();
+    listener = null;
+    voices = [];
+    nextId = 1;
+    musicId = 0;
+    heardPlay = false;
+    installed = false;
+    DEFAULT_MIX = { master: 1, music: 0.8, sfx: 1 };
+    emitters = /* @__PURE__ */ new Map();
+    managed = /* @__PURE__ */ new Set();
+    playTicket = 0;
+    holdContext = false;
+    appliedMix = "";
+    contextChain = Promise.resolve();
+    registerRuntimeSystem("core.audio", 44, () => {
+      const world3 = getRuntimeWorld();
+      applyMix(readAudioMix(world3.getPicture()));
+      const playState = world3.getPlayState();
+      if (playState === "paused") {
+        heardPlay = true;
+        if (!holdContext) {
+          holdContext = true;
+          settleContext(true);
+        }
+        return;
+      }
+      if (holdContext) {
+        holdContext = false;
+        settleContext(false);
+      }
+      if (playState === "playing") {
+        heardPlay = true;
+        return;
+      }
+      if (!heardPlay) return;
+      heardPlay = false;
+      stopAllSounds();
+    });
+    installUnlock();
+  }
+});
+
+// src/runtime/ui/bindings.ts
+function coerceUiValue(raw) {
+  if (typeof raw !== "string") return raw;
+  const text = raw.trim();
+  if (text === "true") return true;
+  if (text === "false") return false;
+  if (text !== "" && Number.isFinite(Number(text))) return Number(text);
+  return raw;
+}
+var EMPTY_UI_VALUES;
+var init_bindings = __esm({
+  "src/runtime/ui/bindings.ts"() {
+    "use strict";
+    EMPTY_UI_VALUES = { variables: {}, components: {}, screens: {} };
+  }
+});
+
+// src/runtime/ui/values.ts
+function publish() {
+  snapshot = {
+    variables: { ...variables },
+    components: Object.fromEntries(Object.entries(components).map(([id, fields]) => [id, { ...fields }])),
+    screens: { ...screens }
+  };
+  for (const listener2 of listeners) listener2();
+}
+function uiValues() {
+  return snapshot;
+}
+function writeUiVariable(varId, value) {
+  variables = { ...variables, [varId]: value };
+  publish();
+}
+function setScreenVisible(nodeId, visible) {
+  screens = { ...screens, [nodeId]: visible };
+  publish();
+}
+function resetUiValues() {
+  variables = {};
+  components = {};
+  screens = {};
+  publish();
+}
+function onUiClick(listener2) {
+  clickListeners.add(listener2);
+  return () => clickListeners.delete(listener2);
+}
+function dispatchUiClick(action, nodeId) {
+  if (action.kind === "setVariable") writeUiVariable(action.varId, coerceUiValue(action.value));
+  for (const listener2 of clickListeners) listener2(action, nodeId);
+}
+var variables, components, screens, snapshot, listeners, clickListeners;
+var init_values = __esm({
+  "src/runtime/ui/values.ts"() {
+    "use strict";
+    init_bindings();
+    variables = {};
+    components = {};
+    screens = {};
+    snapshot = EMPTY_UI_VALUES;
+    listeners = /* @__PURE__ */ new Set();
+    clickListeners = /* @__PURE__ */ new Set();
+  }
+});
+
+// src/core/codeAssets/compiler.ts
+import ts from "typescript";
+var init_compiler = __esm({
+  "src/core/codeAssets/compiler.ts"() {
+    "use strict";
+  }
+});
+
+// src/core/codeAssets/scriptRuntime.ts
+import { Vector3 as Vector310 } from "three";
+function ensureUiClickBridge() {
+  if (uiClickSubscribed) return;
+  uiClickSubscribed = true;
+  onUiClick((action, uiNodeId) => {
+    if (getRuntimeWorld().getPlayState() !== "playing") return;
+    if (action.kind === "sendMessage" && action.message) {
+      const payload = { nodeId: uiNodeId, kind: action.kind };
+      uiEventQueue.push({
+        eventName: action.message,
+        payload
+      });
+      messageQueue.push({
+        targetNodeId: null,
+        name: action.message,
+        payload
+      });
+    } else if (action.kind === "setVariable" && action.varId) {
+      uiEventQueue.push({
+        eventName: `var:${action.varId}`,
+        payload: { nodeId: uiNodeId, kind: action.kind, varId: action.varId, value: action.value }
+      });
+    }
+  });
+}
+function resolveScreenNodeId(screenIdOrName) {
+  const nodes = getRuntimeWorld().getNodes();
+  if (nodes[screenIdOrName]?.kind === "screen") return screenIdOrName;
+  const hit = Object.values(nodes).find((n) => n.kind === "screen" && n.name === screenIdOrName);
+  return hit ? hit.id : null;
+}
+function mouseButtonMask(button) {
+  if (button === 0) return 1;
+  if (button === 1) return 4;
+  if (button === 2) return 2;
+  return 0;
+}
+function instanceKey2(nodeId, scriptId) {
+  return `${nodeId}::${scriptId}`;
+}
+function resolveVec3Input(target) {
+  if (!target || typeof target !== "object") return null;
+  const rec = target;
+  if (typeof rec.x === "number" && typeof rec.y === "number" && typeof rec.z === "number") {
+    return { x: rec.x, y: rec.y, z: rec.z };
+  }
+  if (rec.position && typeof rec.position === "object") {
+    const pos = rec.position;
+    if (typeof pos.x === "number" && typeof pos.y === "number" && typeof pos.z === "number") {
+      return { x: pos.x, y: pos.y, z: pos.z };
+    }
+  }
+  return null;
+}
+function toVec3Obj(tuple) {
+  return { x: tuple[0], y: tuple[1], z: tuple[2] };
+}
+function makeNodeHandle(nodeId, host) {
+  const world3 = getRuntimeWorld();
+  const node = world3.getNodes()[nodeId];
+  if (!node) return null;
+  const obj = host.resolveObject(nodeId);
+  const collectTags = () => {
+    const out = [];
+    if (node.tagId && !out.includes(node.tagId)) out.push(node.tagId);
+    if (Array.isArray(node.tagIds)) {
+      for (const t of node.tagIds) {
+        if (t && !out.includes(t)) out.push(t);
+      }
+    }
+    for (const rt of listRuntimeTags(node.id)) {
+      if (rt.tag && !out.includes(rt.tag)) out.push(rt.tag);
+    }
+    return out;
+  };
+  return {
+    get id() {
+      return node.id;
+    },
+    get name() {
+      return node.name;
+    },
+    get tags() {
+      return collectTags();
+    },
+    get parent() {
+      return node.parentId ? makeNodeHandle(node.parentId, host) : null;
+    },
+    get position() {
+      return obj ? { x: obj.position.x, y: obj.position.y, z: obj.position.z } : toVec3Obj(node.position);
+    },
+    set position(val) {
+      if (obj) obj.position.set(val.x, val.y, val.z);
+      node.position[0] = val.x;
+      node.position[1] = val.y;
+      node.position[2] = val.z;
+    },
+    get rotation() {
+      return obj ? { x: obj.rotation.x, y: obj.rotation.y, z: obj.rotation.z } : {
+        x: node.rotation[0] * Math.PI / 180,
+        y: node.rotation[1] * Math.PI / 180,
+        z: node.rotation[2] * Math.PI / 180
+      };
+    },
+    set rotation(val) {
+      if (obj) obj.rotation.set(val.x, val.y, val.z);
+      node.rotation[0] = val.x * 180 / Math.PI;
+      node.rotation[1] = val.y * 180 / Math.PI;
+      node.rotation[2] = val.z * 180 / Math.PI;
+    },
+    get scale() {
+      return obj ? { x: obj.scale.x, y: obj.scale.y, z: obj.scale.z } : toVec3Obj(node.scale);
+    },
+    set scale(val) {
+      if (obj) obj.scale.set(val.x, val.y, val.z);
+      node.scale[0] = val.x;
+      node.scale[1] = val.y;
+      node.scale[2] = val.z;
+    },
+    get visible() {
+      if (pooledInactive.has(nodeId)) return false;
+      return obj ? obj.visible : node.visible;
+    },
+    set visible(val) {
+      if (obj) obj.visible = val;
+      node.visible = val;
+      if (!nodePoolKey.has(nodeId)) {
+        world3.updateNode(nodeId, { visible: val });
+      }
+    },
+    hasTag: (tag) => nodeHasTag(node, String(tag ?? "")),
+    addTag: (tag) => {
+      const t = String(tag ?? "").trim();
+      if (!t) return;
+      const list = Array.isArray(node.tagIds) ? [...node.tagIds] : [];
+      if (!list.includes(t)) {
+        list.push(t);
+        node.tagIds = list;
+      }
+    },
+    removeTag: (tag) => {
+      const t = String(tag ?? "").trim();
+      if (!t) return;
+      if (node.tagId === t) node.tagId = void 0;
+      if (Array.isArray(node.tagIds)) {
+        node.tagIds = node.tagIds.filter((x) => x !== t);
+      }
+    },
+    getChildren: () => {
+      const all = world3.getNodes();
+      return Object.values(all).filter((c) => c.parentId === node.id && !isNodePooledInactive(c.id, all)).sort((a, b) => (a.order ?? 0) - (b.order ?? 0)).map((c) => makeNodeHandle(c.id, host)).filter(Boolean);
+    },
+    sendMessage: (name, payload) => {
+      messageQueue.push({ targetNodeId: nodeId, name, payload });
+    },
+    getBehavior: (behavior) => {
+      const targetEntry = Object.entries(node.gameplay?.packs?.__project__ ?? {}).find(
+        ([sid2]) => compiledBehaviors.get(sid2) === behavior || compiledBehaviors.get(sid2)?.name === behavior?.name
+      );
+      if (!targetEntry) return null;
+      const [sid, rawParams] = targetEntry;
+      const rec = instanceStates.get(instanceKey2(nodeId, sid));
+      if (!rec) return null;
+      const ctx = buildScriptContext(node, sid, rawParams, rec.state, host);
+      const wrapped = {};
+      for (const [mName, fn] of Object.entries(behavior.methods ?? {})) {
+        wrapped[mName] = (...args) => fn(ctx, ...args);
+      }
+      return wrapped;
+    },
+    destroy: () => {
+      destroyOrReleaseNode(nodeId, host);
+    }
+  };
+}
+function cancelTimersForNode(nodeId) {
+  for (const [tid, t] of scriptTimers.entries()) {
+    if (t.nodeId === nodeId) scriptTimers.delete(tid);
+  }
+  splineFollowAgents.delete(nodeId);
+  for (const [twId, tw] of activeTweens.entries()) {
+    if (tw.ownerNodeId === nodeId) activeTweens.delete(twId);
+  }
+}
+function resolveSplinePointsInput(input, host) {
+  const world3 = getRuntimeWorld();
+  const nodes = world3.getNodes();
+  if (Array.isArray(input)) {
+    const pts = [];
+    for (const item of input) {
+      const v = resolveVec3Input(item);
+      if (v) pts.push(v);
+    }
+    return { points: pts };
+  }
+  const parentNode = resolveTemplateNode(input, nodes);
+  if (!parentNode) return { points: [] };
+  const rawSplinePath = parentNode.capabilities?.splinePath;
+  if (parentNode.kind === "spline" || rawSplinePath) {
+    const pathObj = host.resolveObject(parentNode.id);
+    if (pathObj) pathObj.updateMatrixWorld();
+    const rawPts = Array.isArray(rawSplinePath?.points) ? rawSplinePath.points : [];
+    const pts = [];
+    for (const p of rawPts) {
+      if (!Array.isArray(p) || p.length < 3) continue;
+      const lx = Number(p[0]) || 0;
+      const ly = Number(p[1]) || 0;
+      const lz = Number(p[2]) || 0;
+      if (pathObj) {
+        const v = new Vector310(lx, ly, lz).applyMatrix4(pathObj.matrixWorld);
+        pts.push({ x: v.x, y: v.y, z: v.z });
+      } else {
+        pts.push({
+          x: parentNode.position[0] + lx,
+          y: parentNode.position[1] + ly,
+          z: parentNode.position[2] + lz
+        });
+      }
+    }
+    return {
+      points: pts,
+      closed: typeof rawSplinePath?.closed === "boolean" ? rawSplinePath.closed : void 0,
+      tension: typeof rawSplinePath?.tension === "number" ? rawSplinePath.tension : void 0
+    };
+  }
+  const children = Object.values(nodes).filter((n) => n.parentId === parentNode.id && !isNodePooledInactive(n.id, nodes)).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  const targets = children.length > 0 ? children : [parentNode];
+  return {
+    points: targets.map((n) => {
+      const obj = host.resolveObject(n.id);
+      return obj ? { x: obj.position.x, y: obj.position.y, z: obj.position.z } : toVec3Obj(n.position);
+    })
+  };
+}
+function buildCurveApi() {
+  return {
+    create: (keys, options) => createAnimationCurve(keys, options),
+    eval: (keys, t, options) => createAnimationCurve(keys, options).eval(t),
+    ease: (name, t) => evalEasing(name, t),
+    parabola: (t, height = 1) => {
+      const u = Math.max(0, Math.min(1, Number.isFinite(t) ? t : 0));
+      return 4 * u * (1 - u) * height;
+    },
+    pulse: (t) => {
+      const u = Math.max(0, Math.min(1, Number.isFinite(t) ? t : 0));
+      return Math.sin(u * Math.PI);
+    }
+  };
+}
+function isNodePooledInactive(nodeId, nodes) {
+  let cur = nodeId;
+  let guard = 0;
+  while (cur && guard < 16) {
+    if (pooledInactive.has(cur)) return true;
+    cur = nodes[cur]?.parentId ?? null;
+    guard += 1;
+  }
+  return false;
+}
+function resolveTemplateNode(templateOrName, nodes) {
+  if (!templateOrName) return null;
+  if (typeof templateOrName === "object" && typeof templateOrName.id === "string") {
+    return nodes[templateOrName.id] ?? null;
+  }
+  if (typeof templateOrName === "string") {
+    const key = templateOrName.trim();
+    if (!key) return null;
+    if (nodes[key]) return nodes[key];
+    return Object.values(nodes).find((n) => n.name === key) ?? null;
+  }
+  return null;
+}
+function cloneSceneSubtree(templateNode, options, host) {
+  const world3 = getRuntimeWorld();
+  const allNodes = world3.getNodes();
+  const clonedMap = {};
+  const idMap = /* @__PURE__ */ new Map();
+  const collect = (srcId) => {
+    const src = allNodes[srcId];
+    if (!src) return;
+    const nextId2 = typeof crypto !== "undefined" && typeof crypto.randomUUID === "function" ? crypto.randomUUID() : `rt_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    idMap.set(srcId, nextId2);
+    for (const child of Object.values(allNodes)) {
+      if (child.parentId === srcId) collect(child.id);
+    }
+  };
+  collect(templateNode.id);
+  if (idMap.size === 0) return null;
+  const rootNewId = idMap.get(templateNode.id);
+  const parentOpt = options?.parent;
+  const resolvedParentId = parentOpt === void 0 ? templateNode.parentId : parentOpt === null ? null : typeof parentOpt === "string" ? allNodes[parentOpt]?.id ?? Object.values(allNodes).find((n) => n.name === parentOpt)?.id ?? null : parentOpt.id ?? null;
+  for (const [oldId, newId] of idMap.entries()) {
+    const src = allNodes[oldId];
+    const copy = structuredClone(src);
+    copy.id = newId;
+    if (oldId === templateNode.id) {
+      copy.parentId = resolvedParentId;
+      copy.visible = options?.visible !== void 0 ? options.visible : true;
+      if (options?.name) copy.name = options.name;
+      else copy.name = `${src.name}_${newId.slice(0, 4)}`;
+      const posVec = resolveVec3Input(options?.position);
+      if (posVec) copy.position = [posVec.x, posVec.y, posVec.z];
+      const rotVec = resolveVec3Input(options?.rotation);
+      if (rotVec) {
+        copy.rotation = [
+          rotVec.x * 180 / Math.PI,
+          rotVec.y * 180 / Math.PI,
+          rotVec.z * 180 / Math.PI
+        ];
+      }
+      const scaleVec = resolveVec3Input(options?.scale);
+      if (scaleVec) copy.scale = [scaleVec.x, scaleVec.y, scaleVec.z];
+    } else {
+      copy.parentId = src.parentId ? idMap.get(src.parentId) ?? null : null;
+    }
+    delete copy.prefabAssetId;
+    delete copy.prefabInstanceId;
+    delete copy.prefabTemplateId;
+    delete copy.prefabHostTemplateId;
+    clonedMap[newId] = copy;
+  }
+  world3.setNodes({ ...allNodes, ...clonedMap });
+  const spawnedObj = host.resolveObject(rootNewId);
+  if (spawnedObj) {
+    const rootNode = clonedMap[rootNewId];
+    spawnedObj.visible = rootNode.visible;
+    spawnedObj.position.set(rootNode.position[0], rootNode.position[1], rootNode.position[2]);
+    spawnedObj.rotation.set(
+      rootNode.rotation[0] * Math.PI / 180,
+      rootNode.rotation[1] * Math.PI / 180,
+      rootNode.rotation[2] * Math.PI / 180
+    );
+    spawnedObj.scale.set(rootNode.scale[0], rootNode.scale[1], rootNode.scale[2]);
+  }
+  return rootNewId;
+}
+function spawnFromTemplateOrPrefab(templateOrPrefab, options, host) {
+  const world3 = getRuntimeWorld();
+  const nodes = world3.getNodes();
+  const tplNode = resolveTemplateNode(templateOrPrefab, nodes);
+  if (tplNode) {
+    const rootId = cloneSceneSubtree(tplNode, options, host);
+    if (!rootId) return null;
+    return {
+      rootId,
+      templatePos: [...tplNode.position],
+      templateRotDeg: [...tplNode.rotation],
+      templateScale: [...tplNode.scale],
+      templateTagId: tplNode.tagId,
+      templateTagIds: tplNode.tagIds ? [...tplNode.tagIds] : void 0
+    };
+  }
+  if (typeof templateOrPrefab === "string" && templateOrPrefab.trim()) {
+    const posVec = resolveVec3Input(options?.position);
+    const pos = posVec ? [posVec.x, posVec.y, posVec.z] : [0, 0, 0];
+    const parentOpt = options?.parent;
+    const parentId = typeof parentOpt === "string" ? parentOpt : parentOpt && "id" in parentOpt ? parentOpt.id ?? null : null;
+    const rootId = world3.instantiatePrefab?.(templateOrPrefab.trim(), { parentId, position: pos }) ?? null;
+    if (!rootId) return null;
+    const spawned = world3.getNodes()[rootId];
+    if (spawned) {
+      if (options?.visible !== void 0) spawned.visible = options.visible;
+      if (options?.name) spawned.name = options.name;
+      const rotVec = resolveVec3Input(optsOrRot(options?.rotation));
+      if (rotVec) {
+        spawned.rotation = [rotVec.x * 180 / Math.PI, rotVec.y * 180 / Math.PI, rotVec.z * 180 / Math.PI];
+      }
+      const scaleVec = resolveVec3Input(options?.scale);
+      if (scaleVec) spawned.scale = [scaleVec.x, scaleVec.y, scaleVec.z];
+      const spawnedObj = host.resolveObject(rootId);
+      if (spawnedObj) {
+        spawnedObj.visible = spawned.visible;
+        spawnedObj.position.set(spawned.position[0], spawned.position[1], spawned.position[2]);
+        spawnedObj.rotation.set(
+          spawned.rotation[0] * Math.PI / 180,
+          spawned.rotation[1] * Math.PI / 180,
+          spawned.rotation[2] * Math.PI / 180
+        );
+        spawnedObj.scale.set(spawned.scale[0], spawned.scale[1], spawned.scale[2]);
+      }
+      return {
+        rootId,
+        templatePos: [0, 0, 0],
+        templateRotDeg: [...spawned.rotation],
+        templateScale: [...spawned.scale],
+        templateTagId: spawned.tagId,
+        templateTagIds: spawned.tagIds ? [...spawned.tagIds] : void 0
+      };
+    }
+    return { rootId };
+  }
+  return null;
+}
+function optsOrRot(rot) {
+  return rot;
+}
+function resetAndInvokeSpawn(nodeId, payload, host) {
+  const nodes = getRuntimeWorld().getNodes();
+  const targetNode = nodes[nodeId];
+  if (!targetNode) return;
+  const subtreeIds2 = [];
+  const collectSubtree = (id) => {
+    subtreeIds2.push(id);
+    for (const candidate of Object.values(nodes)) {
+      if (candidate.parentId === id) collectSubtree(candidate.id);
+    }
+  };
+  collectSubtree(nodeId);
+  for (const subId of subtreeIds2) {
+    const subNode = nodes[subId];
+    if (!subNode) continue;
+    const projectScripts = subNode.gameplay?.packs?.__project__;
+    if (!projectScripts || typeof projectScripts !== "object") continue;
+    for (const [sid, rawParams] of Object.entries(projectScripts)) {
+      if (rawParams && typeof rawParams === "object" && rawParams.__enabled === false) continue;
+      const def = compiledBehaviors.get(sid);
+      if (!def) continue;
+      const key = instanceKey2(subId, sid);
+      const rec = {
+        nodeId: subId,
+        scriptId: sid,
+        started: true,
+        state: def.state ? { ...def.state() } : {}
+      };
+      instanceStates.set(key, rec);
+      const ctx = buildScriptContext(subNode, sid, rawParams, rec.state, host);
+      try {
+        def.onStart?.(ctx);
+        def.onSpawn?.(ctx, payload);
+      } catch (error) {
+        getRuntimeWorld().log("error", `\u811A\u672C "${def.name}" \u6FC0\u6D3B\u9519\u8BEF: ${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+  }
+}
+function releaseToPool(nodeId, host) {
+  const pKey = nodePoolKey.get(nodeId);
+  if (!pKey) return false;
+  const bucket = poolBuckets.get(pKey);
+  if (!bucket) return false;
+  if (pooledInactive.has(nodeId)) return true;
+  pooledInactive.add(nodeId);
+  const nodes = getRuntimeWorld().getNodes();
+  const resetSubtree = (id) => {
+    cancelTimersForNode(id);
+    navAgents.delete(id);
+    resetProjectileState(id);
+    stopCrowdAgent(id);
+    splineFollowAgents.delete(id);
+    for (const [tid, tw] of activeTweens.entries()) {
+      if (tw.ownerNodeId === id) activeTweens.delete(tid);
+    }
+    if (nodes[id]?.physics) {
+      setPhysicsVelocity(id, [0, 0, 0]);
+    }
+    for (const child of Object.values(nodes)) {
+      if (child.parentId === id) resetSubtree(child.id);
+    }
+  };
+  resetSubtree(nodeId);
+  const obj = host.resolveObject(nodeId);
+  if (obj) obj.visible = false;
+  const n = nodes[nodeId];
+  if (n) n.visible = false;
+  if (!bucket.idle.includes(nodeId)) {
+    bucket.idle.push(nodeId);
+  }
+  return true;
+}
+function destroyOrReleaseNode(nodeId, host) {
+  if (releaseToPool(nodeId, host)) return;
+  cancelTimersForNode(nodeId);
+  navAgents.delete(nodeId);
+  const world3 = getRuntimeWorld();
+  const prev = world3.getNodes();
+  if (!prev[nodeId]) return;
+  const next = { ...prev };
+  const removeTree = (id) => {
+    delete next[id];
+    cancelTimersForNode(id);
+    for (const child of Object.values(prev)) {
+      if (child.parentId === id) removeTree(child.id);
+    }
+  };
+  removeTree(nodeId);
+  world3.setNodes(next);
+}
+function resolvePoolKey(templateOrPrefab) {
+  if (!templateOrPrefab) return null;
+  if (typeof templateOrPrefab === "object" && typeof templateOrPrefab.id === "string") {
+    return `node:${templateOrPrefab.id}`;
+  }
+  if (typeof templateOrPrefab === "string" && templateOrPrefab.trim()) {
+    return `ref:${templateOrPrefab.trim()}`;
+  }
+  return null;
+}
+function buildScriptContext(node, scriptId, rawParams, stateObj, host) {
+  const world3 = getRuntimeWorld();
+  const def = compiledBehaviors.get(scriptId);
+  const resolvedParams = {};
+  const inputRecord = rawParams && typeof rawParams === "object" ? rawParams : {};
+  for (const [k, schema] of Object.entries(def?.params ?? {})) {
+    const val = k in inputRecord ? inputRecord[k] : defaultForSchema(schema);
+    if (schema.type === "vec2" && Array.isArray(val)) resolvedParams[k] = { x: Number(val[0]) || 0, y: Number(val[1]) || 0 };
+    else if (schema.type === "vec3" && Array.isArray(val)) resolvedParams[k] = { x: Number(val[0]) || 0, y: Number(val[1]) || 0, z: Number(val[2]) || 0 };
+    else if (schema.type === "ref" && schema.target === "node" && typeof val === "string") resolvedParams[k] = makeNodeHandle(val, host);
+    else resolvedParams[k] = val;
+  }
+  const handle = makeNodeHandle(node.id, host);
+  const obj = host.resolveObject(node.id);
+  return {
+    node: handle,
+    params: resolvedParams,
+    state: stateObj,
+    elapsedTime: simElapsed,
+    get position() {
+      return handle.position;
+    },
+    set position(v) {
+      handle.position = v;
+    },
+    get rotation() {
+      return handle.rotation;
+    },
+    set rotation(v) {
+      handle.rotation = v;
+    },
+    get scale() {
+      return handle.scale;
+    },
+    set scale(v) {
+      handle.scale = v;
+    },
+    get visible() {
+      return handle.visible;
+    },
+    set visible(v) {
+      handle.visible = v;
+    },
+    hasTag: (tag) => handle.hasTag(tag),
+    addTag: (tag) => handle.addTag(tag),
+    removeTag: (tag) => handle.removeTag(tag),
+    get forward() {
+      const yaw = handle.rotation.y;
+      return { x: Math.sin(yaw), y: 0, z: Math.cos(yaw) };
+    },
+    get right() {
+      const yaw = handle.rotation.y;
+      return { x: Math.cos(yaw), y: 0, z: -Math.sin(yaw) };
+    },
+    distanceTo(target) {
+      const vec = resolveVec3Input(target);
+      if (!vec) return Number.POSITIVE_INFINITY;
+      const cur = handle.position;
+      return Math.hypot(vec.x - cur.x, vec.y - cur.y, vec.z - cur.z);
+    },
+    directionTo(target, options) {
+      const vec = resolveVec3Input(target);
+      if (!vec) return { x: 0, y: 0, z: 1 };
+      const cur = handle.position;
+      const dx = vec.x - cur.x;
+      const dy = options?.planeXZ ? 0 : vec.y - cur.y;
+      const dz = vec.z - cur.z;
+      const len = Math.hypot(dx, dy, dz);
+      if (len <= 1e-6) return { x: 0, y: 0, z: 1 };
+      return { x: dx / len, y: dy / len, z: dz / len };
+    },
+    translate(delta, space = "world") {
+      const cur = handle.position;
+      if (space === "local") {
+        const yaw = handle.rotation.y;
+        const sinY = Math.sin(yaw);
+        const cosY = Math.cos(yaw);
+        const wx = delta.x * cosY + delta.z * sinY;
+        const wz = -delta.x * sinY + delta.z * cosY;
+        handle.position = { x: cur.x + wx, y: cur.y + delta.y, z: cur.z + wz };
+      } else {
+        handle.position = { x: cur.x + delta.x, y: cur.y + delta.y, z: cur.z + delta.z };
+      }
+    },
+    rotateY(radians) {
+      const rot = handle.rotation;
+      handle.rotation = { x: rot.x, y: rot.y + radians, z: rot.z };
+    },
+    moveToward(target, maxDistance, options) {
+      const vec = resolveVec3Input(target);
+      if (!vec) return false;
+      const cur = handle.position;
+      const dx = vec.x - cur.x;
+      const dy = options?.planeXZ ? 0 : vec.y - cur.y;
+      const dz = vec.z - cur.z;
+      const dist = Math.hypot(dx, dy, dz);
+      if (options?.faceTarget && (Math.abs(dx) > 1e-5 || Math.abs(dz) > 1e-5)) {
+        const yaw = Math.atan2(dx, dz);
+        const r = handle.rotation;
+        handle.rotation = { x: r.x, y: yaw, z: r.z };
+      }
+      if (dist <= 1e-4 || dist <= maxDistance) {
+        handle.position = { x: vec.x, y: options?.planeXZ ? cur.y : vec.y, z: vec.z };
+        return true;
+      }
+      const ratio = maxDistance / dist;
+      handle.position = {
+        x: cur.x + dx * ratio,
+        y: cur.y + dy * ratio,
+        z: cur.z + dz * ratio
+      };
+      return false;
+    },
+    lookAt(target, options) {
+      const vec = resolveVec3Input(target);
+      if (!vec || !Number.isFinite(vec.x) || !Number.isFinite(vec.y) || !Number.isFinite(vec.z)) return;
+      const cur = handle.position;
+      if (options?.yOnly) {
+        const dx = vec.x - cur.x;
+        const dz = vec.z - cur.z;
+        if (Math.abs(dx) > 1e-5 || Math.abs(dz) > 1e-5) {
+          const r = handle.rotation;
+          handle.rotation = { x: r.x, y: Math.atan2(dx, dz), z: r.z };
+        }
+        return;
+      }
+      if (!obj) {
+        const dx = vec.x - cur.x;
+        const dz = vec.z - cur.z;
+        const dy = vec.y - cur.y;
+        const horiz = Math.hypot(dx, dz);
+        const yaw = Math.atan2(dx, dz);
+        const pitch = -Math.atan2(dy, Math.max(1e-5, horiz));
+        handle.rotation = { x: pitch, y: yaw, z: 0 };
+        return;
+      }
+      if (node.kind === "camera") {
+        const p = obj.position;
+        obj.lookAt(2 * p.x - vec.x, 2 * p.y - vec.y, 2 * p.z - vec.z);
+      } else {
+        obj.lookAt(vec.x, vec.y, vec.z);
+      }
+      node.rotation[0] = obj.rotation.x * 180 / Math.PI;
+      node.rotation[1] = obj.rotation.y * 180 / Math.PI;
+      node.rotation[2] = obj.rotation.z * 180 / Math.PI;
+    },
+    sendMessage(name, payload) {
+      messageQueue.push({ targetNodeId: node.id, name, payload, senderId: node.id });
+    },
+    broadcast(name, payload) {
+      messageQueue.push({ targetNodeId: null, name, payload, senderId: node.id });
+    },
+    getBehavior: (behavior) => handle.getBehavior(behavior),
+    findNodeById: (id) => makeNodeHandle(id, host),
+    findNodesByTag: (tag) => {
+      const all = world3.getNodes();
+      return Object.values(all).filter((n) => !isNodePooledInactive(n.id, all) && nodeHasTag(n, tag)).map((n) => makeNodeHandle(n.id, host)).filter(Boolean);
+    },
+    findNodesInRadius: (center, radius, tag) => {
+      const r2 = radius * radius;
+      const all = world3.getNodes();
+      return Object.values(all).filter((n) => {
+        if (isNodePooledInactive(n.id, all)) return false;
+        if (tag && !nodeHasTag(n, tag)) return false;
+        const p = host.resolveObject(n.id)?.position;
+        const x = p ? p.x : n.position[0];
+        const y = p ? p.y : n.position[1];
+        const z = p ? p.z : n.position[2];
+        const dx = x - center.x;
+        const dy = y - center.y;
+        const dz = z - center.z;
+        return dx * dx + dy * dy + dz * dz <= r2;
+      }).map((n) => makeNodeHandle(n.id, host)).filter(Boolean);
+    },
+    cloneNode: (templateOrName, opts) => {
+      const tpl = resolveTemplateNode(templateOrName, world3.getNodes());
+      if (!tpl) return null;
+      const spawnedId = cloneSceneSubtree(tpl, opts, host);
+      if (!spawnedId) return null;
+      if (opts?.initMessage) {
+        messageQueue.push({ targetNodeId: spawnedId, name: opts.initMessage, payload: opts.initPayload, senderId: node.id });
+      }
+      return makeNodeHandle(spawnedId, host);
+    },
+    spawnPrefab: (prefabId, opts) => {
+      const posVec = resolveVec3Input(opts?.position);
+      const pos = posVec ? [posVec.x, posVec.y, posVec.z] : [0, 0, 0];
+      const parentId = typeof opts?.parent === "string" ? opts.parent : opts?.parent && typeof opts.parent === "object" ? opts.parent.id ?? null : null;
+      const spawnedId = world3.instantiatePrefab?.(prefabId, { parentId, position: pos }) ?? null;
+      if (!spawnedId) return null;
+      const spawnedNode = world3.getNodes()[spawnedId];
+      if (spawnedNode) {
+        if (opts?.name) spawnedNode.name = opts.name;
+        const rotVec = resolveVec3Input(opts?.rotation);
+        if (rotVec) {
+          spawnedNode.rotation = [rotVec.x * 180 / Math.PI, rotVec.y * 180 / Math.PI, rotVec.z * 180 / Math.PI];
+        }
+        const scaleVec = resolveVec3Input(opts?.scale);
+        if (scaleVec) spawnedNode.scale = [scaleVec.x, scaleVec.y, scaleVec.z];
+      }
+      return makeNodeHandle(spawnedId, host);
+    },
+    destroyNode: (target) => {
+      const targetId = typeof target === "string" ? target : target?.id;
+      if (targetId) destroyOrReleaseNode(targetId, host);
+    },
+    pool: {
+      preload: (templateOrPrefab, count) => {
+        const key = resolvePoolKey(templateOrPrefab);
+        if (!key) return;
+        const targetCount = Math.max(0, Math.min(200, Math.floor(count)));
+        let bucket = poolBuckets.get(key);
+        if (!bucket) {
+          bucket = { all: [], idle: [] };
+          poolBuckets.set(key, bucket);
+        }
+        while (bucket.all.length < targetCount) {
+          const spawned = spawnFromTemplateOrPrefab(templateOrPrefab, { visible: false }, host);
+          if (!spawned) break;
+          if (!bucket.templatePos && spawned.templatePos) bucket.templatePos = spawned.templatePos;
+          if (!bucket.templateRotDeg && spawned.templateRotDeg) bucket.templateRotDeg = spawned.templateRotDeg;
+          if (!bucket.templateScale && spawned.templateScale) bucket.templateScale = spawned.templateScale;
+          if (bucket.templateTagId === void 0 && spawned.templateTagId !== void 0) bucket.templateTagId = spawned.templateTagId;
+          if (bucket.templateTagIds === void 0 && spawned.templateTagIds !== void 0) bucket.templateTagIds = spawned.templateTagIds;
+          pooledInactive.add(spawned.rootId);
+          nodePoolKey.set(spawned.rootId, key);
+          bucket.all.push(spawned.rootId);
+          bucket.idle.push(spawned.rootId);
+        }
+      },
+      acquire: (templateOrPrefab, opts) => {
+        const key = resolvePoolKey(templateOrPrefab);
+        if (!key) return null;
+        let bucket = poolBuckets.get(key);
+        if (!bucket) {
+          bucket = { all: [], idle: [] };
+          poolBuckets.set(key, bucket);
+        }
+        const allNodes = world3.getNodes();
+        let pickedId = null;
+        while (bucket.idle.length > 0) {
+          const cand = bucket.idle.pop();
+          if (allNodes[cand]) {
+            pickedId = cand;
+            break;
+          }
+        }
+        if (!pickedId) {
+          const spawned = spawnFromTemplateOrPrefab(templateOrPrefab, {
+            position: opts?.position,
+            rotation: opts?.rotation,
+            scale: opts?.scale,
+            visible: true
+          }, host);
+          if (!spawned) return null;
+          if (!bucket.templatePos && spawned.templatePos) bucket.templatePos = spawned.templatePos;
+          if (!bucket.templateRotDeg && spawned.templateRotDeg) bucket.templateRotDeg = spawned.templateRotDeg;
+          if (!bucket.templateScale && spawned.templateScale) bucket.templateScale = spawned.templateScale;
+          if (bucket.templateTagId === void 0 && spawned.templateTagId !== void 0) bucket.templateTagId = spawned.templateTagId;
+          if (bucket.templateTagIds === void 0 && spawned.templateTagIds !== void 0) bucket.templateTagIds = spawned.templateTagIds;
+          pickedId = spawned.rootId;
+          nodePoolKey.set(pickedId, key);
+          bucket.all.push(pickedId);
+        } else {
+          pooledInactive.delete(pickedId);
+          const n = world3.getNodes()[pickedId];
+          const objTarget = host.resolveObject(pickedId);
+          const posVec = resolveVec3Input(opts?.position);
+          const rotVec = resolveVec3Input(opts?.rotation);
+          const scaleVec = resolveVec3Input(opts?.scale);
+          if (n) {
+            n.visible = true;
+            n.tagId = bucket.templateTagId;
+            n.tagIds = bucket.templateTagIds ? [...bucket.templateTagIds] : void 0;
+            if (posVec) n.position = [posVec.x, posVec.y, posVec.z];
+            else if (bucket.templatePos) n.position = [...bucket.templatePos];
+            if (rotVec) n.rotation = [rotVec.x * 180 / Math.PI, rotVec.y * 180 / Math.PI, rotVec.z * 180 / Math.PI];
+            else if (bucket.templateRotDeg) n.rotation = [...bucket.templateRotDeg];
+            if (scaleVec) n.scale = [scaleVec.x, scaleVec.y, scaleVec.z];
+            else if (bucket.templateScale) n.scale = [...bucket.templateScale];
+          }
+          if (objTarget && n) {
+            objTarget.visible = true;
+            objTarget.position.set(n.position[0], n.position[1], n.position[2]);
+            objTarget.rotation.set(
+              n.rotation[0] * Math.PI / 180,
+              n.rotation[1] * Math.PI / 180,
+              n.rotation[2] * Math.PI / 180
+            );
+            objTarget.scale.set(n.scale[0], n.scale[1], n.scale[2]);
+          }
+        }
+        resetAndInvokeSpawn(pickedId, opts?.payload, host);
+        return makeNodeHandle(pickedId, host);
+      },
+      release: (target) => {
+        const targetId = typeof target === "string" ? target : target?.id;
+        if (targetId) destroyOrReleaseNode(targetId, host);
+      },
+      stats: (templateOrPrefab) => {
+        if (templateOrPrefab) {
+          const key = resolvePoolKey(templateOrPrefab);
+          const b = key ? poolBuckets.get(key) : void 0;
+          const total2 = b ? b.all.length : 0;
+          const pooled2 = b ? b.idle.length : 0;
+          return { active: Math.max(0, total2 - pooled2), pooled: pooled2, total: total2 };
+        }
+        let total = 0;
+        let pooled = 0;
+        for (const b of poolBuckets.values()) {
+          total += b.all.length;
+          pooled += b.idle.length;
+        }
+        return { active: Math.max(0, total - pooled), pooled, total };
+      }
+    },
+    after: (seconds, callback) => {
+      const id = nextTimerId++;
+      const delay = Math.max(0, Number(seconds) || 0);
+      scriptTimers.set(id, { id, nodeId: node.id, scriptId, remaining: delay, interval: delay, repeat: false, callback });
+      return id;
+    },
+    every: (seconds, callback) => {
+      const id = nextTimerId++;
+      const interval = Math.max(0.016, Number(seconds) || 0.1);
+      scriptTimers.set(id, { id, nodeId: node.id, scriptId, remaining: interval, interval, repeat: true, callback });
+      return id;
+    },
+    cancelTimer: (timerId) => {
+      scriptTimers.delete(timerId);
+    },
+    physics: {
+      raycast: (origin, dir, maxDistance) => {
+        const dist = host.probe?.(
+          [origin.x, origin.y, origin.z],
+          [dir.x, dir.y, dir.z],
+          maxDistance,
+          node.id
+        );
+        if (dist === null || dist === void 0) return null;
+        return {
+          node: handle,
+          point: {
+            x: origin.x + dir.x * dist,
+            y: origin.y + dir.y * dist,
+            z: origin.z + dir.z * dist
+          },
+          normal: { x: 0, y: 1, z: 0 },
+          distance: dist
+        };
+      },
+      sphereCast: (center, radius, options) => {
+        const nodes = world3.getNodes();
+        const r2 = radius * radius;
+        const hits = [];
+        for (const n of Object.values(nodes)) {
+          if (!n.visible || n.id === node.id || isNodePooledInactive(n.id, nodes)) continue;
+          if (options?.tag && n.tagId !== options.tag && !n.tagIds?.includes(options.tag)) continue;
+          const o = host.resolveObject(n.id);
+          const px = o ? o.position.x : n.position[0];
+          const py = o ? o.position.y : n.position[1];
+          const pz = o ? o.position.z : n.position[2];
+          const dx = px - center.x;
+          const dy = py - center.y;
+          const dz = pz - center.z;
+          if (dx * dx + dy * dy + dz * dz <= r2) {
+            const h = makeNodeHandle(n.id, host);
+            if (h) hits.push(h);
+          }
+        }
+        return hits;
+      },
+      getVelocity: () => {
+        const st = getPhysicsBodyState(node.id);
+        if (!st) return { x: 0, y: 0, z: 0 };
+        return { x: st.linvel[0], y: st.linvel[1], z: st.linvel[2] };
+      },
+      setVelocity: (velocity) => {
+        setPhysicsVelocity(node.id, [velocity.x, velocity.y, velocity.z]);
+      },
+      applyImpulse: (impulse) => {
+        applyPhysicsImpulse(node.id, [impulse.x, impulse.y, impulse.z]);
+      },
+      applyForce: (force) => {
+        applyPhysicsForce(node.id, [force.x, force.y, force.z]);
+      }
+    },
+    nav: {
+      moveTo: (target, speed = 3.5) => {
+        const cur = handle.position;
+        const path = findNavigationPath([cur.x, cur.y, cur.z], [target.x, target.y, target.z]);
+        if (!path || path.length === 0) {
+          navAgents.delete(node.id);
+          return false;
+        }
+        navAgents.set(node.id, { path, index: 0, speed: Math.max(0.1, speed) });
+        return true;
+      },
+      stop: () => {
+        navAgents.delete(node.id);
+      },
+      get isMoving() {
+        return navAgents.has(node.id);
+      }
+    },
+    spline: {
+      create: (pointsOrParent, options) => {
+        const resolved = resolveSplinePointsInput(pointsOrParent, host);
+        return createSplinePath(resolved.points, {
+          closed: options?.closed ?? resolved.closed,
+          tension: options?.tension ?? resolved.tension
+        });
+      },
+      follow: (pointsOrParent, options) => {
+        let spline;
+        if (pointsOrParent && typeof pointsOrParent === "object" && "pointAtDistance" in pointsOrParent) {
+          spline = pointsOrParent;
+        } else {
+          const resolved = resolveSplinePointsInput(pointsOrParent, host);
+          spline = createSplinePath(resolved.points, {
+            closed: options?.closed ?? options?.loop ?? resolved.closed,
+            tension: options?.tension ?? resolved.tension
+          });
+        }
+        if (spline.points.length === 0) {
+          splineFollowAgents.delete(node.id);
+          return false;
+        }
+        const startT = Math.max(0, Math.min(1, Number(options?.startProgress ?? 0)));
+        const startDist = startT * spline.length;
+        const startPos = spline.pointAtDistance(startDist);
+        handle.position = {
+          x: startPos.x,
+          y: options?.planeXZ ? handle.position.y : startPos.y,
+          z: startPos.z
+        };
+        splineFollowAgents.set(node.id, {
+          nodeId: node.id,
+          spline,
+          distance: startDist,
+          speed: Math.max(0.01, Number(options?.speed ?? 4)),
+          direction: 1,
+          loop: Boolean(options?.loop),
+          pingPong: Boolean(options?.pingPong),
+          faceDirection: options?.faceDirection !== false,
+          planeXZ: Boolean(options?.planeXZ),
+          onArrive: options?.onArrive
+        });
+        return true;
+      },
+      stop: () => {
+        splineFollowAgents.delete(node.id);
+      },
+      get isFollowing() {
+        return splineFollowAgents.has(node.id);
+      },
+      get progress() {
+        const ag = splineFollowAgents.get(node.id);
+        if (!ag || ag.spline.length <= 1e-6) return 0;
+        return Math.max(0, Math.min(1, ag.distance / ag.spline.length));
+      }
+    },
+    tween: {
+      to: (target, props, duration, options) => {
+        const targetHandle = target && typeof target === "object" && "id" in target && typeof target.id === "string" ? makeNodeHandle(target.id, host) ?? target : target;
+        if (!targetHandle) return -1;
+        const startPos = props.position && targetHandle.position ? { ...targetHandle.position } : null;
+        const startRot = props.rotation && targetHandle.rotation ? { ...targetHandle.rotation } : null;
+        const startScale = props.scale && targetHandle.scale ? { ...targetHandle.scale } : null;
+        const endPos = resolveVec3Input(props.position);
+        const endRot = resolveVec3Input(props.rotation);
+        const endScale = resolveVec3Input(props.scale);
+        const id = nextTweenId++;
+        const dur = Math.max(1e-3, Number(duration) || 1e-3);
+        activeTweens.set(id, {
+          id,
+          ownerNodeId: node.id,
+          delayRemaining: Math.max(0, Number(options?.delay ?? 0)),
+          elapsed: 0,
+          duration: dur,
+          ease: options?.ease ?? "outQuad",
+          repeat: Math.max(0, Math.floor(options?.repeat ?? 0)),
+          yoyo: Boolean(options?.yoyo),
+          reversed: false,
+          completedCount: 0,
+          apply: (t) => {
+            if (startPos && endPos) {
+              targetHandle.position = {
+                x: startPos.x + (endPos.x - startPos.x) * t,
+                y: startPos.y + (endPos.y - startPos.y) * t,
+                z: startPos.z + (endPos.z - startPos.z) * t
+              };
+            }
+            if (startRot && endRot) {
+              targetHandle.rotation = {
+                x: startRot.x + (endRot.x - startRot.x) * t,
+                y: startRot.y + (endRot.y - startRot.y) * t,
+                z: startRot.z + (endRot.z - startRot.z) * t
+              };
+            }
+            if (startScale && endScale) {
+              targetHandle.scale = {
+                x: startScale.x + (endScale.x - startScale.x) * t,
+                y: startScale.y + (endScale.y - startScale.y) * t,
+                z: startScale.z + (endScale.z - startScale.z) * t
+              };
+            }
+          },
+          onUpdate: options?.onUpdate,
+          onComplete: options?.onComplete
+        });
+        return id;
+      },
+      value: (from, to, duration, onUpdate, options) => {
+        const id = nextTweenId++;
+        const dur = Math.max(1e-3, Number(duration) || 1e-3);
+        activeTweens.set(id, {
+          id,
+          ownerNodeId: node.id,
+          delayRemaining: Math.max(0, Number(options?.delay ?? 0)),
+          elapsed: 0,
+          duration: dur,
+          ease: options?.ease ?? "outQuad",
+          repeat: Math.max(0, Math.floor(options?.repeat ?? 0)),
+          yoyo: Boolean(options?.yoyo),
+          reversed: false,
+          completedCount: 0,
+          apply: (t) => {
+            onUpdate(from + (to - from) * t);
+          },
+          onComplete: options?.onComplete
+        });
+        return id;
+      },
+      punchScale: (strength = 0.25, duration = 0.22) => {
+        const base = { ...handle.scale };
+        const id = nextTweenId++;
+        const dur = Math.max(0.05, Number(duration) || 0.22);
+        activeTweens.set(id, {
+          id,
+          ownerNodeId: node.id,
+          delayRemaining: 0,
+          elapsed: 0,
+          duration: dur,
+          ease: "linear",
+          repeat: 0,
+          yoyo: false,
+          reversed: false,
+          completedCount: 0,
+          apply: (t) => {
+            const pulse = Math.sin(t * Math.PI) * strength;
+            handle.scale = {
+              x: base.x * (1 + pulse),
+              y: base.y * (1 + pulse),
+              z: base.z * (1 + pulse)
+            };
+          },
+          onComplete: () => {
+            handle.scale = base;
+          }
+        });
+        return id;
+      },
+      shakePosition: (intensity = 0.18, duration = 0.25) => {
+        const base = { ...handle.position };
+        const id = nextTweenId++;
+        const dur = Math.max(0.05, Number(duration) || 0.25);
+        activeTweens.set(id, {
+          id,
+          ownerNodeId: node.id,
+          delayRemaining: 0,
+          elapsed: 0,
+          duration: dur,
+          ease: "linear",
+          repeat: 0,
+          yoyo: false,
+          reversed: false,
+          completedCount: 0,
+          apply: (t) => {
+            const decay = 1 - t;
+            const amp = intensity * decay;
+            handle.position = {
+              x: base.x + (Math.random() * 2 - 1) * amp,
+              y: base.y + (Math.random() * 2 - 1) * amp,
+              z: base.z + (Math.random() * 2 - 1) * amp
+            };
+          },
+          onComplete: () => {
+            handle.position = base;
+          }
+        });
+        return id;
+      },
+      cancel: (tweenId) => {
+        activeTweens.delete(tweenId);
+      },
+      cancelAll: () => {
+        for (const [twId, tw] of activeTweens.entries()) {
+          if (tw.ownerNodeId === node.id) activeTweens.delete(twId);
+        }
+      }
+    },
+    curve: buildCurveApi(),
+    crowd: {
+      moveTo: (target, options) => {
+        const v = resolveVec3Input(target);
+        if (!v) return;
+        setCrowdTarget(node.id, v, options);
+      },
+      stop: () => stopCrowdAgent(node.id),
+      get isMoving() {
+        return isCrowdMoving(node.id);
+      },
+      formation: (units, center, options) => {
+        const c = resolveVec3Input(center);
+        if (!c) return;
+        const nodes = world3.getNodes();
+        const ids = units.map((u) => resolveTemplateNode(u, nodes)?.id ?? (typeof u === "string" ? u : u?.id)).filter((id) => Boolean(id));
+        setCrowdFormation(ids, c, options);
+      },
+      stats: () => getCrowdStats()
+    },
+    projectile: {
+      launch: (options) => {
+        const nodes = world3.getNodes();
+        const targetId = options?.target ? resolveTemplateNode(options.target, nodes)?.id ?? (typeof options.target === "string" ? options.target : options.target?.id) : null;
+        const ownerId = options?.owner ? resolveTemplateNode(options.owner, nodes)?.id ?? (typeof options.owner === "string" ? options.owner : options.owner?.id) : node.id;
+        launchProjectile(node.id, {
+          direction: options?.direction ? resolveVec3Input(options.direction) ?? void 0 : void 0,
+          targetId,
+          ownerId,
+          mode: options?.mode,
+          speed: options?.speed,
+          gravity: options?.gravity,
+          turnRate: options?.turnRate,
+          maxLifetime: options?.maxLifetime,
+          hitRadius: options?.hitRadius,
+          targetTag: options?.targetTag,
+          damage: options?.damage,
+          destroyOnHit: options?.destroyOnHit,
+          onHit: options?.onHit ? (hitNodeId, pos) => {
+            options.onHit(makeNodeHandle(hitNodeId, host), pos);
+          } : void 0
+        });
+      },
+      reset: () => resetProjectileState(node.id)
+    },
+    anim: {
+      playBody: (clipName, opts) => {
+        world3.playBody?.(node.id, clipName, opts);
+      },
+      playUpper: (clipName, opts) => {
+        world3.playUpper?.(node.id, clipName, opts);
+      },
+      stopUpper: (fade2) => world3.stopUpper?.(node.id, fade2)
+    },
+    audio: {
+      playSfx: (assetId, opts) => {
+        const now = typeof performance !== "undefined" ? performance.now() : Date.now();
+        const last = sfxCooldownAt.get(assetId) ?? 0;
+        if (now - last < 40) return;
+        sfxCooldownAt.set(assetId, now);
+        playSound({ assetId, bus: "sfx", volume: opts?.volume, playbackRate: opts?.pitch, parent: obj ?? void 0 });
+      },
+      playBgm: (assetId, opts) => {
+        playSound({ assetId, bus: "music", volume: opts?.volume, loop: opts?.loop ?? true });
+      },
+      stopBgm: () => stopMusic()
+    },
+    fx: {
+      spawn: (effectId, position, options) => {
+        const nodes = world3.getNodes();
+        const id = `fx_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+        const s = options?.scale ?? 1;
+        const fxNode = {
+          ...node,
+          id,
+          name: `FX_${effectId.slice(0, 8)}`,
+          kind: "effect",
+          parentId: null,
+          visible: true,
+          locked: false,
+          position: [position.x, position.y, position.z],
+          rotation: [0, 0, 0],
+          scale: [s, s, s],
+          castShadow: false,
+          receiveShadow: false,
+          assetId: effectId,
+          slots: [],
+          gameplay: {},
+          physics: void 0,
+          effect: {
+            assetId: effectId,
+            quarksVersion: "1.0",
+            playing: true,
+            materialAssetId: null,
+            simulation: null
+          }
+        };
+        world3.setNodes({ ...nodes, [id]: fxNode });
+        const ttl = options?.autoDestroySec !== void 0 ? options.autoDestroySec : 3;
+        if (ttl > 0) {
+          const tid = nextTimerId++;
+          scriptTimers.set(tid, {
+            id: tid,
+            nodeId: id,
+            scriptId,
+            remaining: ttl,
+            interval: ttl,
+            repeat: false,
+            callback: () => destroyOrReleaseNode(id, host)
+          });
+        }
+      }
+    },
+    input: {
+      isPressed: (actionOrKey) => isActionPressed(actionOrKey) || isKeyHeld(actionOrKey) || isKeyHeld(`Key${actionOrKey.toUpperCase()}`),
+      justPressed: (actionOrKey) => wasActionTapped(actionOrKey) || wasKeyTapped(actionOrKey) || wasKeyTapped(`Key${actionOrKey.toUpperCase()}`),
+      isKeyPressed: (code) => isKeyHeld(code) || isKeyHeld(`Key${code.toUpperCase()}`),
+      justReleased: () => false,
+      axis1D: (action) => isActionPressed(action) ? 1 : 0,
+      axis2D: (action) => getActionAxis2D(action),
+      pointerDelta: () => ({ ...framePointerDelta }),
+      pointerPosition: () => ({ ...framePointerPos }),
+      wheelDelta: () => frameWheelDelta,
+      isMouseButtonPressed: (button) => (currMouseButtons & mouseButtonMask(button)) !== 0,
+      justPressedMouseButton: (button) => (currMouseButtons & mouseButtonMask(button)) !== 0 && (prevMouseButtons & mouseButtonMask(button)) === 0,
+      justReleasedMouseButton: (button) => (currMouseButtons & mouseButtonMask(button)) === 0 && (prevMouseButtons & mouseButtonMask(button)) !== 0
+    },
+    ui: {
+      getVar: (key) => uiValues().variables[key],
+      setVar: (key, value) => writeUiVariable(key, value),
+      onEvent: (eventName, handler) => {
+        ensureUiClickBridge();
+        const instKey = instanceKey2(node.id, scriptId);
+        let byEvent = uiEventHandlers.get(instKey);
+        if (!byEvent) {
+          byEvent = /* @__PURE__ */ new Map();
+          uiEventHandlers.set(instKey, byEvent);
+        }
+        let set = byEvent.get(eventName);
+        if (!set) {
+          set = /* @__PURE__ */ new Set();
+          byEvent.set(eventName, set);
+        }
+        set.add(handler);
+        return () => {
+          set?.delete(handler);
+        };
+      },
+      showScreen: (screenIdOrName) => {
+        const sid = resolveScreenNodeId(screenIdOrName);
+        if (sid) setScreenVisible(sid, true);
+      },
+      hideScreen: (screenIdOrName) => {
+        const sid = resolveScreenNodeId(screenIdOrName);
+        if (sid) setScreenVisible(sid, false);
+      },
+      toggleScreen: (screenIdOrName) => {
+        const sid = resolveScreenNodeId(screenIdOrName);
+        if (!sid) return;
+        const nodeTarget = world3.getNodes()[sid];
+        const curMap = uiValues().screens;
+        const cur = sid in curMap ? curMap[sid] : Boolean(nodeTarget?.screen?.visibleOnPlay ?? true);
+        setScreenVisible(sid, !cur);
+      },
+      isScreenVisible: (screenIdOrName) => {
+        const sid = resolveScreenNodeId(screenIdOrName);
+        if (!sid) return false;
+        const nodeTarget = world3.getNodes()[sid];
+        const curMap = uiValues().screens;
+        return sid in curMap ? curMap[sid] : Boolean(nodeTarget?.screen?.visibleOnPlay ?? true);
+      },
+      worldToScreen: (position) => {
+        const vec = resolveVec3Input(position);
+        if (!vec || !host.worldToScreen) return null;
+        return host.worldToScreen([vec.x, vec.y, vec.z]);
+      }
+    },
+    scene: {
+      currentId: () => world3.getActiveSceneId(),
+      load: (sceneId, options) => {
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new CustomEvent("t3d:load-scene", { detail: { sceneId, spawnPoint: options?.spawnPoint } }));
+        }
+      }
+    },
+    global: {
+      get: (key) => globalMemory.get(key),
+      set: (key, value) => {
+        globalMemory.set(key, value);
+      },
+      remove: (key) => {
+        globalMemory.delete(key);
+      }
+    },
+    storage: {
+      get: (key) => persistentMemory.get(key),
+      set: (key, value) => {
+        persistentMemory.set(key, value);
+      },
+      remove: (key) => {
+        persistentMemory.delete(key);
+      }
+    },
+    tables: {
+      getRow: (tableId, rowId) => findRow(world3.getGameDatabase(), tableId, rowId)?.fields ?? null
+    },
+    log: (...args) => world3.log("info", args.map(String).join(" ")),
+    warn: (...args) => world3.log("warn", args.map(String).join(" "))
+  };
+}
+function buildSystemWorldApi(systemId, host) {
+  const world3 = getRuntimeWorld();
+  const sysNodeId = `__system__:${systemId}`;
+  const poolHelpers = {
+    preload: (templateOrPrefab, count) => {
+      const key = resolvePoolKey(templateOrPrefab);
+      if (!key) return;
+      const targetCount = Math.max(0, Math.min(200, Math.floor(count)));
+      let bucket = poolBuckets.get(key);
+      if (!bucket) {
+        bucket = { all: [], idle: [] };
+        poolBuckets.set(key, bucket);
+      }
+      while (bucket.all.length < targetCount) {
+        const spawned = spawnFromTemplateOrPrefab(templateOrPrefab, { visible: false }, host);
+        if (!spawned) break;
+        if (!bucket.templatePos && spawned.templatePos) bucket.templatePos = spawned.templatePos;
+        if (!bucket.templateRotDeg && spawned.templateRotDeg) bucket.templateRotDeg = spawned.templateRotDeg;
+        if (!bucket.templateScale && spawned.templateScale) bucket.templateScale = spawned.templateScale;
+        if (bucket.templateTagId === void 0 && spawned.templateTagId !== void 0) bucket.templateTagId = spawned.templateTagId;
+        if (bucket.templateTagIds === void 0 && spawned.templateTagIds !== void 0) bucket.templateTagIds = spawned.templateTagIds;
+        pooledInactive.add(spawned.rootId);
+        nodePoolKey.set(spawned.rootId, key);
+        bucket.all.push(spawned.rootId);
+        bucket.idle.push(spawned.rootId);
+      }
+    },
+    acquire: (templateOrPrefab, opts) => {
+      const key = resolvePoolKey(templateOrPrefab);
+      if (!key) return null;
+      let bucket = poolBuckets.get(key);
+      if (!bucket) {
+        bucket = { all: [], idle: [] };
+        poolBuckets.set(key, bucket);
+      }
+      const allNodes = world3.getNodes();
+      let pickedId = null;
+      while (bucket.idle.length > 0) {
+        const cand = bucket.idle.pop();
+        if (allNodes[cand]) {
+          pickedId = cand;
+          break;
+        }
+      }
+      if (!pickedId) {
+        const spawned = spawnFromTemplateOrPrefab(templateOrPrefab, {
+          position: opts?.position,
+          rotation: opts?.rotation,
+          scale: opts?.scale,
+          visible: true
+        }, host);
+        if (!spawned) return null;
+        if (!bucket.templatePos && spawned.templatePos) bucket.templatePos = spawned.templatePos;
+        if (!bucket.templateRotDeg && spawned.templateRotDeg) bucket.templateRotDeg = spawned.templateRotDeg;
+        if (!bucket.templateScale && spawned.templateScale) bucket.templateScale = spawned.templateScale;
+        if (bucket.templateTagId === void 0 && spawned.templateTagId !== void 0) bucket.templateTagId = spawned.templateTagId;
+        if (bucket.templateTagIds === void 0 && spawned.templateTagIds !== void 0) bucket.templateTagIds = spawned.templateTagIds;
+        pickedId = spawned.rootId;
+        nodePoolKey.set(pickedId, key);
+        bucket.all.push(pickedId);
+      } else {
+        pooledInactive.delete(pickedId);
+        const n = world3.getNodes()[pickedId];
+        const objTarget = host.resolveObject(pickedId);
+        const posVec = resolveVec3Input(opts?.position);
+        const rotVec = resolveVec3Input(opts?.rotation);
+        const scaleVec = resolveVec3Input(opts?.scale);
+        if (n) {
+          n.visible = true;
+          n.tagId = bucket.templateTagId;
+          n.tagIds = bucket.templateTagIds ? [...bucket.templateTagIds] : void 0;
+          if (posVec) n.position = [posVec.x, posVec.y, posVec.z];
+          else if (bucket.templatePos) n.position = [...bucket.templatePos];
+          if (rotVec) n.rotation = [rotVec.x * 180 / Math.PI, rotVec.y * 180 / Math.PI, rotVec.z * 180 / Math.PI];
+          else if (bucket.templateRotDeg) n.rotation = [...bucket.templateRotDeg];
+          if (scaleVec) n.scale = [scaleVec.x, scaleVec.y, scaleVec.z];
+          else if (bucket.templateScale) n.scale = [...bucket.templateScale];
+        }
+        if (objTarget && n) {
+          objTarget.visible = true;
+          objTarget.position.set(n.position[0], n.position[1], n.position[2]);
+          objTarget.rotation.set(
+            n.rotation[0] * Math.PI / 180,
+            n.rotation[1] * Math.PI / 180,
+            n.rotation[2] * Math.PI / 180
+          );
+          objTarget.scale.set(n.scale[0], n.scale[1], n.scale[2]);
+        }
+      }
+      resetAndInvokeSpawn(pickedId, opts?.payload, host);
+      return makeNodeHandle(pickedId, host);
+    },
+    release: (target) => {
+      const targetId = typeof target === "string" ? target : target?.id;
+      if (targetId) destroyOrReleaseNode(targetId, host);
+    },
+    stats: (templateOrPrefab) => {
+      if (templateOrPrefab) {
+        const key = resolvePoolKey(templateOrPrefab);
+        const b = key ? poolBuckets.get(key) : void 0;
+        const total2 = b ? b.all.length : 0;
+        const pooled2 = b ? b.idle.length : 0;
+        return { active: Math.max(0, total2 - pooled2), pooled: pooled2, total: total2 };
+      }
+      let total = 0;
+      let pooled = 0;
+      for (const b of poolBuckets.values()) {
+        total += b.all.length;
+        pooled += b.idle.length;
+      }
+      return { active: Math.max(0, total - pooled), pooled, total };
+    }
+  };
+  return {
+    get elapsedTime() {
+      return simElapsed;
+    },
+    findNodeById: (id) => makeNodeHandle(id, host),
+    findNodesByTag: (tag) => {
+      const all = world3.getNodes();
+      return Object.values(all).filter((n) => !isNodePooledInactive(n.id, all) && nodeHasTag(n, tag)).map((n) => makeNodeHandle(n.id, host)).filter(Boolean);
+    },
+    findNodesInRadius: (center, radius, tag) => {
+      const r2 = radius * radius;
+      const all = world3.getNodes();
+      return Object.values(all).filter((n) => {
+        if (isNodePooledInactive(n.id, all)) return false;
+        if (tag && !nodeHasTag(n, tag)) return false;
+        const p = host.resolveObject(n.id)?.position;
+        const x = p ? p.x : n.position[0];
+        const y = p ? p.y : n.position[1];
+        const z = p ? p.z : n.position[2];
+        const dx = x - center.x;
+        const dy = y - center.y;
+        const dz = z - center.z;
+        return dx * dx + dy * dy + dz * dz <= r2;
+      }).map((n) => makeNodeHandle(n.id, host)).filter(Boolean);
+    },
+    cloneNode: (templateOrName, opts) => {
+      const tpl = resolveTemplateNode(templateOrName, world3.getNodes());
+      if (!tpl) return null;
+      const spawnedId = cloneSceneSubtree(tpl, opts, host);
+      if (!spawnedId) return null;
+      const initMsg = typeof opts?.initMessage === "string" ? opts.initMessage : void 0;
+      if (initMsg) {
+        messageQueue.push({ targetNodeId: spawnedId, name: initMsg, payload: opts?.initPayload });
+      }
+      return makeNodeHandle(spawnedId, host);
+    },
+    spawnPrefab: (prefabId, opts) => {
+      const posVec = resolveVec3Input(opts?.position);
+      const pos = posVec ? [posVec.x, posVec.y, posVec.z] : [0, 0, 0];
+      const spawnedId = world3.instantiatePrefab?.(prefabId, { position: pos }) ?? null;
+      if (!spawnedId) return null;
+      const spawnedNode = world3.getNodes()[spawnedId];
+      if (spawnedNode && opts?.name) spawnedNode.name = opts.name;
+      return makeNodeHandle(spawnedId, host);
+    },
+    destroyNode: (target) => {
+      const targetId = typeof target === "string" ? target : target?.id;
+      if (targetId) destroyOrReleaseNode(targetId, host);
+    },
+    pool: poolHelpers,
+    broadcast: (name, payload) => {
+      messageQueue.push({ targetNodeId: null, name, payload });
+    },
+    after: (seconds, callback) => {
+      const id = nextTimerId++;
+      const delay = Math.max(0, Number(seconds) || 0);
+      scriptTimers.set(id, { id, nodeId: sysNodeId, scriptId: systemId, remaining: delay, interval: delay, repeat: false, callback });
+      return id;
+    },
+    every: (seconds, callback) => {
+      const id = nextTimerId++;
+      const interval = Math.max(0.016, Number(seconds) || 0.1);
+      scriptTimers.set(id, { id, nodeId: sysNodeId, scriptId: systemId, remaining: interval, interval, repeat: true, callback });
+      return id;
+    },
+    cancelTimer: (timerId) => {
+      scriptTimers.delete(timerId);
+    },
+    curve: buildCurveApi(),
+    crowd: {
+      moveTo: (targetNode, target, options) => {
+        const nodes = world3.getNodes();
+        const id = resolveTemplateNode(targetNode, nodes)?.id ?? (typeof targetNode === "string" ? targetNode : targetNode?.id);
+        const v = resolveVec3Input(target);
+        if (id && v) setCrowdTarget(id, v, options);
+      },
+      stop: (targetNode) => {
+        const nodes = world3.getNodes();
+        const id = resolveTemplateNode(targetNode, nodes)?.id ?? (typeof targetNode === "string" ? targetNode : targetNode?.id);
+        if (id) stopCrowdAgent(id);
+      },
+      formation: (units, center, options) => {
+        const c = resolveVec3Input(center);
+        if (!c) return;
+        const nodes = world3.getNodes();
+        const ids = units.map((u) => resolveTemplateNode(u, nodes)?.id ?? (typeof u === "string" ? u : u?.id)).filter((id) => Boolean(id));
+        setCrowdFormation(ids, c, options);
+      },
+      stats: () => getCrowdStats()
+    },
+    projectile: {
+      launch: (projNode, options) => {
+        const nodes = world3.getNodes();
+        const id = resolveTemplateNode(projNode, nodes)?.id ?? (typeof projNode === "string" ? projNode : projNode?.id);
+        if (!id) return;
+        const targetId = options?.target ? resolveTemplateNode(options.target, nodes)?.id ?? (typeof options.target === "string" ? options.target : options.target?.id) : null;
+        const ownerId = options?.owner ? resolveTemplateNode(options.owner, nodes)?.id ?? (typeof options.owner === "string" ? options.owner : options.owner?.id) : null;
+        launchProjectile(id, {
+          direction: options?.direction ? resolveVec3Input(options.direction) ?? void 0 : void 0,
+          targetId,
+          ownerId,
+          mode: options?.mode,
+          speed: options?.speed,
+          gravity: options?.gravity,
+          turnRate: options?.turnRate,
+          maxLifetime: options?.maxLifetime,
+          hitRadius: options?.hitRadius,
+          targetTag: options?.targetTag,
+          damage: options?.damage,
+          destroyOnHit: options?.destroyOnHit,
+          onHit: options?.onHit ? (hitNodeId, pos) => {
+            options.onHit(makeNodeHandle(hitNodeId, host), pos);
+          } : void 0
+        });
+      },
+      reset: (projNode) => {
+        const nodes = world3.getNodes();
+        const id = resolveTemplateNode(projNode, nodes)?.id ?? (typeof projNode === "string" ? projNode : projNode?.id);
+        if (id) resetProjectileState(id);
+      }
+    },
+    input: {
+      isPressed: (actionOrKey) => isActionPressed(actionOrKey) || isKeyHeld(actionOrKey) || isKeyHeld(`Key${actionOrKey.toUpperCase()}`),
+      justPressed: (actionOrKey) => wasActionTapped(actionOrKey) || wasKeyTapped(actionOrKey) || wasKeyTapped(`Key${actionOrKey.toUpperCase()}`),
+      isKeyPressed: (code) => isKeyHeld(code) || isKeyHeld(`Key${code.toUpperCase()}`),
+      justReleased: () => false,
+      axis1D: (action) => isActionPressed(action) ? 1 : 0,
+      axis2D: (action) => getActionAxis2D(action),
+      pointerDelta: () => ({ ...framePointerDelta }),
+      pointerPosition: () => ({ ...framePointerPos }),
+      wheelDelta: () => frameWheelDelta,
+      isMouseButtonPressed: (button) => (currMouseButtons & mouseButtonMask(button)) !== 0,
+      justPressedMouseButton: (button) => (currMouseButtons & mouseButtonMask(button)) !== 0 && (prevMouseButtons & mouseButtonMask(button)) === 0,
+      justReleasedMouseButton: (button) => (currMouseButtons & mouseButtonMask(button)) === 0 && (prevMouseButtons & mouseButtonMask(button)) !== 0
+    },
+    ui: {
+      getVar: (key) => uiValues().variables[key],
+      setVar: (key, value) => writeUiVariable(key, value),
+      onEvent: (eventName, handler) => {
+        ensureUiClickBridge();
+        const instKey = `sys:${systemId}`;
+        let byEvent = uiEventHandlers.get(instKey);
+        if (!byEvent) {
+          byEvent = /* @__PURE__ */ new Map();
+          uiEventHandlers.set(instKey, byEvent);
+        }
+        let set = byEvent.get(eventName);
+        if (!set) {
+          set = /* @__PURE__ */ new Set();
+          byEvent.set(eventName, set);
+        }
+        set.add(handler);
+        return () => {
+          set?.delete(handler);
+        };
+      },
+      showScreen: (screenIdOrName) => {
+        const sid = resolveScreenNodeId(screenIdOrName);
+        if (sid) setScreenVisible(sid, true);
+      },
+      hideScreen: (screenIdOrName) => {
+        const sid = resolveScreenNodeId(screenIdOrName);
+        if (sid) setScreenVisible(sid, false);
+      },
+      toggleScreen: (screenIdOrName) => {
+        const sid = resolveScreenNodeId(screenIdOrName);
+        if (!sid) return;
+        const nodeTarget = world3.getNodes()[sid];
+        const curMap = uiValues().screens;
+        const cur = sid in curMap ? curMap[sid] : Boolean(nodeTarget?.screen?.visibleOnPlay ?? true);
+        setScreenVisible(sid, !cur);
+      },
+      isScreenVisible: (screenIdOrName) => {
+        const sid = resolveScreenNodeId(screenIdOrName);
+        if (!sid) return false;
+        const nodeTarget = world3.getNodes()[sid];
+        const curMap = uiValues().screens;
+        return sid in curMap ? curMap[sid] : Boolean(nodeTarget?.screen?.visibleOnPlay ?? true);
+      },
+      worldToScreen: (position) => {
+        const vec = resolveVec3Input(position);
+        if (!vec || !host.worldToScreen) return null;
+        return host.worldToScreen([vec.x, vec.y, vec.z]);
+      }
+    },
+    scene: {
+      currentId: () => world3.getActiveSceneId(),
+      load: (sceneId, options) => {
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new CustomEvent("t3d:load-scene", { detail: { sceneId, spawnPoint: options?.spawnPoint } }));
+        }
+      }
+    },
+    global: {
+      get: (key) => globalMemory.get(key),
+      set: (key, value) => {
+        globalMemory.set(key, value);
+      },
+      remove: (key) => {
+        globalMemory.delete(key);
+      }
+    },
+    storage: {
+      get: (key) => persistentMemory.get(key),
+      set: (key, value) => {
+        persistentMemory.set(key, value);
+      },
+      remove: (key) => {
+        persistentMemory.delete(key);
+      }
+    },
+    tables: {
+      getRow: (tableId, rowId) => findRow(world3.getGameDatabase(), tableId, rowId)?.fields ?? null
+    },
+    log: (...args) => world3.log("info", args.map(String).join(" ")),
+    warn: (...args) => world3.log("warn", args.map(String).join(" "))
+  };
+}
+function clearScriptRuntimeState() {
+  for (const [sysId, sys] of compiledSystems.entries()) {
+    if (sys.mounted) {
+      sys.mounted = false;
+      const noopHost = { ready: false, resolveObject: () => null, updateAnimations: () => {
+      } };
+      const api = buildSystemWorldApi(sysId, noopHost);
+      try {
+        sys.def.onDispose?.(api, sys.state);
+        sys.def.onDestroy?.(api, sys.state);
+      } catch {
+      }
+      sys.state = {};
+    }
+  }
+  instanceStates.clear();
+  messageQueue.length = 0;
+  uiEventHandlers.clear();
+  uiEventQueue.length = 0;
+  globalMemory.clear();
+  navAgents.clear();
+  pooledInactive.clear();
+  nodePoolKey.clear();
+  poolBuckets.clear();
+  scriptTimers.clear();
+  splineFollowAgents.clear();
+  activeTweens.clear();
+  sfxCooldownAt.clear();
+  nextTimerId = 1;
+  nextTweenId = 1;
+  simElapsed = 0;
+  framePointerDelta = { x: 0, y: 0 };
+  framePointerPos = { x: 0, y: 0 };
+  frameWheelDelta = 0;
+  prevMouseButtons = 0;
+  currMouseButtons = 0;
+}
+function stepProjectScripts(dt, host) {
+  const world3 = getRuntimeWorld();
+  if (world3.getPlayState() !== "playing") {
+    clearScriptRuntimeState();
+    return;
+  }
+  ensureUiClickBridge();
+  bindProjectileRuntimeHooks({
+    onHit: ({ projectileId, targetId, ownerId, damage, position }) => {
+      messageQueue.push({
+        targetNodeId: targetId,
+        name: "onProjectileHit",
+        payload: { projectileId, targetId, ownerId, damage, position },
+        senderId: projectileId
+      });
+      messageQueue.push({
+        targetNodeId: projectileId,
+        name: "onProjectileHit",
+        payload: { projectileId, targetId, ownerId, damage, position },
+        senderId: projectileId
+      });
+    },
+    onRecycle: (nodeId, runtimeHost) => {
+      destroyOrReleaseNode(nodeId, runtimeHost);
+    },
+    isNodeInactive: (nodeId, nodes2) => isNodePooledInactive(nodeId, nodes2)
+  });
+  simElapsed += Math.max(0, dt);
+  framePointerDelta = host.peekPointerDelta?.() ?? host.pointerDelta?.() ?? { x: 0, y: 0 };
+  framePointerPos = host.pointerNormalized?.() ?? { x: 0, y: 0 };
+  frameWheelDelta = host.peekWheel?.() ?? host.wheel?.() ?? 0;
+  prevMouseButtons = currMouseButtons;
+  currMouseButtons = host.mouseButtons ? host.mouseButtons() : host.rightHeld?.() ? 2 : 0;
+  const nodes = world3.getNodes();
+  const activeKeys = /* @__PURE__ */ new Set();
+  for (const sysId of compiledSystems.keys()) {
+    activeKeys.add(`sys:${sysId}`);
+  }
+  if (navAgents.size > 0 && dt > 0) {
+    for (const [agentId, agent] of navAgents) {
+      const obj = host.resolveObject(agentId);
+      const n = nodes[agentId];
+      if (!obj && !n) {
+        navAgents.delete(agentId);
+        continue;
+      }
+      const targetPt = agent.path[agent.index];
+      if (!targetPt) {
+        navAgents.delete(agentId);
+        continue;
+      }
+      const curX = obj ? obj.position.x : n.position[0];
+      const curY = obj ? obj.position.y : n.position[1];
+      const curZ = obj ? obj.position.z : n.position[2];
+      const dx = targetPt[0] - curX;
+      const dy = targetPt[1] - curY;
+      const dz = targetPt[2] - curZ;
+      const dist = Math.hypot(dx, dy, dz);
+      const stepDist = agent.speed * dt;
+      if (dist <= Math.max(0.05, stepDist)) {
+        if (obj) obj.position.set(targetPt[0], targetPt[1], targetPt[2]);
+        agent.index += 1;
+        if (agent.index >= agent.path.length) navAgents.delete(agentId);
+      } else {
+        const inv = stepDist / dist;
+        if (obj) {
+          obj.position.set(curX + dx * inv, curY + dy * inv, curZ + dz * inv);
+          obj.rotation.y = Math.atan2(dx, dz);
+        }
+      }
+    }
+  }
+  for (const node of Object.values(nodes)) {
+    if (isNodePooledInactive(node.id, nodes)) continue;
+    const projectScripts = node.gameplay?.packs?.__project__;
+    if (!projectScripts || typeof projectScripts !== "object") continue;
+    for (const [scriptId, rawParams] of Object.entries(projectScripts)) {
+      if (rawParams && typeof rawParams === "object" && rawParams.__enabled === false) {
+        continue;
+      }
+      const def = compiledBehaviors.get(scriptId);
+      if (!def) continue;
+      const key = instanceKey2(node.id, scriptId);
+      activeKeys.add(key);
+      let rec = instanceStates.get(key);
+      if (!rec) {
+        rec = {
+          nodeId: node.id,
+          scriptId,
+          started: false,
+          state: def.state ? { ...def.state() } : {}
+        };
+        instanceStates.set(key, rec);
+      }
+      const ctx = buildScriptContext(node, scriptId, rawParams, rec.state, host);
+      measureCost(`script:${scriptId}`, () => {
+        try {
+          if (!rec.started) {
+            rec.started = true;
+            def.onStart?.(ctx);
+          }
+          def.onUpdate?.(ctx, dt);
+        } catch (error) {
+          world3.log("error", `\u811A\u672C "${def.name}" \u8FD0\u884C\u9519\u8BEF: ${error instanceof Error ? error.message : String(error)}`);
+        }
+      });
+    }
+  }
+  if (splineFollowAgents.size > 0 && dt > 0) {
+    for (const [agentId, ag] of Array.from(splineFollowAgents.entries())) {
+      const n = nodes[agentId];
+      const h = makeNodeHandle(agentId, host);
+      if (!n || !h || isNodePooledInactive(agentId, nodes)) {
+        splineFollowAgents.delete(agentId);
+        continue;
+      }
+      const totalLen = ag.spline.length;
+      if (totalLen <= 1e-6) {
+        splineFollowAgents.delete(agentId);
+        ag.onArrive?.();
+        continue;
+      }
+      let nextDist = ag.distance + ag.speed * dt * ag.direction;
+      let arrived = false;
+      if (ag.loop) {
+        nextDist = (nextDist % totalLen + totalLen) % totalLen;
+      } else if (ag.pingPong) {
+        if (nextDist >= totalLen) {
+          nextDist = totalLen - (nextDist - totalLen);
+          ag.direction = -1;
+        } else if (nextDist <= 0) {
+          nextDist = -nextDist;
+          ag.direction = 1;
+        }
+      } else {
+        if (nextDist >= totalLen) {
+          nextDist = totalLen;
+          arrived = true;
+        } else if (nextDist <= 0) {
+          nextDist = 0;
+          arrived = true;
+        }
+      }
+      ag.distance = nextDist;
+      const pt = ag.spline.pointAtDistance(nextDist);
+      const cur = h.position;
+      h.position = { x: pt.x, y: ag.planeXZ ? cur.y : pt.y, z: pt.z };
+      if (ag.faceDirection) {
+        const tan2 = ag.spline.tangentAtDistance(nextDist);
+        const tx = tan2.x * ag.direction;
+        const tz = tan2.z * ag.direction;
+        if (Math.abs(tx) > 1e-5 || Math.abs(tz) > 1e-5) {
+          const r = h.rotation;
+          h.rotation = { x: r.x, y: Math.atan2(tx, tz), z: r.z };
+        }
+      }
+      if (arrived) {
+        splineFollowAgents.delete(agentId);
+        try {
+          ag.onArrive?.();
+        } catch (error) {
+          world3.log("error", `Spline \u5230\u8FBE\u56DE\u8C03\u9519\u8BEF: ${error instanceof Error ? error.message : String(error)}`);
+        }
+      }
+    }
+  }
+  if (activeTweens.size > 0 && dt > 0) {
+    for (const tw of Array.from(activeTweens.values())) {
+      if (!activeTweens.has(tw.id)) continue;
+      const ownerExists = tw.ownerNodeId.startsWith("__system__:") || Boolean(nodes[tw.ownerNodeId]) && !isNodePooledInactive(tw.ownerNodeId, nodes);
+      if (!ownerExists) {
+        activeTweens.delete(tw.id);
+        continue;
+      }
+      if (tw.delayRemaining > 0) {
+        tw.delayRemaining -= dt;
+        if (tw.delayRemaining > 0) continue;
+        tw.elapsed += -tw.delayRemaining;
+        tw.delayRemaining = 0;
+      } else {
+        tw.elapsed += dt;
+      }
+      const rawT = Math.min(1, tw.elapsed / tw.duration);
+      const progress = tw.reversed ? 1 - rawT : rawT;
+      const eased = evalEasing(tw.ease, progress);
+      try {
+        tw.apply(eased);
+        tw.onUpdate?.(eased);
+      } catch (error) {
+        world3.log("error", `Tween \u66F4\u65B0\u9519\u8BEF: ${error instanceof Error ? error.message : String(error)}`);
+        activeTweens.delete(tw.id);
+        continue;
+      }
+      if (rawT >= 1) {
+        if (tw.completedCount < tw.repeat) {
+          tw.completedCount += 1;
+          tw.elapsed = 0;
+          if (tw.yoyo) tw.reversed = !tw.reversed;
+        } else {
+          activeTweens.delete(tw.id);
+          try {
+            tw.onComplete?.();
+          } catch (error) {
+            world3.log("error", `Tween \u5B8C\u6210\u56DE\u8C03\u9519\u8BEF: ${error instanceof Error ? error.message : String(error)}`);
+          }
+        }
+      }
+    }
+  }
+  if (scriptTimers.size > 0 && dt > 0) {
+    const timerSnapshot = Array.from(scriptTimers.values());
+    for (const timer of timerSnapshot) {
+      if (!scriptTimers.has(timer.id)) continue;
+      const isSystemTimer = timer.nodeId.startsWith("__system__:");
+      const tNode = isSystemTimer ? null : nodes[timer.nodeId];
+      if (!isSystemTimer && (!tNode || isNodePooledInactive(timer.nodeId, nodes))) {
+        scriptTimers.delete(timer.id);
+        continue;
+      }
+      timer.remaining -= dt;
+      if (timer.remaining <= 0) {
+        if (timer.repeat) {
+          timer.remaining += timer.interval;
+          if (timer.remaining <= 0) timer.remaining = timer.interval;
+        } else {
+          scriptTimers.delete(timer.id);
+        }
+        try {
+          timer.callback();
+        } catch (error) {
+          world3.log("error", `\u811A\u672C\u5B9A\u65F6\u5668\u56DE\u8C03\u9519\u8BEF: ${error instanceof Error ? error.message : String(error)}`);
+        }
+      }
+    }
+  }
+  if (messageQueue.length > 0) {
+    const batch = messageQueue.splice(0, messageQueue.length);
+    for (const msg of batch) {
+      for (const rec of instanceStates.values()) {
+        if (msg.targetNodeId && msg.targetNodeId !== rec.nodeId) continue;
+        const def = compiledBehaviors.get(rec.scriptId);
+        const node = nodes[rec.nodeId];
+        if (!def?.onMessage || !node) continue;
+        const rawParams = node.gameplay?.packs?.__project__?.[rec.scriptId];
+        if (rawParams && typeof rawParams === "object" && rawParams.__enabled === false) continue;
+        const ctx = buildScriptContext(node, rec.scriptId, rawParams, rec.state, host);
+        const sender = msg.senderId ? makeNodeHandle(msg.senderId, host) : void 0;
+        try {
+          def.onMessage(ctx, { name: msg.name, payload: msg.payload, sender });
+        } catch (error) {
+          world3.log("error", `\u811A\u672C "${def.name}" \u6D88\u606F\u5904\u7406\u9519\u8BEF: ${error instanceof Error ? error.message : String(error)}`);
+        }
+      }
+    }
+  }
+  if (uiEventQueue.length > 0) {
+    const uiBatch = uiEventQueue.splice(0, uiEventQueue.length);
+    for (const evt of uiBatch) {
+      for (const [instKey, byEvent] of uiEventHandlers.entries()) {
+        if (!activeKeys.has(instKey)) continue;
+        const handlers = byEvent.get(evt.eventName);
+        if (!handlers || handlers.size === 0) continue;
+        for (const fn of [...handlers]) {
+          try {
+            fn(evt.payload);
+          } catch (error) {
+            world3.log("error", `UI \u4E8B\u4EF6 "${evt.eventName}" \u5904\u7406\u9519\u8BEF: ${error instanceof Error ? error.message : String(error)}`);
+          }
+        }
+      }
+    }
+  }
+  for (const [key, rec] of instanceStates.entries()) {
+    if (activeKeys.has(key)) continue;
+    uiEventHandlers.delete(key);
+    const def = compiledBehaviors.get(rec.scriptId);
+    const node = nodes[rec.nodeId];
+    if (def?.onDestroy && node) {
+      const ctx = buildScriptContext(node, rec.scriptId, {}, rec.state, host);
+      try {
+        def.onDestroy(ctx);
+      } catch {
+      }
+    }
+    instanceStates.delete(key);
+  }
+}
+var compiledBehaviors, compiledSystems, instanceStates, messageQueue, uiEventHandlers, uiEventQueue, uiClickSubscribed, globalMemory, persistentMemory, navAgents, pooledInactive, nodePoolKey, poolBuckets, scriptTimers, splineFollowAgents, activeTweens, sfxCooldownAt, nextTimerId, nextTweenId, simElapsed, framePointerDelta, framePointerPos, frameWheelDelta, prevMouseButtons, currMouseButtons;
+var init_scriptRuntime = __esm({
+  "src/core/codeAssets/scriptRuntime.ts"() {
+    "use strict";
+    init_session4();
+    init_runtimeTags();
+    init_session8();
+    init_session9();
+    init_session();
+    init_registry();
+    init_audio();
+    init_frameProfile();
+    init_motion();
+    init_sceneRuntime();
+    init_values();
+    init_world();
+    init_actionMap();
+    init_fieldSchema();
+    init_compiler();
+    compiledBehaviors = /* @__PURE__ */ new Map();
+    compiledSystems = /* @__PURE__ */ new Map();
+    instanceStates = /* @__PURE__ */ new Map();
+    messageQueue = [];
+    uiEventHandlers = /* @__PURE__ */ new Map();
+    uiEventQueue = [];
+    uiClickSubscribed = false;
+    globalMemory = /* @__PURE__ */ new Map();
+    persistentMemory = /* @__PURE__ */ new Map();
+    navAgents = /* @__PURE__ */ new Map();
+    pooledInactive = /* @__PURE__ */ new Set();
+    nodePoolKey = /* @__PURE__ */ new Map();
+    poolBuckets = /* @__PURE__ */ new Map();
+    scriptTimers = /* @__PURE__ */ new Map();
+    splineFollowAgents = /* @__PURE__ */ new Map();
+    activeTweens = /* @__PURE__ */ new Map();
+    sfxCooldownAt = /* @__PURE__ */ new Map();
+    nextTimerId = 1;
+    nextTweenId = 1;
+    simElapsed = 0;
+    framePointerDelta = { x: 0, y: 0 };
+    framePointerPos = { x: 0, y: 0 };
+    frameWheelDelta = 0;
+    prevMouseButtons = 0;
+    currMouseButtons = 0;
+    registerRuntimeSystem("core.projectScripts", RUNTIME_STAGE.PRE_PHYSICS + 2, stepProjectScripts);
+  }
+});
+
+// src/core/codeAssets/shaderRuntime.ts
+import { Color as Color5, DataTexture as DataTexture2, RGBAFormat as RGBAFormat2 } from "three";
+import * as tsl from "three/tsl";
+import { MeshBasicNodeMaterial as MeshBasicNodeMaterial3, MeshStandardNodeMaterial } from "three/webgpu";
+var init_shaderRuntime = __esm({
+  "src/core/codeAssets/shaderRuntime.ts"() {
+    "use strict";
+    init_fieldSchema();
+    init_compiler();
+  }
+});
+
+// src/core/codeAssets/workspace.ts
+import { create as create4 } from "zustand";
+var useCodeAssetStore;
+var init_workspace = __esm({
+  "src/core/codeAssets/workspace.ts"() {
+    "use strict";
+    init_folders();
+    init_library();
+    init_disk();
+    init_electronBridge();
+    init_store2();
+    init_scriptRuntime();
+    init_shaderRuntime();
+    useCodeAssetStore = create4((set) => ({
+      assets: {},
+      selectedId: null,
+      revision: 0,
+      selectAsset: (id) => set({ selectedId: id }),
+      upsertAsset: (record) => set((state) => ({ assets: { ...state.assets, [record.id]: record }, revision: state.revision + 1 })),
+      removeAsset: (id) => set((state) => {
+        const next = { ...state.assets };
+        delete next[id];
+        return {
+          assets: next,
+          selectedId: state.selectedId === id ? null : state.selectedId,
+          revision: state.revision + 1
+        };
+      }),
+      clear: () => set((state) => ({ assets: {}, selectedId: null, revision: state.revision + 1 }))
+    }));
   }
 });
 
@@ -4422,9 +9773,9 @@ function contains(nodes, ancestor, id) {
   return false;
 }
 function nextOrder2(nodes, parentId) {
-  let max3 = -1;
-  for (const node of Object.values(nodes)) if (node.parentId === parentId) max3 = Math.max(max3, node.order);
-  return max3 + 1;
+  let max4 = -1;
+  for (const node of Object.values(nodes)) if (node.parentId === parentId) max4 = Math.max(max4, node.order);
+  return max4 + 1;
 }
 function uniqueName2(nodes, base) {
   const names = new Set(Object.values(nodes).map((node) => node.name));
@@ -4455,7 +9806,7 @@ var init_prefab = __esm({
 });
 
 // src/editor/prefs/store.ts
-import { create as create2 } from "zustand";
+import { create as create5 } from "zustand";
 function readPrefs() {
   const fallback = { language: "system", autoSave: true, openLastProject: true, uiScale: 1 };
   try {
@@ -4487,7 +9838,7 @@ var init_store = __esm({
     KEY = "t3d-editor-prefs";
     initial = readPrefs();
     persist(initial);
-    usePrefsStore = create2((set) => ({
+    usePrefsStore = create5((set) => ({
       ...initial,
       settingsOpen: false,
       setLanguage: (language) => set((state) => {
@@ -4580,9 +9931,24 @@ var init_messages = __esm({
       "library.item.physics": "\u7269\u7406",
       "library.item.physicsDetail": "\u78B0\u649E\u4F53\u3001\u521A\u4F53\u548C\u8BD5\u73A9\u65F6\u7684\u7269\u7406\u6A21\u62DF\u3002",
       "library.item.physicsPoints": "\u521A\u4F53\u4E0E\u78B0\u649E\u4F53\n\u573A\u666F\u91CD\u529B\u4E0B\u7684\u6A21\u62DF",
+      "library.item.buoyancy": "\u6D6E\u529B",
+      "library.item.buoyancyDetail": "\u57FA\u4E8E\u5F53\u524D\u6C34\u4F53\u6CE2\u6D6A\u7684\u7269\u7406\u6D6E\u529B\u4E0E\u6C34\u963B\u5C3C\uFF08\u4F9D\u8D56\u7269\u7406\u7CFB\u7EDF\uFF09\u3002",
+      "library.item.buoyancyPoints": "\u591A\u70B9\u6D6E\u529B\u91C7\u6837\n\u6C34\u963B\u5C3C\u4E0E\u6CE2\u6D6A\u8DDF\u968F",
       "library.item.navigation": "\u5BFC\u822A",
       "library.item.navigationDetail": "\u4ECE\u9759\u6001\u8868\u9762\u70D8\u7119\u5BFC\u822A\u7F51\u683C\u3002\u8BD5\u73A9\u65F6\u969C\u788D\u53EF\u4EE5\u6316\u5F00\u7F51\u683C\u3002",
       "library.item.navigationPoints": "\u5BFC\u822A\u7F51\u683C\u70D8\u7119\n\u5BFB\u8DEF\u4E0E\u969C\u788D",
+      "library.item.spline": "Spline \u8DEF\u5F84\u8FD0\u52A8",
+      "library.item.splineDetail": "\u914D\u5408 3D \u89C6\u53E3\u53EF\u7F16\u8F91 Spline \u66F2\u7EBF\u8282\u70B9\uFF0C\u6309\u5F27\u957F\u5300\u901F\u5DE1\u903B\u6216\u8F68\u9053\u79FB\u52A8\u3002",
+      "library.item.splinePoints": "3D \u89C6\u53E3\u66F2\u8FB9\u7F16\u8F91\u5668\n\u5F27\u957F\u5300\u901F\u8FD0\u52A8\n\u5355\u6B21 / \u5FAA\u73AF / \u5F80\u8FD4",
+      "library.item.tween": "Tween \u8865\u95F4\u52A8\u6548",
+      "library.item.tweenDetail": "\u4E3A\u7269\u4F53\u63D0\u4F9B\u4F4D\u7F6E\u3001\u65CB\u8F6C\u3001\u7F29\u653E\u4E0E\u60AC\u6D6E\u6D6E\u52A8\u7B49\u7F13\u52A8\u5FAA\u73AF\u52A8\u6548\u3002",
+      "library.item.tweenPoints": "12 \u79CD\u5E38\u7528\u7F13\u52A8\u66F2\u7EBF\n\u5FAA\u73AF\u4E0E Yoyo \u5F80\u8FD4\n\u811A\u672C self.tween \u94FE\u5F0F\u9A71\u52A8",
+      "library.item.crowd": "\u7FA4\u4F53\u907F\u8BA9 (Crowd)",
+      "library.item.crowdDetail": "\u4E3A\u591A\u5355\u4F4D\u63D0\u4F9B\u5C40\u90E8\u907F\u8BA9\u5206\u79BB\u3001\u51DD\u805A\u5BF9\u9F50\u4E0E\u6A2A\u6392/\u65B9\u9635/\u6954\u5F62/\u73AF\u5F62\u7F16\u961F\u79FB\u52A8\u3002",
+      "library.item.crowdPoints": "\u7A7A\u95F4\u7F51\u683C\u5C40\u90E8\u907F\u8BA9\n\u6A2A\u6392 / \u65B9\u9635 / \u6954\u5F62 / \u73AF\u5F62\u7F16\u961F\n\u811A\u672C self.crowd / world.crowd",
+      "library.item.projectile": "\u901A\u7528\u5F39\u9053 (Projectile)",
+      "library.item.projectileDetail": "\u652F\u6301\u76F4\u7EBF\u3001\u8FFD\u8E2A\u4E0E\u629B\u7269\u7EBF\u5F39\u9053\u98DE\u884C\uFF0C\u81EA\u52A8\u68C0\u6D4B\u76EE\u6807\u6807\u7B7E\u547D\u4E2D\u5E76\u56DE\u6C60\u6216\u9500\u6BC1\u3002",
+      "library.item.projectilePoints": "\u76F4\u7EBF / \u8FFD\u8E2A / \u629B\u7269\u7EBF\n\u76EE\u6807\u6807\u7B7E\u547D\u4E2D\u4E0E\u56DE\u6C60\n\u81EA\u52A8\u6D3E\u53D1 onProjectileHit",
       "library.item.particles": "\u7C92\u5B50",
       "library.item.particlesDetail": "\u7C92\u5B50\u8FD0\u884C\u65F6\u3002\u5173\u6389\u540E\u8D44\u6E90\u548C\u7269\u4F53\u4E0A\u7684\u6570\u636E\u8FD8\u5728\uFF0C\u53EA\u662F\u4E0D\u518D\u64AD\u653E\u3002",
       "library.item.particlesPoints": "\u7C92\u5B50\u6A21\u62DF\n\u73B0\u6210\u9884\u8BBE\u5728\u7D20\u6750\u680F",
@@ -4605,6 +9971,14 @@ var init_messages = __esm({
       "buoyancy.needsDynamic": "\u9700\u8981\u52A8\u6001\u521A\u4F53\u624D\u80FD\u53D7\u529B\u6F02\u6D6E",
       "buoyancy.makeDynamic": "\u8BBE\u4E3A\u52A8\u6001\u521A\u4F53",
       "projectSettings.buoyancyDetail": "\u57FA\u4E8E\u5F53\u524D\u6C34\u4F53\u6CE2\u6D6A\u7684\u7269\u7406\u6D6E\u529B\u4E0E\u6C34\u963B\u5C3C\uFF08\u4F9D\u8D56\u7269\u7406\u7CFB\u7EDF\uFF09\u3002",
+      "spline.title": "Spline \u8DEF\u5F84\u8FD0\u52A8",
+      "projectSettings.splineDetail": "\u6CBF\u8DEF\u5F84\u7236\u8282\u70B9\u7684\u6709\u5E8F\u5B50\u8282\u70B9\u4F5C\u5E73\u6ED1\u6837\u6761\u66F2\u7EBF\u5300\u901F\u8FD0\u52A8\u3002",
+      "tween.title": "Tween \u8865\u95F4\u52A8\u6548",
+      "projectSettings.tweenDetail": "\u4E3A\u7269\u4F53\u63D0\u4F9B\u4F4D\u7F6E\u3001\u65CB\u8F6C\u3001\u7F29\u653E\u4E0E\u60AC\u6D6E\u6D6E\u52A8\u7B49\u7F13\u52A8\u5FAA\u73AF\u52A8\u6548\u3002",
+      "crowd.title": "\u7FA4\u4F53\u907F\u8BA9 (Crowd)",
+      "projectSettings.crowdDetail": "\u4E3A\u591A\u5355\u4F4D\u63D0\u4F9B\u5C40\u90E8\u907F\u8BA9\u5206\u79BB\u3001\u51DD\u805A\u5BF9\u9F50\u4E0E\u6A2A\u6392/\u65B9\u9635/\u6954\u5F62/\u73AF\u5F62\u7F16\u961F\u79FB\u52A8\u3002",
+      "projectile.title": "\u901A\u7528\u5F39\u9053 (Projectile)",
+      "projectSettings.projectileDetail": "\u652F\u6301\u76F4\u7EBF\u3001\u8FFD\u8E2A\u4E0E\u629B\u7269\u7EBF\u5F39\u9053\u98DE\u884C\uFF0C\u81EA\u52A8\u68C0\u6D4B\u76EE\u6807\u6807\u7B7E\u547D\u4E2D\u5E76\u56DE\u6C60\u6216\u9500\u6BC1\u3002",
       "water.title": "\u6C34\u4F53",
       "water.enable": "\u542F\u7528\u6C34\u4F53",
       "water.groupColor": "\u6C34\u8272\u4E0E\u5438\u6536",
@@ -4725,6 +10099,7 @@ var init_messages = __esm({
       "menu.camera": "\u76F8\u673A",
       "menu.effect": "\u7279\u6548",
       "menu.screen": "\u754C\u9762",
+      "menu.spline": "Spline \u66F2\u7EBF",
       "component.add": "\u6DFB\u52A0\u7EC4\u4EF6",
       "component.search": "\u641C\u7D22\u7EC4\u4EF6\u2026",
       "component.remove": "\u79FB\u9664\u7EC4\u4EF6",
@@ -4766,6 +10141,7 @@ var init_messages = __esm({
       "kind.camera": "\u76F8\u673A",
       "kind.effect": "\u7279\u6548",
       "kind.screen": "\u754C\u9762",
+      "kind.spline": "Spline \u66F2\u7EBF",
       "tool.newScene": "\u65B0\u5EFA\u573A\u666F",
       "tool.save": "\u4FDD\u5B58\u5230\u672C\u5730\u7F13\u5B58",
       "tool.undo": "\u64A4\u9500",
@@ -6149,9 +11525,24 @@ var init_messages = __esm({
       "library.item.physics": "Physics",
       "library.item.physicsDetail": "Colliders, rigidbodies, and simulation while playing.",
       "library.item.physicsPoints": "Rigidbodies and colliders\nSimulation under scene gravity",
+      "library.item.buoyancy": "Buoyancy",
+      "library.item.buoyancyDetail": "Wave-driven physical buoyancy and water drag (requires Physics).",
+      "library.item.buoyancyPoints": "Multi-point buoyancy sampling\nWater drag & wave following",
       "library.item.navigation": "Navigation",
       "library.item.navigationDetail": "Bakes a navmesh from static surfaces. Obstacles can carve it during play.",
       "library.item.navigationPoints": "Navmesh baking\nPaths and obstacles",
+      "library.item.spline": "Spline Motion",
+      "library.item.splineDetail": "Constant-speed arc-length movement along editable 3D viewport Spline curves.",
+      "library.item.splinePoints": "3D viewport curve editor\nArc-length uniform speed\nOnce / Loop / Ping-Pong",
+      "library.item.tween": "Tween Motion",
+      "library.item.tweenDetail": "Drive looping or one-shot eased position, rotation, scale, and float animations.",
+      "library.item.tweenPoints": "12 built-in easing curves\nLoop & Yoyo repeat\nScript self.tween API",
+      "library.item.crowd": "Crowd Avoidance",
+      "library.item.crowdDetail": "Local separation steering and line/grid/wedge/circle formation movement for multiple units.",
+      "library.item.crowdPoints": "Spatial hash local avoidance\nLine / Grid / Wedge / Circle formations\nScript self.crowd / world.crowd",
+      "library.item.projectile": "Projectile",
+      "library.item.projectileDetail": "Linear, homing, and ballistic projectile flight with tag-based hit detection and auto-recycle.",
+      "library.item.projectilePoints": "Linear / Homing / Ballistic\nTag hit detection & pooling\nEmits onProjectileHit",
       "library.item.particles": "Particles",
       "library.item.particlesDetail": "Particle runtime. Turning this off keeps the data and stops playback.",
       "library.item.particlesPoints": "Particle simulation\nPresets live in Assets",
@@ -6174,6 +11565,14 @@ var init_messages = __esm({
       "buoyancy.needsDynamic": "Requires a dynamic rigid body to float",
       "buoyancy.makeDynamic": "Set dynamic",
       "projectSettings.buoyancyDetail": "Wave-driven physics buoyancy and water drag (requires physics).",
+      "spline.title": "Spline Path",
+      "projectSettings.splineDetail": "Move objects smoothly along ordered child waypoints of a path node.",
+      "tween.title": "Tween Motion",
+      "projectSettings.tweenDetail": "Drive looping or one-shot eased position, rotation, scale, and float animations.",
+      "crowd.title": "Crowd Avoidance",
+      "projectSettings.crowdDetail": "Local separation steering and line/grid/wedge/circle formation movement for multiple units.",
+      "projectile.title": "Projectile",
+      "projectSettings.projectileDetail": "Linear, homing, and ballistic projectile flight with tag-based hit detection and auto-recycle.",
       "water.title": "Water",
       "water.enable": "Enable water",
       "water.groupColor": "Color & absorption",
@@ -6294,6 +11693,7 @@ var init_messages = __esm({
       "menu.camera": "Camera",
       "menu.effect": "Effect",
       "menu.screen": "UI",
+      "menu.spline": "Spline Curve",
       "component.add": "Add Component",
       "component.search": "Search components\u2026",
       "component.remove": "Remove Component",
@@ -6335,6 +11735,7 @@ var init_messages = __esm({
       "kind.camera": "Camera",
       "kind.effect": "Effect",
       "kind.screen": "UI",
+      "kind.spline": "Spline Curve",
       "tool.newScene": "New Scene",
       "tool.save": "Save to local cache",
       "tool.undo": "Undo",
@@ -7678,90 +13079,13 @@ var init_i18n = __esm({
   }
 });
 
-// src/gameplay/types.ts
-var CORE_GAMEPLAY_PACK_ID;
-var init_types2 = __esm({
-  "src/gameplay/types.ts"() {
-    "use strict";
-    CORE_GAMEPLAY_PACK_ID = "t3d.core";
-  }
-});
-
-// src/gameplay/registry.ts
-function registerGameplayPack(pack) {
-  packs.set(pack.id, pack);
-}
-function resolveEnabledPackIds(enabled) {
-  const next = /* @__PURE__ */ new Set([CORE_GAMEPLAY_PACK_ID, ...enabled ?? []]);
-  let changed = true;
-  while (changed) {
-    changed = false;
-    for (const id of [...next]) {
-      for (const dep of packs.get(id)?.dependencies ?? []) {
-        if (!next.has(dep)) {
-          next.add(dep);
-          changed = true;
-        }
-      }
-    }
-  }
-  return next;
-}
-function listEnabledTableSchemas(enabled) {
-  const on = resolveEnabledPackIds(enabled);
-  const schemas = [];
-  for (const pack of packs.values()) {
-    if (!on.has(pack.id)) continue;
-    for (const table of pack.tables ?? []) schemas.push(table);
-  }
-  return schemas;
-}
-function createDefaultGameDatabase(enabled) {
-  const tables = {};
-  for (const schema of listEnabledTableSchemas(enabled)) {
-    tables[schema.tableId] = structuredClone(schema.defaultRows ?? []);
-  }
-  return { tables };
-}
-function ensureGameDatabase(value, enabled) {
-  const base = createDefaultGameDatabase(enabled);
-  if (!value || typeof value !== "object") return base;
-  const tables = value.tables;
-  if (!tables || typeof tables !== "object") return base;
-  for (const [tableId, rows] of Object.entries(tables)) {
-    if (!Array.isArray(rows)) continue;
-    base.tables[tableId] = rows.flatMap((row) => cleanRow(row));
-  }
-  return base;
-}
-function cleanRow(value) {
-  if (!value || typeof value !== "object") return [];
-  const row = value;
-  if (typeof row.id !== "string" || typeof row.name !== "string") return [];
-  return [{
-    id: row.id,
-    name: row.name,
-    category: typeof row.category === "string" ? row.category : "",
-    description: typeof row.description === "string" ? row.description : "",
-    fields: row.fields && typeof row.fields === "object" ? { ...row.fields } : {}
-  }];
-}
-var packs;
-var init_registry2 = __esm({
-  "src/gameplay/registry.ts"() {
-    "use strict";
-    init_types2();
-    packs = /* @__PURE__ */ new Map();
-  }
-});
-
 // src/gameplay/corePack.ts
 var tags, juice;
 var init_corePack = __esm({
   "src/gameplay/corePack.ts"() {
     "use strict";
-    init_registry2();
-    init_types2();
+    init_registry();
+    init_types();
     tags = [
       { id: "Team.Player", name: "\u73A9\u5BB6\u9635\u8425", category: "Team", description: "\u4E3B\u89D2\u4E0E\u53CB\u519B", fields: { color: "#3b82f6", defaultDurationSec: 0, blockPrefix: "" } },
       { id: "Team.Enemy", name: "\u654C\u4EBA\u9635\u8425", category: "Team", description: "\u654C\u65B9\u5355\u4F4D", fields: { color: "#ef4444", defaultDurationSec: 0, blockPrefix: "" } },
@@ -7812,1355 +13136,6 @@ var init_corePack = __esm({
         }
       ]
     });
-  }
-});
-
-// src/capabilities/physics/defaults.ts
-function defaultNodePhysics(kind) {
-  if (kind === "plane") {
-    return { ...SHARED, body: "static", shape: "box", size: [1, 1, 0.05] };
-  }
-  if (kind === "sphere") {
-    return { ...SHARED, body: "dynamic", shape: "sphere", size: [0.5, 0.5, 0.5] };
-  }
-  if (kind === "capsule") {
-    return { ...SHARED, body: "dynamic", shape: "capsule", size: [0.3, 1.1, 0.3] };
-  }
-  if (kind === "cylinder") {
-    return { ...SHARED, body: "dynamic", shape: "cylinder", size: [0.5, 1, 0.5] };
-  }
-  if (kind === "cone") {
-    return { ...SHARED, body: "dynamic", shape: "cone", size: [0.5, 1, 0.5] };
-  }
-  if (kind === "model") {
-    return { ...SHARED, body: "static", shape: "convex", size: [1, 1, 1] };
-  }
-  return { ...SHARED, body: "dynamic", shape: "box", size: [1, 1, 1] };
-}
-var SHARED;
-var init_defaults5 = __esm({
-  "src/capabilities/physics/defaults.ts"() {
-    "use strict";
-    SHARED = {
-      trigger: false,
-      mass: 1,
-      friction: 0.7,
-      restitution: 0.05,
-      linearDamping: 0.1,
-      angularDamping: 0.1,
-      gravityScale: 1
-    };
-  }
-});
-
-// src/capabilities/navigation/archive.ts
-function navEpoch() {
-  return epoch;
-}
-function navRecord(sceneId) {
-  return saved.get(sceneId) ?? null;
-}
-function forgetNavMesh(sceneId) {
-  saved.delete(sceneId);
-}
-function hydrateNavMeshes(value) {
-  saved.clear();
-  epoch += 1;
-  if (!value || typeof value !== "object") return;
-  for (const [id, record] of Object.entries(value)) {
-    const cleaned = cleanRecord(record);
-    if (cleaned) saved.set(id, cleaned);
-  }
-}
-function decodeBytes(value) {
-  const binary = atob(value);
-  const bytes = new Uint8Array(binary.length);
-  for (let index = 0; index < binary.length; index += 1) bytes[index] = binary.charCodeAt(index);
-  return bytes;
-}
-function cleanRecord(value) {
-  if (!value || typeof value !== "object") return null;
-  const record = value;
-  if (typeof record.bytes !== "string" || record.bytes.length === 0) return null;
-  if (record.mode !== "solo" && record.mode !== "tileCache") return null;
-  if (typeof record.signature !== "string") return null;
-  return {
-    bytes: record.bytes,
-    mode: record.mode,
-    signature: record.signature,
-    triangles: typeof record.triangles === "number" ? record.triangles : 0
-  };
-}
-var saved, epoch;
-var init_archive = __esm({
-  "src/capabilities/navigation/archive.ts"() {
-    "use strict";
-    saved = /* @__PURE__ */ new Map();
-    epoch = 0;
-  }
-});
-
-// src/capabilities/navigation/defaults.ts
-var init_defaults6 = __esm({
-  "src/capabilities/navigation/defaults.ts"() {
-    "use strict";
-  }
-});
-
-// src/capabilities/navigation/recastNav.ts
-var recastNav_exports = {};
-__export(recastNav_exports, {
-  createRecastNavigation: () => createRecastNavigation
-});
-import {
-  exportNavMesh,
-  exportTileCache,
-  getNavMeshPositionsAndIndices,
-  importNavMesh,
-  importTileCache,
-  init,
-  NavMeshQuery
-} from "recast-navigation";
-import { createDefaultTileCacheMeshProcess } from "recast-navigation/generators";
-async function createRecastNavigation() {
-  await init();
-  return new RecastNavigation();
-}
-function abortError() {
-  const error = new Error("aborted");
-  error.name = "AbortError";
-  return error;
-}
-var RecastNavigation;
-var init_recastNav = __esm({
-  "src/capabilities/navigation/recastNav.ts"() {
-    "use strict";
-    RecastNavigation = class {
-      navMesh = null;
-      tileCache = null;
-      query = null;
-      retained = [];
-      carved = /* @__PURE__ */ new Map();
-      worker = null;
-      mode = "solo";
-      async bake(positions, indices, config, signal) {
-        if (signal.aborted) throw abortError();
-        this.worker?.terminate();
-        const worker = new Worker(new URL("./bake.worker.ts", import.meta.url), { type: "module" });
-        this.worker = worker;
-        const response = await new Promise((resolve, reject) => {
-          const stop = () => {
-            worker.terminate();
-            reject(abortError());
-          };
-          if (signal.aborted) {
-            stop();
-            return;
-          }
-          signal.addEventListener("abort", stop, { once: true });
-          worker.onmessage = (event) => {
-            signal.removeEventListener("abort", stop);
-            resolve(event.data);
-          };
-          worker.onerror = () => {
-            signal.removeEventListener("abort", stop);
-            reject(new Error("navigation worker failed"));
-          };
-          const positionCopy = new Float32Array(positions);
-          const indexCopy = new Uint32Array(indices);
-          worker.postMessage(
-            { positions: positionCopy, indices: indexCopy, config },
-            [positionCopy.buffer, indexCopy.buffer]
-          );
-        });
-        if (this.worker === worker) this.worker = null;
-        worker.terminate();
-        if (signal.aborted) throw abortError();
-        if (!response.ok) throw new Error(response.error || "bake failed");
-        await this.restore({ bytes: response.bytes, mode: response.mode });
-      }
-      async restore(record) {
-        this.releaseMesh();
-        if (record.mode === "tileCache") {
-          const imported = importTileCache(record.bytes, createDefaultTileCacheMeshProcess());
-          this.navMesh = imported.navMesh;
-          this.tileCache = imported.tileCache;
-          this.retained = [imported.allocator, imported.compressor];
-          this.mode = "tileCache";
-        } else {
-          this.navMesh = importNavMesh(record.bytes).navMesh;
-          this.mode = "solo";
-        }
-        this.query = new NavMeshQuery(this.navMesh);
-        this.query.defaultQueryHalfExtents = { x: 2, y: 4, z: 2 };
-      }
-      clear() {
-        this.releaseMesh();
-      }
-      obstacles(items) {
-        const cache = this.tileCache;
-        const mesh = this.navMesh;
-        if (!cache || !mesh || this.mode !== "tileCache") return;
-        let changed = this.carved.size > 0 || items.length > 0;
-        for (const obstacle of this.carved.values()) cache.removeObstacle(obstacle);
-        this.carved.clear();
-        for (const item of items) {
-          const added = cache.addCylinderObstacle(
-            { x: item.position[0], y: item.position[1], z: item.position[2] },
-            item.radius,
-            item.height
-          );
-          if (!added.success || !added.obstacle) continue;
-          this.carved.set(item.id, added.obstacle);
-        }
-        if (!changed) return;
-        for (let step = 0; step < 8; step += 1) {
-          const updated = cache.update(mesh);
-          if (updated.upToDate) break;
-        }
-      }
-      findPath(start, end) {
-        if (!this.query) return null;
-        const result = this.query.computePath(
-          { x: start[0], y: start[1], z: start[2] },
-          { x: end[0], y: end[1], z: end[2] }
-        );
-        if (!result.success || result.path.length === 0) return null;
-        return result.path.map((point2) => [point2.x, point2.y, point2.z]);
-      }
-      debug() {
-        if (!this.navMesh) return null;
-        const [positions, indices] = getNavMeshPositionsAndIndices(this.navMesh);
-        if (positions.length === 0 || indices.length === 0) return null;
-        return {
-          positions: Float32Array.from(positions),
-          indices: Uint32Array.from(indices)
-        };
-      }
-      exportRecord() {
-        if (!this.navMesh) return null;
-        if (this.mode === "tileCache" && this.tileCache) {
-          return { bytes: new Uint8Array(exportTileCache(this.navMesh, this.tileCache)), mode: "tileCache" };
-        }
-        return { bytes: new Uint8Array(exportNavMesh(this.navMesh)), mode: "solo" };
-      }
-      dispose() {
-        this.worker?.terminate();
-        this.worker = null;
-        this.releaseMesh();
-      }
-      releaseMesh() {
-        this.carved.clear();
-        this.query?.destroy();
-        this.query = null;
-        this.tileCache?.destroy();
-        this.tileCache = null;
-        this.navMesh?.destroy();
-        this.navMesh = null;
-        this.retained.splice(0, this.retained.length);
-        this.mode = "solo";
-      }
-    };
-  }
-});
-
-// src/capabilities/navigation/session.ts
-import { create as create3 } from "zustand";
-function tr(key, fallback) {
-  return getRuntimeWorld().translate?.(key) ?? fallback;
-}
-function hydrateNavigation(value) {
-  hydrateNavMeshes(value);
-  loadedScene = "";
-}
-function cancelNavBake() {
-  controller?.abort();
-  controller = null;
-  pending2 = null;
-  if (useNavUi.getState().phase === "baking") {
-    useNavUi.setState({ phase: "idle", text: "" });
-  }
-}
-function tickNavigation() {
-  const runtime2 = getRuntimeWorld();
-  if (!capabilityEnabled(runtime2.getCapabilities(), "navigation")) {
-    if (instance || controller || debugMesh || loadedScene) disposeWorld();
-    return;
-  }
-  const sceneId = runtime2.getActiveSceneId();
-  const ui = useNavUi.getState();
-  if (ui.phase === "baking" && ui.sceneId !== sceneId) cancelNavBake();
-  if (!activating && (loadedScene !== sceneId || seenEpoch !== navEpoch())) {
-    activating = true;
-    void activate(sceneId).finally(() => {
-      activating = false;
-    });
-  }
-  if (!instance || loadedScene !== sceneId) return;
-  applyObstacles(runtime2.getPlayState() === "playing" ? collectObstacles(runtime2.getNodes()) : []);
-}
-async function activate(sceneId) {
-  const ticket = life;
-  const record = navRecord(sceneId);
-  seenEpoch = navEpoch();
-  if (useNavUi.getState().phase === "baking" && useNavUi.getState().sceneId === sceneId) {
-    loadedScene = sceneId;
-    return;
-  }
-  if (!record) {
-    instance?.clear();
-    loadedScene = sceneId;
-    obstacleKey = "";
-    pullDebug();
-    if (useNavUi.getState().phase !== "baking") {
-      useNavUi.setState({ phase: "idle", text: "", sceneId, signature: "", triangles: 0 });
-    }
-    return;
-  }
-  try {
-    const nav = await world2();
-    if (ticket !== life || getRuntimeWorld().getActiveSceneId() !== sceneId) return;
-    await nav.restore({ bytes: decodeBytes(record.bytes), mode: record.mode });
-    if (ticket !== life || getRuntimeWorld().getActiveSceneId() !== sceneId) return;
-    loadedScene = sceneId;
-    obstacleKey = "";
-    pullDebug();
-    useNavUi.setState({
-      phase: "ready",
-      text: tr("navigation.ready", "Navigation ready"),
-      sceneId,
-      signature: record.signature,
-      triangles: record.triangles
-    });
-  } catch (error) {
-    if (ticket !== life) return;
-    const text = error instanceof Error ? error.message : String(error);
-    useNavUi.setState({ phase: "error", text, sceneId });
-  }
-}
-async function world2() {
-  if (instance) return instance;
-  const ticket = life;
-  if (!opening) opening = Promise.resolve().then(() => (init_recastNav(), recastNav_exports)).then((module) => module.createRecastNavigation());
-  const created = await opening;
-  opening = null;
-  if (ticket !== life || !capabilityEnabled(getRuntimeWorld().getCapabilities(), "navigation")) {
-    created.dispose();
-    throw abortError2();
-  }
-  if (instance && instance !== created) created.dispose();
-  instance ??= created;
-  return instance;
-}
-function applyObstacles(items) {
-  const key = items.map((item) => [
-    item.id,
-    item.position.map((value) => value.toFixed(2)).join(","),
-    item.radius.toFixed(2),
-    item.height.toFixed(2)
-  ].join(":")).join("|");
-  if (key === obstacleKey) return;
-  obstacleKey = key;
-  instance?.obstacles(items);
-  pullDebug();
-}
-function collectObstacles(nodes) {
-  const items = [];
-  for (const node of Object.values(nodes)) {
-    if (!node.visible || node.navigation?.role !== "obstacle") continue;
-    const pose = worldPose(nodes, node.id);
-    const radius = Math.max(0.05, node.navigation.radius) * Math.max(Math.abs(pose.scale.x), Math.abs(pose.scale.z));
-    const height = Math.max(0.05, node.navigation.height) * Math.abs(pose.scale.y);
-    items.push({
-      id: node.id,
-      position: [pose.position.x, pose.position.y - height / 2, pose.position.z],
-      radius,
-      height
-    });
-  }
-  return items;
-}
-function pullDebug() {
-  debugMesh = instance?.debug() ?? null;
-}
-function disposeWorld() {
-  life += 1;
-  controller?.abort();
-  controller = null;
-  pending2 = null;
-  instance?.dispose();
-  instance = null;
-  opening = null;
-  loadedScene = "";
-  obstacleKey = "";
-  debugMesh = null;
-  if (useNavUi.getState().phase === "baking") useNavUi.setState({ phase: "idle", text: "" });
-}
-function abortError2() {
-  const error = new Error("aborted");
-  error.name = "AbortError";
-  return error;
-}
-var useNavUi, instance, opening, life, loadedScene, seenEpoch, activating, controller, pending2, obstacleKey, debugMesh;
-var init_session5 = __esm({
-  "src/capabilities/navigation/session.ts"() {
-    "use strict";
-    init_registry();
-    init_transform();
-    init_world();
-    init_archive();
-    init_defaults6();
-    useNavUi = create3(() => ({
-      phase: "idle",
-      text: "",
-      sceneId: "",
-      signature: "",
-      triangles: 0
-    }));
-    instance = null;
-    opening = null;
-    life = 0;
-    loadedScene = "";
-    seenEpoch = -1;
-    activating = false;
-    controller = null;
-    pending2 = null;
-    obstacleKey = "";
-    debugMesh = null;
-  }
-});
-
-// src/capabilities/particles/readQuarks.ts
-function readQuarksDocument(json) {
-  if (!json || typeof json !== "object") return null;
-  const record = json;
-  if (record.version === "3.0" && record.shape && typeof record.shape === "object") {
-    const body = { ...record };
-    delete body.material;
-    delete body.texture;
-    return {
-      simulation: { format: "system", body },
-      appearance: appearanceFromFields(record, DEFAULT_APPEARANCE)
-    };
-  }
-  if (record.object && typeof record.object === "object") {
-    const system = findSystem(record.object);
-    return {
-      simulation: { format: "loader", body: record },
-      appearance: appearanceFromLoader(record, system)
-    };
-  }
-  return null;
-}
-function asSimulation(value) {
-  if (!value || typeof value !== "object") return null;
-  const record = value;
-  if ((record.format === "system" || record.format === "loader") && record.body && typeof record.body === "object") {
-    return { format: record.format, body: record.body };
-  }
-  return readQuarksDocument(value)?.simulation ?? null;
-}
-function appearanceFromLoader(root, system) {
-  const materials = Array.isArray(root.materials) ? root.materials : [];
-  const materialId = system && typeof system.material === "string" ? system.material : "";
-  const material = materials.find((item) => item && typeof item === "object" && item.uuid === materialId);
-  const appearance = appearanceFromFields(material ?? system ?? {}, DEFAULT_APPEARANCE);
-  appearance.image = firstImage(root);
-  return appearance;
-}
-function appearanceFromFields(source, fallback) {
-  const premultiplied = source.premultipliedAlpha === true;
-  return {
-    color: cssColor(source.color) ?? fallback.color,
-    blend: premultiplied ? "premultiply" : blendFromThree(source.blending, fallback.blend),
-    opacity: typeof source.opacity === "number" ? source.opacity : fallback.opacity,
-    depthWrite: typeof source.depthWrite === "boolean" ? source.depthWrite : fallback.depthWrite,
-    image: fallback.image
-  };
-}
-function blendFromThree(value, fallback) {
-  if (value === 2) return "additive";
-  if (value === 4) return "multiply";
-  if (value === 1) return "alpha";
-  if (value === 5) return "premultiply";
-  return fallback;
-}
-function cssColor(value) {
-  if (typeof value !== "number" || !Number.isFinite(value)) return null;
-  return `#${Math.max(0, Math.min(16777215, value)).toString(16).padStart(6, "0")}`;
-}
-function firstImage(root) {
-  if (!Array.isArray(root.images)) return null;
-  for (const image of root.images) {
-    if (image && typeof image === "object" && typeof image.url === "string") {
-      const url = image.url;
-      if (url.length > 0) return url;
-    }
-  }
-  return null;
-}
-function findSystem(value) {
-  if (!value || typeof value !== "object") return null;
-  const record = value;
-  if (record.ps && typeof record.ps === "object") return record.ps;
-  if (Array.isArray(record.children)) {
-    for (const child of record.children) {
-      const found = findSystem(child);
-      if (found) return found;
-    }
-  }
-  return null;
-}
-var DEFAULT_APPEARANCE;
-var init_readQuarks = __esm({
-  "src/capabilities/particles/readQuarks.ts"() {
-    "use strict";
-    DEFAULT_APPEARANCE = {
-      color: "#ff8c33",
-      blend: "additive",
-      opacity: 1,
-      depthWrite: false,
-      image: null
-    };
-  }
-});
-
-// src/capabilities/particles/simulationForm.ts
-function readRange(value) {
-  if (!value || typeof value !== "object") return { min: 0, max: 0, curve: false };
-  const record = value;
-  if (record.type === "ConstantValue" && typeof record.value === "number") return { min: record.value, max: record.value, curve: false };
-  if (record.type === "IntervalValue" && typeof record.a === "number" && typeof record.b === "number") {
-    return { min: record.a, max: record.b, curve: false };
-  }
-  return { min: 0, max: 0, curve: true };
-}
-function systemBodyForPlayback(body) {
-  if (!body || typeof body !== "object") return body;
-  const record = body;
-  if (record.renderMode !== 3) return body;
-  const settings = settingsOf(record);
-  const stored = readRange(settings.startLength);
-  if (stored.curve || stored.min >= 2) return body;
-  return {
-    ...record,
-    rendererEmitterSettings: {
-      ...settings,
-      startLength: { type: "ConstantValue", value: TRAIL_SAMPLES },
-      followLocalOrigin: settings.followLocalOrigin === true
-    }
-  };
-}
-function settingsOf(record) {
-  return record.rendererEmitterSettings && typeof record.rendererEmitterSettings === "object" ? record.rendererEmitterSettings : {};
-}
-var TRAIL_SAMPLES;
-var init_simulationForm = __esm({
-  "src/capabilities/particles/simulationForm.ts"() {
-    "use strict";
-    TRAIL_SAMPLES = 30;
-  }
-});
-
-// src/capabilities/particles/tslBatch.ts
-import {
-  AdditiveBlending,
-  Color as Color4,
-  CustomBlending,
-  MultiplyBlending,
-  NormalBlending,
-  OneFactor,
-  OneMinusSrcAlphaFactor,
-  Vector2 as Vector22
-} from "three";
-import {
-  attribute,
-  cameraPosition as cameraPosition2,
-  cameraProjectionMatrix,
-  cameraViewMatrix,
-  cross,
-  float as float2,
-  floor,
-  fract,
-  length as length2,
-  max as max2,
-  mix as mix4,
-  mod,
-  modelWorldMatrix as modelWorldMatrix2,
-  normalize as normalize2,
-  positionGeometry as positionGeometry2,
-  texture as texture2,
-  uniform as uniform3,
-  uv,
-  vec2 as vec22,
-  vec3 as vec32,
-  vec4 as vec43
-} from "three/tsl";
-import { MeshBasicNodeMaterial as MeshBasicNodeMaterial2 } from "three/webgpu";
-import {
-  BatchedRenderer,
-  RenderMode,
-  SpriteBatch,
-  TrailBatch
-} from "three.quarks";
-function sameColor(a, b) {
-  const left = a.color;
-  const right = b.color;
-  if (!left || !right) return left === right;
-  return left.r === right.r && left.g === right.g && left.b === right.b;
-}
-function sameBatch(a, b) {
-  return a.material.side === b.material.side && a.material.blending === b.material.blending && a.material.blendSrc === b.material.blendSrc && a.material.blendDst === b.material.blendDst && a.material.blendEquation === b.material.blendEquation && a.material.premultipliedAlpha === b.material.premultipliedAlpha && a.material.transparent === b.material.transparent && a.material.depthTest === b.material.depthTest && a.material.depthWrite === b.material.depthWrite && a.material.opacity === b.material.opacity && sameColor(a.material, b.material) && a.material.type === b.material.type && a.material.alphaTest === b.material.alphaTest && a.material.map === b.material.map && a.renderMode === b.renderMode && a.blendTiles === b.blendTiles && a.softParticles === b.softParticles && a.softFarFade === b.softFarFade && a.softNearFade === b.softNearFade && a.uTileCount === b.uTileCount && a.vTileCount === b.vTileCount && a.instancingGeometry === b.instancingGeometry && a.renderOrder === b.renderOrder && a.layers.mask === b.layers.mask;
-}
-function createSpriteMaterial(settings) {
-  const source = settings.material;
-  const material = new MeshBasicNodeMaterial2();
-  copySurface(material, source);
-  const particleColor = attr(PARTICLE_ATTR.color, "vec4");
-  const uvTile = attr(PARTICLE_ATTR.uvTile, "float");
-  const tiles = uni(new Vector22(settings.uTileCount, settings.vTileCount));
-  const tint = uni(new Color4(source.color?.r ?? 1, source.color?.g ?? 1, source.color?.b ?? 1));
-  const tintOpacity = uni(source.opacity ?? 1);
-  const baseUv = tiledUv(uv(), uvTile, tiles);
-  let sampled = vec43(1, 1, 1, 1);
-  if (source.map) {
-    const current = texture2(source.map, baseUv);
-    if (settings.blendTiles) {
-      const nextUv = tiledUv(uv(), floor(uvTile).add(1), tiles);
-      sampled = mix4(current, texture2(source.map, nextUv), fract(uvTile));
-    } else {
-      sampled = current;
-    }
-  }
-  material.colorNode = sampled.rgb.mul(particleColor.rgb).mul(tint);
-  material.opacityNode = sampled.a.mul(particleColor.a).mul(tintOpacity);
-  material.vertexNode = spriteClip(settings.renderMode);
-  material.alphaTest = source.alphaTest;
-  return material;
-}
-function createTrailMaterial(source) {
-  const material = new MeshBasicNodeMaterial2();
-  copySurface(material, source);
-  const particleColor = attr(PARTICLE_ATTR.color, "vec4");
-  const map = source.map;
-  const sampled = map ? texture2(map, uv()) : vec43(1, 1, 1, 1);
-  const color = source.color;
-  const tint = uni(new Color4(color?.r ?? 1, color?.g ?? 1, color?.b ?? 1));
-  material.colorNode = sampled.rgb.mul(particleColor.rgb).mul(tint);
-  material.opacityNode = sampled.a.mul(particleColor.a);
-  material.vertexNode = trailClip();
-  material.side = 2;
-  return material;
-}
-function copySurface(material, source) {
-  material.transparent = source.transparent;
-  material.opacity = source.opacity;
-  material.depthWrite = source.depthWrite;
-  material.depthTest = source.depthTest;
-  material.blending = source.blending;
-  material.blendSrc = source.blendSrc;
-  material.blendDst = source.blendDst;
-  material.blendEquation = source.blendEquation;
-  material.premultipliedAlpha = source.premultipliedAlpha;
-  material.side = source.side;
-  material.toneMapped = true;
-  material.vertexColors = false;
-}
-function tiledUv(base, tileIndex, tiles) {
-  const index = floor(tileIndex);
-  const col = mod(index, tiles.x);
-  const row = tiles.y.sub(floor(index.div(tiles.x))).sub(1);
-  return base.div(tiles).add(vec22(col.div(tiles.x), row.div(tiles.y)));
-}
-function attr(name, type) {
-  return attribute(name, type);
-}
-function uni(value) {
-  return uniform3(value);
-}
-function spriteClip(mode) {
-  const offset = attr(PARTICLE_ATTR.offset, "vec3");
-  const size = attr(PARTICLE_ATTR.size, "vec3");
-  const world3 = modelWorldMatrix2.mul(vec43(offset, 1));
-  if (mode === RenderMode.Mesh) return meshClip(offset, size);
-  if (mode === RenderMode.Trail) return trailClip();
-  const rotation = attr(PARTICLE_ATTR.rotation, "float");
-  const aligned = vec22(positionGeometry2.x.mul(size.x), positionGeometry2.y.mul(size.y));
-  const c = rotation.cos();
-  const s = rotation.sin();
-  const rotated = vec22(c.mul(aligned.x).sub(s.mul(aligned.y)), s.mul(aligned.x).add(c.mul(aligned.y)));
-  if (mode === RenderMode.HorizontalBillBoard) {
-    const shifted = vec43(world3.x.add(rotated.x), world3.y, world3.z.sub(rotated.y), world3.w);
-    return cameraProjectionMatrix.mul(cameraViewMatrix.mul(shifted));
-  }
-  if (mode === RenderMode.VerticalBillBoard) {
-    const raised = vec43(world3.x, world3.y.add(rotated.y), world3.z, world3.w);
-    const view2 = cameraViewMatrix.mul(raised);
-    return cameraProjectionMatrix.mul(vec43(view2.x.add(rotated.x), view2.y, view2.z, view2.w));
-  }
-  if (mode === RenderMode.StretchedBillBoard) return stretchedClip(world3, size);
-  const view = cameraViewMatrix.mul(world3);
-  return cameraProjectionMatrix.mul(vec43(view.x.add(rotated.x), view.y.add(rotated.y), view.z, view.w));
-}
-function stretchedClip(world3, size) {
-  const velocity = attr(PARTICLE_ATTR.velocity, "vec4");
-  const view = cameraViewMatrix.mul(world3);
-  const viewVelocity = cameraViewMatrix.mul(vec43(velocity.x, velocity.y, velocity.z, 0)).xyz;
-  const vlength = max2(length2(viewVelocity), float2(1e-4));
-  const avg = size.x.add(size.y).mul(0.5);
-  const side = normalize2(cross(view.xyz, viewVelocity));
-  const stretched = view.xyz.add(side.mul(positionGeometry2.y).mul(avg)).sub(viewVelocity.mul(positionGeometry2.x.add(0.5)).mul(float2(1).add(velocity.w.div(vlength))).mul(avg));
-  return cameraProjectionMatrix.mul(vec43(stretched, view.w));
-}
-function meshClip(offset, size) {
-  const rotation = attr(PARTICLE_ATTR.rotation, "vec4");
-  const scaled = vec32(positionGeometry2.x.mul(size.x), positionGeometry2.y.mul(size.y), positionGeometry2.z.mul(size.z));
-  const spun = rotateByQuat(rotation, scaled);
-  const local = vec43(spun.x.add(offset.x), spun.y.add(offset.y), spun.z.add(offset.z), 1);
-  return cameraProjectionMatrix.mul(cameraViewMatrix.mul(modelWorldMatrix2.mul(local)));
-}
-function trailClip() {
-  const previous = attr(PARTICLE_ATTR.previous, "vec3");
-  const next = attr(PARTICLE_ATTR.next, "vec3");
-  const side = attr(PARTICLE_ATTR.side, "float");
-  const width = attr(PARTICLE_ATTR.width, "float");
-  const world3 = modelWorldMatrix2.mul(vec43(positionGeometry2, 1)).xyz;
-  const worldPrev = modelWorldMatrix2.mul(vec43(previous, 1)).xyz;
-  const worldNext = modelWorldMatrix2.mul(vec43(next, 1)).xyz;
-  const tangent = normalize2(worldNext.sub(worldPrev).add(vec32(0, 1e-4, 0)));
-  const toCamera = normalize2(cameraPosition2.sub(world3));
-  const binormal = normalize2(cross(tangent, toCamera));
-  const placed = world3.add(binormal.mul(side).mul(width));
-  return cameraProjectionMatrix.mul(cameraViewMatrix.mul(vec43(placed, 1)));
-}
-function rotateByQuat(q, v) {
-  const t = cross(q.xyz, v).mul(2);
-  return v.add(t.mul(q.w)).add(cross(q.xyz, t));
-}
-function surfaceBlending(blend) {
-  if (blend === "alpha") return { blending: NormalBlending, premultipliedAlpha: false };
-  if (blend === "multiply") return { blending: MultiplyBlending, premultipliedAlpha: false };
-  if (blend === "premultiply") {
-    return {
-      blending: CustomBlending,
-      premultipliedAlpha: true,
-      blendSrc: OneFactor,
-      blendDst: OneMinusSrcAlphaFactor
-    };
-  }
-  return { blending: AdditiveBlending, premultipliedAlpha: false };
-}
-var PARTICLE_ATTR, TslSpriteBatch, TslTrailBatch, TslBatchedRenderer;
-var init_tslBatch = __esm({
-  "src/capabilities/particles/tslBatch.ts"() {
-    "use strict";
-    PARTICLE_ATTR = {
-      offset: "offset",
-      rotation: "rotation",
-      size: "size",
-      color: "color",
-      uvTile: "uvTile",
-      velocity: "velocity",
-      previous: "previous",
-      next: "next",
-      side: "side",
-      width: "width"
-    };
-    TslSpriteBatch = class extends SpriteBatch {
-      rebuildMaterial() {
-        this.layers.mask = this.settings.layers.mask;
-        this.frustumCulled = false;
-        this.renderOrder = this.settings.renderOrder;
-        this.material = createSpriteMaterial(this.settings);
-      }
-      applyDepthTexture() {
-      }
-    };
-    TslTrailBatch = class extends TrailBatch {
-      rebuildMaterial() {
-        this.layers.mask = this.settings.layers.mask;
-        this.frustumCulled = false;
-        this.renderOrder = this.settings.renderOrder;
-        this.material = createTrailMaterial(this.settings.material);
-      }
-      applyDepthTexture() {
-      }
-    };
-    TslBatchedRenderer = class extends BatchedRenderer {
-      addSystem(system) {
-        const particle = system;
-        particle._renderer = this;
-        const settings = particle.getRendererSettings();
-        for (let i = 0; i < this.batches.length; i += 1) {
-          if (sameBatch(this.batches[i].settings, settings)) {
-            this.batches[i].addSystem(system);
-            this.systemToBatchIndex.set(system, i);
-            return;
-          }
-        }
-        const batch = settings.renderMode === RenderMode.Trail ? new TslTrailBatch(settings) : new TslSpriteBatch(settings);
-        batch.addSystem(system);
-        this.batches.push(batch);
-        this.systemToBatchIndex.set(system, this.batches.length - 1);
-        this.add(batch);
-      }
-    };
-  }
-});
-
-// src/capabilities/particles/quarksRuntime.ts
-var quarksRuntime_exports = {};
-__export(quarksRuntime_exports, {
-  createQuarksRuntime: () => createQuarksRuntime,
-  simulationOf: () => simulationOf
-});
-import {
-  DoubleSide as DoubleSide2,
-  MeshBasicMaterial
-} from "three";
-import {
-  ParticleSystem,
-  QuarksLoader,
-  QuarksUtil
-} from "three.quarks";
-function createQuarksRuntime(scene2) {
-  const batch = new TslBatchedRenderer();
-  batch.name = "particles";
-  scene2.add(batch);
-  const lives = /* @__PURE__ */ new Map();
-  const issues = /* @__PURE__ */ new Map();
-  return {
-    sync(instances) {
-      const seen = /* @__PURE__ */ new Set();
-      for (const instance2 of instances) {
-        seen.add(instance2.id);
-        const key = instanceKey(instance2);
-        let live = lives.get(instance2.id);
-        if (!live || live.key !== key) {
-          detach(live);
-          const spawned = spawn(instance2, batch, issues);
-          if (!spawned) {
-            lives.delete(instance2.id);
-            continue;
-          }
-          live = spawned;
-          lives.set(instance2.id, live);
-        } else {
-          issues.delete(instance2.id);
-        }
-        if (live.root.parent !== instance2.parent) instance2.parent.add(live.root);
-        instance2.parent.updateWorldMatrix(true, false);
-        setEmitterVisible(live.root, instance2.visible);
-        if (!rendererOf(live)) {
-          detach(live);
-          lives.delete(instance2.id);
-          const spawned = spawn(instance2, batch, issues);
-          if (!spawned) continue;
-          live = spawned;
-          lives.set(instance2.id, live);
-          if (live.root.parent !== instance2.parent) instance2.parent.add(live.root);
-          instance2.parent.updateWorldMatrix(true, false);
-          setEmitterVisible(live.root, instance2.visible);
-        }
-        if (live.playing !== instance2.playing) {
-          if (instance2.playing) QuarksUtil.play(live.root);
-          else QuarksUtil.pause(live.root);
-          live.playing = instance2.playing;
-        }
-      }
-      for (const [id, live] of lives) {
-        if (seen.has(id)) continue;
-        detach(live);
-        lives.delete(id);
-        issues.delete(id);
-      }
-    },
-    update(dt) {
-      batch.update(dt);
-    },
-    dispose() {
-      for (const live of lives.values()) detach(live);
-      lives.clear();
-      issues.clear();
-      batch.removeFromParent();
-    },
-    issue(id) {
-      return issues.get(id) ?? null;
-    }
-  };
-}
-function spawn(instance2, batch, issues) {
-  try {
-    const root = instance2.simulation.format === "loader" ? spawnLoader(instance2, batch) : spawnSystem(instance2, batch);
-    if (!instance2.playing) QuarksUtil.pause(root);
-    issues.delete(instance2.id);
-    return { id: instance2.id, root, key: instanceKey(instance2), playing: instance2.playing };
-  } catch (error) {
-    issues.set(instance2.id, error instanceof Error ? error.message : String(error));
-    return null;
-  }
-}
-function spawnSystem(instance2, batch) {
-  const body = systemBodyForPlayback(instance2.simulation.body);
-  const system = ParticleSystem.fromJSON(body, { geometries: {}, materials: {}, textures: {}, images: {} }, {});
-  system.material = makeMaterial(instance2.material);
-  system.emitter.position.set(0, 0, 0);
-  batch.addSystem(system);
-  return system.emitter;
-}
-function spawnLoader(instance2, batch) {
-  const root = new QuarksLoader().parse(instance2.simulation.body);
-  QuarksUtil.runOnAllParticleEmitters(root, (emitter) => {
-    const system = emitter.system;
-    if (instance2.material) system.material = makeMaterial(instance2.material);
-    batch.addSystem(system);
-  });
-  return root;
-}
-function makeMaterial(desc) {
-  const appearance = desc ?? {
-    color: "#ffffff",
-    opacity: 1,
-    map: null,
-    blend: "additive",
-    depthWrite: false,
-    depthTest: true,
-    side: DoubleSide2
-  };
-  const blend = surfaceBlending(appearance.blend);
-  const material = new MeshBasicMaterial({
-    color: appearance.color,
-    map: appearance.map,
-    transparent: true,
-    opacity: appearance.opacity,
-    depthWrite: appearance.depthWrite,
-    depthTest: appearance.depthTest,
-    side: appearance.side,
-    blending: blend.blending,
-    premultipliedAlpha: blend.premultipliedAlpha
-  });
-  if (blend.blendSrc) material.blendSrc = blend.blendSrc;
-  if (blend.blendDst) material.blendDst = blend.blendDst;
-  return material;
-}
-function rendererOf(live) {
-  let attached = false;
-  QuarksUtil.runOnAllParticleEmitters(live.root, (emitter) => {
-    if (emitter.system._renderer) attached = true;
-  });
-  return attached;
-}
-function detach(live) {
-  if (!live) return;
-  QuarksUtil.runOnAllParticleEmitters(live.root, (emitter) => {
-    const system = emitter.system;
-    system._renderer?.deleteSystem(system);
-    system.dispose();
-  });
-  live.root.removeFromParent();
-}
-function setEmitterVisible(root, visible) {
-  root.visible = visible;
-  QuarksUtil.runOnAllParticleEmitters(root, (emitter) => {
-    emitter.visible = visible;
-  });
-}
-function instanceKey(instance2) {
-  const material = instance2.material;
-  return JSON.stringify({
-    simulation: instance2.simulation,
-    playingShape: material && {
-      color: material.color,
-      opacity: material.opacity,
-      blend: material.blend,
-      depthWrite: material.depthWrite,
-      depthTest: material.depthTest,
-      side: material.side,
-      map: material.map?.uuid ?? ""
-    }
-  });
-}
-function simulationOf(value) {
-  if (!value || typeof value !== "object") return null;
-  const record = value;
-  if ((record.format === "system" || record.format === "loader") && record.body && typeof record.body === "object") {
-    return { format: record.format, body: record.body };
-  }
-  return null;
-}
-var init_quarksRuntime = __esm({
-  "src/capabilities/particles/quarksRuntime.ts"() {
-    "use strict";
-    init_simulationForm();
-    init_tslBatch();
-  }
-});
-
-// src/capabilities/particles/session.ts
-function tickParticles(dt, parentOf) {
-  const runtimeWorld = getRuntimeWorld();
-  if (!capabilityEnabled(runtimeWorld.getCapabilities(), "particles") || !scene) {
-    disposeParticles();
-    return;
-  }
-  if (!runtime) {
-    ensureRuntime();
-    return;
-  }
-  const instances = [];
-  for (const node of Object.values(runtimeWorld.getNodes())) {
-    if (node.kind !== "effect" || !node.effect) continue;
-    const parent = parentOf(node.id);
-    if (!parent || !rootedInScene(parent)) continue;
-    const resolved = resolveInstance(node.id, node.effect, node.visible, parent);
-    if (resolved) instances.push(resolved);
-  }
-  runtime.sync(instances);
-  runtime.update(dt);
-}
-function disposeParticles() {
-  generation += 1;
-  runtime?.dispose();
-  runtime = null;
-  loading = null;
-}
-function ensureRuntime() {
-  if (loading || !scene) return;
-  const token = generation;
-  const root = scene;
-  loading = Promise.resolve().then(() => (init_quarksRuntime(), quarksRuntime_exports)).then((module) => {
-    if (token !== generation) return;
-    runtime = module.createQuarksRuntime(root);
-  }).catch((error) => {
-    console.warn("[particles] three.quarks \u52A0\u8F7D\u5931\u8D25", error);
-  }).finally(() => {
-    if (token === generation) loading = null;
-  });
-}
-function rootedInScene(object) {
-  let current = object;
-  while (current.parent) current = current.parent;
-  return current.type === "Scene";
-}
-function resolveInstance(id, effect, visible, parent) {
-  const runtimeWorld = getRuntimeWorld();
-  let simulation = effect.simulation;
-  let materialId = effect.materialAssetId;
-  if (effect.assetId) {
-    const asset = runtimeWorld.getAsset(effect.assetId);
-    if (!asset || asset.kind !== "effect") return null;
-    simulation = asset.simulation;
-    materialId = effect.materialAssetId ?? asset.materialAssetId ?? null;
-  }
-  const stored = asSimulation(simulation);
-  if (!stored) return null;
-  const material = runtimeWorld.resolveParticleDesc?.(materialId) ?? null;
-  if (material === "incompatible") return null;
-  return {
-    id,
-    parent,
-    simulation: stored,
-    material,
-    playing: effect.playing !== false,
-    visible
-  };
-}
-var runtime, loading, scene, generation;
-var init_session6 = __esm({
-  "src/capabilities/particles/session.ts"() {
-    "use strict";
-    init_registry();
-    init_world();
-    init_readQuarks();
-    runtime = null;
-    loading = null;
-    scene = null;
-    generation = 0;
-  }
-});
-
-// src/gameplay/juiceClock.ts
-function scalePlayDt(dt, now = performance.now() / 1e3) {
-  if (now < holdUntil) return 0;
-  return dt;
-}
-function juiceShake(now = performance.now() / 1e3) {
-  if (now >= shakeUntil || shakeAmp <= 0) return { x: 0, y: 0 };
-  return { x: (Math.random() - 0.5) * shakeAmp, y: (Math.random() - 0.5) * shakeAmp };
-}
-var holdUntil, shakeAmp, shakeUntil;
-var init_juiceClock = __esm({
-  "src/gameplay/juiceClock.ts"() {
-    "use strict";
-    holdUntil = 0;
-    shakeAmp = 0;
-    shakeUntil = 0;
-  }
-});
-
-// src/runtime/frameProfile.ts
-function measureCost(id, run) {
-  const start = performance.now();
-  try {
-    run();
-  } finally {
-    const ms = performance.now() - start;
-    buckets.set(id, (buckets.get(id) ?? 0) + ms);
-    if (capture) capture.set(id, (capture.get(id) ?? 0) + ms);
-  }
-}
-var buckets, capture;
-var init_frameProfile = __esm({
-  "src/runtime/frameProfile.ts"() {
-    "use strict";
-    buckets = /* @__PURE__ */ new Map();
-    capture = null;
-  }
-});
-
-// src/runtime/sceneRuntime.ts
-function defaultCharacter() {
-  return {
-    enabled: true,
-    driver: "capsule",
-    mode: "adventure",
-    clickButton: "right",
-    clickStop: 0.35,
-    moveSpeed: 4.5,
-    turnSpeed: 540,
-    sprintMultiplier: 1.6,
-    jumpSpeed: 6.5,
-    maxJumps: 2,
-    coyoteTime: 0.12,
-    jumpBuffer: 0.12,
-    gravity: 18,
-    radius: 0.35,
-    height: 1.7,
-    capsuleOffset: [0, 0, 0],
-    physicsInteract: false,
-    mass: 65,
-    pushStrength: 1,
-    swim: true,
-    swimSpeedMultiplier: 0.65,
-    swimHeightOffset: 0,
-    dash: true,
-    dashKey: "KeyC",
-    dashDistance: 4,
-    dashDuration: 0.22,
-    dashInvincible: 0.35,
-    dashCooldown: 0.8,
-    footstepDistance: 1.6,
-    footstepJuice: "",
-    lockTargetId: "",
-    lockTargetName: "",
-    idleClip: "",
-    idleClipAssetId: "",
-    walkClip: "",
-    walkClipAssetId: "",
-    runClip: "",
-    runClipAssetId: "",
-    jumpClip: "",
-    jumpClipAssetId: "",
-    airClip: "",
-    airClipAssetId: "",
-    landClip: "",
-    landClipAssetId: "",
-    dodgeClip: "",
-    dodgeClipAssetId: "",
-    swimIdleClip: "",
-    swimIdleClipAssetId: "",
-    swimClip: "",
-    swimClipAssetId: ""
-  };
-}
-function defaultCameraFollow() {
-  return {
-    enabled: true,
-    targetId: "",
-    targetName: "",
-    offset: [0, 1.8, -4.2],
-    pivot: [0, 1.4, 0],
-    orbit: "rightDrag",
-    sensitivity: 0.25,
-    minPitch: -35,
-    maxPitch: 70,
-    collision: true,
-    collisionRadius: 0.2,
-    localOffset: false,
-    damping: 8,
-    lookAtTarget: true,
-    fov: 60,
-    zoom: true,
-    zoomSpeed: 0.18,
-    minDistance: 0.8,
-    maxDistance: 18
-  };
-}
-function cameraPresetForMode(mode) {
-  if (mode === "strafe") return { offset: [0.65, 0.45, -2.2], pivot: [0, 1.5, 0], orbit: "mouse", localOffset: false, lookAtTarget: true, fov: 55, collision: true };
-  if (mode === "lockOn") return { offset: [0.35, 2.2, -4.8], pivot: [0, 1.35, 0], orbit: "rightDrag", localOffset: false, lookAtTarget: true, fov: 58, collision: true };
-  if (mode === "pointAndClick") return { offset: [0, 10.5, -7.2], pivot: [0, 0.8, 0], orbit: "none", localOffset: false, lookAtTarget: true, fov: 48, collision: false };
-  if (mode === "topDown") return { offset: [0, 9.5, -6.5], pivot: [0, 0.8, 0], orbit: "none", localOffset: false, lookAtTarget: true, fov: 50, collision: false };
-  if (mode === "side25d") return { offset: [0, 1.6, -7.5], pivot: [0, 1.2, 0], orbit: "none", localOffset: false, lookAtTarget: true, fov: 45, collision: false };
-  if (mode === "firstPerson") return { offset: [0, 0, 0.12], pivot: [0, 1.65, 0], orbit: "mouse", localOffset: false, lookAtTarget: false, fov: 72, collision: false, zoom: false, damping: 0, minPitch: -85, maxPitch: 85 };
-  return { offset: [0, 1.8, -4.2], pivot: [0, 1.4, 0], orbit: "rightDrag", localOffset: false, lookAtTarget: true, fov: 60, collision: true };
-}
-function resolveCharacterCamera(character, raw) {
-  const mode = character.mode;
-  const preset = cameraPresetForMode(mode);
-  const base = { ...defaultCameraFollow(), ...preset, ...raw, preset: mode };
-  base.targetId = "";
-  base.targetName = "";
-  base.lookAtTarget = true;
-  if (mode === "pointAndClick" || mode === "topDown" || mode === "side25d") {
-    base.orbit = "none";
-    base.localOffset = false;
-    base.collision = false;
-    return base;
-  }
-  if (mode === "firstPerson") {
-    base.orbit = "mouse";
-    base.localOffset = false;
-    base.collision = false;
-    base.zoom = false;
-    base.lookAtTarget = false;
-    base.damping = 0;
-    if (base.minPitch === -35 && base.maxPitch === 70) {
-      base.minPitch = -85;
-      base.maxPitch = 85;
-    }
-    if (base.offset[1] > 0.4 && Math.abs(base.offset[1] - base.pivot[1]) < 0.05) {
-      base.offset = [base.offset[0], 0, base.offset[2]];
-    }
-    return base;
-  }
-  if (mode === "strafe") {
-    base.orbit = "mouse";
-    base.localOffset = false;
-    return base;
-  }
-  base.localOffset = false;
-  if (base.orbit === "none") base.orbit = "rightDrag";
-  if (character.driver !== "capsule" && character.clickButton === "right" && base.orbit === "rightDrag") {
-    base.orbit = "mouse";
-  }
-  return base;
-}
-function defaultInteract() {
-  return {
-    enabled: true,
-    prompt: "\u6309 E \u4EA4\u4E92",
-    key: "KeyE",
-    radius: 2.5,
-    filterTagId: "",
-    message: "onInteract",
-    once: false
-  };
-}
-function defaultTrigger() {
-  return {
-    enabled: true,
-    radius: 3,
-    filterTagId: "",
-    enterMessage: "onZoneEnter",
-    exitMessage: "onZoneExit",
-    once: false
-  };
-}
-function defaultMover() {
-  return {
-    enabled: true,
-    offset: [0, 3, 0],
-    duration: 2.5,
-    pause: 0.6,
-    pingPong: true,
-    autoPlay: true,
-    startMessage: "onActivateMover",
-    carryRadius: 1.6
-  };
-}
-function defaultCheckpoint() {
-  return {
-    enabled: true,
-    spawn: false,
-    radius: 2.5,
-    delay: 1.2,
-    abyssY: -12,
-    message: "onPlayerRespawned"
-  };
-}
-function defaultSoundSource() {
-  return {
-    enabled: true,
-    assetId: "",
-    loop: true,
-    volume: 1,
-    refDistance: 3,
-    rolloff: 1
-  };
-}
-function defaultScore() {
-  return {
-    enabled: true,
-    title: "\u5230\u8FBE\u76EE\u6807",
-    target: 100,
-    perInteract: 50,
-    timeLimit: 0,
-    victoryMessage: "onStageVictory",
-    defeatMessage: "onStageDefeat"
-  };
-}
-function registerRuntimeSystem(id, order, step) {
-  const target = order >= RUNTIME_STAGE.POST_ANIMATION ? postAnimationSystems : order >= RUNTIME_STAGE.PHYSICS_NAV ? postPhysicsSystems : systems;
-  const index = target.findIndex((item) => item.id === id);
-  if (index >= 0) target.splice(index, 1);
-  target.push({ id, order, step });
-  target.sort((a, b) => a.order - b.order);
-  return () => {
-    const idx = target.findIndex((item) => item.id === id);
-    if (idx >= 0) target.splice(idx, 1);
-  };
-}
-function stepSceneRuntime(dt, host) {
-  const scaled = scalePlayDt(dt);
-  for (const system of systems) {
-    measureCost(system.id, () => system.step(scaled, host));
-  }
-  measureCost("physics", () => tickPhysics(scaled, host.resolveObject));
-  measureCost("navigation", () => tickNavigation());
-  for (const system of postPhysicsSystems) {
-    measureCost(system.id, () => system.step(scaled, host));
-  }
-  if (host.ready) {
-    measureCost("animation", () => host.updateAnimations(scaled));
-    for (const system of postAnimationSystems) {
-      measureCost(system.id, () => system.step(scaled, host));
-    }
-    measureCost("particles", () => tickParticles(scaled, host.resolveObject));
-  }
-  consumeInputFrame();
-}
-var RUNTIME_STAGE, systems, postPhysicsSystems, postAnimationSystems;
-var init_sceneRuntime = __esm({
-  "src/runtime/sceneRuntime.ts"() {
-    "use strict";
-    init_session();
-    init_session5();
-    init_session6();
-    init_juiceClock();
-    init_actionMap();
-    init_frameProfile();
-    RUNTIME_STAGE = {
-      PRE_PHYSICS: 10,
-      PHYSICS_NAV: 50,
-      POST_PHYSICS: 55,
-      ANIMATION: 60,
-      POST_ANIMATION: 70,
-      PRE_RENDER: 80
-    };
-    systems = [];
-    postPhysicsSystems = [];
-    postAnimationSystems = [];
   }
 });
 
@@ -9267,8 +13242,8 @@ function freshArm(spec, host) {
 function armChanged(arm) {
   return Math.abs(arm.zoom - 1) > 1e-3 || Math.abs(angleDelta(arm.yaw, arm.startYaw)) > 1e-3 || Math.abs(angleDelta(arm.pitch, arm.startPitch)) > 1e-3;
 }
-function angleDelta(current, start) {
-  let delta = current - start;
+function angleDelta(current, start2) {
+  let delta = current - start2;
   if (delta > Math.PI) delta -= Math.PI * 2;
   if (delta < -Math.PI) delta += Math.PI * 2;
   return delta;
@@ -9346,10 +13321,10 @@ function lookPoint(eye, focus, lookAtTarget) {
   return [eye[0] + dx / len, eye[1] + dy / len, eye[2] + dz / len];
 }
 function clampPitch(pitch, spec) {
-  let min2 = spec.minPitch * Math.PI / 180;
-  let max3 = spec.maxPitch * Math.PI / 180;
-  if (min2 > max3) [min2, max3] = [max3, min2];
-  return Math.min(max3, Math.max(min2, pitch));
+  let min3 = spec.minPitch * Math.PI / 180;
+  let max4 = spec.maxPitch * Math.PI / 180;
+  if (min3 > max4) [min3, max4] = [max4, min3];
+  return Math.min(max4, Math.max(min3, pitch));
 }
 function spring(host, focus, desired, ignoreId, radius) {
   const dx = desired[0] - focus[0];
@@ -9371,46 +13346,6 @@ var init_camera = __esm({
     init_world();
     arms = /* @__PURE__ */ new Map();
     registerRuntimeSystem("core.camera", 75, stepCameras);
-  }
-});
-
-// src/runtime/ui/bindings.ts
-var EMPTY_UI_VALUES;
-var init_bindings = __esm({
-  "src/runtime/ui/bindings.ts"() {
-    "use strict";
-    EMPTY_UI_VALUES = { variables: {}, components: {}, screens: {} };
-  }
-});
-
-// src/runtime/ui/values.ts
-function publish() {
-  snapshot = {
-    variables: { ...variables },
-    components: Object.fromEntries(Object.entries(components).map(([id, fields]) => [id, { ...fields }])),
-    screens: { ...screens }
-  };
-  for (const listener of listeners) listener();
-}
-function uiValues() {
-  return snapshot;
-}
-function resetUiValues() {
-  variables = {};
-  components = {};
-  screens = {};
-  publish();
-}
-var variables, components, screens, snapshot, listeners;
-var init_values = __esm({
-  "src/runtime/ui/values.ts"() {
-    "use strict";
-    init_bindings();
-    variables = {};
-    components = {};
-    screens = {};
-    snapshot = EMPTY_UI_VALUES;
-    listeners = /* @__PURE__ */ new Set();
   }
 });
 
@@ -9448,9 +13383,9 @@ var init_taxonomy = __esm({
 });
 
 // src/editor/scene/transform.ts
-import { Euler as Euler3, Matrix4 as Matrix42, Quaternion as Quaternion5, Vector3 as Vector38 } from "three";
+import { Euler as Euler3, Matrix4 as Matrix42, Quaternion as Quaternion6, Vector3 as Vector311 } from "three";
 function eulerQuaternion2(rotation) {
-  return new Quaternion5().setFromEuler(new Euler3(rotation[0] * DEG2, rotation[1] * DEG2, rotation[2] * DEG2, "XYZ"));
+  return new Quaternion6().setFromEuler(new Euler3(rotation[0] * DEG2, rotation[1] * DEG2, rotation[2] * DEG2, "XYZ"));
 }
 function quaternionEuler(quaternion) {
   const euler = new Euler3().setFromQuaternion(quaternion, "XYZ");
@@ -9466,11 +13401,11 @@ function worldPose2(nodes, id) {
     current = current.parentId ? nodes[current.parentId] : void 0;
   }
   chain.reverse();
-  const position = new Vector38();
-  const quaternion = new Quaternion5();
-  const scale = new Vector38(1, 1, 1);
-  const localPosition = new Vector38();
-  const localScale = new Vector38();
+  const position = new Vector311();
+  const quaternion = new Quaternion6();
+  const scale = new Vector311(1, 1, 1);
+  const localPosition = new Vector311();
+  const localScale = new Vector311();
   for (const node of chain) {
     localPosition.set(node.position[0], node.position[1], node.position[2]).multiply(scale).applyQuaternion(quaternion);
     position.add(localPosition);
@@ -9485,7 +13420,7 @@ function safeDiv(value, scale) {
 }
 function worldPointToLocal(parent, point2) {
   const delta = point2.clone().sub(parent.position).applyQuaternion(parent.quaternion.clone().invert());
-  return new Vector38(
+  return new Vector311(
     safeDiv(delta.x, parent.scale.x),
     safeDiv(delta.y, parent.scale.y),
     safeDiv(delta.z, parent.scale.z)
@@ -9502,7 +13437,7 @@ function localPoseFromWorld(parent, world3) {
   return {
     position: worldPointToLocal(parent, world3.position),
     quaternion: parent.quaternion.clone().invert().multiply(world3.quaternion),
-    scale: new Vector38(
+    scale: new Vector311(
       safeDiv(world3.scale.x, parent.scale.x),
       safeDiv(world3.scale.y, parent.scale.y),
       safeDiv(world3.scale.z, parent.scale.z)
@@ -9572,8 +13507,8 @@ __export(store_exports, {
   primaryId: () => primaryId,
   useEditorStore: () => useEditorStore
 });
-import { Quaternion as Quaternion6, Vector3 as Vector39 } from "three";
-import { create as create4 } from "zustand";
+import { Quaternion as Quaternion7, Vector3 as Vector312 } from "three";
+import { create as create6 } from "zustand";
 function bakeFollow(node) {
   const arm = cameraArmOf(node.id);
   if (!arm?.changed) return null;
@@ -9642,9 +13577,9 @@ function pasteNodes(draft, parentId) {
   const roots = [];
   for (const source of clipboard) {
     const copy = structuredClone(source);
-    const nextId = map.get(source.id);
-    if (!nextId) continue;
-    copy.id = nextId;
+    const nextId2 = map.get(source.id);
+    if (!nextId2) continue;
+    copy.id = nextId2;
     copy.locked = false;
     const mappedParent = source.parentId ? map.get(source.parentId) ?? null : null;
     copy.parentId = mappedParent ?? parentId;
@@ -9652,9 +13587,9 @@ function pasteNodes(draft, parentId) {
       copy.name = uniqueName(draft.nodes, source.name);
       copy.order = nextOrder(draft.nodes, copy.parentId);
       if (!parentId) copy.position = [copy.position[0] + 1, copy.position[1], copy.position[2]];
-      roots.push(nextId);
+      roots.push(nextId2);
     }
-    draft.nodes[nextId] = copy;
+    draft.nodes[nextId2] = copy;
   }
   return roots;
 }
@@ -9730,12 +13665,13 @@ var init_store2 = __esm({
     init_spawn();
     init_seed();
     init_library();
+    init_workspace();
     init_prefab();
     init_i18n();
     init_kinds();
-    init_registry();
-    init_corePack();
     init_registry2();
+    init_corePack();
+    init_registry();
     init_defaults5();
     init_sceneRuntime();
     init_camera();
@@ -9744,11 +13680,11 @@ var init_store2 = __esm({
     init_transform2();
     init_viewportBridge();
     init_viewportBridge();
-    init_types();
+    init_types2();
     init_archive();
-    init_session5();
+    init_session4();
     seed = createSeed();
-    useEditorStore = create4((set, get) => ({
+    useEditorStore = create6((set, get) => ({
       nodes: seed.nodes,
       selection: [seed.selectedId],
       gizmoMode: "translate",
@@ -9815,6 +13751,20 @@ var init_store2 = __esm({
       inspectAsset: (id) => set({ inspectedAssetId: id, selection: id ? [] : get().selection }),
       pingAsset: (id) => {
         const library = useAssetStore.getState();
+        if (id.startsWith("code:")) {
+          const parts = id.split(":");
+          const codeKind = parts[1] === "shader" ? "shader" : "script";
+          const codeId = parts.slice(2).join(":");
+          const codeAssets = useCodeAssetStore.getState().assets;
+          const record = codeAssets[codeId];
+          if (!record) return;
+          const storedDir = library.assetDirs[id];
+          const fallbackDir = record.relativePath.startsWith("Assets/") && record.relativePath.includes("/") ? record.relativePath.slice(0, record.relativePath.lastIndexOf("/")) : codeKind === "shader" ? "Assets/Shaders" : "Assets/Scripts";
+          library.setBrowseDir(storedDir || fallbackDir);
+          useCodeAssetStore.getState().selectAsset(codeId);
+          set({ inspectedAssetId: null, selection: [], assetPing: { id, nonce: Date.now() } });
+          return;
+        }
         if (!library.assets[id]) return;
         library.setBrowseDir(assetDirectory(id, library.assetDirs));
         set({ assetPing: { id, nonce: Date.now() } });
@@ -9853,8 +13803,8 @@ var init_store2 = __esm({
         const parent = node.parentId ? worldPose2(nodes, node.parentId) : null;
         const current = worldPose2(nodes, id);
         const local = poseComponents(localPoseFromWorld(parent, {
-          position: new Vector39(view.position[0], view.position[1], view.position[2]),
-          quaternion: new Quaternion6(view.quaternion[0], view.quaternion[1], view.quaternion[2], view.quaternion[3]),
+          position: new Vector312(view.position[0], view.position[1], view.position[2]),
+          quaternion: new Quaternion7(view.quaternion[0], view.quaternion[1], view.quaternion[2], view.quaternion[3]),
           scale: current.scale
         }));
         get().beginGesture(translate("gesture.alignCamera"));
@@ -9924,7 +13874,7 @@ var init_store2 = __esm({
           if (get().prefabSession && !parent) parent = Object.values(draft.nodes).find((node) => !node.parentId)?.id ?? null;
           const id = crypto.randomUUID();
           const name = uniqueName(draft.nodes, label);
-          const shaped = kind === "box" || kind === "sphere" || kind === "capsule" || kind === "cylinder" || kind === "cone";
+          const shaped = kind === "box" || kind === "sphere" || kind === "capsule" || kind === "cylinder" || kind === "cone" || kind === "plane";
           draft.nodes[id] = makeNode({
             id,
             name,
@@ -10109,17 +14059,17 @@ var init_store2 = __esm({
           const cloneSubtree = (id, parentId, isRoot) => {
             const source = draft.nodes[id];
             const childIds = childrenOf(draft.nodes, id).map((child) => child.id);
-            const nextId = crypto.randomUUID();
+            const nextId2 = crypto.randomUUID();
             const copy = structuredClone(source);
-            copy.id = nextId;
+            copy.id = nextId2;
             copy.parentId = parentId;
             copy.name = uniqueName(draft.nodes, source.name);
             copy.order = nextOrder(draft.nodes, parentId);
             copy.locked = false;
             if (isRoot) copy.position = [copy.position[0] + 1, copy.position[1], copy.position[2]];
-            draft.nodes[nextId] = copy;
-            for (const childId of childIds) cloneSubtree(childId, nextId, false);
-            return nextId;
+            draft.nodes[nextId2] = copy;
+            for (const childId of childIds) cloneSubtree(childId, nextId2, false);
+            return nextId2;
           };
           for (const id of roots) {
             const createdId = cloneSubtree(id, draft.nodes[id].parentId, true);
@@ -10176,7 +14126,7 @@ var init_store2 = __esm({
           const sharedParent = draft.nodes[live[0]].parentId;
           const parentId = live.every((id) => draft.nodes[id].parentId === sharedParent) ? sharedParent : null;
           const worlds = new Map(live.map((id) => [id, worldPose2(draft.nodes, id)]));
-          const center = new Vector39();
+          const center = new Vector312();
           for (const id of live) center.add(worlds.get(id).position);
           center.multiplyScalar(1 / live.length);
           const parentPose = parentId ? worldPose2(draft.nodes, parentId) : null;
@@ -10394,9 +14344,9 @@ var init_store2 = __esm({
           if (node.kind !== "model") continue;
           const animator = node.animator?.enabled ? node.animator : null;
           if (animator) {
-            const start = animator.states.find((state2) => state2.id === (animator.defaultStateId || animator.stateId)) ?? animator.states[0];
-            if (!start?.clip) continue;
-            nodes[node.id] = { ...node, clipPlaying: true, clipTime: 0, animator: { ...animator, stateId: start.id } };
+            const start2 = animator.states.find((state2) => state2.id === (animator.defaultStateId || animator.stateId)) ?? animator.states[0];
+            if (!start2?.clip) continue;
+            nodes[node.id] = { ...node, clipPlaying: true, clipTime: 0, animator: { ...animator, stateId: start2.id } };
             continue;
           }
           if (!node.clip) continue;
@@ -10765,9 +14715,9 @@ var init_store2 = __esm({
             if (!node) continue;
             const parent = node.parentId ? worldPose2(nodes, node.parentId) : null;
             const local = localPoseFromWorld(parent, {
-              position: new Vector39(pose.position[0], pose.position[1], pose.position[2]),
-              quaternion: new Quaternion6(pose.rotation[0], pose.rotation[1], pose.rotation[2], pose.rotation[3]),
-              scale: new Vector39(node.scale[0], node.scale[1], node.scale[2])
+              position: new Vector312(pose.position[0], pose.position[1], pose.position[2]),
+              quaternion: new Quaternion7(pose.rotation[0], pose.rotation[1], pose.rotation[2], pose.rotation[3]),
+              scale: new Vector312(node.scale[0], node.scale[1], node.scale[2])
             });
             const parts = poseComponents(local);
             nodes[pose.id] = { ...node, position: parts.position, rotation: parts.rotation };
@@ -10780,7 +14730,7 @@ var init_store2 = __esm({
       },
       setHelpersVisible: (visible) => set({ helpersVisible: visible }),
       setNavMeshVisible: (visible) => set({ navMeshVisible: visible }),
-      setSnapStep: (step) => set({ snapStep: Math.max(0.01, step) }),
+      setSnapStep: (step2) => set({ snapStep: Math.max(0.01, step2) }),
       setViewportStats: (stats) => {
         set({ viewportStats: stats });
       },
@@ -11029,6 +14979,16 @@ var init_store2 = __esm({
       }
     }));
     clipboard = null;
+    if (typeof window !== "undefined") {
+      window.addEventListener("t3d:load-scene", (ev) => {
+        const detail = ev.detail;
+        if (!detail?.sceneId) return;
+        const st = useEditorStore.getState();
+        if (st.playState === "playing") {
+          st.openScene(detail.sceneId);
+        }
+      });
+    }
   }
 });
 
@@ -11038,9 +14998,11 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 // src/core/query/diagnose.ts
-init_registry();
+init_registry2();
 init_library();
 init_store2();
+init_workspace();
+init_actionMap();
 
 // src/core/preview/offscreenPreview.ts
 var activeBridge = null;
@@ -11140,6 +15102,164 @@ function diagnoseProject(budget = DEFAULT_PERFORMANCE_BUDGET) {
       }
     }
   }
+  const codeAssets = Object.values(useCodeAssetStore.getState().assets);
+  const scriptAssets = codeAssets.filter((a) => a.kind === "script");
+  const scriptById = new Map(scriptAssets.map((s) => [s.id, s]));
+  for (const script of scriptAssets) {
+    if (!script.ok) {
+      issues.push({
+        severity: "error",
+        category: "playability",
+        target: script.id,
+        message: `\u811A\u672C "${script.relativePath}" \u7F16\u8BD1\u5931\u8D25\uFF08${script.diagnostics[0]?.message ?? "\u5B58\u5728\u8BED\u6CD5\u6216\u7ED3\u6784\u9519\u8BEF"}\uFF09`,
+        hint: "\u8C03\u7528 query__code_read \u67E5\u770B\u6E90\u7801\u5E76\u7528 script.update / script.patch \u4FEE\u590D"
+      });
+    }
+  }
+  const mountedScriptIds = /* @__PURE__ */ new Set();
+  for (const node of nodes) {
+    const projectScripts = node.gameplay?.packs?.__project__;
+    if (!projectScripts || typeof projectScripts !== "object") continue;
+    for (const [scriptId, rawConfig] of Object.entries(projectScripts)) {
+      if (!rawConfig || typeof rawConfig !== "object") continue;
+      if (rawConfig.__enabled === false) continue;
+      mountedScriptIds.add(scriptId);
+      const scriptRecord = scriptById.get(scriptId);
+      if (!scriptRecord) {
+        issues.push({
+          severity: "error",
+          category: "reference",
+          target: node.id,
+          message: `\u8282\u70B9 "${node.name}" \u6302\u8F7D\u4E86\u4E0D\u5B58\u5728\u7684\u811A\u672C "${scriptId}"`,
+          hint: "\u68C0\u67E5 scriptId \u6216\u4ECE\u8282\u70B9\u79FB\u9664\u65E0\u6548\u811A\u672C"
+        });
+        continue;
+      }
+      const paramSchema = scriptRecord.compiledScript?.behavior?.params;
+      if (paramSchema && typeof paramSchema === "object") {
+        for (const [paramKey, rawDef] of Object.entries(paramSchema)) {
+          if (!rawDef || typeof rawDef !== "object") continue;
+          const def = rawDef;
+          if (def.type !== "ref") continue;
+          const val = rawConfig[paramKey] ?? def.default;
+          const strVal = typeof val === "string" ? val.trim() : "";
+          if (!strVal) {
+            if (!def.optional) {
+              issues.push({
+                severity: "warning",
+                category: "reference",
+                target: node.id,
+                message: `\u8282\u70B9 "${node.name}" \u4E0A\u7684\u811A\u672C "${scriptId}" \u7F3A\u5C11\u5F15\u7528\u53C2\u6570 "${paramKey}"\uFF08\u5F53\u524D\u4E3A\u7A7A\uFF09`,
+                hint: `\u8C03\u7528 script.attach \u4E3A "${node.name}" \u7684 ${scriptId}.params.${paramKey} \u4F20\u5165\u6709\u6548\u8282\u70B9\u6216\u8D44\u4EA7 ID`
+              });
+            }
+          } else if (def.target === "node" && !state.nodes[strVal]) {
+            issues.push({
+              severity: "error",
+              category: "reference",
+              target: node.id,
+              message: `\u8282\u70B9 "${node.name}" \u811A\u672C "${scriptId}" \u7684\u8282\u70B9\u5F15\u7528 "${paramKey}" \u6307\u5411\u4E86\u4E0D\u5B58\u5728\u7684\u8282\u70B9 "${strVal}"`,
+              hint: `\u8C03\u7528 script.attach \u66F4\u65B0 ${scriptId}.params.${paramKey} \u4E3A\u6709\u6548\u7684\u573A\u666F\u8282\u70B9 ID`
+            });
+          } else if (def.target === "asset" && !assets[strVal]) {
+            issues.push({
+              severity: "error",
+              category: "reference",
+              target: node.id,
+              message: `\u8282\u70B9 "${node.name}" \u811A\u672C "${scriptId}" \u7684\u8D44\u4EA7\u5F15\u7528 "${paramKey}" \u6307\u5411\u4E86\u4E0D\u5B58\u5728\u7684\u8D44\u4EA7 "${strVal}"`,
+              hint: `\u8C03\u7528 script.attach \u66F4\u65B0 ${scriptId}.params.${paramKey} \u4E3A\u6709\u6548\u7684\u8D44\u4EA7 ID`
+            });
+          }
+        }
+      }
+    }
+  }
+  const inputActions = getInputActionMap().actions;
+  const inputActionRe = /\b(?:self|world)\.input\.(?:isPressed|justPressed|justReleased|axis1D|axis2D)\(\s*["']([^"']+)["']/g;
+  const reportedMissingActions = /* @__PURE__ */ new Set();
+  for (const script of scriptAssets) {
+    if (!mountedScriptIds.has(script.id) && script.compiledScript?.kind !== "system") continue;
+    let m;
+    while ((m = inputActionRe.exec(script.source)) !== null) {
+      const actionName = m[1];
+      if (!inputActions[actionName] && !reportedMissingActions.has(actionName)) {
+        reportedMissingActions.add(actionName);
+        issues.push({
+          severity: "warning",
+          category: "playability",
+          target: script.id,
+          message: `\u811A\u672C "${script.id}" \u8BFB\u53D6\u4E86\u8F93\u5165\u52A8\u4F5C "${actionName}"\uFF0C\u4F46\u5DE5\u7A0B\u8F93\u5165\u914D\u7F6E\u4E2D\u672A\u6CE8\u518C\u8BE5\u52A8\u4F5C`,
+          hint: `\u8C03\u7528 input.setAction \u6CE8\u518C "${actionName}" \u7684\u6309\u952E\u6620\u5C04\uFF08\u6216\u6539\u7528\u5DF2\u6CE8\u518C\u52A8\u4F5C\uFF1A${Object.keys(inputActions).join(", ")}\uFF09`
+        });
+      }
+    }
+  }
+  const allScriptSources = scriptAssets.map((s) => s.source).join("\n");
+  const scriptSetVars = /* @__PURE__ */ new Set();
+  const setVarRe = /\bui\.setVar\(\s*["']([^"']+)["']/g;
+  let varMatch;
+  while ((varMatch = setVarRe.exec(allScriptSources)) !== null) {
+    scriptSetVars.add(varMatch[1]);
+  }
+  const scriptEventHandlers = /* @__PURE__ */ new Set();
+  const onEventRe = /\bui\.onEvent\(\s*["']([^"']+)["']/g;
+  let evMatch;
+  while ((evMatch = onEventRe.exec(allScriptSources)) !== null) {
+    scriptEventHandlers.add(evMatch[1]);
+  }
+  const uiBoundVars = /* @__PURE__ */ new Map();
+  const uiSentMessages = /* @__PURE__ */ new Map();
+  const uiSelfSetVars = /* @__PURE__ */ new Set();
+  const collectUiRefs = (uiNode, screenName) => {
+    if (Array.isArray(uiNode.bindings)) {
+      for (const b of uiNode.bindings) {
+        if (b?.source?.kind === "variable" && b.source.varId) {
+          uiBoundVars.set(b.source.varId, screenName);
+        }
+      }
+    }
+    if (uiNode.click?.kind === "sendMessage" && uiNode.click.message) {
+      uiSentMessages.set(uiNode.click.message, screenName);
+    } else if (uiNode.click?.kind === "setVariable" && uiNode.click.varId) {
+      uiSelfSetVars.add(uiNode.click.varId);
+    }
+    if (Array.isArray(uiNode.children)) {
+      for (const child of uiNode.children) collectUiRefs(child, screenName);
+    }
+  };
+  for (const node of nodes) {
+    if (node.kind === "screen" && node.screen?.documentId) {
+      const uiAsset = assets[node.screen.documentId];
+      if (uiAsset?.kind === "ui") {
+        collectUiRefs(uiAsset.document.root, uiAsset.name);
+      }
+    }
+  }
+  if (scriptAssets.length > 0) {
+    for (const [varId, uiName] of uiBoundVars.entries()) {
+      if (!scriptSetVars.has(varId) && !uiSelfSetVars.has(varId)) {
+        issues.push({
+          severity: "warning",
+          category: "ui",
+          target: varId,
+          message: `UI "${uiName}" \u7ED1\u5B9A\u4E86\u53D8\u91CF "${varId}"\uFF0C\u4F46\u6CA1\u6709\u4EFB\u4F55\u811A\u672C\u8C03\u7528 ui.setVar("${varId}", ...) \u66F4\u65B0\u5B83`,
+          hint: `\u5728\u76F8\u5173\u811A\u672C\u4E2D\u6DFB\u52A0 self.ui.setVar("${varId}", value)\uFF08\u6216 world.ui.setVar\uFF09`
+        });
+      }
+    }
+    for (const [msgName, uiName] of uiSentMessages.entries()) {
+      const quotedPresent = scriptEventHandlers.has(msgName) || allScriptSources.includes(`"${msgName}"`) || allScriptSources.includes(`'${msgName}'`);
+      if (!quotedPresent) {
+        issues.push({
+          severity: "warning",
+          category: "ui",
+          target: msgName,
+          message: `UI "${uiName}" \u7684\u6309\u94AE\u4F1A\u53D1\u9001\u4E8B\u4EF6 "${msgName}"\uFF0C\u4F46\u5F53\u524D\u6CA1\u6709\u811A\u672C\u76D1\u542C\u6216\u5904\u7406\u5B83`,
+          hint: `\u5728\u811A\u672C\u4E2D\u901A\u8FC7 self.ui.onEvent("${msgName}", () => { ... }) \u6216 onMessage \u54CD\u5E94\u6B64\u4E8B\u4EF6`
+        });
+      }
+    }
+  }
   if (!hasCamera) {
     issues.push({
       severity: "warning",
@@ -11235,23 +15355,34 @@ function diagnoseProject(budget = DEFAULT_PERFORMANCE_BUDGET) {
 // src/playtest/session.ts
 init_actionMap();
 import { Group } from "three";
+init_library();
 init_store2();
 init_sceneRuntime();
 init_values();
 init_world();
+function captureLogCursor() {
+  const logs = useEditorStore.getState().logs;
+  return logs.length > 0 ? logs[logs.length - 1].id : null;
+}
+function readLogsSince(cursor) {
+  const logs = useEditorStore.getState().logs;
+  if (!cursor) return logs;
+  const idx = logs.findIndex((item) => item.id === cursor);
+  return idx >= 0 ? logs.slice(idx + 1) : logs;
+}
 var PlaytestSession = class {
   active = false;
   startedFromStopped = false;
   elapsedSec = 0;
   stepsSimulated = 0;
-  logBaseline = 0;
+  logCursor = null;
   screenshots = [];
   assertions = [];
   headlessObjects = /* @__PURE__ */ new Map();
   start(options) {
     const autoPlay = options?.autoPlayEditor !== false;
     const store = useEditorStore.getState();
-    this.logBaseline = store.logs.length;
+    this.logCursor = captureLogCursor();
     this.elapsedSec = 0;
     this.stepsSimulated = 0;
     this.screenshots.length = 0;
@@ -11295,7 +15426,7 @@ var PlaytestSession = class {
       return uiValues().variables[query.name];
     }
     if (query.kind === "logs") {
-      const logs = useEditorStore.getState().logs.slice(this.logBaseline);
+      const logs = readLogsSince(this.logCursor);
       const limit = query.limit ?? 30;
       return logs.slice(-limit);
     }
@@ -11325,7 +15456,7 @@ var PlaytestSession = class {
       return this.elapsedSec >= condition.seconds;
     }
     if (condition.kind === "logContains") {
-      const logs = useEditorStore.getState().logs.slice(this.logBaseline);
+      const logs = readLogsSince(this.logCursor);
       return logs.some((item) => item.message.includes(condition.text));
     }
     if (condition.kind === "nodeExists") {
@@ -11333,6 +15464,12 @@ var PlaytestSession = class {
     }
     if (condition.kind === "nodeMissing") {
       return !this.read({ kind: "nodePose", nodeIdOrName: condition.nodeIdOrName });
+    }
+    if (condition.kind === "uiVarEquals") {
+      return this.read({ kind: "uiVar", name: condition.name }) === condition.value;
+    }
+    if (condition.kind === "nodeCountAtLeast") {
+      return Number(this.read({ kind: "nodeCount" })) >= condition.min;
     }
     const pose = this.read({ kind: "nodePose", nodeIdOrName: condition.nodeIdOrName });
     if (!pose) return false;
@@ -11355,7 +15492,7 @@ var PlaytestSession = class {
     return dataUrl;
   }
   report(budget = DEFAULT_PERFORMANCE_BUDGET) {
-    const logs = useEditorStore.getState().logs.slice(this.logBaseline);
+    const logs = readLogsSince(this.logCursor);
     const errors = logs.filter((item) => item.level === "error").map((item) => item.message);
     const warnings = logs.filter((item) => item.level === "warn").map((item) => item.message);
     const render = readMainRenderMetrics();
@@ -11403,26 +15540,38 @@ var PlaytestSession = class {
   runSmoke(steps, options) {
     this.start();
     try {
-      for (const step of steps) {
-        if (step.action === "input") {
-          this.input(step.events);
-        } else if (step.action === "step") {
-          this.step(step.seconds, step.fixedDt);
-        } else if (step.action === "waitFor") {
-          const ok = this.waitFor(step.condition, step.timeoutSec ?? 5);
+      const effectiveSteps = steps.length > 0 ? steps : [{ action: "step", seconds: 0.5 }];
+      for (const step2 of effectiveSteps) {
+        if (step2.action === "input") {
+          this.input(step2.events);
+        } else if (step2.action === "uiClick") {
+          const hit = findMountedUiButton(step2.target);
+          if (hit && hit.click) {
+            dispatchUiClick(hit.click, hit.id);
+            this.assertions.push({ passed: true, message: `\u5DF2\u70B9\u51FB UI \u6309\u94AE "${hit.name || hit.text || hit.id}"` });
+          } else {
+            this.assertions.push({ passed: false, message: `\u672A\u627E\u5230\u53EF\u70B9\u51FB\u7684 UI \u6309\u94AE "${step2.target}"` });
+          }
+        } else if (step2.action === "step") {
+          this.step(step2.seconds, step2.fixedDt);
+        } else if (step2.action === "waitFor") {
+          const ok = this.waitFor(step2.condition, step2.timeoutSec ?? 5);
           this.assertions.push({
             passed: ok,
-            message: ok ? `\u7B49\u5F85\u6761\u4EF6\u6210\u7ACB: ${step.condition.kind}` : `\u7B49\u5F85\u6761\u4EF6\u8D85\u65F6: ${step.condition.kind}`
+            message: ok ? `\u7B49\u5F85\u6761\u4EF6\u6210\u7ACB: ${step2.condition.kind}` : `\u7B49\u5F85\u6761\u4EF6\u8D85\u65F6: ${step2.condition.kind}`
           });
-        } else if (step.action === "assert") {
-          const ok = this.evaluateCondition(step.condition);
+        } else if (step2.action === "assert") {
+          const ok = this.evaluateCondition(step2.condition);
           this.assertions.push({
             passed: ok,
-            message: step.message ?? (ok ? `\u65AD\u8A00\u901A\u8FC7: ${step.condition.kind}` : `\u65AD\u8A00\u5931\u8D25: ${step.condition.kind}`)
+            message: step2.message ?? (ok ? `\u65AD\u8A00\u901A\u8FC7: ${step2.condition.kind}` : `\u65AD\u8A00\u5931\u8D25: ${step2.condition.kind}`)
           });
-        } else if (step.action === "capture") {
-          this.capture(step.options);
+        } else if (step2.action === "capture") {
+          this.capture(step2.options);
         }
+      }
+      if (this.stepsSimulated === 0) {
+        this.step(0.25);
       }
       return this.report(options?.budget);
     } finally {
@@ -11432,16 +15581,22 @@ var PlaytestSession = class {
     }
   }
   headlessHost() {
-    const nodes = getRuntimeWorld().getNodes();
     return {
       ready: true,
       resolveObject: (id) => {
-        const node = nodes[id];
+        const node = getRuntimeWorld().getNodes()[id];
         if (!node) return null;
         let obj = this.headlessObjects.get(id);
         if (!obj) {
           obj = new Group();
           obj.position.set(node.position[0], node.position[1], node.position[2]);
+          obj.rotation.set(
+            node.rotation[0] * Math.PI / 180,
+            node.rotation[1] * Math.PI / 180,
+            node.rotation[2] * Math.PI / 180
+          );
+          obj.scale.set(node.scale[0], node.scale[1], node.scale[2]);
+          obj.visible = node.visible;
           this.headlessObjects.set(id, obj);
         }
         return obj;
@@ -11453,6 +15608,33 @@ var PlaytestSession = class {
     };
   }
 };
+function findMountedUiButton(target) {
+  const q = target.trim();
+  if (!q) return null;
+  const nodes = getRuntimeWorld().getNodes();
+  const assets = useAssetStore.getState().assets;
+  const searchNode = (node) => {
+    if (node.type === "button" && node.click) {
+      if (node.id === q || node.name === q || node.text === q || node.click.kind === "sendMessage" && node.click.message === q) {
+        return node;
+      }
+    }
+    for (const child of node.children ?? []) {
+      const found = searchNode(child);
+      if (found) return found;
+    }
+    return null;
+  };
+  for (const sceneNode of Object.values(nodes)) {
+    if (sceneNode.kind !== "screen" || !sceneNode.visible || !sceneNode.screen?.documentId) continue;
+    const asset = assets[sceneNode.screen.documentId];
+    if (asset?.kind === "ui" && asset.document?.root) {
+      const hit = searchNode(asset.document.root);
+      if (hit) return hit;
+    }
+  }
+  return null;
+}
 
 // tests/phase2-runtime.test.ts
 init_world();

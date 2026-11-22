@@ -62,12 +62,49 @@ export interface PlaytestReport {
   }
 }
 
+/** 日志游标：store.logs 是 300 条的环形窗口，不能用数组下标做基线，只能用最后一条日志的 id */
+export function captureLogCursor(): string | null {
+  const logs = useEditorStore.getState().logs
+  return logs.length > 0 ? logs[logs.length - 1].id : null
+}
+
+export function readLogsSince(cursor: string | null) {
+  const logs = useEditorStore.getState().logs
+  if (!cursor) return logs
+  const idx = logs.findIndex((item) => item.id === cursor)
+  // 游标已被挤出窗口，说明窗口内全部是游标之后产生的日志
+  return idx >= 0 ? logs.slice(idx + 1) : logs
+}
+
+/** 把逐帧重复的运行时报错去重计数，避免同一条异常刷满返回值 */
+export function summarizeRuntimeLogs(
+  logs: ReadonlyArray<{ level: string; message: string }>,
+  maxEach = 8,
+): { errorCount: number; warningCount: number; errors: string[]; warnings: string[] } {
+  const collect = (level: string) => {
+    const counts = new Map<string, number>()
+    for (const item of logs) {
+      if (item.level !== level) continue
+      counts.set(item.message, (counts.get(item.message) ?? 0) + 1)
+    }
+    const total = Array.from(counts.values()).reduce((sum, n) => sum + n, 0)
+    const lines = Array.from(counts.entries())
+      .slice(0, maxEach)
+      .map(([message, n]) => (n > 1 ? `${message}（重复 ${n} 次）` : message))
+    if (counts.size > maxEach) lines.push(`…另有 ${counts.size - maxEach} 种不同消息未列出`)
+    return { total, lines }
+  }
+  const errors = collect('error')
+  const warnings = collect('warn')
+  return { errorCount: errors.total, warningCount: warnings.total, errors: errors.lines, warnings: warnings.lines }
+}
+
 export class PlaytestSession {
   private active = false
   private startedFromStopped = false
   private elapsedSec = 0
   private stepsSimulated = 0
-  private logBaseline = 0
+  private logCursor: string | null = null
   private readonly screenshots: string[] = []
   private readonly assertions: Array<{ passed: boolean; message: string }> = []
   private readonly headlessObjects = new Map<string, Group>()
@@ -75,7 +112,7 @@ export class PlaytestSession {
   start(options?: { autoPlayEditor?: boolean }): void {
     const autoPlay = options?.autoPlayEditor !== false
     const store = useEditorStore.getState()
-    this.logBaseline = store.logs.length
+    this.logCursor = captureLogCursor()
     this.elapsedSec = 0
     this.stepsSimulated = 0
     this.screenshots.length = 0
@@ -123,7 +160,7 @@ export class PlaytestSession {
       return uiValues().variables[query.name]
     }
     if (query.kind === 'logs') {
-      const logs = useEditorStore.getState().logs.slice(this.logBaseline)
+      const logs = readLogsSince(this.logCursor)
       const limit = query.limit ?? 30
       return logs.slice(-limit)
     }
@@ -154,7 +191,7 @@ export class PlaytestSession {
       return this.elapsedSec >= condition.seconds
     }
     if (condition.kind === 'logContains') {
-      const logs = useEditorStore.getState().logs.slice(this.logBaseline)
+      const logs = readLogsSince(this.logCursor)
       return logs.some((item) => item.message.includes(condition.text))
     }
     if (condition.kind === 'nodeExists') {
@@ -195,7 +232,7 @@ export class PlaytestSession {
   }
 
   report(budget: PerformanceBudget = DEFAULT_PERFORMANCE_BUDGET): PlaytestReport {
-    const logs = useEditorStore.getState().logs.slice(this.logBaseline)
+    const logs = readLogsSince(this.logCursor)
     const errors = logs.filter((item) => item.level === 'error').map((item) => item.message)
     const warnings = logs.filter((item) => item.level === 'warn').map((item) => item.message)
     const render = readMainRenderMetrics()

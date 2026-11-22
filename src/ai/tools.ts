@@ -9,7 +9,7 @@ import {
   querySceneOutline,
 } from '../core/query'
 import { fieldSchemaToJsonSchema } from '../core/schema/fieldSchema'
-import { useCodeAssetStore } from '../core/codeAssets/workspace'
+import { normalizeCodeAssetId, useCodeAssetStore, type CodeAssetKind } from '../core/codeAssets/workspace'
 import { createBranch, listBranches, switchBranch } from '../core/project/checkpoints'
 import { getInputActionMap, saveProjectInputMap, setInputActionMap, type ActionBinding } from '../core/input/actionMap'
 import { captureViewportComposite } from '../core/preview/offscreenPreview'
@@ -17,17 +17,14 @@ import { projectDirectoryPath } from '../editor/project/disk'
 import { useEditorStore } from '../editor/scene/store'
 import { exportWebPlayerBundle } from '../player/exporter'
 import { useAssetStore } from '../editor/assets/library'
-import { PlaytestSession, type SmokeStep } from '../playtest/session'
-
-export type AiToolDomain = 'core' | 'script' | 'shader' | 'ui' | 'capability' | 'playtest'
-
-export const AI_TOOL_DOMAIN_META: Record<Exclude<AiToolDomain, 'core'>, { label: string; summary: string }> = {
-  script: { label: '脚本与逻辑', summary: '编写/更新/检查/挂载 TypeScript 行为脚本（t3d/runtime）、查询代码资产' },
-  shader: { label: '着色器与材质', summary: '编写/绑定 TSL 着色器（t3d/shader）、创建/分配材质、资产目录整理' },
-  ui: { label: 'UI 与输入', summary: '创建/更新/挂载 UI HUD 界面、查询 UI 文档、配置键鼠输入映射' },
-  capability: { label: '能力包与数据', summary: '物理/粒子/水面/天空/导航能力包、玩法包、数据表行、环境渲染参数' },
-  playtest: { label: '试玩与交付', summary: '自动试玩冒烟、视口截图、新建/切换场景、实验分支、导出 Web 播放包' },
-}
+import {
+  PlaytestSession,
+  captureLogCursor,
+  readLogsSince,
+  summarizeRuntimeLogs,
+  type SmokeStep,
+} from '../playtest/session'
+import { findRecipe, listRecipeIndex } from './knowledge/recipes'
 
 export interface AiToolSpec {
   name: string
@@ -41,7 +38,6 @@ export interface AiToolExecutionResult {
   displayLabel: string
   targetNodeId?: string
   targetAssetId?: string
-  enabledDomains?: AiToolDomain[]
   data: unknown
 }
 
@@ -66,26 +62,6 @@ function fromToolName(name: string): string {
 }
 
 const QUERY_TOOLS: AiToolSpec[] = [
-  {
-    name: 'tools__enable_domain',
-    description:
-      '按需开启专业工具域以节省上下文并解锁对应工具：script（行为脚本）/ shader（着色器与材质）/ ui（UI界面与输入）/ capability（物理/粒子/水面/天空/导航/玩法包/数据表）/ playtest（自动试玩/截图/分支/多场景/导出）。可一次开启多个域。',
-    parameters: {
-      type: 'object',
-      properties: {
-        domains: {
-          type: 'array',
-          items: {
-            type: 'string',
-            enum: ['script', 'shader', 'ui', 'capability', 'playtest'],
-          },
-          description: '需要开启的工具域列表',
-        },
-      },
-      required: ['domains'],
-      additionalProperties: false,
-    },
-  },
   {
     name: 'plan__set_tasks',
     description: '为多步骤长任务规划或更新阶段性子任务清单（最多 8 项），每完成一阶段调用此工具更新状态，界面会同步显示进度',
@@ -194,6 +170,42 @@ const QUERY_TOOLS: AiToolSpec[] = [
     parameters: { type: 'object', properties: {}, additionalProperties: false },
   },
   {
+    name: 'script__read',
+    description: '读取指定脚本资产的当前完整源码与编译诊断。修改已有脚本前必须先读取，script__patch 的 find 片段要与这里返回的源码逐字一致',
+    parameters: {
+      type: 'object',
+      properties: {
+        id: { type: 'string', description: '脚本 ID（即文件名，不含 .ts）' },
+      },
+      required: ['id'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'shader__read',
+    description: '读取指定着色器资产的当前完整源码与编译诊断',
+    parameters: {
+      type: 'object',
+      properties: {
+        id: { type: 'string', description: '着色器 ID（即文件名，不含 .shader.ts）' },
+      },
+      required: ['id'],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: 'kb__read',
+    description: '读取一份经过验证的范例（可运行的完整脚本源码 + 场景搭建与挂载说明）。范例目录见系统提示的「范例库」。实现同类玩法时先读范例再改写，不要从零摸索',
+    parameters: {
+      type: 'object',
+      properties: {
+        id: { type: 'string', description: '范例 ID，如 third-person-controller' },
+      },
+      required: ['id'],
+      additionalProperties: false,
+    },
+  },
+  {
     name: 'query__ui_inspect',
     description: '读取指定 UI 资产的完整 UiDocument 节点树与绑定/点击事件详情（不传 assetId 则列出全部 UI 资产）',
     parameters: {
@@ -206,14 +218,46 @@ const QUERY_TOOLS: AiToolSpec[] = [
   },
   {
     name: 'playtest__run_smoke',
-    description: '启动自动试玩探针，按定步长推进并注入虚拟输入、断言节点/日志状态，输出报错与性能预算报告',
+    description:
+      '确定性自动试玩：按固定步长推进游戏、注入虚拟输入、断言节点/变量/日志状态，返回运行时报错（已去重）、断言结果与性能预算。验收玩法逻辑的首选方式（比截图更可靠也更快），结束后自动退出试玩。',
     parameters: {
       type: 'object',
       properties: {
         steps: {
           type: 'array',
-          description: '冒烟测试步骤列表：支持 {action:"input",events:[...]}、{action:"uiClick",target:"按钮名/文本/消息名"}、{action:"step",seconds:1}、{action:"waitFor",condition:...}、{action:"assert",condition:...}、{action:"capture"}',
-          items: { type: 'object' },
+          description:
+            '按顺序执行的步骤。示例：[{"action":"input","events":[{"type":"axis","action":"Move","x":0,"y":1}]},{"action":"step","seconds":1},{"action":"assert","condition":{"kind":"nodeMoved","nodeIdOrName":"Player","from":[0,0,0],"minDistance":0.5}}]',
+          items: {
+            type: 'object',
+            properties: {
+              action: {
+                type: 'string',
+                enum: ['input', 'uiClick', 'step', 'waitFor', 'assert', 'capture'],
+                description: 'input 注入输入 / uiClick 点击按钮 / step 推进时间 / waitFor 等待条件成立 / assert 立即断言 / capture 截图',
+              },
+              events: {
+                type: 'array',
+                description:
+                  'action=input 时：虚拟输入事件，持续生效直到被覆盖或 clear。{type:"axis",action:"Move",x,y} / {type:"actionDown"|"actionUp",action:"Jump"} / {type:"keyDown"|"keyUp",code:"KeyW"} / {type:"clear"}',
+                items: { type: 'object' },
+              },
+              target: { type: 'string', description: 'action=uiClick 时：按钮名称 / 文本 / 发送的消息名' },
+              seconds: { type: 'number', description: 'action=step 时：推进的游戏秒数' },
+              timeoutSec: { type: 'number', description: 'action=waitFor 时：最长等待的游戏秒数，默认 5' },
+              condition: {
+                type: 'object',
+                description:
+                  'action=waitFor/assert 时的条件：{kind:"nodeMoved",nodeIdOrName,from:[x,y,z],minDistance} / {kind:"nodeExists"|"nodeMissing",nodeIdOrName} / {kind:"uiVarEquals",name,value} / {kind:"logContains",text} / {kind:"nodeCountAtLeast",min} / {kind:"elapsed",seconds}',
+              },
+              message: { type: 'string', description: 'action=assert 时：断言说明' },
+            },
+            required: ['action'],
+          },
+        },
+        watchNodes: {
+          type: 'array',
+          items: { type: 'string' },
+          description: '可选：结束时回报这些节点（名称或 ID）的实时世界位置，用于确认角色/敌人是否按预期运动',
         },
         autoStop: { type: 'boolean', description: '完成后是否自动退出试玩，默认 true' },
       },
@@ -223,7 +267,7 @@ const QUERY_TOOLS: AiToolSpec[] = [
   },
   {
     name: 'viewport__capture',
-    description: '抓取当前视口截图（含 3D 场景与叠加 UI 界面）。若传入 playSeconds（如 0.8），会自动启动试玩运行指定秒数后截图，默认截完自动退出试玩，非常适合检查游戏内真实相机、动态效果与 UI 排版。',
+    description: '抓取当前视口截图（含 3D 场景与叠加 UI 界面），用于检查构图、朝向与 UI 排版。若传入 playSeconds（如 0.8），会自动启动试玩运行指定秒数后截图并自动退出试玩，同时返回这段时间内的运行时报错与警告。',
     parameters: {
       type: 'object',
       properties: {
@@ -231,13 +275,14 @@ const QUERY_TOOLS: AiToolSpec[] = [
         height: { type: 'number', description: '可选缩放高度' },
         playSeconds: { type: 'number', description: '可选：自动开启试玩并运行指定秒数（如 0.5~2.0）后再截图' },
         keepPlaying: { type: 'boolean', description: '可选：截图后是否保持试玩状态（默认 false，自动恢复编辑态以便继续修改工程）' },
+        watchNodes: { type: 'array', items: { type: 'string' }, description: '可选：同时回报这些节点（名称或 ID）的实时世界位置' },
       },
       additionalProperties: false,
     },
   },
   {
     name: 'playtest__control',
-    description: '控制编辑器实时试玩状态（开始试玩 play / 暂停 pause / 停止并还原 stop），可配合 waitSeconds 等待几帧再观察或截图',
+    description: '控制编辑器实时试玩状态（开始试玩 play / 暂停 pause / 停止并还原 stop），可配合 waitSeconds 等待；返回自开始试玩以来的运行时报错与警告。一般验收请直接用 playtest__run_smoke 或 viewport__capture({ playSeconds })，无需手动控制',
     parameters: {
       type: 'object',
       properties: {
@@ -245,18 +290,6 @@ const QUERY_TOOLS: AiToolSpec[] = [
         waitSeconds: { type: 'number', description: '可选：执行后等待的真实秒数（如 0.5）' },
       },
       required: ['action'],
-      additionalProperties: false,
-    },
-  },
-  {
-    name: 'playtest__capture',
-    description: '抓取当前视口截图（含 3D 场景与 UI 界面，PNG/JPEG DataURL）',
-    parameters: {
-      type: 'object',
-      properties: {
-        width: { type: 'number', description: '可选缩放宽度' },
-        height: { type: 'number', description: '可选缩放高度' },
-      },
       additionalProperties: false,
     },
   },
@@ -320,116 +353,14 @@ const QUERY_TOOLS: AiToolSpec[] = [
   },
 ]
 
-export function toolDomainFor(toolName: string): AiToolDomain {
-  if (
-    toolName === 'tools__enable_domain' ||
-    toolName === 'plan__set_tasks' ||
-    toolName === 'query__project_overview' ||
-    toolName === 'query__scene_outline' ||
-    toolName === 'query__node_inspect' ||
-    toolName === 'query__asset_search' ||
-    toolName === 'query__project_diagnose' ||
-    toolName === 'scene__createNode' ||
-    toolName === 'scene__deleteNodes' ||
-    toolName === 'scene__setTransform' ||
-    toolName === 'scene__renameNode' ||
-    toolName === 'scene__reparentNode' ||
-    toolName === 'project__design__get' ||
-    toolName === 'project__design__update' ||
-    toolName === 'project__createCheckpoint' ||
-    toolName === 'asset__createPrefab' ||
-    toolName === 'viewport__capture' ||
-    toolName === 'playtest__control'
-  ) {
-    return 'core'
-  }
-  if (toolName.startsWith('script__')) return 'script'
-  if (toolName.startsWith('shader__') || toolName.startsWith('asset__')) return 'shader'
-  if (toolName === 'query__code_assets') return 'script'
-  if (toolName.startsWith('ui__') || toolName === 'query__ui_inspect' || toolName.startsWith('input__')) return 'ui'
-  if (
-    toolName.startsWith('capability__') ||
-    toolName.startsWith('pack__') ||
-    toolName.startsWith('gameplay__') ||
-    toolName === 'query__registry_describe' ||
-    toolName === 'query__db_rows' ||
-    toolName === 'picture__update'
-  ) {
-    return 'capability'
-  }
-  if (
-    toolName.startsWith('playtest__') ||
-    toolName.startsWith('branch__') ||
-    toolName === 'scene__create' ||
-    toolName === 'scene__open' ||
-    toolName === 'project__export_web' ||
-    toolName === 'project__restoreCheckpoint' ||
-    toolName === 'codeAsset__openExternal'
-  ) {
-    return 'playtest'
-  }
-  return 'core'
-}
-
-export function inferInitialToolDomains(
-  prompt: string,
-  refKinds: ReadonlyArray<'node' | 'asset' | 'script' | 'shader'> = [],
-): Set<AiToolDomain> {
-  const domains = new Set<AiToolDomain>(['core'])
-  const p = prompt.toLowerCase()
-
-  if (refKinds.includes('script')) domains.add('script')
-  if (refKinds.includes('shader') || refKinds.includes('asset')) domains.add('shader')
-
-  const isGameBuild = /(做个|制作|新建|搭建|开发).*(游戏|demo|原型|关卡|塔防|射击|跳跃|跑酷|rpg|fps)/.test(p)
-  if (
-    isGameBuild ||
-    /(脚本|代码|逻辑|行为|移动|控制|旋转|发射|子弹|炮塔|敌人|怪物|波次|生成|碰撞|伤害|血量|ai|script|behavior)/.test(p)
-  ) {
-    domains.add('script')
-  }
-  if (
-    isGameBuild ||
-    /(着色器|材质|发光|描边|轮廓|透明|金属|粗糙|贴图|颜色|目录|整理|文件夹|shader|material|tsl|rim|glow)/.test(p)
-  ) {
-    domains.add('shader')
-  }
-  if (
-    isGameBuild ||
-    /(ui|界面|hud|血条|按钮|菜单|弹窗|分数|金币|文本|面板|按键|键位|输入|手柄|鼠标|键盘|screen|button|input)/.test(p)
-  ) {
-    domains.add('ui')
-  }
-  if (
-    isGameBuild ||
-    /(物理|刚体|碰撞体|重力|粒子|特效|水面|海洋|天空|雾|后处理|光照|导航|寻路|能力包|玩法包|数据表|样条|曲线|补间|缓动|群体|避让|编队|弹道|physics|particle|effect|water|sky|nav|pack|capability|spline|tween|crowd|projectile)/.test(p)
-  ) {
-    domains.add('capability')
-  }
-  if (
-    isGameBuild ||
-    /(试玩|冒烟|测试|验证|截图|分支|导出|多场景|切换场景|playtest|smoke|capture|export|branch)/.test(p)
-  ) {
-    domains.add('playtest')
-  }
-
-  return domains
-}
-
-export function buildAiToolSpecs(activeDomains?: Iterable<AiToolDomain>): AiToolSpec[] {
+export function buildAiToolSpecs(): AiToolSpec[] {
   const commandTools: AiToolSpec[] = commandBus.list().map((cmd) => ({
     name: toToolName(cmd.id),
     description: `${cmd.title}${cmd.description ? `：${cmd.description}` : ''}${cmd.risk === 'confirm' ? '（高风险操作，需谨慎）' : ''}`,
     parameters: fieldSchemaToJsonSchema(cmd.params),
   }))
-  const all = [...QUERY_TOOLS, ...commandTools]
-  if (!activeDomains) return all
-  const allowed = new Set<AiToolDomain>(['core', ...activeDomains])
-  // shader 域与 script 域共享 query__code_assets
-  if (allowed.has('shader')) {
-    return all.filter((t) => allowed.has(toolDomainFor(t.name)) || t.name === 'query__code_assets')
-  }
-  return all.filter((t) => allowed.has(toolDomainFor(t.name)))
+  // 工具全集常驻且顺序稳定：工具定义位于提示缓存前缀内，中途增删会让整段缓存失效
+  return [...QUERY_TOOLS, ...commandTools]
 }
 
 export function isConfirmRequiredTool(toolName: string): boolean {
@@ -462,27 +393,6 @@ async function executeAiToolInner(
 ): Promise<AiToolExecutionResult> {
   const resolvedArgs = resolveAiNodeArgs(toolName, args)
   switch (toolName) {
-    case 'tools__enable_domain': {
-      const raw = Array.isArray(resolvedArgs.domains) ? resolvedArgs.domains : []
-      const valid = raw.filter(
-        (d): d is Exclude<AiToolDomain, 'core'> =>
-          typeof d === 'string' && d in AI_TOOL_DOMAIN_META,
-      )
-      const labels = valid.map((d) => AI_TOOL_DOMAIN_META[d].label)
-      return {
-        ok: valid.length > 0,
-        toolName,
-        enabledDomains: valid,
-        displayLabel: valid.length > 0 ? `开启工具域：${labels.join('、')}` : '未指定有效工具域',
-        data: {
-          ok: valid.length > 0,
-          enabled: valid,
-          message: valid.length > 0
-            ? `已开启工具域 [${valid.join(', ')}]，下一轮起可直接调用对应工具。`
-            : '请传入有效的 domains 数组：script / shader / ui / capability / playtest',
-        },
-      }
-    }
     case 'plan__set_tasks': {
       const raw = Array.isArray(resolvedArgs.tasks) ? resolvedArgs.tasks : []
       const normalized: AiTaskPlanItem[] = raw
@@ -636,29 +546,102 @@ async function executeAiToolInner(
         data: list,
       }
     }
+    case 'script__read':
+    case 'shader__read': {
+      const kind: CodeAssetKind = toolName === 'shader__read' ? 'shader' : 'script'
+      const rawId = typeof resolvedArgs.id === 'string' ? resolvedArgs.id.trim() : ''
+      const all = useCodeAssetStore.getState().assets
+      const record = rawId
+        ? all[rawId] ?? all[normalizeCodeAssetId(kind, rawId)] ?? Object.values(all).find((a) => a.kind === kind && a.name === rawId)
+        : undefined
+      if (!record || record.kind !== kind) {
+        return {
+          ok: false,
+          toolName,
+          displayLabel: `读取${kind === 'shader' ? '着色器' : '脚本'}失败：${rawId || '(空)'} 不存在`,
+          data: {
+            ok: false,
+            message: `${kind === 'shader' ? '着色器' : '脚本'} "${rawId}" 不存在`,
+            available: Object.values(all).filter((a) => a.kind === kind).map((a) => ({ id: a.id, name: a.name })),
+          },
+        }
+      }
+      return {
+        ok: true,
+        toolName,
+        displayLabel: `读取${kind === 'shader' ? '着色器' : '脚本'} ${record.relativePath}`,
+        targetAssetId: `code:${kind}:${record.id}`,
+        data: {
+          id: record.id,
+          name: record.name,
+          relativePath: record.relativePath,
+          compiled: record.ok,
+          diagnostics: record.diagnostics,
+          lineCount: record.source.split('\n').length,
+          source: record.source,
+        },
+      }
+    }
+    case 'kb__read': {
+      const id = typeof args.id === 'string' ? args.id.trim() : ''
+      const recipe = findRecipe(id)
+      if (!recipe) {
+        return {
+          ok: false,
+          toolName,
+          displayLabel: `范例 ${id || '(空)'} 不存在`,
+          data: { ok: false, message: `范例 "${id}" 不存在`, available: listRecipeIndex() },
+        }
+      }
+      return {
+        ok: true,
+        toolName,
+        displayLabel: `查阅范例：${recipe.title}`,
+        data: recipe,
+      }
+    }
     case 'playtest__run_smoke': {
       const steps = Array.isArray(args.steps) ? (args.steps as SmokeStep[]) : []
       const session = new PlaytestSession()
-      const report = session.runSmoke(steps, {
-        autoStop: typeof args.autoStop === 'boolean' ? args.autoStop : true,
-      })
+      const autoStop = typeof args.autoStop === 'boolean' ? args.autoStop : true
+      // 先不自动停止：需要在仍处于试玩态时读取被观察节点的实时位置
+      const report = session.runSmoke(steps, { autoStop: false })
+      const watched = readWatchedNodes(session, args.watchNodes)
+      if (autoStop) session.stop()
+      const logSummary = summarizeRuntimeLogs([
+        ...report.errors.map((message) => ({ level: 'error', message })),
+        ...report.warnings.map((message) => ({ level: 'warn', message })),
+      ])
       const failedAssertion = report.assertions.find((a) => !a.passed)
-      const briefReason = report.errors[0]
+      const briefReason = logSummary.errors[0]
         || (failedAssertion ? `断言失败: ${failedAssertion.message}` : '')
         || (!report.metrics.budgetPassed ? (report.metrics.budgetNotes[0] || '性能预算超标') : '')
+      const lastShot = report.screenshots[report.screenshots.length - 1]
       return {
         ok: report.ok,
         toolName,
         displayLabel: report.ok
           ? `试玩冒烟：通过（${report.stepsSimulated} 步 / ${report.elapsedSec}s）`
           : `试玩冒烟：${briefReason ? `${briefReason.slice(0, 42)}${briefReason.length > 42 ? '…' : ''}` : `发现 ${report.errorCount} 项问题`}（${report.stepsSimulated} 步 / ${report.elapsedSec}s）`,
-        data: report,
+        data: {
+          ok: report.ok,
+          elapsedSec: report.elapsedSec,
+          stepsSimulated: report.stepsSimulated,
+          runtimeErrorCount: logSummary.errorCount,
+          runtimeErrors: logSummary.errors,
+          runtimeWarnings: logSummary.warnings,
+          assertions: report.assertions,
+          metrics: report.metrics,
+          ...(watched ? { watchedNodes: watched } : {}),
+          ...(lastShot ? { dataUrl: lastShot } : {}),
+        },
       }
     }
     case 'playtest__control': {
       const action = String(args.action ?? '').trim()
       const store = useEditorStore.getState()
       if (action === 'play') {
+        if (store.playState === 'stopped') manualPlayLogCursor = captureLogCursor()
         if (store.playState === 'stopped' || store.playState === 'paused') store.play()
       } else if (action === 'pause') {
         if (store.playState === 'playing') store.pause()
@@ -670,11 +653,17 @@ async function executeAiToolInner(
       const waitSec = typeof args.waitSeconds === 'number' && args.waitSeconds > 0 ? args.waitSeconds : 0.05
       await waitRealFrames(waitSec)
       const nextState = useEditorStore.getState().playState
+      const logSummary = summarizeRuntimeLogs(readLogsSince(manualPlayLogCursor))
       return {
         ok: true,
         toolName,
         displayLabel: nextState === 'playing' ? '已进入试玩状态' : nextState === 'paused' ? '已暂停试玩' : '已退出试玩',
-        data: { playState: nextState },
+        data: {
+          playState: nextState,
+          runtimeErrorCount: logSummary.errorCount,
+          runtimeErrors: logSummary.errors,
+          runtimeWarnings: logSummary.warnings,
+        },
       }
     }
     case 'viewport__capture':
@@ -683,6 +672,7 @@ async function executeAiToolInner(
       const keepPlaying = args.keepPlaying === true
       const store = useEditorStore.getState()
       const startedHere = playSec > 0 && store.playState === 'stopped'
+      const logCursor = captureLogCursor()
       if (startedHere) {
         store.play()
       }
@@ -690,23 +680,38 @@ async function executeAiToolInner(
         await waitRealFrames(playSec)
       }
       let dataUrl: string | null = null
+      let watched: ReturnType<typeof readWatchedNodes> = null
       try {
         dataUrl = await captureViewportComposite({
           width: typeof args.width === 'number' ? args.width : undefined,
           height: typeof args.height === 'number' ? args.height : undefined,
         })
+        watched = readWatchedNodes(new PlaytestSession(), args.watchNodes)
       } finally {
         if (startedHere && !keepPlaying && useEditorStore.getState().playState !== 'stopped') {
           useEditorStore.getState().stop()
         }
       }
+      const played = startedHere || store.playState !== 'stopped'
+      const logSummary = played ? summarizeRuntimeLogs(readLogsSince(logCursor)) : null
       return {
         ok: Boolean(dataUrl),
         toolName,
-        displayLabel: dataUrl ? (startedHere ? '试玩实景截图成功' : '视口截图成功') : '视口未就绪，无法截图',
-        data: dataUrl
-          ? { dataUrl, playState: useEditorStore.getState().playState }
-          : { error: 'viewport not ready' },
+        displayLabel: dataUrl
+          ? `${startedHere ? '试玩实景截图成功' : '视口截图成功'}${logSummary && logSummary.errorCount > 0 ? `（运行时报错 ${logSummary.errorCount} 条）` : ''}`
+          : '视口未就绪，无法截图',
+        data: {
+          ...(dataUrl ? { dataUrl } : { error: 'viewport not ready' }),
+          playState: useEditorStore.getState().playState,
+          ...(logSummary
+            ? {
+                runtimeErrorCount: logSummary.errorCount,
+                runtimeErrors: logSummary.errors,
+                runtimeWarnings: logSummary.warnings,
+              }
+            : {}),
+          ...(watched ? { watchedNodes: watched } : {}),
+        },
       }
     }
     case 'input__get_map': {
@@ -897,6 +902,32 @@ function resolveAssetIdFuzzy(raw: string): string {
   return raw
 }
 
+/** playtest__control 手动开始试玩时记录的日志游标，用于停止/暂停时回报这段时间的运行时报错 */
+let manualPlayLogCursor: string | null = null
+
+function readWatchedNodes(
+  session: PlaytestSession,
+  raw: unknown,
+): Array<{ query: string; found: boolean; id?: string; name?: string; position?: [number, number, number] }> | null {
+  if (!Array.isArray(raw) || raw.length === 0) return null
+  return raw
+    .filter((item): item is string => typeof item === 'string' && Boolean(item.trim()))
+    .slice(0, 12)
+    .map((query) => {
+      const pose = session.read({ kind: 'nodePose', nodeIdOrName: query.trim() }) as
+        | { id: string; name: string; position: [number, number, number] }
+        | null
+      if (!pose) return { query, found: false }
+      return {
+        query,
+        found: true,
+        id: pose.id,
+        name: pose.name,
+        position: pose.position.map((v) => Number(v.toFixed(3))) as [number, number, number],
+      }
+    })
+}
+
 async function waitRealFrames(seconds: number): Promise<void> {
   const ms = Math.max(0, Math.min(10000, seconds * 1000))
   if (ms > 0) {
@@ -914,6 +945,8 @@ function resolveAiNodeArgs(toolName: string, args: Record<string, unknown>): Rec
     toolName === 'script__update' ||
     toolName === 'script__patch' ||
     toolName === 'script__check' ||
+    toolName === 'script__read' ||
+    toolName === 'shader__read' ||
     toolName === 'shader__create' ||
     toolName === 'shader__update' ||
     toolName === 'shader__check'
@@ -1052,7 +1085,7 @@ function extractTargetNodeId(args: Record<string, unknown>, value: unknown): str
 
 function extractTargetAssetId(toolName: string, args: Record<string, unknown>, value: unknown): string | undefined {
   const valObj = value && typeof value === 'object' ? (value as Record<string, unknown>) : null
-  if (toolName.startsWith('script__') && toolName !== 'script__attach' && toolName !== 'script__check') {
+  if (toolName.startsWith('script__') && toolName !== 'script__attach' && toolName !== 'script__check' && toolName !== 'script__read') {
     const id = typeof valObj?.id === 'string' ? valObj.id : typeof args.id === 'string' ? args.id : ''
     if (id) return `code:script:${id}`
   }
