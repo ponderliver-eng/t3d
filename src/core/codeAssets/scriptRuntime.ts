@@ -1,4 +1,19 @@
+import { Vector3 } from 'three'
 import { findNavigationPath } from '../../capabilities/navigation/session'
+import {
+  getCrowdStats,
+  isCrowdMoving,
+  setCrowdFormation,
+  setCrowdTarget,
+  stopCrowdAgent,
+} from '../../capabilities/crowd/session'
+import type { CrowdFormationType } from '../../capabilities/crowd/schema'
+import {
+  bindProjectileRuntimeHooks,
+  launchProjectile,
+  resetProjectileState,
+} from '../../capabilities/projectile/session'
+import type { ProjectileMode } from '../../capabilities/projectile/schema'
 import { applyPhysicsForce, applyPhysicsImpulse, getPhysicsBodyState, setPhysicsVelocity } from '../../capabilities/physics/session'
 import type { SceneNode, Vec3 as TupleVec3 } from '../../editor/scene/types'
 import { findRow } from '../../gameplay/registry'
@@ -345,7 +360,7 @@ function cancelTimersForNode(nodeId: string): void {
 function resolveSplinePointsInput(
   input: unknown,
   host: SceneRuntimeHost,
-): Vec3Obj[] {
+): { points: Vec3Obj[]; closed?: boolean; tension?: number } {
   const world = getRuntimeWorld()
   const nodes = world.getNodes()
   if (Array.isArray(input)) {
@@ -354,20 +369,55 @@ function resolveSplinePointsInput(
       const v = resolveVec3Input(item)
       if (v) pts.push(v)
     }
-    return pts
+    return { points: pts }
   }
   const parentNode = resolveTemplateNode(input as string | { id?: string } | null | undefined, nodes)
-  if (!parentNode) return []
+  if (!parentNode) return { points: [] }
+
+  // 优先读取 Spline 曲线节点的 splinePath 控制点
+  const rawSplinePath = parentNode.capabilities?.splinePath as
+    | { points?: unknown; closed?: boolean; tension?: number }
+    | undefined
+  if (parentNode.kind === 'spline' || rawSplinePath) {
+    const pathObj = host.resolveObject(parentNode.id)
+    if (pathObj) pathObj.updateMatrixWorld()
+    const rawPts = Array.isArray(rawSplinePath?.points) ? rawSplinePath.points : []
+    const pts: Vec3Obj[] = []
+    for (const p of rawPts) {
+      if (!Array.isArray(p) || p.length < 3) continue
+      const lx = Number(p[0]) || 0
+      const ly = Number(p[1]) || 0
+      const lz = Number(p[2]) || 0
+      if (pathObj) {
+        const v = new Vector3(lx, ly, lz).applyMatrix4(pathObj.matrixWorld)
+        pts.push({ x: v.x, y: v.y, z: v.z })
+      } else {
+        pts.push({
+          x: parentNode.position[0] + lx,
+          y: parentNode.position[1] + ly,
+          z: parentNode.position[2] + lz,
+        })
+      }
+    }
+    return {
+      points: pts,
+      closed: typeof rawSplinePath?.closed === 'boolean' ? rawSplinePath.closed : undefined,
+      tension: typeof rawSplinePath?.tension === 'number' ? rawSplinePath.tension : undefined,
+    }
+  }
+
   const children = Object.values(nodes)
     .filter((n) => n.parentId === parentNode.id && !isNodePooledInactive(n.id, nodes))
     .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
   const targets = children.length > 0 ? children : [parentNode]
-  return targets.map((n) => {
-    const obj = host.resolveObject(n.id)
-    return obj
-      ? { x: obj.position.x, y: obj.position.y, z: obj.position.z }
-      : toVec3Obj(n.position)
-  })
+  return {
+    points: targets.map((n) => {
+      const obj = host.resolveObject(n.id)
+      return obj
+        ? { x: obj.position.x, y: obj.position.y, z: obj.position.z }
+        : toVec3Obj(n.position)
+    }),
+  }
 }
 
 function buildCurveApi() {
@@ -1051,8 +1101,11 @@ function buildScriptContext(
     },
     spline: {
       create: (pointsOrParent: unknown, options?: { closed?: boolean; tension?: number }) => {
-        const pts = resolveSplinePointsInput(pointsOrParent, host)
-        return createSplinePath(pts, options)
+        const resolved = resolveSplinePointsInput(pointsOrParent, host)
+        return createSplinePath(resolved.points, {
+          closed: options?.closed ?? resolved.closed,
+          tension: options?.tension ?? resolved.tension,
+        })
       },
       follow: (
         pointsOrParent: unknown,
@@ -1068,13 +1121,16 @@ function buildScriptContext(
           onArrive?: () => void
         },
       ) => {
-        const spline: SplinePath =
-          pointsOrParent && typeof pointsOrParent === 'object' && 'pointAtDistance' in pointsOrParent
-            ? (pointsOrParent as SplinePath)
-            : createSplinePath(resolveSplinePointsInput(pointsOrParent, host), {
-                closed: options?.closed ?? options?.loop,
-                tension: options?.tension,
-              })
+        let spline: SplinePath
+        if (pointsOrParent && typeof pointsOrParent === 'object' && 'pointAtDistance' in pointsOrParent) {
+          spline = pointsOrParent as SplinePath
+        } else {
+          const resolved = resolveSplinePointsInput(pointsOrParent, host)
+          spline = createSplinePath(resolved.points, {
+            closed: options?.closed ?? options?.loop ?? resolved.closed,
+            tension: options?.tension ?? resolved.tension,
+          })
+        }
         if (spline.points.length === 0) {
           splineFollowAgents.delete(node.id)
           return false
@@ -1275,6 +1331,81 @@ function buildScriptContext(
       },
     },
     curve: buildCurveApi(),
+    crowd: {
+      moveTo: (
+        target: Vec3Obj | [number, number, number],
+        options?: { speed?: number; arriveDist?: number; onArrive?: () => void },
+      ) => {
+        const v = resolveVec3Input(target)
+        if (!v) return
+        setCrowdTarget(node.id, v, options)
+      },
+      stop: () => stopCrowdAgent(node.id),
+      get isMoving() {
+        return isCrowdMoving(node.id)
+      },
+      formation: (
+        units: readonly (string | { id?: string })[],
+        center: Vec3Obj | [number, number, number],
+        options?: {
+          formation?: CrowdFormationType
+          spacing?: number
+          facingYaw?: number
+          speed?: number
+          arriveDist?: number
+        },
+      ) => {
+        const c = resolveVec3Input(center)
+        if (!c) return
+        const nodes = world.getNodes()
+        const ids = units
+          .map((u) => resolveTemplateNode(u, nodes)?.id ?? (typeof u === 'string' ? u : u?.id))
+          .filter((id): id is string => Boolean(id))
+        setCrowdFormation(ids, c, options)
+      },
+      stats: () => getCrowdStats(),
+    },
+    projectile: {
+      launch: (options?: {
+        direction?: Vec3Obj | [number, number, number]
+        target?: string | { id?: string } | null
+        owner?: string | { id?: string } | null
+        mode?: ProjectileMode
+        speed?: number
+        gravity?: number
+        turnRate?: number
+        maxLifetime?: number
+        hitRadius?: number
+        targetTag?: string
+        damage?: number
+        destroyOnHit?: boolean
+        onHit?: (hitNode: ReturnType<typeof makeNodeHandle>, pos: Vec3Obj) => void
+      }) => {
+        const nodes = world.getNodes()
+        const targetId = options?.target ? (resolveTemplateNode(options.target, nodes)?.id ?? (typeof options.target === 'string' ? options.target : options.target?.id)) : null
+        const ownerId = options?.owner ? (resolveTemplateNode(options.owner, nodes)?.id ?? (typeof options.owner === 'string' ? options.owner : options.owner?.id)) : node.id
+        launchProjectile(node.id, {
+          direction: options?.direction ? (resolveVec3Input(options.direction) ?? undefined) : undefined,
+          targetId,
+          ownerId,
+          mode: options?.mode,
+          speed: options?.speed,
+          gravity: options?.gravity,
+          turnRate: options?.turnRate,
+          maxLifetime: options?.maxLifetime,
+          hitRadius: options?.hitRadius,
+          targetTag: options?.targetTag,
+          damage: options?.damage,
+          destroyOnHit: options?.destroyOnHit,
+          onHit: options?.onHit
+            ? (hitNodeId, pos) => {
+                options.onHit!(makeNodeHandle(hitNodeId, host), pos)
+              }
+            : undefined,
+        })
+      },
+      reset: () => resetProjectileState(node.id),
+    },
     anim: {
       playBody: (clipName: string, opts?: { loop?: boolean; fade?: number; speed?: number }) => {
         world.playBody?.(node.id, clipName, opts)
@@ -1619,6 +1750,93 @@ function buildSystemWorldApi(systemId: string, host: SceneRuntimeHost) {
       scriptTimers.delete(timerId)
     },
     curve: buildCurveApi(),
+    crowd: {
+      moveTo: (
+        targetNode: string | { id?: string },
+        target: Vec3Obj | [number, number, number],
+        options?: { speed?: number; arriveDist?: number; onArrive?: () => void },
+      ) => {
+        const nodes = world.getNodes()
+        const id = resolveTemplateNode(targetNode, nodes)?.id ?? (typeof targetNode === 'string' ? targetNode : targetNode?.id)
+        const v = resolveVec3Input(target)
+        if (id && v) setCrowdTarget(id, v, options)
+      },
+      stop: (targetNode: string | { id?: string }) => {
+        const nodes = world.getNodes()
+        const id = resolveTemplateNode(targetNode, nodes)?.id ?? (typeof targetNode === 'string' ? targetNode : targetNode?.id)
+        if (id) stopCrowdAgent(id)
+      },
+      formation: (
+        units: readonly (string | { id?: string })[],
+        center: Vec3Obj | [number, number, number],
+        options?: {
+          formation?: CrowdFormationType
+          spacing?: number
+          facingYaw?: number
+          speed?: number
+          arriveDist?: number
+        },
+      ) => {
+        const c = resolveVec3Input(center)
+        if (!c) return
+        const nodes = world.getNodes()
+        const ids = units
+          .map((u) => resolveTemplateNode(u, nodes)?.id ?? (typeof u === 'string' ? u : u?.id))
+          .filter((id): id is string => Boolean(id))
+        setCrowdFormation(ids, c, options)
+      },
+      stats: () => getCrowdStats(),
+    },
+    projectile: {
+      launch: (
+        projNode: string | { id?: string },
+        options?: {
+          direction?: Vec3Obj | [number, number, number]
+          target?: string | { id?: string } | null
+          owner?: string | { id?: string } | null
+          mode?: ProjectileMode
+          speed?: number
+          gravity?: number
+          turnRate?: number
+          maxLifetime?: number
+          hitRadius?: number
+          targetTag?: string
+          damage?: number
+          destroyOnHit?: boolean
+          onHit?: (hitNode: ReturnType<typeof makeNodeHandle>, pos: Vec3Obj) => void
+        },
+      ) => {
+        const nodes = world.getNodes()
+        const id = resolveTemplateNode(projNode, nodes)?.id ?? (typeof projNode === 'string' ? projNode : projNode?.id)
+        if (!id) return
+        const targetId = options?.target ? (resolveTemplateNode(options.target, nodes)?.id ?? (typeof options.target === 'string' ? options.target : options.target?.id)) : null
+        const ownerId = options?.owner ? (resolveTemplateNode(options.owner, nodes)?.id ?? (typeof options.owner === 'string' ? options.owner : options.owner?.id)) : null
+        launchProjectile(id, {
+          direction: options?.direction ? (resolveVec3Input(options.direction) ?? undefined) : undefined,
+          targetId,
+          ownerId,
+          mode: options?.mode,
+          speed: options?.speed,
+          gravity: options?.gravity,
+          turnRate: options?.turnRate,
+          maxLifetime: options?.maxLifetime,
+          hitRadius: options?.hitRadius,
+          targetTag: options?.targetTag,
+          damage: options?.damage,
+          destroyOnHit: options?.destroyOnHit,
+          onHit: options?.onHit
+            ? (hitNodeId, pos) => {
+                options.onHit!(makeNodeHandle(hitNodeId, host), pos)
+              }
+            : undefined,
+        })
+      },
+      reset: (projNode: string | { id?: string }) => {
+        const nodes = world.getNodes()
+        const id = resolveTemplateNode(projNode, nodes)?.id ?? (typeof projNode === 'string' ? projNode : projNode?.id)
+        if (id) resetProjectileState(id)
+      },
+    },
     input: {
       isPressed: (actionOrKey: string) => isActionPressed(actionOrKey) || isKeyHeld(actionOrKey) || isKeyHeld(`Key${actionOrKey.toUpperCase()}`),
       justPressed: (actionOrKey: string) => wasActionTapped(actionOrKey) || wasKeyTapped(actionOrKey) || wasKeyTapped(`Key${actionOrKey.toUpperCase()}`),
@@ -1855,6 +2073,26 @@ function stepProjectScripts(dt: number, host: SceneRuntimeHost) {
     return
   }
   ensureUiClickBridge()
+  bindProjectileRuntimeHooks({
+    onHit: ({ projectileId, targetId, ownerId, damage, position }) => {
+      messageQueue.push({
+        targetNodeId: targetId,
+        name: 'onProjectileHit',
+        payload: { projectileId, targetId, ownerId, damage, position },
+        senderId: projectileId,
+      })
+      messageQueue.push({
+        targetNodeId: projectileId,
+        name: 'onProjectileHit',
+        payload: { projectileId, targetId, ownerId, damage, position },
+        senderId: projectileId,
+      })
+    },
+    onRecycle: (nodeId, runtimeHost) => {
+      destroyOrReleaseNode(nodeId, runtimeHost)
+    },
+    isNodeInactive: (nodeId, nodes) => isNodePooledInactive(nodeId, nodes),
+  })
   simElapsed += Math.max(0, dt)
   framePointerDelta = host.peekPointerDelta?.() ?? host.pointerDelta?.() ?? { x: 0, y: 0 }
   framePointerPos = host.pointerNormalized?.() ?? { x: 0, y: 0 }

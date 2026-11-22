@@ -20,6 +20,7 @@ export type NodeKind =
   | 'camera'
   | 'effect'
   | 'screen'
+  | 'spline'
 
 export type BuiltinSurfaceShader = 'lit' | 'unity-standard' | 'unlit-color' | 'unlit-texture' | 'particle-unlit'
 export type SurfaceShader = BuiltinSurfaceShader | `custom:${string}`

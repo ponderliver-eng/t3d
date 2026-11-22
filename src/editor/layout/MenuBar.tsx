@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import {
-  ArrowDown, ArrowDownToLine, ArrowLeft, ArrowRight, ArrowUp, Axis3d, Box, Boxes, Camera, ChevronRight, Circle, ClipboardPaste, Clock, Cone, Copy, CopyPlus, Cylinder, Database, Eye, FilePlus, Flashlight, Focus, Folder, FolderCog, FolderOpen, FolderPlus, Grid3x3, Group, Layers, LayoutDashboard, Library, Lightbulb, Magnet, Music, Package, PackageOpen, PanelsTopLeft, Pill, Redo2, Save, SaveAll, Scan, Settings, SlidersHorizontal, Sparkles, Square, Sun, Sunrise, Tag, Trash2, Undo2, Upload, Waves,
+  ArrowDown, ArrowDownToLine, ArrowLeft, ArrowRight, ArrowUp, Axis3d, Box, Boxes, Camera, ChevronRight, Circle, ClipboardPaste, Clock, Cone, Copy, CopyPlus, Cylinder, Database, Eye, FilePlus, Flashlight, Focus, Folder, FolderCog, FolderOpen, FolderPlus, Grid3x3, Group, Layers, LayoutDashboard, Library, Lightbulb, Magnet, Music, Package, PackageOpen, PanelsTopLeft, Pill, Redo2, Save, SaveAll, Scan, Settings, SlidersHorizontal, Sparkles, Spline, Square, Sun, Sunrise, Tag, Trash2, Undo2, Upload, Waves,
 } from 'lucide-react'
 import { capabilityEnabled } from '../../capabilities/registry'
 import { createWaterNode } from '../../capabilities/water/create'
@@ -168,6 +168,7 @@ export default function MenuBar() {
           <Item icon={<Camera size={13} />} disabled={playing} onClick={() => create('camera')}>{t('menu.camera')}</Item>
           <Item icon={<Sparkles size={13} />} disabled={playing} onClick={() => create('effect')}>{t('menu.effect')}</Item>
           <Item icon={<PanelsTopLeft size={13} />} disabled={playing} onClick={() => create('screen')}>{t('menu.screen')}</Item>
+          <Item icon={<Spline size={13} />} disabled={playing} onClick={() => create('spline')}>{t('menu.spline')}</Item>
           {waterEnabled && <Item icon={<Waves size={13} />} disabled={playing} onClick={() => { createWaterNode() }}>{t('water.title')}</Item>}
         </Dropdown>
         <Dropdown label={t('menu.view')}>
@@ -309,6 +310,7 @@ const KIND_ICON: Record<NodeKind, typeof Box> = {
   camera: Camera,
   effect: Sparkles,
   screen: PanelsTopLeft,
+  spline: Spline,
 }
 
 function Sep() {

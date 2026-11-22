@@ -44,9 +44,14 @@ import { SkyCard } from '../../capabilities/sky/SkyCard'
 import { BuoyancyCard } from '../../capabilities/buoyancy/BuoyancyCard'
 import { BUOYANCY_CAPABILITY_ID, defaultBuoyancy } from '../../capabilities/buoyancy/defaults'
 import { SplineCard } from '../../capabilities/spline/SplineCard'
+import { SplinePathCard } from '../../capabilities/spline/SplinePathCard'
 import { defaultSpline, SPLINE_CAPABILITY_ID } from '../../capabilities/spline/schema'
 import { TweenCard } from '../../capabilities/tween/TweenCard'
 import { defaultTween, TWEEN_CAPABILITY_ID } from '../../capabilities/tween/schema'
+import { CrowdCard } from '../../capabilities/crowd/CrowdCard'
+import { CROWD_CAPABILITY_ID, defaultCrowd } from '../../capabilities/crowd/schema'
+import { ProjectileCard } from '../../capabilities/projectile/ProjectileCard'
+import { defaultProjectile, PROJECTILE_CAPABILITY_ID } from '../../capabilities/projectile/schema'
 import { WaterCard } from '../../capabilities/water/WaterCard'
 import { audioMixPatch, readAudioMix } from '../../runtime/audio'
 import {
@@ -393,8 +398,11 @@ export default function InspectorPanel() {
       <PhysicsCard node={node} disabled={locked} />
       <BuoyancyCard node={node} disabled={locked} />
       <NavigationCard node={node} disabled={locked} />
+      <SplinePathCard node={node} disabled={locked} />
       <SplineCard node={node} disabled={locked} />
       <TweenCard node={node} disabled={locked} />
+      <CrowdCard node={node} disabled={locked} />
+      <ProjectileCard node={node} disabled={locked} />
       <WaterCard node={node} disabled={locked} />
 
       <AddComponentPicker node={node} disabled={locked} />
@@ -2621,6 +2629,36 @@ function AddComponentPicker({ node, disabled }: { node: SceneNode, disabled: boo
           const nextCapabilities = { ...(node.capabilities ?? {}), [TWEEN_CAPABILITY_ID]: defaultTween() }
           commitNode(node.id, 'Tween 补间动效', { capabilities: nextCapabilities })
           useInspectorMemory.getState().setOpen(`node:${node.id}`, TWEEN_CAPABILITY_ID, true)
+        },
+      })
+    }
+    if (capabilityEnabled(capabilities, CROWD_CAPABILITY_ID)) {
+      options.push({
+        id: CROWD_CAPABILITY_ID,
+        cardId: CROWD_CAPABILITY_ID,
+        group: 'devices',
+        label: '群体避让 (Crowd)',
+        color: '#38bdf8',
+        added: Boolean(node.capabilities?.[CROWD_CAPABILITY_ID]),
+        apply: () => {
+          const nextCapabilities = { ...(node.capabilities ?? {}), [CROWD_CAPABILITY_ID]: defaultCrowd() }
+          commitNode(node.id, '群体避让 (Crowd)', { capabilities: nextCapabilities })
+          useInspectorMemory.getState().setOpen(`node:${node.id}`, CROWD_CAPABILITY_ID, true)
+        },
+      })
+    }
+    if (capabilityEnabled(capabilities, PROJECTILE_CAPABILITY_ID)) {
+      options.push({
+        id: PROJECTILE_CAPABILITY_ID,
+        cardId: PROJECTILE_CAPABILITY_ID,
+        group: 'devices',
+        label: '通用弹道 (Projectile)',
+        color: '#f97316',
+        added: Boolean(node.capabilities?.[PROJECTILE_CAPABILITY_ID]),
+        apply: () => {
+          const nextCapabilities = { ...(node.capabilities ?? {}), [PROJECTILE_CAPABILITY_ID]: defaultProjectile() }
+          commitNode(node.id, '通用弹道 (Projectile)', { capabilities: nextCapabilities })
+          useInspectorMemory.getState().setOpen(`node:${node.id}`, PROJECTILE_CAPABILITY_ID, true)
         },
       })
     }

@@ -22,6 +22,7 @@ const VALID_KINDS: ReadonlyArray<{ value: NodeKind; label: string }> = [
   { value: 'camera', label: '相机' },
   { value: 'effect', label: '特效' },
   { value: 'screen', label: '界面屏幕' },
+  { value: 'spline', label: 'Spline 曲线' },
 ]
 
 interface CreateNodeParams {

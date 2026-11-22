@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type DragEvent, type KeyboardEven
 import { createPortal } from 'react-dom'
 import {
   ArrowDown, ArrowDownToLine, ArrowUp, Axis3d, Bone, Box, Boxes, Camera, Check, ChevronDown, ChevronRight, ChevronsDownUp, ChevronsUpDown, Circle, ClipboardPaste, Component, Cone, Copy, CopyPlus, Cylinder, ExternalLink, Eye, EyeOff, Music,
-  Flashlight, Focus, Group, Lightbulb, Lock, MapPin, Package, PanelsTopLeft, Pencil, Pill, Plus, Search, Sparkles, Square, Sun, Sunrise, Trash2, Undo2, Ungroup, Unlink, Unlock, Upload, Waves, X,
+  Flashlight, Focus, Group, Lightbulb, Lock, MapPin, Package, PanelsTopLeft, Pencil, Pill, Plus, Search, Sparkles, Spline, Square, Sun, Sunrise, Trash2, Undo2, Ungroup, Unlink, Unlock, Upload, Waves, X,
 } from 'lucide-react'
 import { capabilityEnabled } from '../../capabilities/registry'
 import { createWaterNode } from '../../capabilities/water/create'
@@ -36,6 +36,7 @@ const ICONS: Record<NodeKind, typeof Box> = {
   camera: Camera,
   effect: Sparkles,
   screen: PanelsTopLeft,
+  spline: Spline,
 }
 
 const RENAME_DELAY_MS = 1000
@@ -1029,6 +1030,7 @@ function CreateList({ onCreate, onCreateDevice, onCreateWater }: { onCreate: (ki
       <button type="button" onClick={() => onCreate('camera')}><Camera size={12} />{t('menu.camera')}</button>
       <button type="button" onClick={() => onCreate('effect')}><Sparkles size={12} />{t('menu.effect')}</button>
       <button type="button" onClick={() => onCreate('screen')}><PanelsTopLeft size={12} />{t('menu.screen')}</button>
+      <button type="button" onClick={() => onCreate('spline')}><Spline size={12} />{t('menu.spline')}</button>
       {waterEnabled && <button type="button" onClick={onCreateWater}><Waves size={12} />{t('water.title')}</button>}
     </>
   )
@@ -1051,5 +1053,6 @@ function iconColor(kind: NodeKind): string {
   if (isMesh(kind)) return '#f5a623'
   if (kind === 'effect') return '#ffb25a'
   if (kind === 'screen') return '#4a9eff'
+  if (kind === 'spline') return '#34d399'
   return '#999999'
 }

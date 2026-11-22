@@ -1,4 +1,5 @@
 import { defaultNodeEffect } from '../../capabilities/particles/defaults'
+import { defaultSplinePath, SPLINE_PATH_CAPABILITY_ID } from '../../capabilities/spline/schema'
 import { defaultNodeScreen } from '../../runtime/ui/spec'
 import type { NodeKind, SceneNode, Vec3 } from './types'
 
@@ -23,6 +24,7 @@ export function defaultColor(kind: NodeKind): string {
     case 'camera': return '#9ecbff'
     case 'empty': return '#b0b0b0'
     case 'screen': return '#4a9eff'
+    case 'spline': return '#34d399'
     default: return '#d5dde6'
   }
 }
@@ -51,6 +53,7 @@ export function restHeight(kind: NodeKind): number {
     case 'model':
     case 'plane':
     case 'empty':
+    case 'spline':
       return 0
     case 'effect':
     case 'screen':
@@ -107,6 +110,9 @@ export function makeNode(partial: Pick<SceneNode, 'id' | 'name' | 'kind'> & Part
     wireframe: false,
     effect: kind === 'effect' ? defaultNodeEffect() : null,
     screen: kind === 'screen' ? defaultNodeScreen() : null,
+    capabilities: kind === 'spline'
+      ? { [SPLINE_PATH_CAPABILITY_ID]: defaultSplinePath(), ...(partial.capabilities ?? {}) }
+      : partial.capabilities,
     slots: [],
     castShadow: kind === 'directional-light' || kind === 'spot-light' || ((isMesh(kind) || kind === 'model') && kind !== 'plane'),
     receiveShadow: isMesh(kind) || kind === 'model',

@@ -62,6 +62,8 @@ import { releaseSkyResources, skyBlocksFrame, skyFogActive } from '../../capabil
 import { SKY_CAPABILITY_ID } from '../../capabilities/sky/defaults'
 import { collectNavSurfaces } from '../../capabilities/navigation/collect'
 import { syncNavDebug } from '../../capabilities/navigation/debug'
+import { normalizeSplinePath, SPLINE_PATH_CAPABILITY_ID } from '../../capabilities/spline/schema'
+import { createSplineGizmo, disposeSplineGizmo, splinePointWorldPosition, syncSplineGizmo, type SplineGizmoState } from './splineGizmo'
 import { consumeNavBake, navDebugGeometry } from '../../capabilities/navigation/session'
 import { beginFrameCosts, measureCost, takeCostAverages } from '../../runtime/frameProfile'
 import { stepSceneRuntime, type SceneRuntimeHost } from '../../runtime/sceneRuntime'
@@ -102,6 +104,7 @@ interface ViewData {
   guide?: SceneGuide
   device?: DeviceGuide
   collider?: ColliderGuide
+  splineGizmo?: SplineGizmoState
   sceneCamera?: PerspectiveCamera
   modelRoot?: Object3D
   modelKey?: string
@@ -180,6 +183,7 @@ export class EditorViewport {
   private press: Press | null = null
   private deviceDrag: { id: string, role: DeviceHandleRole } | null = null
   private scriptGizmoDrag: ScriptGizmoHandleMeta | null = null
+  private splineDrag: { id: string, pointIndex: number } | null = null
   private deviceGesture = false
   private marquee: HTMLDivElement | null = null
   private centerAttached = false
@@ -509,6 +513,7 @@ export class EditorViewport {
     for (const group of this.objects.values()) {
       dataOf(group).device?.dispose()
       dataOf(group).collider?.dispose()
+      if (dataOf(group).splineGizmo) disposeSplineGizmo(dataOf(group).splineGizmo!)
       disposeObject(group)
     }
     this.objects.clear()
@@ -558,6 +563,7 @@ export class EditorViewport {
       if (!state.nodes[id]) {
         dataOf(group).device?.dispose()
         dataOf(group).collider?.dispose()
+        if (dataOf(group).splineGizmo) disposeSplineGizmo(dataOf(group).splineGizmo!)
         group.parent?.remove(group)
         disposeObject(group)
         this.objects.delete(id)
@@ -595,11 +601,13 @@ export class EditorViewport {
       }
       const layerBit = layerBitIndex(node.renderLayerId, state.layers)
       group.visible = node.visible && (state.editorCullingMask & (1 << layerBit)) !== 0
+      const splineSelected = editing && state.selection.includes(id)
       const viewDirty = nodeChanged
         || data.syncedAssetRevision !== assetRevision
         || data.syncedCodeRevision !== codeRevision
         || data.syncedEditing !== editing
         || data.syncedHelpers !== helpers
+        || (data.splineGizmo !== undefined && data.splineGizmo.selected !== splineSelected)
       if (viewDirty) {
         this.updateView(group, node, editing)
         data.syncedNode = node
@@ -706,6 +714,14 @@ export class EditorViewport {
       return group
     }
 
+    if (node.kind === 'spline') {
+      const gizmo = createSplineGizmo(node)
+      group.add(gizmo.group)
+      data.splineGizmo = gizmo
+      data.pick = gizmo.curveLine
+      return group
+    }
+
     const marker = new Mesh(
       new OctahedronGeometry(0.16, 0),
       new MeshBasicMaterial({ color: node.kind === 'screen' ? '#4a9eff' : '#b0b0b0', wireframe: true }),
@@ -779,7 +795,12 @@ export class EditorViewport {
       const selected = useEditorStore.getState().selection.includes(node.id)
       data.guide.refresh(node, group.scale, this.aspect(), showHelpers, selected)
     }
-    if (data.pick && data.pick !== data.guide?.icon && !isMesh(node.kind) && node.kind !== 'model') data.pick.visible = showHelpers
+    if (data.splineGizmo) {
+      const selected = editing && useEditorStore.getState().selection.includes(node.id)
+      data.splineGizmo.group.visible = showHelpers
+      syncSplineGizmo(data.splineGizmo, node, selected)
+    }
+    if (data.pick && data.pick !== data.guide?.icon && data.pick !== data.splineGizmo?.curveLine && !isMesh(node.kind) && node.kind !== 'model') data.pick.visible = showHelpers
     const pickMesh = data.pick as Mesh | undefined
     if (pickMesh?.material instanceof MeshBasicMaterial && !isMesh(node.kind)) pickMesh.material.color.set(node.color)
   }
@@ -1123,7 +1144,7 @@ export class EditorViewport {
     }
     this.mouseButtonsMask = event.buttons
     this.rightButton = (event.buttons & 2) !== 0
-    if (this.deviceDrag || this.scriptGizmoDrag) {
+    if (this.deviceDrag || this.scriptGizmoDrag || this.splineDrag) {
       this.dragDevice(event)
       return
     }
@@ -1151,10 +1172,11 @@ export class EditorViewport {
   }
 
   private onPointerUp = (event: PointerEvent) => {
-    if (this.deviceDrag || this.scriptGizmoDrag) {
+    if (this.deviceDrag || this.scriptGizmoDrag || this.splineDrag) {
       if (this.deviceGesture) useEditorStore.getState().endGesture()
       this.deviceDrag = null
       this.scriptGizmoDrag = null
+      this.splineDrag = null
       this.deviceGesture = false
       this.ignoreDoubleClick = true
       if (this.canvas.hasPointerCapture(event.pointerId)) this.canvas.releasePointerCapture(event.pointerId)
@@ -1733,6 +1755,22 @@ export class EditorViewport {
       }
     }
 
+    const splineHandles = [...this.objects.values()].flatMap(group => {
+      const g = dataOf(group).splineGizmo
+      return g && g.selected ? g.handles : []
+    })
+    const splineHit = this.raycaster.intersectObjects(splineHandles, false).find(item => item.object.visible)
+    if (splineHit) {
+      const id = splineHit.object.userData.splineNodeId as string | undefined
+      const pointIndex = splineHit.object.userData.splinePointIndex as number | undefined
+      if (id && typeof pointIndex === 'number') {
+        this.splineDrag = { id, pointIndex }
+        this.ignoreDoubleClick = true
+        this.canvas.setPointerCapture(event.pointerId)
+        return true
+      }
+    }
+
     const handles = [...this.objects.values()].flatMap(group => dataOf(group).device?.handles ?? [])
     const hit = this.raycaster.intersectObjects(handles, false).find(item => item.object.visible)
     if (!hit) return false
@@ -1765,6 +1803,41 @@ export class EditorViewport {
         this.deviceGesture = true
       }
       store.updateNode(meta.nodeId, patch)
+      return
+    }
+
+    if (this.splineDrag) {
+      const { id, pointIndex } = this.splineDrag
+      const group = this.objects.get(id)
+      const node = useEditorStore.getState().nodes[id]
+      if (!group || !node || !this.aimPointer(event.clientX, event.clientY)) return
+      const worldPt = splinePointWorldPosition(group, node, pointIndex)
+      if (!worldPt) return
+      const normal = event.shiftKey
+        ? this.viewCamera().getWorldPosition(new Vector3()).sub(worldPt).setY(0)
+        : new Vector3(0, 1, 0)
+      if (normal.lengthSq() < 1e-6) normal.set(0, 0, 1)
+      normal.normalize()
+      const hit = new Vector3()
+      if (!this.raycaster.ray.intersectPlane(new Plane().setFromNormalAndCoplanarPoint(normal, worldPt), hit)) return
+      group.updateMatrixWorld()
+      const localPt = group.worldToLocal(hit.clone())
+      const round3 = (v: number) => Math.round(v * 1000) / 1000
+      const pathData = normalizeSplinePath(node.capabilities?.[SPLINE_PATH_CAPABILITY_ID])
+      const nextPoints = pathData.points.map((p, idx) =>
+        idx === pointIndex ? ([round3(localPt.x), round3(localPt.y), round3(localPt.z)] as [number, number, number]) : p,
+      )
+      const store = useEditorStore.getState()
+      if (!this.deviceGesture) {
+        store.beginGesture('编辑 Spline 控制点')
+        this.deviceGesture = true
+      }
+      store.updateNode(id, {
+        capabilities: {
+          ...(node.capabilities ?? {}),
+          [SPLINE_PATH_CAPABILITY_ID]: { ...pathData, points: nextPoints },
+        },
+      })
       return
     }
 

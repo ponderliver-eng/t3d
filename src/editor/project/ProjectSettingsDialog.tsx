@@ -29,6 +29,8 @@ const COPY: Record<CapabilityId, { name: MessageKey, detail: MessageKey }> = {
   navigation: { name: 'navigation.enable', detail: 'projectSettings.navigationDetail' },
   spline: { name: 'spline.title', detail: 'projectSettings.splineDetail' },
   tween: { name: 'tween.title', detail: 'projectSettings.tweenDetail' },
+  crowd: { name: 'crowd.title', detail: 'projectSettings.crowdDetail' },
+  projectile: { name: 'projectile.title', detail: 'projectSettings.projectileDetail' },
   particles: { name: 'particles.enable', detail: 'projectSettings.particlesDetail' },
   sky: { name: 'sky.enable', detail: 'projectSettings.skyDetail' },
   water: { name: 'water.title', detail: 'library.item.waterDetail' },

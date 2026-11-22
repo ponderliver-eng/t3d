@@ -241,6 +241,67 @@ export interface NavApi {
   readonly isMoving: boolean
 }
 
+export interface CrowdApi {
+  moveTo(target: Vec3, options?: { speed?: number; arriveDist?: number; onArrive?: () => void }): void
+  stop(): void
+  readonly isMoving: boolean
+  formation(
+    units: readonly (NodeHandle | string)[],
+    center: Vec3,
+    options?: {
+      formation?: 'line' | 'grid' | 'wedge' | 'circle'
+      spacing?: number
+      facingYaw?: number
+      speed?: number
+      arriveDist?: number
+    },
+  ): void
+  stats(): { total: number; moving: number }
+}
+
+export interface ProjectileLaunchOptions {
+  direction?: Vec3
+  target?: NodeHandle | string | null
+  owner?: NodeHandle | string | null
+  mode?: 'linear' | 'homing' | 'ballistic'
+  speed?: number
+  gravity?: number
+  turnRate?: number
+  maxLifetime?: number
+  hitRadius?: number
+  targetTag?: string
+  damage?: number
+  destroyOnHit?: boolean
+  onHit?: (hitNode: NodeHandle | null, pos: Vec3) => void
+}
+
+export interface ProjectileApi {
+  launch(options?: ProjectileLaunchOptions): void
+  reset(): void
+}
+
+export interface SystemCrowdApi {
+  moveTo(node: NodeHandle | string, target: Vec3, options?: { speed?: number; arriveDist?: number; onArrive?: () => void }): void
+  stop(node: NodeHandle | string): void
+  formation(
+    units: readonly (NodeHandle | string)[],
+    center: Vec3,
+    options?: {
+      formation?: 'line' | 'grid' | 'wedge' | 'circle'
+      spacing?: number
+      facingYaw?: number
+      speed?: number
+      arriveDist?: number
+    },
+  ): void
+  stats(): { total: number; moving: number }
+}
+
+export interface SystemProjectileApi {
+  launch(node: NodeHandle | string, options?: ProjectileLaunchOptions): void
+  reset(node: NodeHandle | string): void
+}
+
 export interface AnimApi {
   playBody(clipName: string, options?: { loop?: boolean; fade?: number; speed?: number }): void
   playUpper(clipName: string, options?: { loop?: boolean; fade?: number; speed?: number }): void
@@ -357,6 +418,8 @@ export interface ScriptContext<
   readonly spline: SplineApi
   readonly tween: TweenApi
   readonly curve: CurveApi
+  readonly crowd: CrowdApi
+  readonly projectile: ProjectileApi
   readonly anim: AnimApi
   readonly audio: AudioApi
   readonly fx: FxApi
@@ -461,6 +524,8 @@ export interface SystemWorldApi {
   every(seconds: number, callback: () => void): number
   cancelTimer(timerId: number): void
   readonly curve: CurveApi
+  readonly crowd: SystemCrowdApi
+  readonly projectile: SystemProjectileApi
   readonly input: InputApi
   readonly ui: UiApi
   readonly scene: SceneApi

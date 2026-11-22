@@ -1,9 +1,10 @@
+import { Vector3 } from 'three'
 import type { SceneNode } from '../../editor/scene/types'
 import { createSplinePath, type MotionVec3, type SplinePath } from '../../runtime/motion'
 import { registerRuntimeSystem, RUNTIME_STAGE, type SceneRuntimeHost } from '../../runtime/sceneRuntime'
 import { getRuntimeWorld } from '../../runtime/world'
 import type { CapabilityRuntimeModule } from '../registry'
-import { normalizeSpline, SPLINE_CAPABILITY_ID, type SplineSpec } from './schema'
+import { normalizeSpline, normalizeSplinePath, SPLINE_CAPABILITY_ID, SPLINE_PATH_CAPABILITY_ID, type SplineSpec } from './schema'
 
 interface SplineAgentState {
   pathKey: string
@@ -31,14 +32,43 @@ function collectWaypoints(
   host: SceneRuntimeHost,
   ownerNode: SceneNode,
   spec: SplineSpec,
-): { key: string; points: MotionVec3[] } {
+): { key: string; points: MotionVec3[]; closed: boolean; tension: number } {
   const pathParentId = spec.pathNodeId || ownerNode.id
+  const pathNode = nodes[pathParentId]
+
+  // 1. 优先读取 Spline 曲线节点（kind === 'spline' 或挂有 splinePath 数据）
+  const rawSplinePath = pathNode?.capabilities?.[SPLINE_PATH_CAPABILITY_ID]
+  if (pathNode && (pathNode.kind === 'spline' || rawSplinePath)) {
+    const pathData = normalizeSplinePath(rawSplinePath)
+    const pathObj = host.resolveObject(pathNode.id)
+    if (pathObj) pathObj.updateMatrixWorld()
+    const tmp = new Vector3()
+    const points: MotionVec3[] = []
+    const closed = spec.closed || pathData.closed || spec.mode === 'loop'
+    const tension = Number.isFinite(pathData.tension) ? pathData.tension : spec.tension
+    const keyParts: string[] = [pathNode.id, closed ? '1' : '0', String(tension)]
+
+    for (let i = 0; i < pathData.points.length; i += 1) {
+      const pt = pathData.points[i]
+      if (pathObj) {
+        tmp.set(pt[0], pt[1], pt[2]).applyMatrix4(pathObj.matrixWorld)
+      } else {
+        tmp.set(pathNode.position[0] + pt[0], pathNode.position[1] + pt[1], pathNode.position[2] + pt[2])
+      }
+      points.push({ x: tmp.x, y: tmp.y, z: tmp.z })
+      keyParts.push(`${i}:${tmp.x.toFixed(2)},${tmp.y.toFixed(2)},${tmp.z.toFixed(2)}`)
+    }
+    return { key: keyParts.join('|'), points, closed, tension }
+  }
+
+  // 2. 向下兼容：取目标节点下的子节点作为路点
   const children = Object.values(nodes)
     .filter((n) => n.parentId === pathParentId && n.id !== ownerNode.id)
     .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
 
   const points: MotionVec3[] = []
-  const keyParts: string[] = [pathParentId, spec.closed ? '1' : '0', String(spec.tension)]
+  const closed = spec.closed || spec.mode === 'loop'
+  const keyParts: string[] = [pathParentId, closed ? '1' : '0', String(spec.tension)]
 
   for (const child of children) {
     const obj = host.resolveObject(child.id)
@@ -48,7 +78,7 @@ function collectWaypoints(
     points.push(p)
     keyParts.push(`${child.id}:${p.x.toFixed(2)},${p.y.toFixed(2)},${p.z.toFixed(2)}`)
   }
-  return { key: keyParts.join('|'), points }
+  return { key: keyParts.join('|'), points, closed, tension: spec.tension }
 }
 
 function stepSplineCapability(dt: number, host: SceneRuntimeHost): void {
@@ -71,14 +101,14 @@ function stepSplineCapability(dt: number, host: SceneRuntimeHost): void {
     if (!obj) continue
 
     activeIds.add(node.id)
-    const { key, points } = collectWaypoints(nodes, host, node, spec)
+    const { key, points, closed, tension } = collectWaypoints(nodes, host, node, spec)
     if (points.length < 2) continue
 
     let agent = agents.get(node.id)
     if (!agent || agent.pathKey !== key) {
       const spline = createSplinePath(points, {
-        closed: spec.closed || spec.mode === 'loop',
-        tension: spec.tension,
+        closed,
+        tension,
       })
       const startDist = Math.max(0, Math.min(1, spec.startProgress)) * spline.length
       agent = {
