@@ -16,6 +16,7 @@ import {
 } from './cache'
 import { fileKindFor, warmCachedAsset } from './import'
 import { useEditorStore } from '../scene/store'
+import { useAgentStore } from '../../ai/agentLoop'
 import { createFreshScene } from '../scene/seed'
 import { exportCodeAssetsToDirectory, useCodeAssetStore } from '../../core/codeAssets/workspace'
 import { translate } from '../i18n'
@@ -116,6 +117,11 @@ export function bindProjectAutosave() {
   useEditorStore.subscribe(scheduleSave)
   useAssetStore.subscribe(scheduleSave)
   useInspectorMemory.subscribe(scheduleSave)
+  useAgentStore.subscribe((state, prev) => {
+    if (state.panelOpen !== prev.panelOpen || state.panelScrollTop !== prev.panelScrollTop) {
+      scheduleSave()
+    }
+  })
   window.addEventListener('beforeunload', () => { void saveProjectNow() })
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'hidden') void saveProjectNow()
@@ -1352,11 +1358,14 @@ let projectSessionLive = false
 
 function currentWorkspace(): ProjectWorkspace {
   const catalog = useAssetStore.getState()
+  const agent = useAgentStore.getState()
   return {
     assetExpanded: Object.entries(catalog.expanded).filter(([, open]) => open).map(([path]) => path),
     assetBrowseDir: catalog.browseDir,
     inspectedAssetId: useEditorStore.getState().inspectedAssetId,
     inspector: snapshotInspectorEntries(),
+    aiPanelOpen: agent.panelOpen,
+    aiPanelScrollTop: agent.panelScrollTop,
   }
 }
 
@@ -1384,6 +1393,10 @@ function cleanWorkspace(value: ProjectWorkspace): ProjectWorkspace {
     assetBrowseDir: typeof value.assetBrowseDir === 'string' ? normalizeDir(value.assetBrowseDir) : ASSETS_ROOT,
     inspectedAssetId: typeof value.inspectedAssetId === 'string' ? value.inspectedAssetId : null,
     inspector,
+    ...(typeof value.aiPanelOpen === 'boolean' ? { aiPanelOpen: value.aiPanelOpen } : {}),
+    ...(typeof value.aiPanelScrollTop === 'number' && Number.isFinite(value.aiPanelScrollTop)
+      ? { aiPanelScrollTop: Math.max(0, Math.round(value.aiPanelScrollTop)) }
+      : {}),
   }
 }
 
@@ -1401,11 +1414,18 @@ function applyWorkspace(document: ProjectDocument): { browseDir: string, expande
   const fresh = !projectSessionLive
   projectSessionLive = true
   if (!document.workspace) {
-    if (!fresh) restoreInspectorEntries({})
+    if (!fresh) {
+      restoreInspectorEntries({})
+      useAgentStore.getState().restorePanelWorkspace(false, 0)
+    }
     return null
   }
   const workspace = cleanWorkspace(document.workspace)
   restoreInspectorEntries(workspace.inspector)
+  useAgentStore.getState().restorePanelWorkspace(
+    Boolean(workspace.aiPanelOpen),
+    workspace.aiPanelScrollTop ?? 0,
+  )
   return {
     browseDir: workspace.assetBrowseDir || ASSETS_ROOT,
     expanded: expandedRecord(workspace.assetExpanded ?? []),

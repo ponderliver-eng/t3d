@@ -15,6 +15,9 @@ import { parseImportedAiHistory, serializeAiHistoryForExport } from './historySt
 export default function AiWorkbenchPanel() {
   const panelOpen = useAgentStore((s) => s.panelOpen)
   const setPanelOpen = useAgentStore((s) => s.setPanelOpen)
+  const panelScrollTop = useAgentStore((s) => s.panelScrollTop)
+  const panelScrollEpoch = useAgentStore((s) => s.panelScrollEpoch)
+  const setPanelScrollTop = useAgentStore((s) => s.setPanelScrollTop)
   const status = useAgentStore((s) => s.status)
   const phaseText = useAgentStore((s) => s.phaseText)
   const startedAt = useAgentStore((s) => s.startedAt)
@@ -60,6 +63,9 @@ export default function AiWorkbenchPanel() {
   const [editModelsText, setEditModelsText] = useState('')
   const [editApiKey, setEditApiKey] = useState('')
   const scrollRef = useRef<HTMLDivElement | null>(null)
+  const pendingRestoreScrollRef = useRef<number | null>(panelScrollTop > 0 ? panelScrollTop : null)
+  const stickToBottomRef = useRef(true)
+  const scrollSaveTimerRef = useRef<number>(0)
   const importInputRef = useRef<HTMLInputElement | null>(null)
   const dragDepthRef = useRef(0)
   const [elapsedMs, setElapsedMs] = useState(0)
@@ -177,10 +183,41 @@ export default function AiWorkbenchPanel() {
   }, [providers, activeProviderId, editingProviderId])
 
   useEffect(() => {
-    if (scrollRef.current) {
+    pendingRestoreScrollRef.current = useAgentStore.getState().panelScrollTop
+  }, [panelScrollEpoch])
+
+  useEffect(() => {
+    if (!panelOpen) return
+    if (pendingRestoreScrollRef.current === null) {
+      pendingRestoreScrollRef.current = useAgentStore.getState().panelScrollTop
+    }
+  }, [panelOpen])
+
+  useEffect(() => {
+    if (!panelOpen || pendingRestoreScrollRef.current === null) return
+    const target = pendingRestoreScrollRef.current
+    if (turns.length === 0 && target > 0) return
+    const el = scrollRef.current
+    if (!el) return
+    const apply = () => {
+      if (!scrollRef.current) return
+      scrollRef.current.scrollTop = target
+      const distToBottom = scrollRef.current.scrollHeight - scrollRef.current.scrollTop - scrollRef.current.clientHeight
+      stickToBottomRef.current = distToBottom <= 36
+      pendingRestoreScrollRef.current = null
+    }
+    apply()
+    const raf = requestAnimationFrame(apply)
+    return () => cancelAnimationFrame(raf)
+  }, [panelOpen, panelScrollEpoch, turns.length])
+
+  useEffect(() => {
+    if (!panelOpen || pendingRestoreScrollRef.current !== null) return
+    if (!scrollRef.current) return
+    if (status !== 'idle' || stickToBottomRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight
     }
-  }, [turns, streamingText])
+  }, [turns, streamingText, panelOpen, status])
 
   if (!panelOpen) return null
 
@@ -754,6 +791,17 @@ export default function AiWorkbenchPanel() {
       {/* 对话与结构化执行流 */}
       <div
         ref={scrollRef}
+        onScroll={(e) => {
+          if (pendingRestoreScrollRef.current !== null) return
+          const el = e.currentTarget
+          const top = Math.max(0, Math.round(el.scrollTop))
+          const distToBottom = el.scrollHeight - el.scrollTop - el.clientHeight
+          stickToBottomRef.current = distToBottom <= 36
+          window.clearTimeout(scrollSaveTimerRef.current)
+          scrollSaveTimerRef.current = window.setTimeout(() => {
+            setPanelScrollTop(top)
+          }, 150)
+        }}
         style={{
           flex: 1,
           overflowY: 'auto',

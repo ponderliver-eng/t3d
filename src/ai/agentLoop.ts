@@ -75,6 +75,8 @@ export interface ProviderInfo {
 
 interface AgentState {
   panelOpen: boolean
+  panelScrollTop: number
+  panelScrollEpoch: number
   quickPromptOpen: boolean
   pendingAttachmentImage: string | null
   pendingRefs: AiRefItem[]
@@ -92,6 +94,8 @@ interface AgentState {
   taskPlan: AiTaskPlanItem[]
 
   setPanelOpen: (open: boolean) => void
+  setPanelScrollTop: (scrollTop: number) => void
+  restorePanelWorkspace: (open: boolean, scrollTop: number) => void
   setQuickPromptOpen: (open: boolean) => void
   setPendingAttachmentImage: (dataUrl: string | null) => void
   addPendingRef: (ref: AiRefItem) => void
@@ -123,6 +127,8 @@ const MAX_TOOL_STEPS = 32
 
 export const useAgentStore = create<AgentState>((set, get) => ({
   panelOpen: false,
+  panelScrollTop: 0,
+  panelScrollEpoch: 0,
   quickPromptOpen: false,
   pendingAttachmentImage: null,
   pendingRefs: [],
@@ -140,6 +146,15 @@ export const useAgentStore = create<AgentState>((set, get) => ({
   taskPlan: [],
 
   setPanelOpen: (open) => set({ panelOpen: open }),
+  setPanelScrollTop: (scrollTop) => {
+    const safe = Number.isFinite(scrollTop) ? Math.max(0, Math.round(scrollTop)) : 0
+    if (get().panelScrollTop !== safe) set({ panelScrollTop: safe })
+  },
+  restorePanelWorkspace: (open, scrollTop) => set((s) => ({
+    panelOpen: open,
+    panelScrollTop: Number.isFinite(scrollTop) ? Math.max(0, Math.round(scrollTop)) : 0,
+    panelScrollEpoch: s.panelScrollEpoch + 1,
+  })),
   setQuickPromptOpen: (open) => set({ quickPromptOpen: open }),
   setPendingAttachmentImage: (dataUrl) => set({ pendingAttachmentImage: dataUrl }),
   addPendingRef: (ref) =>

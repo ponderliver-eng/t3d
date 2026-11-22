@@ -37,4 +37,7 @@ export interface ProjectWorkspace {
   inspectedAssetId?: string | null
   /** 属性面板各对象的滚动和展开，键是检查器主题。 */
   inspector?: Record<string, { scroll: number, open?: Record<string, boolean>, slot?: number | null }>
+  /** AI 助手面板的打开状态与对话列表滚动位置。 */
+  aiPanelOpen?: boolean
+  aiPanelScrollTop?: number
 }
