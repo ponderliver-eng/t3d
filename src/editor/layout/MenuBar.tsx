@@ -12,7 +12,6 @@ import { usePrefsStore } from '../prefs/store'
 import { openImport } from '../assets/import'
 import { createDirectoryProject, notifyProjectSaved, openDirectoryProject, openRecentProject, saveCacheAsDirectoryProject, saveProjectNow } from '../assets/project'
 import { exportWebPlayerInteractive } from '../../player/exporter'
-import { useProjectDirectory } from '../project/disk'
 import { RecentProjectService, type RecentProject } from '../project/recents'
 import { bindPackagePicker, openPackagePicker, usePackageImportStore } from '../assets/packageImportStore'
 import { PackageExtractDialog } from '../panels/PackageExtractDialog'
@@ -43,7 +42,6 @@ export default function MenuBar() {
   const canPaste = useEditorStore(state => state.canPaste)
 
   const { t } = useI18n()
-  const cachedProject = !useProjectDirectory(state => state.active)
   const packageFile = usePackageImportStore(state => state.file)
   const packageInputRef = useRef<HTMLInputElement>(null)
   const [recentProjects, setRecentProjects] = useState<RecentProject[]>(() => RecentProjectService.getAll())
@@ -105,9 +103,7 @@ export default function MenuBar() {
           )}
           <Sep />
           <Item icon={<Save size={13} />} onClick={() => { void saveProjectNow().then(() => notifyProjectSaved()).catch(error => useEditorStore.getState().log('error', translate('log.projectFailed', { message: error instanceof Error ? error.message : String(error) }))) }}>{t('menu.save')}<span className="menubar__hint">Ctrl+S</span></Item>
-          {cachedProject && (
-            <Item icon={<SaveAll size={13} />} disabled={playing} onClick={() => { void saveCacheAsDirectoryProject() }}>{t('menu.saveAsProject')}</Item>
-          )}
+          <Item icon={<SaveAll size={13} />} disabled={playing} onClick={() => { void saveCacheAsDirectoryProject() }}>{t('menu.saveAsProject')}</Item>
           <Sep />
           <Item icon={<FilePlus size={13} />} onClick={askNewScene}>{t('menu.newScene')}<span className="menubar__hint">Ctrl+N</span></Item>
           <Sep />

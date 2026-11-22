@@ -442,6 +442,24 @@ export default defineBehavior({
 
 let hotReloadBound = false
 
+export async function exportCodeAssetsToDirectory(
+  dir: string,
+  records: ReadonlyArray<{ relativePath: string; source: string }>,
+): Promise<void> {
+  const bridge = electronBridge()
+  if (!dir || !bridge?.fs?.writeTextFile || records.length === 0) return
+  await ensureCodeWorkspaceFiles(dir)
+  for (const item of records) {
+    const cleanRel = item.relativePath.replace(/\\/g, '/')
+    const parentRel = cleanRel.includes('/') ? cleanRel.slice(0, cleanRel.lastIndexOf('/')) : ''
+    if (parentRel && bridge.fs.mkdir) {
+      await bridge.fs.mkdir(joinProjectPath(dir, parentRel)).catch(() => undefined)
+    }
+    await bridge.fs.writeTextFile(joinProjectPath(dir, cleanRel), item.source)
+  }
+  await scanProjectCodeAssets(dir)
+}
+
 export function bindCodeAssetHotReload(): void {
   if (hotReloadBound) return
   hotReloadBound = true
@@ -469,7 +487,7 @@ export function bindCodeAssetHotReload(): void {
   }
 
   useProjectDirectory.subscribe((state, prev) => {
-    if (state.active && (state.name !== prev.name || !prev.active)) {
+    if (state.active && (state.epoch !== prev.epoch || state.name !== prev.name || !prev.active)) {
       syncCurrentProject()
     }
   })

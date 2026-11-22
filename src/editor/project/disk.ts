@@ -52,11 +52,13 @@ interface CacheIndexFile {
 interface DirectoryProjectState {
   active: boolean
   name: string
+  epoch: number
 }
 
 export const useProjectDirectory = create<DirectoryProjectState>(() => ({
   active: false,
   name: '',
+  epoch: 0,
 }))
 
 type ProjectRoot =
@@ -241,7 +243,7 @@ async function beginRoot(
   records = new Map(assets.map(asset => [asset.id, asset]))
   storedDocument = document
   cacheIndex = await readIndex()
-  useProjectDirectory.setState({ active: true, name: projectName })
+  useProjectDirectory.setState(state => ({ active: true, name: projectName, epoch: state.epoch + 1 }))
 }
 
 export async function listAssetDirectories(): Promise<string[]> {

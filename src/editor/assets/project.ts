@@ -16,13 +16,15 @@ import {
 } from './cache'
 import { fileKindFor, warmCachedAsset } from './import'
 import { useEditorStore } from '../scene/store'
+import { createFreshScene } from '../scene/seed'
+import { exportCodeAssetsToDirectory, useCodeAssetStore } from '../../core/codeAssets/workspace'
 import { translate } from '../i18n'
 import { usePrefsStore } from '../prefs/store'
 import type { ProjectDocument, ProjectWorkspace } from '../scene/document'
 import { restoreInspectorEntries, snapshotInspectorEntries, useInspectorMemory } from '../panels/inspectorMemory'
-import { normalizeCapabilities } from '../../capabilities/registry'
+import { defaultCapabilities, normalizeCapabilities } from '../../capabilities/registry'
 import { ensureGameDatabase, resolveEnabledPackIds } from '../../gameplay/registry'
-import { ALL_LAYERS_VISIBLE_MASK, ensureLayers, ensureTags } from '../project/taxonomy'
+import { ALL_LAYERS_VISIBLE_MASK, defaultLayers, defaultTags, ensureLayers, ensureTags } from '../project/taxonomy'
 import { normalizePicture, type SceneNode } from '../scene/types'
 import { serializeNavMeshes } from '../../capabilities/navigation/archive'
 import { collectUiImageIds } from '../../runtime/ui/tree'
@@ -125,6 +127,41 @@ export function notifyProjectSaved() {
   useEditorStore.getState().notify(name ? translate('menu.savedDirectory', { name }) : translate('menu.saved'))
 }
 
+function createFreshProjectDocument(): ProjectDocument {
+  const fresh = createFreshScene('主场景')
+  const sceneAsset: SceneAsset = {
+    id: fresh.id,
+    name: fresh.name,
+    kind: 'scene',
+    nodes: fresh.nodes,
+    picture: fresh.picture,
+  }
+  return {
+    schemaVersion: 2,
+    savedAt: Date.now(),
+    activeSceneId: fresh.id,
+    nodes: fresh.nodes,
+    selection: [fresh.selectedId],
+    picture: fresh.picture,
+    library: [sceneAsset],
+    folders: withDefaultFolders([]),
+    assetDirs: {},
+    capabilities: defaultCapabilities(),
+    gameplayPacks: [...resolveEnabledPackIds()],
+    gameDatabase: ensureGameDatabase(undefined, undefined),
+    tags: defaultTags(),
+    layers: defaultLayers(),
+    editorCullingMask: ALL_LAYERS_VISIBLE_MASK,
+    physicsCollisionMatrixEnabled: false,
+    physicsCollisionRowMasks: {},
+    navMeshes: {},
+    workspace: {
+      assetBrowseDir: ASSETS_ROOT,
+      assetExpanded: [ASSETS_ROOT],
+    },
+  }
+}
+
 export async function createDirectoryProject(): Promise<void> {
   if (useEditorStore.getState().playState !== 'stopped') return
   try {
@@ -136,7 +173,26 @@ export async function createDirectoryProject(): Promise<void> {
       if (opened) useEditorStore.getState().log('info', translate('log.projectExists', { name }))
       return
     }
-    await publishSessionToDirectory(picked, name)
+    window.clearTimeout(saveTimer)
+    suspendLayout()
+    setDirectoryFlushEnabled(false)
+    try {
+      await scaffold(picked)
+      if (typeof picked === 'string') {
+        await beginPath(picked, name, [], null)
+        RecentProjectService.addPath(picked, name)
+      } else {
+        await begin(picked, name, [], null)
+        RecentProjectService.add(picked, name)
+      }
+      const freshDocument = createFreshProjectDocument()
+      replaceSession(freshDocument)
+      useEditorStore.getState().ensureSceneAsset()
+    } finally {
+      setDirectoryFlushEnabled(true)
+      await resumeLayout()
+    }
+    await saveProjectNow()
     const message = translate('log.projectCreated', { name })
     useEditorStore.getState().log('info', message)
     useEditorStore.getState().notify(message)
@@ -145,10 +201,9 @@ export async function createDirectoryProject(): Promise<void> {
   }
 }
 
-/** 把当前缓存里的临时项目写成所选目录下的新工程，并改由该目录继续保存。 */
+/** 把当前项目（缓存或已有磁盘工程）完整另存为所选目录下的新工程，并改由该目录继续保存。 */
 export async function saveCacheAsDirectoryProject(): Promise<void> {
   if (useEditorStore.getState().playState !== 'stopped') return
-  if (isDirectoryProject()) return
   try {
     const picked = await pickDirectory()
     if (!picked) return
@@ -169,18 +224,24 @@ export async function saveCacheAsDirectoryProject(): Promise<void> {
 }
 
 async function publishSessionToDirectory(picked: FileSystemDirectoryHandle | string, name: string) {
+  window.clearTimeout(saveTimer)
   suspendLayout()
   setDirectoryFlushEnabled(false)
   try {
+    const codeAssets = Object.values(useCodeAssetStore.getState().assets).map(a => ({
+      relativePath: a.relativePath,
+      source: a.source,
+    }))
     const sources = await collectSources()
     const artifacts = await collectArtifacts(sources)
     await scaffold(picked)
     if (typeof picked === 'string') {
       await beginPath(picked, name, [], null)
       RecentProjectService.addPath(picked, name)
+      await exportCodeAssetsToDirectory(picked, codeAssets)
     } else {
       await begin(picked, name, [], null)
-      await RecentProjectService.add(picked, name)
+      RecentProjectService.add(picked, name)
     }
     useAssetStore.setState({ folders: withDefaultFolders(useAssetStore.getState().folders) })
     await runPool(sources, 4, async file => {
