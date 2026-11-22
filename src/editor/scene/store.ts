@@ -3,6 +3,7 @@ import { create } from 'zustand'
 import { getSpawn } from './spawn'
 import { createFreshScene, createSeed } from './seed'
 import { assetDirectory, useAssetStore } from '../assets/library'
+import { useCodeAssetStore } from '../../core/codeAssets/workspace'
 import {
   applyInstance,
   captureTemplate,
@@ -360,6 +361,22 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   inspectAsset: id => set({ inspectedAssetId: id, selection: id ? [] : get().selection }),
   pingAsset: id => {
     const library = useAssetStore.getState()
+    if (id.startsWith('code:')) {
+      const parts = id.split(':')
+      const codeKind = parts[1] === 'shader' ? 'shader' : 'script'
+      const codeId = parts.slice(2).join(':')
+      const codeAssets = useCodeAssetStore.getState().assets
+      const record = codeAssets[codeId]
+      if (!record) return
+      const storedDir = library.assetDirs[id]
+      const fallbackDir = record.relativePath.startsWith('Assets/') && record.relativePath.includes('/')
+        ? record.relativePath.slice(0, record.relativePath.lastIndexOf('/'))
+        : codeKind === 'shader' ? 'Assets/Shaders' : 'Assets/Scripts'
+      library.setBrowseDir(storedDir || fallbackDir)
+      useCodeAssetStore.getState().selectAsset(codeId)
+      set({ inspectedAssetId: null, selection: [], assetPing: { id, nonce: Date.now() } })
+      return
+    }
     if (!library.assets[id]) return
     library.setBrowseDir(assetDirectory(id, library.assetDirs))
     set({ assetPing: { id, nonce: Date.now() } })
@@ -475,7 +492,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       if (get().prefabSession && !parent) parent = Object.values(draft.nodes).find(node => !node.parentId)?.id ?? null
       const id = crypto.randomUUID()
       const name = uniqueName(draft.nodes, label)
-      const shaped = kind === 'box' || kind === 'sphere' || kind === 'capsule' || kind === 'cylinder' || kind === 'cone'
+      const shaped = kind === 'box' || kind === 'sphere' || kind === 'capsule' || kind === 'cylinder' || kind === 'cone' || kind === 'plane'
       draft.nodes[id] = makeNode({
         id,
         name,

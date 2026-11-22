@@ -2001,6 +2001,9 @@ function TurnActionsList({ actions, isActiveTurn }: { actions: AiActionPill[]; i
 
       {expanded && actions.map((act) => {
         const isError = !act.pending && !act.ok
+        const canLocateAsset = Boolean(act.targetAssetId)
+        const canFocusNode = Boolean(act.targetNodeId && useEditorStore.getState().nodes[act.targetNodeId])
+        const canClick = isError || canLocateAsset || canFocusNode
         const { lines: detailLines, hint: detailHint } = extractActionErrorDetails(act.detail)
         const hasDetail = isError && (detailLines.length > 0 || Boolean(detailHint) || act.label.length > 36)
         const errorOpen = Boolean(openErrorIds[act.id])
@@ -2014,12 +2017,27 @@ function TurnActionsList({ actions, isActiveTurn }: { actions: AiActionPill[]; i
                   setOpenErrorIds((prev) => ({ ...prev, [act.id]: !prev[act.id] }))
                   return
                 }
+                if (act.targetAssetId) {
+                  useEditorStore.getState().pingAsset(act.targetAssetId)
+                  if (!act.targetAssetId.startsWith('code:')) {
+                    useEditorStore.getState().inspectAsset(act.targetAssetId)
+                  }
+                  return
+                }
                 if (act.targetNodeId && useEditorStore.getState().nodes[act.targetNodeId]) {
                   useEditorStore.getState().setSelection([act.targetNodeId])
                   useEditorStore.getState().requestFocus()
                 }
               }}
-              title={isError ? '点击展开/收起完整报错信息' : act.targetNodeId ? '点击在视口中聚焦该节点' : act.toolName}
+              title={
+                isError
+                  ? '点击展开/收起完整报错信息'
+                  : canLocateAsset
+                    ? '点击在左侧资源窗口定位该资源'
+                    : canFocusNode
+                      ? '点击在视口中聚焦该节点'
+                      : act.toolName
+              }
               style={{
                 display: 'flex',
                 alignItems: isError && errorOpen ? 'flex-start' : 'center',
@@ -2035,7 +2053,7 @@ function TurnActionsList({ actions, isActiveTurn }: { actions: AiActionPill[]; i
                 background: act.pending ? 'rgba(59,130,246,0.1)' : isError ? 'rgba(239,68,68,0.08)' : 'rgba(0,0,0,0.25)',
                 color: act.pending ? '#93c5fd' : act.ok ? '#d4d4d8' : '#fca5a5',
                 fontSize: '11px',
-                cursor: isError || act.targetNodeId ? 'pointer' : 'default',
+                cursor: canClick ? 'pointer' : 'default',
               }}
             >
               {act.pending ? (

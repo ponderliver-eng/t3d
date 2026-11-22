@@ -40,6 +40,7 @@ export interface AiToolExecutionResult {
   toolName: string
   displayLabel: string
   targetNodeId?: string
+  targetAssetId?: string
   enabledDomains?: AiToolDomain[]
   data: unknown
 }
@@ -785,6 +786,7 @@ async function executeAiToolInner(
   const cmd = commandBus.get(commandId)
   const res = await commandBus.dispatch(commandId, resolvedArgs)
   const targetNodeId = extractTargetNodeId(resolvedArgs, res.ok ? res.value : undefined)
+  const targetAssetId = res.ok ? extractTargetAssetId(toolName, resolvedArgs, res.value) : undefined
   const summary = res.ok
     ? (res.changed.summary || cmd?.title || commandId)
     : `${cmd?.title ?? commandId} 失败：${res.message}`
@@ -814,6 +816,7 @@ async function executeAiToolInner(
     toolName,
     displayLabel: summary,
     targetNodeId,
+    targetAssetId,
     data,
   }
 }
@@ -929,6 +932,49 @@ function resolveAiNodeArgs(toolName: string, args: Record<string, unknown>): Rec
     }
   }
 
+  // 对象类参数（patch / row / params / document）常见别名与 JSON 字符串兜底
+  for (const objKey of ['patch', 'row', 'params', 'document']) {
+    const rawVal = next[objKey]
+    if (typeof rawVal === 'string' && rawVal.trim().startsWith('{')) {
+      try {
+        const parsed = JSON.parse(rawVal) as unknown
+        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+          next[objKey] = parsed
+        }
+      } catch {
+        // ignore invalid json
+      }
+    }
+  }
+  if (
+    toolName === 'gameplay__setComponentData' ||
+    toolName === 'capability__setNode' ||
+    toolName === 'capability__setPicture'
+  ) {
+    if (!next.patch || typeof next.patch !== 'object' || Array.isArray(next.patch)) {
+      const alias = next.data ?? next.value ?? next.values ?? next.fields ?? next.config ?? next.componentData
+      if (typeof alias === 'string' && alias.trim().startsWith('{')) {
+        try {
+          const parsed = JSON.parse(alias) as unknown
+          if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+            next.patch = parsed
+          }
+        } catch {
+          // ignore
+        }
+      } else if (alias && typeof alias === 'object' && !Array.isArray(alias)) {
+        next.patch = alias
+      } else {
+        const reserved = new Set(['nodeId', 'packId', 'componentId', 'capabilityId', 'patch'])
+        const collected: Record<string, unknown> = {}
+        for (const [k, v] of Object.entries(next)) {
+          if (!reserved.has(k) && v !== undefined) collected[k] = v
+        }
+        next.patch = collected
+      }
+    }
+  }
+
   // UI 工具常见别名兜底：大模型常把 assetId 写成 uiAssetId / documentId / id / screenNodeId
   if (toolName === 'ui__updateDocument' || toolName === 'ui__mountScreen' || toolName === 'ui__patchNode') {
     const rawAssetId = typeof next.assetId === 'string' ? next.assetId.trim() : ''
@@ -970,15 +1016,18 @@ function resolveAiNodeArgs(toolName: string, args: Record<string, unknown>): Rec
     next.nodeIds = next.nodeIds.map((id) => (typeof id === 'string' ? resolveNodeIdFuzzy(id) : id))
   }
 
-  // 若是挂载脚本，顺便把脚本 params 里声明为 ref(node) 的字段也做名称/前缀容错解析
+  // 若是挂载脚本，顺便把脚本 params 里声明为 ref(node/asset) 或 texture 的字段也做名称/前缀容错解析
   if (toolName === 'script__attach' && typeof next.scriptId === 'string' && next.params && typeof next.params === 'object') {
-    const scriptId = next.scriptId.replace(/^scripts\//, '').replace(/\.ts$/, '')
+    const scriptId = next.scriptId.replace(/^(?:Assets\/Scripts\/|scripts\/)/i, '').replace(/\.ts$/, '')
     const behavior = useCodeAssetStore.getState().assets[scriptId]?.compiledScript?.behavior
     if (behavior?.params) {
       const resolvedParams = { ...(next.params as Record<string, unknown>) }
       for (const [k, schema] of Object.entries(behavior.params)) {
-        if (schema.type === 'ref' && schema.target === 'node' && typeof resolvedParams[k] === 'string') {
+        if (typeof resolvedParams[k] !== 'string' || !resolvedParams[k]) continue
+        if (schema.type === 'ref' && schema.target === 'node') {
           resolvedParams[k] = resolveNodeIdFuzzy(resolvedParams[k] as string)
+        } else if ((schema.type === 'ref' && schema.target === 'asset') || schema.type === 'texture') {
+          resolvedParams[k] = resolveAssetIdFuzzy(resolvedParams[k] as string)
         }
       }
       next.params = resolvedParams
@@ -997,6 +1046,31 @@ function extractTargetNodeId(args: Record<string, unknown>, value: unknown): str
   if (typeof args.nodeId === 'string' && args.nodeId) return args.nodeId
   if (value && typeof value === 'object' && 'nodeId' in value && typeof (value as { nodeId?: unknown }).nodeId === 'string') {
     return (value as { nodeId: string }).nodeId
+  }
+  return undefined
+}
+
+function extractTargetAssetId(toolName: string, args: Record<string, unknown>, value: unknown): string | undefined {
+  const valObj = value && typeof value === 'object' ? (value as Record<string, unknown>) : null
+  if (toolName.startsWith('script__') && toolName !== 'script__attach' && toolName !== 'script__check') {
+    const id = typeof valObj?.id === 'string' ? valObj.id : typeof args.id === 'string' ? args.id : ''
+    if (id) return `code:script:${id}`
+  }
+  if (toolName.startsWith('shader__') && toolName !== 'shader__check') {
+    const id = typeof valObj?.id === 'string' ? valObj.id : typeof valObj?.shaderId === 'string' ? valObj.shaderId : typeof args.shaderId === 'string' ? args.shaderId : typeof args.id === 'string' ? args.id : ''
+    if (id) return `code:shader:${id}`
+  }
+  if (valObj && typeof valObj.assetId === 'string' && valObj.assetId) {
+    return valObj.assetId
+  }
+  if (typeof args.assetId === 'string' && args.assetId) {
+    return args.assetId
+  }
+  if (typeof args.materialId === 'string' && args.materialId) {
+    return args.materialId
+  }
+  if (toolName === 'scene__createScene' && valObj && typeof valObj.sceneId === 'string' && valObj.sceneId) {
+    return valObj.sceneId
   }
   return undefined
 }

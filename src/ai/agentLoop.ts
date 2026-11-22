@@ -25,6 +25,7 @@ export interface AiActionPill {
   ok: boolean
   pending?: boolean
   targetNodeId?: string
+  targetAssetId?: string
   detail?: unknown
 }
 
@@ -564,6 +565,7 @@ export const useAgentStore = create<AgentState>((set, get) => ({
             ok: execRes.ok,
             pending: false,
             targetNodeId: execRes.targetNodeId,
+            targetAssetId: execRes.targetAssetId,
             detail: execRes.data,
           })
           set((s) => ({
@@ -959,12 +961,12 @@ function buildSystemPrompt(attachedRefs: AiRefItem[], activeDomains: Set<AiToolD
       '     · self.tween.to(targetNode, { position?, rotation?, scale? }, duration, { ease?: "outQuad"|"outBack"|"outBounce"|"inOutCubic"|..., delay?, repeat?, yoyo?, onUpdate?, onComplete? })',
       '     · self.tween.value(from, to, duration, (v) => {}, opts?)、self.tween.punchScale(strength?, dur?)、self.tween.shakePosition(intensity?, dur?)、self.tween.cancel(id) / cancelAll()',
       '     · self.curve.create([[0,0],[0.5,1],[1,0]], { wrap? }) / self.curve.eval(keys, t) / self.curve.ease(name, t) / self.curve.parabola(t, height?) / self.curve.pulse(t)',
-      '   - 动画、音效与特效：self.anim.playBody/playUpper/stopUpper；self.audio.playSfx/playBgm/stopBgm；self.fx.spawn(effectId, pos, { scale? })。',
+      '   - 动画、音效与特效：self.anim.playBody(clipName, { loop?, fade?, speed? }) / playUpper(clipName, opts?) / stopUpper(fade?)（T3D 引擎已内置蒙皮骨骼自动重定向，外部动画资产的 Clip 可直接播放，严禁新建测试/probe 脚本去探测动画兼容性）；self.audio.playSfx(assetId, opts?) / playBgm(assetId, opts?) / stopBgm()；self.fx.spawn(effectId, pos, { scale? })。',
       '   - 键盘/鼠标/滚轮输入：self.input.axis2D("Move")、axis1D(action)、isPressed / justPressed / isKeyPressed("KeyW")、pointerDelta()、pointerPosition()、wheelDelta()、isMouseButtonPressed / justPressedMouseButton / justReleasedMouseButton(0|1|2)。',
       '   - UI 与屏幕控制：self.ui.getVar(key) / setVar(key, val)、self.ui.onEvent(eventName, (payload) => {})、self.ui.showScreen/hideScreen/toggleScreen/isScreenVisible(nameOrId)、self.ui.worldToScreen(posOrNode) -> { x, y, ndcX, ndcY, visible } | null（3D 坐标转屏幕坐标，用于头顶血条/飘字）。',
       '   - 全局系统（无需挂节点，适合波次/经济/胜负状态机）：也可使用 defineSystem({ name, stage?: "prePhysics"|"postPhysics"|"postAnimation"|"preRender", state: () => ({...}), onMount(world, state) {}, onUpdate(world, state, dt) {}, onDispose(world, state) {} })，world 提供 pool/cloneNode/spawnPrefab/findNodesByTag/after/every/ui/input/global 等完整全局 API。',
       '   - 存储与策划表：self.global / self.storage (get/set/remove)、self.tables.getRow(tableId, rowId)、self.scene.currentId() / load(id)、self.log(...)、self.warn(...)。',
-      '   - 参数（params）类型：number / boolean / string / color / vec2 / vec3 / vec4 / enum / texture / ref（target: "node" | "asset" | "clip" | "tableRow"）；vec2/vec3/vec4 必须提供数组形式 default（如 [0,0,0]）。',
+      '   - 参数（params）类型与引用规范：number / boolean / string / color / vec2 / vec3 / vec4 / enum / texture / ref（target: "node" | "asset" | "clip" | "tableRow"，asset 可带 kinds: ["prefab"|"model"|"audio"|"effect"|"material"|"ui"|"scene"]）。**铁律**：凡是引用场景节点、预制体、模型、动画片段(clip)、音效、特效、材质、贴图或数据表行的参数，一律必须声明为 `{ type: "ref", target: ..., kinds?: [...], label, default: null }`（或 `type: "texture"`），严禁用 `type: "string"` 让用户手填字符串 ID，这样属性面板才会显示弹窗选择器和拖放槽位！vec2/vec3/vec4 必须提供数组形式 default（如 [0,0,0]）。',
       '   - 编辑器专用 Gizmo（试玩自动隐藏）：onDrawGizmos(self, gizmos) 支持 gizmos.isSelected、line、arrow、wireSphere、wireBox、disc、radiusHandle、positionHandle。',
     )
   }

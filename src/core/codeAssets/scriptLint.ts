@@ -100,6 +100,39 @@ export function lintScriptSource(source: string, file = 'script.ts'): CodeDiagno
         })
       }
     }
+
+    // 6. 检查资源/节点引用参数是否误用了 type: 'string' 而不是弹窗引用类型 ref / texture
+    const refLikeKeyRe = /(?:^|_)(?:node|target|parent|spawn|path|prefab|model|clip|anim|animation|audio|sfx|bgm|sound|effect|fx|material|texture|tex|ui|screen|scene|asset)(?:Id|Ref|Asset)?$/i
+    const stringParamRe = /^\s*([a-zA-Z_$][\w$]*)\s*:\s*\{[^}]*\btype\s*:\s*['"]string['"]/gm
+    let strMatch: RegExpExecArray | null
+    while ((strMatch = stringParamRe.exec(blockBody)) !== null) {
+      const keyName = strMatch[1]
+      if (!refLikeKeyRe.test(keyName)) continue
+      const lower = keyName.toLowerCase()
+      let suggest = `{ type: 'ref', target: 'asset', label: '...', default: null }`
+      if (lower.includes('clip') || lower.includes('anim')) {
+        suggest = `{ type: 'ref', target: 'clip', label: '...', default: null }`
+      } else if (lower.includes('tex')) {
+        suggest = `{ type: 'texture', label: '...', default: null }`
+      } else if (lower.includes('node') || lower.includes('target') || lower.includes('parent') || lower.includes('spawn') || lower.includes('path')) {
+        suggest = `{ type: 'ref', target: 'node', label: '...', default: null }`
+      } else if (lower.includes('prefab')) {
+        suggest = `{ type: 'ref', target: 'asset', kinds: ['prefab'], label: '...', default: null }`
+      } else if (lower.includes('audio') || lower.includes('sfx') || lower.includes('bgm') || lower.includes('sound')) {
+        suggest = `{ type: 'ref', target: 'asset', kinds: ['audio'], label: '...', default: null }`
+      } else if (lower.includes('effect') || lower.includes('fx')) {
+        suggest = `{ type: 'ref', target: 'asset', kinds: ['effect'], label: '...', default: null }`
+      }
+      const pos = lineColumnAt(text, paramsBlockMatch.index + strMatch.index)
+      issues.push({
+        file,
+        severity: 'warning',
+        line: pos.line,
+        column: pos.column,
+        message: `[T3D规范] 参数 "${keyName}" 看起来是资源或节点引用，请勿使用 type: "string" 手填 ID`,
+        hint: `请改为 ${suggest}，以便属性面板渲染为弹窗选择器与拖放槽位`,
+      })
+    }
   }
 
   return issues

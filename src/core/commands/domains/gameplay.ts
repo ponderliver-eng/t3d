@@ -69,7 +69,7 @@ const setComponentDataCmd: CommandDef<SetComponentDataParams, { nodeId: string; 
       nodeId: { type: 'ref', target: 'node', required: true, label: '节点 ID' },
       packId: { type: 'string', minLength: 1, default: 'core', label: '玩法包 ID' },
       componentId: { type: 'string', minLength: 1, default: '', label: '组件 ID' },
-      patch: { type: 'object', fields: {}, label: '组件字段补丁' },
+      patch: { type: 'object', fields: {}, optional: true, label: '组件字段补丁（留空则仅挂载默认组件）' },
     },
   },
   run(_ctx, p) {
@@ -82,6 +82,7 @@ const setComponentDataCmd: CommandDef<SetComponentDataParams, { nodeId: string; 
     const prevPacks = prevGameplay.packs ?? {}
     const prevPackData = (prevPacks[p.packId] ?? {}) as Record<string, Record<string, unknown> | undefined>
     const prevComp = prevPackData[p.componentId] ?? {}
+    const patchObj = p.patch && typeof p.patch === 'object' ? p.patch : {}
 
     const nextNode: SceneNode = {
       ...node,
@@ -93,7 +94,7 @@ const setComponentDataCmd: CommandDef<SetComponentDataParams, { nodeId: string; 
             ...prevPackData,
             [p.componentId]: {
               ...prevComp,
-              ...p.patch,
+              ...patchObj,
             },
           },
         },

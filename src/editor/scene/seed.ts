@@ -1,4 +1,5 @@
 import { Euler, Quaternion, Vector3 } from 'three'
+import { defaultNodePhysics } from '../../capabilities/physics/defaults'
 import { makeNode } from './kinds'
 import type { SceneNode, ScenePicture } from './types'
 import { DEFAULT_PICTURE } from './types'
@@ -41,6 +42,7 @@ export function createSeed(): SeedScene {
       position: [0, 0, 0],
       rotation: [-90, 0, 0],
       scale: [40, 40, 1],
+      physics: defaultNodePhysics('plane'),
     }),
     'seed-cube': makeNode({
       id: 'seed-cube',

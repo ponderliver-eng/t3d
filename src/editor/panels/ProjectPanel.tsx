@@ -195,7 +195,21 @@ export default function ProjectPanel() {
   }, [browseDir])
 
   useEffect(() => {
-    if (!assetPing || !assets[assetPing.id]) return
+    if (!assetPing) return
+    if (assetPing.id.startsWith('code:')) {
+      const shown = filteredCodeAssets.some(item => codeAssetDirKey(item.kind, item.id) === assetPing.id)
+      if (!shown) {
+        if (pill !== 'all') setPill('all')
+        if (q) setQuery('')
+        return
+      }
+      const node = document.querySelector(`[data-code-id="${CSS.escape(assetPing.id)}"]`)
+      node?.scrollIntoView({ block: 'nearest' })
+      setPingedId(assetPing.id)
+      const timer = window.setTimeout(() => setPingedId(current => current === assetPing.id ? null : current), 1400)
+      return () => window.clearTimeout(timer)
+    }
+    if (!assets[assetPing.id]) return
     const shown = items.some(item => item.kind === 'asset' && item.asset.id === assetPing.id)
     if (!shown) {
       if (pill !== 'all') setPill('all')
@@ -207,7 +221,7 @@ export default function ProjectPanel() {
     setPingedId(assetPing.id)
     const timer = window.setTimeout(() => setPingedId(current => current === assetPing.id ? null : current), 1400)
     return () => window.clearTimeout(timer)
-  }, [assetPing, assets, items, pill, q])
+  }, [assetPing, assets, filteredCodeAssets, items, pill, q])
 
   useEffect(() => {
     if (!inspectedAssetId || !assets[inspectedAssetId]) return
@@ -510,7 +524,8 @@ export default function ProjectPanel() {
             return (
               <div key={`code:${item.id}`} className="project-asset-block">
                 <div
-                  className={`project-asset ${view === 'grid' ? 'project-asset--grid' : ''} ${view === 'details' ? 'project-asset--details' : ''} ${selectedCodeId === item.id ? 'project-asset--picked' : ''}`}
+                  data-code-id={codeAssetDirKey(item.kind, item.id)}
+                  className={`project-asset ${view === 'grid' ? 'project-asset--grid' : ''} ${view === 'details' ? 'project-asset--details' : ''} ${selectedCodeId === item.id ? 'project-asset--picked' : ''} ${pingedId === codeAssetDirKey(item.kind, item.id) ? 'project-asset--pinged' : ''}`}
                   title={`${item.name} (${item.relativePath})`}
                   draggable
                   onDragStart={event => {
