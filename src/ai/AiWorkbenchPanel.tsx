@@ -25,6 +25,8 @@ export default function AiWorkbenchPanel() {
   const addPendingRef = useAgentStore((s) => s.addPendingRef)
   const removePendingRef = useAgentStore((s) => s.removePendingRef)
   const steerQueue = useAgentStore((s) => s.steerQueue)
+  const taskPlan = useAgentStore((s) => s.taskPlan)
+  const clearTaskPlan = useAgentStore((s) => s.clearTaskPlan)
   const streamingText = useAgentStore((s) => s.streamingText)
   const providers = useAgentStore((s) => s.providers)
   const activeProviderId = useAgentStore((s) => s.activeProviderId)
@@ -46,6 +48,7 @@ export default function AiWorkbenchPanel() {
   const [input, setInput] = useState('')
   const [droppingToChat, setDroppingToChat] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [planExpanded, setPlanExpanded] = useState(false)
   const [editBaseUrl, setEditBaseUrl] = useState('')
   const [editModel, setEditModel] = useState('')
   const [editApiKey, setEditApiKey] = useState('')
@@ -484,6 +487,73 @@ export default function AiWorkbenchPanel() {
         </div>
       )}
 
+      {/* 长任务计划进度条 */}
+      {taskPlan.length > 0 && (() => {
+        const doneCount = taskPlan.filter((t) => t.status === 'done').length
+        const current = taskPlan.find((t) => t.status === 'in_progress') ?? taskPlan.find((t) => t.status === 'pending')
+        return (
+          <div
+            style={{
+              padding: '6px 10px',
+              borderBottom: '1px solid rgba(255,255,255,0.08)',
+              background: '#16181d',
+              fontSize: '11px',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <button
+                type="button"
+                onClick={() => setPlanExpanded((v) => !v)}
+                style={{
+                  flex: 1,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  background: 'transparent',
+                  border: 'none',
+                  color: '#d4d4d8',
+                  cursor: 'pointer',
+                  padding: 0,
+                  textAlign: 'left',
+                  overflow: 'hidden',
+                }}
+              >
+                <span style={{ color: doneCount === taskPlan.length ? '#4ade80' : '#60a5fa', fontWeight: 600, flexShrink: 0 }}>
+                  任务 {doneCount}/{taskPlan.length}
+                </span>
+                <span style={{ color: '#a1a1aa', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {current ? `· ${current.title}` : '· 全部完成'}
+                </span>
+              </button>
+              {status === 'idle' && (
+                <button
+                  type="button"
+                  title="清除任务计划"
+                  onClick={clearTaskPlan}
+                  style={{ background: 'transparent', border: 'none', color: '#71717a', cursor: 'pointer', padding: 0, display: 'inline-flex' }}
+                >
+                  <X size={11} />
+                </button>
+              )}
+            </div>
+            {planExpanded && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 3, marginTop: 6, paddingTop: 6, borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                {taskPlan.map((item) => (
+                  <div key={item.id} style={{ display: 'flex', alignItems: 'center', gap: 6, color: item.status === 'done' ? '#86efac' : item.status === 'in_progress' ? '#93c5fd' : '#a1a1aa' }}>
+                    <span style={{ width: 12, textAlign: 'center', flexShrink: 0 }}>
+                      {item.status === 'done' ? '✓' : item.status === 'in_progress' ? '▶' : '○'}
+                    </span>
+                    <span style={{ textDecoration: item.status === 'done' ? 'line-through' : 'none', opacity: item.status === 'done' ? 0.75 : 1 }}>
+                      {item.title}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )
+      })()}
+
       {/* 对话与结构化执行流 */}
       <div
         ref={scrollRef}
@@ -668,6 +738,48 @@ export default function AiWorkbenchPanel() {
                 }}
               >
                 {turn.error}
+              </div>
+            )}
+
+            {!isActiveTurn && (turn.stopReason === 'max-steps' || turn.stopReason === 'paused-with-plan') && (
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 8,
+                  padding: '6px 8px',
+                  borderRadius: 5,
+                  background: 'rgba(245, 158, 11, 0.12)',
+                  border: '1px solid rgba(245, 158, 11, 0.35)',
+                  color: '#fcd34d',
+                  fontSize: 11,
+                }}
+              >
+                <span>
+                  {turn.stopReason === 'max-steps'
+                    ? '已达单轮 32 步上限，任务尚未全部完成'
+                    : `仍有 ${turn.pendingTasksCount || '未完成'} 项计划步骤待继续`}
+                </span>
+                {idx === turns.length - 1 && status === 'idle' && (
+                  <button
+                    type="button"
+                    onClick={() => void sendPrompt('请按当前任务计划继续推进剩余未完成的步骤，直到全部完成。')}
+                    style={{
+                      flexShrink: 0,
+                      padding: '3px 9px',
+                      borderRadius: 4,
+                      border: 'none',
+                      background: '#d97706',
+                      color: '#fff',
+                      fontSize: 11,
+                      fontWeight: 600,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    继续执行
+                  </button>
+                )}
               </div>
             )}
 

@@ -7,7 +7,13 @@ import { useAssetStore } from '../editor/assets/library'
 import { electronBridge } from '../editor/project/electronBridge'
 import { useEditorStore } from '../editor/scene/store'
 import { initAiHistorySync, saveAiHistory } from './historyStorage'
-import { buildAiToolSpecs, executeAiTool, isConfirmRequiredTool } from './tools'
+import {
+  buildAiToolSpecs,
+  executeAiTool,
+  isConfirmRequiredTool,
+  registerTaskPlanUpdater,
+  type AiTaskPlanItem,
+} from './tools'
 
 export interface AiActionPill {
   id: string
@@ -36,6 +42,8 @@ export interface AiTurnItem {
   checkpointId?: string
   usage?: { inputTokens?: number; outputTokens?: number; model?: string }
   error?: string
+  stopReason?: 'completed' | 'max-steps' | 'paused-with-plan'
+  pendingTasksCount?: number
 }
 
 export interface PendingConfirmation {
@@ -76,6 +84,7 @@ interface AgentState {
   pendingConfirm: PendingConfirmation | null
   activeNodeIds: string[]
   steerQueue: SteerItem[]
+  taskPlan: AiTaskPlanItem[]
 
   setPanelOpen: (open: boolean) => void
   setQuickPromptOpen: (open: boolean) => void
@@ -83,6 +92,7 @@ interface AgentState {
   addPendingRef: (ref: AiRefItem) => void
   removePendingRef: (kind: AiRefItem['kind'], id: string) => void
   clearPendingRefs: () => void
+  clearTaskPlan: () => void
   refreshProviders: () => Promise<void>
   saveProvider: (input: {
     id: string
@@ -101,7 +111,7 @@ interface AgentState {
   importTurns: (imported: AiTurnItem[], mode?: 'merge' | 'replace') => void
 }
 
-const MAX_TOOL_STEPS = 16
+const MAX_TOOL_STEPS = 32
 
 export const useAgentStore = create<AgentState>((set, get) => ({
   panelOpen: false,
@@ -119,6 +129,7 @@ export const useAgentStore = create<AgentState>((set, get) => ({
   pendingConfirm: null,
   activeNodeIds: [],
   steerQueue: [],
+  taskPlan: [],
 
   setPanelOpen: (open) => set({ panelOpen: open }),
   setQuickPromptOpen: (open) => set({ quickPromptOpen: open }),
@@ -131,6 +142,7 @@ export const useAgentStore = create<AgentState>((set, get) => ({
   removePendingRef: (kind, id) =>
     set((s) => ({ pendingRefs: s.pendingRefs.filter((r) => !(r.kind === kind && r.id === id)) })),
   clearPendingRefs: () => set({ pendingRefs: [] }),
+  clearTaskPlan: () => set({ taskPlan: [] }),
 
   refreshProviders: async () => {
     const ai = electronBridge()?.ai
@@ -300,6 +312,9 @@ export const useAgentStore = create<AgentState>((set, get) => ({
     let totalOut = 0
     let usedModel = ''
     let txCommitted = false
+    let stopReason: AiTurnItem['stopReason'] = 'completed'
+    let autoNudges = 0
+    let completedNormally = false
 
     const consumeSteerQueue = () => {
       const queued = get().steerQueue
@@ -333,7 +348,7 @@ export const useAgentStore = create<AgentState>((set, get) => ({
         set({
           activeRequestId: reqId,
           streamingText: '',
-          phaseText: step === 0 ? '正在思考方案…' : `正在思考下一步（第 ${step + 1} 轮）…`,
+          phaseText: step === 0 ? '正在思考方案…' : `正在思考下一步（第 ${step + 1}/${MAX_TOOL_STEPS} 步）…`,
         })
 
         const unsub = ai.onDelta((delta) => {
@@ -375,6 +390,18 @@ export const useAgentStore = create<AgentState>((set, get) => ({
           if (consumeSteerQueue()) {
             continue
           }
+          const remainingPlan = get().taskPlan.filter((t) => t.status !== 'done')
+          if (remainingPlan.length > 0 && autoNudges < 1 && step + 1 < MAX_TOOL_STEPS) {
+            autoNudges += 1
+            chatMessages.push({ role: 'assistant', text: result.text || '（正在继续推进任务）' })
+            chatMessages.push({
+              role: 'user',
+              text: `[系统自动续推] 当前任务清单仍有 ${remainingPlan.length} 项未完成（下一项：${remainingPlan[0].title}）。请勿提前停下等待，继续调用工具推进执行，完成阶段后同步更新 plan__set_tasks；仅在全部完成或必须由用户做关键决策时再结束。`,
+            })
+            continue
+          }
+          stopReason = remainingPlan.length > 0 ? 'paused-with-plan' : 'completed'
+          completedNormally = true
           break
         }
 
@@ -456,6 +483,10 @@ export const useAgentStore = create<AgentState>((set, get) => ({
         }
       }
 
+      if (!completedNormally && get().status !== 'idle') {
+        stopReason = 'max-steps'
+      }
+      const pendingTasksCount = get().taskPlan.filter((t) => t.status !== 'done').length
       commandBus.commitTransaction()
       txCommitted = true
       set((s) => ({
@@ -472,6 +503,8 @@ export const useAgentStore = create<AgentState>((set, get) => ({
                 text: finalText || (actions.length > 0 ? '已完成本轮操作。' : ''),
                 actions,
                 usage: { inputTokens: totalIn, outputTokens: totalOut, model: usedModel },
+                stopReason,
+                pendingTasksCount,
               }
             : t,
         ),
@@ -503,7 +536,12 @@ initAiHistorySync(
   (turns) => useAgentStore.setState({ turns }),
 )
 
+registerTaskPlanUpdater((tasks) => {
+  useAgentStore.setState({ taskPlan: tasks })
+})
+
 function toolPhaseLabel(toolName: string): string {
+  if (toolName === 'plan__set_tasks') return '正在规划 / 更新任务进度…'
   if (toolName.startsWith('script__')) return '正在生成 / 编译脚本…'
   if (toolName.startsWith('shader__')) return '正在生成 / 编译着色器…'
   if (toolName.startsWith('scene__')) return '正在搭建 / 修改场景节点…'
@@ -682,17 +720,23 @@ function buildSystemPrompt(attachedRefs: AiRefItem[]): string {
     : ''
 
   const refsContext = formatRefsContext(attachedRefs)
+  const activePlan = useAgentStore.getState().taskPlan
+  const planText = activePlan.length > 0
+    ? `\n当前进行中的任务计划清单：\n${activePlan
+        .map((t) => `- [${t.status}] (${t.id}) ${t.title}`)
+        .join('\n')}`
+    : ''
 
   return [
     '你是 T3D 游戏工程管理器的内置 AI 创作助手。',
     '核心原则：',
-    '1. 只能通过提供的工具读取或修改工程数据，严格使用工具返回的准确节点 ID 或资产 ID（节点名称唯一时也可直接传节点名称），切勿凭记忆猜测或删改 UUID；如需查询登记清单，优先按具体 category 查询（避免不必要的全量 all）。',
-    '2. 搭完或修改完场景后，务必调用 query__project_diagnose 做一次工程体检并修正错误。',
+    '1. 长任务规划与连续执行：接到“做一个游戏”或包含多个模块/步骤的复杂任务时，第一步先调用 plan__set_tasks 拆解 3~7 个阶段性子任务，然后连续调用工具一气呵成推进，每完成一阶段顺便更新对应任务为 done，全部完成后务必调用 query__project_diagnose 做工程体检。不要刚建完几个节点或目录就提前停下汇报“已完成第一步”，除非需要用户做关键方向决策。',
+    '2. 只能通过提供的工具读取或修改工程数据，严格使用工具返回的准确节点 ID 或资产 ID（节点名称唯一时也可直接传节点名称），切勿凭记忆猜测或删改 UUID；如需查询登记清单，优先按具体 category 查询（避免不必要的全量 all）。',
     '3. 工程规划与资源目录规范（中大型项目必做）：',
     '   - 遇到新建游戏、多模块/多关卡或资源较多（>5 个资产/物体）的需求时，先用 project__design__update 在 design.md 中规划目录与命名规范，再用 asset__createFolder 预先建立清晰的目录树：',
     '     · 推荐分类：Assets/Materials/<模块>（如 Characters / Environment / FX）、Assets/UI/<模块>（HUD / Menus）、Assets/Prefabs/<模块>、Assets/Models/<模块>、Assets/Textures/<模块>、Assets/Audio/<模块>、Assets/Scenes。',
     '   - 创建材质（asset__createMaterial）或 UI（ui__createDocument）时主动传入 folder；已有杂乱散落在 Assets 根目录的资产，可用 asset__moveToFolder 归类。',
-    '   - 场景层级规范：用空节点（kind: "group"）做模块分组（如 Environment、Characters、Lighting、UI、Systems），避免几十个节点平铺在场景根节点。',
+    '   - 场景层级规范：用空节点（kind: "empty"）做模块分组（如 Environment、Characters、Lighting、UI、Systems），避免几十个节点平铺在场景根节点。',
     '   - 脚本与着色器命名规范：采用模块前缀（如 player_move、enemy_ai、ui_hud、fx_rim），保持语义清晰、职责单一。',
     '4. 放置模型或物体到地面时，优先开启 snapToGround: true。',
     '5. 编写节点行为脚本（script__create / script__update）时，必须从 "t3d/runtime" 导入 defineBehavior，并严格使用：',
@@ -723,6 +767,6 @@ function buildSystemPrompt(attachedRefs: AiRefItem[]): string {
     '当前工程设计规范（design.md）：',
     designMd,
     '',
-    `当前工程概览：${overview}${nodeIndexText}${refsContext}`,
+    `当前工程概览：${overview}${nodeIndexText}${refsContext}${planText}`,
   ].join('\n')
 }

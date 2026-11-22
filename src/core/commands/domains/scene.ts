@@ -64,16 +64,19 @@ const createNodeCmd: CommandDef<CreateNodeParams, { nodeId: string; name: string
 
     const nextNodes: Record<string, SceneNode> = { ...state.nodes }
     const defaultLabel = VALID_KINDS.find((k) => k.value === p.kind)?.label ?? p.kind
-    const baseName = p.name.trim() || defaultLabel
+    const baseName = (typeof p.name === 'string' ? p.name.trim() : '') || defaultLabel
+    const pos: Vec3 = Array.isArray(p.position) && p.position.length === 3 ? [...p.position] : [0, 0, 0]
+    const rot: Vec3 = Array.isArray(p.rotation) && p.rotation.length === 3 ? [...p.rotation] : [0, 0, 0]
+    const scl: Vec3 = Array.isArray(p.scale) && p.scale.length === 3 ? [...p.scale] : [1, 1, 1]
     const baseNode = makeNode({
       id: crypto.randomUUID(),
       kind: p.kind,
       name: uniqueName(nextNodes, baseName),
-      parentId: p.parentId,
-      order: nextOrder(nextNodes, p.parentId),
-      position: [...p.position],
-      rotation: [...p.rotation],
-      scale: [...p.scale],
+      parentId: p.parentId ?? null,
+      order: nextOrder(nextNodes, p.parentId ?? null),
+      position: pos,
+      rotation: rot,
+      scale: scl,
     })
 
     nextNodes[baseNode.id] = baseNode

@@ -176,6 +176,7 @@ export class CommandBus {
     try {
       result = (await cmd.run(ctx, validated.value)) as CommandResult<R>
     } catch (error) {
+      console.error('[CommandBus]', commandId, rawParams, error)
       result = {
         ok: false,
         code: 'command.exception',

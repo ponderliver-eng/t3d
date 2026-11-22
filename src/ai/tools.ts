@@ -33,6 +33,18 @@ export interface AiToolExecutionResult {
   data: unknown
 }
 
+export interface AiTaskPlanItem {
+  id: string
+  title: string
+  status: 'pending' | 'in_progress' | 'done'
+}
+
+let taskPlanUpdater: ((tasks: AiTaskPlanItem[]) => void) | null = null
+
+export function registerTaskPlanUpdater(fn: (tasks: AiTaskPlanItem[]) => void): void {
+  taskPlanUpdater = fn
+}
+
 function toToolName(id: string): string {
   return id.replace(/\./g, '__')
 }
@@ -42,6 +54,31 @@ function fromToolName(name: string): string {
 }
 
 const QUERY_TOOLS: AiToolSpec[] = [
+  {
+    name: 'plan__set_tasks',
+    description: '为多步骤长任务规划或更新阶段性子任务清单（最多 8 项），每完成一阶段调用此工具更新状态，界面会同步显示进度',
+    parameters: {
+      type: 'object',
+      properties: {
+        tasks: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              id: { type: 'string', description: '简短唯一标识，如 t1' },
+              title: { type: 'string', description: '子任务标题（简短中文）' },
+              status: { type: 'string', enum: ['pending', 'in_progress', 'done'], description: '当前状态' },
+            },
+            required: ['id', 'title', 'status'],
+            additionalProperties: false,
+          },
+          description: '完整任务列表',
+        },
+      },
+      required: ['tasks'],
+      additionalProperties: false,
+    },
+  },
   {
     name: 'query__project_overview',
     description: '获取当前工程概览：场景列表、开启的能力包与玩法包、顶层节点大纲、资产统计与视口性能',
@@ -244,6 +281,25 @@ export async function executeAiTool(
 ): Promise<AiToolExecutionResult> {
   const resolvedArgs = resolveAiNodeArgs(toolName, args)
   switch (toolName) {
+    case 'plan__set_tasks': {
+      const raw = Array.isArray(resolvedArgs.tasks) ? resolvedArgs.tasks : []
+      const normalized: AiTaskPlanItem[] = raw
+        .filter((item): item is Record<string, unknown> => Boolean(item && typeof item === 'object'))
+        .slice(0, 12)
+        .map((item, idx) => ({
+          id: typeof item.id === 'string' && item.id.trim() ? item.id.trim() : `t${idx + 1}`,
+          title: typeof item.title === 'string' && item.title.trim() ? item.title.trim() : `步骤 ${idx + 1}`,
+          status: item.status === 'done' || item.status === 'in_progress' ? item.status : 'pending',
+        }))
+      taskPlanUpdater?.(normalized)
+      const doneCount = normalized.filter((t) => t.status === 'done').length
+      return {
+        ok: true,
+        toolName,
+        displayLabel: `更新任务进度 (${doneCount}/${normalized.length})`,
+        data: { ok: true, tasks: normalized, doneCount, total: normalized.length },
+      }
+    }
     case 'query__project_overview':
       return {
         ok: true,
