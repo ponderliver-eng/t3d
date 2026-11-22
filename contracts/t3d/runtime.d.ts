@@ -183,6 +183,18 @@ export interface InputApi {
   justReleasedMouseButton(button: 0 | 1 | 2): boolean
 }
 
+export interface UiScreenPoint {
+  /** 屏幕像素 X（相对视口左上角） */
+  x: number
+  /** 屏幕像素 Y（相对视口左上角） */
+  y: number
+  /** 归一化坐标 [-1, 1] */
+  ndcX: number
+  ndcY: number
+  /** 是否在相机前方且处于视口内 */
+  visible: boolean
+}
+
 export interface UiApi {
   getVar<T = unknown>(key: string): T | undefined
   setVar(key: string, value: unknown): void
@@ -191,6 +203,7 @@ export interface UiApi {
   hideScreen(screenIdOrName: string): void
   toggleScreen(screenIdOrName: string): void
   isScreenVisible(screenIdOrName: string): boolean
+  worldToScreen(position: Vec3 | NodeHandle): UiScreenPoint | null
 }
 
 export interface SceneApi {
@@ -346,7 +359,15 @@ export interface SystemWorldApi {
   readonly elapsedTime: number
   findNodeById(id: string): NodeHandle | null
   findNodesByTag(tag: string): readonly NodeHandle[]
+  findNodesInRadius(center: Vec3, radius: number, tag?: string): readonly NodeHandle[]
+  cloneNode(templateOrName: string | NodeHandle, options?: CloneNodeOptions): NodeHandle | null
+  spawnPrefab(prefabId: string, options?: { position?: Vec3; rotation?: Vec3; name?: string }): NodeHandle | null
+  destroyNode(node: NodeHandle): void
+  readonly pool: PoolApi
   broadcast(name: string, payload?: unknown): void
+  after(seconds: number, callback: () => void): number
+  every(seconds: number, callback: () => void): number
+  cancelTimer(timerId: number): void
   readonly input: InputApi
   readonly ui: UiApi
   readonly scene: SceneApi
@@ -354,17 +375,22 @@ export interface SystemWorldApi {
   readonly storage: KeyValueStoreApi
   readonly tables: TableApi
   log(...args: unknown[]): void
+  warn(...args: unknown[]): void
 }
 
 export interface SystemDefinition<S extends BehaviorState = BehaviorState> {
   name: string
   description?: string
-  stage: RuntimeStageName
+  stage?: RuntimeStageName | 'postPhysics'
   order?: number
   createState?: () => S
+  state?: () => S
   onMount?(world: SystemWorldApi, state: S): void
+  onInit?(world: SystemWorldApi, state: S): void
   onStep?(world: SystemWorldApi, state: S, dt: number): void
+  onUpdate?(world: SystemWorldApi, state: S, dt: number): void
   onDispose?(world: SystemWorldApi, state: S): void
+  onDestroy?(world: SystemWorldApi, state: S): void
 }
 
 export interface SystemAsset<S extends BehaviorState = BehaviorState> {

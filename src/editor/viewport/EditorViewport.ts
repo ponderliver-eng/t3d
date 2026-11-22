@@ -459,6 +459,17 @@ export class EditorViewport {
         this.playMarqueeResult = null
         return next
       },
+      worldToScreen: pos => {
+        if (!this.ready || this.width <= 0 || this.height <= 0) return null
+        const camera = this.viewCamera()
+        camera.updateMatrixWorld()
+        const projected = new Vector3(pos[0], pos[1], pos[2]).project(camera)
+        const inFront = projected.z >= -1 && projected.z <= 1
+        const x = (projected.x * 0.5 + 0.5) * this.width
+        const y = (-projected.y * 0.5 + 0.5) * this.height
+        const visible = inFront && projected.x >= -1 && projected.x <= 1 && projected.y >= -1 && projected.y <= 1
+        return { x, y, ndcX: projected.x, ndcY: projected.y, visible }
+      },
     }
   }
 

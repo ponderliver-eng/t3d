@@ -636,6 +636,8 @@ export interface SceneRuntimeHost {
   setPlayMarqueeEnabled?: (enabled: boolean) => void
   /** 取走试玩态最近一次左键拉框选中的节点 ID 列表。 */
   consumePlayMarquee?: () => { ids: string[], additive: boolean } | null
+  /** 将 3D 世界坐标投影到当前主视口屏幕像素坐标。 */
+  worldToScreen?: (position: Vec3) => { x: number, y: number, ndcX: number, ndcY: number, visible: boolean } | null
 }
 
 /**

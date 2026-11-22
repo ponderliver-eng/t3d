@@ -140,6 +140,7 @@ export interface ScriptContext<P = Record<string, unknown>, S = Record<string, u
     hideScreen(screenIdOrName: string): void
     toggleScreen(screenIdOrName: string): void
     isScreenVisible(screenIdOrName: string): boolean
+    worldToScreen(position: Vec3 | NodeHandle): { x: number; y: number; ndcX: number; ndcY: number; visible: boolean } | null
   }
   readonly audio: { playSfx(id: string, opts?: { volume?: number }): void; playBgm(id: string): void; stopBgm(): void }
   log(...args: unknown[]): void
@@ -164,9 +165,13 @@ export function defineBehavior<P extends ScriptParamMap, S extends Record<string
   onMessage?: (self: ScriptContext<Record<string, any>, S>, msg: { name: string; payload?: unknown }) => void
   onDrawGizmos?: (self: ScriptContext<Record<string, any>, S>, gizmos: GizmosApi) => void
 }): unknown
-export function defineSystem(def: {
-  name: string; stage?: 'prePhysics' | 'postPhysics' | 'postAnimation'; order?: number
-  onUpdate?: (api: unknown, dt: number) => void
+export function defineSystem<S extends Record<string, unknown>>(def: {
+  name: string; description?: string; stage?: 'prePhysics' | 'postPhysics' | 'postAnimation' | 'preRender'; order?: number
+  state?: () => S; createState?: () => S
+  onMount?: (world: Omit<ScriptContext<Record<string, any>, S>, 'node' | 'params' | 'state' | 'position' | 'rotation' | 'scale' | 'visible'>, state: S) => void
+  onStep?: (world: Omit<ScriptContext<Record<string, any>, S>, 'node' | 'params' | 'state' | 'position' | 'rotation' | 'scale' | 'visible'>, state: S, dt: number) => void
+  onUpdate?: (world: Omit<ScriptContext<Record<string, any>, S>, 'node' | 'params' | 'state' | 'position' | 'rotation' | 'scale' | 'visible'>, state: S, dt: number) => void
+  onDispose?: (world: Omit<ScriptContext<Record<string, any>, S>, 'node' | 'params' | 'state' | 'position' | 'rotation' | 'scale' | 'visible'>, state: S) => void
 }): unknown
 `
 

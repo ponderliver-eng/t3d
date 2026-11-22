@@ -47,11 +47,17 @@ export type ScriptGizmoCommand =
 
 export interface SystemDefinition {
   name: string
-  stage?: 'prePhysics' | 'postPhysics' | 'postAnimation'
+  description?: string
+  stage?: 'prePhysics' | 'postPhysics' | 'postAnimation' | 'preRender'
   order?: number
-  onInit?: (api: unknown) => void
-  onUpdate?: (api: unknown, dt: number) => void
-  onDestroy?: (api: unknown) => void
+  state?: () => Record<string, unknown>
+  createState?: () => Record<string, unknown>
+  onInit?: (api: unknown, state: Record<string, unknown>) => void
+  onMount?: (api: unknown, state: Record<string, unknown>) => void
+  onUpdate?: (api: unknown, state: Record<string, unknown>, dt: number) => void
+  onStep?: (api: unknown, state: Record<string, unknown>, dt: number) => void
+  onDestroy?: (api: unknown, state: Record<string, unknown>) => void
+  onDispose?: (api: unknown, state: Record<string, unknown>) => void
 }
 
 export interface CompiledScriptAsset {
@@ -70,7 +76,7 @@ interface BehaviorInstanceRecord {
 }
 
 const compiledBehaviors = new Map<string, BehaviorDefinition>()
-const compiledSystems = new Map<string, { def: SystemDefinition; unregister: () => void }>()
+const compiledSystems = new Map<string, { def: SystemDefinition; unregister: () => void; mounted: boolean; state: Record<string, unknown> }>()
 const instanceStates = new Map<string, BehaviorInstanceRecord>()
 const messageQueue: Array<{ targetNodeId: string | null; name: string; payload?: unknown; senderId?: string }> = []
 const uiEventHandlers = new Map<string, Map<string, Set<(payload?: unknown) => void>>>()
@@ -1081,6 +1087,284 @@ function buildScriptContext(
         const curMap = uiValues().screens
         return sid in curMap ? curMap[sid] : Boolean(nodeTarget?.screen?.visibleOnPlay ?? true)
       },
+      worldToScreen: (position: Vec3Obj | { position?: Vec3Obj }) => {
+        const vec = resolveVec3Input(position)
+        if (!vec || !host.worldToScreen) return null
+        return host.worldToScreen([vec.x, vec.y, vec.z])
+      },
+    },
+    scene: {
+      currentId: () => world.getActiveSceneId(),
+      load: (sceneId: string, options?: { spawnPoint?: string }) => {
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('t3d:load-scene', { detail: { sceneId, spawnPoint: options?.spawnPoint } }))
+        }
+      },
+    },
+    global: {
+      get: (key: string) => globalMemory.get(key),
+      set: (key: string, value: unknown) => { globalMemory.set(key, value) },
+      remove: (key: string) => { globalMemory.delete(key) },
+    },
+    storage: {
+      get: (key: string) => persistentMemory.get(key),
+      set: (key: string, value: unknown) => { persistentMemory.set(key, value) },
+      remove: (key: string) => { persistentMemory.delete(key) },
+    },
+    tables: {
+      getRow: (tableId: string, rowId: string) => findRow(world.getGameDatabase(), tableId, rowId)?.fields ?? null,
+    },
+    log: (...args: unknown[]) => world.log('info', args.map(String).join(' ')),
+    warn: (...args: unknown[]) => world.log('warn', args.map(String).join(' ')),
+  }
+}
+
+function buildSystemWorldApi(systemId: string, host: SceneRuntimeHost) {
+  const world = getRuntimeWorld()
+  const sysNodeId = `__system__:${systemId}`
+  const poolHelpers = {
+    preload: (templateOrPrefab: string | { id?: string }, count: number) => {
+      const key = resolvePoolKey(templateOrPrefab)
+      if (!key) return
+      const targetCount = Math.max(0, Math.min(200, Math.floor(count)))
+      let bucket = poolBuckets.get(key)
+      if (!bucket) {
+        bucket = { all: [], idle: [] }
+        poolBuckets.set(key, bucket)
+      }
+      while (bucket.all.length < targetCount) {
+        const spawned = spawnFromTemplateOrPrefab(templateOrPrefab, { visible: false }, host)
+        if (!spawned) break
+        if (!bucket.templatePos && spawned.templatePos) bucket.templatePos = spawned.templatePos
+        if (!bucket.templateRotDeg && spawned.templateRotDeg) bucket.templateRotDeg = spawned.templateRotDeg
+        if (!bucket.templateScale && spawned.templateScale) bucket.templateScale = spawned.templateScale
+        pooledInactive.add(spawned.rootId)
+        nodePoolKey.set(spawned.rootId, key)
+        bucket.all.push(spawned.rootId)
+        bucket.idle.push(spawned.rootId)
+      }
+    },
+    acquire: (
+      templateOrPrefab: string | { id?: string },
+      opts?: { position?: Vec3Obj; rotation?: Vec3Obj; scale?: Vec3Obj; payload?: unknown },
+    ) => {
+      const key = resolvePoolKey(templateOrPrefab)
+      if (!key) return null
+      let bucket = poolBuckets.get(key)
+      if (!bucket) {
+        bucket = { all: [], idle: [] }
+        poolBuckets.set(key, bucket)
+      }
+      const allNodes = world.getNodes()
+      let pickedId: string | null = null
+      while (bucket.idle.length > 0) {
+        const cand = bucket.idle.pop()!
+        if (allNodes[cand]) {
+          pickedId = cand
+          break
+        }
+      }
+      if (!pickedId) {
+        const spawned = spawnFromTemplateOrPrefab(templateOrPrefab, {
+          position: opts?.position,
+          rotation: opts?.rotation,
+          scale: opts?.scale,
+          visible: true,
+        }, host)
+        if (!spawned) return null
+        if (!bucket.templatePos && spawned.templatePos) bucket.templatePos = spawned.templatePos
+        if (!bucket.templateRotDeg && spawned.templateRotDeg) bucket.templateRotDeg = spawned.templateRotDeg
+        if (!bucket.templateScale && spawned.templateScale) bucket.templateScale = spawned.templateScale
+        pickedId = spawned.rootId
+        nodePoolKey.set(pickedId, key)
+        bucket.all.push(pickedId)
+      } else {
+        pooledInactive.delete(pickedId)
+        const n = world.getNodes()[pickedId]
+        const objTarget = host.resolveObject(pickedId)
+        const posVec = resolveVec3Input(opts?.position)
+        const rotVec = resolveVec3Input(opts?.rotation)
+        const scaleVec = resolveVec3Input(opts?.scale)
+        if (n) {
+          n.visible = true
+          if (posVec) n.position = [posVec.x, posVec.y, posVec.z]
+          else if (bucket.templatePos) n.position = [...bucket.templatePos]
+          if (rotVec) n.rotation = [(rotVec.x * 180) / Math.PI, (rotVec.y * 180) / Math.PI, (rotVec.z * 180) / Math.PI]
+          else if (bucket.templateRotDeg) n.rotation = [...bucket.templateRotDeg]
+          if (scaleVec) n.scale = [scaleVec.x, scaleVec.y, scaleVec.z]
+          else if (bucket.templateScale) n.scale = [...bucket.templateScale]
+        }
+        if (objTarget && n) {
+          objTarget.visible = true
+          objTarget.position.set(n.position[0], n.position[1], n.position[2])
+          objTarget.rotation.set(
+            (n.rotation[0] * Math.PI) / 180,
+            (n.rotation[1] * Math.PI) / 180,
+            (n.rotation[2] * Math.PI) / 180,
+          )
+          objTarget.scale.set(n.scale[0], n.scale[1], n.scale[2])
+        }
+      }
+      resetAndInvokeSpawn(pickedId, opts?.payload, host)
+      return makeNodeHandle(pickedId, host)
+    },
+    release: (target: { id?: string } | string) => {
+      const targetId = typeof target === 'string' ? target : target?.id
+      if (targetId) destroyOrReleaseNode(targetId, host)
+    },
+    stats: (templateOrPrefab?: string | { id?: string }) => {
+      if (templateOrPrefab) {
+        const key = resolvePoolKey(templateOrPrefab)
+        const b = key ? poolBuckets.get(key) : undefined
+        const total = b ? b.all.length : 0
+        const pooled = b ? b.idle.length : 0
+        return { active: Math.max(0, total - pooled), pooled, total }
+      }
+      let total = 0
+      let pooled = 0
+      for (const b of poolBuckets.values()) {
+        total += b.all.length
+        pooled += b.idle.length
+      }
+      return { active: Math.max(0, total - pooled), pooled, total }
+    },
+  }
+
+  return {
+    get elapsedTime() { return simElapsed },
+    findNodeById: (id: string) => makeNodeHandle(id, host),
+    findNodesByTag: (tag: string) => {
+      const all = world.getNodes()
+      return Object.values(all)
+        .filter((n) => !isNodePooledInactive(n.id, all) && (n.tagId === tag || n.tagIds?.includes(tag)))
+        .map((n) => makeNodeHandle(n.id, host))
+        .filter(Boolean)
+    },
+    findNodesInRadius: (center: Vec3Obj, radius: number, tag?: string) => {
+      const r2 = radius * radius
+      const all = world.getNodes()
+      return Object.values(all)
+        .filter((n) => {
+          if (isNodePooledInactive(n.id, all)) return false
+          if (tag && n.tagId !== tag && !n.tagIds?.includes(tag)) return false
+          const p = host.resolveObject(n.id)?.position
+          const x = p ? p.x : n.position[0]
+          const y = p ? p.y : n.position[1]
+          const z = p ? p.z : n.position[2]
+          const dx = x - center.x
+          const dy = y - center.y
+          const dz = z - center.z
+          return dx * dx + dy * dy + dz * dz <= r2
+        })
+        .map((n) => makeNodeHandle(n.id, host))
+        .filter(Boolean)
+    },
+    cloneNode: (templateOrName: string | { id?: string }, opts?: Record<string, unknown>) => {
+      const tpl = resolveTemplateNode(templateOrName, world.getNodes())
+      if (!tpl) return null
+      const spawnedId = cloneSceneSubtree(tpl, opts as Parameters<typeof cloneSceneSubtree>[1], host)
+      if (!spawnedId) return null
+      const initMsg = typeof opts?.initMessage === 'string' ? opts.initMessage : undefined
+      if (initMsg) {
+        messageQueue.push({ targetNodeId: spawnedId, name: initMsg, payload: opts?.initPayload })
+      }
+      return makeNodeHandle(spawnedId, host)
+    },
+    spawnPrefab: (prefabId: string, opts?: { position?: Vec3Obj; rotation?: Vec3Obj; name?: string }) => {
+      const posVec = resolveVec3Input(opts?.position)
+      const pos: TupleVec3 = posVec ? [posVec.x, posVec.y, posVec.z] : [0, 0, 0]
+      const spawnedId = world.instantiatePrefab?.(prefabId, { position: pos }) ?? null
+      if (!spawnedId) return null
+      const spawnedNode = world.getNodes()[spawnedId]
+      if (spawnedNode && opts?.name) spawnedNode.name = opts.name
+      return makeNodeHandle(spawnedId, host)
+    },
+    destroyNode: (target: { id?: string } | string) => {
+      const targetId = typeof target === 'string' ? target : target?.id
+      if (targetId) destroyOrReleaseNode(targetId, host)
+    },
+    pool: poolHelpers,
+    broadcast: (name: string, payload?: unknown) => {
+      messageQueue.push({ targetNodeId: null, name, payload })
+    },
+    after: (seconds: number, callback: () => void) => {
+      const id = nextTimerId++
+      const delay = Math.max(0, Number(seconds) || 0)
+      scriptTimers.set(id, { id, nodeId: sysNodeId, scriptId: systemId, remaining: delay, interval: delay, repeat: false, callback })
+      return id
+    },
+    every: (seconds: number, callback: () => void) => {
+      const id = nextTimerId++
+      const interval = Math.max(0.016, Number(seconds) || 0.1)
+      scriptTimers.set(id, { id, nodeId: sysNodeId, scriptId: systemId, remaining: interval, interval, repeat: true, callback })
+      return id
+    },
+    cancelTimer: (timerId: number) => {
+      scriptTimers.delete(timerId)
+    },
+    input: {
+      isPressed: (actionOrKey: string) => isActionPressed(actionOrKey) || isKeyHeld(actionOrKey) || isKeyHeld(`Key${actionOrKey.toUpperCase()}`),
+      justPressed: (actionOrKey: string) => wasActionTapped(actionOrKey) || wasKeyTapped(actionOrKey) || wasKeyTapped(`Key${actionOrKey.toUpperCase()}`),
+      isKeyPressed: (code: string) => isKeyHeld(code) || isKeyHeld(`Key${code.toUpperCase()}`),
+      justReleased: () => false,
+      axis1D: (action: string) => (isActionPressed(action) ? 1 : 0),
+      axis2D: (action: string) => getActionAxis2D(action),
+      pointerDelta: () => ({ ...framePointerDelta }),
+      pointerPosition: () => ({ ...framePointerPos }),
+      wheelDelta: () => frameWheelDelta,
+      isMouseButtonPressed: (button: number) => (currMouseButtons & mouseButtonMask(button)) !== 0,
+      justPressedMouseButton: (button: number) =>
+        (currMouseButtons & mouseButtonMask(button)) !== 0 && (prevMouseButtons & mouseButtonMask(button)) === 0,
+      justReleasedMouseButton: (button: number) =>
+        (currMouseButtons & mouseButtonMask(button)) === 0 && (prevMouseButtons & mouseButtonMask(button)) !== 0,
+    },
+    ui: {
+      getVar: (key: string) => uiValues().variables[key],
+      setVar: (key: string, value: unknown) => writeUiVariable(key, value),
+      onEvent: (eventName: string, handler: (payload?: unknown) => void) => {
+        ensureUiClickBridge()
+        const instKey = `sys:${systemId}`
+        let byEvent = uiEventHandlers.get(instKey)
+        if (!byEvent) {
+          byEvent = new Map()
+          uiEventHandlers.set(instKey, byEvent)
+        }
+        let set = byEvent.get(eventName)
+        if (!set) {
+          set = new Set()
+          byEvent.set(eventName, set)
+        }
+        set.add(handler)
+        return () => { set?.delete(handler) }
+      },
+      showScreen: (screenIdOrName: string) => {
+        const sid = resolveScreenNodeId(screenIdOrName)
+        if (sid) setScreenVisible(sid, true)
+      },
+      hideScreen: (screenIdOrName: string) => {
+        const sid = resolveScreenNodeId(screenIdOrName)
+        if (sid) setScreenVisible(sid, false)
+      },
+      toggleScreen: (screenIdOrName: string) => {
+        const sid = resolveScreenNodeId(screenIdOrName)
+        if (!sid) return
+        const nodeTarget = world.getNodes()[sid]
+        const curMap = uiValues().screens
+        const cur = sid in curMap ? curMap[sid] : Boolean(nodeTarget?.screen?.visibleOnPlay ?? true)
+        setScreenVisible(sid, !cur)
+      },
+      isScreenVisible: (screenIdOrName: string) => {
+        const sid = resolveScreenNodeId(screenIdOrName)
+        if (!sid) return false
+        const nodeTarget = world.getNodes()[sid]
+        const curMap = uiValues().screens
+        return sid in curMap ? curMap[sid] : Boolean(nodeTarget?.screen?.visibleOnPlay ?? true)
+      },
+      worldToScreen: (position: Vec3Obj | { position?: Vec3Obj }) => {
+        const vec = resolveVec3Input(position)
+        if (!vec || !host.worldToScreen) return null
+        return host.worldToScreen([vec.x, vec.y, vec.z])
+      },
     },
     scene: {
       currentId: () => world.getActiveSceneId(),
@@ -1137,20 +1421,41 @@ export function compileAndRegisterScript(
     const prev = compiledSystems.get(id)
     prev?.unregister()
     const baseOrder =
-      def.stage === 'postAnimation'
-        ? RUNTIME_STAGE.POST_ANIMATION
-        : def.stage === 'postPhysics'
-          ? RUNTIME_STAGE.PHYSICS_NAV + 5
-          : RUNTIME_STAGE.PRE_PHYSICS + 1
+      def.stage === 'preRender'
+        ? RUNTIME_STAGE.PRE_RENDER - 1
+        : def.stage === 'postAnimation'
+          ? RUNTIME_STAGE.POST_ANIMATION
+          : def.stage === 'postPhysics'
+            ? RUNTIME_STAGE.PHYSICS_NAV + 5
+            : RUNTIME_STAGE.PRE_PHYSICS + 1
+    const sysEntry = {
+      def,
+      mounted: false,
+      state: def.createState ? { ...def.createState() } : def.state ? { ...def.state() } : {},
+      unregister: () => {},
+    }
     const unregister = registerRuntimeSystem(
       `script.${id}`,
       baseOrder + (def.order ?? 0),
       (dt, host) => {
         if (getRuntimeWorld().getPlayState() !== 'playing') return
-        def.onUpdate?.({ host, elapsedTime: simElapsed }, dt)
+        const api = buildSystemWorldApi(id, host)
+        try {
+          if (!sysEntry.mounted) {
+            sysEntry.mounted = true
+            sysEntry.state = def.createState ? { ...def.createState() } : def.state ? { ...def.state() } : {}
+            def.onMount?.(api, sysEntry.state)
+            def.onInit?.(api, sysEntry.state)
+          }
+          def.onStep?.(api, sysEntry.state, dt)
+          def.onUpdate?.(api, sysEntry.state, dt)
+        } catch (error) {
+          getRuntimeWorld().log('error', `系统 "${def.name}" 运行错误: ${error instanceof Error ? error.message : String(error)}`)
+        }
       },
     )
-    compiledSystems.set(id, { def, unregister })
+    sysEntry.unregister = unregister
+    compiledSystems.set(id, sysEntry)
     return {
       ok: true,
       diagnostics: transpiled.diagnostics,
@@ -1191,6 +1496,18 @@ export function getRegisteredBehavior(scriptId: string): BehaviorDefinition | un
 }
 
 export function clearScriptRuntimeState(): void {
+  for (const [sysId, sys] of compiledSystems.entries()) {
+    if (sys.mounted) {
+      sys.mounted = false
+      const noopHost: SceneRuntimeHost = { ready: false, resolveObject: () => null, updateAnimations: () => {} }
+      const api = buildSystemWorldApi(sysId, noopHost)
+      try {
+        sys.def.onDispose?.(api, sys.state)
+        sys.def.onDestroy?.(api, sys.state)
+      } catch { /* ignore */ }
+      sys.state = {}
+    }
+  }
   instanceStates.clear()
   messageQueue.length = 0
   uiEventHandlers.clear()
@@ -1226,6 +1543,9 @@ function stepProjectScripts(dt: number, host: SceneRuntimeHost) {
   currMouseButtons = host.mouseButtons ? host.mouseButtons() : (host.rightHeld?.() ? 2 : 0)
   const nodes = world.getNodes()
   const activeKeys = new Set<string>()
+  for (const sysId of compiledSystems.keys()) {
+    activeKeys.add(`sys:${sysId}`)
+  }
 
   // 推进已激活的导航代理移动
   if (navAgents.size > 0 && dt > 0) {
@@ -1305,8 +1625,9 @@ function stepProjectScripts(dt: number, host: SceneRuntimeHost) {
     const timerSnapshot = Array.from(scriptTimers.values())
     for (const timer of timerSnapshot) {
       if (!scriptTimers.has(timer.id)) continue
-      const tNode = nodes[timer.nodeId]
-      if (!tNode || isNodePooledInactive(timer.nodeId, nodes)) {
+      const isSystemTimer = timer.nodeId.startsWith('__system__:')
+      const tNode = isSystemTimer ? null : nodes[timer.nodeId]
+      if (!isSystemTimer && (!tNode || isNodePooledInactive(timer.nodeId, nodes))) {
         scriptTimers.delete(timer.id)
         continue
       }
