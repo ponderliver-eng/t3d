@@ -43,6 +43,10 @@ import { NavigationCard, SceneNavigationCard } from '../../capabilities/navigati
 import { SkyCard } from '../../capabilities/sky/SkyCard'
 import { BuoyancyCard } from '../../capabilities/buoyancy/BuoyancyCard'
 import { BUOYANCY_CAPABILITY_ID, defaultBuoyancy } from '../../capabilities/buoyancy/defaults'
+import { SplineCard } from '../../capabilities/spline/SplineCard'
+import { defaultSpline, SPLINE_CAPABILITY_ID } from '../../capabilities/spline/schema'
+import { TweenCard } from '../../capabilities/tween/TweenCard'
+import { defaultTween, TWEEN_CAPABILITY_ID } from '../../capabilities/tween/schema'
 import { WaterCard } from '../../capabilities/water/WaterCard'
 import { audioMixPatch, readAudioMix } from '../../runtime/audio'
 import {
@@ -389,6 +393,8 @@ export default function InspectorPanel() {
       <PhysicsCard node={node} disabled={locked} />
       <BuoyancyCard node={node} disabled={locked} />
       <NavigationCard node={node} disabled={locked} />
+      <SplineCard node={node} disabled={locked} />
+      <TweenCard node={node} disabled={locked} />
       <WaterCard node={node} disabled={locked} />
 
       <AddComponentPicker node={node} disabled={locked} />
@@ -2585,6 +2591,36 @@ function AddComponentPicker({ node, disabled }: { node: SceneNode, disabled: boo
             navigation: defaultNodeNavigation(node.kind),
           })
           useInspectorMemory.getState().setOpen(`node:${node.id}`, 'navigation', true)
+        },
+      })
+    }
+    if (capabilityEnabled(capabilities, SPLINE_CAPABILITY_ID)) {
+      options.push({
+        id: SPLINE_CAPABILITY_ID,
+        cardId: SPLINE_CAPABILITY_ID,
+        group: 'devices',
+        label: 'Spline 路径运动',
+        color: '#34d399',
+        added: Boolean(node.capabilities?.[SPLINE_CAPABILITY_ID]),
+        apply: () => {
+          const nextCapabilities = { ...(node.capabilities ?? {}), [SPLINE_CAPABILITY_ID]: defaultSpline() }
+          commitNode(node.id, 'Spline 路径运动', { capabilities: nextCapabilities })
+          useInspectorMemory.getState().setOpen(`node:${node.id}`, SPLINE_CAPABILITY_ID, true)
+        },
+      })
+    }
+    if (capabilityEnabled(capabilities, TWEEN_CAPABILITY_ID)) {
+      options.push({
+        id: TWEEN_CAPABILITY_ID,
+        cardId: TWEEN_CAPABILITY_ID,
+        group: 'devices',
+        label: 'Tween 补间动效',
+        color: '#c084fc',
+        added: Boolean(node.capabilities?.[TWEEN_CAPABILITY_ID]),
+        apply: () => {
+          const nextCapabilities = { ...(node.capabilities ?? {}), [TWEEN_CAPABILITY_ID]: defaultTween() }
+          commitNode(node.id, 'Tween 补间动效', { capabilities: nextCapabilities })
+          useInspectorMemory.getState().setOpen(`node:${node.id}`, TWEEN_CAPABILITY_ID, true)
         },
       })
     }

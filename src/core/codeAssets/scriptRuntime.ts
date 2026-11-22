@@ -4,6 +4,14 @@ import type { SceneNode, Vec3 as TupleVec3 } from '../../editor/scene/types'
 import { findRow } from '../../gameplay/registry'
 import { playSound, stopMusic } from '../../runtime/audio'
 import { measureCost } from '../../runtime/frameProfile'
+import {
+  createAnimationCurve,
+  createSplinePath,
+  evalEasing,
+  type CurveKeyInput,
+  type EasingName,
+  type SplinePath,
+} from '../../runtime/motion'
 import { registerRuntimeSystem, RUNTIME_STAGE, type SceneRuntimeHost } from '../../runtime/sceneRuntime'
 import { onUiClick, setScreenVisible, uiValues, writeUiVariable } from '../../runtime/ui/values'
 import { getRuntimeWorld } from '../../runtime/world'
@@ -104,12 +112,44 @@ interface ScriptTimer {
   callback: () => void
 }
 
+interface SplineFollowAgent {
+  nodeId: string
+  spline: SplinePath
+  distance: number
+  speed: number
+  direction: 1 | -1
+  loop: boolean
+  pingPong: boolean
+  faceDirection: boolean
+  planeXZ: boolean
+  onArrive?: () => void
+}
+
+interface TweenTask {
+  id: number
+  ownerNodeId: string
+  delayRemaining: number
+  elapsed: number
+  duration: number
+  ease: EasingName
+  repeat: number
+  yoyo: boolean
+  reversed: boolean
+  completedCount: number
+  apply: (t: number) => void
+  onUpdate?: (progress: number) => void
+  onComplete?: () => void
+}
+
 const pooledInactive = new Set<string>()
 const nodePoolKey = new Map<string, string>()
 const poolBuckets = new Map<string, PoolBucket>()
 const scriptTimers = new Map<number, ScriptTimer>()
+const splineFollowAgents = new Map<string, SplineFollowAgent>()
+const activeTweens = new Map<number, TweenTask>()
 const sfxCooldownAt = new Map<string, number>()
 let nextTimerId = 1
+let nextTweenId = 1
 
 function ensureUiClickBridge() {
   if (uiClickSubscribed) return
@@ -295,6 +335,56 @@ function makeNodeHandle(nodeId: string, host: SceneRuntimeHost): Record<string, 
 function cancelTimersForNode(nodeId: string): void {
   for (const [tid, t] of scriptTimers.entries()) {
     if (t.nodeId === nodeId) scriptTimers.delete(tid)
+  }
+  splineFollowAgents.delete(nodeId)
+  for (const [twId, tw] of activeTweens.entries()) {
+    if (tw.ownerNodeId === nodeId) activeTweens.delete(twId)
+  }
+}
+
+function resolveSplinePointsInput(
+  input: unknown,
+  host: SceneRuntimeHost,
+): Vec3Obj[] {
+  const world = getRuntimeWorld()
+  const nodes = world.getNodes()
+  if (Array.isArray(input)) {
+    const pts: Vec3Obj[] = []
+    for (const item of input) {
+      const v = resolveVec3Input(item)
+      if (v) pts.push(v)
+    }
+    return pts
+  }
+  const parentNode = resolveTemplateNode(input as string | { id?: string } | null | undefined, nodes)
+  if (!parentNode) return []
+  const children = Object.values(nodes)
+    .filter((n) => n.parentId === parentNode.id && !isNodePooledInactive(n.id, nodes))
+    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
+  const targets = children.length > 0 ? children : [parentNode]
+  return targets.map((n) => {
+    const obj = host.resolveObject(n.id)
+    return obj
+      ? { x: obj.position.x, y: obj.position.y, z: obj.position.z }
+      : toVec3Obj(n.position)
+  })
+}
+
+function buildCurveApi() {
+  return {
+    create: (keys: readonly CurveKeyInput[], options?: { wrap?: 'clamp' | 'loop' | 'pingPong' }) =>
+      createAnimationCurve(keys, options),
+    eval: (keys: readonly CurveKeyInput[], t: number, options?: { wrap?: 'clamp' | 'loop' | 'pingPong' }) =>
+      createAnimationCurve(keys, options).eval(t),
+    ease: (name: EasingName, t: number) => evalEasing(name, t),
+    parabola: (t: number, height = 1) => {
+      const u = Math.max(0, Math.min(1, Number.isFinite(t) ? t : 0))
+      return 4 * u * (1 - u) * height
+    },
+    pulse: (t: number) => {
+      const u = Math.max(0, Math.min(1, Number.isFinite(t) ? t : 0))
+      return Math.sin(u * Math.PI)
+    },
   }
 }
 
@@ -959,6 +1049,232 @@ function buildScriptContext(
         return navAgents.has(node.id)
       },
     },
+    spline: {
+      create: (pointsOrParent: unknown, options?: { closed?: boolean; tension?: number }) => {
+        const pts = resolveSplinePointsInput(pointsOrParent, host)
+        return createSplinePath(pts, options)
+      },
+      follow: (
+        pointsOrParent: unknown,
+        options?: {
+          speed?: number
+          closed?: boolean
+          tension?: number
+          loop?: boolean
+          pingPong?: boolean
+          faceDirection?: boolean
+          planeXZ?: boolean
+          startProgress?: number
+          onArrive?: () => void
+        },
+      ) => {
+        const spline: SplinePath =
+          pointsOrParent && typeof pointsOrParent === 'object' && 'pointAtDistance' in pointsOrParent
+            ? (pointsOrParent as SplinePath)
+            : createSplinePath(resolveSplinePointsInput(pointsOrParent, host), {
+                closed: options?.closed ?? options?.loop,
+                tension: options?.tension,
+              })
+        if (spline.points.length === 0) {
+          splineFollowAgents.delete(node.id)
+          return false
+        }
+        const startT = Math.max(0, Math.min(1, Number(options?.startProgress ?? 0)))
+        const startDist = startT * spline.length
+        const startPos = spline.pointAtDistance(startDist)
+        handle.position = {
+          x: startPos.x,
+          y: options?.planeXZ ? handle.position.y : startPos.y,
+          z: startPos.z,
+        }
+        splineFollowAgents.set(node.id, {
+          nodeId: node.id,
+          spline,
+          distance: startDist,
+          speed: Math.max(0.01, Number(options?.speed ?? 4)),
+          direction: 1,
+          loop: Boolean(options?.loop),
+          pingPong: Boolean(options?.pingPong),
+          faceDirection: options?.faceDirection !== false,
+          planeXZ: Boolean(options?.planeXZ),
+          onArrive: options?.onArrive,
+        })
+        return true
+      },
+      stop: () => {
+        splineFollowAgents.delete(node.id)
+      },
+      get isFollowing() {
+        return splineFollowAgents.has(node.id)
+      },
+      get progress() {
+        const ag = splineFollowAgents.get(node.id)
+        if (!ag || ag.spline.length <= 1e-6) return 0
+        return Math.max(0, Math.min(1, ag.distance / ag.spline.length))
+      },
+    },
+    tween: {
+      to: (
+        target: unknown,
+        props: { position?: Vec3Obj; rotation?: Vec3Obj; scale?: Vec3Obj },
+        duration: number,
+        options?: {
+          ease?: EasingName
+          delay?: number
+          repeat?: number
+          yoyo?: boolean
+          onUpdate?: (progress: number) => void
+          onComplete?: () => void
+        },
+      ) => {
+        const targetHandle =
+          target && typeof target === 'object' && 'id' in target && typeof (target as { id?: unknown }).id === 'string'
+            ? (makeNodeHandle((target as { id: string }).id, host) ?? (target as Record<string, any>))
+            : (target as Record<string, any>)
+        if (!targetHandle) return -1
+        const startPos = props.position && targetHandle.position ? { ...targetHandle.position } : null
+        const startRot = props.rotation && targetHandle.rotation ? { ...targetHandle.rotation } : null
+        const startScale = props.scale && targetHandle.scale ? { ...targetHandle.scale } : null
+        const endPos = resolveVec3Input(props.position)
+        const endRot = resolveVec3Input(props.rotation)
+        const endScale = resolveVec3Input(props.scale)
+        const id = nextTweenId++
+        const dur = Math.max(0.001, Number(duration) || 0.001)
+        activeTweens.set(id, {
+          id,
+          ownerNodeId: node.id,
+          delayRemaining: Math.max(0, Number(options?.delay ?? 0)),
+          elapsed: 0,
+          duration: dur,
+          ease: options?.ease ?? 'outQuad',
+          repeat: Math.max(0, Math.floor(options?.repeat ?? 0)),
+          yoyo: Boolean(options?.yoyo),
+          reversed: false,
+          completedCount: 0,
+          apply: (t: number) => {
+            if (startPos && endPos) {
+              targetHandle.position = {
+                x: startPos.x + (endPos.x - startPos.x) * t,
+                y: startPos.y + (endPos.y - startPos.y) * t,
+                z: startPos.z + (endPos.z - startPos.z) * t,
+              }
+            }
+            if (startRot && endRot) {
+              targetHandle.rotation = {
+                x: startRot.x + (endRot.x - startRot.x) * t,
+                y: startRot.y + (endRot.y - startRot.y) * t,
+                z: startRot.z + (endRot.z - startRot.z) * t,
+              }
+            }
+            if (startScale && endScale) {
+              targetHandle.scale = {
+                x: startScale.x + (endScale.x - startScale.x) * t,
+                y: startScale.y + (endScale.y - startScale.y) * t,
+                z: startScale.z + (endScale.z - startScale.z) * t,
+              }
+            }
+          },
+          onUpdate: options?.onUpdate,
+          onComplete: options?.onComplete,
+        })
+        return id
+      },
+      value: (
+        from: number,
+        to: number,
+        duration: number,
+        onUpdate: (val: number) => void,
+        options?: { ease?: EasingName; delay?: number; repeat?: number; yoyo?: boolean; onComplete?: () => void },
+      ) => {
+        const id = nextTweenId++
+        const dur = Math.max(0.001, Number(duration) || 0.001)
+        activeTweens.set(id, {
+          id,
+          ownerNodeId: node.id,
+          delayRemaining: Math.max(0, Number(options?.delay ?? 0)),
+          elapsed: 0,
+          duration: dur,
+          ease: options?.ease ?? 'outQuad',
+          repeat: Math.max(0, Math.floor(options?.repeat ?? 0)),
+          yoyo: Boolean(options?.yoyo),
+          reversed: false,
+          completedCount: 0,
+          apply: (t: number) => {
+            onUpdate(from + (to - from) * t)
+          },
+          onComplete: options?.onComplete,
+        })
+        return id
+      },
+      punchScale: (strength = 0.25, duration = 0.22) => {
+        const base = { ...handle.scale }
+        const id = nextTweenId++
+        const dur = Math.max(0.05, Number(duration) || 0.22)
+        activeTweens.set(id, {
+          id,
+          ownerNodeId: node.id,
+          delayRemaining: 0,
+          elapsed: 0,
+          duration: dur,
+          ease: 'linear',
+          repeat: 0,
+          yoyo: false,
+          reversed: false,
+          completedCount: 0,
+          apply: (t: number) => {
+            const pulse = Math.sin(t * Math.PI) * strength
+            handle.scale = {
+              x: base.x * (1 + pulse),
+              y: base.y * (1 + pulse),
+              z: base.z * (1 + pulse),
+            }
+          },
+          onComplete: () => {
+            handle.scale = base
+          },
+        })
+        return id
+      },
+      shakePosition: (intensity = 0.18, duration = 0.25) => {
+        const base = { ...handle.position }
+        const id = nextTweenId++
+        const dur = Math.max(0.05, Number(duration) || 0.25)
+        activeTweens.set(id, {
+          id,
+          ownerNodeId: node.id,
+          delayRemaining: 0,
+          elapsed: 0,
+          duration: dur,
+          ease: 'linear',
+          repeat: 0,
+          yoyo: false,
+          reversed: false,
+          completedCount: 0,
+          apply: (t: number) => {
+            const decay = 1 - t
+            const amp = intensity * decay
+            handle.position = {
+              x: base.x + (Math.random() * 2 - 1) * amp,
+              y: base.y + (Math.random() * 2 - 1) * amp,
+              z: base.z + (Math.random() * 2 - 1) * amp,
+            }
+          },
+          onComplete: () => {
+            handle.position = base
+          },
+        })
+        return id
+      },
+      cancel: (tweenId: number) => {
+        activeTweens.delete(tweenId)
+      },
+      cancelAll: () => {
+        for (const [twId, tw] of activeTweens.entries()) {
+          if (tw.ownerNodeId === node.id) activeTweens.delete(twId)
+        }
+      },
+    },
+    curve: buildCurveApi(),
     anim: {
       playBody: (clipName: string, opts?: { loop?: boolean; fade?: number; speed?: number }) => {
         world.playBody?.(node.id, clipName, opts)
@@ -1302,6 +1618,7 @@ function buildSystemWorldApi(systemId: string, host: SceneRuntimeHost) {
     cancelTimer: (timerId: number) => {
       scriptTimers.delete(timerId)
     },
+    curve: buildCurveApi(),
     input: {
       isPressed: (actionOrKey: string) => isActionPressed(actionOrKey) || isKeyHeld(actionOrKey) || isKeyHeld(`Key${actionOrKey.toUpperCase()}`),
       justPressed: (actionOrKey: string) => wasActionTapped(actionOrKey) || wasKeyTapped(actionOrKey) || wasKeyTapped(`Key${actionOrKey.toUpperCase()}`),
@@ -1518,8 +1835,11 @@ export function clearScriptRuntimeState(): void {
   nodePoolKey.clear()
   poolBuckets.clear()
   scriptTimers.clear()
+  splineFollowAgents.clear()
+  activeTweens.clear()
   sfxCooldownAt.clear()
   nextTimerId = 1
+  nextTweenId = 1
   simElapsed = 0
   framePointerDelta = { x: 0, y: 0 }
   framePointerPos = { x: 0, y: 0 }
@@ -1617,6 +1937,111 @@ function stepProjectScripts(dt: number, host: SceneRuntimeHost) {
           world.log('error', `脚本 "${def.name}" 运行错误: ${error instanceof Error ? error.message : String(error)}`)
         }
       })
+    }
+  }
+
+  // 推进 Spline 路径跟随代理
+  if (splineFollowAgents.size > 0 && dt > 0) {
+    for (const [agentId, ag] of Array.from(splineFollowAgents.entries())) {
+      const n = nodes[agentId]
+      const h = makeNodeHandle(agentId, host)
+      if (!n || !h || isNodePooledInactive(agentId, nodes)) {
+        splineFollowAgents.delete(agentId)
+        continue
+      }
+      const totalLen = ag.spline.length
+      if (totalLen <= 1e-6) {
+        splineFollowAgents.delete(agentId)
+        ag.onArrive?.()
+        continue
+      }
+      let nextDist = ag.distance + ag.speed * dt * ag.direction
+      let arrived = false
+      if (ag.loop) {
+        nextDist = ((nextDist % totalLen) + totalLen) % totalLen
+      } else if (ag.pingPong) {
+        if (nextDist >= totalLen) {
+          nextDist = totalLen - (nextDist - totalLen)
+          ag.direction = -1
+        } else if (nextDist <= 0) {
+          nextDist = -nextDist
+          ag.direction = 1
+        }
+      } else {
+        if (nextDist >= totalLen) {
+          nextDist = totalLen
+          arrived = true
+        } else if (nextDist <= 0) {
+          nextDist = 0
+          arrived = true
+        }
+      }
+      ag.distance = nextDist
+      const pt = ag.spline.pointAtDistance(nextDist)
+      const cur = h.position
+      h.position = { x: pt.x, y: ag.planeXZ ? cur.y : pt.y, z: pt.z }
+      if (ag.faceDirection) {
+        const tan = ag.spline.tangentAtDistance(nextDist)
+        const tx = tan.x * ag.direction
+        const tz = tan.z * ag.direction
+        if (Math.abs(tx) > 1e-5 || Math.abs(tz) > 1e-5) {
+          const r = h.rotation
+          h.rotation = { x: r.x, y: Math.atan2(tx, tz), z: r.z }
+        }
+      }
+      if (arrived) {
+        splineFollowAgents.delete(agentId)
+        try {
+          ag.onArrive?.()
+        } catch (error) {
+          world.log('error', `Spline 到达回调错误: ${error instanceof Error ? error.message : String(error)}`)
+        }
+      }
+    }
+  }
+
+  // 推进 Tween 补间动画
+  if (activeTweens.size > 0 && dt > 0) {
+    for (const tw of Array.from(activeTweens.values())) {
+      if (!activeTweens.has(tw.id)) continue
+      const ownerExists = tw.ownerNodeId.startsWith('__system__:') || (Boolean(nodes[tw.ownerNodeId]) && !isNodePooledInactive(tw.ownerNodeId, nodes))
+      if (!ownerExists) {
+        activeTweens.delete(tw.id)
+        continue
+      }
+      if (tw.delayRemaining > 0) {
+        tw.delayRemaining -= dt
+        if (tw.delayRemaining > 0) continue
+        tw.elapsed += -tw.delayRemaining
+        tw.delayRemaining = 0
+      } else {
+        tw.elapsed += dt
+      }
+      const rawT = Math.min(1, tw.elapsed / tw.duration)
+      const progress = tw.reversed ? 1 - rawT : rawT
+      const eased = evalEasing(tw.ease, progress)
+      try {
+        tw.apply(eased)
+        tw.onUpdate?.(eased)
+      } catch (error) {
+        world.log('error', `Tween 更新错误: ${error instanceof Error ? error.message : String(error)}`)
+        activeTweens.delete(tw.id)
+        continue
+      }
+      if (rawT >= 1) {
+        if (tw.completedCount < tw.repeat) {
+          tw.completedCount += 1
+          tw.elapsed = 0
+          if (tw.yoyo) tw.reversed = !tw.reversed
+        } else {
+          activeTweens.delete(tw.id)
+          try {
+            tw.onComplete?.()
+          } catch (error) {
+            world.log('error', `Tween 完成回调错误: ${error instanceof Error ? error.message : String(error)}`)
+          }
+        }
+      }
     }
   }
 

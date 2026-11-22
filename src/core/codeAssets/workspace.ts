@@ -120,6 +120,35 @@ export interface ScriptContext<P = Record<string, unknown>, S = Record<string, u
   after(seconds: number, callback: () => void): number
   every(seconds: number, callback: () => void): number
   cancelTimer(timerId: number): void
+  readonly spline: {
+    create(pointsOrParent: string | NodeHandle | ReadonlyArray<Vec3 | NodeHandle>, options?: { closed?: boolean; tension?: number }): {
+      readonly length: number; readonly closed: boolean; readonly points: readonly Vec3[]
+      pointAt(t: number): Vec3; tangentAt(t: number): Vec3
+      pointAtDistance(distance: number): Vec3; tangentAtDistance(distance: number): Vec3
+    }
+    follow(pointsOrParent: string | NodeHandle | ReadonlyArray<Vec3 | NodeHandle>, options?: {
+      speed?: number; closed?: boolean; tension?: number; loop?: boolean; pingPong?: boolean
+      faceDirection?: boolean; planeXZ?: boolean; startProgress?: number; onArrive?: () => void
+    }): boolean
+    stop(): void
+    readonly isFollowing: boolean
+    readonly progress: number
+  }
+  readonly tween: {
+    to(target: NodeHandle | { position?: Vec3; rotation?: Vec3; scale?: Vec3 }, props: { position?: Vec3; rotation?: Vec3; scale?: Vec3 }, duration: number, options?: { ease?: string; delay?: number; repeat?: number; yoyo?: boolean; onUpdate?: (p: number) => void; onComplete?: () => void }): number
+    value(from: number, to: number, duration: number, onUpdate: (val: number) => void, options?: { ease?: string; delay?: number; repeat?: number; yoyo?: boolean; onComplete?: () => void }): number
+    punchScale(strength?: number, duration?: number): number
+    shakePosition(intensity?: number, duration?: number): number
+    cancel(tweenId: number): void
+    cancelAll(): void
+  }
+  readonly curve: {
+    create(keys: ReadonlyArray<readonly [number, number] | { t: number; v: number; mode?: 'linear' | 'smooth' | 'step' }>, options?: { wrap?: 'clamp' | 'loop' | 'pingPong' }): { eval(t: number): number }
+    eval(keys: ReadonlyArray<readonly [number, number] | { t: number; v: number; mode?: 'linear' | 'smooth' | 'step' }>, t: number, options?: { wrap?: 'clamp' | 'loop' | 'pingPong' }): number
+    ease(name: string, t: number): number
+    parabola(t: number, height?: number): number
+    pulse(t: number): number
+  }
   readonly input: {
     isPressed(a: string): boolean
     justPressed(a: string): boolean

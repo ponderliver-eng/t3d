@@ -27,6 +27,8 @@ const COPY: Record<CapabilityId, { name: MessageKey, detail: MessageKey }> = {
   physics: { name: 'physics.enable', detail: 'projectSettings.physicsDetail' },
   buoyancy: { name: 'buoyancy.title', detail: 'projectSettings.buoyancyDetail' },
   navigation: { name: 'navigation.enable', detail: 'projectSettings.navigationDetail' },
+  spline: { name: 'spline.title', detail: 'projectSettings.splineDetail' },
+  tween: { name: 'tween.title', detail: 'projectSettings.tweenDetail' },
   particles: { name: 'particles.enable', detail: 'projectSettings.particlesDetail' },
   sky: { name: 'sky.enable', detail: 'projectSettings.skyDetail' },
   water: { name: 'water.title', detail: 'library.item.waterDetail' },

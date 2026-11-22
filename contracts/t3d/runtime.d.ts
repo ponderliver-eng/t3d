@@ -137,6 +137,95 @@ export interface PoolApi {
   stats(templateOrPrefab?: string | NodeHandle): PoolStats
 }
 
+export type EasingName =
+  | 'linear'
+  | 'inQuad'
+  | 'outQuad'
+  | 'inOutQuad'
+  | 'inCubic'
+  | 'outCubic'
+  | 'inOutCubic'
+  | 'inOutSine'
+  | 'outBack'
+  | 'inOutBack'
+  | 'outBounce'
+  | 'outElastic'
+
+export type CurveKeyInput =
+  | readonly [number, number]
+  | { t: number; v: number; mode?: 'linear' | 'smooth' | 'step' }
+
+export interface AnimationCurve {
+  eval(t: number): number
+}
+
+export interface CurveApi {
+  create(keys: readonly CurveKeyInput[], options?: { wrap?: 'clamp' | 'loop' | 'pingPong' }): AnimationCurve
+  eval(keys: readonly CurveKeyInput[], t: number, options?: { wrap?: 'clamp' | 'loop' | 'pingPong' }): number
+  ease(name: EasingName, t: number): number
+  parabola(t: number, height?: number): number
+  pulse(t: number): number
+}
+
+export type SplinePointsInput =
+  | string
+  | NodeHandle
+  | ReadonlyArray<Vec3 | NodeHandle>
+
+export interface SplinePath {
+  readonly length: number
+  readonly closed: boolean
+  readonly points: readonly Vec3[]
+  pointAt(t: number): Vec3
+  tangentAt(t: number): Vec3
+  pointAtDistance(distance: number): Vec3
+  tangentAtDistance(distance: number): Vec3
+}
+
+export interface SplineFollowOptions {
+  speed?: number
+  closed?: boolean
+  tension?: number
+  loop?: boolean
+  pingPong?: boolean
+  faceDirection?: boolean
+  planeXZ?: boolean
+  startProgress?: number
+  onArrive?: () => void
+}
+
+export interface SplineApi {
+  create(pointsOrParent: SplinePointsInput, options?: { closed?: boolean; tension?: number }): SplinePath
+  follow(pointsOrParent: SplinePointsInput | SplinePath, options?: SplineFollowOptions): boolean
+  stop(): void
+  readonly isFollowing: boolean
+  readonly progress: number
+}
+
+export interface TweenOptions {
+  ease?: EasingName
+  delay?: number
+  repeat?: number
+  yoyo?: boolean
+  onUpdate?: (progress: number) => void
+  onComplete?: () => void
+}
+
+export interface TweenTargetProps {
+  position?: Vec3
+  rotation?: Vec3
+  scale?: Vec3
+}
+
+export interface TweenApi {
+  to(target: NodeHandle | TweenTargetProps, props: TweenTargetProps, duration: number, options?: TweenOptions): number
+  value(from: number, to: number, duration: number, onUpdate: (val: number) => void, options?: TweenOptions): number
+  punchScale(strength?: number, duration?: number): number
+  shakePosition(intensity?: number, duration?: number): number
+  cancel(tweenId: number): void
+  cancelAll(): void
+}
+
 export interface PhysicsApi {
   raycast(origin: Vec3, direction: Vec3, maxDistance: number, options?: { ignoreTags?: readonly string[] }): RaycastHit | null
   sphereCast(center: Vec3, radius: number, options?: { tag?: string }): readonly NodeHandle[]
@@ -265,6 +354,9 @@ export interface ScriptContext<
 
   readonly physics: PhysicsApi
   readonly nav: NavApi
+  readonly spline: SplineApi
+  readonly tween: TweenApi
+  readonly curve: CurveApi
   readonly anim: AnimApi
   readonly audio: AudioApi
   readonly fx: FxApi
@@ -368,6 +460,7 @@ export interface SystemWorldApi {
   after(seconds: number, callback: () => void): number
   every(seconds: number, callback: () => void): number
   cancelTimer(timerId: number): void
+  readonly curve: CurveApi
   readonly input: InputApi
   readonly ui: UiApi
   readonly scene: SceneApi

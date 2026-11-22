@@ -22,6 +22,8 @@ export const CAPABILITIES = [
   { id: 'physics', defaultEnabled: true, category: 'physics' },
   { id: 'buoyancy', defaultEnabled: true, category: 'physics', dependencies: ['physics'], loadRuntime: () => import('./buoyancy/session') },
   { id: 'navigation', defaultEnabled: true, category: 'physics' },
+  { id: 'spline', defaultEnabled: true, category: 'animation', loadRuntime: () => import('./spline/session') },
+  { id: 'tween', defaultEnabled: true, category: 'animation', loadRuntime: () => import('./tween/session') },
   { id: 'particles', defaultEnabled: false, category: 'scene-object' },
   { id: 'sky', defaultEnabled: false, category: 'environment', loadRuntime: () => import('./sky/session') },
   { id: 'water', defaultEnabled: false, category: 'environment', loadRuntime: () => import('./water/session') },
