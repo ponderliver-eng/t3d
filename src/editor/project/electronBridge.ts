@@ -41,6 +41,7 @@ export interface ElectronBridge {
         label: string
         baseUrl: string
         model: string
+        models?: string[]
         hasApiKey: boolean
       }>
     }>
@@ -50,10 +51,12 @@ export interface ElectronBridge {
       label?: string
       baseUrl?: string
       model?: string
+      models?: string[]
       apiKey?: string
       setActive?: boolean
     }) => Promise<{ activeProviderId: string; providers: unknown[] }>
-    setActiveProvider: (id: string) => Promise<string>
+    deleteProvider?: (id: string) => Promise<{ activeProviderId: string; providers: unknown[] }>
+    setActiveProvider: (id: string, model?: string) => Promise<string | { activeProviderId: string; providers: unknown[] }>
     chat: (requestId: string, request: unknown) => Promise<{
       text: string
       toolCalls: Array<{ id: string; name: string; arguments: Record<string, unknown> }>

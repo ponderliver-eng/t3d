@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type DragEvent } from 'react'
-import { AlertTriangle, Bot, Box, Camera, Check, ChevronDown, ChevronRight, Copy, Download, FileBox, FileCode2, Loader2, RotateCcw, Send, Settings, Sparkles, Square, Trash2, Upload, Wand2, X } from 'lucide-react'
+import { AlertTriangle, Bot, Box, Camera, Check, ChevronDown, ChevronRight, Copy, Download, FileBox, FileCode2, Loader2, Plus, RotateCcw, Send, Settings, Sparkles, Square, Trash2, Upload, Wand2, X } from 'lucide-react'
 import { createCheckpoint } from '../core/project/checkpoints'
 import { useManagerModalStore } from '../core/project/ProjectManagerModal'
 import { openCodeAssetModal } from '../core/codeAssets/CodeAssetModal'
@@ -33,6 +33,7 @@ export default function AiWorkbenchPanel() {
   const pendingConfirm = useAgentStore((s) => s.pendingConfirm)
   const refreshProviders = useAgentStore((s) => s.refreshProviders)
   const saveProvider = useAgentStore((s) => s.saveProvider)
+  const deleteProvider = useAgentStore((s) => s.deleteProvider)
   const setActiveProvider = useAgentStore((s) => s.setActiveProvider)
   const sendPrompt = useAgentStore((s) => s.sendPrompt)
   const abort = useAgentStore((s) => s.abort)
@@ -48,9 +49,14 @@ export default function AiWorkbenchPanel() {
   const [input, setInput] = useState('')
   const [droppingToChat, setDroppingToChat] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [modelMenuOpen, setModelMenuOpen] = useState(false)
   const [planExpanded, setPlanExpanded] = useState(false)
+  const [settingsProviderType, setSettingsProviderType] = useState<'openai-compatible' | 'openai' | 'anthropic' | 'gemini'>('openai-compatible')
+  const [editingProviderId, setEditingProviderId] = useState<string>('openai-compatible')
+  const [editLabel, setEditLabel] = useState('')
   const [editBaseUrl, setEditBaseUrl] = useState('')
   const [editModel, setEditModel] = useState('')
+  const [editModelsText, setEditModelsText] = useState('')
   const [editApiKey, setEditApiKey] = useState('')
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const importInputRef = useRef<HTMLInputElement | null>(null)
@@ -142,13 +148,32 @@ export default function AiWorkbenchPanel() {
   }, [panelOpen, refreshProviders])
 
   useEffect(() => {
+    if (!modelMenuOpen) return
+    const close = () => setModelMenuOpen(false)
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') close()
+    }
+    window.addEventListener('mousedown', close)
+    window.addEventListener('keydown', onKeyDown)
+    return () => {
+      window.removeEventListener('mousedown', close)
+      window.removeEventListener('keydown', onKeyDown)
+    }
+  }, [modelMenuOpen])
+
+  useEffect(() => {
     const active = providers.find((p) => p.id === activeProviderId)
-    if (active) {
-      setEditBaseUrl(active.baseUrl)
-      setEditModel(active.model)
+    if (active && editingProviderId !== '__new__') {
+      const target = providers.find((p) => p.id === editingProviderId) ?? active
+      setEditingProviderId(target.id)
+      setSettingsProviderType(target.providerType)
+      setEditLabel(target.label)
+      setEditBaseUrl(target.baseUrl)
+      setEditModel(target.model)
+      setEditModelsText((target.models ?? []).join(', '))
       setEditApiKey('')
     }
-  }, [providers, activeProviderId])
+  }, [providers, activeProviderId, editingProviderId])
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -160,6 +185,41 @@ export default function AiWorkbenchPanel() {
 
   const activeProvider = providers.find((p) => p.id === activeProviderId)
   const selectedNodes = selection.map((id) => nodes[id]).filter(Boolean)
+
+  const PROVIDER_TABS: Array<{
+    type: 'openai-compatible' | 'openai' | 'anthropic' | 'gemini'
+    label: string
+    defaultUrl: string
+    defaultModel: string
+  }> = [
+    { type: 'openai-compatible', label: '兼容接口', defaultUrl: 'https://api.deepseek.com/v1', defaultModel: 'deepseek-chat' },
+    { type: 'openai', label: 'OpenAI', defaultUrl: 'https://api.openai.com/v1', defaultModel: 'gpt-4o' },
+    { type: 'anthropic', label: 'Anthropic', defaultUrl: 'https://api.anthropic.com/v1', defaultModel: 'claude-3-7-sonnet-latest' },
+    { type: 'gemini', label: 'Gemini', defaultUrl: 'https://generativelanguage.googleapis.com/v1beta', defaultModel: 'gemini-2.5-pro' },
+  ]
+
+  const selectProviderForEdit = (id: string) => {
+    const found = providers.find((p) => p.id === id)
+    if (!found) return
+    setEditingProviderId(found.id)
+    setSettingsProviderType(found.providerType)
+    setEditLabel(found.label)
+    setEditBaseUrl(found.baseUrl)
+    setEditModel(found.model)
+    setEditModelsText((found.models ?? []).join(', '))
+    setEditApiKey('')
+  }
+
+  const startNewProvider = (type: 'openai-compatible' | 'openai' | 'anthropic' | 'gemini') => {
+    const meta = PROVIDER_TABS.find((t) => t.type === type) ?? PROVIDER_TABS[0]
+    setSettingsProviderType(type)
+    setEditingProviderId('__new__')
+    setEditLabel('')
+    setEditBaseUrl(type === 'openai-compatible' ? '' : meta.defaultUrl)
+    setEditModel(type === 'openai-compatible' ? '' : meta.defaultModel)
+    setEditModelsText('')
+    setEditApiKey('')
+  }
 
   const canSend = Boolean(input.trim() || pendingAttachmentImage)
 
@@ -459,59 +519,217 @@ export default function AiWorkbenchPanel() {
             background: '#141417',
             display: 'flex',
             flexDirection: 'column',
-            gap: '6px',
+            gap: '8px',
+            maxHeight: '62vh',
+            overflowY: 'auto',
           }}
         >
-          <div style={{ fontWeight: 600, color: '#d4d4d8', marginBottom: '2px' }}>模型 API 设置（密钥仅存主进程）</div>
-          <select
-            value={activeProviderId}
-            onChange={(e) => void setActiveProvider(e.target.value)}
-            style={fieldInputStyle}
-          >
-            {providers.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.label} {p.hasApiKey ? '✓' : '(未设密钥)'}
-              </option>
-            ))}
-          </select>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <span style={{ fontWeight: 600, color: '#d4d4d8' }}>模型 API 设置（密钥仅存主进程）</span>
+            <button
+              type="button"
+              onClick={() => startNewProvider(settingsProviderType)}
+              style={{
+                ...smallBtnStyle,
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 4,
+                color: '#93c5fd',
+                borderColor: 'rgba(96,165,250,0.35)',
+              }}
+            >
+              <Plus size={11} />
+              <span>新增一条</span>
+            </button>
+          </div>
+
+          {/* 4 类协议切换标签 */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 4 }}>
+            {PROVIDER_TABS.map((tab) => {
+              const count = providers.filter((p) => p.providerType === tab.type).length
+              const isTabActive = settingsProviderType === tab.type
+              return (
+                <button
+                  key={tab.type}
+                  type="button"
+                  onClick={() => {
+                    setSettingsProviderType(tab.type)
+                    const list = providers.filter((p) => p.providerType === tab.type)
+                    if (list.length > 0) {
+                      const preferred = list.find((p) => p.id === activeProviderId) ?? list[0]
+                      selectProviderForEdit(preferred.id)
+                    } else {
+                      startNewProvider(tab.type)
+                    }
+                  }}
+                  style={{
+                    padding: '4px 6px',
+                    borderRadius: 4,
+                    fontSize: 11,
+                    cursor: 'pointer',
+                    border: isTabActive ? '1px solid #3b82f6' : '1px solid rgba(255,255,255,0.1)',
+                    background: isTabActive ? 'rgba(59,130,246,0.18)' : '#1d1d22',
+                    color: isTabActive ? '#93c5fd' : '#a1a1aa',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 4,
+                  }}
+                >
+                  <span>{tab.label}</span>
+                  {count > 0 && (
+                    <span style={{ fontSize: 10, opacity: 0.75 }}>({count})</span>
+                  )}
+                </button>
+              )
+            })}
+          </div>
+
+          {/* 当前协议下的已配置列表 */}
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+            {providers
+              .filter((p) => p.providerType === settingsProviderType)
+              .map((p) => {
+                const isEditing = editingProviderId === p.id
+                const isActive = activeProviderId === p.id
+                return (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => selectProviderForEdit(p.id)}
+                    style={{
+                      padding: '3px 8px',
+                      borderRadius: 999,
+                      fontSize: 11,
+                      cursor: 'pointer',
+                      border: isEditing
+                        ? '1px solid #60a5fa'
+                        : '1px solid rgba(255,255,255,0.12)',
+                      background: isEditing ? 'rgba(59,130,246,0.2)' : '#1e1e24',
+                      color: isEditing ? '#e4e4e7' : '#a1a1aa',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: 5,
+                    }}
+                  >
+                    <span
+                      style={{
+                        width: 6,
+                        height: 6,
+                        borderRadius: 999,
+                        background: p.hasApiKey ? '#4ade80' : '#f59e0b',
+                      }}
+                    />
+                    <span>{p.label}</span>
+                    {isActive && <span style={{ fontSize: 9, color: '#60a5fa' }}>当前</span>}
+                  </button>
+                )
+              })}
+            {editingProviderId === '__new__' && (
+              <span
+                style={{
+                  padding: '3px 8px',
+                  borderRadius: 999,
+                  fontSize: 11,
+                  border: '1px dashed #60a5fa',
+                  background: 'rgba(59,130,246,0.12)',
+                  color: '#93c5fd',
+                }}
+              >
+                + 新建配置中…
+              </span>
+            )}
+          </div>
+
           <input
             type="text"
-            placeholder="Base URL"
+            placeholder="名称（如：DeepSeek 官方 / 硅基流动 / 本地 Ollama）"
+            value={editLabel}
+            onChange={(e) => setEditLabel(e.target.value)}
+            style={fieldInputStyle}
+          />
+          <input
+            type="text"
+            placeholder="Base URL（如 https://api.deepseek.com/v1）"
             value={editBaseUrl}
             onChange={(e) => setEditBaseUrl(e.target.value)}
             style={fieldInputStyle}
           />
           <input
             type="text"
-            placeholder="模型名称（如 deepseek-chat / gpt-4o）"
+            placeholder="默认模型名称（如 deepseek-chat / gpt-4o）"
             value={editModel}
             onChange={(e) => setEditModel(e.target.value)}
             style={fieldInputStyle}
           />
           <input
+            type="text"
+            placeholder="备选模型列表（可选，逗号分隔，如 deepseek-chat, deepseek-reasoner）"
+            value={editModelsText}
+            onChange={(e) => setEditModelsText(e.target.value)}
+            style={fieldInputStyle}
+          />
+          <input
             type="password"
-            placeholder={activeProvider?.hasApiKey ? '已保存密钥（留空表示不修改）' : '输入 API Key'}
+            placeholder={
+              editingProviderId !== '__new__' && providers.find((p) => p.id === editingProviderId)?.hasApiKey
+                ? '已保存密钥（留空表示不修改）'
+                : '输入 API Key'
+            }
             value={editApiKey}
             onChange={(e) => setEditApiKey(e.target.value)}
             style={fieldInputStyle}
           />
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '6px' }}>
-            <button type="button" onClick={() => setSettingsOpen(false)} style={smallBtnStyle}>关闭</button>
-            <button
-              type="button"
-              onClick={() => {
-                void saveProvider({
-                  id: activeProviderId,
-                  baseUrl: editBaseUrl,
-                  model: editModel,
-                  ...(editApiKey.trim() ? { apiKey: editApiKey.trim() } : {}),
-                  setActive: true,
-                }).then(() => setSettingsOpen(false))
-              }}
-              style={{ ...smallBtnStyle, background: '#2563eb', color: '#fff', borderColor: '#2563eb' }}
-            >
-              保存
-            </button>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px' }}>
+            <div>
+              {editingProviderId !== '__new__' && providers.length > 1 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    const targetId = editingProviderId
+                    void deleteProvider(targetId).then(() => {
+                      const nextList = useAgentStore.getState().providers
+                      const fallback = nextList[0]
+                      if (fallback) selectProviderForEdit(fallback.id)
+                    })
+                  }}
+                  style={{ ...smallBtnStyle, color: '#fca5a5', borderColor: 'rgba(239,68,68,0.35)' }}
+                >
+                  删除此项
+                </button>
+              )}
+            </div>
+            <div style={{ display: 'flex', gap: '6px' }}>
+              <button type="button" onClick={() => setSettingsOpen(false)} style={smallBtnStyle}>关闭</button>
+              <button
+                type="button"
+                onClick={() => {
+                  const isNew = editingProviderId === '__new__'
+                  const id = isNew ? `${settingsProviderType}_${Date.now().toString(36)}` : editingProviderId
+                  const parsedModels = editModelsText
+                    .split(/[,，\n]/)
+                    .map((s) => s.trim())
+                    .filter(Boolean)
+                  void saveProvider({
+                    id,
+                    providerType: settingsProviderType,
+                    label: editLabel.trim() || (isNew ? '自定义接口' : id),
+                    baseUrl: editBaseUrl,
+                    model: editModel,
+                    models: parsedModels,
+                    ...(editApiKey.trim() ? { apiKey: editApiKey.trim() } : {}),
+                    setActive: true,
+                  }).then(() => {
+                    setEditingProviderId(id)
+                    setEditApiKey('')
+                    setSettingsOpen(false)
+                  })
+                }}
+                style={{ ...smallBtnStyle, background: '#2563eb', color: '#fff', borderColor: '#2563eb' }}
+              >
+                保存并启用
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -1213,6 +1431,180 @@ export default function AiWorkbenchPanel() {
               已排队 {steerQueue.length} 条插话，将在当前步骤完成后注入 AI 上下文…
             </div>
           )}
+
+          {/* 对话框底部模型快速切换栏（主流 Agent 风格） */}
+          <div style={{ position: 'relative', marginTop: 6, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6 }}>
+            <button
+              type="button"
+              onMouseDown={(e) => e.stopPropagation()}
+              onClick={() => setModelMenuOpen((v) => !v)}
+              title="快速切换对话模型"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 5,
+                maxWidth: '78%',
+                padding: '2px 8px',
+                borderRadius: 999,
+                border: '1px solid rgba(255,255,255,0.1)',
+                background: modelMenuOpen ? 'rgba(59,130,246,0.16)' : 'rgba(255,255,255,0.04)',
+                color: '#d4d4d8',
+                fontSize: 11,
+                cursor: 'pointer',
+              }}
+            >
+              <span
+                style={{
+                  width: 6,
+                  height: 6,
+                  borderRadius: 999,
+                  flexShrink: 0,
+                  background: activeProvider?.hasApiKey ? '#4ade80' : '#f59e0b',
+                }}
+              />
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 500 }}>
+                {activeProvider?.model || '未选择模型'}
+              </span>
+              {activeProvider?.label && (
+                <span style={{ color: '#71717a', fontSize: 10, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  · {activeProvider.label}
+                </span>
+              )}
+              <ChevronDown size={11} style={{ flexShrink: 0, color: '#a1a1aa' }} />
+            </button>
+            <span style={{ fontSize: 10, color: '#52525b' }}>Enter 发送</span>
+
+            {modelMenuOpen && (
+              <div
+                onMouseDown={(e) => e.stopPropagation()}
+                style={{
+                  position: 'absolute',
+                  left: 0,
+                  bottom: 'calc(100% + 6px)',
+                  width: '100%',
+                  maxHeight: 280,
+                  overflowY: 'auto',
+                  zIndex: 40,
+                  borderRadius: 8,
+                  background: '#1c1c22',
+                  border: '1px solid rgba(255,255,255,0.14)',
+                  boxShadow: '0 12px 30px rgba(0,0,0,0.55)',
+                  padding: 6,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 6,
+                }}
+              >
+                {providers.map((p) => {
+                  const modelList = Array.from(
+                    new Set([
+                      ...(p.models ?? []),
+                      ...(p.model ? [p.model] : []),
+                    ].filter(Boolean)),
+                  )
+                  return (
+                    <div key={p.id} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                      <div
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          padding: '2px 6px',
+                          fontSize: 10,
+                          color: '#a1a1aa',
+                        }}
+                      >
+                        <span style={{ fontWeight: 600, color: '#d4d4d8' }}>{p.label}</span>
+                        {!p.hasApiKey ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setModelMenuOpen(false)
+                              selectProviderForEdit(p.id)
+                              setSettingsOpen(true)
+                            }}
+                            style={{
+                              background: 'transparent',
+                              border: 'none',
+                              color: '#fbbf24',
+                              fontSize: 10,
+                              cursor: 'pointer',
+                              padding: 0,
+                            }}
+                          >
+                            未设密钥 · 去配置
+                          </button>
+                        ) : (
+                          <span style={{ color: '#4ade80' }}>已就绪</span>
+                        )}
+                      </div>
+                      {modelList.map((m) => {
+                        const isSelected = p.id === activeProviderId && p.model === m
+                        return (
+                          <button
+                            key={`${p.id}:${m}`}
+                            type="button"
+                            onClick={() => {
+                              setModelMenuOpen(false)
+                              if (!p.hasApiKey) {
+                                selectProviderForEdit(p.id)
+                                setSettingsOpen(true)
+                                return
+                              }
+                              void setActiveProvider(p.id, m)
+                            }}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'space-between',
+                              width: '100%',
+                              padding: '5px 8px',
+                              borderRadius: 5,
+                              border: 'none',
+                              background: isSelected ? 'rgba(59,130,246,0.22)' : 'transparent',
+                              color: isSelected ? '#93c5fd' : '#e4e4e7',
+                              fontSize: 11.5,
+                              textAlign: 'left',
+                              cursor: 'pointer',
+                            }}
+                          >
+                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m}</span>
+                            {isSelected && <Check size={12} style={{ flexShrink: 0, color: '#60a5fa' }} />}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  )
+                })}
+                <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: 4 }}>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setModelMenuOpen(false)
+                      if (activeProvider) selectProviderForEdit(activeProvider.id)
+                      setSettingsOpen(true)
+                    }}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      width: '100%',
+                      padding: '5px 8px',
+                      borderRadius: 5,
+                      border: 'none',
+                      background: 'transparent',
+                      color: '#93c5fd',
+                      fontSize: 11,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <Settings size={12} />
+                    <span>管理模型与 API 设置…</span>
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -1389,6 +1781,58 @@ const popupItemStyle: React.CSSProperties = {
   textAlign: 'left',
 }
 
+function extractActionErrorDetails(detail: unknown): { lines: string[]; hint: string } {
+  if (!detail || typeof detail !== 'object') return { lines: [], hint: '' }
+  const obj = detail as Record<string, unknown>
+  const lines: string[] = []
+
+  if (typeof obj.message === 'string' && obj.message.trim()) {
+    lines.push(obj.message.trim())
+  }
+  if (typeof obj.error === 'string' && obj.error.trim() && obj.error.trim() !== obj.message) {
+    lines.push(obj.error.trim())
+  }
+  if (Array.isArray(obj.errors)) {
+    for (const item of obj.errors) {
+      if (typeof item === 'string' && item.trim()) lines.push(`• ${item.trim()}`)
+    }
+  }
+  if (Array.isArray(obj.assertions)) {
+    for (const a of obj.assertions) {
+      if (a && typeof a === 'object' && (a as { passed?: unknown }).passed === false) {
+        const msg = (a as { message?: unknown }).message
+        lines.push(`• 断言未通过：${typeof msg === 'string' && msg ? msg : '未知断言'}`)
+      }
+    }
+  }
+  if (obj.metrics && typeof obj.metrics === 'object') {
+    const m = obj.metrics as { budgetPassed?: unknown; budgetNotes?: unknown }
+    if (m.budgetPassed === false && Array.isArray(m.budgetNotes)) {
+      for (const note of m.budgetNotes) {
+        if (typeof note === 'string' && note.trim()) lines.push(`• 性能预算：${note.trim()}`)
+      }
+    }
+  }
+  if (Array.isArray(obj.issues)) {
+    for (const issue of obj.issues.slice(0, 10)) {
+      if (issue && typeof issue === 'object') {
+        const it = issue as { path?: unknown; message?: unknown }
+        const p = typeof it.path === 'string' && it.path ? `[${it.path}] ` : ''
+        const m = typeof it.message === 'string' ? it.message : ''
+        if (m) lines.push(`• ${p}${m}`)
+      }
+    }
+  }
+  if (Array.isArray(obj.warnings) && obj.warnings.length > 0 && lines.length === 0) {
+    for (const w of obj.warnings.slice(0, 6)) {
+      if (typeof w === 'string' && w.trim()) lines.push(`• 警告：${w.trim()}`)
+    }
+  }
+
+  const hint = typeof obj.hint === 'string' ? obj.hint.trim() : ''
+  return { lines, hint }
+}
+
 function TurnActionsList({ actions, isActiveTurn }: { actions: AiActionPill[]; isActiveTurn: boolean }) {
   const [manualExpanded, setManualExpanded] = useState<boolean | null>(null)
   const [openErrorIds, setOpenErrorIds] = useState<Record<string, boolean>>({})
@@ -1435,10 +1879,8 @@ function TurnActionsList({ actions, isActiveTurn }: { actions: AiActionPill[]; i
 
       {expanded && actions.map((act) => {
         const isError = !act.pending && !act.ok
-        const detailObj = act.detail && typeof act.detail === 'object' ? (act.detail as Record<string, unknown>) : null
-        const detailMsg = typeof detailObj?.message === 'string' ? detailObj.message : ''
-        const detailHint = typeof detailObj?.hint === 'string' ? detailObj.hint : ''
-        const hasDetail = isError && (Boolean(detailMsg) || Boolean(detailHint) || act.label.length > 36)
+        const { lines: detailLines, hint: detailHint } = extractActionErrorDetails(act.detail)
+        const hasDetail = isError && (detailLines.length > 0 || Boolean(detailHint) || act.label.length > 36)
         const errorOpen = Boolean(openErrorIds[act.id])
 
         return (
@@ -1496,7 +1938,7 @@ function TurnActionsList({ actions, isActiveTurn }: { actions: AiActionPill[]; i
                 </span>
               )}
             </button>
-            {isError && errorOpen && (detailMsg || detailHint) && (
+            {isError && errorOpen && (detailLines.length > 0 || detailHint) && (
               <div
                 style={{
                   marginLeft: 10,
@@ -1514,7 +1956,9 @@ function TurnActionsList({ actions, isActiveTurn }: { actions: AiActionPill[]; i
                   wordBreak: 'break-word',
                 }}
               >
-                {detailMsg && <div>{detailMsg}</div>}
+                {detailLines.map((line, i) => (
+                  <div key={i}>{line}</div>
+                ))}
                 {detailHint && <div style={{ color: '#fca5a5', opacity: 0.85, marginTop: 3 }}>提示：{detailHint}</div>}
               </div>
             )}

@@ -38,7 +38,8 @@ contextBridge.exposeInMainWorld('__electron', {
   ai: {
     listProviders: () => ipcRenderer.invoke('ai:listProviders'),
     saveProvider: (input: unknown) => ipcRenderer.invoke('ai:saveProvider', input),
-    setActiveProvider: (id: string) => ipcRenderer.invoke('ai:setActiveProvider', id),
+    deleteProvider: (id: string) => ipcRenderer.invoke('ai:deleteProvider', id),
+    setActiveProvider: (id: string, model?: string) => ipcRenderer.invoke('ai:setActiveProvider', id, model),
     chat: (requestId: string, request: unknown) => ipcRenderer.invoke('ai:chat', requestId, request),
     abort: (requestId: string) => ipcRenderer.invoke('ai:abort', requestId),
     onDelta: (handler: (delta: unknown) => void) => {

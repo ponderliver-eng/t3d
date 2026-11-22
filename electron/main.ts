@@ -102,7 +102,8 @@ function registerIpc() {
 
   ipcMain.handle('ai:listProviders', () => secretStore.listPublic())
   ipcMain.handle('ai:saveProvider', (_event, input) => secretStore.saveProvider(input))
-  ipcMain.handle('ai:setActiveProvider', (_event, id: string) => secretStore.setActiveProvider(id))
+  ipcMain.handle('ai:deleteProvider', (_event, id: string) => secretStore.deleteProvider(id))
+  ipcMain.handle('ai:setActiveProvider', (_event, id: string, model?: string) => secretStore.setActiveProvider(id, model))
   ipcMain.handle('ai:abort', (_event, requestId: string) => {
     const controller = inflightChats.get(requestId)
     if (controller) {

@@ -441,10 +441,16 @@ async function executeAiToolInner(
       const report = session.runSmoke(steps, {
         autoStop: typeof args.autoStop === 'boolean' ? args.autoStop : true,
       })
+      const failedAssertion = report.assertions.find((a) => !a.passed)
+      const briefReason = report.errors[0]
+        || (failedAssertion ? `断言失败: ${failedAssertion.message}` : '')
+        || (!report.metrics.budgetPassed ? (report.metrics.budgetNotes[0] || '性能预算超标') : '')
       return {
         ok: report.ok,
         toolName,
-        displayLabel: `试玩冒烟：${report.ok ? '通过' : '发现问题'}（${report.stepsSimulated} 步 / ${report.elapsedSec}s）`,
+        displayLabel: report.ok
+          ? `试玩冒烟：通过（${report.stepsSimulated} 步 / ${report.elapsedSec}s）`
+          : `试玩冒烟：${briefReason ? `${briefReason.slice(0, 42)}${briefReason.length > 42 ? '…' : ''}` : `发现 ${report.errorCount} 项问题`}（${report.stepsSimulated} 步 / ${report.elapsedSec}s）`,
         data: report,
       }
     }

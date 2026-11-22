@@ -10,6 +10,7 @@ export interface ProviderConfigPublic {
   label: string
   baseUrl: string
   model: string
+  models?: string[]
   hasApiKey: boolean
 }
 
@@ -98,6 +99,7 @@ export class SecretStore {
         label: p.label,
         baseUrl: p.baseUrl,
         model: p.model,
+        ...(Array.isArray(p.models) && p.models.length > 0 ? { models: p.models } : {}),
         hasApiKey: Boolean(p.encryptedKey || p.plainKey),
       })),
     }
@@ -109,25 +111,41 @@ export class SecretStore {
     label?: string
     baseUrl?: string
     model?: string
+    models?: string[]
     apiKey?: string
     setActive?: boolean
   }): Promise<{ activeProviderId: string; providers: ProviderConfigPublic[] }> {
     const data = await this.load()
+    const normalizeModels = (raw?: string[], primary?: string): string[] | undefined => {
+      if (!Array.isArray(raw)) return undefined
+      const cleaned = Array.from(new Set(raw.map((m) => m.trim()).filter(Boolean)))
+      if (primary && primary.trim() && !cleaned.includes(primary.trim())) {
+        cleaned.unshift(primary.trim())
+      }
+      return cleaned.length > 0 ? cleaned : undefined
+    }
     let target = data.providers.find((p) => p.id === input.id)
     if (!target) {
+      const modelVal = (input.model ?? '').trim()
       target = {
         id: input.id,
         providerType: input.providerType ?? 'openai-compatible',
-        label: input.label ?? input.id,
-        baseUrl: input.baseUrl ?? '',
-        model: input.model ?? '',
+        label: (input.label ?? input.id).trim() || input.id,
+        baseUrl: (input.baseUrl ?? '').trim(),
+        model: modelVal,
+        ...(normalizeModels(input.models, modelVal) ? { models: normalizeModels(input.models, modelVal) } : {}),
       }
       data.providers.push(target)
     } else {
       if (input.providerType) target.providerType = input.providerType
-      if (input.label !== undefined) target.label = input.label
+      if (input.label !== undefined) target.label = input.label.trim() || target.label
       if (input.baseUrl !== undefined) target.baseUrl = input.baseUrl.trim()
       if (input.model !== undefined) target.model = input.model.trim()
+      if (input.models !== undefined) {
+        const nextModels = normalizeModels(input.models, target.model)
+        if (nextModels) target.models = nextModels
+        else delete target.models
+      }
     }
 
     if (input.apiKey !== undefined) {
@@ -152,13 +170,34 @@ export class SecretStore {
     return this.listPublic()
   }
 
-  async setActiveProvider(id: string): Promise<string> {
+  async deleteProvider(id: string): Promise<{ activeProviderId: string; providers: ProviderConfigPublic[] }> {
     const data = await this.load()
-    if (data.providers.some((p) => p.id === id)) {
+    if (data.providers.length <= 1) {
+      return this.listPublic()
+    }
+    const next = data.providers.filter((p) => p.id !== id)
+    if (next.length === data.providers.length) {
+      return this.listPublic()
+    }
+    data.providers = next
+    if (data.activeProviderId === id) {
+      data.activeProviderId = next[0].id
+    }
+    await this.save(data)
+    return this.listPublic()
+  }
+
+  async setActiveProvider(id: string, model?: string): Promise<{ activeProviderId: string; providers: ProviderConfigPublic[] }> {
+    const data = await this.load()
+    const target = data.providers.find((p) => p.id === id)
+    if (target) {
       data.activeProviderId = id
+      if (typeof model === 'string' && model.trim()) {
+        target.model = model.trim()
+      }
       await this.save(data)
     }
-    return data.activeProviderId
+    return this.listPublic()
   }
 
   async resolveCredentials(providerId?: string): Promise<{

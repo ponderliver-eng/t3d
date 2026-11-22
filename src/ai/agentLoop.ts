@@ -60,12 +60,13 @@ export interface SteerItem {
   refs?: AiRefItem[]
 }
 
-interface ProviderInfo {
+export interface ProviderInfo {
   id: string
   providerType: 'openai-compatible' | 'openai' | 'anthropic' | 'gemini'
   label: string
   baseUrl: string
   model: string
+  models?: string[]
   hasApiKey: boolean
 }
 
@@ -101,10 +102,12 @@ interface AgentState {
     label?: string
     baseUrl?: string
     model?: string
+    models?: string[]
     apiKey?: string
     setActive?: boolean
   }) => Promise<void>
-  setActiveProvider: (id: string) => Promise<void>
+  deleteProvider: (id: string) => Promise<void>
+  setActiveProvider: (id: string, model?: string) => Promise<void>
   sendPrompt: (text: string) => Promise<void>
   abort: () => Promise<void>
   rollbackTurn: (checkpointId: string) => void
@@ -165,11 +168,28 @@ export const useAgentStore = create<AgentState>((set, get) => ({
     })
   },
 
-  setActiveProvider: async (id) => {
+  deleteProvider: async (id) => {
+    const ai = electronBridge()?.ai
+    if (!ai?.deleteProvider) return
+    const res = await ai.deleteProvider(id)
+    set({
+      activeProviderId: res.activeProviderId,
+      providers: res.providers as ProviderInfo[],
+    })
+  },
+
+  setActiveProvider: async (id, model) => {
     const ai = electronBridge()?.ai
     if (!ai) return
-    const active = await ai.setActiveProvider(id)
-    set({ activeProviderId: active })
+    const res = await ai.setActiveProvider(id, model)
+    if (typeof res === 'string') {
+      set({ activeProviderId: res })
+    } else {
+      set({
+        activeProviderId: res.activeProviderId,
+        providers: res.providers as ProviderInfo[],
+      })
+    }
   },
 
   abort: async () => {
