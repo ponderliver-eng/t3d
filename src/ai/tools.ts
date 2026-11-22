@@ -905,6 +905,30 @@ async function waitRealFrames(seconds: number): Promise<void> {
 function resolveAiNodeArgs(toolName: string, args: Record<string, unknown>): Record<string, unknown> {
   const next: Record<string, unknown> = { ...args }
 
+  // 代码资产工具常见别名兜底：大模型常把 id 写成 scriptId / shaderId / name / fileName / path
+  if (
+    toolName === 'script__create' ||
+    toolName === 'script__update' ||
+    toolName === 'script__patch' ||
+    toolName === 'script__check' ||
+    toolName === 'shader__create' ||
+    toolName === 'shader__update' ||
+    toolName === 'shader__check'
+  ) {
+    const rawId = typeof next.id === 'string' ? next.id.trim() : ''
+    if (!rawId) {
+      const alias = next.scriptId ?? next.shaderId ?? next.name ?? next.fileName ?? next.path
+      if (typeof alias === 'string' && alias.trim()) {
+        next.id = alias
+          .trim()
+          .replace(/\\/g, '/')
+          .replace(/^(?:Assets\/(?:Scripts|Shaders)\/|scripts\/|shaders\/)/i, '')
+          .split('/')
+          .pop()!
+      }
+    }
+  }
+
   // UI 工具常见别名兜底：大模型常把 assetId 写成 uiAssetId / documentId / id / screenNodeId
   if (toolName === 'ui__updateDocument' || toolName === 'ui__mountScreen' || toolName === 'ui__patchNode') {
     const rawAssetId = typeof next.assetId === 'string' ? next.assetId.trim() : ''

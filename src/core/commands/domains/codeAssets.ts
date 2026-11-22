@@ -100,7 +100,9 @@ export function registerCodeAssetCommands(): () => void {
     },
     risk: 'safe',
     async run(_ctx, params) {
-      const id = normalizeCodeAssetId('shader', String(params.id || ''))
+      const rawId = String(params.id || '').trim()
+      if (!rawId) return { ok: false, code: 'INVALID_ARGS', message: '着色器 ID 不能为空' }
+      const id = normalizeCodeAssetId('shader', rawId)
       const record = await saveAndCompileCodeAsset('shader', id, String(params.source ?? ''))
       return {
         ok: true,
@@ -199,7 +201,9 @@ export function registerCodeAssetCommands(): () => void {
     },
     risk: 'safe',
     async run(_ctx, params) {
-      const id = normalizeCodeAssetId('script', String(params.id || ''))
+      const rawId = String(params.id || '').trim()
+      if (!rawId) return { ok: false, code: 'INVALID_ARGS', message: '脚本 ID 不能为空' }
+      const id = normalizeCodeAssetId('script', rawId)
       const source = String(params.source ?? '')
       const record = await saveAndCompileCodeAsset('script', id, source)
       const lintIssues = lintScriptSource(source)
@@ -248,7 +252,9 @@ export function registerCodeAssetCommands(): () => void {
     },
     risk: 'safe',
     async run(_ctx, params) {
-      const id = normalizeCodeAssetId('script', String(params.id || ''))
+      const rawId = String(params.id || '').trim()
+      if (!rawId) return { ok: false, code: 'INVALID_ARGS', message: '脚本 ID 不能为空' }
+      const id = normalizeCodeAssetId('script', rawId)
       const existing = useCodeAssetStore.getState().assets[id]
       if (!existing || existing.kind !== 'script') {
         return { ok: false, code: 'NOT_FOUND', message: `脚本 "${id}" 不存在` }

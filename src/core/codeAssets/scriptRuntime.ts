@@ -116,6 +116,8 @@ interface PoolBucket {
   templatePos?: TupleVec3
   templateRotDeg?: TupleVec3
   templateScale?: TupleVec3
+  templateTagId?: string | null
+  templateTagIds?: string[]
 }
 
 interface ScriptTimer {
@@ -553,6 +555,12 @@ function cloneSceneSubtree(
     const rootNode = clonedMap[rootNewId]
     spawnedObj.visible = rootNode.visible
     spawnedObj.position.set(rootNode.position[0], rootNode.position[1], rootNode.position[2])
+    spawnedObj.rotation.set(
+      (rootNode.rotation[0] * Math.PI) / 180,
+      (rootNode.rotation[1] * Math.PI) / 180,
+      (rootNode.rotation[2] * Math.PI) / 180,
+    )
+    spawnedObj.scale.set(rootNode.scale[0], rootNode.scale[1], rootNode.scale[2])
   }
   return rootNewId
 }
@@ -568,7 +576,14 @@ function spawnFromTemplateOrPrefab(
     name?: string
   } | undefined,
   host: SceneRuntimeHost,
-): { rootId: string; templatePos?: TupleVec3; templateRotDeg?: TupleVec3; templateScale?: TupleVec3 } | null {
+): {
+  rootId: string
+  templatePos?: TupleVec3
+  templateRotDeg?: TupleVec3
+  templateScale?: TupleVec3
+  templateTagId?: string | null
+  templateTagIds?: string[]
+} | null {
   const world = getRuntimeWorld()
   const nodes = world.getNodes()
   const tplNode = resolveTemplateNode(templateOrPrefab, nodes)
@@ -580,6 +595,8 @@ function spawnFromTemplateOrPrefab(
       templatePos: [...tplNode.position],
       templateRotDeg: [...tplNode.rotation],
       templateScale: [...tplNode.scale],
+      templateTagId: tplNode.tagId,
+      templateTagIds: tplNode.tagIds ? [...tplNode.tagIds] : undefined,
     }
   }
   if (typeof templateOrPrefab === 'string' && templateOrPrefab.trim()) {
@@ -593,17 +610,30 @@ function spawnFromTemplateOrPrefab(
     if (spawned) {
       if (options?.visible !== undefined) spawned.visible = options.visible
       if (options?.name) spawned.name = options.name
-      const rotVec = resolveVec3Input(options?.rotation)
+      const rotVec = resolveVec3Input(optsOrRot(options?.rotation))
       if (rotVec) {
         spawned.rotation = [(rotVec.x * 180) / Math.PI, (rotVec.y * 180) / Math.PI, (rotVec.z * 180) / Math.PI]
       }
       const scaleVec = resolveVec3Input(options?.scale)
       if (scaleVec) spawned.scale = [scaleVec.x, scaleVec.y, scaleVec.z]
+      const spawnedObj = host.resolveObject(rootId)
+      if (spawnedObj) {
+        spawnedObj.visible = spawned.visible
+        spawnedObj.position.set(spawned.position[0], spawned.position[1], spawned.position[2])
+        spawnedObj.rotation.set(
+          (spawned.rotation[0] * Math.PI) / 180,
+          (spawned.rotation[1] * Math.PI) / 180,
+          (spawned.rotation[2] * Math.PI) / 180,
+        )
+        spawnedObj.scale.set(spawned.scale[0], spawned.scale[1], spawned.scale[2])
+      }
       return {
         rootId,
         templatePos: [0, 0, 0],
         templateRotDeg: [...spawned.rotation],
         templateScale: [...spawned.scale],
+        templateTagId: spawned.tagId,
+        templateTagIds: spawned.tagIds ? [...spawned.tagIds] : undefined,
       }
     }
     return { rootId }
@@ -611,30 +641,48 @@ function spawnFromTemplateOrPrefab(
   return null
 }
 
+function optsOrRot(rot: Vec3Obj | undefined) {
+  return rot
+}
+
 function resetAndInvokeSpawn(nodeId: string, payload: unknown, host: SceneRuntimeHost): void {
   const nodes = getRuntimeWorld().getNodes()
   const targetNode = nodes[nodeId]
   if (!targetNode) return
-  const projectScripts = targetNode.gameplay?.packs?.__project__
-  if (!projectScripts || typeof projectScripts !== 'object') return
-  for (const [sid, rawParams] of Object.entries(projectScripts as Record<string, unknown>)) {
-    if (rawParams && typeof rawParams === 'object' && (rawParams as Record<string, unknown>).__enabled === false) continue
-    const def = compiledBehaviors.get(sid)
-    if (!def) continue
-    const key = instanceKey(nodeId, sid)
-    const rec: BehaviorInstanceRecord = {
-      nodeId,
-      scriptId: sid,
-      started: true,
-      state: def.state ? { ...def.state() } : {},
+
+  const subtreeIds: string[] = []
+  const collectSubtree = (id: string) => {
+    subtreeIds.push(id)
+    for (const candidate of Object.values(nodes)) {
+      if (candidate.parentId === id) collectSubtree(candidate.id)
     }
-    instanceStates.set(key, rec)
-    const ctx = buildScriptContext(targetNode, sid, rawParams, rec.state, host)
-    try {
-      def.onStart?.(ctx)
-      def.onSpawn?.(ctx, payload)
-    } catch (error) {
-      getRuntimeWorld().log('error', `脚本 "${def.name}" 激活错误: ${error instanceof Error ? error.message : String(error)}`)
+  }
+  collectSubtree(nodeId)
+
+  for (const subId of subtreeIds) {
+    const subNode = nodes[subId]
+    if (!subNode) continue
+    const projectScripts = subNode.gameplay?.packs?.__project__
+    if (!projectScripts || typeof projectScripts !== 'object') continue
+    for (const [sid, rawParams] of Object.entries(projectScripts as Record<string, unknown>)) {
+      if (rawParams && typeof rawParams === 'object' && (rawParams as Record<string, unknown>).__enabled === false) continue
+      const def = compiledBehaviors.get(sid)
+      if (!def) continue
+      const key = instanceKey(subId, sid)
+      const rec: BehaviorInstanceRecord = {
+        nodeId: subId,
+        scriptId: sid,
+        started: true,
+        state: def.state ? { ...def.state() } : {},
+      }
+      instanceStates.set(key, rec)
+      const ctx = buildScriptContext(subNode, sid, rawParams, rec.state, host)
+      try {
+        def.onStart?.(ctx)
+        def.onSpawn?.(ctx, payload)
+      } catch (error) {
+        getRuntimeWorld().log('error', `脚本 "${def.name}" 激活错误: ${error instanceof Error ? error.message : String(error)}`)
+      }
     }
   }
 }
@@ -646,11 +694,27 @@ function releaseToPool(nodeId: string, host: SceneRuntimeHost): boolean {
   if (!bucket) return false
   if (pooledInactive.has(nodeId)) return true
   pooledInactive.add(nodeId)
-  cancelTimersForNode(nodeId)
-  navAgents.delete(nodeId)
+  const nodes = getRuntimeWorld().getNodes()
+  const resetSubtree = (id: string) => {
+    cancelTimersForNode(id)
+    navAgents.delete(id)
+    resetProjectileState(id)
+    stopCrowdAgent(id)
+    splineFollowAgents.delete(id)
+    for (const [tid, tw] of activeTweens.entries()) {
+      if (tw.ownerNodeId === id) activeTweens.delete(tid)
+    }
+    if (nodes[id]?.physics) {
+      setPhysicsVelocity(id, [0, 0, 0])
+    }
+    for (const child of Object.values(nodes)) {
+      if (child.parentId === id) resetSubtree(child.id)
+    }
+  }
+  resetSubtree(nodeId)
   const obj = host.resolveObject(nodeId)
   if (obj) obj.visible = false
-  const n = getRuntimeWorld().getNodes()[nodeId]
+  const n = nodes[nodeId]
   if (n) n.visible = false
   if (!bucket.idle.includes(nodeId)) {
     bucket.idle.push(nodeId)
@@ -931,6 +995,8 @@ function buildScriptContext(
           if (!bucket.templatePos && spawned.templatePos) bucket.templatePos = spawned.templatePos
           if (!bucket.templateRotDeg && spawned.templateRotDeg) bucket.templateRotDeg = spawned.templateRotDeg
           if (!bucket.templateScale && spawned.templateScale) bucket.templateScale = spawned.templateScale
+          if (bucket.templateTagId === undefined && spawned.templateTagId !== undefined) bucket.templateTagId = spawned.templateTagId
+          if (bucket.templateTagIds === undefined && spawned.templateTagIds !== undefined) bucket.templateTagIds = spawned.templateTagIds
           pooledInactive.add(spawned.rootId)
           nodePoolKey.set(spawned.rootId, key)
           bucket.all.push(spawned.rootId)
@@ -968,6 +1034,8 @@ function buildScriptContext(
           if (!bucket.templatePos && spawned.templatePos) bucket.templatePos = spawned.templatePos
           if (!bucket.templateRotDeg && spawned.templateRotDeg) bucket.templateRotDeg = spawned.templateRotDeg
           if (!bucket.templateScale && spawned.templateScale) bucket.templateScale = spawned.templateScale
+          if (bucket.templateTagId === undefined && spawned.templateTagId !== undefined) bucket.templateTagId = spawned.templateTagId
+          if (bucket.templateTagIds === undefined && spawned.templateTagIds !== undefined) bucket.templateTagIds = spawned.templateTagIds
           pickedId = spawned.rootId
           nodePoolKey.set(pickedId, key)
           bucket.all.push(pickedId)
@@ -980,6 +1048,8 @@ function buildScriptContext(
           const scaleVec = resolveVec3Input(opts?.scale)
           if (n) {
             n.visible = true
+            n.tagId = bucket.templateTagId
+            n.tagIds = bucket.templateTagIds ? [...bucket.templateTagIds] : undefined
             if (posVec) n.position = [posVec.x, posVec.y, posVec.z]
             else if (bucket.templatePos) n.position = [...bucket.templatePos]
             if (rotVec) n.rotation = [(rotVec.x * 180) / Math.PI, (rotVec.y * 180) / Math.PI, (rotVec.z * 180) / Math.PI]
@@ -1597,6 +1667,8 @@ function buildSystemWorldApi(systemId: string, host: SceneRuntimeHost) {
         if (!bucket.templatePos && spawned.templatePos) bucket.templatePos = spawned.templatePos
         if (!bucket.templateRotDeg && spawned.templateRotDeg) bucket.templateRotDeg = spawned.templateRotDeg
         if (!bucket.templateScale && spawned.templateScale) bucket.templateScale = spawned.templateScale
+        if (bucket.templateTagId === undefined && spawned.templateTagId !== undefined) bucket.templateTagId = spawned.templateTagId
+        if (bucket.templateTagIds === undefined && spawned.templateTagIds !== undefined) bucket.templateTagIds = spawned.templateTagIds
         pooledInactive.add(spawned.rootId)
         nodePoolKey.set(spawned.rootId, key)
         bucket.all.push(spawned.rootId)
@@ -1634,6 +1706,8 @@ function buildSystemWorldApi(systemId: string, host: SceneRuntimeHost) {
         if (!bucket.templatePos && spawned.templatePos) bucket.templatePos = spawned.templatePos
         if (!bucket.templateRotDeg && spawned.templateRotDeg) bucket.templateRotDeg = spawned.templateRotDeg
         if (!bucket.templateScale && spawned.templateScale) bucket.templateScale = spawned.templateScale
+        if (bucket.templateTagId === undefined && spawned.templateTagId !== undefined) bucket.templateTagId = spawned.templateTagId
+        if (bucket.templateTagIds === undefined && spawned.templateTagIds !== undefined) bucket.templateTagIds = spawned.templateTagIds
         pickedId = spawned.rootId
         nodePoolKey.set(pickedId, key)
         bucket.all.push(pickedId)
@@ -1646,6 +1720,8 @@ function buildSystemWorldApi(systemId: string, host: SceneRuntimeHost) {
         const scaleVec = resolveVec3Input(opts?.scale)
         if (n) {
           n.visible = true
+          n.tagId = bucket.templateTagId
+          n.tagIds = bucket.templateTagIds ? [...bucket.templateTagIds] : undefined
           if (posVec) n.position = [posVec.x, posVec.y, posVec.z]
           else if (bucket.templatePos) n.position = [...bucket.templatePos]
           if (rotVec) n.rotation = [(rotVec.x * 180) / Math.PI, (rotVec.y * 180) / Math.PI, (rotVec.z * 180) / Math.PI]
