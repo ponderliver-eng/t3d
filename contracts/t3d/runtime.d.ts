@@ -384,6 +384,9 @@ export interface ScriptContext<
   rotation: Vec3
   scale: Vec3
   visible: boolean
+  hasTag(tag: string): boolean
+  addTag(tag: string): void
+  removeTag(tag: string): void
   readonly forward: Vec3
   readonly right: Vec3
 

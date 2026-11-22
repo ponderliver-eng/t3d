@@ -778,7 +778,13 @@ async function executeAiToolInner(
     ? (res.changed.summary || cmd?.title || commandId)
     : `${cmd?.title ?? commandId} 失败：${res.message}`
 
-  const data = !res.ok && (res.code === 'NOT_FOUND' || res.code === 'node.notFound' || res.code === 'asset.notFound' || res.message.includes('不存在'))
+  const data = !res.ok && (
+    res.code === 'NOT_FOUND' ||
+    res.code === 'node.notFound' ||
+    res.code === 'asset.notFound' ||
+    res.message.includes('不存在') ||
+    (toolName.startsWith('ui__') && res.message.includes('校验失败'))
+  )
     ? {
         ...res,
         availableNodes: listCompactNodes(),
@@ -887,6 +893,27 @@ async function waitRealFrames(seconds: number): Promise<void> {
 
 function resolveAiNodeArgs(toolName: string, args: Record<string, unknown>): Record<string, unknown> {
   const next: Record<string, unknown> = { ...args }
+
+  // UI 工具常见别名兜底：大模型常把 assetId 写成 uiAssetId / documentId / id / screenNodeId
+  if (toolName === 'ui__updateDocument' || toolName === 'ui__mountScreen') {
+    const rawAssetId = typeof next.assetId === 'string' ? next.assetId.trim() : ''
+    if (!rawAssetId) {
+      const alias = next.uiAssetId ?? next.documentId ?? next.id ?? next.screenNodeId ?? next.nodeId
+      if (typeof alias === 'string' && alias.trim()) {
+        next.assetId = alias.trim()
+      } else if (toolName === 'ui__updateDocument') {
+        const uiAssets = Object.values(useAssetStore.getState().assets).filter((a) => a.kind === 'ui')
+        if (typeof next.name === 'string' && next.name.trim()) {
+          const byName = uiAssets.filter((a) => a.name === next.name!.toString().trim())
+          if (byName.length === 1) next.assetId = byName[0].id
+        }
+        if ((!next.assetId || !String(next.assetId).trim()) && uiAssets.length === 1) {
+          next.assetId = uiAssets[0].id
+        }
+      }
+    }
+  }
+
   const nodeRefKeys = ['nodeId', 'parentId', 'targetNodeId', 'sourceNodeId']
   for (const key of nodeRefKeys) {
     if (typeof next[key] === 'string' && next[key]) {

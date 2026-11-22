@@ -98,6 +98,9 @@ export interface ScriptContext<P = Record<string, unknown>, S = Record<string, u
   position: Vec3; rotation: Vec3; scale: Vec3; visible: boolean
   readonly forward: Vec3; readonly right: Vec3
   distanceTo(target: Vec3 | NodeHandle): number
+  hasTag(tag: string): boolean
+  addTag(tag: string): void
+  removeTag(tag: string): void
   directionTo(target: Vec3 | NodeHandle, options?: { planeXZ?: boolean }): Vec3
   translate(delta: Vec3, space?: 'local' | 'world'): void
   rotateY(radians: number): void

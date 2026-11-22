@@ -1,5 +1,6 @@
 import { Quaternion, Vector3 } from 'three'
 import type { SceneNode } from '../../editor/scene/types'
+import { nodeHasTag } from '../../gameplay/runtimeTags'
 import { registerRuntimeSystem, RUNTIME_STAGE, type SceneRuntimeHost } from '../../runtime/sceneRuntime'
 import { getRuntimeWorld } from '../../runtime/world'
 import type { CapabilityRuntimeModule } from '../registry'
@@ -63,15 +64,6 @@ const tmpForward = new Vector3(0, 0, 1)
 
 export function bindProjectileRuntimeHooks(next: ProjectileRuntimeHooks) {
   hooks = next
-}
-
-function nodeHasTag(node: SceneNode, tag: string): boolean {
-  if (!tag) return false
-  if (node.tagId === tag || node.tagId?.startsWith(`${tag}.`)) return true
-  if (Array.isArray(node.tagIds)) {
-    return node.tagIds.some((t) => t === tag || t.startsWith(`${tag}.`))
-  }
-  return false
 }
 
 function readPos(host: SceneRuntimeHost, node: SceneNode): { x: number; y: number; z: number } {

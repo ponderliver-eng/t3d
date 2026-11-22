@@ -1,5 +1,6 @@
 import { Vector3 } from 'three'
 import { findNavigationPath } from '../../capabilities/navigation/session'
+import { listRuntimeTags, nodeHasTag } from '../../gameplay/runtimeTags'
 import {
   getCrowdStats,
   isCrowdMoving,
@@ -239,14 +240,23 @@ function makeNodeHandle(nodeId: string, host: SceneRuntimeHost): Record<string, 
   const node = world.getNodes()[nodeId]
   if (!node) return null
   const obj = host.resolveObject(nodeId)
-  const tags: string[] = [
-    ...(node.tagId ? [node.tagId] : []),
-    ...(node.tagIds ?? []),
-  ]
+  const collectTags = (): string[] => {
+    const out: string[] = []
+    if (node.tagId && !out.includes(node.tagId)) out.push(node.tagId)
+    if (Array.isArray(node.tagIds)) {
+      for (const t of node.tagIds) {
+        if (t && !out.includes(t)) out.push(t)
+      }
+    }
+    for (const rt of listRuntimeTags(node.id)) {
+      if (rt.tag && !out.includes(rt.tag)) out.push(rt.tag)
+    }
+    return out
+  }
   return {
     get id() { return node.id },
     get name() { return node.name },
-    get tags() { return tags },
+    get tags() { return collectTags() },
     get parent() { return node.parentId ? makeNodeHandle(node.parentId, host) : null },
     get position(): Vec3Obj {
       return obj
@@ -296,11 +306,10 @@ function makeNodeHandle(nodeId: string, host: SceneRuntimeHost): Record<string, 
         world.updateNode(nodeId, { visible: val })
       }
     },
-    hasTag: (tag: string) => tags.includes(tag) || tags.some((t) => t.startsWith(`${tag}.`)),
+    hasTag: (tag: string) => nodeHasTag(node, String(tag ?? '')),
     addTag: (tag: string) => {
       const t = String(tag ?? '').trim()
-      if (!t || tags.includes(t)) return
-      tags.push(t)
+      if (!t) return
       const list = Array.isArray(node.tagIds) ? [...node.tagIds] : []
       if (!list.includes(t)) {
         list.push(t)
@@ -308,11 +317,11 @@ function makeNodeHandle(nodeId: string, host: SceneRuntimeHost): Record<string, 
       }
     },
     removeTag: (tag: string) => {
-      const idx = tags.indexOf(tag)
-      if (idx >= 0) tags.splice(idx, 1)
-      if (node.tagId === tag) node.tagId = undefined
+      const t = String(tag ?? '').trim()
+      if (!t) return
+      if (node.tagId === t) node.tagId = undefined
       if (Array.isArray(node.tagIds)) {
-        node.tagIds = node.tagIds.filter((x) => x !== tag)
+        node.tagIds = node.tagIds.filter((x) => x !== t)
       }
     },
     getChildren: () => {
@@ -714,6 +723,9 @@ function buildScriptContext(
     set scale(v: Vec3Obj) { handle.scale = v },
     get visible() { return handle.visible },
     set visible(v: boolean) { handle.visible = v },
+    hasTag: (tag: string) => handle.hasTag(tag),
+    addTag: (tag: string) => handle.addTag(tag),
+    removeTag: (tag: string) => handle.removeTag(tag),
     get forward(): Vec3Obj {
       const yaw = handle.rotation.y
       return { x: Math.sin(yaw), y: 0, z: Math.cos(yaw) }
@@ -829,7 +841,7 @@ function buildScriptContext(
     findNodesByTag: (tag: string) => {
       const all = world.getNodes()
       return Object.values(all)
-        .filter((n) => !isNodePooledInactive(n.id, all) && (n.tagId === tag || n.tagIds?.includes(tag)))
+        .filter((n) => !isNodePooledInactive(n.id, all) && nodeHasTag(n, tag))
         .map((n) => makeNodeHandle(n.id, host))
         .filter(Boolean)
     },
@@ -839,7 +851,7 @@ function buildScriptContext(
       return Object.values(all)
         .filter((n) => {
           if (isNodePooledInactive(n.id, all)) return false
-          if (tag && n.tagId !== tag && !n.tagIds?.includes(tag)) return false
+          if (tag && !nodeHasTag(n, tag)) return false
           const p = host.resolveObject(n.id)?.position
           const x = p ? p.x : n.position[0]
           const y = p ? p.y : n.position[1]
@@ -1683,7 +1695,7 @@ function buildSystemWorldApi(systemId: string, host: SceneRuntimeHost) {
     findNodesByTag: (tag: string) => {
       const all = world.getNodes()
       return Object.values(all)
-        .filter((n) => !isNodePooledInactive(n.id, all) && (n.tagId === tag || n.tagIds?.includes(tag)))
+        .filter((n) => !isNodePooledInactive(n.id, all) && nodeHasTag(n, tag))
         .map((n) => makeNodeHandle(n.id, host))
         .filter(Boolean)
     },
@@ -1693,7 +1705,7 @@ function buildSystemWorldApi(systemId: string, host: SceneRuntimeHost) {
       return Object.values(all)
         .filter((n) => {
           if (isNodePooledInactive(n.id, all)) return false
-          if (tag && n.tagId !== tag && !n.tagIds?.includes(tag)) return false
+          if (tag && !nodeHasTag(n, tag)) return false
           const p = host.resolveObject(n.id)?.position
           const x = p ? p.x : n.position[0]
           const y = p ? p.y : n.position[1]

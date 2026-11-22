@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type DragEvent } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState, type DragEvent } from 'react'
 import { AlertTriangle, Bot, Box, Camera, Check, ChevronDown, ChevronRight, Copy, Download, FileBox, FileCode2, Loader2, Plus, RotateCcw, Send, Settings, Sparkles, Square, Trash2, Upload, Wand2, X } from 'lucide-react'
 import { createCheckpoint } from '../core/project/checkpoints'
 import { useManagerModalStore } from '../core/project/ProjectManagerModal'
@@ -64,8 +64,10 @@ export default function AiWorkbenchPanel() {
   const [editApiKey, setEditApiKey] = useState('')
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const pendingRestoreScrollRef = useRef<number | null>(panelScrollTop > 0 ? panelScrollTop : null)
+  const prependAnchorRef = useRef<{ scrollHeight: number; scrollTop: number } | null>(null)
   const stickToBottomRef = useRef(true)
   const scrollSaveTimerRef = useRef<number>(0)
+  const [visibleCount, setVisibleCount] = useState(18)
   const importInputRef = useRef<HTMLInputElement | null>(null)
   const dragDepthRef = useRef(0)
   const [elapsedMs, setElapsedMs] = useState(0)
@@ -184,7 +186,27 @@ export default function AiWorkbenchPanel() {
 
   useEffect(() => {
     pendingRestoreScrollRef.current = useAgentStore.getState().panelScrollTop
+    prependAnchorRef.current = null
+    setVisibleCount(18)
   }, [panelScrollEpoch])
+
+  useEffect(() => {
+    if (turns.length === 0) {
+      setVisibleCount(18)
+      prependAnchorRef.current = null
+    }
+  }, [turns.length])
+
+  useLayoutEffect(() => {
+    const anchor = prependAnchorRef.current
+    const el = scrollRef.current
+    if (!anchor || !el) return
+    prependAnchorRef.current = null
+    const delta = el.scrollHeight - anchor.scrollHeight
+    if (delta > 0) {
+      el.scrollTop = anchor.scrollTop + delta
+    }
+  }, [visibleCount])
 
   useEffect(() => {
     if (!panelOpen) return
@@ -422,6 +444,18 @@ export default function AiWorkbenchPanel() {
     if (r.kind === 'asset' && useAssetStore.getState().assets[r.id]) {
       useEditorStore.getState().inspectAsset(r.id)
     }
+  }
+
+  const hiddenCount = Math.max(0, turns.length - visibleCount)
+  const visibleTurns = hiddenCount > 0 ? turns.slice(hiddenCount) : turns
+
+  const loadOlderTurns = (step = 16) => {
+    if (hiddenCount <= 0) return
+    const el = scrollRef.current
+    if (el) {
+      prependAnchorRef.current = { scrollHeight: el.scrollHeight, scrollTop: el.scrollTop }
+    }
+    setVisibleCount((c) => Math.min(turns.length, c + step))
   }
 
   return (
@@ -792,11 +826,14 @@ export default function AiWorkbenchPanel() {
       <div
         ref={scrollRef}
         onScroll={(e) => {
-          if (pendingRestoreScrollRef.current !== null) return
+          if (pendingRestoreScrollRef.current !== null || prependAnchorRef.current !== null) return
           const el = e.currentTarget
           const top = Math.max(0, Math.round(el.scrollTop))
           const distToBottom = el.scrollHeight - el.scrollTop - el.clientHeight
           stickToBottomRef.current = distToBottom <= 36
+          if (hiddenCount > 0 && top <= 48) {
+            loadOlderTurns(16)
+          }
           window.clearTimeout(scrollSaveTimerRef.current)
           scrollSaveTimerRef.current = window.setTimeout(() => {
             setPanelScrollTop(top)
@@ -821,7 +858,28 @@ export default function AiWorkbenchPanel() {
           </div>
         )}
 
-        {turns.map((turn, idx) => {
+        {hiddenCount > 0 && (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '4px 0' }}>
+            <button
+              type="button"
+              onClick={() => loadOlderTurns(24)}
+              style={{
+                padding: '4px 12px',
+                borderRadius: 999,
+                border: '1px solid rgba(255,255,255,0.1)',
+                background: 'rgba(255,255,255,0.04)',
+                color: '#a1a1aa',
+                fontSize: 11,
+                cursor: 'pointer',
+              }}
+            >
+              还有 {hiddenCount} 条更早对话（上滑或点击加载）
+            </button>
+          </div>
+        )}
+
+        {visibleTurns.map((turn, sliceIdx) => {
+          const idx = hiddenCount + sliceIdx
           const isActiveTurn = status !== 'idle' && idx === turns.length - 1 && turn.role === 'assistant'
           const copyableFullText = [
             turn.text || (isActiveTurn ? streamingText : ''),
