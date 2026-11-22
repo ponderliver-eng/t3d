@@ -179,7 +179,7 @@ const QUERY_TOOLS: AiToolSpec[] = [
       properties: {
         steps: {
           type: 'array',
-          description: '冒烟测试步骤列表（input/step/waitFor/assert/capture）',
+          description: '冒烟测试步骤列表：支持 {action:"input",events:[...]}、{action:"uiClick",target:"按钮名/文本/消息名"}、{action:"step",seconds:1}、{action:"waitFor",condition:...}、{action:"assert",condition:...}、{action:"capture"}',
           items: { type: 'object' },
         },
         autoStop: { type: 'boolean', description: '完成后是否自动退出试玩，默认 true' },
@@ -276,6 +276,24 @@ export function isConfirmRequiredTool(toolName: string): boolean {
 }
 
 export async function executeAiTool(
+  toolName: string,
+  args: Record<string, unknown>,
+): Promise<AiToolExecutionResult> {
+  try {
+    return await executeAiToolInner(toolName, args)
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error)
+    console.error(`[AI Tool] ${toolName} threw:`, error)
+    return {
+      ok: false,
+      toolName,
+      displayLabel: `${toolName} 执行异常：${msg}`,
+      data: { ok: false, error: msg },
+    }
+  }
+}
+
+async function executeAiToolInner(
   toolName: string,
   args: Record<string, unknown>,
 ): Promise<AiToolExecutionResult> {
@@ -537,6 +555,7 @@ export async function executeAiTool(
 }
 
 function resolveNodeIdFuzzy(raw: string): string {
+  if (typeof raw !== 'string') return String(raw ?? '')
   const trimmed = raw.trim()
   if (!trimmed) return raw
   const nodes = useEditorStore.getState().nodes
@@ -571,12 +590,29 @@ function resolveNodeIdFuzzy(raw: string): string {
   return raw
 }
 
+function resolveAssetIdFuzzy(raw: string): string {
+  if (typeof raw !== 'string') return String(raw ?? '')
+  const trimmed = raw.trim()
+  if (!trimmed) return raw
+  const assets = useAssetStore.getState().assets
+  if (assets[trimmed]) return trimmed
+  const byName = Object.values(assets).filter((a) => a.name === trimmed)
+  if (byName.length === 1) return byName[0].id
+  return raw
+}
+
 function resolveAiNodeArgs(toolName: string, args: Record<string, unknown>): Record<string, unknown> {
   const next: Record<string, unknown> = { ...args }
   const nodeRefKeys = ['nodeId', 'parentId', 'targetNodeId', 'sourceNodeId']
   for (const key of nodeRefKeys) {
     if (typeof next[key] === 'string' && next[key]) {
       next[key] = resolveNodeIdFuzzy(next[key] as string)
+    }
+  }
+  const assetRefKeys = ['assetId', 'materialId']
+  for (const key of assetRefKeys) {
+    if (typeof next[key] === 'string' && next[key]) {
+      next[key] = resolveAssetIdFuzzy(next[key] as string)
     }
   }
   if (Array.isArray(next.nodeIds)) {

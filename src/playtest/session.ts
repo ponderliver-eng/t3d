@@ -11,9 +11,11 @@ import {
   type CaptureViewportOptions,
 } from '../core/preview/offscreenPreview'
 import { DEFAULT_PERFORMANCE_BUDGET, type PerformanceBudget } from '../core/query/diagnose'
+import { useAssetStore } from '../editor/assets/library'
 import { useEditorStore } from '../editor/scene/store'
 import { stepSceneRuntime, type SceneRuntimeHost } from '../runtime/sceneRuntime'
-import { uiValues } from '../runtime/ui/values'
+import type { UiNode } from '../runtime/ui/spec'
+import { dispatchUiClick, uiValues } from '../runtime/ui/values'
 import { getRuntimeWorld } from '../runtime/world'
 
 export type PlaytestReadQuery =
@@ -32,6 +34,7 @@ export type PlaytestWaitCondition =
 
 export type SmokeStep =
   | { action: 'input'; events: VirtualInputEvent[] }
+  | { action: 'uiClick'; target: string }
   | { action: 'step'; seconds: number; fixedDt?: number }
   | { action: 'waitFor'; condition: PlaytestWaitCondition; timeoutSec?: number }
   | { action: 'assert'; condition: PlaytestWaitCondition; message?: string }
@@ -234,9 +237,18 @@ export class PlaytestSession {
   runSmoke(steps: SmokeStep[], options?: { autoStop?: boolean; budget?: PerformanceBudget }): PlaytestReport {
     this.start()
     try {
-      for (const step of steps) {
+      const effectiveSteps: SmokeStep[] = steps.length > 0 ? steps : [{ action: 'step', seconds: 0.5 }]
+      for (const step of effectiveSteps) {
         if (step.action === 'input') {
           this.input(step.events)
+        } else if (step.action === 'uiClick') {
+          const hit = findMountedUiButton(step.target)
+          if (hit && hit.click) {
+            dispatchUiClick(hit.click, hit.id)
+            this.assertions.push({ passed: true, message: `已点击 UI 按钮 "${hit.name || hit.text || hit.id}"` })
+          } else {
+            this.assertions.push({ passed: false, message: `未找到可点击的 UI 按钮 "${step.target}"` })
+          }
         } else if (step.action === 'step') {
           this.step(step.seconds, step.fixedDt)
         } else if (step.action === 'waitFor') {
@@ -254,6 +266,9 @@ export class PlaytestSession {
         } else if (step.action === 'capture') {
           this.capture(step.options)
         }
+      }
+      if (this.stepsSimulated === 0) {
+        this.step(0.25)
       }
       return this.report(options?.budget)
     } finally {
@@ -283,4 +298,37 @@ export class PlaytestSession {
       pitch: () => 0,
     }
   }
+}
+
+function findMountedUiButton(target: string): UiNode | null {
+  const q = target.trim()
+  if (!q) return null
+  const nodes = getRuntimeWorld().getNodes()
+  const assets = useAssetStore.getState().assets
+  const searchNode = (node: UiNode): UiNode | null => {
+    if (node.type === 'button' && node.click) {
+      if (
+        node.id === q
+        || node.name === q
+        || node.text === q
+        || (node.click.kind === 'sendMessage' && node.click.message === q)
+      ) {
+        return node
+      }
+    }
+    for (const child of node.children ?? []) {
+      const found = searchNode(child)
+      if (found) return found
+    }
+    return null
+  }
+  for (const sceneNode of Object.values(nodes)) {
+    if (sceneNode.kind !== 'screen' || !sceneNode.visible || !sceneNode.screen?.documentId) continue
+    const asset = assets[sceneNode.screen.documentId]
+    if (asset?.kind === 'ui' && asset.document?.root) {
+      const hit = searchNode(asset.document.root)
+      if (hit) return hit
+    }
+  }
+  return null
 }

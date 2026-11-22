@@ -268,7 +268,7 @@ function validateInner(
       return raw
     }
     case 'string': {
-      if (raw === undefined) return schema.default
+      if (raw === undefined || (schema.optional && raw === null)) return schema.default
       if (typeof raw !== 'string') {
         issues.push({ path: loc, message: `${schema.label} 必须是字符串` })
         return schema.default
@@ -352,11 +352,22 @@ function validateInner(
       return raw.map((item, idx) => validateInner(schema.item, item, `${path}[${idx}]`, issues))
     }
     case 'object': {
-      if (raw !== undefined && (raw === null || typeof raw !== 'object' || Array.isArray(raw))) {
+      let objRaw = raw
+      if (typeof objRaw === 'string' && Object.keys(schema.fields).length === 0) {
+        try {
+          objRaw = JSON.parse(objRaw)
+        } catch {
+          // keep original string to trigger validation error below
+        }
+      }
+      if (objRaw !== undefined && (objRaw === null || typeof objRaw !== 'object' || Array.isArray(objRaw))) {
         issues.push({ path: loc, message: `${schema.label ?? loc} 必须是对象` })
         return defaultForSchema(schema)
       }
-      const src = (raw ?? {}) as Record<string, unknown>
+      const src = (objRaw ?? {}) as Record<string, unknown>
+      if (Object.keys(schema.fields).length === 0) {
+        return { ...src }
+      }
       const out: Record<string, unknown> = {}
       for (const [key, child] of Object.entries(schema.fields)) {
         if (child.optional && src[key] === undefined) {
@@ -427,9 +438,17 @@ export function fieldSchemaToJsonSchema(schema: FieldSchema): Record<string, unk
         items: fieldSchemaToJsonSchema(schema.item),
       }
     case 'object': {
+      const entries = Object.entries(schema.fields)
+      if (entries.length === 0) {
+        return {
+          type: 'object',
+          ...(desc ? { description: desc } : {}),
+          additionalProperties: true,
+        }
+      }
       const properties: Record<string, unknown> = {}
       const required: string[] = []
-      for (const [key, child] of Object.entries(schema.fields)) {
+      for (const [key, child] of entries) {
         properties[key] = fieldSchemaToJsonSchema(child)
         if (!child.optional && child.type === 'ref' && child.required) {
           required.push(key)

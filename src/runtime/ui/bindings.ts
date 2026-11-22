@@ -8,7 +8,8 @@ export interface UiValues {
 
 export const EMPTY_UI_VALUES: UiValues = { variables: {}, components: {}, screens: {} }
 
-export function coerceUiValue(raw: string): unknown {
+export function coerceUiValue(raw: unknown): unknown {
+  if (typeof raw !== 'string') return raw
   const text = raw.trim()
   if (text === 'true') return true
   if (text === 'false') return false

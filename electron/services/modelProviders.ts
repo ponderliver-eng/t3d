@@ -437,7 +437,11 @@ async function readSseLines(body: ReadableStream<Uint8Array>, onData: (data: str
   }
 }
 
-function safeJsonObject(raw: string): Record<string, unknown> {
+function safeJsonObject(raw: unknown): Record<string, unknown> {
+  if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+    return raw as Record<string, unknown>
+  }
+  if (typeof raw !== 'string') return {}
   if (!raw.trim()) return {}
   try {
     const parsed = JSON.parse(raw) as unknown

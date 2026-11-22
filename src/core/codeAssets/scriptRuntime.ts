@@ -85,9 +85,15 @@ function ensureUiClickBridge() {
   onUiClick((action, uiNodeId) => {
     if (getRuntimeWorld().getPlayState() !== 'playing') return
     if (action.kind === 'sendMessage' && action.message) {
+      const payload = { nodeId: uiNodeId, kind: action.kind }
       uiEventQueue.push({
         eventName: action.message,
-        payload: { nodeId: uiNodeId, kind: action.kind },
+        payload,
+      })
+      messageQueue.push({
+        targetNodeId: null,
+        name: action.message,
+        payload,
       })
     } else if (action.kind === 'setVariable' && action.varId) {
       uiEventQueue.push({
@@ -637,6 +643,7 @@ function stepProjectScripts(dt: number, host: SceneRuntimeHost) {
     clearScriptRuntimeState()
     return
   }
+  ensureUiClickBridge()
   simElapsed += Math.max(0, dt)
   framePointerDelta = host.peekPointerDelta?.() ?? host.pointerDelta?.() ?? { x: 0, y: 0 }
   framePointerPos = host.pointerNormalized?.() ?? { x: 0, y: 0 }

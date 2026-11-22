@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type DragEvent } from 'react'
-import { Bot, Box, Camera, Check, Copy, Download, FileBox, FileCode2, Loader2, RotateCcw, Send, Settings, Sparkles, Square, Trash2, Upload, Wand2, X } from 'lucide-react'
+import { Bot, Box, Camera, Check, ChevronDown, ChevronRight, Copy, Download, FileBox, FileCode2, Loader2, RotateCcw, Send, Settings, Sparkles, Square, Trash2, Upload, Wand2, X } from 'lucide-react'
 import { createCheckpoint } from '../core/project/checkpoints'
 import { useManagerModalStore } from '../core/project/ProjectManagerModal'
 import { openCodeAssetModal } from '../core/codeAssets/CodeAssetModal'
@@ -9,7 +9,7 @@ import { ASSET_MIME, NODE_MIME } from '../editor/assets/import'
 import { CLIP_MIME } from '../editor/animation/playback'
 import { useAssetStore } from '../editor/assets/library'
 import { useEditorStore } from '../editor/scene/store'
-import { useAgentStore, type AiRefItem } from './agentLoop'
+import { useAgentStore, type AiActionPill, type AiRefItem } from './agentLoop'
 import { parseImportedAiHistory, serializeAiHistoryForExport } from './historyStorage'
 
 export default function AiWorkbenchPanel() {
@@ -57,8 +57,16 @@ export default function AiWorkbenchPanel() {
   const dragDepthRef = useRef(0)
   const [elapsedMs, setElapsedMs] = useState(0)
   const [copiedTurnId, setCopiedTurnId] = useState<string | null>(null)
+  const [contextMenu, setContextMenu] = useState<{
+    x: number
+    y: number
+    selectedText: string
+    fullText: string
+    turnId: string
+    bodyEl: HTMLElement | null
+  } | null>(null)
 
-  const copyTurnText = async (turnId: string, content: string) => {
+  const writeClipboardText = async (content: string) => {
     if (!content) return
     try {
       await navigator.clipboard.writeText(content)
@@ -72,11 +80,32 @@ export default function AiWorkbenchPanel() {
       document.execCommand('copy')
       document.body.removeChild(ta)
     }
+  }
+
+  const copyTurnText = async (turnId: string, content: string) => {
+    if (!content) return
+    await writeClipboardText(content)
     setCopiedTurnId(turnId)
     window.setTimeout(() => {
       setCopiedTurnId((cur) => (cur === turnId ? null : cur))
     }, 1500)
   }
+
+  useEffect(() => {
+    if (!contextMenu) return
+    const close = () => setContextMenu(null)
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') close()
+    }
+    window.addEventListener('mousedown', close)
+    window.addEventListener('scroll', close, true)
+    window.addEventListener('keydown', onKeyDown)
+    return () => {
+      window.removeEventListener('mousedown', close)
+      window.removeEventListener('scroll', close, true)
+      window.removeEventListener('keydown', onKeyDown)
+    }
+  }, [contextMenu])
 
   useEffect(() => {
     if (status === 'idle' || !startedAt) {
@@ -487,73 +516,6 @@ export default function AiWorkbenchPanel() {
         </div>
       )}
 
-      {/* 长任务计划进度条 */}
-      {taskPlan.length > 0 && (() => {
-        const doneCount = taskPlan.filter((t) => t.status === 'done').length
-        const current = taskPlan.find((t) => t.status === 'in_progress') ?? taskPlan.find((t) => t.status === 'pending')
-        return (
-          <div
-            style={{
-              padding: '6px 10px',
-              borderBottom: '1px solid rgba(255,255,255,0.08)',
-              background: '#16181d',
-              fontSize: '11px',
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <button
-                type="button"
-                onClick={() => setPlanExpanded((v) => !v)}
-                style={{
-                  flex: 1,
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 6,
-                  background: 'transparent',
-                  border: 'none',
-                  color: '#d4d4d8',
-                  cursor: 'pointer',
-                  padding: 0,
-                  textAlign: 'left',
-                  overflow: 'hidden',
-                }}
-              >
-                <span style={{ color: doneCount === taskPlan.length ? '#4ade80' : '#60a5fa', fontWeight: 600, flexShrink: 0 }}>
-                  任务 {doneCount}/{taskPlan.length}
-                </span>
-                <span style={{ color: '#a1a1aa', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {current ? `· ${current.title}` : '· 全部完成'}
-                </span>
-              </button>
-              {status === 'idle' && (
-                <button
-                  type="button"
-                  title="清除任务计划"
-                  onClick={clearTaskPlan}
-                  style={{ background: 'transparent', border: 'none', color: '#71717a', cursor: 'pointer', padding: 0, display: 'inline-flex' }}
-                >
-                  <X size={11} />
-                </button>
-              )}
-            </div>
-            {planExpanded && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 3, marginTop: 6, paddingTop: 6, borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-                {taskPlan.map((item) => (
-                  <div key={item.id} style={{ display: 'flex', alignItems: 'center', gap: 6, color: item.status === 'done' ? '#86efac' : item.status === 'in_progress' ? '#93c5fd' : '#a1a1aa' }}>
-                    <span style={{ width: 12, textAlign: 'center', flexShrink: 0 }}>
-                      {item.status === 'done' ? '✓' : item.status === 'in_progress' ? '▶' : '○'}
-                    </span>
-                    <span style={{ textDecoration: item.status === 'done' ? 'line-through' : 'none', opacity: item.status === 'done' ? 0.75 : 1 }}>
-                      {item.title}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )
-      })()}
-
       {/* 对话与结构化执行流 */}
       <div
         ref={scrollRef}
@@ -578,9 +540,32 @@ export default function AiWorkbenchPanel() {
 
         {turns.map((turn, idx) => {
           const isActiveTurn = status !== 'idle' && idx === turns.length - 1 && turn.role === 'assistant'
+          const copyableFullText = [
+            turn.text || (isActiveTurn ? streamingText : ''),
+            turn.error,
+          ]
+            .filter(Boolean)
+            .join('\n')
           return (
           <div
             key={turn.id}
+            onContextMenu={(e) => {
+              const selText = window.getSelection()?.toString() ?? ''
+              if (!selText && !copyableFullText) return
+              e.preventDefault()
+              e.stopPropagation()
+              const bodyEl = e.currentTarget.querySelector<HTMLElement>('[data-ai-message-body="1"]')
+              const menuW = 168
+              const menuH = 112
+              setContextMenu({
+                x: Math.min(e.clientX, Math.max(8, window.innerWidth - menuW - 8)),
+                y: Math.min(e.clientY, Math.max(8, window.innerHeight - menuH - 8)),
+                selectedText: selText,
+                fullText: copyableFullText,
+                turnId: turn.id,
+                bodyEl,
+              })
+            }}
             style={{
               display: 'flex',
               flexDirection: 'column',
@@ -653,6 +638,7 @@ export default function AiWorkbenchPanel() {
 
             {turn.text && (
               <div
+                data-ai-message-body="1"
                 style={{
                   lineHeight: 1.5,
                   userSelect: 'text',
@@ -667,6 +653,7 @@ export default function AiWorkbenchPanel() {
 
             {isActiveTurn && streamingText && (
               <div
+                data-ai-message-body="1"
                 style={{
                   lineHeight: 1.5,
                   color: '#d4d4d8',
@@ -682,47 +669,7 @@ export default function AiWorkbenchPanel() {
             )}
 
             {turn.actions && turn.actions.length > 0 && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                {turn.actions.map((act) => (
-                  <button
-                    key={act.id}
-                    type="button"
-                    onClick={() => {
-                      if (act.targetNodeId && useEditorStore.getState().nodes[act.targetNodeId]) {
-                        useEditorStore.getState().setSelection([act.targetNodeId])
-                        useEditorStore.getState().requestFocus()
-                      }
-                    }}
-                    title={act.targetNodeId ? '点击在视口中聚焦该节点' : act.toolName}
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '6px',
-                      textAlign: 'left',
-                      padding: '4px 7px',
-                      borderRadius: '4px',
-                      border: act.pending
-                        ? '1px solid rgba(96,165,250,0.35)'
-                        : '1px solid rgba(255,255,255,0.08)',
-                      background: act.pending ? 'rgba(59,130,246,0.1)' : 'rgba(0,0,0,0.25)',
-                      color: act.pending ? '#93c5fd' : act.ok ? '#d4d4d8' : '#fca5a5',
-                      fontSize: '11px',
-                      cursor: act.targetNodeId ? 'pointer' : 'default',
-                    }}
-                  >
-                    {act.pending ? (
-                      <Loader2 size={11} style={{ animation: 't3d-ai-spin 1s linear infinite', flexShrink: 0 }} />
-                    ) : (
-                      <span style={{ color: act.ok ? '#4ade80' : '#f87171', fontWeight: 700 }}>
-                        {act.ok ? '✓' : '✕'}
-                      </span>
-                    )}
-                    <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {act.label}
-                    </span>
-                  </button>
-                ))}
-              </div>
+              <TurnActionsList actions={turn.actions} isActiveTurn={isActiveTurn} />
             )}
 
             {turn.error && (
@@ -881,6 +828,73 @@ export default function AiWorkbenchPanel() {
           </div>
         </div>
       )}
+
+      {/* 长任务计划进度条（置于输入框上方） */}
+      {taskPlan.length > 0 && (() => {
+        const doneCount = taskPlan.filter((t) => t.status === 'done').length
+        const current = taskPlan.find((t) => t.status === 'in_progress') ?? taskPlan.find((t) => t.status === 'pending')
+        return (
+          <div
+            style={{
+              padding: '6px 10px',
+              borderTop: '1px solid rgba(255,255,255,0.08)',
+              background: '#16181d',
+              fontSize: '11px',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <button
+                type="button"
+                onClick={() => setPlanExpanded((v) => !v)}
+                style={{
+                  flex: 1,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  background: 'transparent',
+                  border: 'none',
+                  color: '#d4d4d8',
+                  cursor: 'pointer',
+                  padding: 0,
+                  textAlign: 'left',
+                  overflow: 'hidden',
+                }}
+              >
+                <span style={{ color: doneCount === taskPlan.length ? '#4ade80' : '#60a5fa', fontWeight: 600, flexShrink: 0 }}>
+                  任务 {doneCount}/{taskPlan.length}
+                </span>
+                <span style={{ color: '#a1a1aa', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {current ? `· ${current.title}` : '· 全部完成'}
+                </span>
+              </button>
+              {status === 'idle' && (
+                <button
+                  type="button"
+                  title="清除任务计划"
+                  onClick={clearTaskPlan}
+                  style={{ background: 'transparent', border: 'none', color: '#71717a', cursor: 'pointer', padding: 0, display: 'inline-flex' }}
+                >
+                  <X size={11} />
+                </button>
+              )}
+            </div>
+            {planExpanded && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 3, marginTop: 6, paddingTop: 6, maxHeight: 160, overflowY: 'auto', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+                {taskPlan.map((item) => (
+                  <div key={item.id} style={{ display: 'flex', alignItems: 'center', gap: 6, color: item.status === 'done' ? '#86efac' : item.status === 'in_progress' ? '#93c5fd' : '#a1a1aa' }}>
+                    <span style={{ width: 12, textAlign: 'center', flexShrink: 0 }}>
+                      {item.status === 'done' ? '✓' : item.status === 'in_progress' ? '▶' : '○'}
+                    </span>
+                    <span style={{ textDecoration: item.status === 'done' ? 'line-through' : 'none', opacity: item.status === 'done' ? 0.75 : 1 }}>
+                      {item.title}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )
+      })()}
 
       {/* 底部输入区 */}
       <div style={{ padding: '8px 10px', borderTop: '1px solid rgba(255,255,255,0.08)', background: '#1f1f23' }}>
@@ -1149,8 +1163,101 @@ export default function AiWorkbenchPanel() {
           )}
         </div>
       </div>
+
+      {contextMenu && (
+        <div
+          role="menu"
+          onMouseDown={(e) => e.stopPropagation()}
+          onContextMenu={(e) => e.preventDefault()}
+          style={{
+            position: 'fixed',
+            left: contextMenu.x,
+            top: contextMenu.y,
+            zIndex: 9999,
+            minWidth: 158,
+            padding: '4px',
+            borderRadius: 6,
+            background: '#222228',
+            border: '1px solid rgba(255,255,255,0.14)',
+            boxShadow: '0 8px 24px rgba(0,0,0,0.48)',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 2,
+          }}
+        >
+          <button
+            type="button"
+            disabled={!contextMenu.selectedText}
+            onClick={() => {
+              const txt = contextMenu.selectedText
+              setContextMenu(null)
+              if (txt) void writeClipboardText(txt)
+            }}
+            style={{
+              ...ctxMenuItemStyle,
+              opacity: contextMenu.selectedText ? 1 : 0.4,
+              cursor: contextMenu.selectedText ? 'pointer' : 'default',
+            }}
+          >
+            <Copy size={12} />
+            <span>复制选中文字</span>
+          </button>
+          <button
+            type="button"
+            disabled={!contextMenu.fullText}
+            onClick={() => {
+              const { turnId, fullText } = contextMenu
+              setContextMenu(null)
+              if (fullText) void copyTurnText(turnId, fullText)
+            }}
+            style={{
+              ...ctxMenuItemStyle,
+              opacity: contextMenu.fullText ? 1 : 0.4,
+              cursor: contextMenu.fullText ? 'pointer' : 'default',
+            }}
+          >
+            <Copy size={12} />
+            <span>复制整条消息</span>
+          </button>
+          {contextMenu.bodyEl && (
+            <button
+              type="button"
+              onClick={() => {
+                const el = contextMenu.bodyEl
+                setContextMenu(null)
+                if (!el) return
+                const sel = window.getSelection()
+                if (!sel) return
+                const range = document.createRange()
+                range.selectNodeContents(el)
+                sel.removeAllRanges()
+                sel.addRange(range)
+              }}
+              style={ctxMenuItemStyle}
+            >
+              <Check size={12} />
+              <span>全选本条正文</span>
+            </button>
+          )}
+        </div>
+      )}
     </aside>
   )
+}
+
+const ctxMenuItemStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 8,
+  width: '100%',
+  padding: '6px 8px',
+  borderRadius: 4,
+  border: 'none',
+  background: 'transparent',
+  color: '#e4e4e7',
+  fontSize: 12,
+  textAlign: 'left',
+  cursor: 'pointer',
 }
 
 const iconBtnStyle: React.CSSProperties = {
@@ -1230,6 +1337,142 @@ const popupItemStyle: React.CSSProperties = {
   textAlign: 'left',
 }
 
+function TurnActionsList({ actions, isActiveTurn }: { actions: AiActionPill[]; isActiveTurn: boolean }) {
+  const [manualExpanded, setManualExpanded] = useState<boolean | null>(null)
+  const [openErrorIds, setOpenErrorIds] = useState<Record<string, boolean>>({})
+  const prevActiveRef = useRef(isActiveTurn)
+
+  useEffect(() => {
+    if (prevActiveRef.current && !isActiveTurn) {
+      setManualExpanded(null)
+    }
+    prevActiveRef.current = isActiveTurn
+  }, [isActiveTurn])
+
+  const expanded = isActiveTurn ? true : (manualExpanded ?? false)
+  const failCount = actions.filter((a) => !a.pending && !a.ok).length
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+      {!isActiveTurn && (
+        <button
+          type="button"
+          onClick={() => setManualExpanded((prev) => !(prev ?? false))}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+            padding: '4px 8px',
+            borderRadius: '4px',
+            border: '1px solid rgba(255,255,255,0.08)',
+            background: 'rgba(255,255,255,0.04)',
+            color: failCount > 0 ? '#fca5a5' : '#a1a1aa',
+            fontSize: '11px',
+            cursor: 'pointer',
+            textAlign: 'left',
+          }}
+        >
+          {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+          <span>
+            {failCount > 0
+              ? `已执行 ${actions.length} 步操作（${failCount} 项失败）`
+              : `已执行 ${actions.length} 步操作`}
+          </span>
+        </button>
+      )}
+
+      {expanded && actions.map((act) => {
+        const isError = !act.pending && !act.ok
+        const detailObj = act.detail && typeof act.detail === 'object' ? (act.detail as Record<string, unknown>) : null
+        const detailMsg = typeof detailObj?.message === 'string' ? detailObj.message : ''
+        const detailHint = typeof detailObj?.hint === 'string' ? detailObj.hint : ''
+        const hasDetail = isError && (Boolean(detailMsg) || Boolean(detailHint) || act.label.length > 36)
+        const errorOpen = Boolean(openErrorIds[act.id])
+
+        return (
+          <div key={act.id} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <button
+              type="button"
+              onClick={() => {
+                if (isError) {
+                  setOpenErrorIds((prev) => ({ ...prev, [act.id]: !prev[act.id] }))
+                  return
+                }
+                if (act.targetNodeId && useEditorStore.getState().nodes[act.targetNodeId]) {
+                  useEditorStore.getState().setSelection([act.targetNodeId])
+                  useEditorStore.getState().requestFocus()
+                }
+              }}
+              title={isError ? '点击展开/收起完整报错信息' : act.targetNodeId ? '点击在视口中聚焦该节点' : act.toolName}
+              style={{
+                display: 'flex',
+                alignItems: isError && errorOpen ? 'flex-start' : 'center',
+                gap: '6px',
+                textAlign: 'left',
+                padding: '4px 7px',
+                borderRadius: '4px',
+                border: act.pending
+                  ? '1px solid rgba(96,165,250,0.35)'
+                  : isError
+                    ? '1px solid rgba(248,113,113,0.35)'
+                    : '1px solid rgba(255,255,255,0.08)',
+                background: act.pending ? 'rgba(59,130,246,0.1)' : isError ? 'rgba(239,68,68,0.08)' : 'rgba(0,0,0,0.25)',
+                color: act.pending ? '#93c5fd' : act.ok ? '#d4d4d8' : '#fca5a5',
+                fontSize: '11px',
+                cursor: isError || act.targetNodeId ? 'pointer' : 'default',
+              }}
+            >
+              {act.pending ? (
+                <Loader2 size={11} style={{ animation: 't3d-ai-spin 1s linear infinite', flexShrink: 0, marginTop: isError && errorOpen ? 2 : 0 }} />
+              ) : (
+                <span style={{ color: act.ok ? '#4ade80' : '#f87171', fontWeight: 700, flexShrink: 0 }}>
+                  {act.ok ? '✓' : '✕'}
+                </span>
+              )}
+              <span
+                style={
+                  isError && errorOpen
+                    ? { whiteSpace: 'pre-wrap', wordBreak: 'break-word', lineHeight: 1.45, flex: 1 }
+                    : { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }
+                }
+              >
+                {act.label}
+              </span>
+              {hasDetail && (
+                <span style={{ flexShrink: 0, color: '#f87171', opacity: 0.85, display: 'inline-flex', alignItems: 'center' }}>
+                  {errorOpen ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
+                </span>
+              )}
+            </button>
+            {isError && errorOpen && (detailMsg || detailHint) && (
+              <div
+                style={{
+                  marginLeft: 10,
+                  padding: '6px 8px',
+                  borderRadius: 4,
+                  borderLeft: '2px solid #f87171',
+                  background: 'rgba(127, 29, 29, 0.25)',
+                  color: '#fecaca',
+                  fontSize: 11,
+                  lineHeight: 1.45,
+                  userSelect: 'text',
+                  WebkitUserSelect: 'text',
+                  cursor: 'text',
+                  whiteSpace: 'pre-wrap',
+                  wordBreak: 'break-word',
+                }}
+              >
+                {detailMsg && <div>{detailMsg}</div>}
+                {detailHint && <div style={{ color: '#fca5a5', opacity: 0.85, marginTop: 3 }}>提示：{detailHint}</div>}
+              </div>
+            )}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 function RefKindIcon({ kind }: { kind: AiRefItem['kind'] }) {
   if (kind === 'node') return <Box size={11} />
   if (kind === 'script') return <FileCode2 size={11} />
@@ -1278,7 +1521,7 @@ function AiCodeBlock({ lang, code }: { lang: string; code: string }) {
           {copied ? '已复制' : '复制代码'}
         </button>
       </div>
-      <pre style={{ margin: 0, padding: '6px 8px', overflowX: 'auto', fontSize: 11, lineHeight: 1.45, fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace', color: '#e4e4e7' }}>
+      <pre style={{ margin: 0, padding: '6px 8px', overflowX: 'auto', fontSize: 11, lineHeight: 1.45, fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace', color: '#e4e4e7', userSelect: 'text', WebkitUserSelect: 'text', cursor: 'text' }}>
         {code}
       </pre>
     </div>
