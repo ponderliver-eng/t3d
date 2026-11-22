@@ -21,8 +21,10 @@ import { useAssetStore } from './library'
 import { textureFor, unityMetallicRoughnessTextureFor } from './textures'
 import type { ParticleMaterialDesc } from '../../capabilities/particles/runtime'
 import type { AlphaMode, CullMode, ModelPartOverride, ParticleBlend, PbrSlot, SceneNode, SurfaceShader } from '../scene/types'
-import { buildMaterialFromShader } from '../../core/codeAssets/shaderRuntime'
+import { buildMaterialFromShader, registerShaderTextureResolver } from '../../core/codeAssets/shaderRuntime'
 import { useCodeAssetStore } from '../../core/codeAssets/workspace'
+
+registerShaderTextureResolver((assetId) => textureFor(assetId, false))
 
 export interface SurfaceSlot extends PbrSlot {
   materialAssetId: string | null
@@ -153,7 +155,8 @@ export function applySlot(material: Material, slot: PbrSlot): Material {
     const record = useCodeAssetStore.getState().assets[shaderId]
     if (record?.kind === 'shader' && record.compiledShader?.definition) {
       const paramsSig = surface.shaderParams ? JSON.stringify(surface.shaderParams) : ''
-      const key = `${shaderId}:${record.updatedAt}:${paramsSig}`
+      const assetRev = useAssetStore.getState().revision
+      const key = `${shaderId}:${record.updatedAt}:${assetRev}:${paramsSig}`
       let next = material
       if (material.userData?.t3dCustomShaderKey !== key) {
         const built = buildMaterialFromShader(record.compiledShader.definition, surface.shaderParams)

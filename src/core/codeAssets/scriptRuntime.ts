@@ -1,4 +1,5 @@
 import { findNavigationPath } from '../../capabilities/navigation/session'
+import { applyPhysicsForce, applyPhysicsImpulse, getPhysicsBodyState, setPhysicsVelocity } from '../../capabilities/physics/session'
 import type { SceneNode, Vec3 as TupleVec3 } from '../../editor/scene/types'
 import { findRow } from '../../gameplay/registry'
 import { playSound, stopMusic } from '../../runtime/audio'
@@ -76,6 +77,7 @@ const uiEventQueue: Array<{ eventName: string; payload: { nodeId: string; kind: 
 let uiClickSubscribed = false
 const globalMemory = new Map<string, unknown>()
 const persistentMemory = new Map<string, unknown>()
+const navAgents = new Map<string, { path: TupleVec3[]; index: number; speed: number }>()
 
 function ensureUiClickBridge() {
   if (uiClickSubscribed) return
@@ -340,20 +342,59 @@ function buildScriptContext(
           distance: dist,
         }
       },
-      sphereCast: () => [],
-      getVelocity: () => ({ x: 0, y: 0, z: 0 }),
-      setVelocity: () => {},
-      applyImpulse: () => {},
-      applyForce: () => {},
+      sphereCast: (center: Vec3Obj, radius: number, options?: { tag?: string }) => {
+        const nodes = world.getNodes()
+        const r2 = radius * radius
+        const hits = []
+        for (const n of Object.values(nodes)) {
+          if (!n.visible || n.id === node.id) continue
+          if (options?.tag && n.tagId !== options.tag && !n.tagIds?.includes(options.tag)) continue
+          const o = host.resolveObject(n.id)
+          const px = o ? o.position.x : n.position[0]
+          const py = o ? o.position.y : n.position[1]
+          const pz = o ? o.position.z : n.position[2]
+          const dx = px - center.x
+          const dy = py - center.y
+          const dz = pz - center.z
+          if (dx * dx + dy * dy + dz * dz <= r2) {
+            const h = makeNodeHandle(n.id, host)
+            if (h) hits.push(h)
+          }
+        }
+        return hits
+      },
+      getVelocity: () => {
+        const st = getPhysicsBodyState(node.id)
+        if (!st) return { x: 0, y: 0, z: 0 }
+        return { x: st.linvel[0], y: st.linvel[1], z: st.linvel[2] }
+      },
+      setVelocity: (velocity: Vec3Obj) => {
+        setPhysicsVelocity(node.id, [velocity.x, velocity.y, velocity.z])
+      },
+      applyImpulse: (impulse: Vec3Obj) => {
+        applyPhysicsImpulse(node.id, [impulse.x, impulse.y, impulse.z])
+      },
+      applyForce: (force: Vec3Obj) => {
+        applyPhysicsForce(node.id, [force.x, force.y, force.z])
+      },
     },
     nav: {
-      moveTo: (target: Vec3Obj) => {
+      moveTo: (target: Vec3Obj, speed = 3.5) => {
         const cur = handle.position
         const path = findNavigationPath([cur.x, cur.y, cur.z], [target.x, target.y, target.z])
-        return Boolean(path && path.length > 0)
+        if (!path || path.length === 0) {
+          navAgents.delete(node.id)
+          return false
+        }
+        navAgents.set(node.id, { path, index: 0, speed: Math.max(0.1, speed) })
+        return true
       },
-      stop: () => {},
-      isMoving: false,
+      stop: () => {
+        navAgents.delete(node.id)
+      },
+      get isMoving() {
+        return navAgents.has(node.id)
+      },
     },
     anim: {
       playBody: (clipName: string, opts?: { loop?: boolean; fade?: number; speed?: number }) => {
@@ -373,7 +414,39 @@ function buildScriptContext(
       },
       stopBgm: () => stopMusic(),
     },
-    fx: { spawn: () => {} },
+    fx: {
+      spawn: (effectId: string, position: Vec3Obj, options?: { scale?: number }) => {
+        const nodes = world.getNodes()
+        const id = `fx_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`
+        const s = options?.scale ?? 1
+        const fxNode: SceneNode = {
+          ...node,
+          id,
+          name: `FX_${effectId.slice(0, 8)}`,
+          kind: 'effect',
+          parentId: null,
+          visible: true,
+          locked: false,
+          position: [position.x, position.y, position.z],
+          rotation: [0, 0, 0],
+          scale: [s, s, s],
+          castShadow: false,
+          receiveShadow: false,
+          assetId: effectId,
+          slots: [],
+          gameplay: {},
+          physics: undefined,
+          effect: {
+            assetId: effectId,
+            quarksVersion: '1.0',
+            playing: true,
+            materialAssetId: null,
+            simulation: null,
+          },
+        }
+        world.setNodes({ ...nodes, [id]: fxNode })
+      },
+    },
     input: {
       isPressed: (actionOrKey: string) => isActionPressed(actionOrKey) || isKeyHeld(actionOrKey) || isKeyHeld(`Key${actionOrKey.toUpperCase()}`),
       justPressed: (actionOrKey: string) => wasActionTapped(actionOrKey) || wasKeyTapped(actionOrKey) || wasKeyTapped(`Key${actionOrKey.toUpperCase()}`),
@@ -437,7 +510,11 @@ function buildScriptContext(
     },
     scene: {
       currentId: () => world.getActiveSceneId(),
-      load: () => {},
+      load: (sceneId: string, options?: { spawnPoint?: string }) => {
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('t3d:load-scene', { detail: { sceneId, spawnPoint: options?.spawnPoint } }))
+        }
+      },
     },
     global: {
       get: (key: string) => globalMemory.get(key),
@@ -545,6 +622,7 @@ export function clearScriptRuntimeState(): void {
   uiEventHandlers.clear()
   uiEventQueue.length = 0
   globalMemory.clear()
+  navAgents.clear()
   simElapsed = 0
   framePointerDelta = { x: 0, y: 0 }
   framePointerPos = { x: 0, y: 0 }
@@ -567,6 +645,42 @@ function stepProjectScripts(dt: number, host: SceneRuntimeHost) {
   currMouseButtons = host.mouseButtons ? host.mouseButtons() : (host.rightHeld?.() ? 2 : 0)
   const nodes = world.getNodes()
   const activeKeys = new Set<string>()
+
+  // 推进已激活的导航代理移动
+  if (navAgents.size > 0 && dt > 0) {
+    for (const [agentId, agent] of navAgents) {
+      const obj = host.resolveObject(agentId)
+      const n = nodes[agentId]
+      if (!obj && !n) {
+        navAgents.delete(agentId)
+        continue
+      }
+      const targetPt = agent.path[agent.index]
+      if (!targetPt) {
+        navAgents.delete(agentId)
+        continue
+      }
+      const curX = obj ? obj.position.x : n.position[0]
+      const curY = obj ? obj.position.y : n.position[1]
+      const curZ = obj ? obj.position.z : n.position[2]
+      const dx = targetPt[0] - curX
+      const dy = targetPt[1] - curY
+      const dz = targetPt[2] - curZ
+      const dist = Math.hypot(dx, dy, dz)
+      const stepDist = agent.speed * dt
+      if (dist <= Math.max(0.05, stepDist)) {
+        if (obj) obj.position.set(targetPt[0], targetPt[1], targetPt[2])
+        agent.index += 1
+        if (agent.index >= agent.path.length) navAgents.delete(agentId)
+      } else {
+        const inv = stepDist / dist
+        if (obj) {
+          obj.position.set(curX + dx * inv, curY + dy * inv, curZ + dz * inv)
+          obj.rotation.y = Math.atan2(dx, dz)
+        }
+      }
+    }
+  }
 
   for (const node of Object.values(nodes)) {
     const projectScripts = node.gameplay?.packs?.__project__

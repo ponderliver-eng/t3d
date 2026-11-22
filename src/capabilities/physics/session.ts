@@ -41,6 +41,24 @@ export function moveCharacters(moves: CharacterMove[]): CharacterMoveResult[] | 
   return world.moveCharacters(moves)
 }
 
+export function getPhysicsBodyState(id: string) {
+  return world?.bodyState(id) ?? null
+}
+
+export function setPhysicsVelocity(id: string, velocity: [number, number, number]) {
+  world?.setLinearVelocity(id, velocity)
+}
+
+export function applyPhysicsImpulse(id: string, impulse: [number, number, number]) {
+  world?.applyImpulse(id, impulse)
+}
+
+export function applyPhysicsForce(id: string, force: [number, number, number]) {
+  const st = world?.bodyState(id)
+  if (!st || !world) return
+  world.applyForceAtPoint(id, force, st.position)
+}
+
 export function tickPhysics(dt: number, resolveObject?: (id: string) => Object3D | null) {
   const runtime = getRuntimeWorld()
   const enabled = capabilityEnabled(runtime.getCapabilities(), 'physics')

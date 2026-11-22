@@ -440,6 +440,16 @@ export async function createRapierWorld(): Promise<PhysicsWorld> {
       if (!live || live.kind !== 'dynamic') return
       live.body.addTorque({ x: torque[0], y: torque[1], z: torque[2] }, true)
     },
+    setLinearVelocity(id, velocity) {
+      const live = bodies.get(id)
+      if (!live || live.kind !== 'dynamic') return
+      live.body.setLinvel({ x: velocity[0], y: velocity[1], z: velocity[2] }, true)
+    },
+    applyImpulse(id, impulse) {
+      const live = bodies.get(id)
+      if (!live || live.kind !== 'dynamic') return
+      live.body.applyImpulse({ x: impulse[0], y: impulse[1], z: impulse[2] }, true)
+    },
     dispose() {
       controller.free()
       puppets.clear()

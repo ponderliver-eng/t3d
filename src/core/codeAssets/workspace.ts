@@ -172,11 +172,40 @@ export function smoothstep(edge0: unknown, edge1: unknown, x: unknown): ShaderNo
 export function step(edge: unknown, x: unknown): ShaderNode
 export function sin(x: unknown): ShaderNode
 export function cos(x: unknown): ShaderNode
+export function tan(x: unknown): ShaderNode
 export function abs(x: unknown): ShaderNode
+export function sign(x: unknown): ShaderNode
+export function floor(x: unknown): ShaderNode
+export function ceil(x: unknown): ShaderNode
+export function fract(x: unknown): ShaderNode
+export function pow(x: unknown, y: unknown): ShaderNode
+export function sqrt(x: unknown): ShaderNode
+export function exp(x: unknown): ShaderNode
+export function log(x: unknown): ShaderNode
+export function saturate(x: unknown): ShaderNode
+export function min(a: unknown, b: unknown): ShaderNode
+export function max(a: unknown, b: unknown): ShaderNode
+export function dot(a: unknown, b: unknown): ShaderNode
+export function cross(a: unknown, b: unknown): ShaderNode
+export function normalize(v: unknown): ShaderNode
+export function length(v: unknown): ShaderNode
+export function distance(a: unknown, b: unknown): ShaderNode
+export function reflect(incident: unknown, normal: unknown): ShaderNode
+export function fwidth(x: unknown): ShaderNode
+export function fresnel(normal: unknown, viewDir: unknown, power?: unknown): ShaderNode
+export function texture(texRef: unknown, uv?: unknown): ShaderNode
 export function uv(index?: number): ShaderNode
 export const time: ShaderNode
+export const deltaTime: ShaderNode
 export const normalView: ShaderNode
+export const normalWorld: ShaderNode
+export const normalLocal: ShaderNode
 export const positionWorld: ShaderNode
+export const positionLocal: ShaderNode
+export const viewDirection: ShaderNode
+export const cameraPosition: ShaderNode
+export const screenUV: ShaderNode
+export function vertexColor(): ShaderNode
 `
 
 export async function ensureCodeWorkspaceFiles(projectRoot?: string | null): Promise<void> {

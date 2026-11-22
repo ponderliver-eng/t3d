@@ -75,6 +75,10 @@ export interface PhysicsWorld {
   applyForceAtPoint(id: string, force: Vec3, worldPoint: Vec3): void
   /** 对动态刚体施加力矩（牛顿·米），用于水中角阻尼。 */
   applyTorque(id: string, torque: Vec3): void
+  /** 直接设置动态刚体线速度。 */
+  setLinearVelocity(id: string, velocity: Vec3): void
+  /** 对动态刚体施加瞬时冲量。 */
+  applyImpulse(id: string, impulse: Vec3): void
   /** 运动学胶囊贴着碰撞体走。陡坡会滑下，站在运动学平台上会跟着平台。 */
   moveCharacters(moves: CharacterMove[]): CharacterMoveResult[]
   dispose(): void

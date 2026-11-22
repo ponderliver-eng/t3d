@@ -584,7 +584,6 @@ export default function AiWorkbenchPanel() {
             {turn.text && (
               <div
                 style={{
-                  whiteSpace: 'pre-wrap',
                   lineHeight: 1.5,
                   userSelect: 'text',
                   WebkitUserSelect: 'text',
@@ -592,14 +591,13 @@ export default function AiWorkbenchPanel() {
                   wordBreak: 'break-word',
                 }}
               >
-                {turn.text}
+                {turn.role === 'assistant' ? <AiMarkdown text={turn.text} /> : <span style={{ whiteSpace: 'pre-wrap' }}>{turn.text}</span>}
               </div>
             )}
 
             {isActiveTurn && streamingText && (
               <div
                 style={{
-                  whiteSpace: 'pre-wrap',
                   lineHeight: 1.5,
                   color: '#d4d4d8',
                   opacity: 0.9,
@@ -609,7 +607,7 @@ export default function AiWorkbenchPanel() {
                   wordBreak: 'break-word',
                 }}
               >
-                {streamingText}
+                <AiMarkdown text={streamingText} />
               </div>
             )}
 
@@ -1132,4 +1130,111 @@ function refKindColors(kind: AiRefItem['kind']): React.CSSProperties {
   if (kind === 'shader') return { background: 'rgba(192,132,252,0.18)', color: '#d8b4fe' }
   if (kind === 'asset') return { background: 'rgba(52,211,153,0.18)', color: '#6ee7b7' }
   return { background: 'rgba(59,130,246,0.2)', color: '#93c5fd' }
+}
+
+function AiMarkdown({ text }: { text: string }) {
+  const segments = text.split(/(```[\s\S]*?```)/g)
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      {segments.map((seg, idx) => {
+        if (!seg) return null
+        if (seg.startsWith('```') && seg.endsWith('```')) {
+          const inner = seg.slice(3, -3)
+          const firstNl = inner.indexOf('\n')
+          const lang = firstNl >= 0 ? inner.slice(0, firstNl).trim() : ''
+          const code = (firstNl >= 0 ? inner.slice(firstNl + 1) : inner).replace(/\n$/, '')
+          return <AiCodeBlock key={idx} lang={lang} code={code} />
+        }
+        return <AiMarkdownBlock key={idx} text={seg} />
+      })}
+    </div>
+  )
+}
+
+function AiCodeBlock({ lang, code }: { lang: string; code: string }) {
+  const [copied, setCopied] = useState(false)
+  const copy = () => {
+    void navigator.clipboard?.writeText(code)
+    setCopied(true)
+    window.setTimeout(() => setCopied(false), 1200)
+  }
+  return (
+    <div style={{ borderRadius: 5, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.1)', background: '#0e0e11' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '3px 8px', background: 'rgba(255,255,255,0.04)', fontSize: 10, color: '#a1a1aa' }}>
+        <span>{lang || 'code'}</span>
+        <button type="button" onClick={copy} style={{ background: 'transparent', border: 'none', color: copied ? '#4ade80' : '#a1a1aa', cursor: 'pointer', fontSize: 10, padding: 0 }}>
+          {copied ? '已复制' : '复制代码'}
+        </button>
+      </div>
+      <pre style={{ margin: 0, padding: '6px 8px', overflowX: 'auto', fontSize: 11, lineHeight: 1.45, fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace', color: '#e4e4e7' }}>
+        {code}
+      </pre>
+    </div>
+  )
+}
+
+function AiMarkdownBlock({ text }: { text: string }) {
+  const lines = text.split('\n')
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+      {lines.map((line, i) => {
+        if (!line.trim()) return <div key={i} style={{ height: 4 }} />
+        const hMatch = /^(#{1,3})\s+(.*)$/.exec(line)
+        if (hMatch) {
+          const level = hMatch[1].length
+          return (
+            <div key={i} style={{ fontWeight: 700, fontSize: level === 1 ? 13 : 12, color: '#f4f4f5', marginTop: 2 }}>
+              {renderInlineMd(hMatch[2])}
+            </div>
+          )
+        }
+        const ulMatch = /^\s*[-*•]\s+(.*)$/.exec(line)
+        if (ulMatch) {
+          return (
+            <div key={i} style={{ display: 'flex', gap: 6, paddingLeft: 4 }}>
+              <span style={{ color: '#60a5fa', flexShrink: 0 }}>•</span>
+              <span>{renderInlineMd(ulMatch[1])}</span>
+            </div>
+          )
+        }
+        const olMatch = /^\s*(\d+\.)\s+(.*)$/.exec(line)
+        if (olMatch) {
+          return (
+            <div key={i} style={{ display: 'flex', gap: 6, paddingLeft: 4 }}>
+              <span style={{ color: '#60a5fa', flexShrink: 0 }}>{olMatch[1]}</span>
+              <span>{renderInlineMd(olMatch[2])}</span>
+            </div>
+          )
+        }
+        return <div key={i}>{renderInlineMd(line)}</div>
+      })}
+    </div>
+  )
+}
+
+function renderInlineMd(text: string): React.ReactNode[] {
+  const tokens = text.split(/(`[^`]+`|\*\*[^*]+\*\*)/g)
+  return tokens.map((tok, idx) => {
+    if (tok.startsWith('`') && tok.endsWith('`') && tok.length >= 2) {
+      return (
+        <code
+          key={idx}
+          style={{
+            padding: '1px 4px',
+            borderRadius: 3,
+            background: 'rgba(255,255,255,0.09)',
+            color: '#93c5fd',
+            fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
+            fontSize: '0.92em',
+          }}
+        >
+          {tok.slice(1, -1)}
+        </code>
+      )
+    }
+    if (tok.startsWith('**') && tok.endsWith('**') && tok.length >= 4) {
+      return <strong key={idx} style={{ color: '#fafafa', fontWeight: 600 }}>{tok.slice(2, -2)}</strong>
+    }
+    return <span key={idx}>{tok}</span>
+  })
 }

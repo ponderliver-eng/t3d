@@ -1,9 +1,39 @@
-import { Color } from 'three'
+import { Color, DataTexture, RGBAFormat, type Texture } from 'three'
 import * as tsl from 'three/tsl'
 import { MeshBasicNodeMaterial, MeshStandardNodeMaterial } from 'three/webgpu'
 import { defaultForSchema } from '../schema/fieldSchema'
 import type { FieldSchema } from '../schema/fieldSchema'
 import { checkAndTranspileTs, evaluateTranspiledModule, type CompileResult } from './compiler'
+
+let textureResolver: ((assetId: string) => Texture | null) | null = null
+let cachedFallbackTex: DataTexture | null = null
+
+export function registerShaderTextureResolver(resolver: (assetId: string) => Texture | null): void {
+  textureResolver = resolver
+}
+
+function fallbackWhiteTexture(): DataTexture {
+  if (!cachedFallbackTex) {
+    cachedFallbackTex = new DataTexture(new Uint8Array([255, 255, 255, 255]), 1, 1, RGBAFormat)
+    cachedFallbackTex.needsUpdate = true
+  }
+  return cachedFallbackTex
+}
+
+function resolveTextureAsset(raw: unknown): Texture {
+  if (typeof raw === 'string' && raw.trim() && textureResolver) {
+    const tex = textureResolver(raw.trim())
+    if (tex) return tex
+  }
+  if (raw && typeof raw === 'object' && 'isTexture' in raw) {
+    return raw as Texture
+  }
+  if (raw && typeof raw === 'object' && 'value' in raw) {
+    const val = (raw as { value?: unknown }).value
+    if (val && typeof val === 'object' && 'isTexture' in val) return val as Texture
+  }
+  return fallbackWhiteTexture()
+}
 
 export type ShaderParamSchema = FieldSchema
 export type ShaderParamMap = Record<string, ShaderParamSchema>
@@ -57,6 +87,9 @@ function paramToNode(schema: FieldSchema, raw: unknown): unknown {
   if (schema.type === 'vec4') {
     const arr = Array.isArray(value) ? value : [0, 0, 0, 1]
     return tsl.vec4(Number(arr[0]) || 0, Number(arr[1]) || 0, Number(arr[2]) || 0, Number(arr[3]) ?? 1)
+  }
+  if (schema.type === 'texture' || (schema.type === 'ref' && schema.target === 'asset')) {
+    return tsl.texture(resolveTextureAsset(value))
   }
   return value
 }
@@ -120,7 +153,12 @@ export function createShaderSdk() {
     cameraPosition: tsl.cameraPosition,
     screenUV: tsl.screenUV,
     vertexColor: () => tsl.vertexColor(),
-    texture: () => tsl.vec4(1, 1, 1, 1),
+    texture: (texRef: unknown, uvNode?: unknown) => {
+      const tex = resolveTextureAsset(texRef)
+      return uvNode !== undefined
+        ? tsl.texture(tex, asNode(uvNode) as never)
+        : tsl.texture(tex)
+    },
   }
 }
 

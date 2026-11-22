@@ -1754,3 +1754,14 @@ function selectedCameraId(state: { nodes: Record<string, SceneNode>, selection: 
   if (editable && node.locked) return null
   return id
 }
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('t3d:load-scene', (ev) => {
+    const detail = (ev as CustomEvent<{ sceneId?: string }>).detail
+    if (!detail?.sceneId) return
+    const st = useEditorStore.getState()
+    if (st.playState === 'playing') {
+      st.openScene(detail.sceneId)
+    }
+  })
+}
