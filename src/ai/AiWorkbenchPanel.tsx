@@ -1620,11 +1620,6 @@ export default function AiWorkbenchPanel() {
               <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 500 }}>
                 {activeProvider?.model || '未选择模型'}
               </span>
-              {activeProvider?.label && (
-                <span style={{ color: '#71717a', fontSize: 10, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  · {activeProvider.label}
-                </span>
-              )}
               <ChevronDown size={11} style={{ flexShrink: 0, color: '#a1a1aa' }} />
             </button>
             <span style={{ fontSize: 10, color: '#52525b' }}>Enter 发送</span>
@@ -1655,86 +1650,53 @@ export default function AiWorkbenchPanel() {
                     当前对话仍沿用原模型，切换后将在下次发送新对话时生效
                   </div>
                 )}
-                {providers.map((p) => {
+                {providers.flatMap((p) => {
                   const modelList = Array.from(
                     new Set([
                       ...(p.models ?? []),
                       ...(p.model ? [p.model] : []),
                     ].filter(Boolean)),
                   )
-                  return (
-                    <div key={p.id} style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                      <div
+                  return modelList.map((m) => {
+                    const isSelected = p.id === activeProviderId && p.model === m
+                    return (
+                      <button
+                        key={`${p.id}:${m}`}
+                        type="button"
+                        onClick={() => {
+                          setModelMenuOpen(false)
+                          if (!p.hasApiKey) {
+                            selectProviderForEdit(p.id)
+                            setSettingsOpen(true)
+                            return
+                          }
+                          void setActiveProvider(p.id, m)
+                        }}
                         style={{
                           display: 'flex',
                           alignItems: 'center',
                           justifyContent: 'space-between',
-                          padding: '2px 6px',
-                          fontSize: 10,
-                          color: '#a1a1aa',
+                          gap: 8,
+                          width: '100%',
+                          padding: '5px 8px',
+                          borderRadius: 5,
+                          border: 'none',
+                          background: isSelected ? 'rgba(59,130,246,0.22)' : 'transparent',
+                          color: isSelected ? '#93c5fd' : p.hasApiKey ? '#e4e4e7' : '#a1a1aa',
+                          fontSize: 11.5,
+                          textAlign: 'left',
+                          cursor: 'pointer',
                         }}
                       >
-                        <span style={{ fontWeight: 600, color: '#d4d4d8' }}>{p.label}</span>
+                        <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m}</span>
                         {!p.hasApiKey ? (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setModelMenuOpen(false)
-                              selectProviderForEdit(p.id)
-                              setSettingsOpen(true)
-                            }}
-                            style={{
-                              background: 'transparent',
-                              border: 'none',
-                              color: '#fbbf24',
-                              fontSize: 10,
-                              cursor: 'pointer',
-                              padding: 0,
-                            }}
-                          >
-                            未设密钥 · 去配置
-                          </button>
+                          <span style={{ fontSize: 10, color: '#fbbf24', flexShrink: 0 }}>未设密钥</span>
                         ) : (
-                          <span style={{ color: '#4ade80' }}>已就绪</span>
+                          isSelected && <Check size={12} style={{ flexShrink: 0, color: '#60a5fa' }} />
                         )}
-                      </div>
-                      {modelList.map((m) => {
-                        const isSelected = p.id === activeProviderId && p.model === m
-                        return (
-                          <button
-                            key={`${p.id}:${m}`}
-                            type="button"
-                            onClick={() => {
-                              setModelMenuOpen(false)
-                              if (!p.hasApiKey) {
-                                selectProviderForEdit(p.id)
-                                setSettingsOpen(true)
-                                return
-                              }
-                              void setActiveProvider(p.id, m)
-                            }}
-                            style={{
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'space-between',
-                              width: '100%',
-                              padding: '5px 8px',
-                              borderRadius: 5,
-                              border: 'none',
-                              background: isSelected ? 'rgba(59,130,246,0.22)' : 'transparent',
-                              color: isSelected ? '#93c5fd' : '#e4e4e7',
-                              fontSize: 11.5,
-                              textAlign: 'left',
-                              cursor: 'pointer',
-                            }}
-                          >
-                            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m}</span>
-                            {isSelected && <Check size={12} style={{ flexShrink: 0, color: '#60a5fa' }} />}
-                          </button>
-                        )
-                      })}
-                    </div>
-                  )
+                      </button>
+                    )
+                  })
                 })}
                 <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: 4 }}>
                   <button

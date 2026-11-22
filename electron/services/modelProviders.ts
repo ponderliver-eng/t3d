@@ -1,3 +1,4 @@
+import { net } from 'electron'
 import type { ProviderConfigPublic } from './secretStore'
 
 export interface ChatToolSpec {
@@ -40,6 +41,47 @@ export interface ChatResult {
     outputTokens?: number
   }
   model: string
+}
+
+async function fetchWithProxyAndRetry(
+  url: string,
+  init: RequestInit,
+  signal: AbortSignal,
+): Promise<Response> {
+  const fetcher: typeof fetch = typeof net?.fetch === 'function' ? net.fetch.bind(net) : globalThis.fetch
+  let lastError: unknown
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    if (signal.aborted) {
+      throw new Error('请求已取消')
+    }
+    try {
+      return await fetcher(url, { ...init, signal })
+    } catch (error) {
+      lastError = error
+      if (signal.aborted || (error instanceof Error && error.name === 'AbortError')) {
+        throw error
+      }
+      if (attempt === 0) {
+        await new Promise((resolve) => setTimeout(resolve, 600))
+      }
+    }
+  }
+  throw new Error(formatNetworkError(url, lastError))
+}
+
+function formatNetworkError(url: string, error: unknown): string {
+  const errObj = error as { message?: string; code?: string; cause?: { code?: string; message?: string } } | null
+  const baseMsg = errObj?.message || String(error)
+  const causeMsg = errObj?.cause?.message
+  const code = errObj?.cause?.code || errObj?.code
+  let host = url
+  try {
+    host = new URL(url).origin
+  } catch {
+    // keep raw url
+  }
+  const detail = [code, causeMsg && causeMsg !== baseMsg ? causeMsg : ''].filter(Boolean).join(' / ')
+  return `连接模型服务失败（${host}）：${baseMsg}${detail ? ` [${detail}]` : ''}。请检查网络、系统代理或接口地址配置。`
 }
 
 export async function invokeModelChat(
@@ -122,9 +164,8 @@ async function callOpenAiCompatible(
     },
   }))
 
-  const resp = await fetch(url, {
+  const resp = await fetchWithProxyAndRetry(url, {
     method: 'POST',
-    signal,
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${apiKey}`,
@@ -135,7 +176,7 @@ async function callOpenAiCompatible(
       ...(tools.length > 0 ? { tools } : {}),
       stream: true,
     }),
-  })
+  }, signal)
 
   if (!resp.ok || !resp.body) {
     const errText = await resp.text().catch(() => resp.statusText)
@@ -253,9 +294,8 @@ async function callAnthropic(
     input_schema: t.parameters,
   }))
 
-  const resp = await fetch(url, {
+  const resp = await fetchWithProxyAndRetry(url, {
     method: 'POST',
-    signal,
     headers: {
       'Content-Type': 'application/json',
       'x-api-key': apiKey,
@@ -268,7 +308,7 @@ async function callAnthropic(
       messages,
       ...(tools.length > 0 ? { tools } : {}),
     }),
-  })
+  }, signal)
 
   if (!resp.ok) {
     const errText = await resp.text().catch(() => resp.statusText)
@@ -359,16 +399,15 @@ async function callGemini(
       }]
     : undefined
 
-  const resp = await fetch(url, {
+  const resp = await fetchWithProxyAndRetry(url, {
     method: 'POST',
-    signal,
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       systemInstruction: { parts: [{ text: req.system }] },
       contents,
       ...(tools ? { tools } : {}),
     }),
-  })
+  }, signal)
 
   if (!resp.ok) {
     const errText = await resp.text().catch(() => resp.statusText)
