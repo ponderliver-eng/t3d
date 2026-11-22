@@ -84,22 +84,42 @@ export type ScriptParamSchema =
   | Record<string, unknown>
 export type ScriptParamMap = Record<string, ScriptParamSchema>
 export interface NodeHandle {
-  readonly id: string; readonly name: string; readonly tags: readonly string[]
+  readonly id: string; readonly name: string; readonly tags: readonly string[]; readonly parent: NodeHandle | null
   position: Vec3; rotation: Vec3; scale: Vec3; visible: boolean
   hasTag(tag: string): boolean
+  addTag(tag: string): void
+  removeTag(tag: string): void
+  getChildren(): readonly NodeHandle[]
   sendMessage(name: string, payload?: unknown): void
   destroy(): void
 }
 export interface ScriptContext<P = Record<string, unknown>, S = Record<string, unknown>> {
   readonly node: NodeHandle; readonly params: P; readonly state: S; readonly elapsedTime: number
   position: Vec3; rotation: Vec3; scale: Vec3; visible: boolean
-  moveToward(target: Vec3, maxDistance: number): boolean
-  lookAt(target: Vec3): void
+  readonly forward: Vec3; readonly right: Vec3
+  distanceTo(target: Vec3 | NodeHandle): number
+  directionTo(target: Vec3 | NodeHandle, options?: { planeXZ?: boolean }): Vec3
+  translate(delta: Vec3, space?: 'local' | 'world'): void
+  rotateY(radians: number): void
+  moveToward(target: Vec3 | NodeHandle, maxDistance: number, options?: { faceTarget?: boolean; planeXZ?: boolean }): boolean
+  lookAt(target: Vec3 | NodeHandle, options?: { yOnly?: boolean }): void
   sendMessage(name: string, payload?: unknown): void
   broadcast(name: string, payload?: unknown): void
   findNodeById(id: string): NodeHandle | null
   findNodesByTag(tag: string): readonly NodeHandle[]
   findNodesInRadius(center: Vec3, radius: number, tag?: string): readonly NodeHandle[]
+  cloneNode(templateOrName: string | NodeHandle, options?: { position?: Vec3; rotation?: Vec3; scale?: Vec3; parent?: NodeHandle | string | null; visible?: boolean; name?: string; initMessage?: string; initPayload?: unknown }): NodeHandle | null
+  spawnPrefab(prefabId: string, options?: { position?: Vec3; rotation?: Vec3; name?: string }): NodeHandle | null
+  destroyNode(node: NodeHandle): void
+  readonly pool: {
+    preload(templateOrPrefab: string | NodeHandle, count: number): void
+    acquire(templateOrPrefab: string | NodeHandle, options?: { position?: Vec3; rotation?: Vec3; scale?: Vec3; payload?: unknown }): NodeHandle | null
+    release(node: NodeHandle): void
+    stats(templateOrPrefab?: string | NodeHandle): { active: number; pooled: number; total: number }
+  }
+  after(seconds: number, callback: () => void): number
+  every(seconds: number, callback: () => void): number
+  cancelTimer(timerId: number): void
   readonly input: {
     isPressed(a: string): boolean
     justPressed(a: string): boolean
@@ -138,6 +158,7 @@ export interface GizmosApi {
 export function defineBehavior<P extends ScriptParamMap, S extends Record<string, unknown>>(def: {
   name: string; description?: string; params?: P; state?: () => S
   onStart?: (self: ScriptContext<Record<string, any>, S>) => void
+  onSpawn?: (self: ScriptContext<Record<string, any>, S>, payload?: unknown) => void
   onUpdate?: (self: ScriptContext<Record<string, any>, S>, dt: number) => void
   onDestroy?: (self: ScriptContext<Record<string, any>, S>) => void
   onMessage?: (self: ScriptContext<Record<string, any>, S>, msg: { name: string; payload?: unknown }) => void

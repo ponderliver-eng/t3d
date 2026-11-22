@@ -69,9 +69,9 @@ export function createEditorRuntimeWorld(): RuntimeWorld {
       const asset = Object.values(assets).find(
         (item) => item.kind === 'prefab' && (item.id === prefabIdOrName || item.name === prefabIdOrName),
       )
-      if (!asset || asset.kind !== 'prefab') return false
+      if (!asset || asset.kind !== 'prefab') return null
       const doc = readPrefab(asset)
-      if (!doc.rootId) return false
+      if (!doc.rootId) return null
       const nodes = structuredClone(useEditorStore.getState().nodes)
       const lookup = (assetId: string) => {
         const nested = useAssetStore.getState().assets[assetId]
@@ -87,9 +87,9 @@ export function createEditorRuntimeWorld(): RuntimeWorld {
         options?.position ?? [0, 0, 0],
         lookup,
       )
-      if (!id) return false
+      if (!id) return null
       useEditorStore.setState({ nodes, playDirty: true })
-      return true
+      return id
     },
     translate: (key) => translate(key as MessageKey),
   }

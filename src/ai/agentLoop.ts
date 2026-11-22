@@ -8,11 +8,14 @@ import { electronBridge } from '../editor/project/electronBridge'
 import { useEditorStore } from '../editor/scene/store'
 import { clearInflightBackup, initAiHistorySync, saveAiHistory, saveInflightBackup } from './historyStorage'
 import {
+  AI_TOOL_DOMAIN_META,
   buildAiToolSpecs,
   executeAiTool,
+  inferInitialToolDomains,
   isConfirmRequiredTool,
   registerTaskPlanUpdater,
   type AiTaskPlanItem,
+  type AiToolDomain,
 } from './tools'
 
 export interface AiActionPill {
@@ -320,8 +323,10 @@ export const useAgentStore = create<AgentState>((set, get) => ({
     saveInflightBackup(get().turns)
     void saveAiHistory(get().turns)
 
-    const systemPrompt = buildSystemPrompt(mergedRefs)
-    const tools = buildAiToolSpecs()
+    const activeDomains = inferInitialToolDomains(
+      text,
+      mergedRefs.map((r) => r.kind),
+    )
     const chatMessages: Array<
       | { role: 'user'; text: string; images?: string[] }
       | { role: 'assistant'; text: string; toolCalls?: Array<{ id: string; name: string; arguments: Record<string, unknown> }> }
@@ -344,6 +349,11 @@ export const useAgentStore = create<AgentState>((set, get) => ({
       if (queued.length === 0) return false
       set({ steerQueue: [] })
       for (const item of queued) {
+        const inferred = inferInitialToolDomains(
+          item.text,
+          (item.refs ?? []).map((r) => r.kind),
+        )
+        for (const d of inferred) activeDomains.add(d)
         const refCtx = item.refs && item.refs.length > 0 ? `\n${formatRefsContext(item.refs)}` : ''
         chatMessages.push({
           role: 'user',
@@ -389,6 +399,8 @@ export const useAgentStore = create<AgentState>((set, get) => ({
 
         let result: Awaited<ReturnType<typeof ai.chat>>
         try {
+          const systemPrompt = buildSystemPrompt(mergedRefs, activeDomains)
+          const tools = buildAiToolSpecs(activeDomains)
           result = await ai.chat(reqId, {
             providerId: get().activeProviderId,
             system: systemPrompt,
@@ -479,6 +491,9 @@ export const useAgentStore = create<AgentState>((set, get) => ({
           }))
 
           const execRes = await executeAiTool(tc.name, tc.arguments)
+          if (execRes.enabledDomains) {
+            for (const d of execRes.enabledDomains) activeDomains.add(d)
+          }
           if (execRes.targetNodeId) {
             set({ activeNodeIds: [execRes.targetNodeId] })
           }
@@ -761,7 +776,7 @@ function formatRefsContext(attachedRefs: AiRefItem[]): string {
   return `${selectedText}${codeText}${assetText}`
 }
 
-function buildSystemPrompt(attachedRefs: AiRefItem[]): string {
+function buildSystemPrompt(attachedRefs: AiRefItem[], activeDomains: Set<AiToolDomain>): string {
   const designMd = formatDesignMarkdown(getDesignDoc())
   const overview = JSON.stringify(queryProjectOverview())
   const sceneNodes = Object.values(useEditorStore.getState().nodes)
@@ -780,46 +795,79 @@ function buildSystemPrompt(attachedRefs: AiRefItem[]): string {
         .join('\n')}`
     : ''
 
-  return [
+  const disabledDomains = (Object.keys(AI_TOOL_DOMAIN_META) as Array<Exclude<AiToolDomain, 'core'>>)
+    .filter((d) => !activeDomains.has(d))
+  const domainHint = disabledDomains.length > 0
+    ? `当前按需开启了 [${Array.from(activeDomains).join(', ')}] 工具域；若需要以下未开启域的工具，请先调用 tools__enable_domain 开启：${disabledDomains.map((d) => `${d}(${AI_TOOL_DOMAIN_META[d].label})`).join('、')}。`
+    : '当前已开启全部工具域。'
+
+  const lines: string[] = [
     '你是 T3D 游戏工程管理器的内置 AI 创作助手。',
     '核心原则：',
     '1. 长任务规划与连续执行：接到“做一个游戏”或包含多个模块/步骤的复杂任务时，第一步先调用 plan__set_tasks 拆解 3~7 个阶段性子任务，然后连续调用工具一气呵成推进，每完成一阶段顺便更新对应任务为 done，全部完成后务必调用 query__project_diagnose 做工程体检。不要刚建完几个节点或目录就提前停下汇报“已完成第一步”，除非需要用户做关键方向决策。',
-    '2. 只能通过提供的工具读取或修改工程数据，严格使用工具返回的准确节点 ID 或资产 ID（节点名称唯一时也可直接传节点名称），切勿凭记忆猜测或删改 UUID；如需查询登记清单，优先按具体 category 查询（避免不必要的全量 all）。',
-    '3. 工程规划与资源目录规范（中大型项目必做）：',
-    '   - 遇到新建游戏、多模块/多关卡或资源较多（>5 个资产/物体）的需求时，先用 project__design__update 在 design.md 中规划目录与命名规范，再用 asset__createFolder 预先建立清晰的目录树：',
-    '     · 推荐分类：Assets/Materials/<模块>（如 Characters / Environment / FX）、Assets/UI/<模块>（HUD / Menus）、Assets/Prefabs/<模块>、Assets/Models/<模块>、Assets/Textures/<模块>、Assets/Audio/<模块>、Assets/Scenes。',
-    '   - 创建材质（asset__createMaterial）或 UI（ui__createDocument）时主动传入 folder；已有杂乱散落在 Assets 根目录的资产，可用 asset__moveToFolder 归类。',
-    '   - 场景层级规范：用空节点（kind: "empty"）做模块分组（如 Environment、Characters、Lighting、UI、Systems），避免几十个节点平铺在场景根节点。',
-    '   - 脚本与着色器命名规范：采用模块前缀（如 player_move、enemy_ai、ui_hud、fx_rim），保持语义清晰、职责单一。',
-    '4. 放置模型或物体到地面时，优先开启 snapToGround: true。',
-    '5. 编写节点行为脚本（script__create / script__update）时，必须从 "t3d/runtime" 导入 defineBehavior，并严格使用：',
-    '   export default defineBehavior({ name: "简短中文标题", description: "一句话介绍脚本作用（将展示在组件卡片下方）", params: { ... }, state: () => ({ ... }), onStart(self) {}, onUpdate(self, dt) { ... }, onMessage(self, msg) {}, onDestroy(self) {}, onDrawGizmos(self, gizmos) {} })',
-    '   脚本完整可用 API（严禁编造 window.__t3dKeys 等全局变量）：',
-    '   - 变换与状态：self.position / self.rotation（弧度）/ self.scale（必须整体赋值，如 self.position = { x, y, z }，不要写 self.position.x = ...）、self.visible、self.elapsedTime、self.state、self.node。',
-    '   - 移动与节点：self.moveToward(target, maxDist)、self.lookAt(target)、self.findNodeById(id)、self.findNodesByTag(tag)、self.findNodesInRadius(center, radius, tag?)、self.spawnPrefab(prefabId, opts?)、self.destroyNode(node)、self.sendMessage(name, payload?)、self.broadcast(name, payload?)、self.getBehavior(behavior)。',
-    '   - 物理与导航：self.physics.raycast(origin, dir, maxDist)（返回 { node, point, normal, distance } | null）、self.nav.moveTo(target)。',
-    '   - 动画与音效：self.anim.playBody(clipName, { loop?, fade?, speed? }) / playUpper(clipName, opts?) / stopUpper(fade?)；self.audio.playSfx(assetId, { volume?, pitch? }) / playBgm(assetId, { volume?, loop? }) / stopBgm()。',
-    '   - 键盘/鼠标/滚轮输入：self.input.axis2D("Move")（{ x, y }）、self.input.axis1D(action)、self.input.isPressed(actionOrKey) / justPressed(...) / isKeyPressed("KeyW")、self.input.pointerDelta()、self.input.pointerPosition()（[-1, 1]）、self.input.wheelDelta()、self.input.isMouseButtonPressed(0|1|2) / justPressedMouseButton(0|1|2) / justReleasedMouseButton(0|1|2)。',
-    '   - UI 与屏幕控制：self.ui.getVar(key) / setVar(key, val)、self.ui.onEvent(eventName, (payload) => {})、self.ui.showScreen(nameOrId) / hideScreen(nameOrId) / toggleScreen(nameOrId) / isScreenVisible(nameOrId)。',
-    '   - 全局存储与策划表：self.global.get/set/remove、self.storage.get/set/remove、self.tables.getRow(tableId, rowId)、self.scene.currentId()、self.log(...)、self.warn(...)。',
-    '   - 参数（params）类型：number / boolean / string / color / vec2 / vec3 / vec4 / enum / texture / ref：',
-    '     · 场景节点：{ type: "ref", target: "node", label: "目标", default: null }（运行时自动解析为 NodeHandle | null）',
-    '     · 资源资产：{ type: "ref", target: "asset", kinds: ["audio" | "prefab" | "material" | "texture" | "effect" | "animation" | "model" | "ui" | "scene"], label: "...", default: null }',
-    '     · 动画片段：{ type: "ref", target: "clip", label: "动画", default: null }；策划表条目：{ type: "ref", target: "tableRow", tableId: "tags" | "juice", label: "...", default: null }',
-    '   - 编辑器专用 Gizmo（试玩自动隐藏）：onDrawGizmos(self, gizmos) 支持 gizmos.isSelected、line(from, to)、arrow(from, dir, len)、wireSphere(center, radius)、wireBox(center, size)、disc(center, radius, { normal? })、radiusHandle(paramKey)、positionHandle(paramKey)。',
-    '6. 编写自定义着色器（shader__create / shader__update）时，必须从 "t3d/shader" 导入 defineShader 与 TSL 节点函数，并严格使用：',
-    '   export default defineShader({ name: "中文名称", mode: "lit" | "unlit", transparent?: true, doubleSided?: false, params: { ... }, surface(p) { return { baseColor, emissive, roughness, metalness, opacity, normal, vertexOffset } } })',
-    '   - 严格规则：返回键名必须是 baseColor（不是 color）；params 中声明的所有参数必须在 surface(p) 中实际参与计算；使用 opacity 时需设置 transparent: true。',
-    '   - 完整可用节点（从 "t3d/shader" 导入）：uv(index?)、time、deltaTime、normalView、normalWorld、normalLocal、positionWorld、positionLocal、viewDirection、cameraPosition、screenUV、vertexColor()；构造：float、vec2、vec3、vec4、color；函数：mix、clamp、smoothstep、step、saturate、sin、cos、tan、abs、sign、floor、ceil、fract、pow、sqrt、exp、log、min、max、dot、cross、normalize、length、distance、reflect、fwidth、fresnel(normal, viewDir, power?)（节点支持 .add/.sub/.mul/.div/.pow/.min/.max/.clamp/.abs/.floor/.ceil/.fract/.saturate/.oneMinus/.negate 链式调用）。',
-    '   - 编写完成后，可用 shader__bind 绑定到指定材质或节点。',
-    '7. 创建/修改 UI 界面（ui__createDocument / ui__updateDocument / query__ui_inspect）：',
-    '   - document 格式：{ schemaVersion: 1, root: UiNode }；可用节点 type 为 "panel" | "stack" | "text" | "image" | "button" | "progress"。',
-    '   - layout 支持 mode: "anchor"（anchorMin/anchorMax/pivot 取 0~1，x/y/width/height 像素）或 mode: "flex"（flexDirection: "row"|"column", gap, align, justify, padding）。',
-    '   - 数据绑定：bindings: [{ id: "b1", target: "text"|"visible"|"enabled"|"progress.value"|"opacity", source: { kind: "variable", varId: "hp" } }]；按钮事件：click: { kind: "sendMessage", message: "start_game" } 或 { kind: "setVariable", varId: "...", value: "..." }。',
+    '2. 只能通过提供的工具读取或修改工程数据，严格使用工具返回的准确节点 ID 或资产 ID（节点名称唯一时也可直接传节点名称），切勿凭记忆猜测或删改 UUID。',
+    '3. 工具按域按需加载：' + domainHint,
+    '4. 工程规划与层级规范：',
+    '   - 遇到多模块/多关卡或资产较多（>5 个）时，先用 project__design__update 规划目录规范，再用 asset__createFolder 建立 Assets/Materials/<模块>、Assets/UI/<模块>、Assets/Prefabs/<模块> 等目录树；用空节点（kind: "empty"）做模块分组，但严禁堆砌无意义的空节点充当装饰或伪对象池。',
+    '   - 放置模型或物体到地面时，优先开启 snapToGround: true。',
+  ]
+
+  if (activeDomains.has('script')) {
+    lines.push(
+      '5. 编写节点行为脚本（script__create / script__update）时，必须从 "t3d/runtime" 导入 defineBehavior，并严格使用：',
+      '   export default defineBehavior({ name: "简短中文标题", description: "一句话介绍脚本作用", params: { ... }, state: () => ({ ... }), onStart(self) {}, onSpawn(self, payload) {}, onUpdate(self, dt) { ... }, onMessage(self, msg) {}, onDestroy(self) {}, onDrawGizmos(self, gizmos) {} })',
+      '   脚本完整可用 API（严禁编造 window.__t3dKeys 等全局变量）：',
+      '   - 变换与状态：self.position / self.rotation（弧度）/ self.scale（必须整体赋值，如 self.position = { x, y, z }，不要写 self.position.x = ...）、self.visible、self.elapsedTime、self.state、self.node。',
+      '   - 动态生成与对象池（子弹/敌人/特效标准范式：建1个隐藏模板节点或Prefab，用 pool 复用，严禁手建几十个空物体充当对象池）：',
+      '     · self.pool.preload(templateOrPrefab, count) / self.pool.acquire(templateOrPrefab, { position?, rotation?, scale?, payload? }) -> NodeHandle | null（自动重置状态并触发脚本 onSpawn(self, payload)）',
+      '     · self.pool.release(node)（或调用 node.destroy() 对池化对象自动回池） / self.pool.stats(templateOrPrefab?)',
+      '     · self.cloneNode(templateOrName, { position?, rotation?, scale?, parent?, visible?, name?, initMessage?, initPayload? }) -> NodeHandle | null',
+      '     · self.spawnPrefab(prefabIdOrName, { position?, rotation?, scale?, name? }) -> NodeHandle | null / self.destroyNode(node)',
+      '   - 托管定时器（随节点销毁/回池自动清理）：self.after(seconds, fn) -> id、self.every(seconds, fn) -> id、self.cancelTimer(id)。',
+      '   - 移动与空间：self.distanceTo(target)、self.directionTo(target, { planeXZ? })、self.translate(delta, "local"|"world")、self.rotateY(rad)、self.forward、self.right、self.moveToward(target, maxDist, { faceTarget?, planeXZ? })、self.lookAt(target, { yOnly? })。',
+      '   - 节点与标签：self.node.parent、self.node.getChildren()、self.node.addTag/removeTag/hasTag、self.findNodeById(id)、self.findNodesByTag(tag)、self.findNodesInRadius(center, radius, tag?)、self.sendMessage(name, payload?)、self.broadcast(name, payload?)、self.getBehavior(behavior)。',
+      '   - 物理与导航：self.physics.raycast(origin, dir, maxDist)、sphereCast(center, radius, opts?)、getVelocity()、setVelocity(v)、applyImpulse(v)、applyForce(v)；self.nav.moveTo(target, speed?) / stop() / isMoving。',
+      '   - 动画、音效与特效：self.anim.playBody/playUpper/stopUpper；self.audio.playSfx/playBgm/stopBgm；self.fx.spawn(effectId, pos, { scale? })。',
+      '   - 键盘/鼠标/滚轮输入：self.input.axis2D("Move")、axis1D(action)、isPressed / justPressed / isKeyPressed("KeyW")、pointerDelta()、pointerPosition()、wheelDelta()、isMouseButtonPressed / justPressedMouseButton / justReleasedMouseButton(0|1|2)。',
+      '   - UI 与屏幕控制：self.ui.getVar(key) / setVar(key, val)、self.ui.onEvent(eventName, (payload) => {})、self.ui.showScreen/hideScreen/toggleScreen/isScreenVisible(nameOrId)。',
+      '   - 存储与策划表：self.global / self.storage (get/set/remove)、self.tables.getRow(tableId, rowId)、self.scene.currentId() / load(id)、self.log(...)、self.warn(...)。',
+      '   - 参数（params）类型：number / boolean / string / color / vec2 / vec3 / vec4 / enum / texture / ref（target: "node" | "asset" | "clip" | "tableRow"）；vec2/vec3/vec4 必须提供数组形式 default（如 [0,0,0]）。',
+      '   - 编辑器专用 Gizmo（试玩自动隐藏）：onDrawGizmos(self, gizmos) 支持 gizmos.isSelected、line、arrow、wireSphere、wireBox、disc、radiusHandle、positionHandle。',
+    )
+  }
+
+  if (activeDomains.has('shader')) {
+    lines.push(
+      '6. 编写自定义着色器（shader__create / shader__update）时，必须从 "t3d/shader" 导入 defineShader 与 TSL 节点函数，并严格使用：',
+      '   export default defineShader({ name: "中文名称", mode: "lit" | "unlit", transparent?: true, doubleSided?: false, params: { ... }, surface(p) { return { baseColor, emissive, roughness, metalness, opacity, normal, vertexOffset } } })',
+      '   - 严格规则：返回键名必须是 baseColor（不是 color）；params 中声明的所有参数必须在 surface(p) 中实际参与计算；使用 opacity 时需设置 transparent: true。',
+      '   - 可用节点（从 "t3d/shader" 导入）：uv(index?)、time、deltaTime、normalView、normalWorld、normalLocal、positionWorld、positionLocal、viewDirection、cameraPosition、screenUV、vertexColor()；构造：float、vec2、vec3、vec4、color；函数：mix、clamp、smoothstep、step、saturate、sin、cos、tan、abs、sign、floor、ceil、fract、pow、sqrt、exp、log、min、max、dot、cross、normalize、length、distance、reflect、fwidth、fresnel(normal, viewDir, power?)（支持 .add/.sub/.mul/.div/.pow/.min/.max/.clamp/.abs/.floor/.ceil/.fract/.saturate/.oneMinus/.negate）。',
+      '   - 编写完成后，可用 shader__bind 绑定到指定材质或节点。',
+    )
+  }
+
+  if (activeDomains.has('ui')) {
+    lines.push(
+      '7. 创建/修改 UI 界面（ui__createDocument / ui__updateDocument / query__ui_inspect）：',
+      '   - document 格式：{ schemaVersion: 1, root: UiNode }；可用节点 type 为 "panel" | "stack" | "text" | "image" | "button" | "progress"。',
+      '   - layout 支持 mode: "anchor"（anchorMin/anchorMax/pivot 取 0~1，x/y/width/height 像素）或 mode: "flex"（flexDirection: "row"|"column", gap, align, justify, padding）。',
+      '   - 数据绑定：bindings: [{ id: "b1", target: "text"|"visible"|"enabled"|"progress.value"|"opacity", source: { kind: "variable", varId: "hp" } }]；按钮事件：click: { kind: "sendMessage", message: "start_game" } 或 { kind: "setVariable", varId: "...", value: "..." }。',
+    )
+  }
+
+  if (activeDomains.has('capability')) {
+    lines.push(
+      '8. 能力包与玩法包：挂载物理、粒子、水面、天空、导航等能力前，建议先调用 query__registry_describe（指定 category）确认能力 ID 与参数 Schema。',
+    )
+  }
+
+  lines.push(
     '',
     '当前工程设计规范（design.md）：',
     designMd,
     '',
     `当前工程概览：${overview}${nodeIndexText}${refsContext}${planText}`,
-  ].join('\n')
+  )
+
+  return lines.join('\n')
 }

@@ -85,12 +85,16 @@ export interface NodeHandle {
   readonly id: string
   readonly name: string
   readonly tags: readonly string[]
+  readonly parent: NodeHandle | null
   position: Vec3
   /** 欧拉角（弧度） */
   rotation: Vec3
   scale: Vec3
   visible: boolean
   hasTag(tag: string): boolean
+  addTag(tag: string): void
+  removeTag(tag: string): void
+  getChildren(): readonly NodeHandle[]
   sendMessage(name: string, payload?: unknown): void
   getBehavior<
     P extends ScriptParamMap,
@@ -98,6 +102,39 @@ export interface NodeHandle {
     M extends BehaviorMethodMap<P, S>,
   >(behavior: BehaviorAsset<P, S, M>): BehaviorInstance<M> | null
   destroy(): void
+}
+
+export interface CloneNodeOptions {
+  position?: Vec3
+  /** 欧拉角（弧度） */
+  rotation?: Vec3
+  scale?: Vec3
+  parent?: NodeHandle | string | null
+  visible?: boolean
+  name?: string
+  initMessage?: string
+  initPayload?: unknown
+}
+
+export interface PoolAcquireOptions {
+  position?: Vec3
+  /** 欧拉角（弧度） */
+  rotation?: Vec3
+  scale?: Vec3
+  payload?: unknown
+}
+
+export interface PoolStats {
+  active: number
+  pooled: number
+  total: number
+}
+
+export interface PoolApi {
+  preload(templateOrPrefab: string | NodeHandle, count: number): void
+  acquire(templateOrPrefab: string | NodeHandle, options?: PoolAcquireOptions): NodeHandle | null
+  release(node: NodeHandle): void
+  stats(templateOrPrefab?: string | NodeHandle): PoolStats
 }
 
 export interface PhysicsApi {
@@ -128,7 +165,7 @@ export interface AudioApi {
 }
 
 export interface FxApi {
-  spawn(effectId: string, position: Vec3, options?: { scale?: number }): void
+  spawn(effectId: string, position: Vec3, options?: { scale?: number; autoDestroySec?: number }): void
 }
 
 export interface InputApi {
@@ -184,9 +221,15 @@ export interface ScriptContext<
   rotation: Vec3
   scale: Vec3
   visible: boolean
+  readonly forward: Vec3
+  readonly right: Vec3
 
-  moveToward(target: Vec3, maxDistance: number): boolean
-  lookAt(target: Vec3): void
+  distanceTo(target: Vec3 | NodeHandle): number
+  directionTo(target: Vec3 | NodeHandle, options?: { planeXZ?: boolean }): Vec3
+  translate(delta: Vec3, space?: 'local' | 'world'): void
+  rotateY(radians: number): void
+  moveToward(target: Vec3 | NodeHandle, maxDistance: number, options?: { faceTarget?: boolean; planeXZ?: boolean }): boolean
+  lookAt(target: Vec3 | NodeHandle, options?: { yOnly?: boolean }): void
   sendMessage(name: string, payload?: unknown): void
   broadcast(name: string, payload?: unknown): void
   getBehavior<
@@ -198,8 +241,14 @@ export interface ScriptContext<
   findNodeById(id: string): NodeHandle | null
   findNodesByTag(tag: string): readonly NodeHandle[]
   findNodesInRadius(center: Vec3, radius: number, tag?: string): readonly NodeHandle[]
+  cloneNode(templateOrName: string | NodeHandle, options?: CloneNodeOptions): NodeHandle | null
   spawnPrefab(prefabId: string, options?: { position?: Vec3; rotation?: Vec3; name?: string }): NodeHandle | null
   destroyNode(node: NodeHandle): void
+  readonly pool: PoolApi
+
+  after(seconds: number, callback: () => void): number
+  every(seconds: number, callback: () => void): number
+  cancelTimer(timerId: number): void
 
   readonly physics: PhysicsApi
   readonly nav: NavApi
@@ -260,6 +309,7 @@ export interface BehaviorDefinition<
   params?: P
   createState?: () => S
   onStart?(self: ScriptContext<NoInfer<P>, NoInfer<S>>): void
+  onSpawn?(self: ScriptContext<NoInfer<P>, NoInfer<S>>, payload?: unknown): void
   onStep?(self: ScriptContext<NoInfer<P>, NoInfer<S>>, dt: number): void
   onTriggerEnter?(self: ScriptContext<NoInfer<P>, NoInfer<S>>, other: NodeHandle): void
   onTriggerExit?(self: ScriptContext<NoInfer<P>, NoInfer<S>>, other: NodeHandle): void

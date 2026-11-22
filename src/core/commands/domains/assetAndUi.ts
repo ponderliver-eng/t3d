@@ -422,6 +422,61 @@ const moveToFolderCmd: CommandDef<MoveToFolderParams, { folder: string; movedIds
   },
 }
 
+interface CreatePrefabParams {
+  nodeId: string
+  name?: string
+  folder?: string
+}
+
+const createPrefabCmd: CommandDef<CreatePrefabParams, { assetId: string; name: string; folder: string }> = {
+  id: 'asset.createPrefab',
+  title: '将节点制作成预制体',
+  description: '把指定场景节点及其完整子树打包为可复用预制体（Prefab）资产，供运行时 spawnPrefab / pool.acquire 动态实例化',
+  risk: 'safe',
+  params: {
+    type: 'object',
+    fields: {
+      nodeId: { type: 'ref', target: 'node', required: true, label: '源节点 ID' },
+      name: { type: 'string', default: '', label: '预制体名称（可选，默认取节点名）', optional: true },
+      folder: { type: 'string', default: 'Assets/Prefabs', label: '存放目录（如 Assets/Prefabs/Enemies）', optional: true },
+    },
+  },
+  run(_ctx, p) {
+    const editor = useEditorStore.getState()
+    const node = editor.nodes[p.nodeId]
+    if (!node) {
+      return { ok: false, code: 'node.notFound', message: `节点 "${p.nodeId}" 不存在` }
+    }
+    if (node.prefabInstanceId === node.id && node.prefabAssetId) {
+      const existing = useAssetStore.getState().assets[node.prefabAssetId]
+      if (existing) {
+        return {
+          ok: true,
+          value: { assetId: existing.id, name: existing.name, folder: ASSETS_ROOT },
+          changed: { summary: `节点已是预制体 "${existing.name}" 的实例` },
+        }
+      }
+    }
+    const targetDir = p.folder?.trim() ? ensureAssetFolderPath(p.folder) : ensureAssetFolderPath('Assets/Prefabs')
+    const beforeIds = new Set(Object.keys(useAssetStore.getState().assets))
+    editor.createPrefabFromSelection(p.name?.trim() || undefined, p.nodeId, targetDir)
+    const afterAssets = useAssetStore.getState().assets
+    const created = Object.values(afterAssets).find((a) => a.kind === 'prefab' && !beforeIds.has(a.id))
+    if (!created) {
+      return { ok: false, code: 'prefab.createFailed', message: '创建预制体失败，请确认当前未处于试玩或预制体编辑状态' }
+    }
+    return {
+      ok: true,
+      value: { assetId: created.id, name: created.name, folder: targetDir },
+      changed: {
+        assetsChanged: [created.id],
+        nodesChanged: [p.nodeId],
+        summary: `已将 "${node.name}" 打包为预制体 "${created.name}"（${targetDir}）`,
+      },
+    }
+  },
+}
+
 export function registerAssetAndUiCommands(): () => void {
   const unsubs = [
     commandBus.register(createMaterialCmd),
@@ -429,6 +484,7 @@ export function registerAssetAndUiCommands(): () => void {
     commandBus.register(renameAssetCmd),
     commandBus.register(createFolderCmd),
     commandBus.register(moveToFolderCmd),
+    commandBus.register(createPrefabCmd),
     commandBus.register(createUiDocCmd),
     commandBus.register(updateUiDocCmd),
     commandBus.register(mountScreenCmd),

@@ -67,7 +67,7 @@ export interface RuntimeWorld {
   bodyProgress?(nodeId: string): number
   forcePlayCamera?(cameraId: string, duration?: number): void
   clearPlayCameraForce?(): void
-  instantiatePrefab?(prefabIdOrName: string, options?: { parentId?: string | null; position?: Vec3 }): boolean
+  instantiatePrefab?(prefabIdOrName: string, options?: { parentId?: string | null; position?: Vec3 }): string | null
   translate?(key: string, vars?: Record<string, string | number>): string
 }
 

@@ -31,6 +31,8 @@ export type PlaytestWaitCondition =
   | { kind: 'logContains'; text: string }
   | { kind: 'nodeMissing'; nodeIdOrName: string }
   | { kind: 'nodeExists'; nodeIdOrName: string }
+  | { kind: 'uiVarEquals'; name: string; value: unknown }
+  | { kind: 'nodeCountAtLeast'; min: number }
 
 export type SmokeStep =
   | { action: 'input'; events: VirtualInputEvent[] }
@@ -161,6 +163,12 @@ export class PlaytestSession {
     if (condition.kind === 'nodeMissing') {
       return !this.read({ kind: 'nodePose', nodeIdOrName: condition.nodeIdOrName })
     }
+    if (condition.kind === 'uiVarEquals') {
+      return this.read({ kind: 'uiVar', name: condition.name }) === condition.value
+    }
+    if (condition.kind === 'nodeCountAtLeast') {
+      return Number(this.read({ kind: 'nodeCount' })) >= condition.min
+    }
     const pose = this.read({ kind: 'nodePose', nodeIdOrName: condition.nodeIdOrName }) as {
       position: [number, number, number]
     } | null
@@ -279,16 +287,22 @@ export class PlaytestSession {
   }
 
   private headlessHost(): SceneRuntimeHost {
-    const nodes = getRuntimeWorld().getNodes()
     return {
       ready: true,
       resolveObject: (id) => {
-        const node = nodes[id]
+        const node = getRuntimeWorld().getNodes()[id]
         if (!node) return null
         let obj = this.headlessObjects.get(id)
         if (!obj) {
           obj = new Group()
           obj.position.set(node.position[0], node.position[1], node.position[2])
+          obj.rotation.set(
+            (node.rotation[0] * Math.PI) / 180,
+            (node.rotation[1] * Math.PI) / 180,
+            (node.rotation[2] * Math.PI) / 180,
+          )
+          obj.scale.set(node.scale[0], node.scale[1], node.scale[2])
+          obj.visible = node.visible
           this.headlessObjects.set(id, obj)
         }
         return obj

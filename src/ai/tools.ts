@@ -19,6 +19,16 @@ import { exportWebPlayerBundle } from '../player/exporter'
 import { useAssetStore } from '../editor/assets/library'
 import { PlaytestSession, type SmokeStep } from '../playtest/session'
 
+export type AiToolDomain = 'core' | 'script' | 'shader' | 'ui' | 'capability' | 'playtest'
+
+export const AI_TOOL_DOMAIN_META: Record<Exclude<AiToolDomain, 'core'>, { label: string; summary: string }> = {
+  script: { label: '脚本与逻辑', summary: '编写/更新/检查/挂载 TypeScript 行为脚本（t3d/runtime）、查询代码资产' },
+  shader: { label: '着色器与材质', summary: '编写/绑定 TSL 着色器（t3d/shader）、创建/分配材质、资产目录整理' },
+  ui: { label: 'UI 与输入', summary: '创建/更新/挂载 UI HUD 界面、查询 UI 文档、配置键鼠输入映射' },
+  capability: { label: '能力包与数据', summary: '物理/粒子/水面/天空/导航能力包、玩法包、数据表行、环境渲染参数' },
+  playtest: { label: '试玩与交付', summary: '自动试玩冒烟、视口截图、新建/切换场景、实验分支、导出 Web 播放包' },
+}
+
 export interface AiToolSpec {
   name: string
   description: string
@@ -30,6 +40,7 @@ export interface AiToolExecutionResult {
   toolName: string
   displayLabel: string
   targetNodeId?: string
+  enabledDomains?: AiToolDomain[]
   data: unknown
 }
 
@@ -54,6 +65,26 @@ function fromToolName(name: string): string {
 }
 
 const QUERY_TOOLS: AiToolSpec[] = [
+  {
+    name: 'tools__enable_domain',
+    description:
+      '按需开启专业工具域以节省上下文并解锁对应工具：script（行为脚本）/ shader（着色器与材质）/ ui（UI界面与输入）/ capability（物理/粒子/水面/天空/导航/玩法包/数据表）/ playtest（自动试玩/截图/分支/多场景/导出）。可一次开启多个域。',
+    parameters: {
+      type: 'object',
+      properties: {
+        domains: {
+          type: 'array',
+          items: {
+            type: 'string',
+            enum: ['script', 'shader', 'ui', 'capability', 'playtest'],
+          },
+          description: '需要开启的工具域列表',
+        },
+      },
+      required: ['domains'],
+      additionalProperties: false,
+    },
+  },
   {
     name: 'plan__set_tasks',
     description: '为多步骤长任务规划或更新阶段性子任务清单（最多 8 项），每完成一阶段调用此工具更新状态，界面会同步显示进度',
@@ -260,13 +291,114 @@ const QUERY_TOOLS: AiToolSpec[] = [
   },
 ]
 
-export function buildAiToolSpecs(): AiToolSpec[] {
+export function toolDomainFor(toolName: string): AiToolDomain {
+  if (
+    toolName === 'tools__enable_domain' ||
+    toolName === 'plan__set_tasks' ||
+    toolName === 'query__project_overview' ||
+    toolName === 'query__scene_outline' ||
+    toolName === 'query__node_inspect' ||
+    toolName === 'query__asset_search' ||
+    toolName === 'query__project_diagnose' ||
+    toolName === 'scene__createNode' ||
+    toolName === 'scene__deleteNodes' ||
+    toolName === 'scene__setTransform' ||
+    toolName === 'scene__renameNode' ||
+    toolName === 'scene__reparentNode' ||
+    toolName === 'project__design__get' ||
+    toolName === 'project__design__update' ||
+    toolName === 'project__createCheckpoint' ||
+    toolName === 'asset__createPrefab'
+  ) {
+    return 'core'
+  }
+  if (toolName.startsWith('script__')) return 'script'
+  if (toolName.startsWith('shader__') || toolName.startsWith('asset__')) return 'shader'
+  if (toolName === 'query__code_assets') return 'script'
+  if (toolName.startsWith('ui__') || toolName === 'query__ui_inspect' || toolName.startsWith('input__')) return 'ui'
+  if (
+    toolName.startsWith('capability__') ||
+    toolName.startsWith('pack__') ||
+    toolName.startsWith('gameplay__') ||
+    toolName === 'query__registry_describe' ||
+    toolName === 'query__db_rows' ||
+    toolName === 'picture__update'
+  ) {
+    return 'capability'
+  }
+  if (
+    toolName.startsWith('playtest__') ||
+    toolName.startsWith('branch__') ||
+    toolName === 'scene__create' ||
+    toolName === 'scene__open' ||
+    toolName === 'project__export_web' ||
+    toolName === 'project__restoreCheckpoint' ||
+    toolName === 'codeAsset__openExternal'
+  ) {
+    return 'playtest'
+  }
+  return 'core'
+}
+
+export function inferInitialToolDomains(
+  prompt: string,
+  refKinds: ReadonlyArray<'node' | 'asset' | 'script' | 'shader'> = [],
+): Set<AiToolDomain> {
+  const domains = new Set<AiToolDomain>(['core'])
+  const p = prompt.toLowerCase()
+
+  if (refKinds.includes('script')) domains.add('script')
+  if (refKinds.includes('shader') || refKinds.includes('asset')) domains.add('shader')
+
+  const isGameBuild = /(做个|制作|新建|搭建|开发).*(游戏|demo|原型|关卡|塔防|射击|跳跃|跑酷|rpg|fps)/.test(p)
+  if (
+    isGameBuild ||
+    /(脚本|代码|逻辑|行为|移动|控制|旋转|发射|子弹|炮塔|敌人|怪物|波次|生成|碰撞|伤害|血量|ai|script|behavior)/.test(p)
+  ) {
+    domains.add('script')
+  }
+  if (
+    isGameBuild ||
+    /(着色器|材质|发光|描边|轮廓|透明|金属|粗糙|贴图|颜色|目录|整理|文件夹|shader|material|tsl|rim|glow)/.test(p)
+  ) {
+    domains.add('shader')
+  }
+  if (
+    isGameBuild ||
+    /(ui|界面|hud|血条|按钮|菜单|弹窗|分数|金币|文本|面板|按键|键位|输入|手柄|鼠标|键盘|screen|button|input)/.test(p)
+  ) {
+    domains.add('ui')
+  }
+  if (
+    isGameBuild ||
+    /(物理|刚体|碰撞体|重力|粒子|特效|水面|海洋|天空|雾|后处理|光照|导航|寻路|能力包|玩法包|数据表|physics|particle|effect|water|sky|nav|pack|capability)/.test(p)
+  ) {
+    domains.add('capability')
+  }
+  if (
+    isGameBuild ||
+    /(试玩|冒烟|测试|验证|截图|分支|导出|多场景|切换场景|playtest|smoke|capture|export|branch)/.test(p)
+  ) {
+    domains.add('playtest')
+  }
+
+  return domains
+}
+
+export function buildAiToolSpecs(activeDomains?: Iterable<AiToolDomain>): AiToolSpec[] {
   const commandTools: AiToolSpec[] = commandBus.list().map((cmd) => ({
     name: toToolName(cmd.id),
     description: `${cmd.title}${cmd.description ? `：${cmd.description}` : ''}${cmd.risk === 'confirm' ? '（高风险操作，需谨慎）' : ''}`,
     parameters: fieldSchemaToJsonSchema(cmd.params),
   }))
-  return [...QUERY_TOOLS, ...commandTools]
+  const all = [...QUERY_TOOLS, ...commandTools]
+  if (!activeDomains) return all
+  const allowed = new Set<AiToolDomain>(['core', ...activeDomains])
+  // shader 域与 script 域共享 query__code_assets
+  if (allowed.has('shader')) {
+    return all.filter((t) => allowed.has(toolDomainFor(t.name)) || t.name === 'query__code_assets')
+  }
+  return all.filter((t) => allowed.has(toolDomainFor(t.name)))
 }
 
 export function isConfirmRequiredTool(toolName: string): boolean {
@@ -299,6 +431,27 @@ async function executeAiToolInner(
 ): Promise<AiToolExecutionResult> {
   const resolvedArgs = resolveAiNodeArgs(toolName, args)
   switch (toolName) {
+    case 'tools__enable_domain': {
+      const raw = Array.isArray(resolvedArgs.domains) ? resolvedArgs.domains : []
+      const valid = raw.filter(
+        (d): d is Exclude<AiToolDomain, 'core'> =>
+          typeof d === 'string' && d in AI_TOOL_DOMAIN_META,
+      )
+      const labels = valid.map((d) => AI_TOOL_DOMAIN_META[d].label)
+      return {
+        ok: valid.length > 0,
+        toolName,
+        enabledDomains: valid,
+        displayLabel: valid.length > 0 ? `开启工具域：${labels.join('、')}` : '未指定有效工具域',
+        data: {
+          ok: valid.length > 0,
+          enabled: valid,
+          message: valid.length > 0
+            ? `已开启工具域 [${valid.join(', ')}]，下一轮起可直接调用对应工具。`
+            : '请传入有效的 domains 数组：script / shader / ui / capability / playtest',
+        },
+      }
+    }
     case 'plan__set_tasks': {
       const raw = Array.isArray(resolvedArgs.tasks) ? resolvedArgs.tasks : []
       const normalized: AiTaskPlanItem[] = raw
