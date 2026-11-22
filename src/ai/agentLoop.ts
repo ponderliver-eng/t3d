@@ -1,7 +1,9 @@
 import { create } from 'zustand'
 import { commandBus } from '../core/commands/bus'
+import { useCodeAssetStore } from '../core/codeAssets/workspace'
 import { createCheckpoint, formatDesignMarkdown, getDesignDoc, restoreCheckpoint } from '../core/project'
 import { queryNodeInspect, queryProjectOverview } from '../core/query'
+import { useAssetStore } from '../editor/assets/library'
 import { electronBridge } from '../editor/project/electronBridge'
 import { useEditorStore } from '../editor/scene/store'
 import { initAiHistorySync, saveAiHistory } from './historyStorage'
@@ -17,12 +19,19 @@ export interface AiActionPill {
   detail?: unknown
 }
 
+export interface AiRefItem {
+  kind: 'node' | 'asset' | 'script' | 'shader'
+  id: string
+  label: string
+  subKind?: string
+}
+
 export interface AiTurnItem {
   id: string
   role: 'user' | 'assistant'
   text: string
   imageDataUrl?: string
-  refs?: Array<{ kind: 'node'; id: string; label: string }>
+  refs?: AiRefItem[]
   actions?: AiActionPill[]
   checkpointId?: string
   usage?: { inputTokens?: number; outputTokens?: number; model?: string }
@@ -34,6 +43,12 @@ export interface PendingConfirmation {
   label: string
   args: Record<string, unknown>
   resolve: (approved: boolean) => void
+}
+
+export interface SteerItem {
+  text: string
+  imageDataUrl?: string
+  refs?: AiRefItem[]
 }
 
 interface ProviderInfo {
@@ -49,6 +64,7 @@ interface AgentState {
   panelOpen: boolean
   quickPromptOpen: boolean
   pendingAttachmentImage: string | null
+  pendingRefs: AiRefItem[]
   status: 'idle' | 'running' | 'awaiting-confirm'
   phaseText: string
   startedAt: number | null
@@ -59,10 +75,14 @@ interface AgentState {
   activeProviderId: string
   pendingConfirm: PendingConfirmation | null
   activeNodeIds: string[]
+  steerQueue: SteerItem[]
 
   setPanelOpen: (open: boolean) => void
   setQuickPromptOpen: (open: boolean) => void
   setPendingAttachmentImage: (dataUrl: string | null) => void
+  addPendingRef: (ref: AiRefItem) => void
+  removePendingRef: (kind: AiRefItem['kind'], id: string) => void
+  clearPendingRefs: () => void
   refreshProviders: () => Promise<void>
   saveProvider: (input: {
     id: string
@@ -87,6 +107,7 @@ export const useAgentStore = create<AgentState>((set, get) => ({
   panelOpen: false,
   quickPromptOpen: false,
   pendingAttachmentImage: null,
+  pendingRefs: [],
   status: 'idle',
   phaseText: '',
   startedAt: null,
@@ -97,10 +118,19 @@ export const useAgentStore = create<AgentState>((set, get) => ({
   activeProviderId: 'openai-compatible',
   pendingConfirm: null,
   activeNodeIds: [],
+  steerQueue: [],
 
   setPanelOpen: (open) => set({ panelOpen: open }),
   setQuickPromptOpen: (open) => set({ quickPromptOpen: open }),
   setPendingAttachmentImage: (dataUrl) => set({ pendingAttachmentImage: dataUrl }),
+  addPendingRef: (ref) =>
+    set((s) => {
+      if (s.pendingRefs.some((r) => r.kind === ref.kind && r.id === ref.id)) return s
+      return { pendingRefs: [...s.pendingRefs, ref] }
+    }),
+  removePendingRef: (kind, id) =>
+    set((s) => ({ pendingRefs: s.pendingRefs.filter((r) => !(r.kind === kind && r.id === id)) })),
+  clearPendingRefs: () => set({ pendingRefs: [] }),
 
   refreshProviders: async () => {
     const ai = electronBridge()?.ai
@@ -139,7 +169,7 @@ export const useAgentStore = create<AgentState>((set, get) => ({
     if (reqId) {
       await electronBridge()?.ai?.abort(reqId)
     }
-    set({ status: 'idle', phaseText: '', startedAt: null, activeRequestId: null, activeNodeIds: [] })
+    set({ status: 'idle', phaseText: '', startedAt: null, activeRequestId: null, activeNodeIds: [], steerQueue: [] })
   },
 
   rollbackTurn: (checkpointId) => {
@@ -169,15 +199,53 @@ export const useAgentStore = create<AgentState>((set, get) => ({
   },
 
   sendPrompt: async (rawText) => {
-    const text = rawText.trim()
-    if (!text || get().status !== 'idle') return
+    const attachedImage = get().pendingAttachmentImage ?? undefined
+    const text = rawText.trim() || (attachedImage ? '请结合当前工程与场景分析这张截图。' : '')
+    if (!text) return
+
+    const manualRefs = get().pendingRefs
+    const editorState = useEditorStore.getState()
+    const selectedRefs: AiRefItem[] = editorState.selection
+      .map((id) => editorState.nodes[id])
+      .filter(Boolean)
+      .map((n) => ({ kind: 'node' as const, id: n.id, label: n.name, subKind: n.kind }))
+
+    const mergedRefs: AiRefItem[] = [...manualRefs]
+    for (const r of selectedRefs) {
+      if (!mergedRefs.some((m) => m.kind === r.kind && m.id === r.id)) {
+        mergedRefs.push(r)
+      }
+    }
+
+    // 运行中发送 -> 作为 Steer 插话入队，在当前工具步间隙注入上下文
+    if (get().status !== 'idle') {
+      if (manualRefs.length > 0) set({ pendingRefs: [] })
+      if (attachedImage) set({ pendingAttachmentImage: null })
+      const steerTurn: AiTurnItem = {
+        id: `u_${Date.now()}`,
+        role: 'user',
+        text,
+        imageDataUrl: attachedImage,
+        refs: mergedRefs.length > 0 ? mergedRefs : undefined,
+      }
+      set((s) => ({
+        steerQueue: [
+          ...s.steerQueue,
+          { text, imageDataUrl: attachedImage, refs: mergedRefs.length > 0 ? mergedRefs : undefined },
+        ],
+        turns: [...s.turns, steerTurn],
+      }))
+      return
+    }
 
     const ai = electronBridge()?.ai
     if (!ai) {
+      if (manualRefs.length > 0) set({ pendingRefs: [] })
+      if (attachedImage) set({ pendingAttachmentImage: null })
       set((s) => ({
         turns: [
           ...s.turns,
-          { id: `u_${Date.now()}`, role: 'user', text },
+          { id: `u_${Date.now()}`, role: 'user', text, imageDataUrl: attachedImage },
           {
             id: `a_${Date.now()}`,
             role: 'assistant',
@@ -190,13 +258,7 @@ export const useAgentStore = create<AgentState>((set, get) => ({
       return
     }
 
-    const editorState = useEditorStore.getState()
-    const selectedRefs = editorState.selection
-      .map((id) => editorState.nodes[id])
-      .filter(Boolean)
-      .map((n) => ({ kind: 'node' as const, id: n.id, label: n.name }))
-
-    const attachedImage = get().pendingAttachmentImage ?? undefined
+    if (manualRefs.length > 0) set({ pendingRefs: [] })
     if (attachedImage) set({ pendingAttachmentImage: null })
 
     const userTurn: AiTurnItem = {
@@ -204,43 +266,69 @@ export const useAgentStore = create<AgentState>((set, get) => ({
       role: 'user',
       text,
       imageDataUrl: attachedImage,
-      refs: selectedRefs.length > 0 ? selectedRefs : undefined,
+      refs: mergedRefs.length > 0 ? mergedRefs : undefined,
     }
 
     const checkpoint = await createCheckpoint(`AI 轮次前：${text.slice(0, 24)}`)
-    const assistantId = `a_${Date.now() + 1}`
+    let currentAssistantId = `a_${Date.now() + 1}`
 
     set((s) => ({
       status: 'running',
       phaseText: '正在分析需求与工程上下文…',
       startedAt: Date.now(),
       streamingText: '',
+      steerQueue: [],
       turns: [
         ...s.turns,
         userTurn,
-        { id: assistantId, role: 'assistant', text: '', actions: [], checkpointId: checkpoint.id },
+        { id: currentAssistantId, role: 'assistant', text: '', actions: [], checkpointId: checkpoint.id },
       ],
     }))
 
-    const systemPrompt = buildSystemPrompt(selectedRefs)
+    const systemPrompt = buildSystemPrompt(mergedRefs)
     const tools = buildAiToolSpecs()
     const chatMessages: Array<
-      | { role: 'user'; text: string }
+      | { role: 'user'; text: string; images?: string[] }
       | { role: 'assistant'; text: string; toolCalls?: Array<{ id: string; name: string; arguments: Record<string, unknown> }> }
       | { role: 'tool'; toolCallId: string; name: string; content: string }
-    > = buildHistoryMessages(get().turns, assistantId)
+    > = buildHistoryMessages(get().turns, currentAssistantId)
 
     commandBus.beginTransaction(`AI：${text.slice(0, 32)}`)
-    const actions: AiActionPill[] = []
+    let actions: AiActionPill[] = []
     let finalText = ''
     let totalIn = 0
     let totalOut = 0
     let usedModel = ''
     let txCommitted = false
 
+    const consumeSteerQueue = () => {
+      const queued = get().steerQueue
+      if (queued.length === 0) return false
+      set({ steerQueue: [] })
+      for (const item of queued) {
+        const refCtx = item.refs && item.refs.length > 0 ? `\n${formatRefsContext(item.refs)}` : ''
+        chatMessages.push({
+          role: 'user',
+          text: `[用户运行中插话纠偏]\n${item.text}${refCtx}`,
+          ...(item.imageDataUrl ? { images: [item.imageDataUrl] } : {}),
+        })
+      }
+      currentAssistantId = `a_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`
+      actions = []
+      finalText = ''
+      set((s) => ({
+        turns: [
+          ...s.turns,
+          { id: currentAssistantId, role: 'assistant', text: '', actions: [] },
+        ],
+      }))
+      return true
+    }
+
     try {
       for (let step = 0; step < MAX_TOOL_STEPS; step += 1) {
         if (get().status === 'idle') break
+        consumeSteerQueue()
         const reqId = `req_${Date.now()}_${step}`
         set({
           activeRequestId: reqId,
@@ -278,12 +366,15 @@ export const useAgentStore = create<AgentState>((set, get) => ({
           finalText = finalText ? `${finalText}\n${result.text}` : result.text
           set((s) => ({
             turns: s.turns.map((t) =>
-              t.id === assistantId ? { ...t, text: finalText } : t,
+              t.id === currentAssistantId ? { ...t, text: finalText } : t,
             ),
           }))
         }
 
         if (result.toolCalls.length === 0) {
+          if (consumeSteerQueue()) {
+            continue
+          }
           break
         }
 
@@ -330,7 +421,7 @@ export const useAgentStore = create<AgentState>((set, get) => ({
           }
           set((s) => ({
             turns: s.turns.map((t) =>
-              t.id === assistantId ? { ...t, actions: [...actions, pendingPill] } : t,
+              t.id === currentAssistantId ? { ...t, actions: [...actions, pendingPill] } : t,
             ),
           }))
 
@@ -349,7 +440,7 @@ export const useAgentStore = create<AgentState>((set, get) => ({
           })
           set((s) => ({
             turns: s.turns.map((t) =>
-              t.id === assistantId ? { ...t, actions: [...actions] } : t,
+              t.id === currentAssistantId ? { ...t, actions: [...actions] } : t,
             ),
           }))
 
@@ -373,8 +464,9 @@ export const useAgentStore = create<AgentState>((set, get) => ({
         startedAt: null,
         streamingText: '',
         activeNodeIds: [],
+        steerQueue: [],
         turns: s.turns.map((t) =>
-          t.id === assistantId
+          t.id === currentAssistantId
             ? {
                 ...t,
                 text: finalText || (actions.length > 0 ? '已完成本轮操作。' : ''),
@@ -396,8 +488,9 @@ export const useAgentStore = create<AgentState>((set, get) => ({
         startedAt: null,
         streamingText: '',
         activeNodeIds: [],
+        steerQueue: [],
         turns: s.turns.map((t) =>
-          t.id === assistantId ? { ...t, text: finalText, actions, error: msg } : t,
+          t.id === currentAssistantId ? { ...t, text: finalText, actions, error: msg } : t,
         ),
       }))
       void saveAiHistory(get().turns)
@@ -432,24 +525,28 @@ function toolPhaseLabel(toolName: string): string {
 function buildHistoryMessages(
   turns: AiTurnItem[],
   excludeId: string,
-): Array<{ role: 'user' | 'assistant'; text: string }> {
+): Array<{ role: 'user' | 'assistant'; text: string; images?: string[] }> {
   const MAX_TURNS = 24
   const MAX_CHARS = 18000
   const MIN_KEEP = 4
+  const MAX_IMAGES = 2
 
   const candidates = turns.filter(
-    (t) => t.id !== excludeId && !t.error && (t.text.trim() || (t.actions && t.actions.length > 0)),
+    (t) => t.id !== excludeId && !t.error && (t.text.trim() || t.imageDataUrl || (t.actions && t.actions.length > 0)),
   )
 
-  const picked: Array<{ role: 'user' | 'assistant'; text: string }> = []
+  const picked: Array<{ role: 'user' | 'assistant'; text: string; images?: string[] }> = []
   let totalChars = 0
+  let imagesUsed = 0
 
   for (let i = candidates.length - 1; i >= 0 && picked.length < MAX_TURNS; i -= 1) {
     const t = candidates[i]
     let content = t.text.trim()
     if (t.role === 'user' && t.refs && t.refs.length > 0) {
-      const refNote = t.refs.map((r) => `@${r.label}(${r.id})`).join(', ')
-      content = `${content}\n[已选中节点: ${refNote}]`.trim()
+      const refNote = t.refs
+        .map((r) => `${r.kind === 'node' ? '@' : '#'}${r.label}(${r.kind}:${r.id})`)
+        .join(', ')
+      content = `${content}\n[本轮附加引用: ${refNote}]`.trim()
     }
     if (t.role === 'assistant' && t.actions && t.actions.length > 0) {
       const actionSummary = t.actions
@@ -457,13 +554,20 @@ function buildHistoryMessages(
         .join('；')
       content = `${content}\n[本轮已执行操作: ${actionSummary}]`.trim()
     }
+    const includeImage = t.role === 'user' && Boolean(t.imageDataUrl) && imagesUsed < MAX_IMAGES
+    if (includeImage) imagesUsed += 1
+    if (!content && includeImage) content = '请结合当前场景分析这张截图。'
     if (!content) continue
 
     if (picked.length >= MIN_KEEP && totalChars + content.length > MAX_CHARS) {
       break
     }
     totalChars += content.length
-    picked.push({ role: t.role, text: content })
+    picked.push({
+      role: t.role,
+      text: content,
+      ...(includeImage && t.imageDataUrl ? { images: [t.imageDataUrl] } : {}),
+    })
   }
 
   return picked.reverse()
@@ -471,7 +575,7 @@ function buildHistoryMessages(
 
 function compactMessagesForStep<
   T extends
-    | { role: 'user'; text: string }
+    | { role: 'user'; text: string; images?: string[] }
     | { role: 'assistant'; text: string; toolCalls?: Array<{ id: string; name: string; arguments: Record<string, unknown> }> }
     | { role: 'tool'; toolCallId: string; name: string; content: string },
 >(messages: T[]): T[] {
@@ -501,18 +605,13 @@ function compactMessagesForStep<
   })
 }
 
-function buildSystemPrompt(selectedRefs: Array<{ id: string; label: string }>): string {
-  const designMd = formatDesignMarkdown(getDesignDoc())
-  const overview = JSON.stringify(queryProjectOverview())
-  const sceneNodes = Object.values(useEditorStore.getState().nodes)
-  const nodeIndexText = sceneNodes.length > 0
-    ? `\n当前场景节点索引（名称 -> ID，共 ${sceneNodes.length} 个）：\n${sceneNodes
-        .slice(0, 30)
-        .map((n) => `- ${n.name} (${n.kind}): ${n.id}`)
-        .join('\n')}${sceneNodes.length > 30 ? '\n- ...（更多节点请调用 query__scene_outline）' : ''}`
-    : ''
-  const selectedText = selectedRefs.length > 0
-    ? `\n当前用户在视口中选中的节点（精简快照，无需重复 inspect 基础字段）：\n${selectedRefs
+function formatRefsContext(attachedRefs: AiRefItem[]): string {
+  const nodeRefs = attachedRefs.filter((r) => r.kind === 'node')
+  const codeRefs = attachedRefs.filter((r) => r.kind === 'script' || r.kind === 'shader')
+  const assetRefs = attachedRefs.filter((r) => r.kind === 'asset')
+
+  const selectedText = nodeRefs.length > 0
+    ? `\n当前引用/选中的场景节点（精简快照）：\n${nodeRefs
         .map((r) => {
           const info = queryNodeInspect(r.id)
           if (!info) return `- ${r.label} (id: ${r.id})`
@@ -532,6 +631,57 @@ function buildSystemPrompt(selectedRefs: Array<{ id: string; label: string }>): 
         })
         .join('\n')}`
     : ''
+
+  const codeAssets = useCodeAssetStore.getState().assets
+  const codeText = codeRefs.length > 0
+    ? `\n用户附加分析的代码资产（脚本/着色器）：\n${codeRefs
+        .map((r) => {
+          const rec = codeAssets[r.id]
+          if (!rec) return `- ${r.kind}:${r.id} (${r.label}) [未找到]`
+          const src = rec.source.length > 4000 ? `${rec.source.slice(0, 4000)}\n// ...(已截断)` : rec.source
+          return [
+            `--- ${rec.kind} "${rec.name}" (id: ${rec.id}, path: ${rec.relativePath}, ok: ${rec.ok}) ---`,
+            ...(rec.diagnostics.length > 0 ? [`诊断: ${JSON.stringify(rec.diagnostics)}`] : []),
+            src,
+          ].join('\n')
+        })
+        .join('\n')}`
+    : ''
+
+  const allAssets = useAssetStore.getState().assets
+  const assetText = assetRefs.length > 0
+    ? `\n用户附加分析的工程资产：\n${assetRefs
+        .map((r) => {
+          const asset = allAssets[r.id]
+          if (!asset) return `- asset:${r.id} (${r.label}) [未找到]`
+          const detail: Record<string, unknown> = { id: asset.id, name: asset.name, kind: asset.kind }
+          if (asset.kind === 'material') detail.slot = asset.slot
+          else if (asset.kind === 'ui') detail.document = asset.document
+          else if (asset.kind === 'prefab') detail.nodeCount = Object.keys(asset.nodes).length
+          else if (asset.kind === 'model' || asset.kind === 'animation') {
+            detail.clips = asset.clipCatalog?.map((c) => c.name) ?? []
+          }
+          const json = JSON.stringify(detail)
+          return `- ${json.length > 3500 ? `${json.slice(0, 3500)}...(已截断，可用专用查询工具读取)` : json}`
+        })
+        .join('\n')}`
+    : ''
+
+  return `${selectedText}${codeText}${assetText}`
+}
+
+function buildSystemPrompt(attachedRefs: AiRefItem[]): string {
+  const designMd = formatDesignMarkdown(getDesignDoc())
+  const overview = JSON.stringify(queryProjectOverview())
+  const sceneNodes = Object.values(useEditorStore.getState().nodes)
+  const nodeIndexText = sceneNodes.length > 0
+    ? `\n当前场景节点索引（名称 -> ID，共 ${sceneNodes.length} 个）：\n${sceneNodes
+        .slice(0, 30)
+        .map((n) => `- ${n.name} (${n.kind}): ${n.id}`)
+        .join('\n')}${sceneNodes.length > 30 ? '\n- ...（更多节点请调用 query__scene_outline）' : ''}`
+    : ''
+
+  const refsContext = formatRefsContext(attachedRefs)
 
   return [
     '你是 T3D 游戏工程管理器的内置 AI 创作助手。',
@@ -562,6 +712,6 @@ function buildSystemPrompt(selectedRefs: Array<{ id: string; label: string }>): 
     '当前工程设计规范（design.md）：',
     designMd,
     '',
-    `当前工程概览：${overview}${nodeIndexText}${selectedText}`,
+    `当前工程概览：${overview}${nodeIndexText}${refsContext}`,
   ].join('\n')
 }

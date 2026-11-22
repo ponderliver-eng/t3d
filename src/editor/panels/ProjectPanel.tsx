@@ -512,7 +512,7 @@ export default function ProjectPanel() {
                   draggable
                   onDragStart={event => {
                     event.dataTransfer.setData(ASSET_MIME, codeAssetDirKey(item.kind, item.id))
-                    event.dataTransfer.effectAllowed = 'move'
+                    event.dataTransfer.effectAllowed = 'copyMove'
                   }}
                   onClick={() => {
                     useEditorStore.setState({ selection: [], inspectedAssetId: null })

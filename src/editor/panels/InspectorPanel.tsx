@@ -1190,14 +1190,28 @@ function writeSlot(nodeId: string, slotIndex: number | null, linked: string | nu
   }
   const node = useEditorStore.getState().nodes[nodeId]
   if (!node) return
-  const next = node.kind === 'model' && slotIndex != null
-    ? { slots: node.slots.map((item, index) => index === slotIndex ? { ...item, ...patch } : item) }
-    : patch
-  if (isMapPatch(patch)) {
-    commitNode(nodeId, mapLabel(patch), next)
+  if (node.kind === 'model' && slotIndex != null) {
+    const next = { slots: node.slots.map((item, index) => index === slotIndex ? { ...item, ...patch } : item) }
+    if (isMapPatch(patch)) {
+      commitNode(nodeId, mapLabel(patch), next)
+      return
+    }
+    useEditorStore.getState().updateNode(nodeId, next)
     return
   }
-  useEditorStore.getState().updateNode(nodeId, next)
+  const { shaderParams, ...restPatch } = patch
+  const nodePatch: Partial<SceneNode> = { ...restPatch }
+  if ('shaderParams' in patch) {
+    nodePatch.capabilities = {
+      ...(node.capabilities ?? {}),
+      __materialShaderParams: shaderParams,
+    }
+  }
+  if (isMapPatch(patch)) {
+    commitNode(nodeId, mapLabel(patch), nodePatch)
+    return
+  }
+  useEditorStore.getState().updateNode(nodeId, nodePatch)
 }
 
 function onSlotDragOver(event: DragEvent, index: number, setDropSlot: (index: number | null) => void) {
@@ -1223,6 +1237,19 @@ function MaterialEditor({ slot, onChange }: { slot: PbrSlot, onChange: (patch: P
   const shaders = Object.values(codeAssets).filter(item => item.kind === 'shader')
   const shaderKind = slot.shader ?? 'lit'
   const isCustom = shaderKind.startsWith('custom:')
+  const customShaderId = isCustom ? shaderKind.slice('custom:'.length) : ''
+  const customShaderDef = isCustom ? codeAssets[customShaderId]?.compiledShader?.definition : undefined
+  const customParamsSchema = customShaderDef?.params
+  const hasCustomParams = Boolean(customParamsSchema && Object.keys(customParamsSchema).length > 0)
+  const customParamValues = (() => {
+    if (!customParamsSchema) return {}
+    const out: Record<string, unknown> = {}
+    for (const [k, s] of Object.entries(customParamsSchema)) {
+      const raw = slot.shaderParams?.[k]
+      out[k] = raw !== undefined ? raw : defaultForSchema(s)
+    }
+    return out
+  })()
   const lit = !isCustom && (shaderKind === 'lit' || shaderKind === 'unity-standard')
   const isUnity = shaderKind === 'unity-standard'
   const particle = shaderKind === 'particle-unlit'
@@ -1244,6 +1271,34 @@ function MaterialEditor({ slot, onChange }: { slot: PbrSlot, onChange: (patch: P
         </div>
         <ProjectShaderHint selectedShader={shaderKind} />
       </Section>
+      {isCustom && (
+        <Section title="着色器参数" color="#d4b8ff">
+          {hasCustomParams && customParamsSchema ? (
+            <>
+              <SchemaForm
+                schema={{ type: 'object', fields: customParamsSchema }}
+                value={customParamValues}
+                onChange={next => onChange({ shaderParams: next as Record<string, unknown> })}
+              />
+              {slot.shaderParams && Object.keys(slot.shaderParams).length > 0 && (
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 4 }}>
+                  <button
+                    type="button"
+                    className="inspector__action"
+                    onClick={() => onChange({ shaderParams: undefined })}
+                  >
+                    重置默认参数
+                  </button>
+                </div>
+              )}
+            </>
+          ) : (
+            <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+              {customShaderDef ? '该着色器未声明公开参数 (params)。' : '着色器尚未编译通过，请先在代码编辑器修复。'}
+            </div>
+          )}
+        </Section>
+      )}
       {!isCustom && <Section title={t('material.surface')} color="#c9a6ff">
         <ColorField label={t('material.color')} value={slot.color} gesture={t('gesture.material')} onChange={color => onChange({ color })} />
         {textured && <MapField label={t('material.baseMap')} value={slot.mapAssetId ?? null} onChange={mapAssetId => onChange({ mapAssetId })} />}

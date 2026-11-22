@@ -30,6 +30,12 @@
   background: var(--bg-header, #242830);
   border-bottom: 1px solid var(--border, #303642);
   font-size: 12px;
+  cursor: grab;
+  user-select: none;
+}
+
+.code-modal__head.is-dragging {
+  cursor: grabbing;
 }
 
 .code-modal__kind {

@@ -37,12 +37,18 @@ export function CodeAssetModalHost() {
   const [draft, setDraft] = useState('')
   const [busy, setBusy] = useState(false)
   const [previewParams, setPreviewParams] = useState<Record<string, unknown>>({})
+  const [offset, setOffset] = useState({ x: 0, y: 0 })
+  const [dragging, setDragging] = useState(false)
   const highlightRef = useRef<HTMLPreElement | null>(null)
   const gutterRef = useRef<HTMLDivElement | null>(null)
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
+  const modalRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
-    const sync = () => setTarget(activeModalTarget)
+    const sync = () => {
+      setTarget(activeModalTarget)
+      setOffset({ x: 0, y: 0 })
+    }
     listeners.add(sync)
     return () => { listeners.delete(sync) }
   }, [])
@@ -114,6 +120,34 @@ export function CodeAssetModalHost() {
       ? previewParams.b
       : '#93c5fd'
 
+  const startDragWindow = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return
+    if ((e.target as HTMLElement).closest('button, a, input, select, textarea')) return
+    e.preventDefault()
+    const startX = e.clientX
+    const startY = e.clientY
+    const origin = { ...offset }
+    const rect = modalRef.current?.getBoundingClientRect()
+    const maxShiftX = rect ? Math.max(120, window.innerWidth / 2 + rect.width / 2 - 120) : window.innerWidth / 2
+    const maxShiftY = rect ? Math.max(80, window.innerHeight / 2 - 24) : window.innerHeight / 2
+    setDragging(true)
+
+    const onMove = (ev: PointerEvent) => {
+      const nextX = Math.max(-maxShiftX, Math.min(maxShiftX, origin.x + ev.clientX - startX))
+      const nextY = Math.max(-maxShiftY, Math.min(maxShiftY, origin.y + ev.clientY - startY))
+      setOffset({ x: nextX, y: nextY })
+    }
+    const onUp = () => {
+      setDragging(false)
+      window.removeEventListener('pointermove', onMove)
+      window.removeEventListener('pointerup', onUp)
+      window.removeEventListener('pointercancel', onUp)
+    }
+    window.addEventListener('pointermove', onMove)
+    window.addEventListener('pointerup', onUp)
+    window.addEventListener('pointercancel', onUp)
+  }
+
   return createPortal(
     <div
       className="code-modal-backdrop"
@@ -121,8 +155,20 @@ export function CodeAssetModalHost() {
         if (e.target === e.currentTarget) closeCodeAssetModal()
       }}
     >
-      <div className="code-modal">
-        <div className="code-modal__head">
+      <div
+        ref={modalRef}
+        className="code-modal"
+        style={{ transform: `translate3d(${offset.x}px, ${offset.y}px, 0)` }}
+      >
+        <div
+          className={`code-modal__head${dragging ? ' is-dragging' : ''}`}
+          onPointerDown={startDragWindow}
+          onDoubleClick={(e) => {
+            if ((e.target as HTMLElement).closest('button, a')) return
+            setOffset({ x: 0, y: 0 })
+          }}
+          title="按住拖动窗口位置，双击复位居中"
+        >
           <span className={`code-modal__kind code-modal__kind--${record.kind}`}>
             {record.kind === 'shader' ? <Wand2 size={12} /> : <FileCode2 size={12} />}
             {record.kind === 'shader' ? '着色器' : '脚本'}

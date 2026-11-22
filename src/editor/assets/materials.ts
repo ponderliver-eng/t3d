@@ -63,6 +63,7 @@ export function normalizeSlot(slot: Partial<PbrSlot> & Pick<PbrSlot, 'name' | 'c
     aoAssetId: slot.aoAssetId ?? null,
     materialAssetId: slot.materialAssetId ?? DEFAULTS.materialAssetId,
     shader: slot.shader ?? DEFAULTS.shader,
+    shaderParams: slot.shaderParams,
     normalScale: slot.normalScale ?? DEFAULTS.normalScale,
     alphaMode: slot.alphaMode ?? DEFAULTS.alphaMode,
     alphaCutoff: slot.alphaCutoff ?? DEFAULTS.alphaCutoff,
@@ -121,6 +122,7 @@ export function slotFromNode(node: SceneNode): SurfaceSlot {
     emissiveAssetId: node.emissiveAssetId,
     aoAssetId: node.aoAssetId,
     shader: node.shader,
+    shaderParams: (node.capabilities?.__materialShaderParams as Record<string, unknown> | undefined) ?? undefined,
     particleBlend: node.particleBlend,
     normalScale: node.normalScale,
     alphaMode: node.alphaMode,
@@ -150,10 +152,11 @@ export function applySlot(material: Material, slot: PbrSlot): Material {
     const shaderId = surface.shader.slice('custom:'.length)
     const record = useCodeAssetStore.getState().assets[shaderId]
     if (record?.kind === 'shader' && record.compiledShader?.definition) {
-      const key = `${shaderId}:${record.updatedAt}`
+      const paramsSig = surface.shaderParams ? JSON.stringify(surface.shaderParams) : ''
+      const key = `${shaderId}:${record.updatedAt}:${paramsSig}`
       let next = material
       if (material.userData?.t3dCustomShaderKey !== key) {
-        const built = buildMaterialFromShader(record.compiledShader.definition)
+        const built = buildMaterialFromShader(record.compiledShader.definition, surface.shaderParams)
         next = built.material
         next.name = material.name
         const token = materialSlotToken(material)

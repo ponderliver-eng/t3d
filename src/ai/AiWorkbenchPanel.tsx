@@ -1,10 +1,15 @@
-import { useEffect, useRef, useState } from 'react'
-import { Bot, Check, Copy, Download, Loader2, RotateCcw, Send, Settings, Sparkles, Square, Trash2, Upload, X } from 'lucide-react'
+import { useEffect, useRef, useState, type DragEvent } from 'react'
+import { Bot, Box, Camera, Check, Copy, Download, FileBox, FileCode2, Loader2, RotateCcw, Send, Settings, Sparkles, Square, Trash2, Upload, Wand2, X } from 'lucide-react'
 import { createCheckpoint } from '../core/project/checkpoints'
 import { useManagerModalStore } from '../core/project/ProjectManagerModal'
+import { openCodeAssetModal } from '../core/codeAssets/CodeAssetModal'
 import { useCodeAssetStore } from '../core/codeAssets/workspace'
+import { captureMainViewport } from '../core/preview/offscreenPreview'
+import { ASSET_MIME, NODE_MIME } from '../editor/assets/import'
+import { CLIP_MIME } from '../editor/animation/playback'
+import { useAssetStore } from '../editor/assets/library'
 import { useEditorStore } from '../editor/scene/store'
-import { useAgentStore } from './agentLoop'
+import { useAgentStore, type AiRefItem } from './agentLoop'
 import { parseImportedAiHistory, serializeAiHistoryForExport } from './historyStorage'
 
 export default function AiWorkbenchPanel() {
@@ -16,6 +21,10 @@ export default function AiWorkbenchPanel() {
   const turns = useAgentStore((s) => s.turns)
   const pendingAttachmentImage = useAgentStore((s) => s.pendingAttachmentImage)
   const setPendingAttachmentImage = useAgentStore((s) => s.setPendingAttachmentImage)
+  const pendingRefs = useAgentStore((s) => s.pendingRefs)
+  const addPendingRef = useAgentStore((s) => s.addPendingRef)
+  const removePendingRef = useAgentStore((s) => s.removePendingRef)
+  const steerQueue = useAgentStore((s) => s.steerQueue)
   const streamingText = useAgentStore((s) => s.streamingText)
   const providers = useAgentStore((s) => s.providers)
   const activeProviderId = useAgentStore((s) => s.activeProviderId)
@@ -32,14 +41,17 @@ export default function AiWorkbenchPanel() {
   const selection = useEditorStore((s) => s.selection)
   const nodes = useEditorStore((s) => s.nodes)
   const codeAssets = useCodeAssetStore((s) => s.assets)
+  const assets = useAssetStore((s) => s.assets)
 
   const [input, setInput] = useState('')
+  const [droppingToChat, setDroppingToChat] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [editBaseUrl, setEditBaseUrl] = useState('')
   const [editModel, setEditModel] = useState('')
   const [editApiKey, setEditApiKey] = useState('')
   const scrollRef = useRef<HTMLDivElement | null>(null)
   const importInputRef = useRef<HTMLInputElement | null>(null)
+  const dragDepthRef = useRef(0)
   const [elapsedMs, setElapsedMs] = useState(0)
   const [copiedTurnId, setCopiedTurnId] = useState<string | null>(null)
 
@@ -117,30 +129,43 @@ export default function AiWorkbenchPanel() {
   const activeProvider = providers.find((p) => p.id === activeProviderId)
   const selectedNodes = selection.map((id) => nodes[id]).filter(Boolean)
 
+  const canSend = Boolean(input.trim() || pendingAttachmentImage)
+
+  const handleCaptureViewport = () => {
+    const dataUrl = captureMainViewport({ mimeType: 'image/jpeg', quality: 0.86 })
+    if (!dataUrl) {
+      useEditorStore.getState().notify('当前无法获取视口画面')
+      return
+    }
+    setPendingAttachmentImage(dataUrl)
+  }
+
   const handleSend = () => {
     const trimmed = input.trim()
-    if (!trimmed || status !== 'idle') return
-    if (trimmed === '/diagnose') {
-      setInput('')
-      useManagerModalStore.getState().openModal('diagnose')
-      return
-    }
-    if (trimmed === '/pack') {
-      setInput('')
-      useManagerModalStore.getState().openModal('packs')
-      return
-    }
-    if (trimmed === '/checkpoint') {
-      setInput('')
-      void createCheckpoint(`手动快照 ${new Date().toLocaleTimeString()}`, true).then(() => {
-        useEditorStore.getState().notify('已创建里程碑快照')
-      })
-      return
-    }
-    if (trimmed === '/playtest') {
-      setInput('')
-      void sendPrompt('请启动试玩探针跑一次冒烟测试（playtest__run_smoke）并做工程体检（query__project_diagnose），汇报结果。')
-      return
+    if (!trimmed && !pendingAttachmentImage) return
+    if (status === 'idle') {
+      if (trimmed === '/diagnose') {
+        setInput('')
+        useManagerModalStore.getState().openModal('diagnose')
+        return
+      }
+      if (trimmed === '/pack') {
+        setInput('')
+        useManagerModalStore.getState().openModal('packs')
+        return
+      }
+      if (trimmed === '/checkpoint') {
+        setInput('')
+        void createCheckpoint(`手动快照 ${new Date().toLocaleTimeString()}`, true).then(() => {
+          useEditorStore.getState().notify('已创建里程碑快照')
+        })
+        return
+      }
+      if (trimmed === '/playtest') {
+        setInput('')
+        void sendPrompt('请启动试玩探针跑一次冒烟测试（playtest__run_smoke）并做工程体检（query__project_diagnose），汇报结果。')
+        return
+      }
     }
     setInput('')
     void sendPrompt(trimmed)
@@ -152,11 +177,24 @@ export default function AiWorkbenchPanel() {
   const mentionCandidates = atQuery === null
     ? []
     : [
-        ...Object.values(nodes).map(n => ({ id: n.id, label: n.name, kind: '节点' })),
-        ...Object.values(codeAssets).map(c => ({ id: c.id, label: c.name, kind: c.kind === 'shader' ? '着色器' : '脚本' })),
+        ...Object.values(nodes).map(n => ({ refKind: 'node' as const, id: n.id, label: n.name, kind: '节点', subKind: n.kind })),
+        ...Object.values(codeAssets).map(c => ({
+          refKind: c.kind as 'script' | 'shader',
+          id: c.id,
+          label: c.name,
+          kind: c.kind === 'shader' ? '着色器' : '脚本',
+          subKind: c.kind,
+        })),
+        ...Object.values(assets).map(a => ({
+          refKind: 'asset' as const,
+          id: a.id,
+          label: a.name,
+          kind: a.kind,
+          subKind: a.kind,
+        })),
       ]
         .filter(item => !atQuery || item.label.toLowerCase().includes(atQuery))
-        .slice(0, 6)
+        .slice(0, 8)
   const slashCommands = [
     { cmd: '/playtest', desc: '运行冒烟试玩与体检' },
     { cmd: '/diagnose', desc: '打开体检与性能预算看板' },
@@ -164,8 +202,119 @@ export default function AiWorkbenchPanel() {
     { cmd: '/checkpoint', desc: '立即保存里程碑快照' },
   ].filter(item => item.cmd.startsWith(input.toLowerCase()))
 
+  const acceptsDrop = (e: DragEvent) => {
+    const types = [...e.dataTransfer.types]
+    return types.includes(ASSET_MIME) || types.includes(NODE_MIME) || types.includes(CLIP_MIME) || types.includes('Files')
+  }
+
+  const handleDropToChat = (e: DragEvent) => {
+    dragDepthRef.current = 0
+    setDroppingToChat(false)
+    if (!acceptsDrop(e)) return
+    e.preventDefault()
+
+    const nodeId = e.dataTransfer.getData(NODE_MIME)
+    if (nodeId) {
+      const node = useEditorStore.getState().nodes[nodeId]
+      if (node) {
+        addPendingRef({ kind: 'node', id: node.id, label: node.name, subKind: node.kind })
+      }
+      return
+    }
+
+    const assetKey = e.dataTransfer.getData(ASSET_MIME)
+    if (assetKey) {
+      if (assetKey.startsWith('code:script:') || assetKey.startsWith('code:shader:')) {
+        const [, kind, id] = assetKey.split(':')
+        const rec = useCodeAssetStore.getState().assets[id]
+        if (rec) {
+          addPendingRef({
+            kind: kind === 'shader' ? 'shader' : 'script',
+            id: rec.id,
+            label: rec.name,
+            subKind: rec.relativePath,
+          })
+        }
+        return
+      }
+      const asset = useAssetStore.getState().assets[assetKey]
+      if (asset) {
+        addPendingRef({ kind: 'asset', id: asset.id, label: asset.name, subKind: asset.kind })
+      }
+      return
+    }
+
+    const clipRaw = e.dataTransfer.getData(CLIP_MIME)
+    if (clipRaw) {
+      try {
+        const parsed = JSON.parse(clipRaw) as { assetId?: string; clip?: string }
+        if (parsed.assetId) {
+          const asset = useAssetStore.getState().assets[parsed.assetId]
+          if (asset) {
+            addPendingRef({
+              kind: 'asset',
+              id: asset.id,
+              label: parsed.clip ? `${asset.name}:${parsed.clip}` : asset.name,
+              subKind: asset.kind,
+            })
+          }
+        }
+      } catch {
+        // ignore invalid clip payload
+      }
+      return
+    }
+
+    const file = [...e.dataTransfer.files].find((f) => f.type.startsWith('image/'))
+    if (file) {
+      const reader = new FileReader()
+      reader.onload = () => {
+        if (typeof reader.result === 'string') setPendingAttachmentImage(reader.result)
+      }
+      reader.readAsDataURL(file)
+    }
+  }
+
+  const locateRef = (r: AiRefItem) => {
+    if (r.kind === 'node') {
+      if (useEditorStore.getState().nodes[r.id]) {
+        useEditorStore.getState().setSelection([r.id])
+        useEditorStore.getState().requestFocus()
+      }
+      return
+    }
+    if (r.kind === 'script' || r.kind === 'shader') {
+      if (useCodeAssetStore.getState().assets[r.id]) {
+        openCodeAssetModal(r.kind, r.id)
+      }
+      return
+    }
+    if (r.kind === 'asset' && useAssetStore.getState().assets[r.id]) {
+      useEditorStore.getState().inspectAsset(r.id)
+    }
+  }
+
   return (
     <aside
+      onDragEnter={(e) => {
+        if (!acceptsDrop(e)) return
+        e.preventDefault()
+        dragDepthRef.current += 1
+        setDroppingToChat(true)
+      }}
+      onDragOver={(e) => {
+        if (!acceptsDrop(e)) return
+        e.preventDefault()
+        const allowed = e.dataTransfer.effectAllowed
+        e.dataTransfer.dropEffect = allowed === 'move' ? 'move' : 'copy'
+        if (!droppingToChat) setDroppingToChat(true)
+      }}
+      onDragLeave={(e) => {
+        if (!acceptsDrop(e)) return
+        dragDepthRef.current = Math.max(0, dragDepthRef.current - 1)
+        if (dragDepthRef.current === 0) setDroppingToChat(false)
+      }}
+      onDrop={handleDropToChat}
       style={{
         width: '360px',
         flexShrink: 0,
@@ -402,7 +551,24 @@ export default function AiWorkbenchPanel() {
             {turn.refs && turn.refs.length > 0 && (
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
                 {turn.refs.map((r) => (
-                  <span key={r.id} style={refPillStyle}>@{r.label}</span>
+                  <button
+                    key={`${r.kind}:${r.id}`}
+                    type="button"
+                    onClick={() => locateRef(r)}
+                    title="点击定位或打开该对象"
+                    style={{
+                      ...refPillStyle,
+                      ...refKindColors(r.kind),
+                      cursor: 'pointer',
+                      border: 'none',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                    }}
+                  >
+                    <RefKindIcon kind={r.kind} />
+                    <span>{r.kind === 'node' ? `@${r.label}` : `#${r.label}`}</span>
+                  </button>
                 ))}
               </div>
             )}
@@ -608,6 +774,22 @@ export default function AiWorkbenchPanel() {
 
       {/* 底部输入区 */}
       <div style={{ padding: '8px 10px', borderTop: '1px solid rgba(255,255,255,0.08)', background: '#1f1f23' }}>
+        {droppingToChat && (
+          <div
+            style={{
+              marginBottom: 6,
+              padding: '6px 10px',
+              borderRadius: 4,
+              border: '1px dashed #60a5fa',
+              background: 'rgba(59,130,246,0.14)',
+              color: '#93c5fd',
+              fontSize: '11px',
+              textAlign: 'center',
+            }}
+          >
+            松开即可将节点 / 脚本 / 着色器 / 资产附加到当前对话
+          </div>
+        )}
         {pendingAttachmentImage && (
           <div style={{ position: 'relative', marginBottom: 6, borderRadius: 4, overflow: 'hidden', border: '1px solid rgba(248,113,113,0.4)' }}>
             <img src={pendingAttachmentImage} alt="待发送视口批注" style={{ width: '100%', maxHeight: 96, objectFit: 'cover', display: 'block' }} />
@@ -635,22 +817,56 @@ export default function AiWorkbenchPanel() {
             </button>
           </div>
         )}
-        {selectedNodes.length > 0 && (
+        {(pendingRefs.length > 0 || selectedNodes.length > 0) && (
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px', marginBottom: '6px' }}>
-            {selectedNodes.slice(0, 4).map((n) => (
-              <button
-                key={n.id}
-                type="button"
-                onClick={() => setInput((prev) => `${prev}${prev && !prev.endsWith(' ') ? ' ' : ''}@${n.name} `)}
-                title="点击插入引用到输入框"
-                style={{ ...refPillStyle, cursor: 'pointer', border: 'none' }}
+            {pendingRefs.map((r) => (
+              <span
+                key={`pending:${r.kind}:${r.id}`}
+                style={{
+                  ...refPillStyle,
+                  ...refKindColors(r.kind),
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                }}
+                title={r.subKind ? `${r.label} (${r.subKind})` : r.label}
               >
-                @{n.name}
-              </button>
+                <RefKindIcon kind={r.kind} />
+                <span>{r.kind === 'node' ? `@${r.label}` : `#${r.label}`}</span>
+                <button
+                  type="button"
+                  title="移除引用"
+                  onClick={() => removePendingRef(r.kind, r.id)}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    padding: 0,
+                    marginLeft: '1px',
+                    border: 'none',
+                    background: 'transparent',
+                    color: 'inherit',
+                    cursor: 'pointer',
+                    opacity: 0.75,
+                  }}
+                >
+                  <X size={10} />
+                </button>
+              </span>
             ))}
-            {selectedNodes.length > 4 && (
-              <span style={refPillStyle}>+{selectedNodes.length - 4}</span>
-            )}
+            {selectedNodes
+              .filter((n) => !pendingRefs.some((r) => r.kind === 'node' && r.id === n.id))
+              .slice(0, 4)
+              .map((n) => (
+                <button
+                  key={n.id}
+                  type="button"
+                  onClick={() => setInput((prev) => `${prev}${prev && !prev.endsWith(' ') ? ' ' : ''}@${n.name} `)}
+                  title="当前视口选中节点（点击插入名称）"
+                  style={{ ...refPillStyle, cursor: 'pointer', border: 'none', opacity: 0.85 }}
+                >
+                  @{n.name}
+                </button>
+              ))}
           </div>
         )}
         <div style={{ position: 'relative' }}>
@@ -676,14 +892,20 @@ export default function AiWorkbenchPanel() {
             <div style={popupMenuStyle}>
               {mentionCandidates.map(item => (
                 <button
-                  key={`${item.kind}:${item.id}`}
+                  key={`${item.refKind}:${item.id}`}
                   type="button"
                   style={popupItemStyle}
                   onClick={() => {
-                    setInput(prev => prev.replace(/@[^\s@]*$/, `@${item.label} `))
+                    setInput(prev => prev.replace(/@[^\s@]*$/, `${item.refKind === 'node' ? '@' : '#'}${item.label} `))
+                    addPendingRef({
+                      kind: item.refKind,
+                      id: item.id,
+                      label: item.label,
+                      subKind: item.subKind,
+                    })
                   }}
                 >
-                  <span style={{ color: '#e4e4e7' }}>@{item.label}</span>
+                  <span style={{ color: '#e4e4e7' }}>{item.refKind === 'node' ? '@' : '#'}{item.label}</span>
                   <span style={{ color: '#71717a', marginLeft: 'auto' }}>{item.kind}</span>
                 </button>
               ))}
@@ -693,7 +915,11 @@ export default function AiWorkbenchPanel() {
           <textarea
             rows={2}
             value={input}
-            placeholder="输入需求，@ 引用节点/脚本，/ 触发快捷指令（Enter 发送）"
+            placeholder={
+              status === 'idle'
+                ? '输入需求，支持截图/Ctrl+V贴图/拖入资源，或 @ 引用（Enter 发送）'
+                : 'AI 运行中，可直接输入纠偏/插话指令（Enter 发送，将在当前步骤后注入）'
+            }
             onChange={(e) => setInput(e.target.value)}
             onPaste={(e) => {
               const items = e.clipboardData?.items
@@ -731,43 +957,86 @@ export default function AiWorkbenchPanel() {
               lineHeight: 1.4,
             }}
           />
+          <button
+            type="button"
+            onClick={handleCaptureViewport}
+            title="截取当前 3D 视口给 AI 分析"
+            style={{
+              height: '34px',
+              padding: '0 8px',
+              borderRadius: '4px',
+              border: '1px solid rgba(255,255,255,0.14)',
+              background: '#27272a',
+              color: '#d4d4d8',
+              cursor: 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+            }}
+          >
+            <Camera size={13} />
+          </button>
           {status === 'idle' ? (
             <button
               type="button"
               onClick={handleSend}
-              disabled={!input.trim()}
+              disabled={!canSend}
               title="发送"
               style={{
                 height: '34px',
                 padding: '0 10px',
                 borderRadius: '4px',
                 border: 'none',
-                background: input.trim() ? '#2563eb' : '#27272a',
+                background: canSend ? '#2563eb' : '#27272a',
                 color: '#fff',
-                cursor: input.trim() ? 'pointer' : 'default',
+                cursor: canSend ? 'pointer' : 'default',
               }}
             >
               <Send size={13} />
             </button>
           ) : (
-            <button
-              type="button"
-              onClick={() => void abort()}
-              title="安全停止"
-              style={{
-                height: '34px',
-                padding: '0 10px',
-                borderRadius: '4px',
-                border: '1px solid rgba(239,68,68,0.5)',
-                background: 'rgba(239,68,68,0.18)',
-                color: '#fca5a5',
-                cursor: 'pointer',
-              }}
-            >
-              <Square size={12} />
-            </button>
+            <div style={{ display: 'flex', gap: '4px' }}>
+              <button
+                type="button"
+                onClick={handleSend}
+                disabled={!canSend}
+                title="运行中插话纠偏 (Steer)"
+                style={{
+                  height: '34px',
+                  padding: '0 9px',
+                  borderRadius: '4px',
+                  border: 'none',
+                  background: canSend ? '#d97706' : '#27272a',
+                  color: '#fff',
+                  cursor: canSend ? 'pointer' : 'default',
+                }}
+              >
+                <Send size={13} />
+              </button>
+              <button
+                type="button"
+                onClick={() => void abort()}
+                title="安全停止"
+                style={{
+                  height: '34px',
+                  padding: '0 9px',
+                  borderRadius: '4px',
+                  border: '1px solid rgba(239,68,68,0.5)',
+                  background: 'rgba(239,68,68,0.18)',
+                  color: '#fca5a5',
+                  cursor: 'pointer',
+                }}
+              >
+                <Square size={12} />
+              </button>
+            </div>
           )}
           </div>
+          {steerQueue.length > 0 && (
+            <div style={{ marginTop: 4, fontSize: 10, color: '#fbbf24' }}>
+              已排队 {steerQueue.length} 条插话，将在当前步骤完成后注入 AI 上下文…
+            </div>
+          )}
         </div>
       </div>
     </aside>
@@ -849,4 +1118,18 @@ const popupItemStyle: React.CSSProperties = {
   fontSize: 11,
   cursor: 'pointer',
   textAlign: 'left',
+}
+
+function RefKindIcon({ kind }: { kind: AiRefItem['kind'] }) {
+  if (kind === 'node') return <Box size={11} />
+  if (kind === 'script') return <FileCode2 size={11} />
+  if (kind === 'shader') return <Wand2 size={11} />
+  return <FileBox size={11} />
+}
+
+function refKindColors(kind: AiRefItem['kind']): React.CSSProperties {
+  if (kind === 'script') return { background: 'rgba(56,189,248,0.18)', color: '#7dd3fc' }
+  if (kind === 'shader') return { background: 'rgba(192,132,252,0.18)', color: '#d8b4fe' }
+  if (kind === 'asset') return { background: 'rgba(52,211,153,0.18)', color: '#6ee7b7' }
+  return { background: 'rgba(59,130,246,0.2)', color: '#93c5fd' }
 }

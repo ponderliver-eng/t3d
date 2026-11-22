@@ -65,6 +65,7 @@ export interface PbrSlot {
   aoAssetId: string | null
   materialAssetId?: string | null
   shader?: SurfaceShader
+  shaderParams?: Record<string, unknown>
   normalScale?: number
   alphaMode?: AlphaMode
   alphaCutoff?: number

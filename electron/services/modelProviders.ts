@@ -197,6 +197,12 @@ async function callOpenAiCompatible(
   return { text: fullText, toolCalls, usage, model }
 }
 
+function parseDataUrlImage(dataUrl: string): { mediaType: string; data: string } | null {
+  const match = /^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/.exec(dataUrl)
+  if (!match) return null
+  return { mediaType: match[1], data: match[2] }
+}
+
 async function callAnthropic(
   baseUrl: string,
   apiKey: string,
@@ -211,7 +217,21 @@ async function callAnthropic(
 
   for (const msg of req.messages) {
     if (msg.role === 'user') {
-      messages.push({ role: 'user', content: msg.text })
+      if (msg.images && msg.images.length > 0) {
+        const blocks: unknown[] = [{ type: 'text', text: msg.text || '请查看图片' }]
+        for (const img of msg.images) {
+          const parsed = parseDataUrlImage(img)
+          if (parsed) {
+            blocks.push({
+              type: 'image',
+              source: { type: 'base64', media_type: parsed.mediaType, data: parsed.data },
+            })
+          }
+        }
+        messages.push({ role: 'user', content: blocks })
+      } else {
+        messages.push({ role: 'user', content: msg.text })
+      }
     } else if (msg.role === 'assistant') {
       const blocks: unknown[] = []
       if (msg.text) blocks.push({ type: 'text', text: msg.text })
@@ -301,7 +321,14 @@ async function callGemini(
 
   for (const msg of req.messages) {
     if (msg.role === 'user') {
-      contents.push({ role: 'user', parts: [{ text: msg.text }] })
+      const parts: unknown[] = [{ text: msg.text || '请查看图片' }]
+      for (const img of msg.images ?? []) {
+        const parsed = parseDataUrlImage(img)
+        if (parsed) {
+          parts.push({ inlineData: { mimeType: parsed.mediaType, data: parsed.data } })
+        }
+      }
+      contents.push({ role: 'user', parts })
     } else if (msg.role === 'assistant') {
       const parts: unknown[] = []
       if (msg.text) parts.push({ text: msg.text })
