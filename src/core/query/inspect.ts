@@ -1,5 +1,6 @@
 import { CAPABILITIES, capabilityEnabled, type CapabilityManifest } from '../../capabilities/registry'
-import { useAssetStore } from '../../editor/assets/library'
+import { ASSETS_ROOT, normalizeDir } from '../../editor/assets/folders'
+import { assetDirectory, useAssetStore } from '../../editor/assets/library'
 import { useEditorStore } from '../../editor/scene/store'
 import type { SceneNode } from '../../editor/scene/types'
 import { listGameplayPacks, tableRows } from '../../gameplay/registry'
@@ -17,16 +18,25 @@ export interface OutlineNodeItem {
 
 export function queryProjectOverview() {
   const state = useEditorStore.getState()
-  const assets = Object.values(useAssetStore.getState().assets)
+  const assetState = useAssetStore.getState()
+  const assets = Object.values(assetState.assets)
 
   const assetCounts: Record<string, number> = {}
+  const folderCounts: Record<string, number> = {}
+  for (const f of assetState.folders) {
+    const dir = normalizeDir(f)
+    if (!(dir in folderCounts)) folderCounts[dir] = 0
+  }
   const scenes: Array<{ id: string; name: string; active: boolean }> = []
   for (const asset of assets) {
     assetCounts[asset.kind] = (assetCounts[asset.kind] ?? 0) + 1
+    const dir = assetDirectory(asset.id, assetState.assetDirs)
+    folderCounts[dir] = (folderCounts[dir] ?? 0) + 1
     if (asset.kind === 'scene') {
       scenes.push({ id: asset.id, name: asset.name, active: asset.id === state.activeSceneId })
     }
   }
+  if (!(ASSETS_ROOT in folderCounts)) folderCounts[ASSETS_ROOT] = 0
 
   const enabledCapabilities = CAPABILITIES
     .filter((c) => capabilityEnabled(state.capabilities, c.id))
@@ -41,6 +51,9 @@ export function queryProjectOverview() {
     enabledCapabilities,
     enabledGameplayPacks: [...state.gameplayPacks],
     assetCounts,
+    assetFolders: Object.entries(folderCounts)
+      .sort(([a], [b]) => a.localeCompare(b, 'zh'))
+      .map(([path, count]) => ({ path, count })),
     viewportStats: {
       triangles: state.viewportStats.triangles,
       calls: state.viewportStats.calls,

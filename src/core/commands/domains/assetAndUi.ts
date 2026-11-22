@@ -1,3 +1,4 @@
+import { ASSETS_ROOT, normalizeDir } from '../../../editor/assets/folders'
 import { useAssetStore } from '../../../editor/assets/library'
 import { useEditorStore } from '../../../editor/scene/store'
 import type { PbrSlot, Vec3 } from '../../../editor/scene/types'
@@ -11,12 +12,13 @@ interface CreateMaterialParams {
   roughness: number
   metalness: number
   shaderId?: string
+  folder?: string
 }
 
-const createMaterialCmd: CommandDef<CreateMaterialParams, { assetId: string; name: string }> = {
+const createMaterialCmd: CommandDef<CreateMaterialParams, { assetId: string; name: string; folder: string }> = {
   id: 'asset.createMaterial',
   title: '新建材质资产',
-  description: '创建一个新的 PBR 材质资产并加入资产库（可选直接绑定自定义着色器 shaderId）',
+  description: '创建一个新的 PBR 材质资产并加入资产库（可选直接绑定自定义着色器 shaderId 与存放目录 folder）',
   risk: 'safe',
   params: {
     type: 'object',
@@ -26,11 +28,13 @@ const createMaterialCmd: CommandDef<CreateMaterialParams, { assetId: string; nam
       roughness: { type: 'number', default: 0.65, min: 0, max: 1, label: '粗糙度' },
       metalness: { type: 'number', default: 0.04, min: 0, max: 1, label: '金属度' },
       shaderId: { type: 'string', default: '', label: '自定义着色器 ID（可选）', optional: true },
+      folder: { type: 'string', default: 'Assets/Materials', label: '存放目录（如 Assets/Materials/Props）', optional: true },
     },
   },
   run(_ctx, p) {
     const assetId = crypto.randomUUID()
     const cleanShaderId = typeof p.shaderId === 'string' ? p.shaderId.trim() : ''
+    const targetDir = normalizeDir(p.folder?.trim() || 'Assets/Materials')
     const slot: PbrSlot = {
       name: p.name,
       color: p.color,
@@ -47,16 +51,19 @@ const createMaterialCmd: CommandDef<CreateMaterialParams, { assetId: string; nam
       aoAssetId: null,
       ...(cleanShaderId ? { shader: `custom:${cleanShaderId}` as const } : {}),
     }
-    useAssetStore.getState().add({
+    const store = useAssetStore.getState()
+    ensureAssetFolderPath(targetDir)
+    store.add({
       id: assetId,
       name: p.name,
       kind: 'material',
       slot,
     })
+    store.place(assetId, targetDir)
     return {
       ok: true,
-      value: { assetId, name: p.name },
-      changed: { assetsChanged: [assetId], summary: `新建材质资产 ${p.name}` },
+      value: { assetId, name: p.name, folder: targetDir },
+      changed: { assetsChanged: [assetId], summary: `新建材质资产 ${p.name} (${targetDir})` },
     }
   },
 }
@@ -171,12 +178,13 @@ interface CreateUiDocParams {
   document: Record<string, unknown>
   mountToScene?: boolean
   layer?: UiLayer
+  folder?: string
 }
 
-const createUiDocCmd: CommandDef<CreateUiDocParams, { assetId: string; name: string; mounted?: boolean }> = {
+const createUiDocCmd: CommandDef<CreateUiDocParams, { assetId: string; name: string; mounted?: boolean; folder: string }> = {
   id: 'ui.createDocument',
   title: '新建界面文档资产',
-  description: '创建一个 UiDocument 界面资产（支持可选 mountToScene 直接挂载到当前场景）',
+  description: '创建一个 UiDocument 界面资产（支持可选 mountToScene 挂载到当前场景与存放目录 folder）',
   risk: 'safe',
   params: {
     type: 'object',
@@ -191,17 +199,22 @@ const createUiDocCmd: CommandDef<CreateUiDocParams, { assetId: string; name: str
         optional: true,
         label: '挂载层级',
       },
+      folder: { type: 'string', default: 'Assets/UI', optional: true, label: '存放目录（如 Assets/UI/Menus）' },
     },
   },
   run(_ctx, p) {
     const assetId = crypto.randomUUID()
     const doc = normalizeUiDocument(p.document)
-    useAssetStore.getState().add({
+    const targetDir = normalizeDir(p.folder?.trim() || 'Assets/UI')
+    const store = useAssetStore.getState()
+    ensureAssetFolderPath(targetDir)
+    store.add({
       id: assetId,
       name: p.name,
       kind: 'ui',
       document: doc,
     })
+    store.place(assetId, targetDir)
     if (p.mountToScene) {
       useEditorStore.getState().mountScreen(assetId, [0, 0, 0])
       if (p.layer) {
@@ -217,7 +230,7 @@ const createUiDocCmd: CommandDef<CreateUiDocParams, { assetId: string; name: str
     }
     return {
       ok: true,
-      value: { assetId, name: p.name, mounted: Boolean(p.mountToScene) },
+      value: { assetId, name: p.name, mounted: Boolean(p.mountToScene), folder: targetDir },
       changed: {
         assetsChanged: [assetId],
         summary: `新建界面文档 ${p.name}${p.mountToScene ? ' 并挂载到场景' : ''}`,
@@ -324,11 +337,98 @@ const mountScreenCmd: CommandDef<MountScreenParams, { assetId: string; nodeId?: 
   },
 }
 
+function ensureAssetFolderPath(rawPath: string): string {
+  const normalized = normalizeDir(rawPath)
+  if (normalized === ASSETS_ROOT) return ASSETS_ROOT
+  const parts = normalized.split('/')
+  const toAdd: string[] = []
+  let cur = parts[0] || ASSETS_ROOT
+  for (let i = 1; i < parts.length; i += 1) {
+    cur = `${cur}/${parts[i]}`
+    toAdd.push(cur)
+  }
+  const store = useAssetStore.getState()
+  const merged = [...new Set([...store.folders.map(normalizeDir), ...toAdd])].filter((f) => f !== ASSETS_ROOT)
+  if (merged.length !== store.folders.length) {
+    useAssetStore.setState((s) => ({ folders: merged, revision: s.revision + 1 }))
+  }
+  return normalized
+}
+
+interface CreateFolderParams {
+  path: string
+}
+
+const createFolderCmd: CommandDef<CreateFolderParams, { path: string }> = {
+  id: 'asset.createFolder',
+  title: '创建资源目录',
+  description: '在工程资源库中创建指定路径的目录（自动补全多级父目录，如 Assets/Materials/Enemies）',
+  risk: 'safe',
+  params: {
+    type: 'object',
+    fields: {
+      path: { type: 'string', minLength: 1, default: 'Assets/Props', label: '目录路径' },
+    },
+  },
+  run(_ctx, p) {
+    const dir = ensureAssetFolderPath(p.path)
+    return {
+      ok: true,
+      value: { path: dir },
+      changed: { summary: `创建资源目录 ${dir}` },
+    }
+  },
+}
+
+interface MoveToFolderParams {
+  assetIds: string[]
+  folder: string
+}
+
+const moveToFolderCmd: CommandDef<MoveToFolderParams, { folder: string; movedIds: string[] }> = {
+  id: 'asset.moveToFolder',
+  title: '移动资产到目录',
+  description: '将指定的资产批量归类移动到指定资源目录（目录不存在时自动创建）',
+  risk: 'safe',
+  params: {
+    type: 'object',
+    fields: {
+      assetIds: {
+        type: 'list',
+        item: { type: 'ref', target: 'asset', label: '资产 ID' },
+        label: '资产 ID 列表',
+      },
+      folder: { type: 'string', minLength: 1, default: 'Assets', label: '目标目录路径' },
+    },
+  },
+  run(_ctx, p) {
+    const targetDir = ensureAssetFolderPath(p.folder)
+    const store = useAssetStore.getState()
+    const movedIds: string[] = []
+    for (const id of p.assetIds ?? []) {
+      if (store.assets[id]) {
+        store.place(id, targetDir)
+        movedIds.push(id)
+      }
+    }
+    if (movedIds.length === 0) {
+      return { ok: false, code: 'asset.notFound', message: '未找到任何可移动的有效资产 ID' }
+    }
+    return {
+      ok: true,
+      value: { folder: targetDir, movedIds },
+      changed: { assetsChanged: movedIds, summary: `将 ${movedIds.length} 个资产移入 ${targetDir}` },
+    }
+  },
+}
+
 export function registerAssetAndUiCommands(): () => void {
   const unsubs = [
     commandBus.register(createMaterialCmd),
     commandBus.register(assignMaterialCmd),
     commandBus.register(renameAssetCmd),
+    commandBus.register(createFolderCmd),
+    commandBus.register(moveToFolderCmd),
     commandBus.register(createUiDocCmd),
     commandBus.register(updateUiDocCmd),
     commandBus.register(mountScreenCmd),
