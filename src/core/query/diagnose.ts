@@ -1,6 +1,9 @@
 import { capabilityEnabled } from '../../capabilities/registry'
 import { useAssetStore } from '../../editor/assets/library'
 import { useEditorStore } from '../../editor/scene/store'
+import type { UiNode } from '../../runtime/ui/spec'
+import { useCodeAssetStore } from '../codeAssets/workspace'
+import { getInputActionMap } from '../input/actionMap'
 import { readMainRenderMetrics } from '../preview/offscreenPreview'
 
 export type DiagnoseSeverity = 'error' | 'warning' | 'info'
@@ -131,6 +134,178 @@ export function diagnoseProject(budget: PerformanceBudget = DEFAULT_PERFORMANCE_
             hint: `调用 gameplay.setPackEnabled 开启 "${packId}"`,
           })
         }
+      }
+    }
+  }
+
+  // 跨层断链体检 1：脚本编译错误、节点挂载与 ref 参数空缺
+  const codeAssets = Object.values(useCodeAssetStore.getState().assets)
+  const scriptAssets = codeAssets.filter((a) => a.kind === 'script')
+  const scriptById = new Map(scriptAssets.map((s) => [s.id, s]))
+
+  for (const script of scriptAssets) {
+    if (!script.ok) {
+      issues.push({
+        severity: 'error',
+        category: 'playability',
+        target: script.id,
+        message: `脚本 "${script.relativePath}" 编译失败（${script.diagnostics[0]?.message ?? '存在语法或结构错误'}）`,
+        hint: '调用 query__code_read 查看源码并用 script.update / script.patch 修复',
+      })
+    }
+  }
+
+  const mountedScriptIds = new Set<string>()
+  for (const node of nodes) {
+    const projectScripts = node.gameplay?.packs?.__project__ as Record<string, Record<string, unknown>> | undefined
+    if (!projectScripts || typeof projectScripts !== 'object') continue
+    for (const [scriptId, rawConfig] of Object.entries(projectScripts)) {
+      if (!rawConfig || typeof rawConfig !== 'object') continue
+      if (rawConfig.__enabled === false) continue
+      mountedScriptIds.add(scriptId)
+      const scriptRecord = scriptById.get(scriptId)
+      if (!scriptRecord) {
+        issues.push({
+          severity: 'error',
+          category: 'reference',
+          target: node.id,
+          message: `节点 "${node.name}" 挂载了不存在的脚本 "${scriptId}"`,
+          hint: '检查 scriptId 或从节点移除无效脚本',
+        })
+        continue
+      }
+      const paramSchema = scriptRecord.compiledScript?.behavior?.params
+      if (paramSchema && typeof paramSchema === 'object') {
+        for (const [paramKey, rawDef] of Object.entries(paramSchema)) {
+          if (!rawDef || typeof rawDef !== 'object') continue
+          const def = rawDef as { type?: string; target?: string; optional?: boolean; default?: unknown }
+          if (def.type !== 'ref') continue
+          const val = rawConfig[paramKey] ?? def.default
+          const strVal = typeof val === 'string' ? val.trim() : ''
+          if (!strVal) {
+            if (!def.optional) {
+              issues.push({
+                severity: 'warning',
+                category: 'reference',
+                target: node.id,
+                message: `节点 "${node.name}" 上的脚本 "${scriptId}" 缺少引用参数 "${paramKey}"（当前为空）`,
+                hint: `调用 script.attach 为 "${node.name}" 的 ${scriptId}.params.${paramKey} 传入有效节点或资产 ID`,
+              })
+            }
+          } else if (def.target === 'node' && !state.nodes[strVal]) {
+            issues.push({
+              severity: 'error',
+              category: 'reference',
+              target: node.id,
+              message: `节点 "${node.name}" 脚本 "${scriptId}" 的节点引用 "${paramKey}" 指向了不存在的节点 "${strVal}"`,
+              hint: `调用 script.attach 更新 ${scriptId}.params.${paramKey} 为有效的场景节点 ID`,
+            })
+          } else if (def.target === 'asset' && !assets[strVal]) {
+            issues.push({
+              severity: 'error',
+              category: 'reference',
+              target: node.id,
+              message: `节点 "${node.name}" 脚本 "${scriptId}" 的资产引用 "${paramKey}" 指向了不存在的资产 "${strVal}"`,
+              hint: `调用 script.attach 更新 ${scriptId}.params.${paramKey} 为有效的资产 ID`,
+            })
+          }
+        }
+      }
+    }
+  }
+
+  // 跨层断链体检 2：脚本中使用的输入 Action 是否已在工程输入映射中注册
+  const inputActions = getInputActionMap().actions
+  const inputActionRe = /\b(?:self|world)\.input\.(?:isPressed|justPressed|justReleased|axis1D|axis2D)\(\s*["']([^"']+)["']/g
+  const reportedMissingActions = new Set<string>()
+  for (const script of scriptAssets) {
+    if (!mountedScriptIds.has(script.id) && script.compiledScript?.kind !== 'system') continue
+    let m: RegExpExecArray | null
+    while ((m = inputActionRe.exec(script.source)) !== null) {
+      const actionName = m[1]
+      if (!inputActions[actionName] && !reportedMissingActions.has(actionName)) {
+        reportedMissingActions.add(actionName)
+        issues.push({
+          severity: 'warning',
+          category: 'playability',
+          target: script.id,
+          message: `脚本 "${script.id}" 读取了输入动作 "${actionName}"，但工程输入配置中未注册该动作`,
+          hint: `调用 input.setAction 注册 "${actionName}" 的按键映射（或改用已注册动作：${Object.keys(inputActions).join(', ')}）`,
+        })
+      }
+    }
+  }
+
+  // 跨层断链体检 3：已挂载 UI 界面中的变量绑定与按钮消息是否在脚本中有写入/监听
+  const allScriptSources = scriptAssets.map((s) => s.source).join('\n')
+  const scriptSetVars = new Set<string>()
+  const setVarRe = /\bui\.setVar\(\s*["']([^"']+)["']/g
+  let varMatch: RegExpExecArray | null
+  while ((varMatch = setVarRe.exec(allScriptSources)) !== null) {
+    scriptSetVars.add(varMatch[1])
+  }
+  const scriptEventHandlers = new Set<string>()
+  const onEventRe = /\bui\.onEvent\(\s*["']([^"']+)["']/g
+  let evMatch: RegExpExecArray | null
+  while ((evMatch = onEventRe.exec(allScriptSources)) !== null) {
+    scriptEventHandlers.add(evMatch[1])
+  }
+
+  const uiBoundVars = new Map<string, string>()
+  const uiSentMessages = new Map<string, string>()
+  const uiSelfSetVars = new Set<string>()
+  const collectUiRefs = (uiNode: UiNode, screenName: string): void => {
+    if (Array.isArray(uiNode.bindings)) {
+      for (const b of uiNode.bindings) {
+        if (b?.source?.kind === 'variable' && b.source.varId) {
+          uiBoundVars.set(b.source.varId, screenName)
+        }
+      }
+    }
+    if (uiNode.click?.kind === 'sendMessage' && uiNode.click.message) {
+      uiSentMessages.set(uiNode.click.message, screenName)
+    } else if (uiNode.click?.kind === 'setVariable' && uiNode.click.varId) {
+      uiSelfSetVars.add(uiNode.click.varId)
+    }
+    if (Array.isArray(uiNode.children)) {
+      for (const child of uiNode.children) collectUiRefs(child, screenName)
+    }
+  }
+
+  for (const node of nodes) {
+    if (node.kind === 'screen' && node.screen?.documentId) {
+      const uiAsset = assets[node.screen.documentId]
+      if (uiAsset?.kind === 'ui') {
+        collectUiRefs(uiAsset.document.root, uiAsset.name)
+      }
+    }
+  }
+
+  if (scriptAssets.length > 0) {
+    for (const [varId, uiName] of uiBoundVars.entries()) {
+      if (!scriptSetVars.has(varId) && !uiSelfSetVars.has(varId)) {
+        issues.push({
+          severity: 'warning',
+          category: 'ui',
+          target: varId,
+          message: `UI "${uiName}" 绑定了变量 "${varId}"，但没有任何脚本调用 ui.setVar("${varId}", ...) 更新它`,
+          hint: `在相关脚本中添加 self.ui.setVar("${varId}", value)（或 world.ui.setVar）`,
+        })
+      }
+    }
+    for (const [msgName, uiName] of uiSentMessages.entries()) {
+      const quotedPresent =
+        scriptEventHandlers.has(msgName) ||
+        allScriptSources.includes(`"${msgName}"`) ||
+        allScriptSources.includes(`'${msgName}'`)
+      if (!quotedPresent) {
+        issues.push({
+          severity: 'warning',
+          category: 'ui',
+          target: msgName,
+          message: `UI "${uiName}" 的按钮会发送事件 "${msgName}"，但当前没有脚本监听或处理它`,
+          hint: `在脚本中通过 self.ui.onEvent("${msgName}", () => { ... }) 或 onMessage 响应此事件`,
+        })
       }
     }
   }

@@ -295,6 +295,141 @@ const updateUiDocCmd: CommandDef<UpdateUiDocParams, { assetId: string; name: str
   },
 }
 
+interface PatchUiNodeParams {
+  assetId: string
+  nodeId: string
+  patch?: Record<string, unknown>
+  appendChildren?: Record<string, unknown>[]
+  remove?: boolean
+}
+
+function collectUiNodeMatches(node: UiNode, key: string, matches: UiNode[]): void {
+  if (node.id === key || node.name === key) matches.push(node)
+  if (Array.isArray(node.children)) {
+    for (const child of node.children) collectUiNodeMatches(child, key, matches)
+  }
+}
+
+function cloneAndPatchUiTree(
+  node: UiNode,
+  targetId: string,
+  opts: { patch?: Record<string, unknown>; appendChildren?: UiNode[]; remove?: boolean },
+): { node: UiNode | null; changed: boolean } {
+  if (node.id === targetId) {
+    if (opts.remove) return { node: null, changed: true }
+    const p = opts.patch ?? {}
+    const next: UiNode = { ...node }
+    if (typeof p.name === 'string') next.name = p.name
+    if (typeof p.text === 'string') next.text = p.text
+    if (typeof p.imageId === 'string') next.imageId = p.imageId
+    if (typeof p.visible === 'boolean') next.visible = p.visible
+    if (typeof p.enabled === 'boolean') next.enabled = p.enabled
+    if (p.style && typeof p.style === 'object') {
+      next.style = { ...(node.style ?? {}), ...(p.style as UiNode['style']) }
+    }
+    if (p.layout && typeof p.layout === 'object') {
+      const incoming = p.layout as Partial<NonNullable<UiNode['layout']>>
+      next.layout = {
+        ...(node.layout ?? {}),
+        ...incoming,
+        mode: incoming.mode ?? node.layout?.mode ?? 'anchor',
+      }
+    }
+    if (p.stateStyles && typeof p.stateStyles === 'object') {
+      next.stateStyles = { ...(node.stateStyles ?? {}), ...(p.stateStyles as UiNode['stateStyles']) }
+    }
+    if (p.progress && typeof p.progress === 'object') {
+      next.progress = { ...(node.progress ?? { min: 0, max: 100, value: 100 }), ...(p.progress as UiNode['progress']) }
+    }
+    if (Array.isArray(p.bindings)) next.bindings = p.bindings as UiNode['bindings']
+    if (p.click !== undefined) next.click = p.click as UiNode['click']
+    if (opts.appendChildren && opts.appendChildren.length > 0) {
+      next.children = [...(node.children ?? []), ...opts.appendChildren]
+    }
+    return { node: next, changed: true }
+  }
+
+  if (!Array.isArray(node.children) || node.children.length === 0) {
+    return { node, changed: false }
+  }
+  let anyChanged = false
+  const nextChildren: UiNode[] = []
+  for (const child of node.children) {
+    const res = cloneAndPatchUiTree(child, targetId, opts)
+    if (res.changed) anyChanged = true
+    if (res.node) nextChildren.push(res.node)
+  }
+  return anyChanged ? { node: { ...node, children: nextChildren }, changed: true } : { node, changed: false }
+}
+
+const patchUiNodeCmd: CommandDef<PatchUiNodeParams, { assetId: string; nodeId: string; warnings?: string[] }> = {
+  id: 'ui.patchNode',
+  title: '局部修改界面节点',
+  description: '按 UI 节点 ID（或唯一名称）局部修改文本、样式、布局、绑定、点击事件，或追加/删除子节点，无需整棵重写 UiDocument',
+  risk: 'safe',
+  params: {
+    type: 'object',
+    fields: {
+      assetId: { type: 'ref', target: 'asset', kinds: ['ui'], required: true, label: '界面资产 ID' },
+      nodeId: { type: 'string', default: '', label: '目标 UI 节点 ID 或唯一名称（如 root）' },
+      patch: { type: 'object', fields: {}, optional: true, label: '要合并修改的字段（text/style/layout/visible/enabled/bindings/click/progress）' },
+      appendChildren: {
+        type: 'list',
+        item: { type: 'object', fields: {}, label: 'UI 子节点' },
+        default: [],
+        label: '要追加的子节点列表',
+      },
+      remove: { type: 'boolean', default: false, optional: true, label: '是否删除该节点（不可删除 root）' },
+    },
+  },
+  run(_ctx, p) {
+    const store = useAssetStore.getState()
+    const asset = store.assets[p.assetId]
+    if (!asset || asset.kind !== 'ui') {
+      return { ok: false, code: 'asset.notFound', message: `界面资产 "${p.assetId}" 不存在` }
+    }
+    const key = String(p.nodeId || '').trim()
+    if (!key) {
+      return { ok: false, code: 'INVALID_ARGS', message: 'nodeId 不能为空' }
+    }
+    const matches: UiNode[] = []
+    collectUiNodeMatches(asset.document.root, key, matches)
+    const exactIdMatch = matches.find((m) => m.id === key)
+    const target = exactIdMatch ?? (matches.length === 1 ? matches[0] : null)
+    if (!target) {
+      return {
+        ok: false,
+        code: 'NOT_FOUND',
+        message: matches.length > 1
+          ? `UI 节点名称 "${key}" 匹配到 ${matches.length} 个节点，请改用精确 id`
+          : `在界面 "${asset.name}" 中未找到 UI 节点 "${key}"`,
+      }
+    }
+    if (p.remove && target.id === asset.document.root.id) {
+      return { ok: false, code: 'INVALID_ARGS', message: '不允许删除 UI 根节点 root' }
+    }
+    const appended = Array.isArray(p.appendChildren)
+      ? p.appendChildren.map((raw) => normalizeUiNode(raw))
+      : undefined
+    const patched = cloneAndPatchUiTree(asset.document.root, target.id, {
+      patch: p.patch,
+      appendChildren: appended,
+      remove: p.remove,
+    })
+    if (!patched.changed || !patched.node) {
+      return { ok: false, code: 'NOT_FOUND', message: `未能更新 UI 节点 "${key}"` }
+    }
+    const nextDoc: UiDocument = { schemaVersion: 1, root: patched.node }
+    store.updateUi(p.assetId, nextDoc)
+    const warnings = validateUiDocument(nextDoc)
+    return {
+      ok: true,
+      value: { assetId: p.assetId, nodeId: target.id, ...(warnings.length > 0 ? { warnings } : {}) },
+      changed: { assetsChanged: [p.assetId], summary: `局部修改界面 ${asset.name} 节点 ${target.name ?? target.id}` },
+    }
+  },
+}
+
 interface CreateUiFromTemplateParams {
   template: UiTemplateId
   name?: string
@@ -616,6 +751,7 @@ export function registerAssetAndUiCommands(): () => void {
     commandBus.register(createUiDocCmd),
     commandBus.register(createUiFromTemplateCmd),
     commandBus.register(updateUiDocCmd),
+    commandBus.register(patchUiNodeCmd),
     commandBus.register(mountScreenCmd),
   ]
   return () => unsubs.forEach((fn) => fn())

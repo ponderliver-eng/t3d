@@ -895,13 +895,16 @@ function resolveAiNodeArgs(toolName: string, args: Record<string, unknown>): Rec
   const next: Record<string, unknown> = { ...args }
 
   // UI 工具常见别名兜底：大模型常把 assetId 写成 uiAssetId / documentId / id / screenNodeId
-  if (toolName === 'ui__updateDocument' || toolName === 'ui__mountScreen') {
+  if (toolName === 'ui__updateDocument' || toolName === 'ui__mountScreen' || toolName === 'ui__patchNode') {
     const rawAssetId = typeof next.assetId === 'string' ? next.assetId.trim() : ''
     if (!rawAssetId) {
-      const alias = next.uiAssetId ?? next.documentId ?? next.id ?? next.screenNodeId ?? next.nodeId
+      const alias =
+        toolName === 'ui__patchNode'
+          ? next.uiAssetId ?? next.documentId ?? next.id ?? next.screenNodeId
+          : next.uiAssetId ?? next.documentId ?? next.id ?? next.screenNodeId ?? next.nodeId
       if (typeof alias === 'string' && alias.trim()) {
         next.assetId = alias.trim()
-      } else if (toolName === 'ui__updateDocument') {
+      } else if (toolName === 'ui__updateDocument' || toolName === 'ui__patchNode') {
         const uiAssets = Object.values(useAssetStore.getState().assets).filter((a) => a.kind === 'ui')
         if (typeof next.name === 'string' && next.name.trim()) {
           const byName = uiAssets.filter((a) => a.name === next.name!.toString().trim())
@@ -914,7 +917,9 @@ function resolveAiNodeArgs(toolName: string, args: Record<string, unknown>): Rec
     }
   }
 
-  const nodeRefKeys = ['nodeId', 'parentId', 'targetNodeId', 'sourceNodeId']
+  const nodeRefKeys = toolName === 'ui__patchNode'
+    ? ['parentId', 'targetNodeId', 'sourceNodeId']
+    : ['nodeId', 'parentId', 'targetNodeId', 'sourceNodeId']
   for (const key of nodeRefKeys) {
     if (typeof next[key] === 'string' && next[key]) {
       next[key] = resolveNodeIdFuzzy(next[key] as string)

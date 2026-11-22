@@ -10,12 +10,24 @@ import {
   saveAndCompileCodeAsset,
   useCodeAssetStore,
 } from '../../codeAssets/workspace'
+import { lintScriptSource } from '../../codeAssets/scriptLint'
 import { commandBus } from '../bus'
 import type { CommandDef } from '../types'
 
 interface CodeSourceParams {
   id: string
   source?: string
+}
+
+interface ScriptPatchItem {
+  find: string
+  replace: string
+  replaceAll?: boolean
+}
+
+interface ScriptPatchParams {
+  id: string
+  patches: ScriptPatchItem[]
 }
 
 interface AttachScriptParams {
@@ -150,17 +162,22 @@ export function registerCodeAssetCommands(): () => void {
         ? params.source
         : defaultTemplateFor('script', id)
       const record = await saveAndCompileCodeAsset('script', id, source)
+      const lintIssues = lintScriptSource(source)
+      const diagnostics = [...record.diagnostics, ...lintIssues]
+      const hasErrors = !record.ok || lintIssues.some((d) => d.severity === 'error')
       return {
         ok: true,
         value: {
           id: record.id,
           relativePath: record.relativePath,
-          ok: record.ok,
-          diagnostics: record.diagnostics,
+          ok: !hasErrors,
+          diagnostics,
         },
         changed: {
           projectChanged: true,
-          summary: `新建脚本资产 ${record.relativePath}`,
+          summary: hasErrors
+            ? `新建脚本资产 ${record.relativePath}（发现 ${diagnostics.length} 条错误/警告，请立即修复）`
+            : `新建脚本资产 ${record.relativePath}`,
         },
       }
     },
@@ -180,18 +197,111 @@ export function registerCodeAssetCommands(): () => void {
     risk: 'safe',
     async run(_ctx, params) {
       const id = normalizeCodeAssetId('script', String(params.id || ''))
-      const record = await saveAndCompileCodeAsset('script', id, String(params.source ?? ''))
+      const source = String(params.source ?? '')
+      const record = await saveAndCompileCodeAsset('script', id, source)
+      const lintIssues = lintScriptSource(source)
+      const diagnostics = [...record.diagnostics, ...lintIssues]
+      const hasErrors = !record.ok || lintIssues.some((d) => d.severity === 'error')
       return {
         ok: true,
         value: {
           id: record.id,
           relativePath: record.relativePath,
-          ok: record.ok,
-          diagnostics: record.diagnostics,
+          ok: !hasErrors,
+          diagnostics,
         },
         changed: {
           projectChanged: true,
-          summary: `更新并热重载脚本 ${record.relativePath}`,
+          summary: hasErrors
+            ? `更新脚本 ${record.relativePath}（发现 ${diagnostics.length} 条错误/警告，请立即修复）`
+            : `更新并热重载脚本 ${record.relativePath}`,
+        },
+      }
+    },
+  }
+
+  const scriptPatchCmd: CommandDef<ScriptPatchParams> = {
+    id: 'script.patch',
+    title: '局部修改脚本',
+    description: '按精确片段替换（find -> replace）局部修改已有脚本源码，无需全量重写，改完自动编译并检查 T3D 反模式',
+    params: {
+      type: 'object',
+      fields: {
+        id: { type: 'string', default: '', label: '脚本 ID' },
+        patches: {
+          type: 'list',
+          default: [],
+          label: '替换片段列表（[{ find, replace, replaceAll? }]）',
+          item: {
+            type: 'object',
+            fields: {
+              find: { type: 'string', default: '', label: '要替换的原代码片段' },
+              replace: { type: 'string', default: '', label: '替换后的新代码片段' },
+              replaceAll: { type: 'boolean', default: false, optional: true, label: '是否替换全部匹配' },
+            },
+          },
+        },
+      },
+    },
+    risk: 'safe',
+    async run(_ctx, params) {
+      const id = normalizeCodeAssetId('script', String(params.id || ''))
+      const existing = useCodeAssetStore.getState().assets[id]
+      if (!existing || existing.kind !== 'script') {
+        return { ok: false, code: 'NOT_FOUND', message: `脚本 "${id}" 不存在` }
+      }
+      const patches = Array.isArray(params.patches) ? params.patches : []
+      if (patches.length === 0) {
+        return { ok: false, code: 'INVALID_ARGS', message: 'patches 不能为空' }
+      }
+      let nextSource = existing.source
+      for (let i = 0; i < patches.length; i += 1) {
+        const p = patches[i]
+        const find = typeof p?.find === 'string' ? p.find : ''
+        const replace = typeof p?.replace === 'string' ? p.replace : ''
+        if (!find) {
+          return { ok: false, code: 'INVALID_ARGS', message: `第 ${i + 1} 条 patch 的 find 不能为空` }
+        }
+        const firstIdx = nextSource.indexOf(find)
+        if (firstIdx < 0) {
+          return {
+            ok: false,
+            code: 'PATCH_MISMATCH',
+            message: `第 ${i + 1} 条 patch 未在脚本 "${id}" 中找到匹配片段；请先调用 query__code_read 核对当前源码`,
+          }
+        }
+        if (p.replaceAll) {
+          nextSource = nextSource.split(find).join(replace)
+        } else {
+          const secondIdx = nextSource.indexOf(find, firstIdx + find.length)
+          if (secondIdx >= 0) {
+            return {
+              ok: false,
+              code: 'PATCH_AMBIGUOUS',
+              message: `第 ${i + 1} 条 patch 在脚本 "${id}" 中匹配到多处，请提供更多上下文或设置 replaceAll: true`,
+            }
+          }
+          nextSource = nextSource.slice(0, firstIdx) + replace + nextSource.slice(firstIdx + find.length)
+        }
+      }
+
+      const record = await saveAndCompileCodeAsset('script', id, nextSource)
+      const lintIssues = lintScriptSource(nextSource)
+      const diagnostics = [...record.diagnostics, ...lintIssues]
+      const hasErrors = !record.ok || lintIssues.some((d) => d.severity === 'error')
+      return {
+        ok: true,
+        value: {
+          id: record.id,
+          relativePath: record.relativePath,
+          ok: !hasErrors,
+          diagnostics,
+        },
+        changed: {
+          projectChanged: true,
+          summary: hasErrors
+            ? `局部更新脚本 ${record.relativePath}（发现 ${diagnostics.length} 条错误/警告，请立即修复）`
+            : `局部更新并热重载脚本 ${record.relativePath}`,
         },
       }
     },
@@ -212,12 +322,16 @@ export function registerCodeAssetCommands(): () => void {
     run(_ctx, params) {
       const id = normalizeCodeAssetId('script', String(params.id || 'check'))
       const rel = codeAssetRelativePath('script', id)
-      const record = compileCodeAsset('script', id, rel, String(params.source ?? ''))
+      const source = String(params.source ?? '')
+      const record = compileCodeAsset('script', id, rel, source)
+      const lintIssues = lintScriptSource(source)
+      const diagnostics = [...record.diagnostics, ...lintIssues]
+      const hasErrors = !record.ok || lintIssues.some((d) => d.severity === 'error')
       return {
         ok: true,
-        value: { ok: record.ok, diagnostics: record.diagnostics },
+        value: { ok: !hasErrors, diagnostics },
         changed: {
-          summary: record.ok ? '脚本检查通过' : `发现 ${record.diagnostics.length} 条诊断`,
+          summary: !hasErrors ? '脚本检查通过' : `发现 ${diagnostics.length} 条诊断`,
         },
       }
     },
@@ -390,6 +504,7 @@ export function registerCodeAssetCommands(): () => void {
     commandBus.register(shaderBindCmd),
     commandBus.register(scriptCreateCmd),
     commandBus.register(scriptUpdateCmd),
+    commandBus.register(scriptPatchCmd),
     commandBus.register(scriptCheckCmd),
     commandBus.register(scriptAttachCmd),
     commandBus.register(openExternalCmd),

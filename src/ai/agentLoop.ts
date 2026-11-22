@@ -123,7 +123,7 @@ interface AgentState {
   importTurns: (imported: AiTurnItem[], mode?: 'merge' | 'replace') => void
 }
 
-const MAX_TOOL_STEPS = 32
+const MAX_TOOL_STEPS = 40
 
 export const useAgentStore = create<AgentState>((set, get) => ({
   panelOpen: false,
@@ -364,6 +364,8 @@ export const useAgentStore = create<AgentState>((set, get) => ({
     let txCommitted = false
     let stopReason: AiTurnItem['stopReason'] = 'completed'
     let autoNudges = 0
+    let writesSinceVerify = 0
+    let hasVerifiedInTurn = false
     let completedNormally = false
 
     const consumeSteerQueue = () => {
@@ -460,6 +462,21 @@ export const useAgentStore = create<AgentState>((set, get) => ({
             })
             continue
           }
+          if (
+            remainingPlan.length === 0 &&
+            writesSinceVerify >= 5 &&
+            !hasVerifiedInTurn &&
+            autoNudges < 1 &&
+            step + 1 < MAX_TOOL_STEPS
+          ) {
+            autoNudges += 1
+            chatMessages.push({ role: 'assistant', text: result.text || '（准备收尾验收）' })
+            chatMessages.push({
+              role: 'user',
+              text: '[阶段收尾门禁] 本轮已执行多处场景/脚本/UI修改，但尚未运行工程体检或视口截图验收。请先调用 query__project_diagnose（排查脚本引用/输入映射/UI变量断链）并调用 viewport__capture({ playSeconds: 0.8 }) 观察实景效果，确认无误后再总结交付。',
+            })
+            continue
+          }
           stopReason = remainingPlan.length > 0 ? 'paused-with-plan' : 'completed'
           completedNormally = true
           break
@@ -514,6 +531,22 @@ export const useAgentStore = create<AgentState>((set, get) => ({
           }))
 
           const execRes = await executeAiTool(tc.name, tc.arguments)
+          if (
+            tc.name === 'viewport__capture' ||
+            tc.name === 'playtest__capture' ||
+            tc.name === 'playtest__run_smoke' ||
+            tc.name === 'query__project_diagnose'
+          ) {
+            hasVerifiedInTurn = true
+            writesSinceVerify = 0
+          } else if (
+            tc.name.startsWith('scene__') ||
+            tc.name.startsWith('script__') ||
+            tc.name.startsWith('ui__') ||
+            tc.name.startsWith('shader__')
+          ) {
+            writesSinceVerify += 1
+          }
           if (execRes.enabledDomains) {
             for (const d of execRes.enabledDomains) activeDomains.add(d)
           }
@@ -648,12 +681,14 @@ registerTaskPlanUpdater((tasks) => {
 
 function toolPhaseLabel(toolName: string): string {
   if (toolName === 'plan__set_tasks') return '正在规划 / 更新任务进度…'
+  if (toolName === 'script__patch') return '正在局部修改并热重载脚本…'
   if (toolName.startsWith('script__')) return '正在生成 / 编译脚本…'
   if (toolName.startsWith('shader__')) return '正在生成 / 编译着色器…'
   if (toolName.startsWith('scene__')) return '正在搭建 / 修改场景节点…'
   if (toolName.startsWith('asset__')) return '正在处理材质与资产…'
   if (toolName.startsWith('gameplay__') || toolName.startsWith('capability__')) return '正在配置玩法与能力包…'
   if (toolName === 'ui__createDocument' || toolName === 'ui__createFromTemplate') return '正在生成 UI 界面资产…'
+  if (toolName === 'ui__patchNode') return '正在局部修改 UI 节点…'
   if (toolName === 'ui__updateDocument') return '正在更新 UI 界面结构…'
   if (toolName === 'ui__mountScreen') return '正在挂载 UI 屏幕到场景…'
   if (toolName === 'query__ui_inspect') return '正在读取 UI 界面结构…'
@@ -747,10 +782,41 @@ function compactMessagesForStep<
   if (cutoffIndex === 0) return messages
 
   return messages.map((m, idx) => {
-    if (idx < cutoffIndex && m.role === 'tool' && m.content.length > 800) {
+    if (idx >= cutoffIndex) return m
+    if (m.role === 'tool' && m.content.length > 800) {
       return {
         ...m,
         content: `[早先工具 ${m.name} 返回已折叠（原长 ${m.content.length} 字符），如需细节可重新查询]`,
+      }
+    }
+    if (m.role === 'assistant') {
+      let nextText = m.text
+      if (nextText && nextText.length > 600) {
+        nextText = `${nextText.slice(0, 300)}...(早先思考过程已折叠)`
+      }
+      let nextToolCalls = m.toolCalls
+      if (nextToolCalls && nextToolCalls.length > 0) {
+        let changed = false
+        nextToolCalls = nextToolCalls.map((tc) => {
+          const args = tc.arguments
+          if (!args || typeof args !== 'object') return tc
+          const nextArgs: Record<string, unknown> = { ...args }
+          let argChanged = false
+          for (const largeKey of ['source', 'document']) {
+            const val = nextArgs[largeKey]
+            const strLen = typeof val === 'string' ? val.length : val && typeof val === 'object' ? JSON.stringify(val).length : 0
+            if (strLen > 1200) {
+              nextArgs[largeKey] = `[已折叠 ${largeKey}（原长 ${strLen} 字符），当前内容可通过 query 工具读取]`
+              argChanged = true
+            }
+          }
+          if (argChanged) changed = true
+          return argChanged ? { ...tc, arguments: nextArgs } : tc
+        })
+        if (!changed) nextToolCalls = m.toolCalls
+      }
+      if (nextText !== m.text || nextToolCalls !== m.toolCalls) {
+        return { ...m, text: nextText, ...(nextToolCalls ? { toolCalls: nextToolCalls } : {}) }
       }
     }
     return m
@@ -853,9 +919,13 @@ function buildSystemPrompt(attachedRefs: AiRefItem[], activeDomains: Set<AiToolD
   const lines: string[] = [
     '你是 T3D 游戏工程管理器的内置 AI 创作助手。',
     '核心原则：',
-    '1. 长任务规划与连续执行：接到“做一个游戏”或包含多个模块/步骤的复杂任务时，第一步先调用 plan__set_tasks 拆解 3~7 个阶段性子任务，然后连续调用工具一气呵成推进，每完成一阶段顺便更新对应任务为 done，全部完成后务必调用 query__project_diagnose 做工程体检。不要刚建完几个节点或目录就提前停下汇报“已完成第一步”，除非需要用户做关键方向决策。',
+    '1. 长任务规划与三阶段小步验收工作流：接到“做一个游戏/完整 Demo”或包含多个模块的任务时，第一步先调用 plan__set_tasks 拆解为清晰阶段（建议：阶段1 舞台与镜头 → 阶段2 核心玩法与脚本 → 阶段3 UI 与收尾），然后连续调用工具推进，**不要一口气建完所有东西才检查**：',
+    '   - 阶段1（舞台/光源/相机）完成后，调用 viewport__capture 确认构图正常；',
+    '   - 阶段2（核心实体/脚本/输入配置）完成后，调用 query__project_diagnose 排查脚本引用/输入映射断链，并调用 viewport__capture({ playSeconds: 0.8 }) 实景试玩验收；',
+    '   - 阶段3（UI 与交互收尾）完成后，再次运行 query__project_diagnose + viewport__capture({ playSeconds: 1.0 }) 验收交付。',
+    '   不要刚建完几个节点或目录就提前停下汇报“已完成第一步”，除非需要用户做关键方向决策。',
     '2. 只能通过提供的工具读取或修改工程数据，严格使用工具返回的准确节点 ID 或资产 ID（节点名称唯一时也可直接传节点名称），切勿凭记忆猜测或删改 UUID。',
-    '3. 工具按域按需加载：' + domainHint,
+    '3. 局部优先：修改已有脚本优先用 script__patch（按片段精确替换，无需重写全文）；修改已有 UI 优先用 ui__patchNode（按节点 ID 或唯一名称局部改文本/样式/绑定/子节点，无需重写整棵树）。',
     '4. 工程规划与层级规范：',
     '   - 遇到多模块/多关卡或资产较多（>5 个）时，先用 project__design__update 规划目录规范，再用 asset__createFolder 建立 Assets/Materials/<模块>、Assets/UI/<模块>、Assets/Prefabs/<模块> 等目录树；用空节点（kind: "empty"）做模块分组，但严禁堆砌无意义的空节点充当装饰或伪对象池。',
     '   - 放置模型或物体到地面时，优先开启 snapToGround: true。',
@@ -925,6 +995,8 @@ function buildSystemPrompt(attachedRefs: AiRefItem[], activeDomains: Set<AiToolD
 
   lines.push(
     '',
+    '--- 当前工程动态上下文 ---',
+    `工具域状态：${domainHint}`,
     '当前工程设计规范（design.md）：',
     designMd,
     '',
