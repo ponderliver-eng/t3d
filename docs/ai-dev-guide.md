@@ -49,6 +49,21 @@ T3D 的 AI 系统横跨「主进程代理 → 渲染进程状态循环 → 核�
 - 在 `for (step = 0..MAX_TOOL_STEPS)` 循环中，若历史消息不断累积，`query__registry_describe(all)` 等大段 JSON 会在每一步被重复计费。
 - `compactMessagesForStep` 只保留**最近 2 轮工具调用**的完整返回，更早步骤中超过 800 字符的 `tool` 消息自动折叠为占位提示。
 
+### 2.4 工具域按需分类与自动激活（`src/ai/tools.ts` + `src/ai/agentLoop.ts`）
+为避免每轮请求把 ~56 个工具的 JSON Schema 全量塞入上下文导致高 Token 消耗，工具集划分为 `core`（常驻）+ 5 个按需专业域：
+- `core`（常驻）：基础查询（`query__*`）、节点/场景增删改、资源、脚本挂载、`tools__enable_domain`。
+- `script`：脚本创建/读写/校验。
+- `shader`：着色器与材质、资产目录整理。
+- `ui`：UI 屏幕、HUD 绑定与输入动作配置。
+- `capability`：工程级与节点级能力包（`physics` / `navigation` / `spline` / `tween` / `crowd` / `projectile` / `water` / `sky` / `particles` / `buoyancy`）、玩法包、数据表、环境参数。
+- `playtest`：自动试玩、冒烟测试、视口截图、实验分支、多场景与导出。
+
+**激活方式是「自动预开 + 运行中按需自开」双重机制（无需用户手动开关）**：
+1. **自动预开（`inferInitialToolDomains`）**：发送消息时根据用户提示词关键字与 `@` 引用类型自动识别并预开相关域（如提到“做个游戏”会预开全部核心域；提到“样条/弹道/群体”自动预开 `capability` 域）。
+2. **AI 自助按需开启（`tools__enable_domain`）**：对于未预开的域，System Prompt 会附带一份简短索引；AI 若判断需要某个域，会在推理第一步主动调用 `tools__enable_domain({ domains: [...] })`，下一轮循环立即解锁该域工具与对应的 API 速查。
+
+> 注意：这里的「工具域」控制的是**AI 能不能看到工具**；而工程里的**能力包本身（`capabilities`）**，默认常用的（`physics` / `navigation` / `spline` / `tween` / `crowd` / `projectile` / `buoyancy`）已开启，重型环境能力（`water` / `sky` / `particles`）默认关闭，用户可在 **项目设置（ProjectSettingsDialog）** 手动开关，AI 也可在开启 `capability` 域后通过 `capability__setEnabled` 自动开关。
+
 ---
 
 ## 3. 工具执行与防幻觉机制（`src/ai/tools.ts`）

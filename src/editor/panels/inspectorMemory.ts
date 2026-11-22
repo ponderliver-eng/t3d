@@ -159,7 +159,9 @@ export const useInspectorMemory = create<InspectorMemoryState>(set => ({
         ...state.entries,
         [subject]: {
           ...prev,
-          open: { ...prev.open, 'model-renderer': true, 'material-slots': true },
+          open: options?.openInspector
+            ? { ...prev.open, 'model-renderer': true, 'material-slots': true }
+            : prev.open,
           slot: firstSlot,
         },
       }
@@ -254,9 +256,9 @@ export function inspectorCardOpen(nodeId: string, card: string): boolean {
   return useInspectorMemory.getState().entries[`node:${nodeId}`]?.open?.[card] ?? true
 }
 
-export function useInspectorCardOpen(card: string): [boolean, (open: boolean) => void] {
+export function useInspectorCardOpen(card: string, defaultOpen = true): [boolean, (open: boolean) => void] {
   const subject = useContext(InspectorSubject)
-  const open = useInspectorMemory(state => state.entries[subject]?.open?.[card] ?? true)
+  const open = useInspectorMemory(state => state.entries[subject]?.open?.[card] ?? defaultOpen)
   const setOpen = (next: boolean) => useInspectorMemory.getState().setOpen(subject, card, next)
   return [open, setOpen]
 }

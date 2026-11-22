@@ -371,7 +371,7 @@ export function inferInitialToolDomains(
   }
   if (
     isGameBuild ||
-    /(物理|刚体|碰撞体|重力|粒子|特效|水面|海洋|天空|雾|后处理|光照|导航|寻路|能力包|玩法包|数据表|physics|particle|effect|water|sky|nav|pack|capability)/.test(p)
+    /(物理|刚体|碰撞体|重力|粒子|特效|水面|海洋|天空|雾|后处理|光照|导航|寻路|能力包|玩法包|数据表|样条|曲线|补间|缓动|群体|避让|编队|弹道|physics|particle|effect|water|sky|nav|pack|capability|spline|tween|crowd|projectile)/.test(p)
   ) {
     domains.add('capability')
   }

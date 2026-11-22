@@ -13,7 +13,6 @@ import { capabilityEnabled } from '../../capabilities/registry'
 import { defaultNodePhysics } from '../../capabilities/physics/defaults'
 import { defaultNodeNavigation } from '../../capabilities/navigation/defaults'
 import { EffectModules } from '../../capabilities/particles/EffectModules'
-import { openProjectSettings } from '../project/ProjectSettingsDialog'
 import { PhysicsCard } from '../../capabilities/physics/PhysicsCard'
 import { CharacterCard } from '../gameplay/CharacterCard'
 import { RulesCard } from '../gameplay/RulesCard'
@@ -816,7 +815,7 @@ function SceneSettings() {
       {!physicsOn && (
         <Card id="scene-physics" title={t('physics.title')} color="#8bc34a">
           <p className="settings-note">{t('physics.disabledHint')}</p>
-          <button type="button" onClick={openProjectSettings}>{t('menu.projectSettings')}</button>
+          <button type="button" onClick={() => useEditorStore.getState().setLibraryOpen(true)}>{t('library.title')}</button>
         </Card>
       )}
       <SceneNavigationCard />
@@ -878,7 +877,7 @@ function countSlotUsers(nodes: ModelTreeNode[], slotIndex: number): number {
 function MeshRendererCard({ node }: { node: SceneNode }) {
   const { t } = useI18n()
   const assets = useAssetStore(state => state.assets)
-  const [listOpen, setListOpen] = useInspectorCardOpen('material-slots')
+  const [listOpen, setListOpen] = useInspectorCardOpen('material-slots', false)
   const [storedSlot, setOpenSlot] = useInspectorSlot()
   const subSelection = useInspectorMemory(state => state.subSelection)
   const activePart = node.kind === 'model' && subSelection?.nodeId === node.id && subSelection.kind === 'mesh' ? subSelection : null
@@ -948,7 +947,7 @@ function MeshRendererCard({ node }: { node: SceneNode }) {
     else nextMap[activePart.path] = merged
     commitNode(node.id, t('inspector.parts'), { partOverrides: Object.keys(nextMap).length > 0 ? nextMap : undefined })
   }
-  const effectiveOpen = Boolean(activePart && !showAllSlots && !partMatLinked) || listOpen
+  const effectiveOpen = listOpen
   return (
     <Card id="model-renderer" title={t('inspector.modelRenderer')} color={kindColor(node.kind)}>
       {node.kind === 'model' && (

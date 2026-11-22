@@ -39,6 +39,7 @@ export default function AiWorkbenchPanel() {
   const abort = useAgentStore((s) => s.abort)
   const rollbackTurn = useAgentStore((s) => s.rollbackTurn)
   const clearTurns = useAgentStore((s) => s.clearTurns)
+  const deleteTurn = useAgentStore((s) => s.deleteTurn)
   const importTurns = useAgentStore((s) => s.importTurns)
 
   const selection = useEditorStore((s) => s.selection)
@@ -419,7 +420,23 @@ export default function AiWorkbenchPanel() {
         zIndex: 20,
       }}
     >
-      <style>{'@keyframes t3d-ai-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }'}</style>
+      <style>{`
+        @keyframes t3d-ai-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        .t3d-ai-turn .t3d-ai-turn-delete {
+          opacity: 0;
+          pointer-events: none;
+          transition: opacity 0.14s ease, color 0.14s ease, background 0.14s ease;
+        }
+        .t3d-ai-turn:hover .t3d-ai-turn-delete,
+        .t3d-ai-turn .t3d-ai-turn-delete:focus-visible {
+          opacity: 1;
+          pointer-events: auto;
+        }
+        .t3d-ai-turn .t3d-ai-turn-delete:hover {
+          color: #fca5a5 !important;
+          background: rgba(239, 68, 68, 0.22) !important;
+        }
+      `}</style>
       {/* 头部 */}
       <div
         style={{
@@ -767,6 +784,7 @@ export default function AiWorkbenchPanel() {
           return (
           <div
             key={turn.id}
+            className="t3d-ai-turn"
             onContextMenu={(e) => {
               const selText = window.getSelection()?.toString() ?? ''
               if (!selText && !copyableFullText) return
@@ -785,6 +803,7 @@ export default function AiWorkbenchPanel() {
               })
             }}
             style={{
+              position: 'relative',
               display: 'flex',
               flexDirection: 'column',
               gap: '6px',
@@ -798,6 +817,36 @@ export default function AiWorkbenchPanel() {
                   : '1px solid rgba(255,255,255,0.06)',
             }}
           >
+            {!isActiveTurn && (
+              <button
+                type="button"
+                className="t3d-ai-turn-delete"
+                title="删除此条对话"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  deleteTurn(turn.id)
+                }}
+                style={{
+                  position: 'absolute',
+                  top: 6,
+                  right: 6,
+                  width: 22,
+                  height: 22,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  borderRadius: 4,
+                  border: '1px solid rgba(255,255,255,0.08)',
+                  background: 'rgba(24,24,27,0.82)',
+                  color: '#a1a1aa',
+                  cursor: 'pointer',
+                  padding: 0,
+                  zIndex: 2,
+                }}
+              >
+                <Trash2 size={12} />
+              </button>
+            )}
             {isActiveTurn && (
               <div
                 style={{

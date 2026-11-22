@@ -1,10 +1,9 @@
 import { useEffect } from 'react'
 import { X } from 'lucide-react'
 import { create } from 'zustand'
-import { CAPABILITIES, capabilityEnabled, type CapabilityId } from '../../capabilities/registry'
 import { useTaxonomyUi } from './taxonomyUi'
 import { useEditorStore } from '../scene/store'
-import { useI18n, type MessageKey } from '../i18n'
+import { useI18n } from '../i18n'
 import '../prefs/SettingsDialog.css'
 
 interface ProjectSettingsState {
@@ -23,22 +22,8 @@ export function openProjectSettings() {
   useProjectSettings.getState().show()
 }
 
-const COPY: Record<CapabilityId, { name: MessageKey, detail: MessageKey }> = {
-  physics: { name: 'physics.enable', detail: 'projectSettings.physicsDetail' },
-  buoyancy: { name: 'buoyancy.title', detail: 'projectSettings.buoyancyDetail' },
-  navigation: { name: 'navigation.enable', detail: 'projectSettings.navigationDetail' },
-  spline: { name: 'spline.title', detail: 'projectSettings.splineDetail' },
-  tween: { name: 'tween.title', detail: 'projectSettings.tweenDetail' },
-  crowd: { name: 'crowd.title', detail: 'projectSettings.crowdDetail' },
-  projectile: { name: 'projectile.title', detail: 'projectSettings.projectileDetail' },
-  particles: { name: 'particles.enable', detail: 'projectSettings.particlesDetail' },
-  sky: { name: 'sky.enable', detail: 'projectSettings.skyDetail' },
-  water: { name: 'water.title', detail: 'library.item.waterDetail' },
-}
-
 export default function ProjectSettingsDialog() {
   const open = useProjectSettings(state => state.open)
-  const capabilities = useEditorStore(state => state.capabilities)
   const { t } = useI18n()
 
   useEffect(() => {
@@ -69,20 +54,11 @@ export default function ProjectSettingsDialog() {
             <button type="button" onClick={() => { useProjectSettings.getState().hide(); useTaxonomyUi.getState().openLayers() }}>{t('projectSettings.manage')}</button>
           </div>
           <h3>{t('projectSettings.modules')}</h3>
+          <div className="settings-row">
+            <span>{t('library.title')}</span>
+            <button type="button" onClick={() => { useProjectSettings.getState().hide(); useEditorStore.getState().setLibraryOpen(true) }}>{t('projectSettings.manage')}</button>
+          </div>
           <p className="settings-note">{t('projectSettings.note')}</p>
-          {CAPABILITIES.map(item => (
-            <div key={item.id}>
-              <label className="settings-row">
-                <span>{t(COPY[item.id].name)}</span>
-                <input
-                  type="checkbox"
-                  checked={capabilityEnabled(capabilities, item.id)}
-                  onChange={event => useEditorStore.getState().setCapability(item.id, event.target.checked)}
-                />
-              </label>
-              <p className="settings-note">{t(COPY[item.id].detail)}</p>
-            </div>
-          ))}
         </div>
       </section>
     </div>

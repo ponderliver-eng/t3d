@@ -115,6 +115,7 @@ interface AgentState {
   abort: () => Promise<void>
   rollbackTurn: (checkpointId: string) => void
   clearTurns: () => void
+  deleteTurn: (turnId: string) => void
   importTurns: (imported: AiTurnItem[], mode?: 'merge' | 'replace') => void
 }
 
@@ -220,6 +221,12 @@ export const useAgentStore = create<AgentState>((set, get) => ({
   clearTurns: () => {
     set({ turns: [], streamingText: '' })
     void saveAiHistory([])
+  },
+
+  deleteTurn: (turnId) => {
+    const next = get().turns.filter((t) => t.id !== turnId)
+    set({ turns: next })
+    void saveAiHistory(next)
   },
 
   importTurns: (imported, mode = 'merge') => {

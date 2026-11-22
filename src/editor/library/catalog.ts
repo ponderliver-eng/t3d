@@ -18,7 +18,12 @@ export const LIBRARY_SHELVES: LibraryShelf[] = ['capability', 'gameplay', 'genre
 
 export const LIBRARY_ITEMS: LibraryItem[] = [
   { id: 'physics', shelf: 'capability', kind: 'capability', capabilityId: 'physics', name: 'library.item.physics', detail: 'library.item.physicsDetail', points: 'library.item.physicsPoints', hue: '#7eb6ff' },
+  { id: 'buoyancy', shelf: 'capability', kind: 'capability', capabilityId: 'buoyancy', name: 'library.item.buoyancy', detail: 'library.item.buoyancyDetail', points: 'library.item.buoyancyPoints', hue: '#38bdf8' },
   { id: 'navigation', shelf: 'capability', kind: 'capability', capabilityId: 'navigation', name: 'library.item.navigation', detail: 'library.item.navigationDetail', points: 'library.item.navigationPoints', hue: '#8fd0a4' },
+  { id: 'spline', shelf: 'capability', kind: 'capability', capabilityId: 'spline', name: 'library.item.spline', detail: 'library.item.splineDetail', points: 'library.item.splinePoints', hue: '#34d399' },
+  { id: 'tween', shelf: 'capability', kind: 'capability', capabilityId: 'tween', name: 'library.item.tween', detail: 'library.item.tweenDetail', points: 'library.item.tweenPoints', hue: '#c084fc' },
+  { id: 'crowd', shelf: 'capability', kind: 'capability', capabilityId: 'crowd', name: 'library.item.crowd', detail: 'library.item.crowdDetail', points: 'library.item.crowdPoints', hue: '#60a5fa' },
+  { id: 'projectile', shelf: 'capability', kind: 'capability', capabilityId: 'projectile', name: 'library.item.projectile', detail: 'library.item.projectileDetail', points: 'library.item.projectilePoints', hue: '#f97316' },
   { id: 'particles', shelf: 'capability', kind: 'capability', capabilityId: 'particles', name: 'library.item.particles', detail: 'library.item.particlesDetail', points: 'library.item.particlesPoints', hue: '#f2cf7f' },
   { id: 'sky', shelf: 'capability', kind: 'capability', capabilityId: 'sky', name: 'library.item.sky', detail: 'library.item.skyDetail', points: 'library.item.skyPoints', hue: '#7eb6ff' },
   { id: 'water', shelf: 'capability', kind: 'capability', capabilityId: 'water', name: 'library.item.water', detail: 'library.item.waterDetail', points: 'library.item.waterPoints', hue: '#38bdf8' },

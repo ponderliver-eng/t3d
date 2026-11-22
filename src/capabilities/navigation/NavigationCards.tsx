@@ -2,7 +2,6 @@ import { ChevronDown, ChevronRight, Eraser, RefreshCw, Trash2, Waypoints, X } fr
 import { CardReset } from '../../editor/panels/CardReset'
 import { useInspectorCardOpen } from '../../editor/panels/inspectorMemory'
 import { capabilityEnabled } from '../registry'
-import { openProjectSettings } from '../../editor/project/ProjectSettingsDialog'
 import { useEditorStore } from '../../editor/scene/store'
 import { useI18n } from '../../editor/i18n'
 import { DEFAULT_NAV, type NavRole, type NavSettings, type NodeNavigation, type SceneNode } from '../../editor/scene/types'
@@ -98,7 +97,7 @@ export function SceneNavigationCard() {
           {!enabled && (
             <>
               <p className="settings-note">{t('navigation.disabledHint')}</p>
-              <button type="button" onClick={openProjectSettings}>{t('menu.projectSettings')}</button>
+              <button type="button" onClick={() => useEditorStore.getState().setLibraryOpen(true)}>{t('library.title')}</button>
             </>
           )}
           {enabled && (
