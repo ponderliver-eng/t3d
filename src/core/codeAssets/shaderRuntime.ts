@@ -76,44 +76,146 @@ export function createShaderSdk() {
     smoothstep: (edge0: unknown, edge1: unknown, x: unknown) =>
       (tsl.smoothstep as (...args: unknown[]) => unknown)(asNode(edge0), asNode(edge1), asNode(x)),
     step: (edge: unknown, x: unknown) => (tsl.step as (...args: unknown[]) => unknown)(asNode(edge), asNode(x)),
+    tan: (x: unknown) => (tsl.tan as (v: unknown) => unknown)(asNode(x)),
     sin: (x: unknown) => (tsl.sin as (v: unknown) => unknown)(asNode(x)),
     cos: (x: unknown) => (tsl.cos as (v: unknown) => unknown)(asNode(x)),
     abs: (x: unknown) => (tsl.abs as (v: unknown) => unknown)(asNode(x)),
+    sign: (x: unknown) => (tsl.sign as (v: unknown) => unknown)(asNode(x)),
     floor: (x: unknown) => (tsl.floor as (v: unknown) => unknown)(asNode(x)),
     ceil: (x: unknown) => (tsl.ceil as (v: unknown) => unknown)(asNode(x)),
     fract: (x: unknown) => (tsl.fract as (v: unknown) => unknown)(asNode(x)),
     pow: (x: unknown, y: unknown) => (tsl.pow as (...args: unknown[]) => unknown)(asNode(x), asNode(y)),
     sqrt: (x: unknown) => (tsl.sqrt as (v: unknown) => unknown)(asNode(x)),
+    exp: (x: unknown) => (tsl.exp as (v: unknown) => unknown)(asNode(x)),
+    log: (x: unknown) => (tsl.log as (v: unknown) => unknown)(asNode(x)),
+    saturate: (x: unknown) => (tsl.saturate as (v: unknown) => unknown)(asNode(x)),
     min: (a: unknown, b: unknown) => (tsl.min as (...args: unknown[]) => unknown)(asNode(a), asNode(b)),
     max: (a: unknown, b: unknown) => (tsl.max as (...args: unknown[]) => unknown)(asNode(a), asNode(b)),
     dot: (a: unknown, b: unknown) => (tsl.dot as (...args: unknown[]) => unknown)(asNode(a), asNode(b)),
     cross: (a: unknown, b: unknown) => (tsl.cross as (...args: unknown[]) => unknown)(asNode(a), asNode(b)),
     normalize: (v: unknown) => (tsl.normalize as (x: unknown) => unknown)(asNode(v)),
     length: (v: unknown) => (tsl.length as (x: unknown) => unknown)(asNode(v)),
+    distance: (a: unknown, b: unknown) => (tsl.distance as (...args: unknown[]) => unknown)(asNode(a), asNode(b)),
+    reflect: (incident: unknown, normal: unknown) => (tsl.reflect as (...args: unknown[]) => unknown)(asNode(incident), asNode(normal)),
+    fwidth: (x: unknown) => (tsl.fwidth as (v: unknown) => unknown)(asNode(x)),
+    fresnel: (normalNode: unknown, viewDirNode: unknown, power: unknown = 3) => {
+      const n = (tsl.normalize as (x: unknown) => unknown)(asNode(normalNode))
+      const v = (tsl.normalize as (x: unknown) => unknown)(asNode(viewDirNode))
+      const ndotv = (tsl.clamp as (...args: unknown[]) => { oneMinus: () => unknown })(
+        (tsl.dot as (...args: unknown[]) => unknown)(n, v),
+        0,
+        1,
+      )
+      return (tsl.pow as (...args: unknown[]) => unknown)(ndotv.oneMinus(), asNode(power))
+    },
     uv: (index = 0) => tsl.uv(index),
     time: tsl.time,
+    deltaTime: tsl.deltaTime,
     normalView: tsl.normalView,
     normalWorld: tsl.normalWorld,
+    normalLocal: tsl.normalLocal,
     positionWorld: tsl.positionWorld,
     positionLocal: tsl.positionLocal,
     viewDirection: tsl.positionViewDirection,
+    cameraPosition: tsl.cameraPosition,
+    screenUV: tsl.screenUV,
+    vertexColor: () => tsl.vertexColor(),
     texture: () => tsl.vec4(1, 1, 1, 1),
   }
 }
 
+const VALID_SURFACE_KEYS = new Set([
+  'baseColor',
+  'normal',
+  'roughness',
+  'metalness',
+  'emissive',
+  'opacity',
+  'vertexOffset',
+])
+
 export function buildMaterialFromShader(
   def: ShaderDefinition,
   overrides?: Record<string, unknown>,
-): { material: MeshStandardNodeMaterial | MeshBasicNodeMaterial; paramValues: Record<string, unknown> } {
+  options?: { strict?: boolean },
+): { material: MeshStandardNodeMaterial | MeshBasicNodeMaterial; paramValues: Record<string, unknown>; warnings: string[] } {
   const paramValues: Record<string, unknown> = {}
   const runtimeParams: Record<string, unknown> = {}
+  const accessedParams = new Set<string>()
+  const declaredKeys = Object.keys(def.params ?? {})
   for (const [key, schema] of Object.entries(def.params ?? {})) {
     const val = overrides && key in overrides ? overrides[key] : defaultForSchema(schema)
     paramValues[key] = val
     runtimeParams[key] = paramToNode(schema, val)
   }
 
-  const out = def.surface(runtimeParams) as Record<string, unknown>
+  const trackedParams = new Proxy(runtimeParams, {
+    get(target, prop, receiver) {
+      if (typeof prop === 'string') accessedParams.add(prop)
+      return Reflect.get(target, prop, receiver)
+    },
+  })
+
+  const surfaceArg = new Proxy(
+    {
+      params: trackedParams,
+      uv: tsl.uv(0),
+      time: tsl.time,
+      deltaTime: tsl.deltaTime,
+      positionLocal: tsl.positionLocal,
+      positionWorld: tsl.positionWorld,
+      normalLocal: tsl.normalLocal,
+      normalView: tsl.normalView,
+      normalWorld: tsl.normalWorld,
+      viewDirection: tsl.positionViewDirection,
+      cameraPosition: tsl.cameraPosition,
+      screenUV: tsl.screenUV,
+      vertexColor: tsl.vertexColor(),
+    } as Record<string, unknown>,
+    {
+      get(target, prop, receiver) {
+        if (typeof prop === 'string' && prop in runtimeParams) {
+          return Reflect.get(trackedParams, prop)
+        }
+        return Reflect.get(target, prop, receiver)
+      },
+    },
+  )
+
+  const out = def.surface(surfaceArg) as Record<string, unknown>
+  const warnings: string[] = []
+  if (!out || typeof out !== 'object') {
+    throw new Error('surface() 必须返回一个包含表面输出属性的对象')
+  }
+
+  const outKeys = Object.keys(out).filter((k) => out[k] !== undefined)
+  const unknownKeys = outKeys.filter((k) => !VALID_SURFACE_KEYS.has(k))
+  if (unknownKeys.length > 0) {
+    const mapped = unknownKeys.map((k) => (k === 'color' ? 'color（应为 baseColor）' : k)).join('、')
+    if (options?.strict) {
+      throw new Error(`surface() 返回了无效字段：${mapped}`)
+    }
+    warnings.push(`surface() 返回了未识别字段：${mapped}`)
+  }
+
+  const validCount = outKeys.filter((k) => VALID_SURFACE_KEYS.has(k)).length
+  if (validCount === 0 && !out.color) {
+    throw new Error('surface() 未返回任何有效输出字段（如 baseColor / emissive / roughness / opacity）')
+  }
+
+  const unusedParams = declaredKeys.filter((k) => !accessedParams.has(k))
+  if (unusedParams.length > 0) {
+    const msg = `params 中声明了 ${unusedParams.join('、')}，但 surface() 中未使用`
+    if (options?.strict) {
+      throw new Error(msg)
+    }
+    warnings.push(msg)
+  }
+
+  if (out.opacity !== undefined && !def.transparent) {
+    warnings.push('surface() 返回了 opacity，建议设置 transparent: true 才会生效')
+  }
+
   const isUnlit = def.mode === 'unlit'
   const material = isUnlit ? new MeshBasicNodeMaterial() : new MeshStandardNodeMaterial()
 
@@ -139,7 +241,7 @@ export function buildMaterialFromShader(
   if (def.doubleSided) material.side = 2 // DoubleSide
   material.needsUpdate = true
 
-  return { material, paramValues }
+  return { material, paramValues, warnings }
 }
 
 export function compileShaderSource(
@@ -175,7 +277,7 @@ export function compileShaderSource(
   }
 
   try {
-    const { material, paramValues } = buildMaterialFromShader(evaluated.exports, overrides)
+    const { material, paramValues } = buildMaterialFromShader(evaluated.exports, overrides, { strict: true })
     return {
       ok: true,
       diagnostics: transpiled.diagnostics,

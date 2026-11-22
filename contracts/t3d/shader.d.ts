@@ -128,6 +128,8 @@ export interface ShaderDefinition<P extends ShaderParamMap> {
   description?: string
   /** 'lit' 走标准 PBR 受光；'unlit' 不受光照，直接输出颜色与透明度 */
   mode?: 'lit' | 'unlit'
+  transparent?: boolean
+  doubleSided?: boolean
   params?: P
   surface(ctx: SurfaceContext<P>): SurfaceOutput
 }
@@ -140,6 +142,21 @@ export interface CompiledShaderAsset<P extends ShaderParamMap = ShaderParamMap> 
 export function defineShader<P extends ShaderParamMap = Record<string, never>>(
   definition: ShaderDefinition<P>,
 ): CompiledShaderAsset<P>
+
+// --- 白名单 TSL 内置输入节点（从 't3d/shader' 导入） ---
+
+export function uv(index?: number): ShaderVec2Node
+export const time: ShaderFloatNode
+export const deltaTime: ShaderFloatNode
+export const positionLocal: ShaderVec3Node
+export const positionWorld: ShaderVec3Node
+export const normalLocal: ShaderVec3Node
+export const normalView: ShaderVec3Node
+export const normalWorld: ShaderVec3Node
+export const viewDirection: ShaderVec3Node
+export const cameraPosition: ShaderVec3Node
+export const screenUV: ShaderVec2Node
+export function vertexColor(): ShaderVec4Node
 
 // --- 白名单 TSL 构造与函数 ---
 
