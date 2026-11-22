@@ -327,6 +327,9 @@ export const useAgentStore = create<AgentState>((set, get) => ({
       refs: mergedRefs.length > 0 ? mergedRefs : undefined,
     }
 
+    const turnProviderId = get().activeProviderId
+    const turnModel = get().providers.find((p) => p.id === turnProviderId)?.model
+
     const checkpoint = await createCheckpoint(`AI 轮次前：${text.slice(0, 24)}`)
     let currentAssistantId = `a_${Date.now() + 1}`
 
@@ -426,7 +429,8 @@ export const useAgentStore = create<AgentState>((set, get) => ({
           const systemPrompt = buildSystemPrompt(mergedRefs, activeDomains)
           const tools = buildAiToolSpecs(activeDomains)
           result = await ai.chat(reqId, {
-            providerId: get().activeProviderId,
+            providerId: turnProviderId,
+            ...(turnModel ? { model: turnModel } : {}),
             system: systemPrompt,
             messages: compactMessagesForStep(chatMessages),
             tools,

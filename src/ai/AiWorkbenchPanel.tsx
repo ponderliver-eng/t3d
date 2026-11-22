@@ -1650,6 +1650,11 @@ export default function AiWorkbenchPanel() {
                   gap: 6,
                 }}
               >
+                {status !== 'idle' && (
+                  <div style={{ fontSize: 10.5, color: '#93c5fd', padding: '3px 6px', borderRadius: 4, background: 'rgba(59,130,246,0.12)' }}>
+                    当前对话仍沿用原模型，切换后将在下次发送新对话时生效
+                  </div>
+                )}
                 {providers.map((p) => {
                   const modelList = Array.from(
                     new Set([

@@ -8,6 +8,7 @@ import { HumanoidCard } from './HumanoidCard'
 import { AnimatorCard } from './AnimatorCard'
 import { ASSET_MIME, reimportModel, saveMaterialFromNode, savePrefabFromSelection, openAsset } from '../assets/import'
 import { primaryId, useEditorStore } from '../scene/store'
+import { readRuntimePose, type RuntimeNodePose } from '../scene/viewportBridge'
 import { isLight, isMesh } from '../scene/kinds'
 import { capabilityEnabled } from '../../capabilities/registry'
 import { defaultNodePhysics } from '../../capabilities/physics/defaults'
@@ -98,6 +99,35 @@ export default function InspectorPanel() {
   const subSelection = useInspectorMemory(state => state.subSelection)
   const activeSub = node && subSelection?.nodeId === node.id ? subSelection : null
   const kindName = (kind: NodeKind) => t(`kind.${kind}` as MessageKey)
+
+  const [runtimePose, setRuntimePose] = useState<RuntimeNodePose | null>(null)
+  useEffect(() => {
+    if (!playing || !node?.id) {
+      setRuntimePose(null)
+      return
+    }
+    const samePose = (a: RuntimeNodePose | null, b: RuntimeNodePose) => {
+      if (!a) return false
+      for (let i = 0; i < 3; i += 1) {
+        if (
+          Math.abs(a.position[i] - b.position[i]) > 1e-4 ||
+          Math.abs(a.rotation[i] - b.rotation[i]) > 1e-3 ||
+          Math.abs(a.scale[i] - b.scale[i]) > 1e-4
+        ) {
+          return false
+        }
+      }
+      return true
+    }
+    const sample = () => {
+      const next = readRuntimePose(node.id)
+      if (!next) return
+      setRuntimePose(prev => (samePose(prev, next) ? prev : next))
+    }
+    sample()
+    const timer = window.setInterval(sample, 100)
+    return () => window.clearInterval(timer)
+  }, [playing, node?.id])
 
   if (asset && selection.length === 0) {
     return (
@@ -223,7 +253,7 @@ export default function InspectorPanel() {
       <Card id="transform" title={t('inspector.transform')} color={kindColor(node.kind)}>
         <Vec3Fields
           label={t('inspector.position')}
-          value={node.position}
+          value={playing && runtimePose ? runtimePose.position : node.position}
           step={0.02}
           disabled={locked || templateRoot}
           gesture={t('gesture.move')}
@@ -231,7 +261,7 @@ export default function InspectorPanel() {
         />
         <Vec3Fields
           label={t('inspector.rotation')}
-          value={node.rotation}
+          value={playing && runtimePose ? runtimePose.rotation : node.rotation}
           step={0.4}
           disabled={locked || templateRoot}
           gesture={t('gesture.rotate')}
@@ -239,7 +269,7 @@ export default function InspectorPanel() {
         />
         <Vec3Fields
           label={t('inspector.scale')}
-          value={node.scale}
+          value={playing && runtimePose ? runtimePose.scale : node.scale}
           step={0.01}
           reset={1}
           disabled={locked || templateRoot}

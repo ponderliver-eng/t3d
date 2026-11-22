@@ -2118,6 +2118,24 @@ export function getRegisteredBehavior(scriptId: string): BehaviorDefinition | un
   return compiledBehaviors.get(scriptId)
 }
 
+export function unregisterCompiledScript(scriptId: string): void {
+  compiledBehaviors.delete(scriptId)
+  const sys = compiledSystems.get(scriptId)
+  if (sys) {
+    sys.unregister()
+    compiledSystems.delete(scriptId)
+  }
+}
+
+export function clearAllCompiledScripts(): void {
+  clearScriptRuntimeState()
+  compiledBehaviors.clear()
+  for (const sys of compiledSystems.values()) {
+    sys.unregister()
+  }
+  compiledSystems.clear()
+}
+
 export function clearScriptRuntimeState(): void {
   for (const [sysId, sys] of compiledSystems.entries()) {
     if (sys.mounted) {

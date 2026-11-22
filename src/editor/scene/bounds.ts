@@ -24,11 +24,19 @@ export function prepareSkinnedPickBounds(root: Object3D) {
   root.traverse(child => {
     const mesh = child as SkinnedBounds
     if (!mesh.isSkinnedMesh || !mesh.skeleton || !Array.isArray(mesh.skeleton.bones)) return
-    mesh.skeleton.update()
+    const hasNullBone = mesh.skeleton.bones.some(bone => !bone)
+    if (!hasNullBone) {
+      try {
+        mesh.skeleton.update()
+      } catch {
+        // 忽略异常骨骼矩阵更新，继续用有效骨骼估算包围盒
+      }
+    }
     inverse.copy(mesh.matrixWorld).invert()
     boneBox.makeEmpty()
     for (const bone of mesh.skeleton.bones) {
       if (!bone) continue
+      bone.updateWorldMatrix(true, false)
       bone.getWorldPosition(vertex).applyMatrix4(inverse)
       boneBox.expandByPoint(vertex)
     }

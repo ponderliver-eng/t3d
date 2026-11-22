@@ -151,9 +151,28 @@ function releaseManaged(id: number) {
   stopSound(id)
 }
 
+function guardAudioMatrixUpdate<T extends AudioListener | PositionalAudio>(node: T): T {
+  const original = node.updateMatrixWorld.bind(node)
+  node.updateMatrixWorld = function safeAudioUpdateMatrixWorld(force?: boolean) {
+    Object.getPrototypeOf(Object.getPrototypeOf(node)).updateMatrixWorld.call(node, force)
+    const now = node.context?.currentTime
+    if (typeof now !== 'number' || !Number.isFinite(now)) return
+    const elements = node.matrixWorld.elements
+    for (let i = 0; i < elements.length; i += 1) {
+      if (!Number.isFinite(elements[i])) return
+    }
+    try {
+      original(force)
+    } catch {
+      // 防止 AudioParam 非有限值异常打断主渲染管线
+    }
+  }
+  return node
+}
+
 function ensureListener(): AudioListener {
   if (!listener) {
-    listener = new AudioListener()
+    listener = guardAudioMatrixUpdate(new AudioListener())
     listener.gain.gain.value = 1
   }
   return listener
@@ -191,7 +210,7 @@ async function start(id: number, options: PlaySoundOptions, ticket: number) {
   const bus = options.bus ?? 'sfx'
   if (bus === 'sfx') trimSfx()
   const ear = ensureListener()
-  const audio = options.parent ? new PositionalAudio(ear) : new Audio(ear)
+  const audio = options.parent ? guardAudioMatrixUpdate(new PositionalAudio(ear)) : new Audio(ear)
   audio.setBuffer(buffer)
   audio.setLoop(options.loop === true)
   const local = clamp(options.volume ?? 1, 0, 4)
@@ -249,6 +268,10 @@ function fadeStop(voice: Voice) {
   try {
     const gain = (voice.audio.getOutput() as GainNode).gain
     const now = voice.audio.context.currentTime
+    if (!Number.isFinite(now) || !Number.isFinite(gain.value)) {
+      stopVoice(voice)
+      return
+    }
     gain.cancelScheduledValues(now)
     gain.setValueAtTime(gain.value, now)
     gain.linearRampToValueAtTime(0, now + 0.35)

@@ -77,7 +77,7 @@ import '../../runtime/rules'
 import { boundsOf, prepareSkinnedPickBounds } from '../scene/bounds'
 import { isLight, isMesh } from '../scene/kinds'
 import { setSpawnProvider } from '../scene/spawn'
-import { setEditorViewBridge, setGroundSnapper, setViewportAlign } from '../scene/viewportBridge'
+import { setEditorViewBridge, setGroundSnapper, setRuntimePoseReader, setViewportAlign } from '../scene/viewportBridge'
 import { useEditorStore } from '../scene/store'
 import { useInspectorMemory } from '../panels/inspectorMemory'
 import { appendLocalPose, localPoseFromWorld, poseComponents, worldPose } from '../scene/transform'
@@ -298,6 +298,23 @@ export class EditorViewport {
       read: () => this.rig.snapshot(),
       apply: view => this.rig.restore(view),
     })
+    setRuntimePoseReader((id) => {
+      const object = this.objects.get(id)
+      if (!object) return null
+      const node = useEditorStore.getState().nodes[id]
+      const parentObj = node?.parentId ? this.objects.get(node.parentId) : undefined
+      const parentPose = parentObj
+        ? { position: parentObj.position.clone(), quaternion: parentObj.quaternion.clone(), scale: parentObj.scale.clone() }
+        : node?.parentId
+          ? worldPose(useEditorStore.getState().nodes, node.parentId)
+          : null
+      const local = localPoseFromWorld(parentPose, {
+        position: object.position.clone(),
+        quaternion: object.quaternion.clone(),
+        scale: object.scale.clone(),
+      })
+      return poseComponents(local)
+    })
     this.unregisterViewportBridge = registerViewportBridge({
       captureDataUrl: (options) => snapshotCanvasToDataUrl(this.canvas, options),
       getRenderMetrics: () => ({
@@ -490,6 +507,7 @@ export class EditorViewport {
     setGroundSnapper(null)
     setViewportAlign(null)
     setEditorViewBridge(null)
+    setRuntimePoseReader(null)
     this.unregisterViewportBridge?.()
     this.unregisterViewportBridge = null
     this.marquee?.remove()
@@ -810,6 +828,14 @@ export class EditorViewport {
     const down = new Vector3(0, -1, 0)
     const moves: { id: string, position: [number, number, number] }[] = []
     const activePickables = this.pickables.filter(obj => obj.parent !== null)
+    for (const pick of activePickables) {
+      try {
+        pick.updateMatrixWorld(true)
+        prepareSkinnedPickBounds(pick)
+      } catch {
+        // 忽略个别异常模型
+      }
+    }
     for (const id of ids) {
       const object = this.objects.get(id)
       const node = useEditorStore.getState().nodes[id]
@@ -820,9 +846,18 @@ export class EditorViewport {
       const origin = new Vector3(box.getCenter(new Vector3()).x, box.max.y + 0.05, box.getCenter(new Vector3()).z)
       const ray = new Raycaster(origin, down, 0, 800)
       ray.layers.mask = this.raycaster.layers.mask
+      const hits: ReturnType<Raycaster['intersectObjects']> = []
+      for (const pick of activePickables) {
+        try {
+          ray.intersectObject(pick, true, hits)
+        } catch {
+          // 单个异常物体（如破损蒙皮骨骼）不阻断贴地检测
+        }
+      }
+      hits.sort((a, b) => a.distance - b.distance)
       let ground = 0
       let found = false
-      for (const hit of ray.intersectObjects(activePickables, true)) {
+      for (const hit of hits) {
         let current: Object3D | null = hit.object
         let self = false
         while (current) {

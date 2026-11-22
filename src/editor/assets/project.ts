@@ -19,6 +19,7 @@ import { useEditorStore } from '../scene/store'
 import { useAgentStore } from '../../ai/agentLoop'
 import { createFreshScene } from '../scene/seed'
 import {
+  clearCodeAssetsSession,
   codeAssetDirKey,
   codeAssetFileName,
   exportCodeAssetsToDirectory,
@@ -1145,6 +1146,7 @@ async function readDirectoryFile(source: FileSystemDirectoryHandle | string): Pr
 }
 
 function replaceSession(document: ProjectDocument) {
+  clearCodeAssetsSession()
   for (const asset of Object.values(useAssetStore.getState().assets)) {
     releaseRuntimeAsset(asset.id, 'url' in asset ? asset.url : '')
   }

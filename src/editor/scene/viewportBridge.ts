@@ -14,6 +14,22 @@ export interface ViewportPose {
   quaternion: [number, number, number, number]
 }
 
+export interface RuntimeNodePose {
+  position: Vec3
+  rotation: Vec3
+  scale: Vec3
+}
+
+let readRuntimePoseFn: ((id: string) => RuntimeNodePose | null) | null = null
+
+export function setRuntimePoseReader(next: ((id: string) => RuntimeNodePose | null) | null) {
+  readRuntimePoseFn = next
+}
+
+export function readRuntimePose(id: string): RuntimeNodePose | null {
+  return readRuntimePoseFn?.(id) ?? null
+}
+
 export function setGroundSnapper(next: ((ids: string[]) => GroundSnap[]) | null) {
   snapper = next
 }

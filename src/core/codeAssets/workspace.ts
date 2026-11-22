@@ -5,7 +5,12 @@ import { projectDirectoryPath, useProjectDirectory } from '../../editor/project/
 import { electronBridge, joinProjectPath } from '../../editor/project/electronBridge'
 import { useEditorStore } from '../../editor/scene/store'
 import type { CodeDiagnostic } from './compiler'
-import { compileAndRegisterScript, type CompiledScriptAsset } from './scriptRuntime'
+import {
+  clearAllCompiledScripts,
+  compileAndRegisterScript,
+  unregisterCompiledScript,
+  type CompiledScriptAsset,
+} from './scriptRuntime'
 import { compileShaderSource, type CompiledShaderAsset } from './shaderRuntime'
 
 export type CodeAssetKind = 'shader' | 'script'
@@ -432,9 +437,17 @@ export async function moveCodeAssetFile(kind: CodeAssetKind, id: string, nextDir
   }
 }
 
+export function clearCodeAssetsSession(): void {
+  clearAllCompiledScripts()
+  useCodeAssetStore.getState().clear()
+}
+
 export async function deleteCodeAsset(id: string): Promise<void> {
   const record = useCodeAssetStore.getState().assets[id]
   if (!record) return
+  if (record.kind === 'script') {
+    unregisterCompiledScript(id)
+  }
   const dirKey = codeAssetDirKey(record.kind, id)
   useCodeAssetStore.getState().removeAsset(id)
   useAssetStore.setState((state) => {
