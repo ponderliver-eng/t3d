@@ -18,7 +18,13 @@ import { fileKindFor, warmCachedAsset } from './import'
 import { useEditorStore } from '../scene/store'
 import { useAgentStore } from '../../ai/agentLoop'
 import { createFreshScene } from '../scene/seed'
-import { exportCodeAssetsToDirectory, useCodeAssetStore } from '../../core/codeAssets/workspace'
+import {
+  codeAssetDirKey,
+  codeAssetFileName,
+  exportCodeAssetsToDirectory,
+  moveCodeAssetFile,
+  useCodeAssetStore,
+} from '../../core/codeAssets/workspace'
 import { translate } from '../i18n'
 import { usePrefsStore } from '../prefs/store'
 import type { ProjectDocument, ProjectWorkspace } from '../scene/document'
@@ -1075,10 +1081,20 @@ function bindDirectoryLayout() {
       const dir = assetDirectory(asset.id, state.assetDirs)
       if (parentProjectPath(record.relativePath) !== dir) moves.push({ id: asset.id, dir })
     }
-    if (folders.length === 0 && removed.length === 0 && moves.length === 0) return
+    const codeMoves: Array<{ kind: 'script' | 'shader', id: string, dir: string }> = []
+    for (const code of Object.values(useCodeAssetStore.getState().assets)) {
+      const dirKey = codeAssetDirKey(code.kind, code.id)
+      if (!(dirKey in state.assetDirs)) continue
+      const dir = assetDirectory(dirKey, state.assetDirs)
+      if (code.relativePath !== `${dir}/${codeAssetFileName(code.kind, code.id)}`) {
+        codeMoves.push({ kind: code.kind, id: code.id, dir })
+      }
+    }
+    if (folders.length === 0 && removed.length === 0 && moves.length === 0 && codeMoves.length === 0) return
     layoutChain = layoutChain.then(async () => {
       for (const folder of folders) await ensureDirectory(folder)
       for (const move of moves) await moveAssetFile(move.id, move.dir)
+      for (const move of codeMoves) await moveCodeAssetFile(move.kind, move.id, move.dir)
       for (const folder of removed) await removeEmptyDirectory(folder)
     }).catch(error => {
       console.warn('[project] 目录同步失败', error)
@@ -1102,6 +1118,13 @@ async function resumeLayout() {
     const dir = assetDirectory(asset.id, state.assetDirs)
     if (parentProjectPath(record.relativePath) === dir) continue
     await moveAssetFile(asset.id, dir)
+  }
+  for (const code of Object.values(useCodeAssetStore.getState().assets)) {
+    const dirKey = codeAssetDirKey(code.kind, code.id)
+    if (!(dirKey in state.assetDirs)) continue
+    const dir = assetDirectory(dirKey, state.assetDirs)
+    if (code.relativePath === `${dir}/${codeAssetFileName(code.kind, code.id)}`) continue
+    await moveCodeAssetFile(code.kind, code.id, dir)
   }
 }
 

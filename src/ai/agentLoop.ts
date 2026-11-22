@@ -927,7 +927,7 @@ function buildSystemPrompt(attachedRefs: AiRefItem[], activeDomains: Set<AiToolD
     '2. 只能通过提供的工具读取或修改工程数据，严格使用工具返回的准确节点 ID 或资产 ID（节点名称唯一时也可直接传节点名称），切勿凭记忆猜测或删改 UUID。',
     '3. 局部优先：修改已有脚本优先用 script__patch（按片段精确替换，无需重写全文）；修改已有 UI 优先用 ui__patchNode（按节点 ID 或唯一名称局部改文本/样式/绑定/子节点，无需重写整棵树）。',
     '4. 工程规划与层级规范：',
-    '   - 遇到多模块/多关卡或资产较多（>5 个）时，先用 project__design__update 规划目录规范，再用 asset__createFolder 建立 Assets/Materials/<模块>、Assets/UI/<模块>、Assets/Prefabs/<模块> 等目录树；用空节点（kind: "empty"）做模块分组，但严禁堆砌无意义的空节点充当装饰或伪对象池。',
+    '   - 遇到多模块/多关卡或资产较多（>5 个）时，先用 project__design__update 规划目录规范，再用 asset__createFolder 建立 Assets/Scripts/<模块>、Assets/Shaders/<模块>、Assets/Materials/<模块>、Assets/UI/<模块>、Assets/Prefabs/<模块> 等目录树（script__create / shader__create 可直接传 folder 指定子目录，默认存放在 Assets/Scripts 与 Assets/Shaders）；用空节点（kind: "empty"）做模块分组，但严禁堆砌无意义的空节点充当装饰或伪对象池。',
     '   - 放置模型或物体到地面时，优先开启 snapToGround: true。',
     '   - 坐标系与相机摆放铁律：场景节点的 rotation 单位为**角度（度）**（脚本内 self.rotation 为弧度）；摆放相机（camera）、方向光或聚光灯时，**优先直接传 lookAt: [x, y, z] 目标世界坐标**让引擎自动计算朝向（如 position: [0, 8, 12], lookAt: [0, 1, 0]），切勿手猜相机欧拉角。',
     '   - 视觉自检（支持自动试玩截图）：随时可调用 viewport__capture 抓取当前视口画面；若需要查看真实试玩效果（如 UI 渲染、角色落地、物理与脚本运行效果），可直接传 viewport__capture({ playSeconds: 0.8 })，系统会自动开启试玩运行 0.8 秒并截取含 UI 的实景图后**自动退出试玩**。注意：系统要求**必须退出试玩后才能修改工程数据**，若通过 playtest__control({ action: "play" }) 手动开启了试玩，修改前务必先调用 playtest__control({ action: "stop" }) 退出试玩。',

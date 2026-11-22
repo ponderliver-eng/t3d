@@ -1,6 +1,7 @@
 import { ASSETS_ROOT, normalizeDir } from '../../../editor/assets/folders'
 import { useAssetStore } from '../../../editor/assets/library'
 import { useEditorStore } from '../../../editor/scene/store'
+import { codeAssetDirKey, useCodeAssetStore } from '../../codeAssets/workspace'
 import type { PbrSlot, Vec3 } from '../../../editor/scene/types'
 import {
   createUiTemplateDocument,
@@ -667,10 +668,26 @@ const moveToFolderCmd: CommandDef<MoveToFolderParams, { folder: string; movedIds
   run(_ctx, p) {
     const targetDir = ensureAssetFolderPath(p.folder)
     const store = useAssetStore.getState()
+    const codeAssets = useCodeAssetStore.getState().assets
     const movedIds: string[] = []
     for (const id of p.assetIds ?? []) {
       if (store.assets[id]) {
         store.place(id, targetDir)
+        movedIds.push(id)
+        continue
+      }
+      if (id.startsWith('code:script:') || id.startsWith('code:shader:')) {
+        const codeId = id.slice(id.lastIndexOf(':') + 1)
+        const rec = codeAssets[codeId]
+        if (rec) {
+          store.place(codeAssetDirKey(rec.kind, rec.id), targetDir)
+          movedIds.push(id)
+          continue
+        }
+      }
+      if (codeAssets[id]) {
+        const rec = codeAssets[id]
+        store.place(codeAssetDirKey(rec.kind, rec.id), targetDir)
         movedIds.push(id)
       }
     }

@@ -30,6 +30,8 @@ export const DEFAULT_ASSET_FOLDERS = [
   'Assets/Audio',
   'Assets/Materials',
   'Assets/Animations',
+  'Assets/Scripts',
+  'Assets/Shaders',
 ]
 
 const HANDLE_DB = 't3d-project-directory'

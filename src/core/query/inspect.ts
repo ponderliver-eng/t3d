@@ -1,10 +1,25 @@
 import { CAPABILITIES, capabilityEnabled, type CapabilityManifest } from '../../capabilities/registry'
-import { ASSETS_ROOT, normalizeDir } from '../../editor/assets/folders'
+import { ASSETS_ROOT, isWithin, normalizeDir } from '../../editor/assets/folders'
 import { assetDirectory, useAssetStore } from '../../editor/assets/library'
 import { useEditorStore } from '../../editor/scene/store'
 import type { SceneNode } from '../../editor/scene/types'
 import { listGameplayPacks, tableRows } from '../../gameplay/registry'
+import { codeAssetDirKey, defaultCodeAssetDir, useCodeAssetStore } from '../codeAssets/workspace'
 import { commandBus } from '../commands/bus'
+
+function resolveCodeAssetFolder(
+  kind: 'script' | 'shader',
+  id: string,
+  relativePath: string,
+  assetDirs: Record<string, string>,
+): string {
+  const dirKey = codeAssetDirKey(kind, id)
+  if (assetDirs[dirKey]) return normalizeDir(assetDirs[dirKey])
+  if (relativePath.startsWith(`${ASSETS_ROOT}/`) && relativePath.includes('/')) {
+    return normalizeDir(relativePath.slice(0, relativePath.lastIndexOf('/')))
+  }
+  return defaultCodeAssetDir(kind)
+}
 
 export interface OutlineNodeItem {
   id: string
@@ -35,6 +50,11 @@ export function queryProjectOverview() {
     if (asset.kind === 'scene') {
       scenes.push({ id: asset.id, name: asset.name, active: asset.id === state.activeSceneId })
     }
+  }
+  for (const code of Object.values(useCodeAssetStore.getState().assets)) {
+    assetCounts[code.kind] = (assetCounts[code.kind] ?? 0) + 1
+    const dir = resolveCodeAssetFolder(code.kind, code.id, code.relativePath, assetState.assetDirs)
+    folderCounts[dir] = (folderCounts[dir] ?? 0) + 1
   }
   if (!(ASSETS_ROOT in folderCounts)) folderCounts[ASSETS_ROOT] = 0
 
@@ -131,22 +151,50 @@ export function queryNodeInspect(nodeId: string) {
   }
 }
 
-export function queryAssetSearch(query = '', kind?: string) {
+export function queryAssetSearch(query = '', kind?: string, folder?: string) {
   const q = query.trim().toLowerCase()
-  const assets = Object.values(useAssetStore.getState().assets)
-  return assets
+  const assetState = useAssetStore.getState()
+  const assets = Object.values(assetState.assets)
+  const targetFolder = folder?.trim() ? normalizeDir(folder) : null
+
+  const regularResults = assets
     .filter((asset) => {
       if (kind && asset.kind !== kind) return false
+      const dir = assetDirectory(asset.id, assetState.assetDirs)
+      if (targetFolder && !isWithin(dir, targetFolder)) return false
       if (!q) return true
       return asset.name.toLowerCase().includes(q) || asset.id.toLowerCase().includes(q)
     })
-    .slice(0, 60)
     .map((asset) => ({
       id: asset.id,
       name: asset.name,
       kind: asset.kind,
+      folder: assetDirectory(asset.id, assetState.assetDirs),
       ...(asset.kind === 'model' ? { importScale: asset.importScale ?? 1, clipCount: asset.clipCatalog?.length ?? 0 } : {}),
     }))
+
+  const codeResults = Object.values(useCodeAssetStore.getState().assets)
+    .filter((code) => {
+      if (kind && code.kind !== kind) return false
+      const dir = resolveCodeAssetFolder(code.kind, code.id, code.relativePath, assetState.assetDirs)
+      if (targetFolder && !isWithin(dir, targetFolder)) return false
+      if (!q) return true
+      return (
+        code.name.toLowerCase().includes(q) ||
+        code.id.toLowerCase().includes(q) ||
+        code.relativePath.toLowerCase().includes(q)
+      )
+    })
+    .map((code) => ({
+      id: code.id,
+      name: code.name,
+      kind: code.kind,
+      folder: resolveCodeAssetFolder(code.kind, code.id, code.relativePath, assetState.assetDirs),
+      relativePath: code.relativePath,
+      ok: code.ok,
+    }))
+
+  return [...regularResults, ...codeResults].slice(0, 60)
 }
 
 export function queryRegistryDescribe(category: 'capabilities' | 'gameplayPacks' | 'commands' | 'all', id?: string) {

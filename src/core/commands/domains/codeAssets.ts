@@ -17,6 +17,7 @@ import type { CommandDef } from '../types'
 interface CodeSourceParams {
   id: string
   source?: string
+  folder?: string
 }
 
 interface ScriptPatchItem {
@@ -52,12 +53,13 @@ export function registerCodeAssetCommands(): () => void {
   const shaderCreateCmd: CommandDef<CodeSourceParams> = {
     id: 'shader.create',
     title: '新建着色器资产',
-    description: '创建一个 TSL 表面着色器文件（shaders/<id>.shader.ts）并立即编译检查',
+    description: '创建一个 TSL 表面着色器文件（默认保存在 Assets/Shaders/<id>.shader.ts，可通过 folder 指定子目录）并立即编译检查',
     params: {
       type: 'object',
       fields: {
         id: { type: 'string', default: '', label: '着色器 ID 或名称' },
         source: { type: 'string', default: '', label: 'TSL 着色器源码（留空则生成模板）', optional: true },
+        folder: { type: 'string', default: 'Assets/Shaders', label: '存放目录（默认 Assets/Shaders）', optional: true },
       },
     },
     risk: 'safe',
@@ -68,7 +70,7 @@ export function registerCodeAssetCommands(): () => void {
       const source = typeof params.source === 'string' && params.source.trim()
         ? params.source
         : defaultTemplateFor('shader', id)
-      const record = await saveAndCompileCodeAsset('shader', id, source)
+      const record = await saveAndCompileCodeAsset('shader', id, source, params.folder)
       return {
         ok: true,
         value: {
@@ -145,12 +147,13 @@ export function registerCodeAssetCommands(): () => void {
   const scriptCreateCmd: CommandDef<CodeSourceParams> = {
     id: 'script.create',
     title: '新建脚本资产',
-    description: '创建一个 t3d/runtime TypeScript 脚本（scripts/<id>.ts）并立即编译注册',
+    description: '创建一个 t3d/runtime TypeScript 脚本（默认保存在 Assets/Scripts/<id>.ts，可通过 folder 指定子目录）并立即编译注册',
     params: {
       type: 'object',
       fields: {
         id: { type: 'string', default: '', label: '脚本 ID 或名称' },
         source: { type: 'string', default: '', label: '脚本源码（留空则生成行为模板）', optional: true },
+        folder: { type: 'string', default: 'Assets/Scripts', label: '存放目录（默认 Assets/Scripts）', optional: true },
       },
     },
     risk: 'safe',
@@ -161,7 +164,7 @@ export function registerCodeAssetCommands(): () => void {
       const source = typeof params.source === 'string' && params.source.trim()
         ? params.source
         : defaultTemplateFor('script', id)
-      const record = await saveAndCompileCodeAsset('script', id, source)
+      const record = await saveAndCompileCodeAsset('script', id, source, params.folder)
       const lintIssues = lintScriptSource(source)
       const diagnostics = [...record.diagnostics, ...lintIssues]
       const hasErrors = !record.ok || lintIssues.some((d) => d.severity === 'error')

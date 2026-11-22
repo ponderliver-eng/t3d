@@ -141,12 +141,13 @@ const QUERY_TOOLS: AiToolSpec[] = [
   },
   {
     name: 'query__asset_search',
-    description: '按关键词与种类搜索工程资产（model/texture/material/ui/prefab/scene/effect/audio）',
+    description: '按关键词、种类（model/texture/material/ui/prefab/scene/effect/audio/script/shader）与所在目录搜索工程资产',
     parameters: {
       type: 'object',
       properties: {
         query: { type: 'string', description: '搜索关键词，空字符串表示列出全部' },
-        kind: { type: 'string', description: '可选资产种类过滤' },
+        kind: { type: 'string', description: '可选资产种类过滤（含 script / shader）' },
+        folder: { type: 'string', description: '可选目录过滤（如 Assets/Scripts 或 Assets/Materials）' },
       },
       additionalProperties: false,
     },
@@ -540,6 +541,7 @@ async function executeAiToolInner(
         data: queryAssetSearch(
           typeof args.query === 'string' ? args.query : '',
           typeof args.kind === 'string' ? args.kind : undefined,
+          typeof args.folder === 'string' ? args.folder : undefined,
         ),
       }
     case 'query__registry_describe':
@@ -572,14 +574,23 @@ async function executeAiToolInner(
       }
     }
     case 'query__code_assets': {
-      const items = Object.values(useCodeAssetStore.getState().assets).map((item) => ({
-        id: item.id,
-        kind: item.kind,
-        name: item.name,
-        relativePath: item.relativePath,
-        ok: item.ok,
-        diagnostics: item.diagnostics,
-      }))
+      const assetDirs = useAssetStore.getState().assetDirs
+      const items = Object.values(useCodeAssetStore.getState().assets).map((item) => {
+        const dirKey = `code:${item.kind}:${item.id}`
+        const folder = assetDirs[dirKey]
+          ?? (item.relativePath.startsWith('Assets/') && item.relativePath.includes('/')
+            ? item.relativePath.slice(0, item.relativePath.lastIndexOf('/'))
+            : item.kind === 'shader' ? 'Assets/Shaders' : 'Assets/Scripts')
+        return {
+          id: item.id,
+          kind: item.kind,
+          name: item.name,
+          folder,
+          relativePath: item.relativePath,
+          ok: item.ok,
+          diagnostics: item.diagnostics,
+        }
+      })
       return {
         ok: true,
         toolName,

@@ -68,28 +68,48 @@ function stopProjectWatchers() {
 
 async function startProjectCodeWatchers(projectDir: string) {
   if (watchedProjectRoot === projectDir && projectWatchers.length > 0) return
-  stopProjectWatchers()
+  stopProjectCodeWatchers()
   watchedProjectRoot = projectDir
   const pendingTimers = new Map<string, NodeJS.Timeout>()
 
+  const scheduleEmit = (rel: string) => {
+    const cleanRel = rel.replace(/\\/g, '/')
+    if (!cleanRel.endsWith('.ts') || cleanRel.endsWith('.d.ts')) return
+    const prev = pendingTimers.get(cleanRel)
+    if (prev) clearTimeout(prev)
+    const timer = setTimeout(() => {
+      pendingTimers.delete(cleanRel)
+      mainWindow?.webContents.send('codeAsset:changed', { relativePath: cleanRel })
+    }, 120)
+    pendingTimers.set(cleanRel, timer)
+  }
+
+  // 监听 Assets 目录树下所有 .ts / .shader.ts（与工程资源目录完全同步）
+  const absAssets = path.join(projectDir, 'Assets')
+  try {
+    await fs.mkdir(absAssets, { recursive: true })
+    const watcher = fsSync.watch(absAssets, { recursive: true }, (_eventType, fileName) => {
+      if (!fileName) return
+      scheduleEmit(`Assets/${String(fileName).replace(/\\/g, '/')}`)
+    })
+    projectWatchers.push(watcher)
+  } catch {
+    // ignore watcher setup failures
+  }
+
+  // 向后兼容旧工程根目录的 scripts / shaders（若存在则继续监听，不再主动创建空目录）
   for (const subDir of ['scripts', 'shaders']) {
     const absSub = path.join(projectDir, subDir)
     try {
-      await fs.mkdir(absSub, { recursive: true })
+      const stat = await fs.stat(absSub)
+      if (!stat.isDirectory()) continue
       const watcher = fsSync.watch(absSub, (_eventType, fileName) => {
-        if (!fileName || !fileName.endsWith('.ts')) return
-        const rel = `${subDir}/${fileName.replace(/\\/g, '/')}`
-        const prev = pendingTimers.get(rel)
-        if (prev) clearTimeout(prev)
-        const timer = setTimeout(() => {
-          pendingTimers.delete(rel)
-          mainWindow?.webContents.send('codeAsset:changed', { relativePath: rel })
-        }, 120)
-        pendingTimers.set(rel, timer)
+        if (!fileName) return
+        scheduleEmit(`${subDir}/${String(fileName).replace(/\\/g, '/')}`)
       })
       projectWatchers.push(watcher)
     } catch {
-      // ignore watcher setup failures
+      // 目录不存在时跳过
     }
   }
 }

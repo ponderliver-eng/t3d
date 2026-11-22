@@ -17,12 +17,15 @@ import { openAssetPreview, type PreviewKind } from '../preview/previewStore'
 import { openPackagePicker, usePackageImportStore } from '../assets/packageImportStore'
 import { TextureResizeDialog } from './TextureResizeDialog'
 import { openCodeAssetModal } from '../../core/codeAssets/CodeAssetModal'
-import { defaultTemplateFor, normalizeCodeAssetId, saveAndCompileCodeAsset, useCodeAssetStore } from '../../core/codeAssets/workspace'
+import {
+  codeAssetDirKey,
+  defaultTemplateFor,
+  deleteCodeAsset,
+  normalizeCodeAssetId,
+  saveAndCompileCodeAsset,
+  useCodeAssetStore,
+} from '../../core/codeAssets/workspace'
 import './ProjectPanel.css'
-
-function codeAssetDirKey(kind: 'script' | 'shader', id: string): string {
-  return `code:${kind}:${id}`
-}
 
 const PILLS = [
   { id: 'all', icon: Layers },
@@ -679,12 +682,16 @@ export default function ProjectPanel() {
               <button type="button" onClick={() => {
                 if (pending.kind === 'asset') deleteAsset(pending.id)
                 else if (pending.kind === 'code') {
-                  useCodeAssetStore.getState().removeAsset(pending.id)
+                  void deleteCodeAsset(pending.id)
                   if (selectedCodeId === pending.id) setSelectedCodeId(null)
                 } else {
                   const store = useAssetStore.getState()
                   const ids = Object.keys(store.assets).filter(id => isWithin(assetDirectory(id, store.assetDirs), pending.path))
                   for (const id of ids) deleteAsset(id)
+                  const codeIds = Object.values(useCodeAssetStore.getState().assets)
+                    .filter(c => isWithin(assetDirectory(codeAssetDirKey(c.kind, c.id), store.assetDirs), pending.path))
+                    .map(c => c.id)
+                  for (const cid of codeIds) void deleteCodeAsset(cid)
                   const left = ids.flatMap(id => {
                     const asset = useAssetStore.getState().assets[id]
                     return asset ? [{ name: asset.name, assetId: asset.id }] : []
@@ -791,8 +798,7 @@ function CreateMenu({ dir, onDone, onNewFolder }: { dir: string, onDone: () => v
               onClick={() => {
                 const count = Object.values(useCodeAssetStore.getState().assets).filter(a => a.kind === 'script').length + 1
                 const id = normalizeCodeAssetId('script', `behavior_${count}`)
-                useAssetStore.getState().place(codeAssetDirKey('script', id), dir)
-                void saveAndCompileCodeAsset('script', id, defaultTemplateFor('script', id)).then(() => {
+                void saveAndCompileCodeAsset('script', id, defaultTemplateFor('script', id), dir).then(() => {
                   openCodeAssetModal('script', id)
                 })
                 onDone()
@@ -805,8 +811,7 @@ function CreateMenu({ dir, onDone, onNewFolder }: { dir: string, onDone: () => v
               onClick={() => {
                 const count = Object.values(useCodeAssetStore.getState().assets).filter(a => a.kind === 'shader').length + 1
                 const id = normalizeCodeAssetId('shader', `surface_${count}`)
-                useAssetStore.getState().place(codeAssetDirKey('shader', id), dir)
-                void saveAndCompileCodeAsset('shader', id, defaultTemplateFor('shader', id)).then(() => {
+                void saveAndCompileCodeAsset('shader', id, defaultTemplateFor('shader', id), dir).then(() => {
                   openCodeAssetModal('shader', id)
                 })
                 onDone()

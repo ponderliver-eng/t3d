@@ -1,4 +1,6 @@
 import { create } from 'zustand'
+import { ASSETS_ROOT, normalizeDir } from '../../editor/assets/folders'
+import { useAssetStore } from '../../editor/assets/library'
 import { projectDirectoryPath, useProjectDirectory } from '../../editor/project/disk'
 import { electronBridge, joinProjectPath } from '../../editor/project/electronBridge'
 import { useEditorStore } from '../../editor/scene/store'
@@ -64,7 +66,7 @@ const PROJECT_TSCONFIG = `{
       "t3d/shader": [".t3d/shader.d.ts"]
     }
   },
-  "include": ["scripts/**/*.ts", "shaders/**/*.ts", ".t3d/**/*.d.ts"]
+  "include": ["Assets/**/*.ts", "scripts/**/*.ts", "shaders/**/*.ts", ".t3d/**/*.d.ts"]
 }
 `
 
@@ -266,14 +268,38 @@ export const screenUV: ShaderNode
 export function vertexColor(): ShaderNode
 `
 
+export function codeAssetDirKey(kind: CodeAssetKind, id: string): string {
+  return `code:${kind}:${id}`
+}
+
+export function defaultCodeAssetDir(kind: CodeAssetKind): string {
+  return kind === 'shader' ? 'Assets/Shaders' : 'Assets/Scripts'
+}
+
+export function codeAssetFileName(kind: CodeAssetKind, id: string): string {
+  return kind === 'shader' ? `${id}.shader.ts` : `${id}.ts`
+}
+
+function ensureFolderInStore(folder: string): void {
+  const dir = normalizeDir(folder)
+  if (dir === ASSETS_ROOT) return
+  const store = useAssetStore.getState()
+  if (!store.folders.includes(dir)) {
+    useAssetStore.setState((s) => ({
+      folders: [...new Set([...s.folders.map(normalizeDir), dir])].filter((f) => f !== ASSETS_ROOT),
+      revision: s.revision + 1,
+    }))
+  }
+}
+
 export async function ensureCodeWorkspaceFiles(projectRoot?: string | null): Promise<void> {
   const dir = projectRoot ?? projectDirectoryPath()
   if (!dir) return
   const bridge = electronBridge()
   if (!bridge?.fs?.mkdir || !bridge?.fs?.writeTextFile) return
   await bridge.fs.mkdir(joinProjectPath(dir, '.t3d'))
-  await bridge.fs.mkdir(joinProjectPath(dir, 'scripts'))
-  await bridge.fs.mkdir(joinProjectPath(dir, 'shaders'))
+  await bridge.fs.mkdir(joinProjectPath(dir, 'Assets/Scripts'))
+  await bridge.fs.mkdir(joinProjectPath(dir, 'Assets/Shaders'))
   await bridge.fs.writeTextFile(joinProjectPath(dir, '.t3d/runtime.d.ts'), RUNTIME_DTS_SUMMARY)
   await bridge.fs.writeTextFile(joinProjectPath(dir, '.t3d/shader.d.ts'), SHADER_DTS_SUMMARY)
   await bridge.fs.writeTextFile(joinProjectPath(dir, 'tsconfig.json'), PROJECT_TSCONFIG)
@@ -287,8 +313,22 @@ export function normalizeCodeAssetId(kind: CodeAssetKind, nameOrId: string): str
   return clean || `${kind}_${Date.now().toString(36)}`
 }
 
-export function codeAssetRelativePath(kind: CodeAssetKind, id: string): string {
-  return kind === 'shader' ? `shaders/${id}.shader.ts` : `scripts/${id}.ts`
+export function codeAssetRelativePath(kind: CodeAssetKind, id: string, folder?: string): string {
+  const dirKey = codeAssetDirKey(kind, id)
+  const storedDir = useAssetStore.getState().assetDirs[dirKey]
+  const existingRel = useCodeAssetStore.getState().assets[id]?.relativePath
+  const existingAssetsDir =
+    existingRel && (existingRel.startsWith(`${ASSETS_ROOT}/`) || existingRel === ASSETS_ROOT) && existingRel.includes('/')
+      ? existingRel.slice(0, existingRel.lastIndexOf('/'))
+      : null
+  const targetDir = folder?.trim()
+    ? normalizeDir(folder)
+    : storedDir
+      ? normalizeDir(storedDir)
+      : existingAssetsDir
+        ? normalizeDir(existingAssetsDir)
+        : defaultCodeAssetDir(kind)
+  return `${targetDir}/${codeAssetFileName(kind, id)}`
 }
 
 export function compileCodeAsset(
@@ -334,16 +374,28 @@ export async function saveAndCompileCodeAsset(
   kind: CodeAssetKind,
   idOrName: string,
   source: string,
+  folder?: string,
 ): Promise<CodeAssetRecord> {
   const id = normalizeCodeAssetId(kind, idOrName)
-  const rel = codeAssetRelativePath(kind, id)
+  const prevRel = useCodeAssetStore.getState().assets[id]?.relativePath
+  const rel = codeAssetRelativePath(kind, id, folder)
+  const targetDir = normalizeDir(rel.slice(0, rel.lastIndexOf('/')))
+  ensureFolderInStore(targetDir)
+  useAssetStore.getState().place(codeAssetDirKey(kind, id), targetDir)
+
   const record = compileCodeAsset(kind, id, rel, source)
 
   const dir = projectDirectoryPath()
   const bridge = electronBridge()
   if (dir && bridge?.fs) {
     await ensureCodeWorkspaceFiles(dir)
+    if (bridge.fs.mkdir) {
+      await bridge.fs.mkdir(joinProjectPath(dir, targetDir))
+    }
     await bridge.fs.writeTextFile(joinProjectPath(dir, rel), source)
+    if (prevRel && prevRel !== rel && bridge.fs.unlinkFile) {
+      await bridge.fs.unlinkFile(joinProjectPath(dir, prevRel)).catch(() => undefined)
+    }
   }
 
   if (!record.ok && record.diagnostics.length > 0) {
@@ -355,23 +407,105 @@ export async function saveAndCompileCodeAsset(
   return record
 }
 
+export async function moveCodeAssetFile(kind: CodeAssetKind, id: string, nextDir: string): Promise<void> {
+  const record = useCodeAssetStore.getState().assets[id]
+  if (!record || record.kind !== kind) return
+  const targetDir = normalizeDir(nextDir)
+  const nextRel = `${targetDir}/${codeAssetFileName(kind, id)}`
+  if (record.relativePath === nextRel) return
+  const oldRel = record.relativePath
+  useCodeAssetStore.getState().upsertAsset({ ...record, relativePath: nextRel })
+
+  const dir = projectDirectoryPath()
+  const bridge = electronBridge()
+  if (!dir || !bridge?.fs) return
+  if (bridge.fs.mkdir) {
+    await bridge.fs.mkdir(joinProjectPath(dir, targetDir)).catch(() => undefined)
+  }
+  if (bridge.fs.movePath && oldRel) {
+    const moved = await bridge.fs.movePath(joinProjectPath(dir, oldRel), joinProjectPath(dir, nextRel)).then(() => true).catch(() => false)
+    if (moved) return
+  }
+  await bridge.fs.writeTextFile(joinProjectPath(dir, nextRel), record.source)
+  if (oldRel && oldRel !== nextRel && bridge.fs.unlinkFile) {
+    await bridge.fs.unlinkFile(joinProjectPath(dir, oldRel)).catch(() => undefined)
+  }
+}
+
+export async function deleteCodeAsset(id: string): Promise<void> {
+  const record = useCodeAssetStore.getState().assets[id]
+  if (!record) return
+  const dirKey = codeAssetDirKey(record.kind, id)
+  useCodeAssetStore.getState().removeAsset(id)
+  useAssetStore.setState((state) => {
+    if (!(dirKey in state.assetDirs)) return {}
+    const next = { ...state.assetDirs }
+    delete next[dirKey]
+    return { assetDirs: next, revision: state.revision + 1 }
+  })
+  const dir = projectDirectoryPath()
+  const bridge = electronBridge()
+  if (dir && bridge?.fs?.unlinkFile && record.relativePath) {
+    await bridge.fs.unlinkFile(joinProjectPath(dir, record.relativePath)).catch(() => undefined)
+  }
+}
+
+async function scanCodeDirectoryRecursive(
+  projectRoot: string,
+  relDir: string,
+  seenIds: Set<string>,
+): Promise<number> {
+  const bridge = electronBridge()
+  if (!bridge?.fs?.list || !bridge?.fs?.readTextFile) return 0
+  const entries = await bridge.fs.list(joinProjectPath(projectRoot, relDir)).catch(() => [])
+  let loaded = 0
+  for (const entry of entries) {
+    if (!entry.name || entry.name.startsWith('.')) continue
+    const rel = `${relDir}/${entry.name}`
+    if (entry.kind === 'directory') {
+      loaded += await scanCodeDirectoryRecursive(projectRoot, rel, seenIds)
+      continue
+    }
+    if (entry.kind !== 'file' || !entry.name.endsWith('.ts') || entry.name.endsWith('.d.ts')) continue
+    const kind: CodeAssetKind = entry.name.endsWith('.shader.ts') ? 'shader' : 'script'
+    const id = normalizeCodeAssetId(kind, entry.name)
+    if (seenIds.has(id)) continue
+    const source = await bridge.fs.readTextFile(joinProjectPath(projectRoot, rel)).catch(() => null)
+    if (source === null) continue
+    seenIds.add(id)
+    if (relDir === ASSETS_ROOT || relDir.startsWith(`${ASSETS_ROOT}/`)) {
+      const normalized = normalizeDir(relDir)
+      ensureFolderInStore(normalized)
+      useAssetStore.getState().place(codeAssetDirKey(kind, id), normalized)
+    }
+    compileCodeAsset(kind, id, rel, source)
+    loaded += 1
+  }
+  return loaded
+}
+
 export async function scanProjectCodeAssets(projectRoot?: string | null): Promise<number> {
   const dir = projectRoot ?? projectDirectoryPath()
   const bridge = electronBridge()
   if (!dir || !bridge?.fs?.list || !bridge?.fs?.readTextFile) return 0
 
-  let loaded = 0
+  const seenIds = new Set<string>()
+  let loaded = await scanCodeDirectoryRecursive(dir, ASSETS_ROOT, seenIds)
+
+  // 向后兼容旧工程根目录 scripts/ 与 shaders/
   for (const [kind, subDir] of [
     ['shader', 'shaders'],
     ['script', 'scripts'],
   ] as const) {
     const entries = await bridge.fs.list(joinProjectPath(dir, subDir)).catch(() => [])
     for (const entry of entries) {
-      if (entry.kind !== 'file' || !entry.name.endsWith('.ts')) continue
+      if (entry.kind !== 'file' || !entry.name.endsWith('.ts') || entry.name.endsWith('.d.ts')) continue
+      const id = normalizeCodeAssetId(kind, entry.name)
+      if (seenIds.has(id)) continue
       const rel = `${subDir}/${entry.name}`
       const source = await bridge.fs.readTextFile(joinProjectPath(dir, rel)).catch(() => null)
       if (source === null) continue
-      const id = normalizeCodeAssetId(kind, entry.name)
+      seenIds.add(id)
       compileCodeAsset(kind, id, rel, source)
       loaded += 1
     }
@@ -384,17 +518,27 @@ export async function reloadCodeAssetFromDisk(relativePath: string): Promise<Cod
   const bridge = electronBridge()
   if (!dir || !bridge?.fs?.readTextFile) return null
   const cleanRel = relativePath.replace(/\\/g, '/')
-  const kind: CodeAssetKind | null = cleanRel.startsWith('shaders/')
-    ? 'shader'
-    : cleanRel.startsWith('scripts/')
-      ? 'script'
-      : null
-  if (!kind || !cleanRel.endsWith('.ts')) return null
+  if (!cleanRel.endsWith('.ts') || cleanRel.endsWith('.d.ts')) return null
+  const kind: CodeAssetKind | null = cleanRel.startsWith(`${ASSETS_ROOT}/`)
+    ? cleanRel.endsWith('.shader.ts')
+      ? 'shader'
+      : 'script'
+    : cleanRel.startsWith('shaders/')
+      ? 'shader'
+      : cleanRel.startsWith('scripts/')
+        ? 'script'
+        : null
+  if (!kind) return null
 
   const source = await bridge.fs.readTextFile(joinProjectPath(dir, cleanRel)).catch(() => null)
   if (source === null) return null
   const fileName = cleanRel.split('/').pop() ?? cleanRel
   const id = normalizeCodeAssetId(kind, fileName)
+  if (cleanRel.startsWith(`${ASSETS_ROOT}/`)) {
+    const parentRel = normalizeDir(cleanRel.slice(0, cleanRel.lastIndexOf('/')))
+    ensureFolderInStore(parentRel)
+    useAssetStore.getState().place(codeAssetDirKey(kind, id), parentRel)
+  }
   return compileCodeAsset(kind, id, cleanRel, source)
 }
 
