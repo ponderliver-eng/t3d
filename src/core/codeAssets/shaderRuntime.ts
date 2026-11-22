@@ -113,12 +113,13 @@ export function buildMaterialFromShader(
     runtimeParams[key] = paramToNode(schema, val)
   }
 
-  const out = def.surface(runtimeParams)
+  const out = def.surface(runtimeParams) as Record<string, unknown>
   const isUnlit = def.mode === 'unlit'
   const material = isUnlit ? new MeshBasicNodeMaterial() : new MeshStandardNodeMaterial()
 
-  if (out.baseColor !== undefined) {
-    ;(material as unknown as { colorNode?: unknown }).colorNode = asNode(out.baseColor)
+  const baseColorNode = out.baseColor !== undefined ? out.baseColor : out.color
+  if (baseColorNode !== undefined) {
+    ;(material as unknown as { colorNode?: unknown }).colorNode = asNode(baseColorNode)
   }
   if (out.opacity !== undefined) {
     ;(material as unknown as { opacityNode?: unknown }).opacityNode = asNode(out.opacity)
