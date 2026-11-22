@@ -1955,6 +1955,36 @@ function extractActionErrorDetails(detail: unknown): { lines: string[]; hint: st
   return { lines, hint }
 }
 
+const ACTION_LINK_STYLE = {
+  color: '#60a5fa',
+  textDecoration: 'underline',
+  textUnderlineOffset: '2px',
+} as const
+
+function renderActionLabel(label: string, isLink: boolean) {
+  if (!isLink) return label
+  const pathMatch = label.match(/^(.*?\s+)((?:Assets|scripts|shaders)\/\S+)(.*)$/i)
+  if (pathMatch) {
+    return (
+      <>
+        <span>{pathMatch[1]}</span>
+        <span style={ACTION_LINK_STYLE}>{pathMatch[2]}</span>
+        {pathMatch[3] && <span>{pathMatch[3]}</span>}
+      </>
+    )
+  }
+  const spaceIdx = label.indexOf(' ')
+  if (spaceIdx > 0 && spaceIdx < label.length - 1) {
+    return (
+      <>
+        <span>{label.slice(0, spaceIdx + 1)}</span>
+        <span style={ACTION_LINK_STYLE}>{label.slice(spaceIdx + 1)}</span>
+      </>
+    )
+  }
+  return <span style={ACTION_LINK_STYLE}>{label}</span>
+}
+
 function TurnActionsList({ actions, isActiveTurn }: { actions: AiActionPill[]; isActiveTurn: boolean }) {
   const [manualExpanded, setManualExpanded] = useState<boolean | null>(null)
   const [openErrorIds, setOpenErrorIds] = useState<Record<string, boolean>>({})
@@ -2070,7 +2100,7 @@ function TurnActionsList({ actions, isActiveTurn }: { actions: AiActionPill[]; i
                     : { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1 }
                 }
               >
-                {act.label}
+                {renderActionLabel(act.label, !act.pending && !isError && (canLocateAsset || canFocusNode))}
               </span>
               {hasDetail && (
                 <span style={{ flexShrink: 0, color: '#f87171', opacity: 0.85, display: 'inline-flex', alignItems: 'center' }}>

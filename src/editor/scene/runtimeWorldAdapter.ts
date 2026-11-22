@@ -47,17 +47,19 @@ export function createEditorRuntimeWorld(): RuntimeWorld {
     playBody: (nodeId, clipName, options) => {
       playBody(nodeId, {
         clip: clipName,
-        assetId: options?.assetId ?? null,
+        ...(options?.assetId !== undefined ? { assetId: options.assetId } : {}),
         loop: options?.loop,
         fade: options?.fade,
+        speed: options?.speed,
       })
     },
     playUpper: (nodeId, clipName, options) => {
       playUpper(nodeId, {
         clip: clipName,
-        assetId: options?.assetId ?? null,
+        ...(options?.assetId !== undefined ? { assetId: options.assetId } : {}),
         loop: options?.loop,
         fade: options?.fade,
+        speed: options?.speed,
       })
     },
     stopUpper: (nodeId) => stopUpper(nodeId),
