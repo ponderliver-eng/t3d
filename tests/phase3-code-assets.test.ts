@@ -3,7 +3,7 @@ import test from 'node:test'
 import { Group } from 'three'
 import { checkAndTranspileTs } from '../src/core/codeAssets/compiler'
 import { clearScriptRuntimeState, compileAndRegisterScript } from '../src/core/codeAssets/scriptRuntime'
-import { compileShaderSource } from '../src/core/codeAssets/shaderRuntime'
+import { compileShaderSource, getCompiledShaderParam, setCompiledShaderParam } from '../src/core/codeAssets/shaderRuntime'
 import { RUNTIME_DTS_SUMMARY } from '../src/core/codeAssets/typeDefs'
 import { stepSceneRuntime, type SceneRuntimeHost } from '../src/runtime/sceneRuntime'
 import { setRuntimeWorld, type RuntimeWorld } from '../src/runtime/world'
@@ -138,7 +138,7 @@ test('compileAndRegisterScript 挂载 __project__ 槽位并支持热重载保留
 })
 
 test('checkAndTranspileTs 执行语义类型检查并覆盖完整 RUNTIME_DTS_SUMMARY', () => {
-  for (const key of ['anim', 'character', 'physics', 'nav', 'crowd', 'projectile', 'scene', 'getBehavior', 'fx', 'global', 'storage', 'tables']) {
+  for (const key of ['anim', 'character', 'physics', 'nav', 'crowd', 'projectile', 'scene', 'shader', 'getBehavior', 'fx', 'global', 'storage', 'tables']) {
     assert.ok(RUNTIME_DTS_SUMMARY.includes(key), `RUNTIME_DTS_SUMMARY 缺少 ${key}`)
   }
 
@@ -177,6 +177,38 @@ test('checkAndTranspileTs 执行语义类型检查并覆盖完整 RUNTIME_DTS_SU
     `,
   )
   assert.equal(goodApi.ok, true)
+})
+
+test('compileShaderSource 支持扩充 TSL 节点、渲染状态与运行期 Uniform 动态更新', () => {
+  const waterLikeShader = `
+    import { defineShader, float, vec3, mix, sin, time, uv, frontFacing, select, linearDepth, screenUV, viewportSharedTexture } from 't3d/shader'
+    export default defineShader({
+      name: 'AdvancedWaterLike',
+      mode: 'lit',
+      transparent: true,
+      side: 'double',
+      depthWrite: false,
+      blending: 'normal',
+      params: {
+        waveAmp: { type: 'number', default: 0.2, label: 'Wave Amp' },
+        shallow: { type: 'color', default: '#22d3ee', label: 'Shallow' },
+        deep: { type: 'color', default: '#0f172a', label: 'Deep' },
+      },
+      surface(p) {
+        const wave = sin(uv().x.mul(10).add(time)).mul(p.waveAmp)
+        const depthFade = linearDepth().mul(0.01).clamp(0, 1)
+        const bg = viewportSharedTexture(screenUV)
+        const col = select(frontFacing, mix(p.shallow, p.deep, depthFade), bg.rgb)
+        return { baseColor: col, opacity: float(0.85), vertexOffset: vec3(0, wave, 0) }
+      },
+    })
+  `
+  const res = compileShaderSource('adv_water', 'shaders/adv_water.shader.ts', waterLikeShader)
+  assert.equal(res.ok, true, JSON.stringify(res.diagnostics))
+  assert.ok(res.exports?.material)
+  assert.equal(res.exports?.material.depthWrite, false)
+  assert.equal(setCompiledShaderParam('adv_water', 'waveAmp', 0.55), true)
+  assert.equal(getCompiledShaderParam('adv_water', 'waveAmp'), 0.55)
 })
 
 test('运行时报错带阶段/脚本/节点/堆栈信息且同错误自动去重', () => {

@@ -26,6 +26,7 @@ import {
   type CharacterRuntimeModifiers,
 } from '../../runtime/character'
 import { onCharacterEvent } from '../../runtime/signals'
+import { getCompiledShaderParam, setCompiledShaderParam } from './shaderRuntime'
 import { measureCost } from '../../runtime/frameProfile'
 import {
   createAnimationCurve,
@@ -1689,6 +1690,10 @@ function buildScriptContext(
         }
       },
     },
+    shader: {
+      setParam: (shaderId: string, paramName: string, value: unknown) => setCompiledShaderParam(shaderId, paramName, value),
+      getParam: (shaderId: string, paramName: string) => getCompiledShaderParam(shaderId, paramName),
+    },
     global: {
       get: (key: string) => globalMemory.get(key),
       set: (key: string, value: unknown) => { globalMemory.set(key, value) },
@@ -2056,6 +2061,10 @@ function buildSystemWorldApi(systemId: string, host: SceneRuntimeHost) {
           window.dispatchEvent(new CustomEvent('t3d:load-scene', { detail: { sceneId, spawnPoint: options?.spawnPoint } }))
         }
       },
+    },
+    shader: {
+      setParam: (shaderId: string, paramName: string, value: unknown) => setCompiledShaderParam(shaderId, paramName, value),
+      getParam: (shaderId: string, paramName: string) => getCompiledShaderParam(shaderId, paramName),
     },
     global: {
       get: (key: string) => globalMemory.get(key),

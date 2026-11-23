@@ -1,4 +1,20 @@
-import { Color, DataTexture, RGBAFormat, type Texture } from 'three'
+import {
+  AdditiveBlending,
+  BackSide,
+  Color,
+  DataTexture,
+  DoubleSide,
+  FrontSide,
+  MultiplyBlending,
+  NoBlending,
+  NormalBlending,
+  RGBAFormat,
+  SubtractiveBlending,
+  Vector2,
+  Vector3,
+  Vector4,
+  type Texture,
+} from 'three'
 import * as tsl from 'three/tsl'
 import { MeshBasicNodeMaterial, MeshStandardNodeMaterial } from 'three/webgpu'
 import { defaultForSchema } from '../schema/fieldSchema'
@@ -38,11 +54,21 @@ function resolveTextureAsset(raw: unknown): Texture {
 export type ShaderParamSchema = FieldSchema
 export type ShaderParamMap = Record<string, ShaderParamSchema>
 
+export type ShaderSide = 'front' | 'back' | 'double'
+export type ShaderBlending = 'normal' | 'additive' | 'subtractive' | 'multiply' | 'none'
+
 export interface ShaderDefinition<P extends ShaderParamMap = ShaderParamMap> {
   name: string
+  description?: string
   mode?: 'lit' | 'unlit'
   transparent?: boolean
   doubleSided?: boolean
+  side?: ShaderSide
+  depthWrite?: boolean
+  depthTest?: boolean
+  blending?: ShaderBlending
+  alphaTest?: number
+  wireframe?: boolean
   params: P
   surface: (params: Record<string, unknown>) => {
     baseColor?: unknown
@@ -55,12 +81,18 @@ export interface ShaderDefinition<P extends ShaderParamMap = ShaderParamMap> {
   }
 }
 
+export interface ShaderUniformEntry {
+  schema: FieldSchema
+  node: { value: unknown }
+}
+
 export interface CompiledShaderAsset {
   id: string
   file: string
   definition: ShaderDefinition
   material: MeshStandardNodeMaterial | MeshBasicNodeMaterial
   paramValues: Record<string, unknown>
+  uniforms: Record<string, ShaderUniformEntry>
 }
 
 function asNode(value: unknown): unknown {
@@ -71,36 +103,79 @@ function asNode(value: unknown): unknown {
   return value
 }
 
-function paramToNode(schema: FieldSchema, raw: unknown): unknown {
+function coerceUniformValue(schema: FieldSchema, raw: unknown): unknown {
   const value = raw !== undefined ? raw : defaultForSchema(schema)
-  if (schema.type === 'number') return tsl.float(Number(value) || 0)
-  if (schema.type === 'boolean') return tsl.float(value ? 1 : 0)
-  if (schema.type === 'color') return tsl.color(new Color(typeof value === 'string' ? value : '#ffffff'))
+  if (schema.type === 'number') return Number(value) || 0
+  if (schema.type === 'boolean') return value ? 1 : 0
+  if (schema.type === 'color') return new Color(typeof value === 'string' ? value : '#ffffff')
   if (schema.type === 'vec2') {
     const arr = Array.isArray(value) ? value : [0, 0]
-    return tsl.vec2(Number(arr[0]) || 0, Number(arr[1]) || 0)
+    return new Vector2(Number(arr[0]) || 0, Number(arr[1]) || 0)
   }
   if (schema.type === 'vec3') {
     const arr = Array.isArray(value) ? value : [0, 0, 0]
-    return tsl.vec3(Number(arr[0]) || 0, Number(arr[1]) || 0, Number(arr[2]) || 0)
+    return new Vector3(Number(arr[0]) || 0, Number(arr[1]) || 0, Number(arr[2]) || 0)
   }
   if (schema.type === 'vec4') {
     const arr = Array.isArray(value) ? value : [0, 0, 0, 1]
-    return tsl.vec4(Number(arr[0]) || 0, Number(arr[1]) || 0, Number(arr[2]) || 0, Number(arr[3]) ?? 1)
+    return new Vector4(Number(arr[0]) || 0, Number(arr[1]) || 0, Number(arr[2]) || 0, Number(arr[3]) ?? 1)
   }
   if (schema.type === 'texture' || (schema.type === 'ref' && schema.target === 'asset')) {
-    return tsl.texture(resolveTextureAsset(value))
+    return resolveTextureAsset(value)
   }
   return value
+}
+
+function paramToNode(schema: FieldSchema, raw: unknown): { node: unknown; uniformEntry?: ShaderUniformEntry } {
+  if (schema.type === 'number' || schema.type === 'boolean' || schema.type === 'color' || schema.type === 'vec2' || schema.type === 'vec3' || schema.type === 'vec4') {
+    const uVal = coerceUniformValue(schema, raw)
+    const uNode = tsl.uniform(uVal as never) as unknown as { value: unknown }
+    return { node: uNode, uniformEntry: { schema, node: uNode } }
+  }
+  if (schema.type === 'texture' || (schema.type === 'ref' && schema.target === 'asset')) {
+    const tex = resolveTextureAsset(raw !== undefined ? raw : defaultForSchema(schema))
+    const texNode = tsl.texture(tex) as unknown as { value: unknown }
+    return { node: texNode, uniformEntry: { schema, node: texNode } }
+  }
+  const value = raw !== undefined ? raw : defaultForSchema(schema)
+  return { node: value }
+}
+
+const tslBag = tsl as unknown as Record<string, unknown>
+const tslFn = (name: string) => (...args: unknown[]) => {
+  const fn = tslBag[name]
+  if (typeof fn !== 'function') {
+    throw new Error(`当前 three/tsl 版本不支持节点函数 "${name}"`)
+  }
+  return (fn as (...a: unknown[]) => unknown)(...args.map(asNode))
 }
 
 export function createShaderSdk() {
   return {
     defineShader: <P extends ShaderParamMap>(def: ShaderDefinition<P>) => def,
     float: (x = 0) => tsl.float(x),
+    int: (x = 0) => tsl.int(x),
+    uint: (x = 0) => tsl.uint(x),
     vec2: (x = 0, y = 0) => tsl.vec2(x, y),
     vec3: (x = 0, y = 0, z = 0) => tsl.vec3(x, y, z),
     vec4: (x = 0, y = 0, z = 0, w = 1) => tsl.vec4(x, y, z, w),
+    ivec2: tslFn('ivec2'),
+    ivec3: tslFn('ivec3'),
+    ivec4: tslFn('ivec4'),
+    uvec2: tslFn('uvec2'),
+    uvec3: tslFn('uvec3'),
+    uvec4: tslFn('uvec4'),
+    mat3: tslFn('mat3'),
+    mat4: tslFn('mat4'),
+    uniform: (val: unknown) => tsl.uniform(val as never),
+    varying: (node: unknown, name?: string) => (tsl.varying as (...a: unknown[]) => unknown)(asNode(node), name),
+    Fn: tsl.Fn,
+    If: tsl.If,
+    Loop: tsl.Loop,
+    Break: tsl.Break,
+    Continue: tsl.Continue,
+    select: (cond: unknown, a: unknown, b: unknown) =>
+      (tsl.select as (...args: unknown[]) => unknown)(asNode(cond), asNode(a), asNode(b)),
     color: (hexOrR: string | number, g?: number, b?: number) =>
       typeof hexOrR === 'string' ? tsl.color(new Color(hexOrR)) : tsl.vec3(hexOrR, g ?? hexOrR, b ?? hexOrR),
     mix: (a: unknown, b: unknown, t: unknown) => (tsl.mix as (...args: unknown[]) => unknown)(asNode(a), asNode(b), asNode(t)),
@@ -112,11 +187,20 @@ export function createShaderSdk() {
     tan: (x: unknown) => (tsl.tan as (v: unknown) => unknown)(asNode(x)),
     sin: (x: unknown) => (tsl.sin as (v: unknown) => unknown)(asNode(x)),
     cos: (x: unknown) => (tsl.cos as (v: unknown) => unknown)(asNode(x)),
+    asin: tslFn('asin'),
+    acos: tslFn('acos'),
+    atan: tslFn('atan'),
+    atan2: tslFn('atan2'),
+    radians: tslFn('radians'),
+    degrees: tslFn('degrees'),
     abs: (x: unknown) => (tsl.abs as (v: unknown) => unknown)(asNode(x)),
     sign: (x: unknown) => (tsl.sign as (v: unknown) => unknown)(asNode(x)),
     floor: (x: unknown) => (tsl.floor as (v: unknown) => unknown)(asNode(x)),
     ceil: (x: unknown) => (tsl.ceil as (v: unknown) => unknown)(asNode(x)),
+    round: tslFn('round'),
+    trunc: tslFn('trunc'),
     fract: (x: unknown) => (tsl.fract as (v: unknown) => unknown)(asNode(x)),
+    mod: tslFn('mod'),
     pow: (x: unknown, y: unknown) => (tsl.pow as (...args: unknown[]) => unknown)(asNode(x), asNode(y)),
     sqrt: (x: unknown) => (tsl.sqrt as (v: unknown) => unknown)(asNode(x)),
     exp: (x: unknown) => (tsl.exp as (v: unknown) => unknown)(asNode(x)),
@@ -130,7 +214,12 @@ export function createShaderSdk() {
     length: (v: unknown) => (tsl.length as (x: unknown) => unknown)(asNode(v)),
     distance: (a: unknown, b: unknown) => (tsl.distance as (...args: unknown[]) => unknown)(asNode(a), asNode(b)),
     reflect: (incident: unknown, normal: unknown) => (tsl.reflect as (...args: unknown[]) => unknown)(asNode(incident), asNode(normal)),
+    refract: tslFn('refract'),
+    faceforward: tslFn('faceforward'),
     fwidth: (x: unknown) => (tsl.fwidth as (v: unknown) => unknown)(asNode(x)),
+    dFdx: tslFn('dFdx'),
+    dFdy: tslFn('dFdy'),
+    hash: tslFn('hash'),
     fresnel: (normalNode: unknown, viewDirNode: unknown, power: unknown = 3) => {
       const n = (tsl.normalize as (x: unknown) => unknown)(asNode(normalNode))
       const v = (tsl.normalize as (x: unknown) => unknown)(asNode(viewDirNode))
@@ -147,11 +236,34 @@ export function createShaderSdk() {
     normalView: tsl.normalView,
     normalWorld: tsl.normalWorld,
     normalLocal: tsl.normalLocal,
+    tangentLocal: tslBag.tangentLocal,
+    tangentView: tslBag.tangentView,
+    tangentWorld: tslBag.tangentWorld,
+    positionGeometry: tsl.positionGeometry,
     positionWorld: tsl.positionWorld,
     positionLocal: tsl.positionLocal,
+    positionView: tsl.positionView,
     viewDirection: tsl.positionViewDirection,
+    positionViewDirection: tsl.positionViewDirection,
     cameraPosition: tsl.cameraPosition,
+    cameraNear: tsl.cameraNear,
+    cameraFar: tsl.cameraFar,
+    cameraViewMatrix: tsl.cameraViewMatrix,
+    cameraProjectionMatrix: tsl.cameraProjectionMatrix,
+    modelWorldMatrix: tsl.modelWorldMatrix,
+    modelViewMatrix: tsl.modelViewMatrix,
+    frontFacing: tsl.frontFacing,
     screenUV: tsl.screenUV,
+    screenCoordinate: tslBag.screenCoordinate,
+    screenSize: tslBag.screenSize,
+    viewportCoordinate: tslBag.viewportCoordinate,
+    viewportSize: tslBag.viewportSize,
+    linearDepth: (...args: unknown[]) => (tsl.linearDepth as (...a: unknown[]) => unknown)(...args.map(asNode)),
+    viewportLinearDepth: tslBag.viewportLinearDepth,
+    viewportDepthTexture: (...args: unknown[]) =>
+      (tslBag.viewportDepthTexture as ((...a: unknown[]) => unknown) | undefined)?.(...args.map(asNode)),
+    viewportSharedTexture: (...args: unknown[]) =>
+      (tslBag.viewportSharedTexture as ((...a: unknown[]) => unknown) | undefined)?.(...args.map(asNode)),
     vertexColor: () => tsl.vertexColor(),
     texture: (texRef: unknown, uvNode?: unknown) => {
       const tex = resolveTextureAsset(texRef)
@@ -176,15 +288,23 @@ export function buildMaterialFromShader(
   def: ShaderDefinition,
   overrides?: Record<string, unknown>,
   options?: { strict?: boolean },
-): { material: MeshStandardNodeMaterial | MeshBasicNodeMaterial; paramValues: Record<string, unknown>; warnings: string[] } {
+): {
+  material: MeshStandardNodeMaterial | MeshBasicNodeMaterial
+  paramValues: Record<string, unknown>
+  uniforms: Record<string, ShaderUniformEntry>
+  warnings: string[]
+} {
   const paramValues: Record<string, unknown> = {}
   const runtimeParams: Record<string, unknown> = {}
+  const uniforms: Record<string, ShaderUniformEntry> = {}
   const accessedParams = new Set<string>()
   const declaredKeys = Object.keys(def.params ?? {})
   for (const [key, schema] of Object.entries(def.params ?? {})) {
     const val = overrides && key in overrides ? overrides[key] : defaultForSchema(schema)
     paramValues[key] = val
-    runtimeParams[key] = paramToNode(schema, val)
+    const built = paramToNode(schema, val)
+    runtimeParams[key] = built.node
+    if (built.uniformEntry) uniforms[key] = built.uniformEntry
   }
 
   const trackedParams = new Proxy(runtimeParams, {
@@ -200,14 +320,21 @@ export function buildMaterialFromShader(
       uv: tsl.uv(0),
       time: tsl.time,
       deltaTime: tsl.deltaTime,
+      positionGeometry: tsl.positionGeometry,
       positionLocal: tsl.positionLocal,
       positionWorld: tsl.positionWorld,
+      positionView: tsl.positionView,
       normalLocal: tsl.normalLocal,
       normalView: tsl.normalView,
       normalWorld: tsl.normalWorld,
       viewDirection: tsl.positionViewDirection,
+      positionViewDirection: tsl.positionViewDirection,
       cameraPosition: tsl.cameraPosition,
+      cameraNear: tsl.cameraNear,
+      cameraFar: tsl.cameraFar,
+      frontFacing: tsl.frontFacing,
       screenUV: tsl.screenUV,
+      linearDepth: tsl.linearDepth,
       vertexColor: tsl.vertexColor(),
     } as Record<string, unknown>,
     {
@@ -276,10 +403,45 @@ export function buildMaterialFromShader(
   }
 
   if (def.transparent) material.transparent = true
-  if (def.doubleSided) material.side = 2 // DoubleSide
+  if (def.side === 'back') material.side = BackSide
+  else if (def.side === 'double' || def.doubleSided) material.side = DoubleSide
+  else if (def.side === 'front') material.side = FrontSide
+  if (typeof def.depthWrite === 'boolean') material.depthWrite = def.depthWrite
+  if (typeof def.depthTest === 'boolean') material.depthTest = def.depthTest
+  if (def.blending === 'additive') material.blending = AdditiveBlending
+  else if (def.blending === 'subtractive') material.blending = SubtractiveBlending
+  else if (def.blending === 'multiply') material.blending = MultiplyBlending
+  else if (def.blending === 'none') material.blending = NoBlending
+  else if (def.blending === 'normal') material.blending = NormalBlending
+  if (typeof def.alphaTest === 'number' && Number.isFinite(def.alphaTest)) material.alphaTest = def.alphaTest
+  if (typeof def.wireframe === 'boolean') material.wireframe = def.wireframe
   material.needsUpdate = true
 
-  return { material, paramValues, warnings }
+  return { material, paramValues, uniforms, warnings }
+}
+
+const compiledShaders = new Map<string, CompiledShaderAsset>()
+
+export function updateCompiledShaderParam(
+  compiled: CompiledShaderAsset,
+  paramName: string,
+  value: unknown,
+): boolean {
+  const entry = compiled.uniforms[paramName]
+  if (!entry) return false
+  entry.node.value = coerceUniformValue(entry.schema, value)
+  compiled.paramValues[paramName] = value
+  return true
+}
+
+export function setCompiledShaderParam(shaderId: string, paramName: string, value: unknown): boolean {
+  const compiled = compiledShaders.get(shaderId)
+  if (!compiled) return false
+  return updateCompiledShaderParam(compiled, paramName, value)
+}
+
+export function getCompiledShaderParam(shaderId: string, paramName: string): unknown {
+  return compiledShaders.get(shaderId)?.paramValues[paramName]
 }
 
 export function compileShaderSource(
@@ -315,18 +477,21 @@ export function compileShaderSource(
   }
 
   try {
-    const { material, paramValues } = buildMaterialFromShader(evaluated.exports, overrides, { strict: true })
+    const { material, paramValues, uniforms } = buildMaterialFromShader(evaluated.exports, overrides, { strict: true })
+    const compiled: CompiledShaderAsset = {
+      id,
+      file: fileName,
+      definition: evaluated.exports,
+      material,
+      paramValues,
+      uniforms,
+    }
+    compiledShaders.set(id, compiled)
     return {
       ok: true,
       diagnostics: transpiled.diagnostics,
       jsCode: transpiled.jsCode,
-      exports: {
-        id,
-        file: fileName,
-        definition: evaluated.exports,
-        material,
-        paramValues,
-      },
+      exports: compiled,
     }
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error)

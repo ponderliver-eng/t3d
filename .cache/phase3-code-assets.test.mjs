@@ -6642,6 +6642,10 @@ export interface ScriptContext<P = Record<string, unknown>, S = Record<string, u
     currentId(): string
     load(sceneId: string, options?: { spawnPoint?: string }): void
   }
+  readonly shader: {
+    setParam(shaderId: string, paramName: string, value: unknown): boolean
+    getParam(shaderId: string, paramName: string): unknown
+  }
   readonly global: {
     get(key: string): unknown
     set(key: string, value: unknown): void
@@ -6692,15 +6696,22 @@ export function defineSystem<S extends Record<string, unknown>>(def: {
 var SHADER_DTS_SUMMARY = `export interface ShaderNode {
   add(other: unknown): ShaderNode; sub(other: unknown): ShaderNode; mul(other: unknown): ShaderNode; div(other: unknown): ShaderNode
   min(other: unknown): ShaderNode; max(other: unknown): ShaderNode; pow(other: unknown): ShaderNode; mod(other: unknown): ShaderNode
-  clamp(min?: unknown, max?: unknown): ShaderNode; abs(): ShaderNode; fract(): ShaderNode; floor(): ShaderNode; ceil(): ShaderNode
-  sin(): ShaderNode; cos(): ShaderNode; sqrt(): ShaderNode; negate(): ShaderNode; oneMinus(): ShaderNode; saturate(): ShaderNode; normalize(): ShaderNode; length(): ShaderNode
-  dot(other: unknown): ShaderNode; cross(other: unknown): ShaderNode
+  clamp(min?: unknown, max?: unknown): ShaderNode; abs(): ShaderNode; fract(): ShaderNode; floor(): ShaderNode; ceil(): ShaderNode; round(): ShaderNode
+  sin(): ShaderNode; cos(): ShaderNode; tan(): ShaderNode; sqrt(): ShaderNode; exp(): ShaderNode; log(): ShaderNode
+  negate(): ShaderNode; oneMinus(): ShaderNode; saturate(): ShaderNode; normalize(): ShaderNode; length(): ShaderNode
+  dot(other: unknown): ShaderNode; cross(other: unknown): ShaderNode; reflect(normal: unknown): ShaderNode; distance(other: unknown): ShaderNode
+  equal(other: unknown): ShaderNode; notEqual(other: unknown): ShaderNode; lessThan(other: unknown): ShaderNode; greaterThan(other: unknown): ShaderNode
+  lessThanEqual(other: unknown): ShaderNode; greaterThanEqual(other: unknown): ShaderNode; and(other: unknown): ShaderNode; or(other: unknown): ShaderNode; not(): ShaderNode
+  select(a: unknown, b: unknown): ShaderNode; toVar(name?: string): ShaderNode; assign(val: unknown): ShaderNode
+  addAssign(val: unknown): ShaderNode; subAssign(val: unknown): ShaderNode; mulAssign(val: unknown): ShaderNode
   readonly x: ShaderNode; readonly y: ShaderNode; readonly z: ShaderNode; readonly w: ShaderNode
   readonly r: ShaderNode; readonly g: ShaderNode; readonly b: ShaderNode; readonly a: ShaderNode
-  readonly xy: ShaderNode; readonly xyz: ShaderNode; readonly rgb: ShaderNode
+  readonly xy: ShaderNode; readonly xz: ShaderNode; readonly yz: ShaderNode; readonly xyz: ShaderNode; readonly rgb: ShaderNode; readonly rgba: ShaderNode
 }
 export function defineShader(def: {
   name: string; description?: string; mode?: 'lit' | 'unlit'; transparent?: boolean; doubleSided?: boolean
+  side?: 'front' | 'back' | 'double'; depthWrite?: boolean; depthTest?: boolean
+  blending?: 'normal' | 'additive' | 'subtractive' | 'multiply' | 'none'; alphaTest?: number; wireframe?: boolean
   params?: Record<string, unknown>
   surface: (params: Record<string, any>) => {
     baseColor?: unknown; normal?: unknown; roughness?: unknown; metalness?: unknown
@@ -6708,9 +6719,27 @@ export function defineShader(def: {
   }
 }): unknown
 export function float(x?: number): ShaderNode
-export function vec2(x?: number, y?: number): ShaderNode
-export function vec3(x?: number, y?: number, z?: number): ShaderNode
-export function vec4(x?: number, y?: number, z?: number, w?: number): ShaderNode
+export function int(x?: number): ShaderNode
+export function uint(x?: number): ShaderNode
+export function vec2(x?: unknown, y?: unknown): ShaderNode
+export function vec3(x?: unknown, y?: unknown, z?: unknown): ShaderNode
+export function vec4(x?: unknown, y?: unknown, z?: unknown, w?: unknown): ShaderNode
+export function ivec2(x?: unknown, y?: unknown): ShaderNode
+export function ivec3(x?: unknown, y?: unknown, z?: unknown): ShaderNode
+export function ivec4(x?: unknown, y?: unknown, z?: unknown, w?: unknown): ShaderNode
+export function uvec2(x?: unknown, y?: unknown): ShaderNode
+export function uvec3(x?: unknown, y?: unknown, z?: unknown): ShaderNode
+export function uvec4(x?: unknown, y?: unknown, z?: unknown, w?: unknown): ShaderNode
+export function mat3(...args: unknown[]): ShaderNode
+export function mat4(...args: unknown[]): ShaderNode
+export function uniform(val: unknown): ShaderNode
+export function varying(node: unknown, name?: string): ShaderNode
+export function Fn<T extends (...args: any[]) => any>(fn: T): T
+export function If(cond: unknown, cb: () => void): { ElseIf: (c: unknown, cb: () => void) => any; Else: (cb: () => void) => void }
+export function Loop(countOrOpts: unknown, cb: (i: { i: ShaderNode }) => void): void
+export function Break(): void
+export function Continue(): void
+export function select(cond: unknown, a: unknown, b: unknown): ShaderNode
 export function color(hexOrR: string | number, g?: number, b?: number): ShaderNode
 export function mix(a: unknown, b: unknown, t: unknown): ShaderNode
 export function clamp(x: unknown, min?: unknown, max?: unknown): ShaderNode
@@ -6719,11 +6748,20 @@ export function step(edge: unknown, x: unknown): ShaderNode
 export function sin(x: unknown): ShaderNode
 export function cos(x: unknown): ShaderNode
 export function tan(x: unknown): ShaderNode
+export function asin(x: unknown): ShaderNode
+export function acos(x: unknown): ShaderNode
+export function atan(x: unknown): ShaderNode
+export function atan2(y: unknown, x: unknown): ShaderNode
+export function radians(deg: unknown): ShaderNode
+export function degrees(rad: unknown): ShaderNode
 export function abs(x: unknown): ShaderNode
 export function sign(x: unknown): ShaderNode
 export function floor(x: unknown): ShaderNode
 export function ceil(x: unknown): ShaderNode
+export function round(x: unknown): ShaderNode
+export function trunc(x: unknown): ShaderNode
 export function fract(x: unknown): ShaderNode
+export function mod(a: unknown, b: unknown): ShaderNode
 export function pow(x: unknown, y: unknown): ShaderNode
 export function sqrt(x: unknown): ShaderNode
 export function exp(x: unknown): ShaderNode
@@ -6737,7 +6775,12 @@ export function normalize(v: unknown): ShaderNode
 export function length(v: unknown): ShaderNode
 export function distance(a: unknown, b: unknown): ShaderNode
 export function reflect(incident: unknown, normal: unknown): ShaderNode
+export function refract(incident: unknown, normal: unknown, eta: unknown): ShaderNode
+export function faceforward(n: unknown, i: unknown, nref: unknown): ShaderNode
 export function fwidth(x: unknown): ShaderNode
+export function dFdx(x: unknown): ShaderNode
+export function dFdy(x: unknown): ShaderNode
+export function hash(x: unknown): ShaderNode
 export function fresnel(normal: unknown, viewDir: unknown, power?: unknown): ShaderNode
 export function texture(texRef: unknown, uv?: unknown): ShaderNode
 export function uv(index?: number): ShaderNode
@@ -6746,11 +6789,32 @@ export const deltaTime: ShaderNode
 export const normalView: ShaderNode
 export const normalWorld: ShaderNode
 export const normalLocal: ShaderNode
+export const tangentLocal: ShaderNode
+export const tangentView: ShaderNode
+export const tangentWorld: ShaderNode
+export const positionGeometry: ShaderNode
 export const positionWorld: ShaderNode
 export const positionLocal: ShaderNode
+export const positionView: ShaderNode
 export const viewDirection: ShaderNode
+export const positionViewDirection: ShaderNode
 export const cameraPosition: ShaderNode
+export const cameraNear: ShaderNode
+export const cameraFar: ShaderNode
+export const cameraViewMatrix: ShaderNode
+export const cameraProjectionMatrix: ShaderNode
+export const modelWorldMatrix: ShaderNode
+export const modelViewMatrix: ShaderNode
+export const frontFacing: ShaderNode
 export const screenUV: ShaderNode
+export const screenCoordinate: ShaderNode
+export const screenSize: ShaderNode
+export const viewportCoordinate: ShaderNode
+export const viewportSize: ShaderNode
+export function linearDepth(depthNode?: unknown): ShaderNode
+export const viewportLinearDepth: ShaderNode
+export function viewportDepthTexture(uvNode?: unknown): ShaderNode
+export function viewportSharedTexture(uvNode?: unknown): ShaderNode
 export function vertexColor(): ShaderNode
 `;
 
@@ -6913,7 +6977,7 @@ init_session7();
 init_session8();
 init_session();
 init_registry();
-import { Vector3 as Vector39 } from "three";
+import { Vector3 as Vector310 } from "three";
 
 // src/runtime/audio.ts
 init_sceneRuntime();
@@ -8406,7 +8470,6 @@ function stepCharacters(dt, host) {
     const touchingFloor = ground !== null && feet <= ground + 0.12;
     const swimJumping = now <= live.swimJumpUntil;
     const wasGrounded = live.grounded;
-    const wasSwimming = live.swimming;
     if (water && submerged >= enterDepth) {
       if (!live.swimming) {
         live.swimming = true;
@@ -8748,6 +8811,416 @@ function slide(host, x, y, z, nextX, nextZ, id, radius) {
 }
 registerRuntimeSystem("core.character", RUNTIME_STAGE.POST_PHYSICS, stepCharacters);
 
+// src/core/codeAssets/shaderRuntime.ts
+init_fieldSchema();
+import {
+  AdditiveBlending as AdditiveBlending2,
+  BackSide,
+  Color as Color5,
+  DataTexture as DataTexture2,
+  DoubleSide as DoubleSide3,
+  FrontSide,
+  MultiplyBlending as MultiplyBlending2,
+  NoBlending,
+  NormalBlending as NormalBlending2,
+  RGBAFormat as RGBAFormat2,
+  SubtractiveBlending,
+  Vector2 as Vector23,
+  Vector3 as Vector39,
+  Vector4
+} from "three";
+import * as tsl from "three/tsl";
+import { MeshBasicNodeMaterial as MeshBasicNodeMaterial3, MeshStandardNodeMaterial } from "three/webgpu";
+var textureResolver = null;
+var cachedFallbackTex = null;
+function fallbackWhiteTexture() {
+  if (!cachedFallbackTex) {
+    cachedFallbackTex = new DataTexture2(new Uint8Array([255, 255, 255, 255]), 1, 1, RGBAFormat2);
+    cachedFallbackTex.needsUpdate = true;
+  }
+  return cachedFallbackTex;
+}
+function resolveTextureAsset(raw) {
+  if (typeof raw === "string" && raw.trim() && textureResolver) {
+    const tex = textureResolver(raw.trim());
+    if (tex) return tex;
+  }
+  if (raw && typeof raw === "object" && "isTexture" in raw) {
+    return raw;
+  }
+  if (raw && typeof raw === "object" && "value" in raw) {
+    const val = raw.value;
+    if (val && typeof val === "object" && "isTexture" in val) return val;
+  }
+  return fallbackWhiteTexture();
+}
+function asNode(value) {
+  if (value === void 0 || value === null) return void 0;
+  if (typeof value === "number") return tsl.float(value);
+  if (typeof value === "boolean") return tsl.float(value ? 1 : 0);
+  if (typeof value === "string") return tsl.color(new Color5(value));
+  return value;
+}
+function coerceUniformValue(schema, raw) {
+  const value = raw !== void 0 ? raw : defaultForSchema(schema);
+  if (schema.type === "number") return Number(value) || 0;
+  if (schema.type === "boolean") return value ? 1 : 0;
+  if (schema.type === "color") return new Color5(typeof value === "string" ? value : "#ffffff");
+  if (schema.type === "vec2") {
+    const arr = Array.isArray(value) ? value : [0, 0];
+    return new Vector23(Number(arr[0]) || 0, Number(arr[1]) || 0);
+  }
+  if (schema.type === "vec3") {
+    const arr = Array.isArray(value) ? value : [0, 0, 0];
+    return new Vector39(Number(arr[0]) || 0, Number(arr[1]) || 0, Number(arr[2]) || 0);
+  }
+  if (schema.type === "vec4") {
+    const arr = Array.isArray(value) ? value : [0, 0, 0, 1];
+    return new Vector4(Number(arr[0]) || 0, Number(arr[1]) || 0, Number(arr[2]) || 0, Number(arr[3]) ?? 1);
+  }
+  if (schema.type === "texture" || schema.type === "ref" && schema.target === "asset") {
+    return resolveTextureAsset(value);
+  }
+  return value;
+}
+function paramToNode(schema, raw) {
+  if (schema.type === "number" || schema.type === "boolean" || schema.type === "color" || schema.type === "vec2" || schema.type === "vec3" || schema.type === "vec4") {
+    const uVal = coerceUniformValue(schema, raw);
+    const uNode = tsl.uniform(uVal);
+    return { node: uNode, uniformEntry: { schema, node: uNode } };
+  }
+  if (schema.type === "texture" || schema.type === "ref" && schema.target === "asset") {
+    const tex = resolveTextureAsset(raw !== void 0 ? raw : defaultForSchema(schema));
+    const texNode = tsl.texture(tex);
+    return { node: texNode, uniformEntry: { schema, node: texNode } };
+  }
+  const value = raw !== void 0 ? raw : defaultForSchema(schema);
+  return { node: value };
+}
+var tslBag = tsl;
+var tslFn = (name) => (...args) => {
+  const fn = tslBag[name];
+  if (typeof fn !== "function") {
+    throw new Error(`\u5F53\u524D three/tsl \u7248\u672C\u4E0D\u652F\u6301\u8282\u70B9\u51FD\u6570 "${name}"`);
+  }
+  return fn(...args.map(asNode));
+};
+function createShaderSdk() {
+  return {
+    defineShader: (def) => def,
+    float: (x = 0) => tsl.float(x),
+    int: (x = 0) => tsl.int(x),
+    uint: (x = 0) => tsl.uint(x),
+    vec2: (x = 0, y = 0) => tsl.vec2(x, y),
+    vec3: (x = 0, y = 0, z = 0) => tsl.vec3(x, y, z),
+    vec4: (x = 0, y = 0, z = 0, w = 1) => tsl.vec4(x, y, z, w),
+    ivec2: tslFn("ivec2"),
+    ivec3: tslFn("ivec3"),
+    ivec4: tslFn("ivec4"),
+    uvec2: tslFn("uvec2"),
+    uvec3: tslFn("uvec3"),
+    uvec4: tslFn("uvec4"),
+    mat3: tslFn("mat3"),
+    mat4: tslFn("mat4"),
+    uniform: (val) => tsl.uniform(val),
+    varying: (node, name) => tsl.varying(asNode(node), name),
+    Fn: tsl.Fn,
+    If: tsl.If,
+    Loop: tsl.Loop,
+    Break: tsl.Break,
+    Continue: tsl.Continue,
+    select: (cond, a, b) => tsl.select(asNode(cond), asNode(a), asNode(b)),
+    color: (hexOrR, g, b) => typeof hexOrR === "string" ? tsl.color(new Color5(hexOrR)) : tsl.vec3(hexOrR, g ?? hexOrR, b ?? hexOrR),
+    mix: (a, b, t) => tsl.mix(asNode(a), asNode(b), asNode(t)),
+    clamp: (x, minVal, maxVal) => tsl.clamp(asNode(x), asNode(minVal), asNode(maxVal)),
+    smoothstep: (edge0, edge1, x) => tsl.smoothstep(asNode(edge0), asNode(edge1), asNode(x)),
+    step: (edge, x) => tsl.step(asNode(edge), asNode(x)),
+    tan: (x) => tsl.tan(asNode(x)),
+    sin: (x) => tsl.sin(asNode(x)),
+    cos: (x) => tsl.cos(asNode(x)),
+    asin: tslFn("asin"),
+    acos: tslFn("acos"),
+    atan: tslFn("atan"),
+    atan2: tslFn("atan2"),
+    radians: tslFn("radians"),
+    degrees: tslFn("degrees"),
+    abs: (x) => tsl.abs(asNode(x)),
+    sign: (x) => tsl.sign(asNode(x)),
+    floor: (x) => tsl.floor(asNode(x)),
+    ceil: (x) => tsl.ceil(asNode(x)),
+    round: tslFn("round"),
+    trunc: tslFn("trunc"),
+    fract: (x) => tsl.fract(asNode(x)),
+    mod: tslFn("mod"),
+    pow: (x, y) => tsl.pow(asNode(x), asNode(y)),
+    sqrt: (x) => tsl.sqrt(asNode(x)),
+    exp: (x) => tsl.exp(asNode(x)),
+    log: (x) => tsl.log(asNode(x)),
+    saturate: (x) => tsl.saturate(asNode(x)),
+    min: (a, b) => tsl.min(asNode(a), asNode(b)),
+    max: (a, b) => tsl.max(asNode(a), asNode(b)),
+    dot: (a, b) => tsl.dot(asNode(a), asNode(b)),
+    cross: (a, b) => tsl.cross(asNode(a), asNode(b)),
+    normalize: (v) => tsl.normalize(asNode(v)),
+    length: (v) => tsl.length(asNode(v)),
+    distance: (a, b) => tsl.distance(asNode(a), asNode(b)),
+    reflect: (incident, normal) => tsl.reflect(asNode(incident), asNode(normal)),
+    refract: tslFn("refract"),
+    faceforward: tslFn("faceforward"),
+    fwidth: (x) => tsl.fwidth(asNode(x)),
+    dFdx: tslFn("dFdx"),
+    dFdy: tslFn("dFdy"),
+    hash: tslFn("hash"),
+    fresnel: (normalNode, viewDirNode, power = 3) => {
+      const n = tsl.normalize(asNode(normalNode));
+      const v = tsl.normalize(asNode(viewDirNode));
+      const ndotv = tsl.clamp(
+        tsl.dot(n, v),
+        0,
+        1
+      );
+      return tsl.pow(ndotv.oneMinus(), asNode(power));
+    },
+    uv: (index = 0) => tsl.uv(index),
+    time: tsl.time,
+    deltaTime: tsl.deltaTime,
+    normalView: tsl.normalView,
+    normalWorld: tsl.normalWorld,
+    normalLocal: tsl.normalLocal,
+    tangentLocal: tslBag.tangentLocal,
+    tangentView: tslBag.tangentView,
+    tangentWorld: tslBag.tangentWorld,
+    positionGeometry: tsl.positionGeometry,
+    positionWorld: tsl.positionWorld,
+    positionLocal: tsl.positionLocal,
+    positionView: tsl.positionView,
+    viewDirection: tsl.positionViewDirection,
+    positionViewDirection: tsl.positionViewDirection,
+    cameraPosition: tsl.cameraPosition,
+    cameraNear: tsl.cameraNear,
+    cameraFar: tsl.cameraFar,
+    cameraViewMatrix: tsl.cameraViewMatrix,
+    cameraProjectionMatrix: tsl.cameraProjectionMatrix,
+    modelWorldMatrix: tsl.modelWorldMatrix,
+    modelViewMatrix: tsl.modelViewMatrix,
+    frontFacing: tsl.frontFacing,
+    screenUV: tsl.screenUV,
+    screenCoordinate: tslBag.screenCoordinate,
+    screenSize: tslBag.screenSize,
+    viewportCoordinate: tslBag.viewportCoordinate,
+    viewportSize: tslBag.viewportSize,
+    linearDepth: (...args) => tsl.linearDepth(...args.map(asNode)),
+    viewportLinearDepth: tslBag.viewportLinearDepth,
+    viewportDepthTexture: (...args) => tslBag.viewportDepthTexture?.(...args.map(asNode)),
+    viewportSharedTexture: (...args) => tslBag.viewportSharedTexture?.(...args.map(asNode)),
+    vertexColor: () => tsl.vertexColor(),
+    texture: (texRef, uvNode) => {
+      const tex = resolveTextureAsset(texRef);
+      return uvNode !== void 0 ? tsl.texture(tex, asNode(uvNode)) : tsl.texture(tex);
+    }
+  };
+}
+var VALID_SURFACE_KEYS = /* @__PURE__ */ new Set([
+  "baseColor",
+  "normal",
+  "roughness",
+  "metalness",
+  "emissive",
+  "opacity",
+  "vertexOffset"
+]);
+function buildMaterialFromShader(def, overrides, options) {
+  const paramValues = {};
+  const runtimeParams = {};
+  const uniforms = {};
+  const accessedParams = /* @__PURE__ */ new Set();
+  const declaredKeys = Object.keys(def.params ?? {});
+  for (const [key, schema] of Object.entries(def.params ?? {})) {
+    const val = overrides && key in overrides ? overrides[key] : defaultForSchema(schema);
+    paramValues[key] = val;
+    const built = paramToNode(schema, val);
+    runtimeParams[key] = built.node;
+    if (built.uniformEntry) uniforms[key] = built.uniformEntry;
+  }
+  const trackedParams = new Proxy(runtimeParams, {
+    get(target, prop, receiver) {
+      if (typeof prop === "string") accessedParams.add(prop);
+      return Reflect.get(target, prop, receiver);
+    }
+  });
+  const surfaceArg = new Proxy(
+    {
+      params: trackedParams,
+      uv: tsl.uv(0),
+      time: tsl.time,
+      deltaTime: tsl.deltaTime,
+      positionGeometry: tsl.positionGeometry,
+      positionLocal: tsl.positionLocal,
+      positionWorld: tsl.positionWorld,
+      positionView: tsl.positionView,
+      normalLocal: tsl.normalLocal,
+      normalView: tsl.normalView,
+      normalWorld: tsl.normalWorld,
+      viewDirection: tsl.positionViewDirection,
+      positionViewDirection: tsl.positionViewDirection,
+      cameraPosition: tsl.cameraPosition,
+      cameraNear: tsl.cameraNear,
+      cameraFar: tsl.cameraFar,
+      frontFacing: tsl.frontFacing,
+      screenUV: tsl.screenUV,
+      linearDepth: tsl.linearDepth,
+      vertexColor: tsl.vertexColor()
+    },
+    {
+      get(target, prop, receiver) {
+        if (typeof prop === "string" && prop in runtimeParams) {
+          return Reflect.get(trackedParams, prop);
+        }
+        return Reflect.get(target, prop, receiver);
+      }
+    }
+  );
+  const out = def.surface(surfaceArg);
+  const warnings = [];
+  if (!out || typeof out !== "object") {
+    throw new Error("surface() \u5FC5\u987B\u8FD4\u56DE\u4E00\u4E2A\u5305\u542B\u8868\u9762\u8F93\u51FA\u5C5E\u6027\u7684\u5BF9\u8C61");
+  }
+  const outKeys = Object.keys(out).filter((k) => out[k] !== void 0);
+  const unknownKeys = outKeys.filter((k) => !VALID_SURFACE_KEYS.has(k));
+  if (unknownKeys.length > 0) {
+    const mapped = unknownKeys.map((k) => k === "color" ? "color\uFF08\u5E94\u4E3A baseColor\uFF09" : k).join("\u3001");
+    if (options?.strict) {
+      throw new Error(`surface() \u8FD4\u56DE\u4E86\u65E0\u6548\u5B57\u6BB5\uFF1A${mapped}`);
+    }
+    warnings.push(`surface() \u8FD4\u56DE\u4E86\u672A\u8BC6\u522B\u5B57\u6BB5\uFF1A${mapped}`);
+  }
+  const validCount = outKeys.filter((k) => VALID_SURFACE_KEYS.has(k)).length;
+  if (validCount === 0 && !out.color) {
+    throw new Error("surface() \u672A\u8FD4\u56DE\u4EFB\u4F55\u6709\u6548\u8F93\u51FA\u5B57\u6BB5\uFF08\u5982 baseColor / emissive / roughness / opacity\uFF09");
+  }
+  const unusedParams = declaredKeys.filter((k) => !accessedParams.has(k));
+  if (unusedParams.length > 0) {
+    const msg = `params \u4E2D\u58F0\u660E\u4E86 ${unusedParams.join("\u3001")}\uFF0C\u4F46 surface() \u4E2D\u672A\u4F7F\u7528`;
+    if (options?.strict) {
+      throw new Error(msg);
+    }
+    warnings.push(msg);
+  }
+  if (out.opacity !== void 0 && !def.transparent) {
+    warnings.push("surface() \u8FD4\u56DE\u4E86 opacity\uFF0C\u5EFA\u8BAE\u8BBE\u7F6E transparent: true \u624D\u4F1A\u751F\u6548");
+  }
+  const isUnlit = def.mode === "unlit";
+  const material = isUnlit ? new MeshBasicNodeMaterial3() : new MeshStandardNodeMaterial();
+  const baseColorNode = out.baseColor !== void 0 ? out.baseColor : out.color;
+  if (baseColorNode !== void 0) {
+    ;
+    material.colorNode = asNode(baseColorNode);
+  }
+  if (out.opacity !== void 0) {
+    ;
+    material.opacityNode = asNode(out.opacity);
+  }
+  if (out.vertexOffset !== void 0) {
+    ;
+    material.positionNode = tsl.positionLocal.add(asNode(out.vertexOffset));
+  }
+  if (!isUnlit && material instanceof MeshStandardNodeMaterial) {
+    if (out.roughness !== void 0) material.roughnessNode = asNode(out.roughness);
+    if (out.metalness !== void 0) material.metalnessNode = asNode(out.metalness);
+    if (out.emissive !== void 0) material.emissiveNode = asNode(out.emissive);
+    if (out.normal !== void 0) material.normalNode = asNode(out.normal);
+  }
+  if (def.transparent) material.transparent = true;
+  if (def.side === "back") material.side = BackSide;
+  else if (def.side === "double" || def.doubleSided) material.side = DoubleSide3;
+  else if (def.side === "front") material.side = FrontSide;
+  if (typeof def.depthWrite === "boolean") material.depthWrite = def.depthWrite;
+  if (typeof def.depthTest === "boolean") material.depthTest = def.depthTest;
+  if (def.blending === "additive") material.blending = AdditiveBlending2;
+  else if (def.blending === "subtractive") material.blending = SubtractiveBlending;
+  else if (def.blending === "multiply") material.blending = MultiplyBlending2;
+  else if (def.blending === "none") material.blending = NoBlending;
+  else if (def.blending === "normal") material.blending = NormalBlending2;
+  if (typeof def.alphaTest === "number" && Number.isFinite(def.alphaTest)) material.alphaTest = def.alphaTest;
+  if (typeof def.wireframe === "boolean") material.wireframe = def.wireframe;
+  material.needsUpdate = true;
+  return { material, paramValues, uniforms, warnings };
+}
+var compiledShaders = /* @__PURE__ */ new Map();
+function updateCompiledShaderParam(compiled, paramName, value) {
+  const entry = compiled.uniforms[paramName];
+  if (!entry) return false;
+  entry.node.value = coerceUniformValue(entry.schema, value);
+  compiled.paramValues[paramName] = value;
+  return true;
+}
+function setCompiledShaderParam(shaderId, paramName, value) {
+  const compiled = compiledShaders.get(shaderId);
+  if (!compiled) return false;
+  return updateCompiledShaderParam(compiled, paramName, value);
+}
+function getCompiledShaderParam(shaderId, paramName) {
+  return compiledShaders.get(shaderId)?.paramValues[paramName];
+}
+function compileShaderSource(id, fileName, source, overrides) {
+  const transpiled = checkAndTranspileTs(fileName, source);
+  if (!transpiled.ok || !transpiled.jsCode) {
+    return { ok: false, diagnostics: transpiled.diagnostics };
+  }
+  const sdk = createShaderSdk();
+  const evaluated = evaluateTranspiledModule(fileName, transpiled.jsCode, {
+    "t3d/shader": sdk
+  });
+  if (!evaluated.ok || !evaluated.exports || typeof evaluated.exports.surface !== "function") {
+    return {
+      ok: false,
+      diagnostics: evaluated.diagnostics.length ? evaluated.diagnostics : [
+        {
+          file: fileName,
+          line: 1,
+          column: 1,
+          severity: "error",
+          message: "\u7740\u8272\u5668\u5FC5\u987B\u901A\u8FC7 export default defineShader({ ... }) \u5BFC\u51FA",
+          hint: "\u8BF7\u68C0\u67E5\u9ED8\u8BA4\u5BFC\u51FA\u662F\u5426\u5305\u542B name\u3001params \u548C surface \u51FD\u6570"
+        }
+      ]
+    };
+  }
+  try {
+    const { material, paramValues, uniforms } = buildMaterialFromShader(evaluated.exports, overrides, { strict: true });
+    const compiled = {
+      id,
+      file: fileName,
+      definition: evaluated.exports,
+      material,
+      paramValues,
+      uniforms
+    };
+    compiledShaders.set(id, compiled);
+    return {
+      ok: true,
+      diagnostics: transpiled.diagnostics,
+      jsCode: transpiled.jsCode,
+      exports: compiled
+    };
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    return {
+      ok: false,
+      diagnostics: [
+        {
+          file: fileName,
+          line: 1,
+          column: 1,
+          severity: "error",
+          message: `TSL \u7740\u8272\u5668\u6784\u5EFA\u5931\u8D25\uFF1A${msg}`,
+          hint: "\u8BF7\u68C0\u67E5 surface() \u8FD4\u56DE\u7684\u8282\u70B9\u7C7B\u578B\u53CA\u8FD0\u7B97\u53C2\u6570"
+        }
+      ]
+    };
+  }
+}
+
 // src/core/codeAssets/scriptRuntime.ts
 init_frameProfile();
 init_motion();
@@ -9022,7 +9495,7 @@ function resolveSplinePointsInput(input, host) {
       const ly = Number(p[1]) || 0;
       const lz = Number(p[2]) || 0;
       if (pathObj) {
-        const v = new Vector39(lx, ly, lz).applyMatrix4(pathObj.matrixWorld);
+        const v = new Vector310(lx, ly, lz).applyMatrix4(pathObj.matrixWorld);
         pts.push({ x: v.x, y: v.y, z: v.z });
       } else {
         pts.push({
@@ -10103,6 +10576,10 @@ function buildScriptContext(node, scriptId, rawParams, stateObj, host) {
         }
       }
     },
+    shader: {
+      setParam: (shaderId, paramName, value) => setCompiledShaderParam(shaderId, paramName, value),
+      getParam: (shaderId, paramName) => getCompiledShaderParam(shaderId, paramName)
+    },
     global: {
       get: (key) => globalMemory.get(key),
       set: (key, value) => {
@@ -10434,6 +10911,10 @@ function buildSystemWorldApi(systemId, host) {
           window.dispatchEvent(new CustomEvent("t3d:load-scene", { detail: { sceneId, spawnPoint: options?.spawnPoint } }));
         }
       }
+    },
+    shader: {
+      setParam: (shaderId, paramName, value) => setCompiledShaderParam(shaderId, paramName, value),
+      getParam: (shaderId, paramName) => getCompiledShaderParam(shaderId, paramName)
     },
     global: {
       get: (key) => globalMemory.get(key),
@@ -10888,286 +11369,6 @@ function stepProjectScripts(dt, host) {
 }
 registerRuntimeSystem("core.projectScripts", RUNTIME_STAGE.PRE_PHYSICS + 2, stepProjectScripts);
 
-// src/core/codeAssets/shaderRuntime.ts
-init_fieldSchema();
-import { Color as Color5, DataTexture as DataTexture2, RGBAFormat as RGBAFormat2 } from "three";
-import * as tsl from "three/tsl";
-import { MeshBasicNodeMaterial as MeshBasicNodeMaterial3, MeshStandardNodeMaterial } from "three/webgpu";
-var textureResolver = null;
-var cachedFallbackTex = null;
-function fallbackWhiteTexture() {
-  if (!cachedFallbackTex) {
-    cachedFallbackTex = new DataTexture2(new Uint8Array([255, 255, 255, 255]), 1, 1, RGBAFormat2);
-    cachedFallbackTex.needsUpdate = true;
-  }
-  return cachedFallbackTex;
-}
-function resolveTextureAsset(raw) {
-  if (typeof raw === "string" && raw.trim() && textureResolver) {
-    const tex = textureResolver(raw.trim());
-    if (tex) return tex;
-  }
-  if (raw && typeof raw === "object" && "isTexture" in raw) {
-    return raw;
-  }
-  if (raw && typeof raw === "object" && "value" in raw) {
-    const val = raw.value;
-    if (val && typeof val === "object" && "isTexture" in val) return val;
-  }
-  return fallbackWhiteTexture();
-}
-function asNode(value) {
-  if (value === void 0 || value === null) return void 0;
-  if (typeof value === "number") return tsl.float(value);
-  if (typeof value === "boolean") return tsl.float(value ? 1 : 0);
-  if (typeof value === "string") return tsl.color(new Color5(value));
-  return value;
-}
-function paramToNode(schema, raw) {
-  const value = raw !== void 0 ? raw : defaultForSchema(schema);
-  if (schema.type === "number") return tsl.float(Number(value) || 0);
-  if (schema.type === "boolean") return tsl.float(value ? 1 : 0);
-  if (schema.type === "color") return tsl.color(new Color5(typeof value === "string" ? value : "#ffffff"));
-  if (schema.type === "vec2") {
-    const arr = Array.isArray(value) ? value : [0, 0];
-    return tsl.vec2(Number(arr[0]) || 0, Number(arr[1]) || 0);
-  }
-  if (schema.type === "vec3") {
-    const arr = Array.isArray(value) ? value : [0, 0, 0];
-    return tsl.vec3(Number(arr[0]) || 0, Number(arr[1]) || 0, Number(arr[2]) || 0);
-  }
-  if (schema.type === "vec4") {
-    const arr = Array.isArray(value) ? value : [0, 0, 0, 1];
-    return tsl.vec4(Number(arr[0]) || 0, Number(arr[1]) || 0, Number(arr[2]) || 0, Number(arr[3]) ?? 1);
-  }
-  if (schema.type === "texture" || schema.type === "ref" && schema.target === "asset") {
-    return tsl.texture(resolveTextureAsset(value));
-  }
-  return value;
-}
-function createShaderSdk() {
-  return {
-    defineShader: (def) => def,
-    float: (x = 0) => tsl.float(x),
-    vec2: (x = 0, y = 0) => tsl.vec2(x, y),
-    vec3: (x = 0, y = 0, z = 0) => tsl.vec3(x, y, z),
-    vec4: (x = 0, y = 0, z = 0, w = 1) => tsl.vec4(x, y, z, w),
-    color: (hexOrR, g, b) => typeof hexOrR === "string" ? tsl.color(new Color5(hexOrR)) : tsl.vec3(hexOrR, g ?? hexOrR, b ?? hexOrR),
-    mix: (a, b, t) => tsl.mix(asNode(a), asNode(b), asNode(t)),
-    clamp: (x, minVal, maxVal) => tsl.clamp(asNode(x), asNode(minVal), asNode(maxVal)),
-    smoothstep: (edge0, edge1, x) => tsl.smoothstep(asNode(edge0), asNode(edge1), asNode(x)),
-    step: (edge, x) => tsl.step(asNode(edge), asNode(x)),
-    tan: (x) => tsl.tan(asNode(x)),
-    sin: (x) => tsl.sin(asNode(x)),
-    cos: (x) => tsl.cos(asNode(x)),
-    abs: (x) => tsl.abs(asNode(x)),
-    sign: (x) => tsl.sign(asNode(x)),
-    floor: (x) => tsl.floor(asNode(x)),
-    ceil: (x) => tsl.ceil(asNode(x)),
-    fract: (x) => tsl.fract(asNode(x)),
-    pow: (x, y) => tsl.pow(asNode(x), asNode(y)),
-    sqrt: (x) => tsl.sqrt(asNode(x)),
-    exp: (x) => tsl.exp(asNode(x)),
-    log: (x) => tsl.log(asNode(x)),
-    saturate: (x) => tsl.saturate(asNode(x)),
-    min: (a, b) => tsl.min(asNode(a), asNode(b)),
-    max: (a, b) => tsl.max(asNode(a), asNode(b)),
-    dot: (a, b) => tsl.dot(asNode(a), asNode(b)),
-    cross: (a, b) => tsl.cross(asNode(a), asNode(b)),
-    normalize: (v) => tsl.normalize(asNode(v)),
-    length: (v) => tsl.length(asNode(v)),
-    distance: (a, b) => tsl.distance(asNode(a), asNode(b)),
-    reflect: (incident, normal) => tsl.reflect(asNode(incident), asNode(normal)),
-    fwidth: (x) => tsl.fwidth(asNode(x)),
-    fresnel: (normalNode, viewDirNode, power = 3) => {
-      const n = tsl.normalize(asNode(normalNode));
-      const v = tsl.normalize(asNode(viewDirNode));
-      const ndotv = tsl.clamp(
-        tsl.dot(n, v),
-        0,
-        1
-      );
-      return tsl.pow(ndotv.oneMinus(), asNode(power));
-    },
-    uv: (index = 0) => tsl.uv(index),
-    time: tsl.time,
-    deltaTime: tsl.deltaTime,
-    normalView: tsl.normalView,
-    normalWorld: tsl.normalWorld,
-    normalLocal: tsl.normalLocal,
-    positionWorld: tsl.positionWorld,
-    positionLocal: tsl.positionLocal,
-    viewDirection: tsl.positionViewDirection,
-    cameraPosition: tsl.cameraPosition,
-    screenUV: tsl.screenUV,
-    vertexColor: () => tsl.vertexColor(),
-    texture: (texRef, uvNode) => {
-      const tex = resolveTextureAsset(texRef);
-      return uvNode !== void 0 ? tsl.texture(tex, asNode(uvNode)) : tsl.texture(tex);
-    }
-  };
-}
-var VALID_SURFACE_KEYS = /* @__PURE__ */ new Set([
-  "baseColor",
-  "normal",
-  "roughness",
-  "metalness",
-  "emissive",
-  "opacity",
-  "vertexOffset"
-]);
-function buildMaterialFromShader(def, overrides, options) {
-  const paramValues = {};
-  const runtimeParams = {};
-  const accessedParams = /* @__PURE__ */ new Set();
-  const declaredKeys = Object.keys(def.params ?? {});
-  for (const [key, schema] of Object.entries(def.params ?? {})) {
-    const val = overrides && key in overrides ? overrides[key] : defaultForSchema(schema);
-    paramValues[key] = val;
-    runtimeParams[key] = paramToNode(schema, val);
-  }
-  const trackedParams = new Proxy(runtimeParams, {
-    get(target, prop, receiver) {
-      if (typeof prop === "string") accessedParams.add(prop);
-      return Reflect.get(target, prop, receiver);
-    }
-  });
-  const surfaceArg = new Proxy(
-    {
-      params: trackedParams,
-      uv: tsl.uv(0),
-      time: tsl.time,
-      deltaTime: tsl.deltaTime,
-      positionLocal: tsl.positionLocal,
-      positionWorld: tsl.positionWorld,
-      normalLocal: tsl.normalLocal,
-      normalView: tsl.normalView,
-      normalWorld: tsl.normalWorld,
-      viewDirection: tsl.positionViewDirection,
-      cameraPosition: tsl.cameraPosition,
-      screenUV: tsl.screenUV,
-      vertexColor: tsl.vertexColor()
-    },
-    {
-      get(target, prop, receiver) {
-        if (typeof prop === "string" && prop in runtimeParams) {
-          return Reflect.get(trackedParams, prop);
-        }
-        return Reflect.get(target, prop, receiver);
-      }
-    }
-  );
-  const out = def.surface(surfaceArg);
-  const warnings = [];
-  if (!out || typeof out !== "object") {
-    throw new Error("surface() \u5FC5\u987B\u8FD4\u56DE\u4E00\u4E2A\u5305\u542B\u8868\u9762\u8F93\u51FA\u5C5E\u6027\u7684\u5BF9\u8C61");
-  }
-  const outKeys = Object.keys(out).filter((k) => out[k] !== void 0);
-  const unknownKeys = outKeys.filter((k) => !VALID_SURFACE_KEYS.has(k));
-  if (unknownKeys.length > 0) {
-    const mapped = unknownKeys.map((k) => k === "color" ? "color\uFF08\u5E94\u4E3A baseColor\uFF09" : k).join("\u3001");
-    if (options?.strict) {
-      throw new Error(`surface() \u8FD4\u56DE\u4E86\u65E0\u6548\u5B57\u6BB5\uFF1A${mapped}`);
-    }
-    warnings.push(`surface() \u8FD4\u56DE\u4E86\u672A\u8BC6\u522B\u5B57\u6BB5\uFF1A${mapped}`);
-  }
-  const validCount = outKeys.filter((k) => VALID_SURFACE_KEYS.has(k)).length;
-  if (validCount === 0 && !out.color) {
-    throw new Error("surface() \u672A\u8FD4\u56DE\u4EFB\u4F55\u6709\u6548\u8F93\u51FA\u5B57\u6BB5\uFF08\u5982 baseColor / emissive / roughness / opacity\uFF09");
-  }
-  const unusedParams = declaredKeys.filter((k) => !accessedParams.has(k));
-  if (unusedParams.length > 0) {
-    const msg = `params \u4E2D\u58F0\u660E\u4E86 ${unusedParams.join("\u3001")}\uFF0C\u4F46 surface() \u4E2D\u672A\u4F7F\u7528`;
-    if (options?.strict) {
-      throw new Error(msg);
-    }
-    warnings.push(msg);
-  }
-  if (out.opacity !== void 0 && !def.transparent) {
-    warnings.push("surface() \u8FD4\u56DE\u4E86 opacity\uFF0C\u5EFA\u8BAE\u8BBE\u7F6E transparent: true \u624D\u4F1A\u751F\u6548");
-  }
-  const isUnlit = def.mode === "unlit";
-  const material = isUnlit ? new MeshBasicNodeMaterial3() : new MeshStandardNodeMaterial();
-  const baseColorNode = out.baseColor !== void 0 ? out.baseColor : out.color;
-  if (baseColorNode !== void 0) {
-    ;
-    material.colorNode = asNode(baseColorNode);
-  }
-  if (out.opacity !== void 0) {
-    ;
-    material.opacityNode = asNode(out.opacity);
-  }
-  if (out.vertexOffset !== void 0) {
-    ;
-    material.positionNode = tsl.positionLocal.add(asNode(out.vertexOffset));
-  }
-  if (!isUnlit && material instanceof MeshStandardNodeMaterial) {
-    if (out.roughness !== void 0) material.roughnessNode = asNode(out.roughness);
-    if (out.metalness !== void 0) material.metalnessNode = asNode(out.metalness);
-    if (out.emissive !== void 0) material.emissiveNode = asNode(out.emissive);
-    if (out.normal !== void 0) material.normalNode = asNode(out.normal);
-  }
-  if (def.transparent) material.transparent = true;
-  if (def.doubleSided) material.side = 2;
-  material.needsUpdate = true;
-  return { material, paramValues, warnings };
-}
-function compileShaderSource(id, fileName, source, overrides) {
-  const transpiled = checkAndTranspileTs(fileName, source);
-  if (!transpiled.ok || !transpiled.jsCode) {
-    return { ok: false, diagnostics: transpiled.diagnostics };
-  }
-  const sdk = createShaderSdk();
-  const evaluated = evaluateTranspiledModule(fileName, transpiled.jsCode, {
-    "t3d/shader": sdk
-  });
-  if (!evaluated.ok || !evaluated.exports || typeof evaluated.exports.surface !== "function") {
-    return {
-      ok: false,
-      diagnostics: evaluated.diagnostics.length ? evaluated.diagnostics : [
-        {
-          file: fileName,
-          line: 1,
-          column: 1,
-          severity: "error",
-          message: "\u7740\u8272\u5668\u5FC5\u987B\u901A\u8FC7 export default defineShader({ ... }) \u5BFC\u51FA",
-          hint: "\u8BF7\u68C0\u67E5\u9ED8\u8BA4\u5BFC\u51FA\u662F\u5426\u5305\u542B name\u3001params \u548C surface \u51FD\u6570"
-        }
-      ]
-    };
-  }
-  try {
-    const { material, paramValues } = buildMaterialFromShader(evaluated.exports, overrides, { strict: true });
-    return {
-      ok: true,
-      diagnostics: transpiled.diagnostics,
-      jsCode: transpiled.jsCode,
-      exports: {
-        id,
-        file: fileName,
-        definition: evaluated.exports,
-        material,
-        paramValues
-      }
-    };
-  } catch (error) {
-    const msg = error instanceof Error ? error.message : String(error);
-    return {
-      ok: false,
-      diagnostics: [
-        {
-          file: fileName,
-          line: 1,
-          column: 1,
-          severity: "error",
-          message: `TSL \u7740\u8272\u5668\u6784\u5EFA\u5931\u8D25\uFF1A${msg}`,
-          hint: "\u8BF7\u68C0\u67E5 surface() \u8FD4\u56DE\u7684\u8282\u70B9\u7C7B\u578B\u53CA\u8FD0\u7B97\u53C2\u6570"
-        }
-      ]
-    };
-  }
-}
-
 // tests/phase3-code-assets.test.ts
 init_sceneRuntime();
 init_world();
@@ -11294,7 +11495,7 @@ test("compileAndRegisterScript \u6302\u8F7D __project__ \u69FD\u4F4D\u5E76\u652F
   clearScriptRuntimeState();
 });
 test("checkAndTranspileTs \u6267\u884C\u8BED\u4E49\u7C7B\u578B\u68C0\u67E5\u5E76\u8986\u76D6\u5B8C\u6574 RUNTIME_DTS_SUMMARY", () => {
-  for (const key of ["anim", "character", "physics", "nav", "crowd", "projectile", "scene", "getBehavior", "fx", "global", "storage", "tables"]) {
+  for (const key of ["anim", "character", "physics", "nav", "crowd", "projectile", "scene", "shader", "getBehavior", "fx", "global", "storage", "tables"]) {
     assert.ok(RUNTIME_DTS_SUMMARY.includes(key), `RUNTIME_DTS_SUMMARY \u7F3A\u5C11 ${key}`);
   }
   const badApi = checkAndTranspileTs(
@@ -11331,6 +11532,37 @@ test("checkAndTranspileTs \u6267\u884C\u8BED\u4E49\u7C7B\u578B\u68C0\u67E5\u5E76
     `
   );
   assert.equal(goodApi.ok, true);
+});
+test("compileShaderSource \u652F\u6301\u6269\u5145 TSL \u8282\u70B9\u3001\u6E32\u67D3\u72B6\u6001\u4E0E\u8FD0\u884C\u671F Uniform \u52A8\u6001\u66F4\u65B0", () => {
+  const waterLikeShader = `
+    import { defineShader, float, vec3, mix, sin, time, uv, frontFacing, select, linearDepth, screenUV, viewportSharedTexture } from 't3d/shader'
+    export default defineShader({
+      name: 'AdvancedWaterLike',
+      mode: 'lit',
+      transparent: true,
+      side: 'double',
+      depthWrite: false,
+      blending: 'normal',
+      params: {
+        waveAmp: { type: 'number', default: 0.2, label: 'Wave Amp' },
+        shallow: { type: 'color', default: '#22d3ee', label: 'Shallow' },
+        deep: { type: 'color', default: '#0f172a', label: 'Deep' },
+      },
+      surface(p) {
+        const wave = sin(uv().x.mul(10).add(time)).mul(p.waveAmp)
+        const depthFade = linearDepth().mul(0.01).clamp(0, 1)
+        const bg = viewportSharedTexture(screenUV)
+        const col = select(frontFacing, mix(p.shallow, p.deep, depthFade), bg.rgb)
+        return { baseColor: col, opacity: float(0.85), vertexOffset: vec3(0, wave, 0) }
+      },
+    })
+  `;
+  const res = compileShaderSource("adv_water", "shaders/adv_water.shader.ts", waterLikeShader);
+  assert.equal(res.ok, true, JSON.stringify(res.diagnostics));
+  assert.ok(res.exports?.material);
+  assert.equal(res.exports?.material.depthWrite, false);
+  assert.equal(setCompiledShaderParam("adv_water", "waveAmp", 0.55), true);
+  assert.equal(getCompiledShaderParam("adv_water", "waveAmp"), 0.55);
 });
 test("\u8FD0\u884C\u65F6\u62A5\u9519\u5E26\u9636\u6BB5/\u811A\u672C/\u8282\u70B9/\u5806\u6808\u4FE1\u606F\u4E14\u540C\u9519\u8BEF\u81EA\u52A8\u53BB\u91CD", () => {
   clearScriptRuntimeState();

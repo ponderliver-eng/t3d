@@ -374,6 +374,10 @@ export interface ScriptContext<P = Record<string, unknown>, S = Record<string, u
     currentId(): string
     load(sceneId: string, options?: { spawnPoint?: string }): void
   }
+  readonly shader: {
+    setParam(shaderId: string, paramName: string, value: unknown): boolean
+    getParam(shaderId: string, paramName: string): unknown
+  }
   readonly global: {
     get(key: string): unknown
     set(key: string, value: unknown): void
@@ -425,15 +429,22 @@ export function defineSystem<S extends Record<string, unknown>>(def: {
 export const SHADER_DTS_SUMMARY = `export interface ShaderNode {
   add(other: unknown): ShaderNode; sub(other: unknown): ShaderNode; mul(other: unknown): ShaderNode; div(other: unknown): ShaderNode
   min(other: unknown): ShaderNode; max(other: unknown): ShaderNode; pow(other: unknown): ShaderNode; mod(other: unknown): ShaderNode
-  clamp(min?: unknown, max?: unknown): ShaderNode; abs(): ShaderNode; fract(): ShaderNode; floor(): ShaderNode; ceil(): ShaderNode
-  sin(): ShaderNode; cos(): ShaderNode; sqrt(): ShaderNode; negate(): ShaderNode; oneMinus(): ShaderNode; saturate(): ShaderNode; normalize(): ShaderNode; length(): ShaderNode
-  dot(other: unknown): ShaderNode; cross(other: unknown): ShaderNode
+  clamp(min?: unknown, max?: unknown): ShaderNode; abs(): ShaderNode; fract(): ShaderNode; floor(): ShaderNode; ceil(): ShaderNode; round(): ShaderNode
+  sin(): ShaderNode; cos(): ShaderNode; tan(): ShaderNode; sqrt(): ShaderNode; exp(): ShaderNode; log(): ShaderNode
+  negate(): ShaderNode; oneMinus(): ShaderNode; saturate(): ShaderNode; normalize(): ShaderNode; length(): ShaderNode
+  dot(other: unknown): ShaderNode; cross(other: unknown): ShaderNode; reflect(normal: unknown): ShaderNode; distance(other: unknown): ShaderNode
+  equal(other: unknown): ShaderNode; notEqual(other: unknown): ShaderNode; lessThan(other: unknown): ShaderNode; greaterThan(other: unknown): ShaderNode
+  lessThanEqual(other: unknown): ShaderNode; greaterThanEqual(other: unknown): ShaderNode; and(other: unknown): ShaderNode; or(other: unknown): ShaderNode; not(): ShaderNode
+  select(a: unknown, b: unknown): ShaderNode; toVar(name?: string): ShaderNode; assign(val: unknown): ShaderNode
+  addAssign(val: unknown): ShaderNode; subAssign(val: unknown): ShaderNode; mulAssign(val: unknown): ShaderNode
   readonly x: ShaderNode; readonly y: ShaderNode; readonly z: ShaderNode; readonly w: ShaderNode
   readonly r: ShaderNode; readonly g: ShaderNode; readonly b: ShaderNode; readonly a: ShaderNode
-  readonly xy: ShaderNode; readonly xyz: ShaderNode; readonly rgb: ShaderNode
+  readonly xy: ShaderNode; readonly xz: ShaderNode; readonly yz: ShaderNode; readonly xyz: ShaderNode; readonly rgb: ShaderNode; readonly rgba: ShaderNode
 }
 export function defineShader(def: {
   name: string; description?: string; mode?: 'lit' | 'unlit'; transparent?: boolean; doubleSided?: boolean
+  side?: 'front' | 'back' | 'double'; depthWrite?: boolean; depthTest?: boolean
+  blending?: 'normal' | 'additive' | 'subtractive' | 'multiply' | 'none'; alphaTest?: number; wireframe?: boolean
   params?: Record<string, unknown>
   surface: (params: Record<string, any>) => {
     baseColor?: unknown; normal?: unknown; roughness?: unknown; metalness?: unknown
@@ -441,9 +452,27 @@ export function defineShader(def: {
   }
 }): unknown
 export function float(x?: number): ShaderNode
-export function vec2(x?: number, y?: number): ShaderNode
-export function vec3(x?: number, y?: number, z?: number): ShaderNode
-export function vec4(x?: number, y?: number, z?: number, w?: number): ShaderNode
+export function int(x?: number): ShaderNode
+export function uint(x?: number): ShaderNode
+export function vec2(x?: unknown, y?: unknown): ShaderNode
+export function vec3(x?: unknown, y?: unknown, z?: unknown): ShaderNode
+export function vec4(x?: unknown, y?: unknown, z?: unknown, w?: unknown): ShaderNode
+export function ivec2(x?: unknown, y?: unknown): ShaderNode
+export function ivec3(x?: unknown, y?: unknown, z?: unknown): ShaderNode
+export function ivec4(x?: unknown, y?: unknown, z?: unknown, w?: unknown): ShaderNode
+export function uvec2(x?: unknown, y?: unknown): ShaderNode
+export function uvec3(x?: unknown, y?: unknown, z?: unknown): ShaderNode
+export function uvec4(x?: unknown, y?: unknown, z?: unknown, w?: unknown): ShaderNode
+export function mat3(...args: unknown[]): ShaderNode
+export function mat4(...args: unknown[]): ShaderNode
+export function uniform(val: unknown): ShaderNode
+export function varying(node: unknown, name?: string): ShaderNode
+export function Fn<T extends (...args: any[]) => any>(fn: T): T
+export function If(cond: unknown, cb: () => void): { ElseIf: (c: unknown, cb: () => void) => any; Else: (cb: () => void) => void }
+export function Loop(countOrOpts: unknown, cb: (i: { i: ShaderNode }) => void): void
+export function Break(): void
+export function Continue(): void
+export function select(cond: unknown, a: unknown, b: unknown): ShaderNode
 export function color(hexOrR: string | number, g?: number, b?: number): ShaderNode
 export function mix(a: unknown, b: unknown, t: unknown): ShaderNode
 export function clamp(x: unknown, min?: unknown, max?: unknown): ShaderNode
@@ -452,11 +481,20 @@ export function step(edge: unknown, x: unknown): ShaderNode
 export function sin(x: unknown): ShaderNode
 export function cos(x: unknown): ShaderNode
 export function tan(x: unknown): ShaderNode
+export function asin(x: unknown): ShaderNode
+export function acos(x: unknown): ShaderNode
+export function atan(x: unknown): ShaderNode
+export function atan2(y: unknown, x: unknown): ShaderNode
+export function radians(deg: unknown): ShaderNode
+export function degrees(rad: unknown): ShaderNode
 export function abs(x: unknown): ShaderNode
 export function sign(x: unknown): ShaderNode
 export function floor(x: unknown): ShaderNode
 export function ceil(x: unknown): ShaderNode
+export function round(x: unknown): ShaderNode
+export function trunc(x: unknown): ShaderNode
 export function fract(x: unknown): ShaderNode
+export function mod(a: unknown, b: unknown): ShaderNode
 export function pow(x: unknown, y: unknown): ShaderNode
 export function sqrt(x: unknown): ShaderNode
 export function exp(x: unknown): ShaderNode
@@ -470,7 +508,12 @@ export function normalize(v: unknown): ShaderNode
 export function length(v: unknown): ShaderNode
 export function distance(a: unknown, b: unknown): ShaderNode
 export function reflect(incident: unknown, normal: unknown): ShaderNode
+export function refract(incident: unknown, normal: unknown, eta: unknown): ShaderNode
+export function faceforward(n: unknown, i: unknown, nref: unknown): ShaderNode
 export function fwidth(x: unknown): ShaderNode
+export function dFdx(x: unknown): ShaderNode
+export function dFdy(x: unknown): ShaderNode
+export function hash(x: unknown): ShaderNode
 export function fresnel(normal: unknown, viewDir: unknown, power?: unknown): ShaderNode
 export function texture(texRef: unknown, uv?: unknown): ShaderNode
 export function uv(index?: number): ShaderNode
@@ -479,10 +522,31 @@ export const deltaTime: ShaderNode
 export const normalView: ShaderNode
 export const normalWorld: ShaderNode
 export const normalLocal: ShaderNode
+export const tangentLocal: ShaderNode
+export const tangentView: ShaderNode
+export const tangentWorld: ShaderNode
+export const positionGeometry: ShaderNode
 export const positionWorld: ShaderNode
 export const positionLocal: ShaderNode
+export const positionView: ShaderNode
 export const viewDirection: ShaderNode
+export const positionViewDirection: ShaderNode
 export const cameraPosition: ShaderNode
+export const cameraNear: ShaderNode
+export const cameraFar: ShaderNode
+export const cameraViewMatrix: ShaderNode
+export const cameraProjectionMatrix: ShaderNode
+export const modelWorldMatrix: ShaderNode
+export const modelViewMatrix: ShaderNode
+export const frontFacing: ShaderNode
 export const screenUV: ShaderNode
+export const screenCoordinate: ShaderNode
+export const screenSize: ShaderNode
+export const viewportCoordinate: ShaderNode
+export const viewportSize: ShaderNode
+export function linearDepth(depthNode?: unknown): ShaderNode
+export const viewportLinearDepth: ShaderNode
+export function viewportDepthTexture(uvNode?: unknown): ShaderNode
+export function viewportSharedTexture(uvNode?: unknown): ShaderNode
 export function vertexColor(): ShaderNode
 `
