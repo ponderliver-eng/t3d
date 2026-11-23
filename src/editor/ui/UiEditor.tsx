@@ -17,7 +17,7 @@ import {
   X,
 } from 'lucide-react'
 import { useAssetStore } from '../assets/library'
-import { translate, useI18n } from '../i18n'
+import { translate, useI18n, type MessageKey } from '../i18n'
 import type { UiLayout, UiNode, UiNodeType, UiStateKind, UiStyle } from '../../runtime/ui/spec'
 import { UI_NODE_TYPES } from '../../runtime/ui/spec'
 import { EMPTY_UI_VALUES, resolveUiTree } from '../../runtime/ui/bindings'
@@ -32,16 +32,16 @@ const SIZES = [
   { id: 'phone', label: '390×844 (Mobile)', width: 390, height: 844 },
 ]
 
-const ANCHOR_GRID = [
-  { id: 'tl', title: '左上', x: 0, y: 0, px: 0, py: 0 },
-  { id: 'tc', title: '中上', x: 0.5, y: 0, px: 0.5, py: 0 },
-  { id: 'tr', title: '右上', x: 1, y: 0, px: 1, py: 0 },
-  { id: 'ml', title: '左中', x: 0, y: 0.5, px: 0, py: 0.5 },
-  { id: 'mc', title: '居中', x: 0.5, y: 0.5, px: 0.5, py: 0.5 },
-  { id: 'mr', title: '右中', x: 1, y: 0.5, px: 1, py: 0.5 },
-  { id: 'bl', title: '左下', x: 0, y: 1, px: 0, py: 1 },
-  { id: 'bc', title: '中下', x: 0.5, y: 1, px: 0.5, py: 1 },
-  { id: 'br', title: '右下', x: 1, y: 1, px: 1, py: 1 },
+const ANCHOR_GRID: { id: string, title: MessageKey, x: number, y: number, px: number, py: number }[] = [
+  { id: 'tl', title: 'ui.anchor.tl', x: 0, y: 0, px: 0, py: 0 },
+  { id: 'tc', title: 'ui.anchor.tc', x: 0.5, y: 0, px: 0.5, py: 0 },
+  { id: 'tr', title: 'ui.anchor.tr', x: 1, y: 0, px: 1, py: 0 },
+  { id: 'ml', title: 'ui.anchor.ml', x: 0, y: 0.5, px: 0, py: 0.5 },
+  { id: 'mc', title: 'ui.anchor.mc', x: 0.5, y: 0.5, px: 0.5, py: 0.5 },
+  { id: 'mr', title: 'ui.anchor.mr', x: 1, y: 0.5, px: 1, py: 0.5 },
+  { id: 'bl', title: 'ui.anchor.bl', x: 0, y: 1, px: 0, py: 1 },
+  { id: 'bc', title: 'ui.anchor.bc', x: 0.5, y: 1, px: 0.5, py: 1 },
+  { id: 'br', title: 'ui.anchor.br', x: 1, y: 1, px: 1, py: 1 },
 ]
 
 function nodeTypeIcon(type: UiNodeType): ReactNode {
@@ -265,7 +265,7 @@ export function UiEditor() {
   }
 
   const bindings = collectUiBindings(document.root)
-  const assetName = useAssetStore.getState().assets[assetId]?.name ?? 'UI 文档'
+  const assetName = useAssetStore.getState().assets[assetId]?.name ?? t('ui.docFallback')
 
   return (
     <section className="ui-editor">
@@ -277,11 +277,11 @@ export function UiEditor() {
 
         <div className="ui-editor__sep" />
 
-        <select className="ui-editor__select" value={sizeId} onChange={event => setSizeId(event.target.value)} title="画布分辨率">
+        <select className="ui-editor__select" value={sizeId} onChange={event => setSizeId(event.target.value)} title={t('ui.canvasSize')}>
           {SIZES.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}
         </select>
 
-        <div className="ui-editor__zoom-group" title="画布缩放">
+        <div className="ui-editor__zoom-group" title={t('ui.canvasZoom')}>
           <input
             type="range"
             min={0.25}
@@ -298,7 +298,7 @@ export function UiEditor() {
         <button
           type="button"
           className={`ui-editor__icon-btn ${showGrid ? 'is-on' : ''}`}
-          title="显示/隐藏背景网格"
+          title={t('ui.grid')}
           onClick={() => setShowGrid(v => !v)}
         >
           <Grid size={14} />
@@ -306,7 +306,7 @@ export function UiEditor() {
 
         <div className="ui-editor__sep" />
 
-        <div className="ui-editor__state-tabs" title="交互状态预览">
+        <div className="ui-editor__state-tabs" title={t('ui.statePreview')}>
           {(['normal', 'hover', 'pressed', 'disabled'] as const).map(st => (
             <button
               key={st}
@@ -340,7 +340,7 @@ export function UiEditor() {
         {/* 左侧：控件库与图层树 */}
         <aside className="ui-editor__tree">
           <div className="ui-editor__pane-head">
-            <span>添加控件</span>
+            <span>{t('ui.addControl')}</span>
           </div>
           <div className="ui-editor__palette">
             {UI_NODE_TYPES.map(type => (
@@ -348,7 +348,7 @@ export function UiEditor() {
                 key={type}
                 type="button"
                 className="ui-editor__palette-btn"
-                title={`添加 ${t(`ui.type.${type}`)}`}
+                title={t('ui.addNamed', { name: t(`ui.type.${type}`) })}
                 onClick={() => useUiEditor.getState().addNode(type)}
               >
                 {nodeTypeIcon(type)}
@@ -358,7 +358,7 @@ export function UiEditor() {
           </div>
 
           <div className="ui-editor__pane-head">
-            <span>图层树</span>
+            <span>{t('ui.layers')}</span>
             <div className="ui-editor__tree-actions">
               <button type="button" title={t('ui.up')} disabled={selectedId === document.root.id} onClick={() => useUiEditor.getState().shiftSelected(-1)}>
                 <ArrowUp size={12} />
@@ -393,7 +393,7 @@ export function UiEditor() {
                   <button
                     type="button"
                     className="ui-editor__row-eye"
-                    title={hidden ? '显示' : '隐藏'}
+                    title={hidden ? t('ui.show') : t('ui.hide')}
                     onClick={e => {
                       e.stopPropagation()
                       toggleNodeVisible(item.node)
@@ -446,12 +446,12 @@ export function UiEditor() {
           {marquee && <div className="ui-editor__marquee" style={{ left: marquee.x, top: marquee.y, width: marquee.w, height: marquee.h }} />}
 
           <div className="ui-editor__status-pill">
-            <span>{selectedIds.length > 1 ? `已选 ${selectedIds.length} 个` : (selected.name || t(`ui.type.${selected.type}`))}</span>
+            <span>{selectedIds.length > 1 ? t('ui.selectedCount', { count: selectedIds.length }) : (selected.name || t(`ui.type.${selected.type}`))}</span>
             <em>{t(`ui.type.${selected.type}`)}</em>
             {selected.layout?.width !== undefined && selectedIds.length < 2 && (
               <span>{selected.layout.width}×{selected.layout.height ?? 0}</span>
             )}
-            <span className="ui-editor__status-hint">滚轮缩放 · 按住滚轮平移 · 拖出框选多个控件</span>
+            <span className="ui-editor__status-hint">{t('ui.stageHint')}</span>
           </div>
         </div>
 
@@ -510,7 +510,7 @@ function NodeFields({
     <>
       <div className="ui-editor__card">
         <div className="ui-editor__card-title">
-          <span>基础属性</span>
+          <span>{t('ui.basic')}</span>
           <em>{t(`ui.type.${node.type}`)}</em>
         </div>
         <div className="ui-editor__card-body">
@@ -521,11 +521,11 @@ function NodeFields({
           <div className="ui-editor__checks">
             <label>
               <input type="checkbox" checked={node.visible !== false} onChange={e => patchSelected({ visible: e.target.checked })} />
-              <span>显示</span>
+              <span>{t('ui.show')}</span>
             </label>
             <label>
               <input type="checkbox" checked={node.enabled !== false} onChange={e => patchSelected({ enabled: e.target.checked })} />
-              <span>启用交互</span>
+              <span>{t('ui.interact')}</span>
             </label>
           </div>
           {(node.type === 'text' || node.type === 'button') && (
@@ -557,7 +557,7 @@ function NodeFields({
         <div className="ui-editor__card-title"><span>{t('ui.layout')}</span></div>
         <div className="ui-editor__card-body">
           <label className="ui-editor__field">
-            <span>模式</span>
+            <span>{t('ui.mode')}</span>
             <select value={layout.mode} onChange={event => setLayout({ mode: event.target.value as UiLayout['mode'] })}>
               <option value="anchor">{t('ui.anchor')}</option>
               <option value="flex">{t('ui.flex')}</option>
@@ -566,7 +566,7 @@ function NodeFields({
           {layout.mode === 'anchor' && !isRoot && (
             <>
               <div className="ui-editor__anchor-row">
-                <span>锚点预设</span>
+                <span>{t('ui.anchorGrid')}</span>
                 <div className="ui-editor__anchor-grid">
                   {ANCHOR_GRID.map(a => {
                     const active = layout.anchorMin?.x === a.x && layout.anchorMin?.y === a.y
@@ -575,7 +575,7 @@ function NodeFields({
                         key={a.id}
                         type="button"
                         className={active ? 'is-on' : ''}
-                        title={a.title}
+                        title={t(a.title)}
                         onClick={() => setLayout({
                           mode: 'anchor',
                           anchorMin: { x: a.x, y: a.y },
@@ -609,21 +609,21 @@ function NodeFields({
               </div>
               <div className="ui-editor__pair">
                 <label className="ui-editor__field-col">
-                  <span>主轴对齐</span>
+                  <span>{t('ui.justify')}</span>
                   <select value={layout.justify ?? 'start'} onChange={event => setLayout({ justify: event.target.value as UiLayout['justify'] })}>
-                    <option value="start">起始</option>
-                    <option value="center">居中</option>
-                    <option value="end">末尾</option>
-                    <option value="space-between">两端对齐</option>
+                    <option value="start">{t('ui.align.start')}</option>
+                    <option value="center">{t('ui.flex.center')}</option>
+                    <option value="end">{t('ui.align.end')}</option>
+                    <option value="space-between">{t('ui.align.between')}</option>
                   </select>
                 </label>
                 <label className="ui-editor__field-col">
-                  <span>交叉轴</span>
+                  <span>{t('ui.alignCross')}</span>
                   <select value={layout.align ?? 'start'} onChange={event => setLayout({ align: event.target.value as UiLayout['align'] })}>
-                    <option value="start">起始</option>
-                    <option value="center">居中</option>
-                    <option value="end">末尾</option>
-                    <option value="stretch">拉伸</option>
+                    <option value="start">{t('ui.align.start')}</option>
+                    <option value="center">{t('ui.flex.center')}</option>
+                    <option value="end">{t('ui.align.end')}</option>
+                    <option value="stretch">{t('ui.align.stretch')}</option>
                   </select>
                 </label>
               </div>
@@ -665,7 +665,7 @@ function NodeFields({
           </div>
           <label className="ui-editor__field">
             <span>{t('ui.background')}</span>
-            <input defaultValue={activeStyle.backgroundColor ?? ''} placeholder="如 #1e293b 或 rgba(...)" key={`${node.id}:${styleState}:bg`} onBlur={event => setStyle({ backgroundColor: event.target.value || undefined })} />
+            <input defaultValue={activeStyle.backgroundColor ?? ''} placeholder={t('ui.bgPlaceholder')} key={`${node.id}:${styleState}:bg`} onBlur={event => setStyle({ backgroundColor: event.target.value || undefined })} />
           </label>
           <div className="ui-editor__pair">
             <NumberField label={t('ui.opacity')} value={activeStyle.opacity ?? 1} step={0.05} onCommit={opacity => setStyle({ opacity })} />
@@ -695,7 +695,7 @@ function BindingFields({ node }: { node: UiNode }) {
       <div className="ui-editor__card-title"><span>{t('ui.binding')}</span></div>
       <div className="ui-editor__card-body">
         <label className="ui-editor__field">
-          <span>目标属性</span>
+          <span>{t('ui.targetProp')}</span>
           <select
             value={binding?.target ?? ''}
             onChange={event => {
@@ -739,7 +739,7 @@ function BindingFields({ node }: { node: UiNode }) {
                 <label className="ui-editor__field"><span>{t('ui.field')}</span><input defaultValue={source.field} key={`${binding.id}:field`} onBlur={event => write([{ ...binding, source: { kind: 'component', nodeId: source.nodeId, field: event.target.value } }])} /></label>
               </>
             ) : (
-              <label className="ui-editor__field"><span>{t('ui.variable')}</span><input defaultValue={source?.kind === 'variable' ? source.varId : ''} placeholder="如 hp / score" key={`${binding.id}:var`} onBlur={event => write([{ ...binding, source: { kind: 'variable', varId: event.target.value } }])} /></label>
+              <label className="ui-editor__field"><span>{t('ui.variable')}</span><input defaultValue={source?.kind === 'variable' ? source.varId : ''} placeholder={t('ui.varPlaceholder')} key={`${binding.id}:var`} onBlur={event => write([{ ...binding, source: { kind: 'variable', varId: event.target.value } }])} /></label>
             )}
           </>
         )}
@@ -756,7 +756,7 @@ function ClickFields({ node }: { node: UiNode }) {
       <div className="ui-editor__card-title"><span>{t('ui.click')}</span></div>
       <div className="ui-editor__card-body">
         <label className="ui-editor__field">
-          <span>动作</span>
+          <span>{t('ui.action')}</span>
           <select
             value={click?.kind ?? ''}
             onChange={event => {

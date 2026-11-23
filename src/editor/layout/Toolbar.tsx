@@ -145,56 +145,56 @@ export default function Toolbar() {
       <button
         type="button"
         className="toolbar__btn"
-        title="立项蓝图 (design.md)"
+        title={t('tool.designTip')}
         onClick={() => useManagerModalStore.getState().openModal('design')}
       >
         <BookOpen size={14} />
-        <span>蓝图</span>
+        <span>{t('tool.design')}</span>
       </button>
       <button
         type="button"
         className="toolbar__btn"
-        title="能力包沉淀与配方"
+        title={t('tool.packsTip')}
         onClick={() => useManagerModalStore.getState().openModal('packs')}
       >
         <Package size={14} />
-        <span>能力包</span>
+        <span>{t('tool.packs')}</span>
       </button>
       <button
         type="button"
         className="toolbar__btn"
-        title="快照与实验分支对比"
+        title={t('tool.branchesTip')}
         onClick={() => useManagerModalStore.getState().openModal('branches')}
       >
         <GitBranch size={14} />
-        <span>分支</span>
+        <span>{t('tool.branches')}</span>
       </button>
       <button
         type="button"
         className="toolbar__btn"
-        title="体检与性能预算看板"
+        title={t('tool.diagnoseTip')}
         onClick={() => useManagerModalStore.getState().openModal('diagnose')}
       >
         <Activity size={14} />
-        <span>体检</span>
+        <span>{t('tool.diagnose')}</span>
       </button>
       <button
         type="button"
         className="toolbar__btn"
-        title="验证与 Web 发布"
+        title={t('tool.publishTip')}
         onClick={() => useManagerModalStore.getState().openModal('publish')}
       >
         <FileDown size={14} />
-        <span>发布</span>
+        <span>{t('tool.publish')}</span>
       </button>
       <button
         type="button"
         className={`toolbar__btn ${aiPanelOpen ? 'toolbar__btn--active' : ''}`}
-        title="AI 指挥台"
+        title={t('tool.aiTip')}
         onClick={toggleAiPanel}
       >
         <Sparkles size={14} />
-        <span>AI 助手</span>
+        <span>{t('tool.ai')}</span>
       </button>
       <button
         type="button"

@@ -4,6 +4,10 @@ import { en, zh, type MessageKey } from './messages'
 
 export type { MessageKey }
 
+export function isMessageKey(value: string): value is MessageKey {
+  return Object.prototype.hasOwnProperty.call(zh, value)
+}
+
 export function translate(key: MessageKey, vars?: Record<string, string | number>): string {
   const lang = resolveLanguage(usePrefsStore.getState().language)
   const text = (lang === 'en' ? en : zh)[key]

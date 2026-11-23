@@ -1,6 +1,7 @@
 import { ChevronDown, ChevronRight, Plus, Trash2 } from 'lucide-react'
 import { CardReset } from '../../editor/panels/CardReset'
 import { useInspectorCardOpen } from '../../editor/panels/inspectorMemory'
+import { useI18n } from '../../editor/i18n'
 import { useEditorStore } from '../../editor/scene/store'
 import type { SceneNode, Vec3 } from '../../editor/scene/types'
 import {
@@ -11,13 +12,14 @@ import {
 } from './schema'
 
 export function SplinePathCard({ node, disabled }: { node: SceneNode; disabled: boolean }) {
+  const { t } = useI18n()
   const [open, setOpen] = useInspectorCardOpen(SPLINE_PATH_CAPABILITY_ID)
   if (node.kind !== 'spline') return null
   const data = normalizeSplinePath(node.capabilities?.[SPLINE_PATH_CAPABILITY_ID])
 
   const commit = (next: SplinePathData) => {
     const store = useEditorStore.getState()
-    store.beginGesture('编辑 Spline 曲线')
+    store.beginGesture(t('spline.gesture'))
     store.updateNode(node.id, {
       capabilities: {
         ...(node.capabilities ?? {}),
@@ -63,7 +65,7 @@ export function SplinePathCard({ node, disabled }: { node: SceneNode; disabled: 
     <section className="iv2-card iv2-card--wide">
       <header className="iv2-card__header" onClick={() => setOpen(!open)}>
         <span className="iv2-card__dot" style={{ background: data.color || '#34d399' }} />
-        <span>Spline 曲线编辑</span>
+        <span>{t('spline.edit')}</span>
         <span className="iv2-card__actions" onClick={(event) => event.stopPropagation()}>
           <CardReset disabled={disabled} onReset={() => commit(defaultSplinePath())} />
         </span>
@@ -73,7 +75,7 @@ export function SplinePathCard({ node, disabled }: { node: SceneNode; disabled: 
       {open && (
         <div className="iv2-card__body" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <div style={{ fontSize: 11, color: '#94a3b8', lineHeight: 1.4 }}>
-            在 3D 视口直接拖动控制点球体编辑曲线；按住 <b>Shift</b> 拖动可调整高度 (Y)。
+            {t('spline.hint')}
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, alignItems: 'center' }}>
@@ -84,10 +86,10 @@ export function SplinePathCard({ node, disabled }: { node: SceneNode; disabled: 
                 disabled={disabled}
                 onChange={(e) => commit({ ...data, closed: e.target.checked })}
               />
-              <span>闭合曲线</span>
+              <span>{t('field.closed')}</span>
             </label>
             <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11.5 }}>
-              <span>颜色</span>
+              <span>{t('field.color')}</span>
               <input
                 type="color"
                 value={data.color}
@@ -99,7 +101,7 @@ export function SplinePathCard({ node, disabled }: { node: SceneNode; disabled: 
           </div>
 
           <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11.5 }}>
-            <span style={{ minWidth: 56 }}>张力</span>
+            <span style={{ minWidth: 56 }}>{t('field.tension')}</span>
             <input
               type="range"
               min={0}
@@ -116,7 +118,7 @@ export function SplinePathCard({ node, disabled }: { node: SceneNode; disabled: 
           </label>
 
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 2 }}>
-            <span style={{ fontSize: 11.5, color: '#cbd5e1' }}>控制点 ({data.points.length})</span>
+            <span style={{ fontSize: 11.5, color: '#cbd5e1' }}>{t('spline.points', { count: data.points.length })}</span>
             <button
               type="button"
               className="iv2-btn"
@@ -124,7 +126,7 @@ export function SplinePathCard({ node, disabled }: { node: SceneNode; disabled: 
               onClick={appendPoint}
               style={{ display: 'inline-flex', alignItems: 'center', gap: 4, padding: '2px 8px', fontSize: 11 }}
             >
-              <Plus size={12} /> 添加控制点
+              <Plus size={12} /> {t('spline.addPoint')}
             </button>
           </div>
 
@@ -162,7 +164,7 @@ export function SplinePathCard({ node, disabled }: { node: SceneNode; disabled: 
                 <button
                   type="button"
                   className="iv2-icon-btn"
-                  title="删除控制点"
+                  title={t('spline.removePoint')}
                   disabled={disabled || data.points.length <= 2}
                   onClick={() => removePoint(idx)}
                 >

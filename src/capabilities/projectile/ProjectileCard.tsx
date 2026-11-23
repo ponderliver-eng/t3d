@@ -2,6 +2,7 @@ import { ChevronDown, ChevronRight, Trash2 } from 'lucide-react'
 import { SchemaForm } from '../../core/schema/SchemaForm'
 import { CardReset } from '../../editor/panels/CardReset'
 import { useInspectorCardOpen } from '../../editor/panels/inspectorMemory'
+import { useI18n } from '../../editor/i18n'
 import { useEditorStore } from '../../editor/scene/store'
 import type { SceneNode } from '../../editor/scene/types'
 import { capabilityEnabled } from '../registry'
@@ -14,6 +15,7 @@ import {
 } from './schema'
 
 export function ProjectileCard({ node, disabled }: { node: SceneNode; disabled: boolean }) {
+  const { t } = useI18n()
   const capEnabled = useEditorStore((state) => capabilityEnabled(state.capabilities, PROJECTILE_CAPABILITY_ID))
   const [open, setOpen] = useInspectorCardOpen(PROJECTILE_CAPABILITY_ID)
   const raw = node.capabilities?.[PROJECTILE_CAPABILITY_ID]
@@ -22,7 +24,7 @@ export function ProjectileCard({ node, disabled }: { node: SceneNode; disabled: 
 
   const commit = (next: ProjectileSpec | null) => {
     const store = useEditorStore.getState()
-    store.beginGesture('通用弹道设置')
+    store.beginGesture(t('projectile.title'))
     const capabilities = { ...(node.capabilities ?? {}) }
     if (next) capabilities[PROJECTILE_CAPABILITY_ID] = next
     else delete capabilities[PROJECTILE_CAPABILITY_ID]
@@ -36,13 +38,13 @@ export function ProjectileCard({ node, disabled }: { node: SceneNode; disabled: 
     <section className="iv2-card iv2-card--wide">
       <header className="iv2-card__header" onClick={() => setOpen(!open)}>
         <span className="iv2-card__dot" style={{ background: '#f97316' }} />
-        <span>通用弹道 (Projectile)</span>
+        <span>{t('projectile.title')}</span>
         <span className="iv2-card__actions" onClick={(event) => event.stopPropagation()}>
           <CardReset disabled={disabled} onReset={() => commit(defaultProjectile())} />
           <button
             type="button"
             className="iv2-icon-btn"
-            title="移除组件"
+            title={t('component.remove')}
             disabled={disabled}
             onClick={() => commit(null)}
           >

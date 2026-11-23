@@ -109,7 +109,7 @@ export default function MenuBar() {
           <Sep />
           <Item icon={<Upload size={13} />} onClick={openImport}>{t('menu.import')}</Item>
           <Item icon={<PackageOpen size={13} />} onClick={openPackagePicker}>{t('menu.extractPackage')}</Item>
-          <Item icon={<Package size={13} />} disabled={playing} onClick={() => { void exportWebPlayerInteractive() }}>导出 Web 播放包…</Item>
+          <Item icon={<Package size={13} />} disabled={playing} onClick={() => { void exportWebPlayerInteractive() }}>{t('menu.exportWeb')}</Item>
           <Sep />
           <Item icon={<Database size={13} />} onClick={() => useEditorStore.getState().setGameplayHubOpen(true)}>{t('menu.database')}</Item>
           <Item icon={<Library size={13} />} onClick={() => useEditorStore.getState().setLibraryOpen(true)}>{t('menu.library')}</Item>

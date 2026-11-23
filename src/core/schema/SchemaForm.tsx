@@ -6,7 +6,13 @@ import { ASSET_MIME, NODE_MIME } from '../../editor/assets/import'
 import { useAssetStore } from '../../editor/assets/library'
 import { clipNamesFor, projectClips } from '../../editor/assets/models'
 import { useEditorStore } from '../../editor/scene/store'
+import { isMessageKey, useI18n } from '../../editor/i18n'
 import { defaultForSchema, type FieldSchema, type ObjectFieldSchema, type RefFieldSchema } from './fieldSchema'
+
+function usePhrase() {
+  const { t } = useI18n()
+  return (value?: string) => (!value ? '' : isMessageKey(value) ? t(value) : value)
+}
 
 export interface SchemaFormProps {
   schema: ObjectFieldSchema
@@ -71,13 +77,14 @@ interface SchemaFieldRowProps {
 }
 
 function SchemaFieldRow({ field, value, disabled, onChange }: SchemaFieldRowProps) {
+  const phrase = usePhrase()
   if (field.type === 'object') {
     const objVal = (value && typeof value === 'object' && !Array.isArray(value)
       ? value
       : {}) as Record<string, unknown>
     return (
       <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', paddingLeft: '6px', borderLeft: '2px solid rgba(255,255,255,0.08)' }}>
-        {field.label && <div style={{ fontSize: '11px', color: '#a1a1aa' }}>{field.label}</div>}
+        {field.label && <div style={{ fontSize: '11px', color: '#a1a1aa' }}>{phrase(field.label)}</div>}
         <SchemaForm
           schema={field}
           value={objVal}
@@ -90,9 +97,9 @@ function SchemaFieldRow({ field, value, disabled, onChange }: SchemaFieldRowProp
   }
 
   return (
-    <label style={rowStyle} title={field.description ?? field.label}>
+    <label style={rowStyle} title={phrase(field.description ?? field.label)}>
       <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', color: '#a1a1aa' }}>
-        {field.label}
+        {phrase(field.label)}
       </span>
       <SchemaControl field={field} value={value} disabled={disabled} onChange={onChange} />
     </label>
@@ -110,6 +117,8 @@ function SchemaControl({
   disabled: boolean
   onChange: (next: unknown) => void
 }) {
+  const { t } = useI18n()
+  const phrase = usePhrase()
   switch (field.type) {
     case 'boolean':
       return (
@@ -197,7 +206,7 @@ function SchemaControl({
           style={inputStyle}
         >
           {field.options.map((opt) => (
-            <option key={opt.value} value={opt.value}>{opt.label}</option>
+            <option key={opt.value} value={opt.value}>{phrase(opt.label)}</option>
           ))}
         </select>
       )
@@ -245,7 +254,7 @@ function SchemaControl({
           value={typeof value === 'string' ? value : null}
           kinds={['texture']}
           disabled={disabled}
-          title={field.label}
+          title={phrase(field.label)}
           onChange={(next) => onChange(next)}
         />
       )
@@ -255,7 +264,7 @@ function SchemaControl({
           <NodeRefControl
             value={typeof value === 'string' ? value : null}
             disabled={disabled}
-            title={field.label}
+            title={phrase(field.label)}
             onChange={(next) => onChange(next)}
           />
         )
@@ -266,7 +275,7 @@ function SchemaControl({
             value={typeof value === 'string' ? value : null}
             kinds={field.kinds}
             disabled={disabled}
-            title={field.label}
+            title={phrase(field.label)}
             onChange={(next) => onChange(next)}
           />
         )
@@ -276,7 +285,7 @@ function SchemaControl({
           <ClipRefControl
             value={typeof value === 'string' ? value : null}
             disabled={disabled}
-            title={field.label}
+            title={phrase(field.label)}
             onChange={(next) => onChange(next)}
           />
         )
@@ -287,7 +296,7 @@ function SchemaControl({
             value={typeof value === 'string' ? value : null}
             tableId={field.tableId}
             disabled={disabled}
-            title={field.label}
+            title={phrase(field.label)}
             onChange={(next) => onChange(next)}
           />
         )
@@ -306,7 +315,7 @@ function SchemaControl({
       const items = Array.isArray(value) ? value : []
       return (
         <span style={{ fontSize: '11px', color: '#a1a1aa' }}>
-          共 {items.length} 项
+          {t('schema.listCount', { count: items.length })}
         </span>
       )
     }
@@ -370,6 +379,7 @@ function NodeRefControl({
   title: string
   onChange: (next: string | null) => void
 }) {
+  const { t } = useI18n()
   const nodes = useEditorStore((s) => s.nodes)
   const [dropping, setDropping] = useState(false)
   const [pickerOpen, setPickerOpen] = useState(false)
@@ -391,7 +401,7 @@ function NodeRefControl({
     <>
       <div
         style={refSlotStyle(dropping, disabled)}
-        title={node ? `${node.name} (${node.id}) — 点击定位，或拖放其他节点替换` : '从层级树拖放节点到此处，或点击右侧放大镜选择'}
+        title={node ? t('schema.nodeTitle', { name: node.name, id: node.id }) : t('schema.dropNodeHint')}
         onDragEnter={(e) => {
           if (!acceptsDrop(e)) return
           e.preventDefault()
@@ -423,14 +433,14 @@ function NodeRefControl({
         >
           <Box size={12} style={{ color: node ? '#60a5fa' : '#71717a', flexShrink: 0 }} />
           <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {dropping ? '松开以引用节点' : node ? node.name : missing ? `已丢失 (${value?.slice(0, 8)})` : '无 (拖放节点或选择)'}
+            {dropping ? t('schema.dropNode') : node ? node.name : missing ? t('schema.nodeMissing', { id: value?.slice(0, 8) ?? '' }) : t('schema.nodeEmpty')}
           </span>
         </button>
         {!disabled && (
           <button
             type="button"
             style={refActionBtnStyle}
-            title={`选择${title}`}
+            title={t('schema.pick', { name: title })}
             onClick={(e) => { e.preventDefault(); setPickerOpen(true) }}
           >
             <Search size={12} />
@@ -440,7 +450,7 @@ function NodeRefControl({
           <button
             type="button"
             style={refActionBtnStyle}
-            title="清空引用"
+            title={t('schema.clearRef')}
             onClick={(e) => { e.preventDefault(); onChange(null) }}
           >
             <X size={12} />
@@ -450,7 +460,7 @@ function NodeRefControl({
 
       {pickerOpen && (
         <RefPickerModal
-          title={`选择${title}`}
+          title={t('schema.pick', { name: title })}
           selectedId={value}
           items={Object.values(nodes)
             .sort((a, b) => a.name.localeCompare(b.name, 'zh'))
@@ -479,6 +489,7 @@ function AssetRefControl({
   title: string
   onChange: (next: string | null) => void
 }) {
+  const { t } = useI18n()
   const assets = useAssetStore((s) => s.assets)
   const [dropping, setDropping] = useState(false)
   const [pickerOpen, setPickerOpen] = useState(false)
@@ -506,7 +517,7 @@ function AssetRefControl({
     <>
       <div
         style={refSlotStyle(dropping, disabled)}
-        title={asset ? `${asset.name} (${asset.kind}) — 点击定位，或拖放资产替换` : '从资源面板拖放资产到此处，或点击右侧放大镜选择'}
+        title={asset ? t('schema.assetTitle', { name: asset.name, kind: asset.kind }) : t('schema.dropAssetHint')}
         onDragEnter={(e) => {
           if (!acceptsDrop(e)) return
           e.preventDefault()
@@ -537,14 +548,14 @@ function AssetRefControl({
         >
           <FileBox size={12} style={{ color: asset ? '#34d399' : '#71717a', flexShrink: 0 }} />
           <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {dropping ? '松开以引用资产' : asset ? asset.name : missing ? `已丢失 (${value?.slice(0, 8)})` : '无 (拖放资产或选择)'}
+            {dropping ? t('schema.dropAsset') : asset ? asset.name : missing ? t('schema.nodeMissing', { id: value?.slice(0, 8) ?? '' }) : t('schema.assetEmpty')}
           </span>
         </button>
         {!disabled && (
           <button
             type="button"
             style={refActionBtnStyle}
-            title={`选择${title}`}
+            title={t('schema.pick', { name: title })}
             onClick={(e) => { e.preventDefault(); setPickerOpen(true) }}
           >
             <Search size={12} />
@@ -554,7 +565,7 @@ function AssetRefControl({
           <button
             type="button"
             style={refActionBtnStyle}
-            title="清空引用"
+            title={t('schema.clearRef')}
             onClick={(e) => { e.preventDefault(); onChange(null) }}
           >
             <X size={12} />
@@ -564,7 +575,7 @@ function AssetRefControl({
 
       {pickerOpen && (
         <RefPickerModal
-          title={`选择${title}`}
+          title={t('schema.pick', { name: title })}
           selectedId={value}
           items={filteredAssets.map((a) => ({ id: a.id, name: a.name, badge: a.kind }))}
           onSelect={(id) => {
@@ -589,6 +600,7 @@ function ClipRefControl({
   title: string
   onChange: (next: string | null) => void
 }) {
+  const { t } = useI18n()
   const [dropping, setDropping] = useState(false)
   const [pickerOpen, setPickerOpen] = useState(false)
   const clips = projectClips()
@@ -620,7 +632,7 @@ function ClipRefControl({
     <>
       <div
         style={refSlotStyle(dropping, disabled)}
-        title={value ? `${value}${matched ? ` (${matched.assetName})` : ''} — 拖放动画片段或点击右侧选择` : '从资源面板拖放动画片段到此处，或点击右侧放大镜选择'}
+        title={value ? t('schema.clipTitle', { name: `${value}${matched ? ` (${matched.assetName})` : ''}` }) : t('schema.dropClipHint')}
         onDragEnter={(e) => {
           if (!acceptsDrop(e)) return
           e.preventDefault()
@@ -645,14 +657,14 @@ function ClipRefControl({
         >
           <Film size={12} style={{ color: value ? '#fbbf24' : '#71717a', flexShrink: 0 }} />
           <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {dropping ? '松开以引用动画' : value ? (matched ? `${matched.assetName} / ${value}` : value) : '无 (拖放动画或选择)'}
+            {dropping ? t('schema.dropClip') : value ? (matched ? `${matched.assetName} / ${value}` : value) : t('schema.clipEmpty')}
           </span>
         </button>
         {!disabled && (
           <button
             type="button"
             style={refActionBtnStyle}
-            title={`选择${title}`}
+            title={t('schema.pick', { name: title })}
             onClick={(e) => { e.preventDefault(); setPickerOpen(true) }}
           >
             <Search size={12} />
@@ -662,7 +674,7 @@ function ClipRefControl({
           <button
             type="button"
             style={refActionBtnStyle}
-            title="清空引用"
+            title={t('schema.clearRef')}
             onClick={(e) => { e.preventDefault(); onChange(null) }}
           >
             <X size={12} />
@@ -672,7 +684,7 @@ function ClipRefControl({
 
       {pickerOpen && (
         <RefPickerModal
-          title={`选择${title}`}
+          title={t('schema.pick', { name: title })}
           selectedId={value}
           items={clips.map((c) => ({
             id: c.name,
@@ -703,6 +715,7 @@ function TableRowRefControl({
   title: string
   onChange: (next: string | null) => void
 }) {
+  const { t } = useI18n()
   const gameDatabase = useEditorStore((s) => s.gameDatabase)
   const [pickerOpen, setPickerOpen] = useState(false)
 
@@ -718,7 +731,7 @@ function TableRowRefControl({
     <>
       <div
         style={refSlotStyle(false, disabled)}
-        title={matched ? `${matched.name} (${matched.id})` : '点击选择策划表条目'}
+        title={matched ? `${matched.name} (${matched.id})` : t('schema.rowHint')}
       >
         <button
           type="button"
@@ -727,14 +740,14 @@ function TableRowRefControl({
         >
           <Database size={12} style={{ color: matched ? '#c084fc' : '#71717a', flexShrink: 0 }} />
           <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {matched ? matched.name : missing ? `已丢失 (${value?.slice(0, 8)})` : '无 (点击选择)'}
+            {matched ? matched.name : missing ? t('schema.nodeMissing', { id: value?.slice(0, 8) ?? '' }) : t('schema.rowEmpty')}
           </span>
         </button>
         {!disabled && (
           <button
             type="button"
             style={refActionBtnStyle}
-            title={`选择${title}`}
+            title={t('schema.pick', { name: title })}
             onClick={(e) => { e.preventDefault(); setPickerOpen(true) }}
           >
             <Search size={12} />
@@ -744,7 +757,7 @@ function TableRowRefControl({
           <button
             type="button"
             style={refActionBtnStyle}
-            title="清空引用"
+            title={t('schema.clearRef')}
             onClick={(e) => { e.preventDefault(); onChange(null) }}
           >
             <X size={12} />
@@ -754,7 +767,7 @@ function TableRowRefControl({
 
       {pickerOpen && (
         <RefPickerModal
-          title={`选择${title}`}
+          title={t('schema.pick', { name: title })}
           selectedId={value}
           items={rows}
           onSelect={(id) => {
@@ -781,6 +794,7 @@ function RefPickerModal({
   onSelect: (id: string | null) => void
   onClose: () => void
 }) {
+  const { t } = useI18n()
   const [query, setQuery] = useState('')
   const q = query.trim().toLowerCase()
 
@@ -808,14 +822,14 @@ function RefPickerModal({
           <input
             autoFocus
             value={query}
-            placeholder="搜索名称、类型或 ID…"
+            placeholder={t('schema.search')}
             onChange={(e) => setQuery(e.target.value)}
           />
         </div>
         <div className="asset-picker__list">
           <button type="button" className={!selectedId ? 'is-on' : ''} onClick={() => onSelect(null)}>
             <i />
-            <span>无（清空引用）</span>
+            <span>{t('schema.clearPick')}</span>
           </button>
           {filtered.map((item) => (
             <button
@@ -829,7 +843,7 @@ function RefPickerModal({
               <em>{item.badge}</em>
             </button>
           ))}
-          {filtered.length === 0 && <p>没有匹配的项</p>}
+          {filtered.length === 0 && <p>{t('schema.noMatch')}</p>}
         </div>
       </section>
     </div>,

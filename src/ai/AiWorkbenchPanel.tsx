@@ -8,6 +8,7 @@ import { captureMainViewport } from '../core/preview/offscreenPreview'
 import { ASSET_MIME, NODE_MIME } from '../editor/assets/import'
 import { CLIP_MIME } from '../editor/animation/playback'
 import { useAssetStore } from '../editor/assets/library'
+import { useI18n } from '../editor/i18n'
 import { useEditorStore } from '../editor/scene/store'
 import { useAgentStore, type AiActionPill, type AiRefItem } from './agentLoop'
 import { parseImportedAiHistory, serializeAiHistoryForExport } from './historyStorage'
@@ -15,6 +16,7 @@ import { parseImportedAiHistory, serializeAiHistoryForExport } from './historySt
 import './evals/runner'
 
 export default function AiWorkbenchPanel() {
+  const { t } = useI18n()
   const panelOpen = useAgentStore((s) => s.panelOpen)
   const setPanelOpen = useAgentStore((s) => s.setPanelOpen)
   const panelScrollTop = useAgentStore((s) => s.panelScrollTop)
@@ -138,7 +140,7 @@ export default function AiWorkbenchPanel() {
 
   const handleExportHistory = () => {
     if (turns.length === 0) {
-      useEditorStore.getState().notify('当前没有可导出的对话记录')
+      useEditorStore.getState().notify(t('ai.noExport'))
       return
     }
     const content = serializeAiHistoryForExport(turns)
@@ -149,7 +151,7 @@ export default function AiWorkbenchPanel() {
     a.download = `t3d-ai-history-${new Date().toISOString().slice(0, 10)}.json`
     a.click()
     URL.revokeObjectURL(url)
-    useEditorStore.getState().notify(`已导出 ${turns.length} 条对话记录`)
+    useEditorStore.getState().notify(t('ai.exported', { count: turns.length }))
   }
 
   useEffect(() => {
@@ -254,7 +256,7 @@ export default function AiWorkbenchPanel() {
     defaultUrl: string
     defaultModel: string
   }> = [
-    { type: 'openai-compatible', label: '兼容接口', defaultUrl: 'https://api.deepseek.com/v1', defaultModel: 'deepseek-chat' },
+    { type: 'openai-compatible', label: t('ai.provider.compat'), defaultUrl: 'https://api.deepseek.com/v1', defaultModel: 'deepseek-chat' },
     { type: 'openai', label: 'OpenAI', defaultUrl: 'https://api.openai.com/v1', defaultModel: 'gpt-4o' },
     { type: 'anthropic', label: 'Anthropic', defaultUrl: 'https://api.anthropic.com/v1', defaultModel: 'claude-3-7-sonnet-latest' },
     { type: 'gemini', label: 'Gemini', defaultUrl: 'https://generativelanguage.googleapis.com/v1beta', defaultModel: 'gemini-2.5-pro' },
@@ -288,7 +290,7 @@ export default function AiWorkbenchPanel() {
   const handleCaptureViewport = () => {
     const dataUrl = captureMainViewport({ mimeType: 'image/jpeg', quality: 0.86 })
     if (!dataUrl) {
-      useEditorStore.getState().notify('当前无法获取视口画面')
+      useEditorStore.getState().notify(t('ai.noViewport'))
       return
     }
     setPendingAttachmentImage(dataUrl)
@@ -310,8 +312,8 @@ export default function AiWorkbenchPanel() {
       }
       if (trimmed === '/checkpoint') {
         setInput('')
-        void createCheckpoint(`手动快照 ${new Date().toLocaleTimeString()}`, true).then(() => {
-          useEditorStore.getState().notify('已创建里程碑快照')
+        void createCheckpoint(t('ai.manualSnapshot', { time: new Date().toLocaleTimeString() }), true).then(() => {
+          useEditorStore.getState().notify(t('ai.snapshot'))
         })
         return
       }
@@ -331,12 +333,12 @@ export default function AiWorkbenchPanel() {
   const mentionCandidates = atQuery === null
     ? []
     : [
-        ...Object.values(nodes).map(n => ({ refKind: 'node' as const, id: n.id, label: n.name, kind: '节点', subKind: n.kind })),
+        ...Object.values(nodes).map(n => ({ refKind: 'node' as const, id: n.id, label: n.name, kind: t('ai.kind.node'), subKind: n.kind })),
         ...Object.values(codeAssets).map(c => ({
           refKind: c.kind as 'script' | 'shader',
           id: c.id,
           label: c.name,
-          kind: c.kind === 'shader' ? '着色器' : '脚本',
+          kind: c.kind === 'shader' ? t('ai.kind.shader') : t('ai.kind.script'),
           subKind: c.kind,
         })),
         ...Object.values(assets).map(a => ({
@@ -350,10 +352,10 @@ export default function AiWorkbenchPanel() {
         .filter(item => !atQuery || item.label.toLowerCase().includes(atQuery))
         .slice(0, 8)
   const slashCommands = [
-    { cmd: '/playtest', desc: '运行冒烟试玩与体检' },
-    { cmd: '/diagnose', desc: '打开体检与性能预算看板' },
-    { cmd: '/pack', desc: '打开能力包沉淀中心' },
-    { cmd: '/checkpoint', desc: '立即保存里程碑快照' },
+    { cmd: '/playtest', desc: t('ai.cmd.playtest') },
+    { cmd: '/diagnose', desc: t('ai.cmd.diagnose') },
+    { cmd: '/pack', desc: t('ai.cmd.pack') },
+    { cmd: '/checkpoint', desc: t('ai.cmd.checkpoint') },
   ].filter(item => item.cmd.startsWith(input.toLowerCase()))
 
   const acceptsDrop = (e: DragEvent) => {
@@ -522,7 +524,7 @@ export default function AiWorkbenchPanel() {
         }}
       >
         <Sparkles size={14} color="#60a5fa" />
-        <span style={{ fontWeight: 600, fontSize: '12px' }}>AI 指挥台</span>
+        <span style={{ fontWeight: 600, fontSize: '12px' }}>{t('ai.title')}</span>
         <span
           style={{
             marginLeft: 'auto',
@@ -533,9 +535,9 @@ export default function AiWorkbenchPanel() {
             textOverflow: 'ellipsis',
             whiteSpace: 'nowrap',
           }}
-          title={activeProvider ? `${activeProvider.label} (${activeProvider.model})` : '未配置'}
+          title={activeProvider ? `${activeProvider.label} (${activeProvider.model})` : t('ai.unconfigured')}
         >
-          {activeProvider ? (activeProvider.hasApiKey ? activeProvider.model : '未设密钥') : '桌面端可用'}
+          {activeProvider ? (activeProvider.hasApiKey ? activeProvider.model : t('ai.noKey')) : t('ai.desktop')}
         </span>
         <input
           ref={importInputRef}
@@ -549,15 +551,15 @@ export default function AiWorkbenchPanel() {
             try {
               const imported = parseImportedAiHistory(await file.text())
               importTurns(imported, 'merge')
-              useEditorStore.getState().notify(`已导入合并 ${imported.length} 条对话记录`)
+              useEditorStore.getState().notify(t('ai.imported', { count: imported.length }))
             } catch (err) {
-              useEditorStore.getState().notify(`导入失败：${err instanceof Error ? err.message : String(err)}`)
+              useEditorStore.getState().notify(t('ai.importFailed', { message: err instanceof Error ? err.message : String(err) }))
             }
           }}
         />
         <button
           type="button"
-          title="导入 / 迁移对话记录 (.json)"
+          title={t('ai.importTip')}
           onClick={() => importInputRef.current?.click()}
           disabled={status !== 'idle'}
           style={iconBtnStyle}
@@ -566,7 +568,7 @@ export default function AiWorkbenchPanel() {
         </button>
         <button
           type="button"
-          title="导出对话记录 (.json)"
+          title={t('ai.exportTip')}
           onClick={handleExportHistory}
           disabled={turns.length === 0}
           style={iconBtnStyle}
@@ -575,7 +577,7 @@ export default function AiWorkbenchPanel() {
         </button>
         <button
           type="button"
-          title="模型与 API 设置"
+          title={t('ai.settingsTip')}
           onClick={() => setSettingsOpen((v) => !v)}
           style={iconBtnStyle}
         >
@@ -583,7 +585,7 @@ export default function AiWorkbenchPanel() {
         </button>
         <button
           type="button"
-          title="清空对话"
+          title={t('ai.clearTip')}
           onClick={clearTurns}
           disabled={status !== 'idle'}
           style={iconBtnStyle}
@@ -592,7 +594,7 @@ export default function AiWorkbenchPanel() {
         </button>
         <button
           type="button"
-          title="收起 AI 指挥台"
+          title={t('ai.collapse')}
           onClick={() => setPanelOpen(false)}
           style={iconBtnStyle}
         >
@@ -615,7 +617,7 @@ export default function AiWorkbenchPanel() {
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <span style={{ fontWeight: 600, color: '#d4d4d8' }}>模型 API 设置（密钥仅存主进程）</span>
+            <span style={{ fontWeight: 600, color: '#d4d4d8' }}>{t('ai.settings')}</span>
             <button
               type="button"
               onClick={() => startNewProvider(settingsProviderType)}
@@ -629,7 +631,7 @@ export default function AiWorkbenchPanel() {
               }}
             >
               <Plus size={11} />
-              <span>新增一条</span>
+              <span>{t('ai.addProvider')}</span>
             </button>
           </div>
 
@@ -711,7 +713,7 @@ export default function AiWorkbenchPanel() {
                       }}
                     />
                     <span>{p.label}</span>
-                    {isActive && <span style={{ fontSize: 9, color: '#60a5fa' }}>当前</span>}
+                    {isActive && <span style={{ fontSize: 9, color: '#60a5fa' }}>{t('ai.current')}</span>}
                   </button>
                 )
               })}
@@ -726,35 +728,35 @@ export default function AiWorkbenchPanel() {
                   color: '#93c5fd',
                 }}
               >
-                + 新建配置中…
+                {t('ai.newConfig')}
               </span>
             )}
           </div>
 
           <input
             type="text"
-            placeholder="名称（如：DeepSeek 官方 / 硅基流动 / 本地 Ollama）"
+            placeholder={t('ai.namePh')}
             value={editLabel}
             onChange={(e) => setEditLabel(e.target.value)}
             style={fieldInputStyle}
           />
           <input
             type="text"
-            placeholder="Base URL（如 https://api.deepseek.com/v1）"
+            placeholder={t('ai.urlPh')}
             value={editBaseUrl}
             onChange={(e) => setEditBaseUrl(e.target.value)}
             style={fieldInputStyle}
           />
           <input
             type="text"
-            placeholder="默认模型名称（如 deepseek-chat / gpt-4o）"
+            placeholder={t('ai.modelPh')}
             value={editModel}
             onChange={(e) => setEditModel(e.target.value)}
             style={fieldInputStyle}
           />
           <input
             type="text"
-            placeholder="备选模型列表（可选，逗号分隔，如 deepseek-chat, deepseek-reasoner）"
+            placeholder={t('ai.modelsPh')}
             value={editModelsText}
             onChange={(e) => setEditModelsText(e.target.value)}
             style={fieldInputStyle}
@@ -763,8 +765,8 @@ export default function AiWorkbenchPanel() {
             type="password"
             placeholder={
               editingProviderId !== '__new__' && providers.find((p) => p.id === editingProviderId)?.hasApiKey
-                ? '已保存密钥（留空表示不修改）'
-                : '输入 API Key'
+                ? t('ai.keySaved')
+                : t('ai.keyPh')
             }
             value={editApiKey}
             onChange={(e) => setEditApiKey(e.target.value)}
@@ -785,12 +787,12 @@ export default function AiWorkbenchPanel() {
                   }}
                   style={{ ...smallBtnStyle, color: '#fca5a5', borderColor: 'rgba(239,68,68,0.35)' }}
                 >
-                  删除此项
+                  {t('ai.deleteItem')}
                 </button>
               )}
             </div>
             <div style={{ display: 'flex', gap: '6px' }}>
-              <button type="button" onClick={() => setSettingsOpen(false)} style={smallBtnStyle}>关闭</button>
+              <button type="button" onClick={() => setSettingsOpen(false)} style={smallBtnStyle}>{t('ai.close')}</button>
               <button
                 type="button"
                 onClick={() => {
@@ -803,7 +805,7 @@ export default function AiWorkbenchPanel() {
                   void saveProvider({
                     id,
                     providerType: settingsProviderType,
-                    label: editLabel.trim() || (isNew ? '自定义接口' : id),
+                    label: editLabel.trim() || (isNew ? t('ai.customApi') : id),
                     baseUrl: editBaseUrl,
                     model: editModel,
                     models: parsedModels,
@@ -817,7 +819,7 @@ export default function AiWorkbenchPanel() {
                 }}
                 style={{ ...smallBtnStyle, background: '#2563eb', color: '#fff', borderColor: '#2563eb' }}
               >
-                保存并启用
+                {t('ai.saveEnable')}
               </button>
             </div>
           </div>
@@ -854,9 +856,9 @@ export default function AiWorkbenchPanel() {
           <div style={{ color: '#71717a', lineHeight: 1.6, padding: '12px 4px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#a1a1aa', marginBottom: '6px' }}>
               <Bot size={14} />
-              <span>AI 已就绪，可直接下达创作指令</span>
+              <span>{t('ai.ready')}</span>
             </div>
-            <div>示例：「新建一个平台跳跃关卡，带地面、主角出生点、几个台阶、一盏方向光和相机，最后做一次体检。」</div>
+            <div>{t('ai.example')}</div>
           </div>
         )}
 
@@ -875,7 +877,7 @@ export default function AiWorkbenchPanel() {
                 cursor: 'pointer',
               }}
             >
-              还有 {hiddenCount} 条更早对话（上滑或点击加载）
+              {t('ai.older', { count: hiddenCount })}
             </button>
           </div>
         )}
@@ -929,7 +931,7 @@ export default function AiWorkbenchPanel() {
               <button
                 type="button"
                 className="t3d-ai-turn-delete"
-                title="删除此条对话"
+                title={t('ai.deleteTurn')}
                 onClick={(e) => {
                   e.stopPropagation()
                   deleteTurn(turn.id)
@@ -970,7 +972,7 @@ export default function AiWorkbenchPanel() {
               >
                 <Loader2 size={12} style={{ animation: 't3d-ai-spin 1s linear infinite', flexShrink: 0 }} />
                 <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {phaseText || '正在处理中…'}
+                  {phaseText || t('ai.working')}
                 </span>
                 <span style={{ marginLeft: 'auto', color: '#a1a1aa', fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>
                   {(elapsedMs / 1000).toFixed(1)}s
@@ -985,7 +987,7 @@ export default function AiWorkbenchPanel() {
                     key={`${r.kind}:${r.id}`}
                     type="button"
                     onClick={() => locateRef(r)}
-                    title="点击定位或打开该对象"
+                    title={t('ai.locate')}
                     style={{
                       ...refPillStyle,
                       ...refKindColors(r.kind),
@@ -1006,7 +1008,7 @@ export default function AiWorkbenchPanel() {
             {turn.imageDataUrl && (
               <img
                 src={turn.imageDataUrl}
-                alt="视口批注截图"
+                alt={t('ai.annotationAlt')}
                 style={{ width: '100%', maxHeight: 150, objectFit: 'cover', borderRadius: 4, border: '1px solid rgba(255,255,255,0.12)' }}
               />
             )}
@@ -1081,9 +1083,9 @@ export default function AiWorkbenchPanel() {
                 <div style={{ display: 'flex', alignItems: 'flex-start', gap: 7, minWidth: 0 }}>
                   <AlertTriangle size={14} style={{ color: '#f87171', flexShrink: 0, marginTop: 1 }} />
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                    <span style={{ fontWeight: 700, color: '#fca5a5' }}>执行异常中断（页面刷新或连接断开）</span>
+                    <span style={{ fontWeight: 700, color: '#fca5a5' }}>{t('ai.interrupted')}</span>
                     <span style={{ color: '#fca5a5', opacity: 0.85, fontSize: 10.5 }}>
-                      已保留您的提问与当前已完成的进度，可点击继续处理。
+                      {t('ai.interruptedHint')}
                     </span>
                   </div>
                 </div>
@@ -1109,7 +1111,7 @@ export default function AiWorkbenchPanel() {
                       cursor: 'pointer',
                     }}
                   >
-                    点击继续
+                    {t('ai.continue')}
                   </button>
                 )}
               </div>
@@ -1132,8 +1134,8 @@ export default function AiWorkbenchPanel() {
               >
                 <span>
                   {turn.stopReason === 'max-steps'
-                    ? '已达单轮 32 步上限，任务尚未全部完成'
-                    : `仍有 ${turn.pendingTasksCount || '未完成'} 项计划步骤待继续`}
+                    ? t('ai.stepLimit')
+                    : t('ai.pending', { count: turn.pendingTasksCount || t('ai.working') })}
                 </span>
                 {idx === turns.length - 1 && status === 'idle' && (
                   <button
@@ -1151,7 +1153,7 @@ export default function AiWorkbenchPanel() {
                       cursor: 'pointer',
                     }}
                   >
-                    继续执行
+                    {t('ai.resume')}
                   </button>
                 )}
               </div>
@@ -1177,9 +1179,9 @@ export default function AiWorkbenchPanel() {
                         turn.usage.model,
                         `${(turn.usage.inputTokens ?? 0) + (turn.usage.outputTokens ?? 0)} tok`,
                         turn.usage.cachedTokens && turn.usage.inputTokens
-                          ? `缓存 ${Math.round((turn.usage.cachedTokens / turn.usage.inputTokens) * 100)}%`
+                          ? t('ai.cache', { percent: Math.round((turn.usage.cachedTokens / turn.usage.inputTokens) * 100) })
                           : '',
-                        turn.usage.steps ? `${turn.usage.steps} 步` : '',
+                        turn.usage.steps ? t('ai.steps', { count: turn.usage.steps }) : '',
                         turn.usage.durationMs ? `${(turn.usage.durationMs / 1000).toFixed(0)}s` : '',
                       ]
                         .filter(Boolean)
@@ -1190,7 +1192,7 @@ export default function AiWorkbenchPanel() {
                   {(turn.text || turn.error) && (
                     <button
                       type="button"
-                      title="复制文本"
+                      title={t('ai.copyTip')}
                       onClick={() => void copyTurnText(turn.id, turn.text || turn.error || '')}
                       style={{
                         display: 'inline-flex',
@@ -1205,7 +1207,7 @@ export default function AiWorkbenchPanel() {
                       }}
                     >
                       {copiedTurnId === turn.id ? <Check size={11} /> : <Copy size={11} />}
-                      <span>{copiedTurnId === turn.id ? '已复制' : '复制'}</span>
+                      <span>{copiedTurnId === turn.id ? t('ai.copied') : t('ai.copy')}</span>
                     </button>
                   )}
                   {turn.role === 'assistant' && turn.checkpointId && status === 'idle' && (
@@ -1225,7 +1227,7 @@ export default function AiWorkbenchPanel() {
                       }}
                     >
                       <RotateCcw size={11} />
-                      <span>回退本轮</span>
+                      <span>{t('ai.rollback')}</span>
                     </button>
                   )}
                 </div>
@@ -1253,14 +1255,14 @@ export default function AiWorkbenchPanel() {
           <div style={{ fontWeight: 600, color: '#fcd34d' }}>{pendingConfirm.label}</div>
           <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end' }}>
             <button type="button" onClick={() => pendingConfirm.resolve(false)} style={smallBtnStyle}>
-              拒绝
+              {t('ai.reject')}
             </button>
             <button
               type="button"
               onClick={() => pendingConfirm.resolve(true)}
               style={{ ...smallBtnStyle, background: '#d97706', color: '#fff', borderColor: '#d97706' }}
             >
-              <Check size={11} /> 允许执行
+              <Check size={11} /> {t('ai.allow')}
             </button>
           </div>
         </div>
@@ -1298,16 +1300,16 @@ export default function AiWorkbenchPanel() {
                 }}
               >
                 <span style={{ color: doneCount === taskPlan.length ? '#4ade80' : '#60a5fa', fontWeight: 600, flexShrink: 0 }}>
-                  任务 {doneCount}/{taskPlan.length}
+                  {t('ai.taskProgress', { done: doneCount, total: taskPlan.length })}
                 </span>
                 <span style={{ color: '#a1a1aa', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {current ? `· ${current.title}` : '· 全部完成'}
+                  {current ? t('ai.taskCurrent', { title: current.title }) : t('ai.taskDone')}
                 </span>
               </button>
               {status === 'idle' && (
                 <button
                   type="button"
-                  title="清除任务计划"
+                  title={t('ai.clearPlan')}
                   onClick={clearTaskPlan}
                   style={{ background: 'transparent', border: 'none', color: '#71717a', cursor: 'pointer', padding: 0, display: 'inline-flex' }}
                 >
@@ -1348,16 +1350,16 @@ export default function AiWorkbenchPanel() {
               textAlign: 'center',
             }}
           >
-            松开即可将节点 / 脚本 / 着色器 / 资产附加到当前对话
+            {t('ai.dropHint')}
           </div>
         )}
         {pendingAttachmentImage && (
           <div style={{ position: 'relative', marginBottom: 6, borderRadius: 4, overflow: 'hidden', border: '1px solid rgba(248,113,113,0.4)' }}>
-            <img src={pendingAttachmentImage} alt="待发送视口批注" style={{ width: '100%', maxHeight: 96, objectFit: 'cover', display: 'block' }} />
+            <img src={pendingAttachmentImage} alt={t('ai.pendingShot')} style={{ width: '100%', maxHeight: 96, objectFit: 'cover', display: 'block' }} />
             <button
               type="button"
               onClick={() => setPendingAttachmentImage(null)}
-              title="移除批注截图"
+              title={t('ai.removeShot')}
               style={{
                 position: 'absolute',
                 top: 4,
@@ -1396,7 +1398,7 @@ export default function AiWorkbenchPanel() {
                 <span>{r.kind === 'node' ? `@${r.label}` : `#${r.label}`}</span>
                 <button
                   type="button"
-                  title="移除引用"
+                  title={t('ai.removeRef')}
                   onClick={() => removePendingRef(r.kind, r.id)}
                   style={{
                     display: 'inline-flex',
@@ -1422,7 +1424,7 @@ export default function AiWorkbenchPanel() {
                   key={n.id}
                   type="button"
                   onClick={() => setInput((prev) => `${prev}${prev && !prev.endsWith(' ') ? ' ' : ''}@${n.name} `)}
-                  title="当前视口选中节点（点击插入名称）"
+                  title={t('ai.insertName')}
                   style={{ ...refPillStyle, cursor: 'pointer', border: 'none', opacity: 0.85 }}
                 >
                   @{n.name}
@@ -1478,8 +1480,8 @@ export default function AiWorkbenchPanel() {
             value={input}
             placeholder={
               status === 'idle'
-                ? '输入需求，支持截图/Ctrl+V贴图/拖入资源，或 @ 引用（Enter 发送）'
-                : 'AI 运行中，可直接输入纠偏/插话指令（Enter 发送，将在当前步骤后注入）'
+                ? t('ai.inputPh')
+                : t('ai.inputBusyPh')
             }
             onChange={(e) => setInput(e.target.value)}
             onPaste={(e) => {
@@ -1521,7 +1523,7 @@ export default function AiWorkbenchPanel() {
           <button
             type="button"
             onClick={handleCaptureViewport}
-            title="截取当前 3D 视口给 AI 分析"
+            title={t('ai.capture')}
             style={{
               height: '34px',
               padding: '0 8px',
@@ -1542,7 +1544,7 @@ export default function AiWorkbenchPanel() {
               type="button"
               onClick={handleSend}
               disabled={!canSend}
-              title="发送"
+              title={t('ai.send')}
               style={{
                 height: '34px',
                 padding: '0 10px',
@@ -1561,7 +1563,7 @@ export default function AiWorkbenchPanel() {
                 type="button"
                 onClick={handleSend}
                 disabled={!canSend}
-                title="运行中插话纠偏 (Steer)"
+                title={t('ai.steer')}
                 style={{
                   height: '34px',
                   padding: '0 9px',
@@ -1577,7 +1579,7 @@ export default function AiWorkbenchPanel() {
               <button
                 type="button"
                 onClick={() => void abort()}
-                title="安全停止"
+                title={t('ai.stop')}
                 style={{
                   height: '34px',
                   padding: '0 9px',
@@ -1595,7 +1597,7 @@ export default function AiWorkbenchPanel() {
           </div>
           {steerQueue.length > 0 && (
             <div style={{ marginTop: 4, fontSize: 10, color: '#fbbf24' }}>
-              已排队 {steerQueue.length} 条插话，将在当前步骤完成后注入 AI 上下文…
+              {t('ai.queued', { count: steerQueue.length })}
             </div>
           )}
 
@@ -1605,7 +1607,7 @@ export default function AiWorkbenchPanel() {
               type="button"
               onMouseDown={(e) => e.stopPropagation()}
               onClick={() => setModelMenuOpen((v) => !v)}
-              title="快速切换对话模型"
+              title={t('ai.switchModel')}
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
@@ -1630,11 +1632,11 @@ export default function AiWorkbenchPanel() {
                 }}
               />
               <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontWeight: 500 }}>
-                {activeProvider?.model || '未选择模型'}
+                {activeProvider?.model || t('ai.noModel')}
               </span>
               <ChevronDown size={11} style={{ flexShrink: 0, color: '#a1a1aa' }} />
             </button>
-            <span style={{ fontSize: 10, color: '#52525b' }}>Enter 发送</span>
+            <span style={{ fontSize: 10, color: '#52525b' }}>{t('ai.enterSend')}</span>
 
             {modelMenuOpen && (
               <div
@@ -1659,7 +1661,7 @@ export default function AiWorkbenchPanel() {
               >
                 {status !== 'idle' && (
                   <div style={{ fontSize: 10.5, color: '#93c5fd', padding: '3px 6px', borderRadius: 4, background: 'rgba(59,130,246,0.12)' }}>
-                    当前对话仍沿用原模型，切换后将在下次发送新对话时生效
+                    {t('ai.modelLater')}
                   </div>
                 )}
                 {providers.flatMap((p) => {
@@ -1702,7 +1704,7 @@ export default function AiWorkbenchPanel() {
                       >
                         <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m}</span>
                         {!p.hasApiKey ? (
-                          <span style={{ fontSize: 10, color: '#fbbf24', flexShrink: 0 }}>未设密钥</span>
+                          <span style={{ fontSize: 10, color: '#fbbf24', flexShrink: 0 }}>{t('ai.noKey')}</span>
                         ) : (
                           isSelected && <Check size={12} style={{ flexShrink: 0, color: '#60a5fa' }} />
                         )}
@@ -1733,7 +1735,7 @@ export default function AiWorkbenchPanel() {
                     }}
                   >
                     <Settings size={12} />
-                    <span>管理模型与 API 设置…</span>
+                    <span>{t('ai.manage')}</span>
                   </button>
                 </div>
               </div>
@@ -1778,7 +1780,7 @@ export default function AiWorkbenchPanel() {
             }}
           >
             <Copy size={12} />
-            <span>复制选中文字</span>
+            <span>{t('ai.copySelection')}</span>
           </button>
           <button
             type="button"
@@ -1795,7 +1797,7 @@ export default function AiWorkbenchPanel() {
             }}
           >
             <Copy size={12} />
-            <span>复制整条消息</span>
+            <span>{t('ai.copyMessage')}</span>
           </button>
           {contextMenu.bodyEl && (
             <button
@@ -1814,7 +1816,7 @@ export default function AiWorkbenchPanel() {
               style={ctxMenuItemStyle}
             >
               <Check size={12} />
-              <span>全选本条正文</span>
+              <span>{t('ai.selectAll')}</span>
             </button>
           )}
         </div>
@@ -1998,6 +2000,7 @@ function renderActionLabel(label: string, isLink: boolean) {
 }
 
 function TurnActionsList({ actions, isActiveTurn }: { actions: AiActionPill[]; isActiveTurn: boolean }) {
+  const { t } = useI18n()
   const [manualExpanded, setManualExpanded] = useState<boolean | null>(null)
   const [openErrorIds, setOpenErrorIds] = useState<Record<string, boolean>>({})
   const prevActiveRef = useRef(isActiveTurn)
@@ -2035,8 +2038,8 @@ function TurnActionsList({ actions, isActiveTurn }: { actions: AiActionPill[]; i
           {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
           <span>
             {failCount > 0
-              ? `已执行 ${actions.length} 步操作（${failCount} 项失败）`
-              : `已执行 ${actions.length} 步操作`}
+              ? t('ai.stepsFailed', { count: actions.length, failed: failCount })
+              : t('ai.stepsDone', { count: actions.length })}
           </span>
         </button>
       )}
@@ -2073,11 +2076,11 @@ function TurnActionsList({ actions, isActiveTurn }: { actions: AiActionPill[]; i
               }}
               title={
                 isError
-                  ? '点击展开/收起完整报错信息'
+                  ? t('ai.expandError')
                   : canLocateAsset
-                    ? '点击在左侧资源窗口定位该资源'
+                    ? t('ai.locateAsset')
                     : canFocusNode
-                      ? '点击在视口中聚焦该节点'
+                      ? t('ai.focusNode')
                       : act.toolName
               }
               style={{
@@ -2141,7 +2144,7 @@ function TurnActionsList({ actions, isActiveTurn }: { actions: AiActionPill[]; i
                 {detailLines.map((line, i) => (
                   <div key={i}>{line}</div>
                 ))}
-                {detailHint && <div style={{ color: '#fca5a5', opacity: 0.85, marginTop: 3 }}>提示：{detailHint}</div>}
+                {detailHint && <div style={{ color: '#fca5a5', opacity: 0.85, marginTop: 3 }}>{t('ai.hintPrefix', { hint: detailHint })}</div>}
               </div>
             )}
           </div>
@@ -2185,6 +2188,7 @@ function AiMarkdown({ text }: { text: string }) {
 }
 
 function AiCodeBlock({ lang, code }: { lang: string; code: string }) {
+  const { t } = useI18n()
   const [copied, setCopied] = useState(false)
   const copy = () => {
     void navigator.clipboard?.writeText(code)
@@ -2196,7 +2200,7 @@ function AiCodeBlock({ lang, code }: { lang: string; code: string }) {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '3px 8px', background: 'rgba(255,255,255,0.04)', fontSize: 10, color: '#a1a1aa' }}>
         <span>{lang || 'code'}</span>
         <button type="button" onClick={copy} style={{ background: 'transparent', border: 'none', color: copied ? '#4ade80' : '#a1a1aa', cursor: 'pointer', fontSize: 10, padding: 0 }}>
-          {copied ? '已复制' : '复制代码'}
+          {copied ? t('ai.copied') : t('ai.copyCode')}
         </button>
       </div>
       <pre style={{ margin: 0, padding: '6px 8px', overflowX: 'auto', fontSize: 11, lineHeight: 1.45, fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace', color: '#e4e4e7', userSelect: 'text', WebkitUserSelect: 'text', cursor: 'text' }}>

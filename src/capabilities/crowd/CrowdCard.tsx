@@ -2,6 +2,7 @@ import { ChevronDown, ChevronRight, Trash2 } from 'lucide-react'
 import { SchemaForm } from '../../core/schema/SchemaForm'
 import { CardReset } from '../../editor/panels/CardReset'
 import { useInspectorCardOpen } from '../../editor/panels/inspectorMemory'
+import { useI18n } from '../../editor/i18n'
 import { useEditorStore } from '../../editor/scene/store'
 import type { SceneNode } from '../../editor/scene/types'
 import { capabilityEnabled } from '../registry'
@@ -14,6 +15,7 @@ import {
 } from './schema'
 
 export function CrowdCard({ node, disabled }: { node: SceneNode; disabled: boolean }) {
+  const { t } = useI18n()
   const capEnabled = useEditorStore((state) => capabilityEnabled(state.capabilities, CROWD_CAPABILITY_ID))
   const [open, setOpen] = useInspectorCardOpen(CROWD_CAPABILITY_ID)
   const raw = node.capabilities?.[CROWD_CAPABILITY_ID]
@@ -22,7 +24,7 @@ export function CrowdCard({ node, disabled }: { node: SceneNode; disabled: boole
 
   const commit = (next: CrowdSpec | null) => {
     const store = useEditorStore.getState()
-    store.beginGesture('群体避让设置')
+    store.beginGesture(t('crowd.title'))
     const capabilities = { ...(node.capabilities ?? {}) }
     if (next) capabilities[CROWD_CAPABILITY_ID] = next
     else delete capabilities[CROWD_CAPABILITY_ID]
@@ -36,13 +38,13 @@ export function CrowdCard({ node, disabled }: { node: SceneNode; disabled: boole
     <section className="iv2-card iv2-card--wide">
       <header className="iv2-card__header" onClick={() => setOpen(!open)}>
         <span className="iv2-card__dot" style={{ background: '#38bdf8' }} />
-        <span>群体避让 (Crowd)</span>
+        <span>{t('crowd.title')}</span>
         <span className="iv2-card__actions" onClick={(event) => event.stopPropagation()}>
           <CardReset disabled={disabled} onReset={() => commit(defaultCrowd())} />
           <button
             type="button"
             className="iv2-icon-btn"
-            title="移除组件"
+            title={t('component.remove')}
             disabled={disabled}
             onClick={() => commit(null)}
           >

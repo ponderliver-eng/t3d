@@ -440,6 +440,7 @@ export default function InspectorPanel() {
 }
 
 function CodeAssetSettings({ asset }: { asset: CodeAssetRecord }) {
+  const { t } = useI18n()
   const dir = projectDirectoryPath()
   const bridge = electronBridge()
   const diskTarget = dir ? joinProjectPath(dir, asset.relativePath) : null
@@ -460,34 +461,34 @@ function CodeAssetSettings({ asset }: { asset: CodeAssetRecord }) {
   return (
     <>
       <header className="inspector__header">
-        <div className="inspector__kind">{isShader ? '着色器 (.shader.ts)' : '脚本 (.ts)'}</div>
+        <div className="inspector__kind">{isShader ? t('shader.file') : t('shader.scriptFile')}</div>
         <div className="inspector__multi">{asset.name}</div>
       </header>
-      <Card id="code-asset" title={isShader ? '着色器资产' : '脚本资产'} color={isShader ? '#c084fc' : '#38bdf8'}>
-        <Section title="基本信息" color={isShader ? '#c084fc' : '#38bdf8'}>
-          <label className="field"><span>标识符</span><span>{asset.id}</span></label>
-          <label className="field"><span>文件路径</span><span title={asset.relativePath}>{asset.relativePath}</span></label>
+      <Card id="code-asset" title={isShader ? t('shader.asset') : t('shader.scriptAsset')} color={isShader ? '#c084fc' : '#38bdf8'}>
+        <Section title={t('shader.info')} color={isShader ? '#c084fc' : '#38bdf8'}>
+          <label className="field"><span>{t('shader.id')}</span><span>{asset.id}</span></label>
+          <label className="field"><span>{t('shader.path')}</span><span title={asset.relativePath}>{asset.relativePath}</span></label>
           <label className="field">
-            <span>编译状态</span>
+            <span>{t('shader.compile')}</span>
             <span style={{ color: asset.ok ? '#68d391' : '#f87171' }}>
-              {asset.ok ? '编译通过' : `${asset.diagnostics.length} 个编译错误`}
+              {asset.ok ? t('shader.compileOk') : t('shader.compileErr', { count: asset.diagnostics.length })}
             </span>
           </label>
           {isShader && shaderDef && (
             <>
-              <label className="field"><span>光照模式</span><span>{shaderDef.mode === 'unlit' ? '无光照 (unlit)' : '标准光照 (lit)'}</span></label>
-              <label className="field"><span>透明 / 双面</span><span>{shaderDef.transparent ? '透明' : '不透明'} · {shaderDef.doubleSided ? '双面' : '单面'}</span></label>
+              <label className="field"><span>{t('shader.lightMode')}</span><span>{shaderDef.mode === 'unlit' ? t('shader.unlit') : t('shader.lit')}</span></label>
+              <label className="field"><span>{t('shader.surface')}</span><span>{shaderDef.transparent ? t('shader.transparent') : t('shader.opaque')} · {shaderDef.doubleSided ? t('shader.double') : t('shader.single')}</span></label>
             </>
           )}
           {!isShader && scriptAsset && (
             <label className="field">
-              <span>脚本类型</span>
-              <span>{scriptAsset.kind === 'system' ? '全局系统 (system)' : '节点行为 (behavior)'}</span>
+              <span>{t('shader.scriptKind')}</span>
+              <span>{scriptAsset.kind === 'system' ? t('shader.system') : t('shader.behavior')}</span>
             </label>
           )}
         </Section>
         {paramEntries.length > 0 && (
-          <Section title={`暴露参数 (${paramEntries.length})`} color="#9fd6ff">
+          <Section title={t('shader.params', { count: paramEntries.length })} color="#9fd6ff">
             {paramEntries.map(([key, schema]) => (
               <label key={key} className="field">
                 <span title={schema.label}>{schema.label || key}</span>
@@ -2131,7 +2132,7 @@ function ShaderSelect({
           className="shader-select__menu"
           style={{ left: rect.left, top: rect.top, width: rect.width }}
         >
-          <div className="shader-select__group">内置着色器</div>
+          <div className="shader-select__group">{t('shader.builtin')}</div>
           {builtinOptions.map(opt => {
             const active = opt.value === value
             return (
@@ -2149,7 +2150,7 @@ function ShaderSelect({
           {customShaders.length > 0 && (
             <>
               <div className="shader-select__sep" />
-              <div className="shader-select__group">自定义着色器</div>
+              <div className="shader-select__group">{t('shader.custom')}</div>
               {customShaders.map(shader => {
                 const optionValue = `custom:${shader.id}` as SurfaceShader
                 const active = optionValue === value
@@ -2162,7 +2163,7 @@ function ShaderSelect({
                   >
                     <span className="shader-select__check">{active && <Check size={12} />}</span>
                     <span>{shader.name}</span>
-                    {!shader.ok && <em className="shader-select__err">错误</em>}
+                    {!shader.ok && <em className="shader-select__err">{t('shader.error')}</em>}
                   </button>
                 )
               })}

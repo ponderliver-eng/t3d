@@ -65,27 +65,27 @@ export interface SplineSpec {
 
 export const SPLINE_SCHEMA: ObjectFieldSchema = {
   type: 'object',
-  label: 'Spline 路径运动',
+  label: 'spline.title',
   fields: {
-    enabled: { type: 'boolean', default: true, label: '启用' },
-    pathNodeId: { type: 'ref', target: 'node', kinds: ['spline'], default: null, label: 'Spline 曲线节点' },
+    enabled: { type: 'boolean', default: true, label: 'field.enable' },
+    pathNodeId: { type: 'ref', target: 'node', kinds: ['spline'], default: null, label: 'spline.pathNode' },
     mode: {
       type: 'enum',
       default: 'loop',
-      label: '运行模式',
+      label: 'spline.mode',
       options: [
-        { value: 'once', label: '单次到达' },
-        { value: 'loop', label: '循环' },
-        { value: 'pingPong', label: '往返' },
+        { value: 'once', label: 'spline.mode.once' },
+        { value: 'loop', label: 'spline.mode.loop' },
+        { value: 'pingPong', label: 'spline.mode.pingPong' },
       ],
     },
-    speed: { type: 'number', default: 4, min: 0.05, max: 200, step: 0.5, label: '移动速度 (m/s)' },
-    tension: { type: 'number', default: 0.5, min: 0, max: 1, step: 0.05, label: '曲线张力' },
-    closed: { type: 'boolean', default: false, label: '闭合曲线' },
-    faceDirection: { type: 'boolean', default: true, label: '朝向路径切线' },
-    planeXZ: { type: 'boolean', default: false, label: '保持当前高度 (XZ)' },
-    autoStart: { type: 'boolean', default: true, label: '试玩自动启动' },
-    startProgress: { type: 'number', default: 0, min: 0, max: 1, step: 0.05, label: '起始进度 (0~1)' },
+    speed: { type: 'number', default: 4, min: 0.05, max: 200, step: 0.5, label: 'spline.speed' },
+    tension: { type: 'number', default: 0.5, min: 0, max: 1, step: 0.05, label: 'spline.curveTension' },
+    closed: { type: 'boolean', default: false, label: 'field.closed' },
+    faceDirection: { type: 'boolean', default: true, label: 'spline.face' },
+    planeXZ: { type: 'boolean', default: false, label: 'spline.planeXZ' },
+    autoStart: { type: 'boolean', default: true, label: 'spline.autoStart' },
+    startProgress: { type: 'number', default: 0, min: 0, max: 1, step: 0.05, label: 'spline.start' },
   },
 }
 

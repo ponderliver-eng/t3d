@@ -247,12 +247,12 @@ export default function ViewportPanel() {
             className={`viewport-tool-btn ${devicePreset !== 'full' ? 'viewport-tool-btn--active' : ''}`}
             title={
               devicePreset === 'full'
-                ? '多端比例预览：自适应全屏（点击切换 16:9 / 竖屏 / 横屏）'
+                ? t('view.device.full')
                 : devicePreset === 'desktop'
-                  ? '多端比例预览：16:9 桌面'
+                  ? t('view.device.desktop')
                   : devicePreset === 'mobile-portrait'
-                    ? '多端比例预览：9:16 手机竖屏'
-                    : '多端比例预览：16:9 手机横屏'
+                    ? t('view.device.portrait')
+                    : t('view.device.landscape')
             }
             onClick={() => {
               const order: Array<'full' | 'desktop' | 'mobile-portrait' | 'mobile-landscape'> = [
@@ -273,7 +273,7 @@ export default function ViewportPanel() {
           <button
             type="button"
             className={`viewport-tool-btn ${annotateMode ? 'viewport-tool-btn--active' : ''}`}
-            title="视口圈选批注并发送给 AI"
+            title={t('view.annotate')}
             onClick={() => setAnnotateMode(v => !v)}
           >
             <PenTool size={12} />
@@ -281,7 +281,7 @@ export default function ViewportPanel() {
           <button
             type="button"
             className={`viewport-tool-btn ${quickPromptOpen ? 'viewport-tool-btn--active' : ''}`}
-            title="就地唤醒 AI 指令框 (Ctrl/Cmd + K)"
+            title={t('view.aiPrompt')}
             onClick={() => setQuickPromptOpen(!quickPromptOpen)}
           >
             <Sparkles size={12} />
@@ -378,13 +378,13 @@ export default function ViewportPanel() {
                 className="viewport-touch-btn viewport-touch-btn--round"
                 onPointerDown={() => injectVirtualInput({ type: 'actionDown', action: 'Interact' })}
                 onPointerUp={() => injectVirtualInput({ type: 'actionUp', action: 'Interact' })}
-              >交互</button>
+              >{t('view.interact')}</button>
               <button
                 type="button"
                 className="viewport-touch-btn viewport-touch-btn--round"
                 onPointerDown={() => injectVirtualInput({ type: 'actionDown', action: 'Jump' })}
                 onPointerUp={() => injectVirtualInput({ type: 'actionUp', action: 'Jump' })}
-              >跳</button>
+              >{t('view.jump')}</button>
             </div>
           </div>
         )}
@@ -421,9 +421,9 @@ export default function ViewportPanel() {
               onPointerLeave={() => { drawingRef.current = false }}
             />
             <div className="viewport-annotate-bar" onPointerDown={e => e.stopPropagation()}>
-              <span>在视口中圈画需要修改的位置</span>
-              <button type="button" onClick={clearAnnotation}><Trash2 size={12} />清除</button>
-              <button type="button" className="is-primary" onClick={sendAnnotationToAi}><Send size={12} />附带批注发给 AI</button>
+              <span>{t('view.annotateHint')}</span>
+              <button type="button" onClick={clearAnnotation}><Trash2 size={12} />{t('view.annotateClear')}</button>
+              <button type="button" className="is-primary" onClick={sendAnnotationToAi}><Send size={12} />{t('view.annotateSend')}</button>
               <button type="button" onClick={() => setAnnotateMode(false)}><X size={12} /></button>
             </div>
           </>
@@ -432,7 +432,7 @@ export default function ViewportPanel() {
           <div className="viewport-quick-prompt" onPointerDown={e => e.stopPropagation()}>
             <div className="viewport-quick-prompt__head">
               <Sparkles size={13} style={{ color: '#c084fc' }} />
-              <span>AI 就地指令</span>
+              <span>{t('view.aiInline')}</span>
               {selection.slice(0, 3).map(id => nodes[id]).filter(Boolean).map(n => (
                 <span key={n.id} className="viewport-quick-prompt__pill">@{n.name}</span>
               ))}
@@ -442,7 +442,7 @@ export default function ViewportPanel() {
               <input
                 autoFocus
                 value={quickInput}
-                placeholder="输入对当前选中物体或视口的修改要求，回车发送…"
+                placeholder={t('view.aiPlaceholder')}
                 onChange={e => setQuickInput(e.target.value)}
                 onKeyDown={e => {
                   if (e.key === 'Enter' && quickInput.trim()) {
