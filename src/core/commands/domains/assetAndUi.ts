@@ -1,4 +1,5 @@
 import { ASSETS_ROOT, normalizeDir } from '../../../editor/assets/folders'
+import { createDocumentAsset, readDocumentText, saveDocumentText } from '../../../editor/assets/import'
 import { useAssetStore } from '../../../editor/assets/library'
 import { useEditorStore } from '../../../editor/scene/store'
 import { codeAssetDirKey, useCodeAssetStore } from '../../codeAssets/workspace'
@@ -757,6 +758,119 @@ const createPrefabCmd: CommandDef<CreatePrefabParams, { assetId: string; name: s
   },
 }
 
+interface CreateDocumentParams {
+  fileName: string
+  content?: string
+  folder?: string
+}
+
+const createDocumentCmd: CommandDef<CreateDocumentParams, { assetId: string; name: string; fileName: string; folder: string }> = {
+  id: 'asset.createDocument',
+  title: '新建文档资产',
+  description: '在指定工程目录（folder，默认 Assets/Documents，支持任意子目录）创建可编辑的文本文档（如 .md、.txt、.json、.yaml 等，适合游戏策划案、需求文档、配置说明）',
+  risk: 'safe',
+  params: {
+    type: 'object',
+    fields: {
+      fileName: { type: 'string', minLength: 1, default: '设计文档.md', label: '文件名（含后缀如 .md / .txt，缺省默认 .md）' },
+      content: { type: 'string', default: '', label: '文档正文内容', optional: true },
+      folder: { type: 'string', default: 'Assets/Documents', label: '存放目录（如 Assets/Docs/Design）', optional: true },
+    },
+  },
+  async run(_ctx, p) {
+    const targetDir = normalizeDir(p.folder?.trim() || 'Assets/Documents')
+    ensureAssetFolderPath(targetDir)
+    const created = await createDocumentAsset({
+      fileName: p.fileName,
+      content: typeof p.content === 'string' ? p.content : '',
+      dir: targetDir,
+    })
+    if (!created) {
+      return { ok: false, code: 'document.createFailed', message: `创建文档 "${p.fileName}" 失败` }
+    }
+    return {
+      ok: true,
+      value: { assetId: created.id, name: created.name, fileName: created.fileName, folder: targetDir },
+      changed: {
+        assetsChanged: [created.id],
+        summary: `在 ${targetDir} 创建文档 ${created.fileName}`,
+      },
+    }
+  },
+}
+
+interface UpdateDocumentParams {
+  assetId: string
+  content: string
+}
+
+const updateDocumentCmd: CommandDef<UpdateDocumentParams, { assetId: string; fileName: string }> = {
+  id: 'asset.updateDocument',
+  title: '更新文档内容',
+  description: '覆盖保存工程中已有文本文档资产的内容',
+  risk: 'safe',
+  params: {
+    type: 'object',
+    fields: {
+      assetId: { type: 'ref', target: 'asset', kinds: ['document'], required: true, label: '文档资产 ID' },
+      content: { type: 'string', default: '', label: '新的文档全文内容' },
+    },
+  },
+  async run(_ctx, p) {
+    const asset = useAssetStore.getState().assets[p.assetId]
+    if (!asset || asset.kind !== 'document') {
+      return { ok: false, code: 'asset.notFound', message: `文档资产 "${p.assetId}" 不存在` }
+    }
+    const ok = await saveDocumentText(p.assetId, p.content)
+    if (!ok) {
+      return { ok: false, code: 'document.saveFailed', message: `保存文档 "${asset.fileName}" 失败` }
+    }
+    return {
+      ok: true,
+      value: { assetId: asset.id, fileName: asset.fileName },
+      changed: { assetsChanged: [asset.id], summary: `更新文档 ${asset.fileName}` },
+    }
+  },
+}
+
+interface ReadDocumentParams {
+  assetId: string
+}
+
+const readDocumentCmd: CommandDef<ReadDocumentParams, { assetId: string; name: string; fileName: string; content: string }> = {
+  id: 'asset.readDocument',
+  title: '读取文档内容',
+  description: '读取工程中已有文本文档资产（.md / .txt / .json 等）的正文内容',
+  risk: 'safe',
+  mutatesDocument: false,
+  params: {
+    type: 'object',
+    fields: {
+      assetId: { type: 'ref', target: 'asset', kinds: ['document'], required: true, label: '文档资产 ID' },
+    },
+  },
+  async run(_ctx, p) {
+    const asset = useAssetStore.getState().assets[p.assetId]
+    if (!asset || asset.kind !== 'document') {
+      return { ok: false, code: 'asset.notFound', message: `文档资产 "${p.assetId}" 不存在` }
+    }
+    try {
+      const content = await readDocumentText(p.assetId)
+      return {
+        ok: true,
+        value: { assetId: asset.id, name: asset.name, fileName: asset.fileName, content },
+        changed: { summary: `读取文档 ${asset.fileName}` },
+      }
+    } catch (err) {
+      return {
+        ok: false,
+        code: 'document.readFailed',
+        message: err instanceof Error ? err.message : String(err),
+      }
+    }
+  },
+}
+
 export function registerAssetAndUiCommands(): () => void {
   const unsubs = [
     commandBus.register(createMaterialCmd),
@@ -765,6 +879,9 @@ export function registerAssetAndUiCommands(): () => void {
     commandBus.register(createFolderCmd),
     commandBus.register(moveToFolderCmd),
     commandBus.register(createPrefabCmd),
+    commandBus.register(createDocumentCmd),
+    commandBus.register(updateDocumentCmd),
+    commandBus.register(readDocumentCmd),
     commandBus.register(createUiDocCmd),
     commandBus.register(createUiFromTemplateCmd),
     commandBus.register(updateUiDocCmd),

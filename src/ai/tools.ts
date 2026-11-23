@@ -123,7 +123,7 @@ const QUERY_TOOLS: AiToolSpec[] = [
   },
   {
     name: 'query__asset_search',
-    description: '按关键词、种类（model/texture/material/ui/prefab/scene/effect/audio/script/shader）与所在目录搜索工程资产',
+    description: '按关键词、种类（model/texture/material/ui/prefab/scene/effect/audio/document/script/shader）与所在目录搜索工程资产',
     parameters: {
       type: 'object',
       properties: {

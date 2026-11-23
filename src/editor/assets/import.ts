@@ -671,11 +671,13 @@ export async function saveDocumentText(assetId: string, text: string): Promise<b
   return true
 }
 
-export async function createDefaultDocument(dir = useAssetStore.getState().browseDir, ext: 'md' | 'txt' = 'md'): Promise<string | null> {
-  const baseName = uniqueAssetName(ext === 'md' ? '新文档' : '新文本')
-  const fileName = `${baseName}.${ext}`
-  const template = ext === 'md' ? `# ${baseName}\n\n` : ''
-  const encoded = new TextEncoder().encode(template)
+export async function createDocumentAsset(options: { fileName: string; content: string; dir?: string }): Promise<FileAsset | null> {
+  const rawName = options.fileName.trim() || '新文档.md'
+  const ext = rawName.toLowerCase().split('.').pop() ?? ''
+  const fileName = rawName.includes('.') && DOCUMENT_EXTS.includes(ext) ? rawName : `${rawName}.md`
+  const baseName = assetName(fileName) || '新文档'
+  const dir = options.dir?.trim() || useAssetStore.getState().browseDir
+  const encoded = new TextEncoder().encode(options.content)
   const bytes = encoded.buffer.slice(encoded.byteOffset, encoded.byteOffset + encoded.byteLength)
   const hash = await sha256(bytes)
   const asset: FileAsset = {
@@ -688,7 +690,17 @@ export async function createDefaultDocument(dir = useAssetStore.getState().brows
     thumb: null,
   }
   const ok = await ingest(asset, bytes, dir)
-  if (!ok) return null
+  return ok ? asset : null
+}
+
+export async function createDefaultDocument(dir = useAssetStore.getState().browseDir, ext: 'md' | 'txt' = 'md'): Promise<string | null> {
+  const baseName = uniqueAssetName(ext === 'md' ? '新文档' : '新文本')
+  const asset = await createDocumentAsset({
+    fileName: `${baseName}.${ext}`,
+    content: ext === 'md' ? `# ${baseName}\n\n` : '',
+    dir,
+  })
+  if (!asset) return null
   useEditorStore.getState().inspectAsset(asset.id)
   return asset.id
 }

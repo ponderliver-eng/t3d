@@ -243,13 +243,16 @@ export function queryAssetSearch(query = '', kind?: string, folder?: string) {
       const dir = assetDirectory(asset.id, assetState.assetDirs)
       if (targetFolder && !isWithin(dir, targetFolder)) return false
       if (!q) return true
-      return asset.name.toLowerCase().includes(q) || asset.id.toLowerCase().includes(q)
+      return asset.name.toLowerCase().includes(q)
+        || asset.id.toLowerCase().includes(q)
+        || ('fileName' in asset && asset.fileName.toLowerCase().includes(q))
     })
     .map((asset) => ({
       id: asset.id,
       name: asset.name,
       kind: asset.kind,
       folder: assetDirectory(asset.id, assetState.assetDirs),
+      ...(asset.kind === 'document' ? { fileName: asset.fileName } : {}),
       ...(asset.kind === 'model' ? { importScale: asset.importScale ?? 1, clipCount: asset.clipCatalog?.length ?? 0 } : {}),
     }))
 
