@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState, type MouseEvent } from 'react'
 import { createPortal } from 'react-dom'
 import { Box, ChevronRight, Clapperboard, Component, CopyPlus, FileCode2, FileText, Folder, FolderOpen, FolderPlus, FolderSearch, Globe, Image, Layers, LayoutGrid, List, ListTree, MapPin, Minus, Music, PackageOpen, Palette, PanelsTopLeft, Pencil, Plus, RefreshCw, Rows3, Scaling, Search, Sparkles, Sun, Trash2, Unlink, Upload, Wand2, X } from 'lucide-react'
 import { CLIP_MIME } from '../animation/playback'
-import { ASSET_MIME, assignClip, bindImportInput, createDefaultDocument, createDefaultMaterial, createDefaultUi, deleteAsset, duplicateAsset, importFiles, isNodeDrag, logNamed, NODE_MIME, openAsset, openImport, reimportModel, reportAssetUsers } from '../assets/import'
+import { ASSET_MIME, FOLDER_MIME, assignClip, bindImportInput, createDefaultDocument, createDefaultMaterial, createDefaultUi, deleteAsset, duplicateAsset, importFiles, isNodeDrag, logNamed, NODE_MIME, openAsset, openImport, reimportModel, reportAssetUsers } from '../assets/import'
 import { savePrefabFromSelection } from '../assets/import'
 import { readPrefab } from '../assets/prefab'
 import { ASSETS_ROOT, directoryTree, findDir, isWithin, parentDir, type DirNode } from '../assets/folders'
@@ -1080,6 +1080,12 @@ function DirNodeView({
         style={{ paddingLeft: 6 + depth * 12 }}
         role="button"
         tabIndex={0}
+        draggable={renamePath !== node.path}
+        onDragStart={event => {
+          event.stopPropagation()
+          event.dataTransfer.setData(FOLDER_MIME, node.path)
+          event.dataTransfer.effectAllowed = 'copy'
+        }}
         onClick={() => onOpen(node.path)}
         onContextMenu={event => onMenu(event, node.path)}
         onKeyDown={event => {
@@ -1169,6 +1175,12 @@ function DirRow({
     <div
       className={`project-asset ${view === 'grid' ? 'project-asset--grid' : ''} ${view === 'details' ? 'project-asset--details' : ''} ${dropping ? 'is-drop' : ''}`}
       data-asset-dir={path}
+      draggable={!renaming}
+      onDragStart={event => {
+        event.stopPropagation()
+        event.dataTransfer.setData(FOLDER_MIME, path)
+        event.dataTransfer.effectAllowed = 'copy'
+      }}
       title={translate('project.openFolder')}
       onClick={event => event.stopPropagation()}
       onDoubleClick={onOpen}

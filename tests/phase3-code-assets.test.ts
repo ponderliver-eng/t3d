@@ -138,7 +138,7 @@ test('compileAndRegisterScript 挂载 __project__ 槽位并支持热重载保留
 })
 
 test('checkAndTranspileTs 执行语义类型检查并覆盖完整 RUNTIME_DTS_SUMMARY', () => {
-  for (const key of ['anim', 'physics', 'nav', 'crowd', 'projectile', 'scene', 'getBehavior', 'fx', 'global', 'storage', 'tables']) {
+  for (const key of ['anim', 'character', 'physics', 'nav', 'crowd', 'projectile', 'scene', 'getBehavior', 'fx', 'global', 'storage', 'tables']) {
     assert.ok(RUNTIME_DTS_SUMMARY.includes(key), `RUNTIME_DTS_SUMMARY 缺少 ${key}`)
   }
 
@@ -169,6 +169,7 @@ test('checkAndTranspileTs 执行语义类型检查并覆盖完整 RUNTIME_DTS_SU
           self.crowd.moveTo([1, 0, 2])
           self.projectile.launch({ speed: 10 })
           self.physics.applyImpulse({ x: 0, y: 1, z: 0 })
+          self.character.setModifiers({ moveSpeedMul: 0.7, gravityMul: 1, inputLock: false })
           const sid = self.scene.currentId()
           if (sid) self.log(sid)
         },

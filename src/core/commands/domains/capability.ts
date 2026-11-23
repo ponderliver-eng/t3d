@@ -146,12 +146,14 @@ const setPictureCapabilityCmd: CommandDef<SetPictureCapabilityParams, { capabili
     },
   },
   run(_ctx, p) {
-    if (!isKnownCapabilityDataKey(p.capabilityId)) {
+    if (p.capabilityId !== 'sky') {
       return {
         ok: false,
-        code: 'capability.unknown',
-        message: `"${p.capabilityId}" 不是已登记的能力包，运行时不会读取这份数据`,
-        hint: `可用的能力数据槽：${knownCapabilityDataKeys().join(', ')}。角色移动与动画切换不是能力包：用 gameplay.setCoreComponent 挂 character（玩家）或 locomotion（按速度切动画），字段见 registry.describe 的 coreComponents`,
+        code: 'capability.notPictureScoped',
+        message: `"${p.capabilityId}" 不是场景画面级（picture.capabilities）能力包，写入这里不会生效`,
+        hint: p.capabilityId === 'water' || p.capabilityId === 'buoyancy' || p.capabilityId === 'physics' || p.capabilityId === 'particles' || p.capabilityId === 'navigation'
+          ? `请改用 capability.setNodeData({ nodeId, capabilityId: "${p.capabilityId}", patch }) 挂载到具体节点上`
+          : '当前仅 sky 为场景画面级（picture.capabilities.sky）能力包',
       }
     }
     const state = useEditorStore.getState()

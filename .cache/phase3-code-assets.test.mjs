@@ -677,6 +677,10 @@ function registerPhysicsExtension(id, order, step2) {
     if (idx >= 0) extensions.splice(idx, 1);
   };
 }
+function moveCharacters(moves) {
+  if (!world || moves.length === 0) return null;
+  return world.moveCharacters(moves);
+}
 function getPhysicsBodyState(id) {
   return world?.bodyState(id) ?? null;
 }
@@ -1404,8 +1408,8 @@ function sampleAtRest(restX, restZ, spec, waveTime, swellTime) {
     const slope = c * w * crestPower - (c * c * 2 - 1) * waveLean;
     dy += height * amp * mod2;
     const crestUp = Math.max(s, 0);
-    const gather = c * spec.waveSteepness + crestUp * crestUp * waveCurl;
-    const horiz = gather * pinch * Math.min(mod2, 1.1);
+    const gather2 = c * spec.waveSteepness + crestUp * crestUp * waveCurl;
+    const horiz = gather2 * pinch * Math.min(mod2, 1.1);
     dx += dirX * horiz;
     dz += dirZ * horiz;
     const gradX = dirX * (gradAlong + k) + perpX * gradAcross;
@@ -1680,8 +1684,8 @@ function createWaterMaterial(options) {
       const c = cos(theta);
       vHeight = vHeight.add(profileOf(s, c, false).height.mul(wave.amp).mul(mod2).mul(wave.geoFade));
       const crestUp = max(s, float(0));
-      const gather = c.mul(uWaveSteepness).add(crestUp.mul(crestUp).mul(uWaveCurl));
-      vHoriz = vHoriz.add(wave.dir.mul(gather.mul(wave.pinch).mul(min(mod2, float(1.1))).mul(wave.geoFade)));
+      const gather2 = c.mul(uWaveSteepness).add(crestUp.mul(crestUp).mul(uWaveCurl));
+      vHoriz = vHoriz.add(wave.dir.mul(gather2.mul(wave.pinch).mul(min(mod2, float(1.1))).mul(wave.geoFade)));
     });
     displacedLocal = options.upAxis === "z" ? vec3(
       restLocal.x.add(vHoriz.x.mul(uInvScale.x)),
@@ -3577,17 +3581,66 @@ function scalePlayDt(dt, now = performance.now() / 1e3) {
   if (now < holdUntil) return 0;
   return dt;
 }
-var holdUntil;
+function clearJuice() {
+  holdUntil = 0;
+  shakeAmp = 0;
+  shakeUntil = 0;
+  if (flashColor) {
+    flashColor = "";
+    flashUntil = 0;
+    flashListeners.forEach((listener2) => listener2());
+  }
+}
+function armJuice(hitStopSec, shake, color2, now) {
+  if (hitStopSec > 0) holdUntil = Math.max(holdUntil, now + hitStopSec);
+  if (shake > 0) {
+    shakeAmp = shake;
+    shakeUntil = now + 0.28;
+  }
+  if (color2) {
+    flashColor = color2;
+    flashUntil = now + 0.12;
+    flashListeners.forEach((listener2) => listener2());
+    window.setTimeout(() => flashListeners.forEach((listener2) => listener2()), 140);
+  }
+}
+var holdUntil, shakeAmp, shakeUntil, flashColor, flashUntil, flashListeners;
 var init_juiceClock = __esm({
   "src/gameplay/juiceClock.ts"() {
     "use strict";
     holdUntil = 0;
+    shakeAmp = 0;
+    shakeUntil = 0;
+    flashColor = "";
+    flashUntil = 0;
+    flashListeners = /* @__PURE__ */ new Set();
   }
 });
 
 // src/core/input/actionMap.ts
 function cloneDefaultMap() {
   return structuredClone(DEFAULT_INPUT_MAP);
+}
+function isTypingTarget(target) {
+  const element = target;
+  const tag = element?.tagName;
+  return Boolean(tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || element?.isContentEditable);
+}
+function bindGlobalInputListeners() {
+  if (listenersBound || typeof window === "undefined") return;
+  listenersBound = true;
+  window.addEventListener("keydown", (event) => {
+    if (isTypingTarget(event.target)) return;
+    if (!physicalKeys.has(event.code)) tappedKeys.add(event.code);
+    physicalKeys.add(event.code);
+  });
+  window.addEventListener("keyup", (event) => {
+    physicalKeys.delete(event.code);
+  });
+  window.addEventListener("blur", () => {
+    physicalKeys.clear();
+    tappedKeys.clear();
+  });
 }
 function isKeyHeld(code) {
   return physicalKeys.has(code) || virtualKeys.has(code);
@@ -3652,7 +3705,7 @@ function consumeInputFrame() {
   tappedKeys.clear();
   tappedActions.clear();
 }
-var DEFAULT_INPUT_MAP, currentMap, physicalKeys, virtualKeys, tappedKeys, virtualActions, tappedActions, virtualAxes;
+var DEFAULT_INPUT_MAP, currentMap, physicalKeys, virtualKeys, tappedKeys, virtualActions, tappedActions, virtualAxes, listenersBound;
 var init_actionMap = __esm({
   "src/core/input/actionMap.ts"() {
     "use strict";
@@ -3719,14 +3772,15 @@ var init_actionMap = __esm({
     virtualActions = /* @__PURE__ */ new Set();
     tappedActions = /* @__PURE__ */ new Set();
     virtualAxes = /* @__PURE__ */ new Map();
+    listenersBound = false;
   }
 });
 
 // src/runtime/frameProfile.ts
-function measureCost(id, run) {
+function measureCost(id, run2) {
   const start2 = performance.now();
   try {
-    run();
+    run2();
   } finally {
     const ms = performance.now() - start2;
     buckets.set(id, (buckets.get(id) ?? 0) + ms);
@@ -3743,6 +3797,161 @@ var init_frameProfile = __esm({
 });
 
 // src/runtime/sceneRuntime.ts
+function defaultCharacter() {
+  return {
+    enabled: true,
+    driver: "capsule",
+    mode: "adventure",
+    clickButton: "right",
+    clickStop: 0.35,
+    moveSpeed: 4.5,
+    turnSpeed: 540,
+    sprintMultiplier: 1.6,
+    jumpSpeed: 6.5,
+    maxJumps: 2,
+    coyoteTime: 0.12,
+    jumpBuffer: 0.12,
+    gravity: 18,
+    radius: 0.35,
+    height: 1.7,
+    capsuleOffset: [0, 0, 0],
+    physicsInteract: false,
+    mass: 65,
+    pushStrength: 1,
+    swim: true,
+    swimSpeedMultiplier: 0.65,
+    swimHeightOffset: 0,
+    dash: true,
+    dashKey: "KeyC",
+    dashDistance: 4,
+    dashDuration: 0.22,
+    dashInvincible: 0.35,
+    dashCooldown: 0.8,
+    footstepDistance: 1.6,
+    footstepJuice: "",
+    lockTargetId: "",
+    lockTargetName: "",
+    idleClip: "",
+    idleClipAssetId: "",
+    walkClip: "",
+    walkClipAssetId: "",
+    runClip: "",
+    runClipAssetId: "",
+    jumpClip: "",
+    jumpClipAssetId: "",
+    airClip: "",
+    airClipAssetId: "",
+    landClip: "",
+    landClipAssetId: "",
+    dodgeClip: "",
+    dodgeClipAssetId: "",
+    swimIdleClip: "",
+    swimIdleClipAssetId: "",
+    swimClip: "",
+    swimClipAssetId: ""
+  };
+}
+function isCoreCondition(kind) {
+  return CONDS.includes(kind);
+}
+function emptyCondition(kind = "hasTag") {
+  return { id: crypto.randomUUID(), kind, tag: "", left: "", op: "==", right: "" };
+}
+function emptyStep(kind = "message") {
+  return {
+    id: crypto.randomUUID(),
+    do: kind,
+    message: "",
+    name: "",
+    value: "0",
+    tag: "",
+    seconds: kind === "wait" ? 0.5 : 0,
+    clip: "",
+    clipAssetId: "",
+    stateId: "",
+    level: "info",
+    conditions: kind === "if" ? [emptyCondition("hasTag")] : [],
+    steps: []
+  };
+}
+function readRules(raw) {
+  if (!Array.isArray(raw)) return [];
+  return raw.map(normalizeRule).filter((rule) => !!rule);
+}
+function readRuleStates(raw) {
+  if (!Array.isArray(raw)) return [];
+  return raw.map(normalizeState).filter((node) => !!node);
+}
+function normalizeRule(raw) {
+  if (!raw || typeof raw !== "object") return null;
+  const item = raw;
+  const legacy = item.cond && item.cond !== "always" ? [emptyCondition(item.cond)] : [];
+  if (legacy[0] && item.cond) {
+    legacy[0].tag = item.tag ?? "";
+    legacy[0].left = item.left ?? "";
+    legacy[0].op = item.op || "==";
+    legacy[0].right = item.right ?? "";
+  }
+  return {
+    id: item.id || crypto.randomUUID(),
+    name: item.name ?? "",
+    enabled: item.enabled !== false,
+    trigger: typeof item.trigger === "string" && item.trigger ? item.trigger : "playStart",
+    message: item.message ?? "",
+    key: item.key || "KeyE",
+    conditions: Array.isArray(item.conditions) && item.conditions.length > 0 ? item.conditions.map(normalizeCondition) : legacy,
+    steps: Array.isArray(item.steps) ? item.steps.map(normalizeStep) : []
+  };
+}
+function normalizeCondition(raw) {
+  const item = raw ?? {};
+  return {
+    id: item.id || crypto.randomUUID(),
+    kind: typeof item.kind === "string" && item.kind ? item.kind : "always",
+    tag: item.tag ?? "",
+    left: item.left ?? "",
+    op: item.op || "==",
+    right: item.right ?? ""
+  };
+}
+function normalizeStep(raw) {
+  const item = raw ?? {};
+  const kind = typeof item.do === "string" && item.do ? item.do : "message";
+  const step2 = emptyStep(kind);
+  step2.id = item.id || step2.id;
+  step2.message = item.message ?? "";
+  step2.name = item.name ?? "";
+  step2.value = item.value ?? "0";
+  step2.tag = item.tag ?? "";
+  step2.seconds = Number.isFinite(item.seconds) ? Number(item.seconds) : step2.seconds;
+  step2.clip = item.clip ?? "";
+  step2.clipAssetId = item.clipAssetId ?? "";
+  step2.stateId = item.stateId ?? "";
+  step2.level = item.level === "warn" || item.level === "error" ? item.level : "info";
+  const legacy = item.do === "if" && item.cond ? [{ ...emptyCondition(isCoreCondition(item.cond) ? item.cond : "always"), tag: item.tag ?? "", left: item.left ?? "", op: item.op || "==", right: item.right ?? "" }] : [];
+  step2.conditions = Array.isArray(item.conditions) && item.conditions.length > 0 ? item.conditions.map(normalizeCondition) : legacy;
+  step2.steps = Array.isArray(item.steps) ? item.steps.map(normalizeStep) : [];
+  return step2;
+}
+function normalizeState(raw) {
+  if (!raw || typeof raw !== "object") return null;
+  const item = raw;
+  if (!item.id) return null;
+  return {
+    id: item.id,
+    name: item.name ?? "",
+    children: Array.isArray(item.children) ? item.children.map(normalizeState).filter((node) => !!node) : [],
+    onEnter: Array.isArray(item.onEnter) ? item.onEnter.map(normalizeStep) : [],
+    onTick: Array.isArray(item.onTick) ? item.onTick.map(normalizeStep) : [],
+    onExit: Array.isArray(item.onExit) ? item.onExit.map(normalizeStep) : [],
+    transitions: Array.isArray(item.transitions) ? item.transitions.map((jump) => ({
+      id: jump.id || crypto.randomUUID(),
+      targetId: jump.targetId ?? "",
+      conditions: Array.isArray(jump.conditions) ? jump.conditions.map(normalizeCondition) : []
+    })) : [],
+    enter: Array.isArray(item.enter) ? item.enter.map(normalizeCondition) : []
+  };
+}
 function registerRuntimeSystem(id, order, step2) {
   const target = order >= RUNTIME_STAGE.POST_ANIMATION ? postAnimationSystems : order >= RUNTIME_STAGE.PHYSICS_NAV ? postPhysicsSystems : systems;
   const index = target.findIndex((item) => item.id === id);
@@ -3773,7 +3982,7 @@ function stepSceneRuntime(dt, host) {
   }
   consumeInputFrame();
 }
-var RUNTIME_STAGE, systems, postPhysicsSystems, postAnimationSystems;
+var CONDS, RUNTIME_STAGE, systems, postPhysicsSystems, postAnimationSystems;
 var init_sceneRuntime = __esm({
   "src/runtime/sceneRuntime.ts"() {
     "use strict";
@@ -3783,6 +3992,7 @@ var init_sceneRuntime = __esm({
     init_juiceClock();
     init_actionMap();
     init_frameProfile();
+    CONDS = ["always", "hasTag", "missingTag", "compare", "formula"];
     RUNTIME_STAGE = {
       PRE_PHYSICS: 10,
       PHYSICS_NAV: 50,
@@ -4683,13 +4893,31 @@ var init_session7 = __esm({
 });
 
 // src/gameplay/types.ts
+var CORE_GAMEPLAY_PACK_ID;
 var init_types = __esm({
   "src/gameplay/types.ts"() {
     "use strict";
+    CORE_GAMEPLAY_PACK_ID = "t3d.core";
   }
 });
 
 // src/gameplay/registry.ts
+function resolveEnabledPackIds(enabled) {
+  const next = /* @__PURE__ */ new Set([CORE_GAMEPLAY_PACK_ID, ...enabled ?? []]);
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const id of [...next]) {
+      for (const dep of packs.get(id)?.dependencies ?? []) {
+        if (!next.has(dep)) {
+          next.add(dep);
+          changed = true;
+        }
+      }
+    }
+  }
+  return next;
+}
 function tableSchema(tableId) {
   for (const pack of packs.values()) {
     const found = pack.tables?.find((table) => table.tableId === tableId);
@@ -4709,6 +4937,39 @@ function findRow(database, tableId, id) {
   const key = id.trim();
   if (!key) return void 0;
   return tableRows(database, tableId).find((row) => row.id === key);
+}
+function listEnabledPackTriggers(enabled) {
+  const on = resolveEnabledPackIds(enabled);
+  const out = [];
+  for (const pack of packs.values()) {
+    if (!on.has(pack.id)) continue;
+    for (const def of pack.triggers ?? []) out.push({ packId: pack.id, def });
+  }
+  return out;
+}
+function findPackTrigger(kind, enabled) {
+  const on = resolveEnabledPackIds(enabled);
+  for (const pack of packs.values()) {
+    const def = pack.triggers?.find((item) => item.kind === kind);
+    if (def) return { packId: pack.id, enabled: on.has(pack.id), def };
+  }
+  return void 0;
+}
+function findPackCondition(kind, enabled) {
+  const on = resolveEnabledPackIds(enabled);
+  for (const pack of packs.values()) {
+    const def = pack.conditions?.find((item) => item.kind === kind);
+    if (def) return { packId: pack.id, enabled: on.has(pack.id), def };
+  }
+  return void 0;
+}
+function findPackAction(kind, enabled) {
+  const on = resolveEnabledPackIds(enabled);
+  for (const pack of packs.values()) {
+    const def = pack.actions?.find((item) => item.kind === kind);
+    if (def) return { packId: pack.id, enabled: on.has(pack.id), def };
+  }
+  return void 0;
 }
 var packs;
 var init_registry = __esm({
@@ -4737,6 +4998,17 @@ function listRuntimeTags(nodeId, now = performance.now() / 1e3) {
     remaining: until > 0 ? Math.max(0, until - now) : null
   }));
 }
+function clearRuntimeTags() {
+  bags.clear();
+}
+function tickRuntimeTags(now) {
+  for (const [nodeId, bag] of bags) {
+    for (const [tag, until] of bag) {
+      if (until > 0 && now >= until) bag.delete(tag);
+    }
+    if (bag.size === 0) bags.delete(nodeId);
+  }
+}
 function nodeHasTag(node, query) {
   if (!query.trim()) return false;
   if (matchesTag(node.tagId, query)) return true;
@@ -4749,6 +5021,50 @@ function nodeHasTag(node, query) {
     if (matchesTag(tag, query)) return true;
   }
   return false;
+}
+function addRuntimeTag(nodeId, tag, seconds, now) {
+  const id = tag.trim();
+  if (!id || blocked(nodeId, id)) return false;
+  const bag = bags.get(nodeId) ?? /* @__PURE__ */ new Map();
+  const previous = bag.get(id);
+  if (previous === 0 || seconds <= 0) bag.set(id, 0);
+  else bag.set(id, Math.max(previous ?? 0, now + seconds));
+  bags.set(nodeId, bag);
+  enforceBlocks(nodeId);
+  return bags.get(nodeId)?.has(id) ?? false;
+}
+function removeRuntimeTag(nodeId, tag) {
+  const id = tag.trim();
+  if (!id) return;
+  const bag = bags.get(nodeId);
+  if (!bag) return;
+  for (const key of [...bag.keys()]) {
+    if (matchesTag(key, id)) bag.delete(key);
+  }
+  if (bag.size === 0) bags.delete(nodeId);
+}
+function blockPrefix(tag) {
+  const row = findRow(getRuntimeWorld().getGameDatabase(), "tags", tag);
+  const prefix = row?.fields?.blockPrefix;
+  return typeof prefix === "string" ? prefix.trim() : "";
+}
+function blocked(nodeId, tag) {
+  const bag = bags.get(nodeId);
+  if (!bag) return false;
+  for (const held2 of bag.keys()) {
+    const prefix = blockPrefix(held2);
+    if (prefix && matchesTag(tag, prefix)) return true;
+  }
+  return false;
+}
+function enforceBlocks(nodeId) {
+  const bag = bags.get(nodeId);
+  if (!bag) return;
+  const prefixes = [...bag.keys()].map(blockPrefix).filter(Boolean);
+  if (prefixes.length === 0) return;
+  for (const key of [...bag.keys()]) {
+    if (prefixes.some((prefix) => matchesTag(key, prefix))) bag.delete(key);
+  }
 }
 var bags;
 var init_runtimeTags = __esm({
@@ -6285,6 +6601,11 @@ export interface ScriptContext<P = Record<string, unknown>, S = Record<string, u
     playUpper(clipName: string, opts?: { loop?: boolean; fade?: number; speed?: number }): void
     stopUpper(fade?: number): void
   }
+  readonly character: {
+    setModifiers(patch: { moveSpeedMul?: number; gravityMul?: number; inputLock?: boolean }): void
+    getModifiers(): { moveSpeedMul?: number; gravityMul?: number; inputLock?: boolean }
+    clearModifiers(): void
+  }
   readonly input: {
     isPressed(a: string): boolean
     justPressed(a: string): boolean
@@ -6624,11 +6945,11 @@ function playSound(options) {
   const id = nextId++;
   const ticket = playTicket;
   const ear = ensureListener();
-  const run = () => {
+  const run2 = () => {
     void start(id, options, ticket);
   };
-  if (ear.context.state === "suspended" && !holdContext) void ear.context.resume().then(run);
-  else run();
+  if (ear.context.state === "suspended" && !holdContext) void ear.context.resume().then(run2);
+  else run2();
   return id;
 }
 function stopMusic() {
@@ -6841,10 +7162,85 @@ registerRuntimeSystem("core.audio", 44, () => {
 });
 installUnlock();
 
-// src/core/codeAssets/scriptRuntime.ts
-init_frameProfile();
-init_motion();
+// src/runtime/character.ts
+init_session10();
+init_session();
+init_session2();
+init_runtimeTags();
+init_juiceClock();
+
+// src/runtime/signals.ts
+var footstepListeners = /* @__PURE__ */ new Set();
+var characterEventListeners = /* @__PURE__ */ new Set();
+function onFootstep(listener2) {
+  footstepListeners.add(listener2);
+  return () => {
+    footstepListeners.delete(listener2);
+  };
+}
+function emitFootstep(nodeId) {
+  for (const listener2 of footstepListeners) {
+    listener2(nodeId);
+  }
+  emitCharacterEvent(nodeId, "onFootstep");
+}
+function onCharacterEvent(listener2) {
+  characterEventListeners.add(listener2);
+  return () => {
+    characterEventListeners.delete(listener2);
+  };
+}
+function emitCharacterEvent(nodeId, event, payload) {
+  for (const listener2 of characterEventListeners) {
+    listener2(nodeId, event, payload);
+  }
+}
+
+// src/gameplay/juice.ts
+init_world();
+init_juiceClock();
+init_registry();
+function playJuice(id, nodeId, host) {
+  const world3 = getRuntimeWorld();
+  const row = findRow(world3.getGameDatabase(), "juice", id);
+  if (!row) {
+    if (id.trim()) world3.log("warn", `\u6253\u51FB\u611F\u7F3A\u5C11\u4E00\u884C\uFF1A${id}`);
+    return false;
+  }
+  const fields = row.fields ?? {};
+  const now = performance.now() / 1e3;
+  const color2 = typeof fields.rimFlashColor === "string" ? fields.rimFlashColor : "";
+  armJuice(numberField(fields.hitStopSec), numberField(fields.cameraShake), color2, now);
+  const sound = typeof fields.sound === "string" ? fields.sound.trim() : "";
+  if (sound) {
+    playSound({
+      assetId: sound,
+      volume: fields.soundVolume === void 0 ? 1 : numberField(fields.soundVolume),
+      parent: host.resolveObject(nodeId)
+    });
+  }
+  const knock = numberField(fields.knockbackMeters);
+  if (knock > 0) knockBack(nodeId, host, knock);
+  return true;
+}
+function knockBack(nodeId, host, meters) {
+  const object = host.resolveObject(nodeId);
+  if (!object) return;
+  const yaw = Math.atan2(2 * object.quaternion.w * object.quaternion.y, 1 - 2 * object.quaternion.y * object.quaternion.y);
+  object.position.x -= Math.sin(yaw) * meters;
+  object.position.z -= Math.cos(yaw) * meters;
+}
+function numberField(value) {
+  const number = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(number) ? number : 0;
+}
+
+// src/runtime/devices.ts
 init_sceneRuntime();
+
+// src/runtime/rules.ts
+init_registry();
+init_runtimeTags();
 
 // src/runtime/ui/bindings.ts
 var EMPTY_UI_VALUES = { variables: {}, components: {}, screens: {} };
@@ -6880,7 +7276,1482 @@ function onUiClick(listener2) {
   return () => clickListeners.delete(listener2);
 }
 
+// src/runtime/rules.ts
+init_world();
+init_sceneRuntime();
+var jobs = [];
+var vars = /* @__PURE__ */ new Map();
+var texts = /* @__PURE__ */ new Map();
+var messageFields = /* @__PURE__ */ new Map();
+var inbox = [];
+var heldKeys = /* @__PURE__ */ new Set();
+var tappedKeys2 = /* @__PURE__ */ new Set();
+var cursors = /* @__PURE__ */ new Map();
+var traces = /* @__PURE__ */ new Map();
+var keysOn = false;
+var started = false;
+function watchKeys() {
+  if (keysOn || typeof window === "undefined") return;
+  keysOn = true;
+  window.addEventListener("keydown", (event) => {
+    const tag = event.target?.tagName;
+    if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+    if (!heldKeys.has(event.code)) tappedKeys2.add(event.code);
+    heldKeys.add(event.code);
+  });
+  window.addEventListener("keyup", (event) => heldKeys.delete(event.code));
+  window.addEventListener("blur", () => {
+    heldKeys.clear();
+    tappedKeys2.clear();
+  });
+}
+function postRuleEvent(nodeId, trigger, message = "") {
+  inbox.push({ nodeId, trigger, message });
+}
+function postRuleMessage(message, nodeId = "", fields) {
+  if (!message) return;
+  texts.set("msg", message);
+  messageFields.clear();
+  if (fields) {
+    for (const [key, raw] of Object.entries(fields)) {
+      const number = typeof raw === "number" ? raw : Number(raw);
+      if (Number.isFinite(number)) messageFields.set(`msg.${key}`, number);
+    }
+  }
+  inbox.push({ nodeId, trigger: "message", message });
+}
+onFootstep((nodeId) => postRuleMessage("onFootstep", nodeId));
+var rulesSimClock = 0;
+function stepRules(dt, host) {
+  watchKeys();
+  const world3 = getRuntimeWorld();
+  if (world3.getPlayState() !== "playing") {
+    rulesSimClock = 0;
+    jobs.length = 0;
+    vars.clear();
+    texts.clear();
+    messageFields.clear();
+    clearRuntimeTags();
+    inbox.length = 0;
+    tappedKeys2.clear();
+    cursors.clear();
+    traces.clear();
+    started = false;
+    world3.clearPlayCameraForce?.();
+    return;
+  }
+  rulesSimClock += Math.max(0, dt);
+  const now = rulesSimClock;
+  const nodes = world3.getNodes();
+  tickRuntimeTags(now);
+  if (!started) {
+    started = true;
+    for (const node of Object.values(nodes)) fire(node, "playStart", "");
+  }
+  const batch = inbox.splice(0, inbox.length);
+  for (const event of batch) {
+    for (const node of Object.values(nodes)) {
+      if (event.nodeId && event.nodeId !== node.id) continue;
+      if (event.trigger === "message") {
+        for (const rule of readRules(node.gameplay?.rules)) {
+          if (rule.trigger === "message" && rule.message && rule.message === event.message) arm(node, rule);
+        }
+        continue;
+      }
+      fire(node, event.trigger, event.message);
+    }
+  }
+  for (const node of Object.values(nodes)) {
+    for (const rule of readRules(node.gameplay?.rules)) {
+      if (rule.trigger === "key" && keyHit(rule.key, tappedKeys2)) arm(node, rule);
+    }
+  }
+  const gameplayPacks = world3.getGameplayPacks();
+  const packTriggers = listEnabledPackTriggers(gameplayPacks);
+  if (packTriggers.length > 0) {
+    for (const node of Object.values(nodes)) {
+      for (const rule of readRules(node.gameplay?.rules)) {
+        const reg = findPackTrigger(rule.trigger, gameplayPacks);
+        if (reg?.enabled && reg.def.poll?.(node, rule, host)) arm(node, rule);
+      }
+    }
+  }
+  tappedKeys2.clear();
+  tickStates(host);
+  for (let i = jobs.length - 1; i >= 0; i -= 1) {
+    if (advance(jobs[i], dt, host, now)) jobs.splice(i, 1);
+  }
+}
+function keyHit(expected, codes) {
+  const want = expected.trim();
+  if (!want || codes.size === 0) return false;
+  if (codes.has(want)) return true;
+  const upper = want.toUpperCase();
+  if (want.length === 1 && upper >= "A" && upper <= "Z" && codes.has(`Key${upper}`)) return true;
+  if (want.length === 1 && want >= "0" && want <= "9" && codes.has(`Digit${want}`)) return true;
+  const lower = want.toLowerCase();
+  for (const code of codes) {
+    if (code.toLowerCase() === lower) return true;
+  }
+  return false;
+}
+function fire(node, trigger, message) {
+  for (const rule of readRules(node.gameplay?.rules)) {
+    if (rule.trigger !== trigger) continue;
+    if (trigger === "message" && rule.message && rule.message !== message) continue;
+    arm(node, rule);
+  }
+}
+function arm(node, rule) {
+  if (!rule.enabled) return;
+  if (!allPass(node, rule.conditions)) return;
+  if (rule.steps.length === 0) return;
+  jobs.push({
+    nodeId: node.id,
+    ruleId: rule.id,
+    stateId: "",
+    source: "rule",
+    steps: rule.steps.map(copyStep),
+    index: 0,
+    wait: 0,
+    frame: false,
+    list: [],
+    target: "",
+    moving: false,
+    loop: null
+  });
+}
+function advance(job, dt, host, now) {
+  const node = getRuntimeWorld().getNodes()[job.nodeId];
+  if (!node) return true;
+  let guard = 0;
+  while (job.index < job.steps.length && guard < 48) {
+    guard += 1;
+    const step2 = job.steps[job.index];
+    const waiting = step2?.do === "wait" && job.wait > 0 || step2?.do === "waitUpper" || step2?.do === "waitMark" || step2?.do === "waitFrame" && job.frame;
+    markTrace(job, step2, waiting);
+    if (!step2) break;
+    if (step2.do === "wait") {
+      if (job.wait <= 0) job.wait = Math.max(0, evaluate(step2.value) || step2.seconds);
+      job.wait -= dt;
+      if (job.wait > 0) {
+        markTrace(job, step2, true);
+        return false;
+      }
+      job.wait = 0;
+      job.index += 1;
+      continue;
+    }
+    if (step2.do === "waitFrame") {
+      if (!job.frame) {
+        job.frame = true;
+        markTrace(job, step2, true);
+        return false;
+      }
+      job.frame = false;
+      job.index += 1;
+      continue;
+    }
+    if (step2.do === "moveTo") {
+      if (!job.moving) {
+        const point2 = pointOf(step2, job, host);
+        if (!point2) {
+          job.index += 1;
+          continue;
+        }
+        orderCharacterMove(job.nodeId, point2[0], point2[1], point2[2]);
+        job.moving = true;
+        markTrace(job, step2, true);
+        return false;
+      }
+      if (characterTraveling(job.nodeId)) {
+        markTrace(job, step2, true);
+        return false;
+      }
+      job.moving = false;
+      job.index += 1;
+      continue;
+    }
+    if (step2.do === "waitUpper") {
+      if (node.overlayPlaying) {
+        markTrace(job, step2, true);
+        return false;
+      }
+      job.index += 1;
+      continue;
+    }
+    if (step2.do === "waitMark") {
+      const mark = Math.min(1, Math.max(0, evaluate(step2.value) || step2.seconds));
+      const progress = node.overlayClip ? overlayProgress(node) : getRuntimeWorld().bodyProgress?.(node.id) ?? 0;
+      lastValue = progress;
+      if (progress + 1e-3 < mark) {
+        markTrace(job, step2, true);
+        return false;
+      }
+      job.index += 1;
+      continue;
+    }
+    if (step2.do === "if") {
+      const passed = allPass(node, step2.conditions);
+      lastValue = passed ? 1 : 0;
+      if (passed && step2.steps.length > 0) {
+        job.steps = [...job.steps.slice(0, job.index + 1), ...step2.steps.map(copyStep), ...job.steps.slice(job.index + 1)];
+      }
+      job.index += 1;
+      continue;
+    }
+    if (step2.do === "each") {
+      if (job.list.length === 0 || step2.steps.length === 0) {
+        job.index += 1;
+        continue;
+      }
+      job.loop = {
+        ids: job.list.slice(),
+        item: 0,
+        steps: step2.steps.map(copyStep),
+        after: job.steps.slice(job.index + 1).map(copyStep)
+      };
+      job.target = job.loop.ids[0];
+      job.steps = job.loop.steps.map(copyStep);
+      job.index = 0;
+      continue;
+    }
+    if (step2.do === "switchState" && step2.stateId) {
+      const cursor2 = cursors.get(job.nodeId);
+      if (cursor2 && cursor2.stateId !== step2.stateId) cursor2.pendingId = step2.stateId;
+      job.index += 1;
+      continue;
+    }
+    run(node, step2, job, host, now);
+    job.index += 1;
+  }
+  if (job.loop && job.index >= job.steps.length) {
+    job.loop.item += 1;
+    if (job.loop.item < job.loop.ids.length) {
+      job.target = job.loop.ids[job.loop.item];
+      job.steps = job.loop.steps.map(copyStep);
+      job.index = 0;
+      return false;
+    }
+    job.steps = job.loop.after;
+    job.index = 0;
+    job.loop = null;
+    return false;
+  }
+  const cursor = cursors.get(job.nodeId);
+  traces.set(job.nodeId, { ruleId: "", stepId: "", stateId: cursor?.stateId ?? "", waiting: false, value: lastValue });
+  return job.index >= job.steps.length;
+}
+function markTrace(job, step2, waiting) {
+  traces.set(job.nodeId, {
+    ruleId: job.ruleId,
+    stepId: step2?.id ?? "",
+    stateId: cursors.get(job.nodeId)?.stateId ?? job.stateId,
+    waiting,
+    value: lastValue
+  });
+}
+function run(node, step2, job, host, now) {
+  const world3 = getRuntimeWorld();
+  const actor = job.target ? world3.getNodes()[job.target] ?? node : node;
+  if (step2.do === "message") {
+    postRuleMessage(step2.message);
+    world3.log("info", `${node.name}\uFF1A${step2.message}`);
+    return;
+  }
+  if (step2.do === "setVar") {
+    const value = evaluate(step2.value);
+    lastValue = value;
+    if (step2.name) vars.set(step2.name, value);
+    return;
+  }
+  if (step2.do === "addTag") {
+    const row = findRow(world3.getGameDatabase(), "tags", step2.tag);
+    if (step2.tag.trim() && !row) world3.log("warn", `\u73A9\u6CD5\u6807\u7B7E\u7F3A\u5C11\u4E00\u884C\uFF1A${step2.tag}`);
+    const fallback = Number(row?.fields?.defaultDurationSec ?? 0);
+    const seconds = step2.seconds > 0 ? step2.seconds : Number.isFinite(fallback) ? fallback : 0;
+    addRuntimeTag(actor.id, step2.tag, seconds, now);
+    return;
+  }
+  if (step2.do === "removeTag") {
+    removeRuntimeTag(actor.id, step2.tag);
+    return;
+  }
+  if (step2.do === "playClip" && step2.clip) {
+    playOn(actor, step2, false);
+    return;
+  }
+  if (step2.do === "playUpper" && step2.clip) {
+    playOn(actor, step2, true);
+    return;
+  }
+  if (step2.do === "stance") {
+    if (!step2.clip) world3.stopUpper?.(actor.id);
+    else world3.playUpper?.(actor.id, step2.clip, { assetId: clipAsset(actor, step2), loop: true, fade: actor.clipFade ?? 0.15 });
+    return;
+  }
+  if (step2.do === "showUi" || step2.do === "hideUi") {
+    const screen = findNamed(step2.name, "screen");
+    if (screen) setScreenVisible(screen.id, step2.do === "showUi");
+    return;
+  }
+  if (step2.do === "lock") {
+    const target = step2.name ? findNamed(step2.name) : job.target ? world3.getNodes()[job.target] : void 0;
+    const character = node.gameplay?.character;
+    if (!character) return;
+    world3.updateNode(node.id, {
+      gameplay: { ...node.gameplay, character: { ...character, lockTargetName: target?.name ?? "", lockTargetId: target?.id ?? "" } }
+    });
+    return;
+  }
+  if (step2.do === "camera") {
+    const camera = findNamed(step2.name, "camera");
+    if (camera) world3.forcePlayCamera?.(camera.id);
+    return;
+  }
+  if (step2.do === "spawn") spawnPrefab(node, step2, host);
+  if (step2.do === "hide") {
+    const nodes = { ...world3.getNodes() };
+    delete nodes[actor.id];
+    world3.setNodes(nodes);
+    return;
+  }
+  if (step2.do === "score") {
+    const amount = evaluate(step2.value);
+    lastValue = amount;
+    addRuleScore(amount);
+    return;
+  }
+  if (step2.do === "juice") {
+    playJuice(step2.name, actor.id, host);
+    return;
+  }
+  if (step2.do === "sound") {
+    const assetId = step2.clipAssetId || step2.name;
+    const music = step2.tag === "music";
+    if (!assetId) {
+      if (music) stopMusic();
+      return;
+    }
+    const volume = step2.value.trim() ? evaluate(step2.value) : 1;
+    lastValue = volume;
+    playSound({
+      assetId,
+      bus: music ? "music" : "sfx",
+      loop: music,
+      volume,
+      parent: music ? null : host.resolveObject(actor.id)
+    });
+    return;
+  }
+  if (step2.do === "gather") {
+    job.list = gather(node, step2, host);
+    lastValue = job.list.length;
+    return;
+  }
+  if (step2.do === "log") {
+    world3.log(step2.level, step2.message);
+    return;
+  }
+  const packAction = findPackAction(step2.do, world3.getGameplayPacks());
+  if (packAction?.enabled) {
+    packAction.def.execute({
+      node,
+      actor,
+      step: step2,
+      host,
+      now,
+      evaluate,
+      postMessage: postRuleMessage,
+      log: (level, message) => world3.log(level, message),
+      orderMove: (id, point2) => orderCharacterMove(id, point2[0], point2[1], point2[2])
+    });
+  }
+}
+function allPass(node, conditions) {
+  return conditions.every((item) => passes(node, item));
+}
+function passes(node, cond) {
+  if (cond.kind === "always") return true;
+  if (cond.kind === "formula") {
+    const value = evaluate(cond.left);
+    lastValue = value;
+    return value > 0;
+  }
+  if (cond.kind === "hasTag") return hasTag(node, cond.tag);
+  if (cond.kind === "missingTag") return !hasTag(node, cond.tag);
+  if (cond.kind !== "compare") {
+    const packCond = findPackCondition(cond.kind, getRuntimeWorld().getGameplayPacks());
+    if (!packCond?.enabled) return false;
+    return packCond.def.test(node, cond, { hasTag: (tag) => hasTag(node, tag), evaluate });
+  }
+  const a = readValue(cond.left);
+  const b = readValue(cond.right);
+  if (cond.op === "!=") return a !== b;
+  if (cond.op === ">") return a > b;
+  if (cond.op === "<") return a < b;
+  if (cond.op === ">=") return a >= b;
+  if (cond.op === "<=") return a <= b;
+  return a === b;
+}
+function hasTag(node, tag) {
+  return nodeHasTag(node, tag);
+}
+function readValue(token) {
+  const numeric = Number(token);
+  if (token.trim() !== "" && Number.isFinite(numeric)) return numeric;
+  if (messageFields.has(token)) return messageFields.get(token) ?? 0;
+  return vars.get(token) ?? 0;
+}
+function copyStep(step2) {
+  return { ...step2, conditions: step2.conditions.map((item) => ({ ...item })), steps: step2.steps.map(copyStep) };
+}
+function tickStates(host) {
+  for (const node of Object.values(getRuntimeWorld().getNodes())) {
+    const tree = readRuleStates(node.gameplay?.ruleStates);
+    if (tree.length === 0) {
+      cursors.delete(node.id);
+      continue;
+    }
+    let cursor = cursors.get(node.id);
+    if (!cursor) {
+      const leaf = pickLeaf(node, tree[0]);
+      if (!leaf) continue;
+      cursor = { stateId: leaf.id, phase: "entering", pendingId: "" };
+      cursors.set(node.id, cursor);
+      startEdge(node, leaf, "enter");
+      continue;
+    }
+    if (jobs.some((job) => job.nodeId === node.id && job.source !== "rule" && job.stateId === cursor.stateId)) continue;
+    const current = findState(tree, cursor.stateId);
+    if (!current) {
+      cursors.delete(node.id);
+      continue;
+    }
+    if (cursor.phase === "entering") {
+      cursor.phase = "ticking";
+      continue;
+    }
+    if (cursor.phase === "exiting") {
+      enterPending(node, tree, cursor);
+      continue;
+    }
+    const jump = current.transitions.find((item) => item.targetId && item.conditions.length > 0 && allPass(node, item.conditions) && findState(tree, item.targetId));
+    const pending3 = cursor.pendingId && cursor.pendingId !== cursor.stateId ? cursor.pendingId : "";
+    if (jump || pending3) {
+      cursor.pendingId = jump?.targetId || pending3;
+      cursor.phase = "exiting";
+      startEdge(node, current, "exit");
+      if (!jobs.some((job) => job.nodeId === node.id && job.source === "exit")) enterPending(node, tree, cursor);
+      continue;
+    }
+    startEdge(node, current, "tick");
+  }
+  void host;
+}
+function startEdge(node, state, source) {
+  const steps = source === "enter" ? state.onEnter : source === "exit" ? state.onExit : state.onTick;
+  if (steps.length === 0) return;
+  jobs.push({
+    nodeId: node.id,
+    ruleId: "",
+    stateId: state.id,
+    source,
+    steps: steps.map(copyStep),
+    index: 0,
+    wait: 0,
+    frame: false,
+    list: [],
+    target: "",
+    moving: false,
+    loop: null
+  });
+}
+function enterPending(node, tree, cursor) {
+  const target = findState(tree, cursor.pendingId);
+  const leaf = target ? pickLeaf(node, target) : void 0;
+  cursor.pendingId = "";
+  if (!leaf) {
+    cursor.phase = "ticking";
+    return;
+  }
+  cursor.stateId = leaf.id;
+  cursor.phase = "entering";
+  startEdge(node, leaf, "enter");
+}
+function findState(nodes, id) {
+  for (const node of nodes) {
+    if (node.id === id) return node;
+    const child = findState(node.children, id);
+    if (child) return child;
+  }
+  return void 0;
+}
+function pickLeaf(node, state) {
+  if (!state) return void 0;
+  if (state.children.length === 0) return state;
+  const chosen = state.children.find((child) => child.enter.length === 0 || allPass(node, child.enter)) ?? state.children[0];
+  return pickLeaf(node, chosen);
+}
+registerRuntimeSystem("core.rules", 35, stepRules);
+var lastValue = null;
+function playOn(node, step2, upper) {
+  const assetId = clipAsset(node, step2);
+  const world3 = getRuntimeWorld();
+  const opts = { assetId, loop: !upper, fade: node.clipFade ?? 0.15 };
+  if (upper) world3.playUpper?.(node.id, step2.clip, opts);
+  else world3.playBody?.(node.id, step2.clip, opts);
+}
+function clipAsset(node, step2) {
+  if (!step2.clipAssetId || step2.clipAssetId === node.assetId) return null;
+  return step2.clipAssetId;
+}
+function overlayProgress(node) {
+  if (!node.overlayClip) return 0;
+  const duration = getRuntimeWorld().clipDuration?.(node.overlayAssetId || node.assetId, node.overlayClip) ?? 0;
+  if (duration <= 0) return node.overlayPlaying ? 0 : 1;
+  return Math.min(1, Math.max(0, (node.overlayTime ?? 0) / duration));
+}
+function findNamed(name, kind) {
+  const trimmed = name.trim();
+  if (!trimmed) return void 0;
+  return Object.values(getRuntimeWorld().getNodes()).find((node) => (!kind || node.kind === kind) && (node.id === trimmed || node.name === trimmed));
+}
+function pointOf(step2, job, host) {
+  const named = step2.name ? findNamed(step2.name) : job.target ? getRuntimeWorld().getNodes()[job.target] : void 0;
+  if (named) {
+    const object = host.resolveObject(named.id);
+    if (!object) return null;
+    return [object.position.x, object.position.y, object.position.z];
+  }
+  const parts = step2.value.split(",").map((item) => Number(item.trim()));
+  if (parts.length === 3 && parts.every((item) => Number.isFinite(item))) return [parts[0], parts[1], parts[2]];
+  return null;
+}
+function gather(node, step2, host) {
+  const self = host.resolveObject(node.id);
+  if (!self) return [];
+  const radius = Math.max(0.1, step2.seconds > 0 ? step2.seconds : evaluate(step2.value) || 3);
+  const angle = step2.value.includes(",") ? 0 : Number(step2.value);
+  const limit = Number.isFinite(angle) && angle > 0 ? angle * Math.PI / 180 : Math.PI * 2;
+  const forward = { x: -Math.sin(yawOf(self.quaternion)), z: -Math.cos(yawOf(self.quaternion)) };
+  const hits = [];
+  for (const other of Object.values(getRuntimeWorld().getNodes())) {
+    if (other.id === node.id || !other.visible) continue;
+    if (step2.tag && !nodeHasTag(other, step2.tag)) continue;
+    const object = host.resolveObject(other.id);
+    if (!object) continue;
+    const dx = object.position.x - self.position.x;
+    const dz = object.position.z - self.position.z;
+    if (dx * dx + dz * dz > radius * radius) continue;
+    if (limit < Math.PI * 2) {
+      const len = Math.hypot(dx, dz) || 1;
+      const dot3 = (forward.x * dx + forward.z * dz) / len;
+      if (Math.acos(Math.min(1, Math.max(-1, dot3))) > limit / 2) continue;
+    }
+    hits.push(other.id);
+  }
+  return hits;
+}
+function yawOf(quaternion) {
+  return Math.atan2(2 * quaternion.w * quaternion.y, 1 - 2 * quaternion.y * quaternion.y);
+}
+function spawnPrefab(node, step2, host) {
+  const self = host.resolveObject(node.id);
+  const parts = step2.value.split(",").map((item) => Number(item.trim()));
+  const offset = parts.length >= 3 && parts.every((item) => Number.isFinite(item)) ? parts : [1, 0, 0];
+  const position = [
+    (self?.position.x ?? node.position[0]) + offset[0],
+    (self?.position.y ?? node.position[1]) + offset[1],
+    (self?.position.z ?? node.position[2]) + offset[2]
+  ];
+  getRuntimeWorld().instantiatePrefab?.(step2.name, { parentId: node.parentId, position });
+}
+function evaluate(source) {
+  const text = source.trim();
+  if (!text) return 0;
+  let index = 0;
+  const skip = () => {
+    while (text[index] === " ") index += 1;
+  };
+  const unary = () => {
+    skip();
+    if (text[index] === "-") {
+      index += 1;
+      return -unary();
+    }
+    if (text[index] === "(") {
+      index += 1;
+      const value2 = expression();
+      skip();
+      if (text[index] === ")") index += 1;
+      return value2;
+    }
+    const start2 = index;
+    if (/[0-9.]/.test(text[index] ?? "")) {
+      while (/[0-9.]/.test(text[index] ?? "")) index += 1;
+      return Number(text.slice(start2, index)) || 0;
+    }
+    while (/[\w.]/.test(text[index] ?? "")) index += 1;
+    const name = text.slice(start2, index);
+    skip();
+    if (text[index] === "(") {
+      index += 1;
+      const args = [];
+      skip();
+      if (text[index] !== ")") {
+        args.push(expression());
+        for (; ; ) {
+          skip();
+          if (text[index] !== ",") break;
+          index += 1;
+          args.push(expression());
+        }
+      }
+      skip();
+      if (text[index] === ")") index += 1;
+      return callFn(name, args);
+    }
+    return readValue(name);
+  };
+  const product = () => {
+    let value2 = unary();
+    for (; ; ) {
+      skip();
+      if (text[index] === "*") {
+        index += 1;
+        value2 *= unary();
+      } else if (text[index] === "/") {
+        index += 1;
+        const divisor = unary();
+        value2 = divisor === 0 ? 0 : value2 / divisor;
+      } else break;
+    }
+    return value2;
+  };
+  const sum = () => {
+    let value2 = product();
+    for (; ; ) {
+      skip();
+      if (text[index] === "+") {
+        index += 1;
+        value2 += product();
+      } else if (text[index] === "-") {
+        index += 1;
+        value2 -= product();
+      } else break;
+    }
+    return value2;
+  };
+  const expression = () => {
+    const value2 = sum();
+    skip();
+    const two = text.slice(index, index + 2);
+    if (two === ">=" || two === "<=" || two === "==" || two === "!=") {
+      index += 2;
+      return compare(value2, sum(), two) ? 1 : 0;
+    }
+    if (text[index] === ">" || text[index] === "<") {
+      const op = text[index];
+      index += 1;
+      return compare(value2, sum(), op) ? 1 : 0;
+    }
+    return value2;
+  };
+  const value = expression();
+  return Number.isFinite(value) ? value : 0;
+}
+function callFn(name, args) {
+  if (name === "clamp" && args.length >= 3) return Math.min(Math.max(args[0], args[1]), args[2]);
+  if (name === "min" && args.length > 0) return Math.min(...args);
+  if (name === "max" && args.length > 0) return Math.max(...args);
+  if (name === "abs" && args.length > 0) return Math.abs(args[0]);
+  return 0;
+}
+function compare(left, right, op) {
+  if (op === "!=") return left !== right;
+  if (op === ">") return left > right;
+  if (op === "<") return left < right;
+  if (op === ">=") return left >= right;
+  if (op === "<=") return left <= right;
+  return left === right;
+}
+
+// src/runtime/devices.ts
+init_world();
+init_actionMap();
+var interactUsed = /* @__PURE__ */ new Set();
+var zones = /* @__PURE__ */ new Map();
+var prompt = "";
+var promptListeners = /* @__PURE__ */ new Set();
+function setPrompt(next) {
+  if (next === prompt) return;
+  prompt = next;
+  promptListeners.forEach((listener2) => listener2());
+}
+function ensureKeys() {
+  bindGlobalInputListeners();
+}
+function stepDevices(_dt, host) {
+  ensureKeys();
+  const world3 = getRuntimeWorld();
+  if (world3.getPlayState() !== "playing") {
+    interactUsed.clear();
+    zones.clear();
+    setPrompt("");
+    return;
+  }
+  const nodes = world3.getNodes();
+  const actors = Object.values(nodes).filter((node) => node.gameplay?.character?.enabled);
+  let nextPrompt = "";
+  for (const node of Object.values(nodes)) {
+    if (node.gameplay?.interact?.enabled) nextPrompt = nearerPrompt(nextPrompt, touchInteract(node, node.gameplay.interact, actors, host));
+    if (node.gameplay?.trigger?.enabled) touchTrigger(node, node.gameplay.trigger, actors, host);
+  }
+  setPrompt(nextPrompt);
+}
+function touchInteract(node, spec, actors, host) {
+  if (spec.once && interactUsed.has(node.id)) return "";
+  const self = host.resolveObject(node.id);
+  if (!self) return "";
+  const radius = Math.max(0.2, spec.radius);
+  const near = actors.some((actor) => matchesTag2(actor, spec.filterTagId) && within(self, host.resolveObject(actor.id), radius));
+  if (!near) return "";
+  const key = spec.key || "KeyE";
+  const triggered = isKeyHeld(key) || key === "KeyE" && wasActionTapped("Interact");
+  if (triggered) {
+    interactUsed.add(node.id);
+    const message = spec.message || "onInteract";
+    getRuntimeWorld().log("info", `${node.name}\uFF1A${message}`);
+    hear(message);
+    postRuleEvent(node.id, "interact");
+    grantInteractScore();
+    return "";
+  }
+  return spec.prompt || "\u6309 E \u4EA4\u4E92";
+}
+function touchTrigger(node, spec, actors, host) {
+  const live = zones.get(node.id) ?? { inside: /* @__PURE__ */ new Set(), used: false };
+  const self = host.resolveObject(node.id);
+  if (!self) return;
+  if (spec.once && live.used && live.inside.size === 0) return;
+  const radius = Math.max(0.2, spec.radius);
+  const nowInside = /* @__PURE__ */ new Set();
+  for (const actor of actors) {
+    if (!matchesTag2(actor, spec.filterTagId)) continue;
+    if (!within(self, host.resolveObject(actor.id), radius)) continue;
+    nowInside.add(actor.id);
+    if (!live.inside.has(actor.id)) {
+      getRuntimeWorld().log("info", `${node.name}\uFF1A${spec.enterMessage || "onZoneEnter"}`);
+      hear(spec.enterMessage || "onZoneEnter");
+      postRuleEvent(node.id, "enter");
+      live.used = true;
+    }
+  }
+  for (const id of live.inside) {
+    if (nowInside.has(id)) continue;
+    getRuntimeWorld().log("info", `${node.name}\uFF1A${spec.exitMessage || "onZoneExit"}`);
+    hear(spec.exitMessage || "onZoneExit");
+    postRuleEvent(node.id, "exit");
+    live.used = true;
+  }
+  live.inside = nowInside;
+  zones.set(node.id, live);
+}
+function matchesTag2(node, tagId) {
+  if (!tagId) return true;
+  if (node.tagId === tagId) return true;
+  return (node.tagIds ?? []).includes(tagId);
+}
+function within(self, other, radius) {
+  if (!self || !other) return false;
+  const dx = self.position.x - other.position.x;
+  const dy = self.position.y - other.position.y;
+  const dz = self.position.z - other.position.z;
+  return dx * dx + dy * dy + dz * dz <= radius * radius;
+}
+function nearerPrompt(current, next) {
+  return next || current;
+}
+function stepMovers(dt, host) {
+  carries.length = 0;
+  const world3 = getRuntimeWorld();
+  if (world3.getPlayState() !== "playing") {
+    rides.clear();
+    heard.clear();
+    return;
+  }
+  for (const node of Object.values(world3.getNodes())) {
+    const spec = node.gameplay?.mover;
+    if (!spec?.enabled) continue;
+    const object = host.resolveObject(node.id);
+    if (!object) continue;
+    const ride = rides.get(node.id) ?? { origin: null, travel: 0, forward: true, started: spec.autoPlay, wait: 0 };
+    if (!ride.origin) ride.origin = [object.position.x, object.position.y, object.position.z];
+    if (!ride.started && heard.has(spec.startMessage)) ride.started = true;
+    const before = [object.position.x, object.position.y, object.position.z];
+    if (ride.started) advanceRide(ride, spec, dt);
+    const duration = Math.max(0.05, spec.duration);
+    const along = ride.forward ? ride.travel / duration : 1 - ride.travel / duration;
+    const span = smooth(along);
+    object.position.set(
+      ride.origin[0] + spec.offset[0] * span,
+      ride.origin[1] + spec.offset[1] * span,
+      ride.origin[2] + spec.offset[2] * span
+    );
+    rides.set(node.id, ride);
+    carries.push({
+      x: object.position.x,
+      y: object.position.y,
+      z: object.position.z,
+      dx: object.position.x - before[0],
+      dy: object.position.y - before[1],
+      dz: object.position.z - before[2],
+      radius: Math.max(0.4, spec.carryRadius)
+    });
+  }
+}
+function advanceRide(ride, spec, dt) {
+  const duration = Math.max(0.05, spec.duration);
+  if (ride.wait > 0) {
+    ride.wait = Math.max(0, ride.wait - dt);
+    if (ride.wait > 0 || !spec.pingPong) return;
+    ride.travel = 0;
+    ride.forward = !ride.forward;
+    return;
+  }
+  ride.travel += dt;
+  if (ride.travel < duration) return;
+  ride.travel = duration;
+  ride.wait = spec.pause;
+  if (!spec.pingPong) ride.started = false;
+  else if (spec.pause <= 0) {
+    ride.travel = 0;
+    ride.forward = !ride.forward;
+  }
+}
+var rides = /* @__PURE__ */ new Map();
+var carries = [];
+var heard = /* @__PURE__ */ new Set();
+var spawnId = "";
+var fallAt = 0;
+var scoreValue = 0;
+var scoreState = "";
+var clock = 0;
+var shownTime = -1;
+function hear(message) {
+  if (!message) return;
+  heard.add(message);
+  postRuleMessage(message);
+}
+function carryFor(x, y, z) {
+  for (const item of carries) {
+    const flat = (item.x - x) ** 2 + (item.z - z) ** 2;
+    if (flat > item.radius * item.radius) continue;
+    if (y < item.y - 0.35 || y > item.y + 1.8) continue;
+    return item;
+  }
+  return null;
+}
+var roundSimTime = 0;
+function stepRound(dt, host) {
+  const world3 = getRuntimeWorld();
+  if (world3.getPlayState() !== "playing") {
+    roundSimTime = 0;
+    spawnId = "";
+    fallAt = 0;
+    scoreValue = 0;
+    scoreState = "";
+    clock = 0;
+    shownTime = -1;
+    return;
+  }
+  roundSimTime += Math.max(0, dt);
+  const nodes = world3.getNodes();
+  const actors = Object.values(nodes).filter((node) => node.gameplay?.character?.enabled);
+  let abyssY = -12;
+  let abyssDelay = 1.2;
+  let abyssMessage = "onPlayerRespawned";
+  let abyssName = "";
+  for (const node of Object.values(nodes)) {
+    const spec = node.gameplay?.checkpoint;
+    if (!spec?.enabled) continue;
+    const point2 = host.resolveObject(node.id);
+    if (!point2) continue;
+    if (spec.spawn && !spawnId) spawnId = node.id;
+    if (node.id === spawnId || !abyssName) {
+      abyssY = spec.abyssY;
+      abyssDelay = spec.delay;
+      abyssMessage = spec.message || abyssMessage;
+      abyssName = node.name;
+    }
+    for (const actor of actors) {
+      const body = host.resolveObject(actor.id);
+      if (!body || !within(point2, body, spec.radius) || spawnId === node.id) continue;
+      spawnId = node.id;
+      abyssY = spec.abyssY;
+      abyssDelay = spec.delay;
+      abyssMessage = spec.message || abyssMessage;
+      abyssName = node.name;
+      world3.log("info", `${node.name}\uFF1A\u68C0\u67E5\u70B9`);
+    }
+  }
+  const now = roundSimTime;
+  if (abyssName) for (const actor of actors) {
+    const body = host.resolveObject(actor.id);
+    if (!body) continue;
+    if (body.position.y < abyssY && fallAt <= 0) fallAt = now + Math.max(0, abyssDelay);
+    if (fallAt > 0 && now >= fallAt) {
+      const home = spawnId ? host.resolveObject(spawnId) : null;
+      if (home) {
+        relocateCharacter(actor.id, home.position.x, home.position.y + 0.05, home.position.z);
+        world3.log("info", `${abyssName}\uFF1A${abyssMessage}`);
+        hear(abyssMessage);
+      }
+      fallAt = 0;
+    }
+  }
+  const board = Object.values(nodes).find((node) => node.gameplay?.score?.enabled);
+  const score = board?.gameplay?.score;
+  if (!score || scoreState === "done" || scoreState === "victory" || scoreState === "defeat") return;
+  if (clock <= 0) {
+    clock = roundSimTime || 1e-4;
+    writeUiVariable("objective", score.title);
+    writeUiVariable("score", scoreValue);
+  }
+  const elapsed = Math.max(0, roundSimTime - clock);
+  const left = score.timeLimit > 0 ? Math.ceil(Math.max(0, score.timeLimit - elapsed)) : 0;
+  if (left !== shownTime) {
+    shownTime = left;
+    writeUiVariable("timeLeft", score.timeLimit > 0 ? left : "");
+  }
+  if (score.timeLimit > 0 && left <= 0 && scoreState !== "defeat") {
+    scoreState = "defeat";
+    world3.log("info", `${board?.name}\uFF1A${score.defeatMessage}`);
+    hear(score.defeatMessage);
+  }
+}
+function grantInteractScore() {
+  const board = Object.values(getRuntimeWorld().getNodes()).find((node) => node.gameplay?.score?.enabled);
+  addRuleScore(board?.gameplay?.score?.perInteract ?? 0);
+}
+function addRuleScore(amount) {
+  const world3 = getRuntimeWorld();
+  const board = Object.values(world3.getNodes()).find((node) => node.gameplay?.score?.enabled);
+  const score = board?.gameplay?.score;
+  if (!score || scoreState === "done" || scoreState === "defeat" || scoreState === "victory") return;
+  scoreValue += amount;
+  writeUiVariable("score", scoreValue);
+  writeUiVariable("objective", score.title);
+  if (scoreValue >= score.target) {
+    scoreState = "victory";
+    world3.log("info", `${board?.name}\uFF1A${score.victoryMessage}`);
+    hear(score.victoryMessage);
+  }
+}
+function smooth(value) {
+  const t = Math.min(1, Math.max(0, value));
+  return t * t * (3 - 2 * t);
+}
+registerRuntimeSystem("core.movers", 8, stepMovers);
+registerRuntimeSystem("core.devices", 30, stepDevices);
+registerRuntimeSystem("core.round", 40, stepRound);
+
+// src/runtime/character.ts
+init_world();
+init_actionMap();
+init_sceneRuntime();
+var motion = /* @__PURE__ */ new Map();
+function ensureKeys2() {
+  bindGlobalInputListeners();
+}
+function held(code) {
+  return isKeyHeld(code);
+}
+function tapped(code) {
+  return wasKeyTapped(code);
+}
+function consumeTaps() {
+}
+function characterTraveling(id) {
+  if (orders.has(id)) return true;
+  const live = motion.get(id);
+  if (!live) return false;
+  return live.pathIndex < live.path.length;
+}
+function relocateCharacter(id, x, y, z) {
+  relocations.set(id, [x, y, z]);
+}
+var orders = /* @__PURE__ */ new Map();
+function orderCharacterMove(id, x, y, z) {
+  orders.set(id, [x, y, z]);
+}
+var relocations = /* @__PURE__ */ new Map();
+function takeRelocation(id) {
+  const next = relocations.get(id) ?? null;
+  if (next) relocations.delete(id);
+  return next;
+}
+var runtimeModifiers = /* @__PURE__ */ new Map();
+function setCharacterModifiers(nodeId, patch) {
+  const prev = runtimeModifiers.get(nodeId) ?? {};
+  runtimeModifiers.set(nodeId, { ...prev, ...patch });
+}
+function getCharacterModifiers(nodeId) {
+  return { ...runtimeModifiers.get(nodeId) ?? {} };
+}
+function clearCharacterModifiers(nodeId) {
+  runtimeModifiers.delete(nodeId);
+}
+var simClock = 0;
+function stepCharacters(dt, host) {
+  ensureKeys2();
+  const worldState = getRuntimeWorld();
+  if (worldState.getPlayState() !== "playing") {
+    simClock = 0;
+    motion.clear();
+    orders.clear();
+    runtimeModifiers.clear();
+    consumeTaps();
+    clearJuice();
+    return;
+  }
+  simClock += Math.max(0, dt);
+  const now = simClock;
+  const nodes = worldState.getNodes();
+  const yaw = host.yaw?.() ?? 0;
+  for (const node of Object.values(nodes)) {
+    const raw = node.gameplay?.character;
+    if (!raw?.enabled) continue;
+    const spec = { ...defaultCharacter(), ...raw };
+    const object = host.resolveObject(node.id);
+    if (!object) continue;
+    const live = motion.get(node.id) ?? freshMotion(yawOf2(object.quaternion));
+    const order = orders.get(node.id);
+    if (order) {
+      const path = findNavigationPath([object.position.x, object.position.y, object.position.z], order);
+      live.path = path && path.length > 1 ? path.slice(1) : [order];
+      live.pathIndex = 0;
+      orders.delete(node.id);
+    }
+    const placed = takeRelocation(node.id);
+    if (placed) {
+      object.position.set(placed[0], placed[1], placed[2]);
+      live.vy = 0;
+      live.grounded = true;
+    }
+    const mods = runtimeModifiers.get(node.id);
+    const inputLocked = Boolean(mods?.inputLock);
+    const moveSpeedMul = typeof mods?.moveSpeedMul === "number" && Number.isFinite(mods.moveSpeedMul) ? Math.max(0, mods.moveSpeedMul) : 1;
+    const gravityMul = typeof mods?.gravityMul === "number" && Number.isFinite(mods.gravityMul) ? Math.max(0, mods.gravityMul) : 1;
+    const effectiveGravity = spec.gravity * gravityMul;
+    const wish = inputLocked ? { x: 0, z: 0, amount: 0 } : wishInput(spec);
+    const sprint = !inputLocked && (isActionPressed("Sprint") || held("ShiftLeft") || held("ShiftRight"));
+    const speed = spec.moveSpeed * moveSpeedMul * (sprint && wish.amount > 0 ? spec.sprintMultiplier : 1);
+    const basis = facingBasis(spec, node.id, nodes, object.position.x, object.position.z, yaw, host);
+    const world3 = rotate(wish.x, wish.z, basis.moveYaw);
+    const dashPressed = !inputLocked && spec.dash && (wasActionTapped("Dash") || tapped(spec.dashKey || "KeyC"));
+    if (dashPressed && now >= live.dashReady) {
+      const dir = wish.amount > 0.1 ? world3 : { x: Math.sin(live.yaw), z: Math.cos(live.yaw) };
+      const len = Math.hypot(dir.x, dir.z) || 1;
+      live.dashX = dir.x / len;
+      live.dashZ = dir.z / len;
+      live.dashUntil = now + spec.dashDuration;
+      live.dashReady = live.dashUntil + spec.dashCooldown;
+      live.invincibleUntil = now + spec.dashInvincible;
+      addRuntimeTag(node.id, "State.Invincible", spec.dashInvincible, now);
+      live.path = [];
+    }
+    const click = spec.mode === "pointAndClick" || spec.driver !== "capsule" ? host.consumeClick?.(spec.clickButton) ?? null : null;
+    if (click && (spec.driver === "nav" || spec.driver === "hybrid" || spec.mode === "pointAndClick")) {
+      const path = findNavigationPath([object.position.x, object.position.y, object.position.z], click);
+      live.path = path && path.length > 1 ? path.slice(1) : [click];
+      live.pathIndex = 0;
+    }
+    if (wish.amount > 0.1 || now < live.dashUntil) live.path = [];
+    const dodging = now < live.dashUntil;
+    let moveX = 0;
+    let moveZ = 0;
+    if (dodging) {
+      moveX = live.dashX * (spec.dashDistance / Math.max(0.05, spec.dashDuration));
+      moveZ = live.dashZ * (spec.dashDistance / Math.max(0.05, spec.dashDuration));
+    } else if (wish.amount > 0.1 && spec.driver !== "nav") {
+      moveX = world3.x * speed;
+      moveZ = world3.z * speed;
+    } else if (spec.driver === "nav" && wish.amount > 0.1) {
+      const steered = steer([object.position.x, object.position.y, object.position.z], {
+        x: object.position.x + world3.x * 2,
+        y: object.position.y,
+        z: object.position.z + world3.z * 2
+      }, spec.clickStop);
+      moveX = steered.x * speed;
+      moveZ = steered.z * speed;
+    } else if (live.path.length > 0) {
+      const steered = followPath(object.position.x, object.position.z, live, spec.clickStop);
+      moveX = steered.x * speed;
+      moveZ = steered.z * speed;
+    }
+    const useCapsule = spec.driver !== "nav";
+    const shift = useCapsule ? capsuleShift(spec, object.quaternion) : { x: 0, y: 0, z: 0 };
+    const feet = object.position.y + shift.y;
+    const footX = object.position.x + shift.x;
+    const footZ = object.position.z + shift.z;
+    const water = spec.swim !== false ? sampleWaterSurface(footX, footZ) : null;
+    const submerged = water ? water.height - feet : -999;
+    const swimOffset = spec.swimHeightOffset ?? 0;
+    const targetSubmerged = Math.max(0.1, spec.height * 0.68 - swimOffset);
+    const enterDepth = spec.height * 0.62;
+    const exitDepth = Math.max(0.05, Math.min(spec.height * 0.48, targetSubmerged - 0.18));
+    const ground = useCapsule && live.grounded ? feet : groundUnder(host, useCapsule ? footX : object.position.x, useCapsule ? feet : object.position.y, useCapsule ? footZ : object.position.z, node.id, spec);
+    const touchingFloor = ground !== null && feet <= ground + 0.12;
+    const swimJumping = now <= live.swimJumpUntil;
+    const wasGrounded = live.grounded;
+    const wasSwimming = live.swimming;
+    if (water && submerged >= enterDepth) {
+      if (!live.swimming) {
+        live.swimming = true;
+        live.jumpsUsed = 0;
+        live.jumpPhase = "none";
+        live.clip = "";
+        emitCharacterEvent(node.id, "onEnterWater", { waterHeight: water.height });
+      }
+    } else if (!water || submerged < exitDepth && (touchingFloor || swimJumping || submerged < -0.2)) {
+      if (live.swimming) {
+        live.swimming = false;
+        live.clip = "";
+        if (!swimJumping) live.lastGrounded = now;
+        emitCharacterEvent(node.id, "onExitWater");
+      }
+    }
+    const onGround = !live.swimming && (live.grounded || ground !== null && feet <= ground + 0.08 && live.vy <= 0.1);
+    if (onGround) live.lastGrounded = now;
+    const coyote = now - live.lastGrounded <= spec.coyoteTime;
+    if (!inputLocked && (wasActionTapped("Jump") || tapped("Space"))) live.jumpBufferUntil = now + spec.jumpBuffer;
+    if (onGround && live.vy <= 0) live.jumpsUsed = 0;
+    const canJump = !inputLocked && (live.swimming || coyote && live.jumpsUsed === 0 || !onGround && live.jumpsUsed > 0 && live.jumpsUsed < spec.maxJumps || onGround && live.jumpsUsed < spec.maxJumps);
+    let jumped = false;
+    if (now <= live.jumpBufferUntil && canJump && !dodging) {
+      if (live.swimming) {
+        live.vy = Math.max(live.vy, spec.jumpSpeed * 0.85);
+        live.swimJumpUntil = now + 0.28;
+      } else {
+        live.vy = spec.jumpSpeed;
+        live.jumpsUsed += 1;
+      }
+      live.jumpBufferUntil = 0;
+      live.lastGrounded = -999;
+      jumped = true;
+      emitCharacterEvent(node.id, "onJump", { swimming: live.swimming, jumpIndex: live.jumpsUsed });
+    }
+    if (live.swimming && water) {
+      const swimScale = Math.max(0.1, spec.swimSpeedMultiplier ?? 0.65);
+      if (!dodging) {
+        moveX *= swimScale;
+        moveZ *= swimScale;
+      }
+      if (now <= live.swimJumpUntil) {
+        live.vy -= effectiveGravity * dt;
+      } else {
+        const targetFeetY = water.height - targetSubmerged;
+        live.vy += ((targetFeetY - feet) * 18 - live.vy * 6) * dt;
+        moveX += water.normal[0] * 0.45;
+        moveZ += water.normal[2] * 0.45;
+      }
+    } else {
+      const supported = onGround || live.grounded;
+      if (!(supported && live.vy <= 0)) live.vy -= effectiveGravity * dt;
+    }
+    const damp = Math.exp(-(live.grounded ? 10 : 2.5) * dt);
+    live.extVx *= damp;
+    live.extVy *= damp;
+    live.extVz *= damp;
+    if (Math.abs(live.extVx) < 0.01) live.extVx = 0;
+    if (Math.abs(live.extVy) < 0.01) live.extVy = 0;
+    if (Math.abs(live.extVz) < 0.01) live.extVz = 0;
+    const dispX = (moveX + live.extVx) * dt;
+    const dispY = (live.vy + live.extVy) * dt;
+    const dispZ = (moveZ + live.extVz) * dt;
+    let nextX = object.position.x + dispX;
+    let nextY = object.position.y + dispY;
+    let nextZ = object.position.z + dispZ;
+    let landed = false;
+    let platformYaw = 0;
+    if (spec.driver !== "nav") {
+      const solved = moveCharacters([{
+        id: node.id,
+        position: [footX, feet, footZ],
+        displacement: [dispX, dispY, dispZ],
+        radius: spec.radius,
+        height: spec.height,
+        dt,
+        interact: spec.physicsInteract ?? false,
+        mass: spec.mass ?? 65,
+        pushStrength: spec.pushStrength ?? 1
+      }]);
+      const step2 = solved?.[0];
+      if (step2) {
+        nextX = step2.position[0] - shift.x;
+        nextY = step2.position[1] - shift.y;
+        nextZ = step2.position[2] - shift.z;
+        if (step2.yawDelta) platformYaw = step2.yawDelta;
+        if (step2.impulse) {
+          live.extVx += step2.impulse[0];
+          live.extVy += step2.impulse[1];
+          live.extVz += step2.impulse[2];
+          if (step2.impulse[1] > 0.6) live.vy = Math.max(live.vy, step2.impulse[1]);
+        }
+        landed = step2.grounded && live.vy <= 0.35 && live.extVy <= 0.6;
+      } else {
+        const blocked2 = slide(host, footX, feet + spec.height * 0.45, footZ, footX + dispX, footZ + dispZ, node.id, spec.radius);
+        nextX = blocked2.x - shift.x;
+        nextZ = blocked2.z - shift.z;
+        landed = ground !== null && live.vy <= 0 && nextY <= ground + 0.08;
+        if (landed && ground !== null) nextY = ground - shift.y;
+      }
+    } else if (ground !== null && live.vy <= 0 && nextY <= ground + 0.08) {
+      nextY = ground;
+      landed = true;
+    }
+    if (landed && !live.swimming) {
+      live.vy = 0;
+      live.grounded = true;
+      live.lastGrounded = now;
+      if (!jumped) live.jumpsUsed = 0;
+      if (!wasGrounded) emitCharacterEvent(node.id, "onLand");
+    } else {
+      live.grounded = false;
+    }
+    const traveled = Math.hypot(nextX - object.position.x, nextZ - object.position.z);
+    if (live.grounded && !live.swimming && traveled > 0) {
+      live.footstep += traveled;
+      if (live.footstep >= spec.footstepDistance) {
+        live.footstep = 0;
+        live.footsteps += 1;
+        emitFootstep(node.id);
+        if (spec.footstepJuice) playJuice(spec.footstepJuice, node.id, host);
+      }
+    }
+    object.position.set(nextX, nextY, nextZ);
+    const carry = carryFor(nextX, nextY, nextZ);
+    if (carry && live.grounded) object.position.set(nextX + carry.dx, nextY + carry.dy, nextZ + carry.dz);
+    if (platformYaw) live.yaw += platformYaw;
+    const face = faceYaw(spec, basis, wish, moveX, moveZ, dodging, live);
+    if (face !== null) {
+      const rate = Math.max(30, spec.turnSpeed) * Math.PI / 180 * (basis.lock ? 1.5 : 1);
+      live.yaw = stepYaw(live.yaw, face, rate * dt);
+    }
+    object.quaternion.set(0, Math.sin(live.yaw / 2), 0, Math.cos(live.yaw / 2));
+    if (live.swimming) {
+      live.jumpPhase = "none";
+    } else {
+      stepJumpPose(node.id, node.assetId ?? "", spec, live, dt, now, jumped, dodging, wish.amount > 0.1 || Math.hypot(moveX, moveZ) > 0.2);
+    }
+    if (live.jumpPhase !== "none") {
+      motion.set(node.id, live);
+      continue;
+    }
+    const clip = pickClip(spec, dodging, wish.amount > 0.1 || Math.hypot(moveX, moveZ) > 0.2, sprint, live.swimming);
+    const clipKey = clip.name ? `${clip.assetId}\0${clip.name}` : "";
+    if (clipKey && clipKey !== live.clip) {
+      live.clip = clipKey;
+      const own = !clip.assetId || clip.assetId === node.assetId;
+      getRuntimeWorld().playBody?.(node.id, clip.name, {
+        assetId: own ? null : clip.assetId,
+        loop: clip.name !== spec.dodgeClip && clip.name !== spec.landClip,
+        fade: 0.12
+      });
+    }
+    motion.set(node.id, live);
+  }
+  consumeTaps();
+}
+function freshMotion(yaw) {
+  return {
+    yaw,
+    vy: 0,
+    extVx: 0,
+    extVy: 0,
+    extVz: 0,
+    grounded: false,
+    swimming: false,
+    swimJumpUntil: 0,
+    lastGrounded: 0,
+    jumpBufferUntil: 0,
+    jumpsUsed: 0,
+    dashUntil: 0,
+    dashReady: 0,
+    dashX: 0,
+    dashZ: 1,
+    invincibleUntil: 0,
+    clip: "",
+    jumpPhase: "none",
+    jumpTime: 0,
+    path: [],
+    pathIndex: 0,
+    footstep: 0,
+    footsteps: 0
+  };
+}
+function wishInput(spec) {
+  const axis = getActionAxis2D("Move");
+  const x = axis.x;
+  const z = spec.mode === "side25d" ? 0 : axis.y;
+  const amount = Math.hypot(x, z);
+  return { x, z, amount: amount > 1 ? 1 : amount };
+}
+function facingBasis(spec, selfId, nodes, x, z, cameraYaw, host) {
+  if (spec.mode === "side25d") return { moveYaw: cameraYaw, faceYaw: 0, lock: false };
+  if (spec.mode === "lockOn") {
+    const target = spec.lockTargetId && spec.lockTargetId !== selfId ? nodes[spec.lockTargetId] : spec.lockTargetName ? Object.values(nodes).find((item) => item.id !== selfId && item.name === spec.lockTargetName) : void 0;
+    const targetObject = target ? host.resolveObject(target.id) : null;
+    if (targetObject) {
+      const yaw = Math.atan2(targetObject.position.x - x, targetObject.position.z - z);
+      return { moveYaw: yaw, faceYaw: yaw, lock: true };
+    }
+  }
+  if (spec.mode === "strafe" || spec.mode === "firstPerson" || spec.mode === "lockOn") {
+    return { moveYaw: cameraYaw, faceYaw: cameraYaw + Math.PI, lock: true };
+  }
+  return { moveYaw: cameraYaw, faceYaw: cameraYaw, lock: false };
+}
+function rotate(x, z, yaw) {
+  const sin3 = Math.sin(yaw);
+  const cos3 = Math.cos(yaw);
+  return {
+    x: x * cos3 - z * sin3,
+    z: -x * sin3 - z * cos3
+  };
+}
+function faceYaw(spec, basis, wish, moveX, moveZ, dodging, live) {
+  if (dodging) return Math.atan2(live.dashX, live.dashZ);
+  if (basis.lock || spec.mode === "strafe" || spec.mode === "firstPerson" || spec.mode === "lockOn") return basis.faceYaw;
+  if (wish.amount > 0.1 || Math.hypot(moveX, moveZ) > 0.2) return Math.atan2(moveX, moveZ);
+  return null;
+}
+function capsuleShift(spec, q) {
+  const offset = spec.capsuleOffset ?? [0, 0, 0];
+  const yaw = yawOf2(q);
+  const sin3 = Math.sin(yaw);
+  const cos3 = Math.cos(yaw);
+  return {
+    x: offset[0] * cos3 + offset[2] * sin3,
+    y: offset[1],
+    z: -offset[0] * sin3 + offset[2] * cos3
+  };
+}
+function yawOf2(q) {
+  return Math.atan2(2 * (q.w * q.y + q.x * q.z), 1 - 2 * (q.y * q.y + q.z * q.z));
+}
+function stepYaw(current, target, maxStep) {
+  let delta = target - current;
+  if (delta > Math.PI) delta -= Math.PI * 2;
+  if (delta < -Math.PI) delta += Math.PI * 2;
+  if (Math.abs(delta) <= maxStep) return target;
+  return current + Math.sign(delta) * maxStep;
+}
+function followPath(x, z, live, stop) {
+  while (live.pathIndex < live.path.length) {
+    const point3 = live.path[live.pathIndex];
+    if (Math.hypot(point3[0] - x, point3[2] - z) <= stop) live.pathIndex += 1;
+    else break;
+  }
+  if (live.pathIndex >= live.path.length) {
+    live.path = [];
+    return { x: 0, z: 0 };
+  }
+  const point2 = live.path[live.pathIndex];
+  return steerPoint(x, z, point2[0], point2[2]);
+}
+function steer(from, to, stop) {
+  const path = findNavigationPath(from, [to.x, to.y, to.z]);
+  const next = path && path.length > 1 ? path[1] : [to.x, to.y, to.z];
+  if (Math.hypot(next[0] - from[0], next[2] - from[2]) <= stop) return { x: 0, z: 0 };
+  return steerPoint(from[0], from[2], next[0], next[2]);
+}
+function steerPoint(x, z, tx, tz) {
+  const dx = tx - x;
+  const dz = tz - z;
+  const len = Math.hypot(dx, dz) || 1;
+  return { x: dx / len, z: dz / len };
+}
+function airborne(live, now) {
+  return now - live.lastGrounded >= 0.12 || live.vy < -2;
+}
+function stepJumpPose(id, ownerAssetId, spec, live, dt, now, jumped, dodging, moving) {
+  const anyJump = spec.jumpClip || spec.airClip || spec.landClip;
+  if (dodging || !anyJump) {
+    if (live.jumpPhase !== "none") live.clip = "";
+    live.jumpPhase = "none";
+    return;
+  }
+  const begin = (phase) => {
+    live.jumpPhase = phase;
+    live.jumpTime = 0;
+    live.clip = "";
+  };
+  if (jumped && (spec.jumpClip || spec.airClip)) begin(spec.jumpClip ? "rise" : "hang");
+  else if (live.jumpPhase === "rise") {
+    live.jumpTime += dt;
+    const duration = getRuntimeWorld().clipDuration?.(spec.jumpClipAssetId || ownerAssetId, spec.jumpClip) ?? 0;
+    const finished = duration > 0 && live.jumpTime >= duration - 0.02;
+    const falling = live.vy <= 0 && live.jumpTime >= 0.12;
+    if (live.grounded) begin(spec.landClip ? "land" : "none");
+    else if (finished || falling) begin("hang");
+  } else if (live.jumpPhase === "hang") {
+    live.jumpTime += dt;
+    if (live.grounded) begin(spec.landClip ? "land" : "none");
+  } else if (live.jumpPhase === "land") {
+    live.jumpTime += dt;
+    const duration = getRuntimeWorld().clipDuration?.(spec.landClipAssetId || ownerAssetId, spec.landClip) ?? 0;
+    const contact = duration > 0 ? Math.min(0.22, Math.max(0.12, duration * 0.4)) : 0.16;
+    const finished = duration > 0 && live.jumpTime >= Math.min(duration, 0.5) - 0.02 || duration <= 0 && live.jumpTime >= 0.28;
+    if (!live.grounded && airborne(live, now)) begin(spec.airClip ? "hang" : "none");
+    else if (finished) begin("none");
+    else if (moving && live.jumpTime >= contact) begin("none");
+  } else if (!live.grounded && spec.airClip && airborne(live, now)) begin("hang");
+  if (live.jumpPhase === "rise" && spec.jumpClip) playOwned(id, ownerAssetId, live, spec.jumpClip, spec.jumpClipAssetId, false);
+  else if (live.jumpPhase === "hang" && spec.airClip) playOwned(id, ownerAssetId, live, spec.airClip, spec.airClipAssetId, true);
+  else if (live.jumpPhase === "land" && spec.landClip) playOwned(id, ownerAssetId, live, spec.landClip, spec.landClipAssetId, false);
+}
+function playOwned(id, ownerAssetId, live, name, assetId, loop) {
+  const key = `${loop ? "loop" : "once"}\0${assetId}\0${name}`;
+  if (live.clip === key) return;
+  live.clip = key;
+  const own = !assetId || assetId === ownerAssetId;
+  getRuntimeWorld().playBody?.(id, name, { assetId: own ? null : assetId, loop, fade: 0.1 });
+}
+function pickClip(spec, dodging, moving, sprint, swimming) {
+  if (dodging && spec.dodgeClip) return { name: spec.dodgeClip, assetId: spec.dodgeClipAssetId };
+  if (swimming) {
+    if (moving && spec.swimClip) return { name: spec.swimClip, assetId: spec.swimClipAssetId ?? "" };
+    if (spec.swimIdleClip) return { name: spec.swimIdleClip, assetId: spec.swimIdleClipAssetId ?? "" };
+    if (spec.swimClip) return { name: spec.swimClip, assetId: spec.swimClipAssetId ?? "" };
+  }
+  if (moving && sprint && spec.runClip) return { name: spec.runClip, assetId: spec.runClipAssetId };
+  if (moving && spec.walkClip) return { name: spec.walkClip, assetId: spec.walkClipAssetId };
+  return { name: spec.idleClip, assetId: spec.idleClipAssetId };
+}
+function groundUnder(host, x, y, z, id, spec) {
+  const distance2 = host.probe?.([x, y + spec.height * 0.5, z], [0, -1, 0], spec.height + 0.45, id);
+  if (distance2 === null || distance2 === void 0) return null;
+  return y + spec.height * 0.5 - distance2;
+}
+function slide(host, x, y, z, nextX, nextZ, id, radius) {
+  const dx = nextX - x;
+  const dz = nextZ - z;
+  const length4 = Math.hypot(dx, dz);
+  if (length4 < 1e-5 || !host.probe) return { x: nextX, z: nextZ };
+  const hit = host.probe([x, y, z], [dx / length4, 0, dz / length4], length4 + radius, id);
+  if (hit === null || hit > length4 + radius * 0.2) return { x: nextX, z: nextZ };
+  const allowed = Math.max(0, hit - radius);
+  return { x: x + dx / length4 * allowed, z: z + dz / length4 * allowed };
+}
+registerRuntimeSystem("core.character", RUNTIME_STAGE.POST_PHYSICS, stepCharacters);
+
 // src/core/codeAssets/scriptRuntime.ts
+init_frameProfile();
+init_motion();
+init_sceneRuntime();
 init_world();
 init_actionMap();
 init_fieldSchema();
@@ -6916,6 +8787,7 @@ var messageQueue = [];
 var uiEventHandlers = /* @__PURE__ */ new Map();
 var uiEventQueue = [];
 var uiClickSubscribed = false;
+var characterEventSubscribed = false;
 var globalMemory = /* @__PURE__ */ new Map();
 var persistentMemory = /* @__PURE__ */ new Map();
 var navAgents = /* @__PURE__ */ new Map();
@@ -6928,6 +8800,14 @@ var activeTweens = /* @__PURE__ */ new Map();
 var sfxCooldownAt = /* @__PURE__ */ new Map();
 var nextTimerId = 1;
 var nextTweenId = 1;
+function ensureCharacterEventBridge() {
+  if (characterEventSubscribed) return;
+  characterEventSubscribed = true;
+  onCharacterEvent((nodeId, event, payload) => {
+    if (getRuntimeWorld().getPlayState() !== "playing") return;
+    messageQueue.push({ targetNodeId: nodeId, name: event, payload, senderId: nodeId });
+  });
+}
 function ensureUiClickBridge() {
   if (uiClickSubscribed) return;
   uiClickSubscribed = true;
@@ -8086,6 +9966,11 @@ function buildScriptContext(node, scriptId, rawParams, stateObj, host) {
       },
       stopUpper: (fade2) => world3.stopUpper?.(node.id, fade2)
     },
+    character: {
+      setModifiers: (patch) => setCharacterModifiers(node.id, patch),
+      getModifiers: () => getCharacterModifiers(node.id),
+      clearModifiers: () => clearCharacterModifiers(node.id)
+    },
     audio: {
       playSfx: (assetId, opts) => {
         const now = typeof performance !== "undefined" ? performance.now() : Date.now();
@@ -8717,6 +10602,7 @@ function stepProjectScripts(dt, host) {
     return;
   }
   ensureUiClickBridge();
+  ensureCharacterEventBridge();
   bindProjectileRuntimeHooks({
     onHit: ({ projectileId, targetId, ownerId, damage, position }) => {
       messageQueue.push({
@@ -9408,7 +11294,7 @@ test("compileAndRegisterScript \u6302\u8F7D __project__ \u69FD\u4F4D\u5E76\u652F
   clearScriptRuntimeState();
 });
 test("checkAndTranspileTs \u6267\u884C\u8BED\u4E49\u7C7B\u578B\u68C0\u67E5\u5E76\u8986\u76D6\u5B8C\u6574 RUNTIME_DTS_SUMMARY", () => {
-  for (const key of ["anim", "physics", "nav", "crowd", "projectile", "scene", "getBehavior", "fx", "global", "storage", "tables"]) {
+  for (const key of ["anim", "character", "physics", "nav", "crowd", "projectile", "scene", "getBehavior", "fx", "global", "storage", "tables"]) {
     assert.ok(RUNTIME_DTS_SUMMARY.includes(key), `RUNTIME_DTS_SUMMARY \u7F3A\u5C11 ${key}`);
   }
   const badApi = checkAndTranspileTs(
@@ -9437,6 +11323,7 @@ test("checkAndTranspileTs \u6267\u884C\u8BED\u4E49\u7C7B\u578B\u68C0\u67E5\u5E76
           self.crowd.moveTo([1, 0, 2])
           self.projectile.launch({ speed: 10 })
           self.physics.applyImpulse({ x: 0, y: 1, z: 0 })
+          self.character.setModifiers({ moveSpeedMul: 0.7, gravityMul: 1, inputLock: false })
           const sid = self.scene.currentId()
           if (sid) self.log(sid)
         },

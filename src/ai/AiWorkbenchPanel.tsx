@@ -1,14 +1,14 @@
 import { useEffect, useLayoutEffect, useRef, useState, type DragEvent } from 'react'
-import { AlertTriangle, Bot, Box, Camera, Check, ChevronDown, ChevronRight, Copy, Download, FileBox, FileCode2, Loader2, Plus, RotateCcw, Send, Settings, Sparkles, Square, Trash2, Upload, Wand2, X } from 'lucide-react'
+import { AlertTriangle, Bot, Box, Camera, Check, ChevronDown, ChevronRight, Copy, Download, FileBox, FileCode2, Folder, Loader2, Plus, RotateCcw, Send, Settings, ShieldCheck, Sparkles, Square, Trash2, Upload, Wand2, X } from 'lucide-react'
 import { createCheckpoint } from '../core/project/checkpoints'
 import { useManagerModalStore } from '../core/project/ProjectManagerModal'
 import { openCodeAssetModal } from '../core/codeAssets/CodeAssetModal'
 import { useCodeAssetStore } from '../core/codeAssets/workspace'
 import { captureMainViewport } from '../core/preview/offscreenPreview'
-import { ASSET_MIME, NODE_MIME } from '../editor/assets/import'
+import { ASSET_MIME, FOLDER_MIME, NODE_MIME } from '../editor/assets/import'
 import { CLIP_MIME } from '../editor/animation/playback'
 import { useAssetStore } from '../editor/assets/library'
-import { useI18n } from '../editor/i18n'
+import { translate, useI18n } from '../editor/i18n'
 import { useEditorStore } from '../editor/scene/store'
 import { useAgentStore, type AiActionPill, type AiRefItem } from './agentLoop'
 import { parseImportedAiHistory, serializeAiHistoryForExport } from './historyStorage'
@@ -38,6 +38,9 @@ export default function AiWorkbenchPanel() {
   const providers = useAgentStore((s) => s.providers)
   const activeProviderId = useAgentStore((s) => s.activeProviderId)
   const pendingConfirm = useAgentStore((s) => s.pendingConfirm)
+  const alwaysAllowedTools = useAgentStore((s) => s.alwaysAllowedTools)
+  const alwaysAllowAllHighRisk = useAgentStore((s) => s.alwaysAllowAllHighRisk)
+  const resetAutoAllowRules = useAgentStore((s) => s.resetAutoAllowRules)
   const refreshProviders = useAgentStore((s) => s.refreshProviders)
   const saveProvider = useAgentStore((s) => s.saveProvider)
   const deleteProvider = useAgentStore((s) => s.deleteProvider)
@@ -58,6 +61,8 @@ export default function AiWorkbenchPanel() {
   const [droppingToChat, setDroppingToChat] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [modelMenuOpen, setModelMenuOpen] = useState(false)
+  const [confirmMenuOpen, setConfirmMenuOpen] = useState(false)
+  const confirmMenuRef = useRef<HTMLDivElement | null>(null)
   const [planExpanded, setPlanExpanded] = useState(false)
   const [settingsProviderType, setSettingsProviderType] = useState<'openai-compatible' | 'openai' | 'anthropic' | 'gemini'>('openai-compatible')
   const [editingProviderId, setEditingProviderId] = useState<string>('openai-compatible')
@@ -125,6 +130,28 @@ export default function AiWorkbenchPanel() {
       window.removeEventListener('keydown', onKeyDown)
     }
   }, [contextMenu])
+
+  useEffect(() => {
+    setConfirmMenuOpen(false)
+  }, [pendingConfirm])
+
+  useEffect(() => {
+    if (!confirmMenuOpen) return
+    const onDown = (e: MouseEvent) => {
+      if (confirmMenuRef.current && !confirmMenuRef.current.contains(e.target as Node)) {
+        setConfirmMenuOpen(false)
+      }
+    }
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setConfirmMenuOpen(false)
+    }
+    window.addEventListener('mousedown', onDown)
+    window.addEventListener('keydown', onKey)
+    return () => {
+      window.removeEventListener('mousedown', onDown)
+      window.removeEventListener('keydown', onKey)
+    }
+  }, [confirmMenuOpen])
 
   useEffect(() => {
     if (status === 'idle' || !startedAt) {
@@ -319,7 +346,7 @@ export default function AiWorkbenchPanel() {
       }
       if (trimmed === '/playtest') {
         setInput('')
-        void sendPrompt('请启动试玩探针跑一次冒烟测试（playtest__run_smoke）并做工程体检（query__project_diagnose），汇报结果。')
+        void sendPrompt(t('ai.playtestPrompt'))
         return
       }
     }
@@ -360,7 +387,7 @@ export default function AiWorkbenchPanel() {
 
   const acceptsDrop = (e: DragEvent) => {
     const types = [...e.dataTransfer.types]
-    return types.includes(ASSET_MIME) || types.includes(NODE_MIME) || types.includes(CLIP_MIME) || types.includes('Files')
+    return types.includes(ASSET_MIME) || types.includes(FOLDER_MIME) || types.includes(NODE_MIME) || types.includes(CLIP_MIME) || types.includes('Files')
   }
 
   const handleDropToChat = (e: DragEvent) => {
@@ -375,6 +402,14 @@ export default function AiWorkbenchPanel() {
       if (node) {
         addPendingRef({ kind: 'node', id: node.id, label: node.name, subKind: node.kind })
       }
+      return
+    }
+
+    const folderPath = e.dataTransfer.getData(FOLDER_MIME)
+    if (folderPath) {
+      const segs = folderPath.split('/').filter(Boolean)
+      const label = segs[segs.length - 1] || folderPath
+      addPendingRef({ kind: 'folder', id: folderPath, label, subKind: folderPath })
       return
     }
 
@@ -575,6 +610,28 @@ export default function AiWorkbenchPanel() {
         >
           <Download size={13} />
         </button>
+        {(alwaysAllowAllHighRisk || alwaysAllowedTools.length > 0) && (
+          <button
+            type="button"
+            title={
+              alwaysAllowAllHighRisk
+                ? t('ai.autoAllowAllActive')
+                : t('ai.autoAllowActive', { count: alwaysAllowedTools.length })
+            }
+            onClick={() => {
+              resetAutoAllowRules()
+              useEditorStore.getState().notify(t('ai.autoAllowReset'))
+            }}
+            style={{
+              ...iconBtnStyle,
+              color: '#fbbf24',
+              borderColor: 'rgba(245,158,11,0.4)',
+              background: 'rgba(245,158,11,0.12)',
+            }}
+          >
+            <ShieldCheck size={13} />
+          </button>
+        )}
         <button
           type="button"
           title={t('ai.settingsTip')}
@@ -826,6 +883,34 @@ export default function AiWorkbenchPanel() {
         </div>
       )}
 
+      {/* 运行中置顶状态条（不随消息滚动） */}
+      {status !== 'idle' && (
+        <div
+          style={{
+            flexShrink: 0,
+            margin: '8px 10px 0',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+            padding: '6px 10px',
+            borderRadius: '6px',
+            background: status === 'awaiting-confirm' ? 'rgba(245,158,11,0.14)' : 'rgba(59,130,246,0.16)',
+            border: status === 'awaiting-confirm' ? '1px solid rgba(245,158,11,0.35)' : '1px solid rgba(59,130,246,0.32)',
+            color: status === 'awaiting-confirm' ? '#fcd34d' : '#93c5fd',
+            fontSize: '11px',
+            fontWeight: 500,
+          }}
+        >
+          <Loader2 size={12} style={{ animation: 't3d-ai-spin 1s linear infinite', flexShrink: 0 }} />
+          <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+            {phaseText || t('ai.working')}
+          </span>
+          <span style={{ marginLeft: 'auto', color: '#a1a1aa', fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>
+            {(elapsedMs / 1000).toFixed(1)}s
+          </span>
+        </div>
+      )}
+
       {/* 对话与结构化执行流 */}
       <div
         ref={scrollRef}
@@ -957,28 +1042,6 @@ export default function AiWorkbenchPanel() {
                 <Trash2 size={12} />
               </button>
             )}
-            {isActiveTurn && (
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  padding: '4px 8px',
-                  borderRadius: '4px',
-                  background: 'rgba(59,130,246,0.14)',
-                  color: '#93c5fd',
-                  fontSize: '11px',
-                }}
-              >
-                <Loader2 size={12} style={{ animation: 't3d-ai-spin 1s linear infinite', flexShrink: 0 }} />
-                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {phaseText || t('ai.working')}
-                </span>
-                <span style={{ marginLeft: 'auto', color: '#a1a1aa', fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>
-                  {(elapsedMs / 1000).toFixed(1)}s
-                </span>
-              </div>
-            )}
 
             {turn.refs && turn.refs.length > 0 && (
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
@@ -1095,8 +1158,8 @@ export default function AiWorkbenchPanel() {
                     onClick={() => {
                       const prevUser = [...turns.slice(0, idx)].reverse().find((t) => t.role === 'user')
                       const hint = prevUser?.text
-                        ? `上一轮执行因页面刷新/异常中断，请结合我的上一条请求（“${prevUser.text.slice(0, 120)}”）以及已执行的步骤，继续完成剩余工作。`
-                        : '上一轮执行因页面刷新/异常中断，请结合上下文与已执行的步骤，继续完成剩余工作。'
+                        ? t('ai.resumeInterruptedWithPrev', { text: prevUser.text.slice(0, 120) })
+                        : t('ai.resumeInterrupted')
                       void sendPrompt(hint)
                     }}
                     style={{
@@ -1140,7 +1203,7 @@ export default function AiWorkbenchPanel() {
                 {idx === turns.length - 1 && status === 'idle' && (
                   <button
                     type="button"
-                    onClick={() => void sendPrompt('请按当前任务计划继续推进剩余未完成的步骤，直到全部完成。')}
+                    onClick={() => void sendPrompt(t('ai.resumePlanPrompt'))}
                     style={{
                       flexShrink: 0,
                       padding: '3px 9px',
@@ -1239,34 +1302,143 @@ export default function AiWorkbenchPanel() {
       </div>
 
       {/* 高风险确认栏 */}
-      {pendingConfirm && (
-        <div
-          style={{
-            margin: '0 10px 8px',
-            padding: '8px 10px',
-            borderRadius: '6px',
-            background: 'rgba(245,158,11,0.12)',
-            border: '1px solid rgba(245,158,11,0.4)',
-            display: 'flex',
-            flexDirection: 'column',
-            gap: '6px',
-          }}
-        >
-          <div style={{ fontWeight: 600, color: '#fcd34d' }}>{pendingConfirm.label}</div>
-          <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end' }}>
-            <button type="button" onClick={() => pendingConfirm.resolve(false)} style={smallBtnStyle}>
-              {t('ai.reject')}
-            </button>
-            <button
-              type="button"
-              onClick={() => pendingConfirm.resolve(true)}
-              style={{ ...smallBtnStyle, background: '#d97706', color: '#fff', borderColor: '#d97706' }}
-            >
-              <Check size={11} /> {t('ai.allow')}
-            </button>
+      {pendingConfirm && (() => {
+        const dotToolName = pendingConfirm.toolName.replace(/__/g, '.')
+        const argsPreview = (() => {
+          try {
+            const raw = JSON.stringify(pendingConfirm.args)
+            if (!raw || raw === '{}') return ''
+            return raw.length > 110 ? `${raw.slice(0, 110)}…` : raw
+          } catch {
+            return ''
+          }
+        })()
+        return (
+          <div
+            style={{
+              margin: '0 10px 8px',
+              padding: '8px 10px',
+              borderRadius: '6px',
+              background: 'rgba(245,158,11,0.12)',
+              border: '1px solid rgba(245,158,11,0.4)',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '6px',
+            }}
+          >
+            <div style={{ fontWeight: 600, color: '#fcd34d' }}>{pendingConfirm.label}</div>
+            {argsPreview && (
+              <div
+                style={{
+                  fontSize: '11px',
+                  color: '#d4d4d8',
+                  fontFamily: 'monospace',
+                  background: 'rgba(0,0,0,0.28)',
+                  padding: '4px 6px',
+                  borderRadius: '4px',
+                  wordBreak: 'break-all',
+                }}
+              >
+                {argsPreview}
+              </div>
+            )}
+            <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end', alignItems: 'center' }}>
+              <button
+                type="button"
+                onClick={() => {
+                  setConfirmMenuOpen(false)
+                  pendingConfirm.resolve('reject')
+                }}
+                style={smallBtnStyle}
+              >
+                {t('ai.reject')}
+              </button>
+              <div ref={confirmMenuRef} style={{ position: 'relative', display: 'inline-flex' }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setConfirmMenuOpen(false)
+                    pendingConfirm.resolve('once')
+                  }}
+                  style={{
+                    ...smallBtnStyle,
+                    background: '#d97706',
+                    color: '#fff',
+                    borderColor: '#d97706',
+                    borderTopRightRadius: 0,
+                    borderBottomRightRadius: 0,
+                  }}
+                >
+                  <Check size={11} /> {t('ai.allow')}
+                </button>
+                <button
+                  type="button"
+                  title={t('ai.allowMoreTip')}
+                  aria-haspopup="menu"
+                  aria-expanded={confirmMenuOpen}
+                  onClick={() => setConfirmMenuOpen((v) => !v)}
+                  style={{
+                    ...smallBtnStyle,
+                    background: '#b45309',
+                    color: '#fff',
+                    borderColor: '#d97706',
+                    borderLeft: '1px solid rgba(255,255,255,0.22)',
+                    borderTopLeftRadius: 0,
+                    borderBottomLeftRadius: 0,
+                    padding: '4px 6px',
+                  }}
+                >
+                  <ChevronDown size={11} />
+                </button>
+                {confirmMenuOpen && (
+                  <div
+                    role="menu"
+                    style={{
+                      position: 'absolute',
+                      right: 0,
+                      bottom: '100%',
+                      marginBottom: '4px',
+                      minWidth: '210px',
+                      background: '#1e1f24',
+                      border: '1px solid rgba(255,255,255,0.14)',
+                      borderRadius: '6px',
+                      boxShadow: '0 8px 24px rgba(0,0,0,0.45)',
+                      padding: '4px',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '2px',
+                      zIndex: 30,
+                    }}
+                  >
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        setConfirmMenuOpen(false)
+                        pendingConfirm.resolve('always-tool')
+                      }}
+                      style={confirmMenuItemStyle}
+                    >
+                      {t('ai.allowAlwaysTool', { tool: dotToolName })}
+                    </button>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        setConfirmMenuOpen(false)
+                        pendingConfirm.resolve('always-all')
+                      }}
+                      style={{ ...confirmMenuItemStyle, color: '#fcd34d' }}
+                    >
+                      {t('ai.allowAlwaysAll')}
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
-        </div>
-      )}
+        )
+      })()}
 
       {/* 长任务计划进度条（置于输入框上方） */}
       {taskPlan.length > 0 && (() => {
@@ -1876,6 +2048,20 @@ const smallBtnStyle: React.CSSProperties = {
   cursor: 'pointer',
 }
 
+const confirmMenuItemStyle: React.CSSProperties = {
+  display: 'block',
+  width: '100%',
+  textAlign: 'left',
+  padding: '6px 8px',
+  borderRadius: '4px',
+  border: 'none',
+  background: 'transparent',
+  color: '#e4e4e7',
+  fontSize: '11px',
+  cursor: 'pointer',
+  whiteSpace: 'nowrap',
+}
+
 const refPillStyle: React.CSSProperties = {
   display: 'inline-flex',
   alignItems: 'center',
@@ -1937,7 +2123,7 @@ function extractActionErrorDetails(detail: unknown): { lines: string[]; hint: st
     for (const a of obj.assertions) {
       if (a && typeof a === 'object' && (a as { passed?: unknown }).passed === false) {
         const msg = (a as { message?: unknown }).message
-        lines.push(`• 断言未通过：${typeof msg === 'string' && msg ? msg : '未知断言'}`)
+        lines.push(`• ${translate('ai.assertFailed', { message: typeof msg === 'string' && msg ? msg : translate('ai.unknownAssert') })}`)
       }
     }
   }
@@ -1945,7 +2131,7 @@ function extractActionErrorDetails(detail: unknown): { lines: string[]; hint: st
     const m = obj.metrics as { budgetPassed?: unknown; budgetNotes?: unknown }
     if (m.budgetPassed === false && Array.isArray(m.budgetNotes)) {
       for (const note of m.budgetNotes) {
-        if (typeof note === 'string' && note.trim()) lines.push(`• 性能预算：${note.trim()}`)
+        if (typeof note === 'string' && note.trim()) lines.push(`• ${translate('ai.perfBudget', { note: note.trim() })}`)
       }
     }
   }
@@ -1961,7 +2147,7 @@ function extractActionErrorDetails(detail: unknown): { lines: string[]; hint: st
   }
   if (Array.isArray(obj.warnings) && obj.warnings.length > 0 && lines.length === 0) {
     for (const w of obj.warnings.slice(0, 6)) {
-      if (typeof w === 'string' && w.trim()) lines.push(`• 警告：${w.trim()}`)
+      if (typeof w === 'string' && w.trim()) lines.push(`• ${translate('ai.warnLine', { msg: w.trim() })}`)
     }
   }
 
@@ -2158,6 +2344,7 @@ function RefKindIcon({ kind }: { kind: AiRefItem['kind'] }) {
   if (kind === 'node') return <Box size={11} />
   if (kind === 'script') return <FileCode2 size={11} />
   if (kind === 'shader') return <Wand2 size={11} />
+  if (kind === 'folder') return <Folder size={11} />
   return <FileBox size={11} />
 }
 
@@ -2165,6 +2352,7 @@ function refKindColors(kind: AiRefItem['kind']): React.CSSProperties {
   if (kind === 'script') return { background: 'rgba(56,189,248,0.18)', color: '#7dd3fc' }
   if (kind === 'shader') return { background: 'rgba(192,132,252,0.18)', color: '#d8b4fe' }
   if (kind === 'asset') return { background: 'rgba(52,211,153,0.18)', color: '#6ee7b7' }
+  if (kind === 'folder') return { background: 'rgba(245,158,11,0.18)', color: '#fcd34d' }
   return { background: 'rgba(59,130,246,0.2)', color: '#93c5fd' }
 }
 

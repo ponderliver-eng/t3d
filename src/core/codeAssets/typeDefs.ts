@@ -333,6 +333,11 @@ export interface ScriptContext<P = Record<string, unknown>, S = Record<string, u
     playUpper(clipName: string, opts?: { loop?: boolean; fade?: number; speed?: number }): void
     stopUpper(fade?: number): void
   }
+  readonly character: {
+    setModifiers(patch: { moveSpeedMul?: number; gravityMul?: number; inputLock?: boolean }): void
+    getModifiers(): { moveSpeedMul?: number; gravityMul?: number; inputLock?: boolean }
+    clearModifiers(): void
+  }
   readonly input: {
     isPressed(a: string): boolean
     justPressed(a: string): boolean

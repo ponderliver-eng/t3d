@@ -19,6 +19,13 @@ import { applyPhysicsForce, applyPhysicsImpulse, getPhysicsBodyState, setPhysics
 import type { SceneNode, Vec3 as TupleVec3 } from '../../editor/scene/types'
 import { findRow } from '../../gameplay/registry'
 import { playSound, stopMusic } from '../../runtime/audio'
+import {
+  clearCharacterModifiers,
+  getCharacterModifiers,
+  setCharacterModifiers,
+  type CharacterRuntimeModifiers,
+} from '../../runtime/character'
+import { onCharacterEvent } from '../../runtime/signals'
 import { measureCost } from '../../runtime/frameProfile'
 import {
   createAnimationCurve,
@@ -142,6 +149,7 @@ const messageQueue: Array<{ targetNodeId: string | null; name: string; payload?:
 const uiEventHandlers = new Map<string, Map<string, Set<(payload?: unknown) => void>>>()
 const uiEventQueue: Array<{ eventName: string; payload: { nodeId: string; kind: string; varId?: string; value?: string } }> = []
 let uiClickSubscribed = false
+let characterEventSubscribed = false
 const globalMemory = new Map<string, unknown>()
 const persistentMemory = new Map<string, unknown>()
 const navAgents = new Map<string, { path: TupleVec3[]; index: number; speed: number }>()
@@ -204,6 +212,15 @@ const activeTweens = new Map<number, TweenTask>()
 const sfxCooldownAt = new Map<string, number>()
 let nextTimerId = 1
 let nextTweenId = 1
+
+function ensureCharacterEventBridge() {
+  if (characterEventSubscribed) return
+  characterEventSubscribed = true
+  onCharacterEvent((nodeId, event, payload) => {
+    if (getRuntimeWorld().getPlayState() !== 'playing') return
+    messageQueue.push({ targetNodeId: nodeId, name: event, payload, senderId: nodeId })
+  })
+}
 
 function ensureUiClickBridge() {
   if (uiClickSubscribed) return
@@ -1533,6 +1550,11 @@ function buildScriptContext(
       },
       stopUpper: (fade?: number) => world.stopUpper?.(node.id, fade),
     },
+    character: {
+      setModifiers: (patch: CharacterRuntimeModifiers) => setCharacterModifiers(node.id, patch),
+      getModifiers: () => getCharacterModifiers(node.id),
+      clearModifiers: () => clearCharacterModifiers(node.id),
+    },
     audio: {
       playSfx: (assetId: string, opts?: { volume?: number; pitch?: number }) => {
         const now = typeof performance !== 'undefined' ? performance.now() : Date.now()
@@ -2280,6 +2302,7 @@ function stepProjectScripts(dt: number, host: SceneRuntimeHost) {
     return
   }
   ensureUiClickBridge()
+  ensureCharacterEventBridge()
   bindProjectileRuntimeHooks({
     onHit: ({ projectileId, targetId, ownerId, damage, position }) => {
       messageQueue.push({

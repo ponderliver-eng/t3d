@@ -2,9 +2,10 @@ import { create } from 'zustand'
 import { commandBus } from '../core/commands/bus'
 import { useCodeAssetStore } from '../core/codeAssets/workspace'
 import { createCheckpoint, formatDesignMarkdown, getDesignDoc, restoreCheckpoint } from '../core/project'
-import { diagnoseProject, queryNodeInspect, queryProjectOverview } from '../core/query'
+import { diagnoseProject, queryAssetSearch, queryNodeInspect, queryProjectOverview } from '../core/query'
 import { useAssetStore } from '../editor/assets/library'
 import { electronBridge } from '../editor/project/electronBridge'
+import { resolveLanguage, usePrefsStore } from '../editor/prefs/store'
 import { useEditorStore } from '../editor/scene/store'
 import { clearInflightBackup, initAiHistorySync, saveAiHistory, saveInflightBackup } from './historyStorage'
 import { formatRecipeIndexForPrompt } from './knowledge/recipes'
@@ -30,7 +31,7 @@ export interface AiActionPill {
 }
 
 export interface AiRefItem {
-  kind: 'node' | 'asset' | 'script' | 'shader'
+  kind: 'node' | 'asset' | 'script' | 'shader' | 'folder'
   id: string
   label: string
   subKind?: string
@@ -59,11 +60,48 @@ export interface AiTurnItem {
   inProgress?: boolean
 }
 
+export type ConfirmDecision = 'once' | 'always-tool' | 'always-all' | 'reject'
+
 export interface PendingConfirmation {
   toolName: string
   label: string
   args: Record<string, unknown>
-  resolve: (approved: boolean) => void
+  resolve: (decision: ConfirmDecision) => void
+}
+
+const STORAGE_ALWAYS_TOOLS = 't3d.ai.alwaysAllowedTools'
+const STORAGE_ALWAYS_ALL = 't3d.ai.alwaysAllowAllHighRisk'
+
+function loadAlwaysAllowedTools(): string[] {
+  try {
+    const raw = localStorage.getItem(STORAGE_ALWAYS_TOOLS)
+    if (!raw) return []
+    const parsed = JSON.parse(raw)
+    return Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === 'string') : []
+  } catch {
+    return []
+  }
+}
+
+function loadAlwaysAllowAll(): boolean {
+  try {
+    return localStorage.getItem(STORAGE_ALWAYS_ALL) === '1'
+  } catch {
+    return false
+  }
+}
+
+function persistAlwaysAllowedTools(list: string[]): void {
+  try {
+    localStorage.setItem(STORAGE_ALWAYS_TOOLS, JSON.stringify(list))
+  } catch { /* ignore */ }
+}
+
+function persistAlwaysAllowAll(flag: boolean): void {
+  try {
+    if (flag) localStorage.setItem(STORAGE_ALWAYS_ALL, '1')
+    else localStorage.removeItem(STORAGE_ALWAYS_ALL)
+  } catch { /* ignore */ }
 }
 
 export interface SteerItem {
@@ -98,6 +136,8 @@ interface AgentState {
   providers: ProviderInfo[]
   activeProviderId: string
   pendingConfirm: PendingConfirmation | null
+  alwaysAllowedTools: string[]
+  alwaysAllowAllHighRisk: boolean
   activeNodeIds: string[]
   steerQueue: SteerItem[]
   taskPlan: AiTaskPlanItem[]
@@ -111,6 +151,7 @@ interface AgentState {
   removePendingRef: (kind: AiRefItem['kind'], id: string) => void
   clearPendingRefs: () => void
   clearTaskPlan: () => void
+  resetAutoAllowRules: () => void
   refreshProviders: () => Promise<void>
   saveProvider: (input: {
     id: string
@@ -150,6 +191,8 @@ export const useAgentStore = create<AgentState>((set, get) => ({
   providers: [],
   activeProviderId: 'openai-compatible',
   pendingConfirm: null,
+  alwaysAllowedTools: loadAlwaysAllowedTools(),
+  alwaysAllowAllHighRisk: loadAlwaysAllowAll(),
   activeNodeIds: [],
   steerQueue: [],
   taskPlan: [],
@@ -175,6 +218,11 @@ export const useAgentStore = create<AgentState>((set, get) => ({
     set((s) => ({ pendingRefs: s.pendingRefs.filter((r) => !(r.kind === kind && r.id === id)) })),
   clearPendingRefs: () => set({ pendingRefs: [] }),
   clearTaskPlan: () => set({ taskPlan: [] }),
+  resetAutoAllowRules: () => {
+    persistAlwaysAllowedTools([])
+    persistAlwaysAllowAll(false)
+    set({ alwaysAllowedTools: [], alwaysAllowAllHighRisk: false })
+  },
 
   refreshProviders: async () => {
     const ai = electronBridge()?.ai
@@ -224,7 +272,7 @@ export const useAgentStore = create<AgentState>((set, get) => ({
     const reqId = get().activeRequestId
     const pending = get().pendingConfirm
     if (pending) {
-      pending.resolve(false)
+      pending.resolve('reject')
       set({ pendingConfirm: null })
     }
     if (reqId) {
@@ -367,7 +415,8 @@ export const useAgentStore = create<AgentState>((set, get) => ({
     } else {
       chatMessages.push({ role: 'user', text: `${text}\n\n${turnContext}` })
     }
-    const systemPrompt = buildSystemPrompt()
+    const lang = resolveLanguage(usePrefsStore.getState().language)
+    const systemPrompt = buildSystemPrompt(lang)
     const tools = buildAiToolSpecs()
     const baselineDiagnoseErrors = new Set(collectDiagnoseErrors())
 
@@ -570,27 +619,40 @@ export const useAgentStore = create<AgentState>((set, get) => ({
           }
 
           if (isConfirmRequiredTool(tc.name)) {
-            const approved = await new Promise<boolean>((resolve) => {
-              set({
-                status: 'awaiting-confirm',
-                phaseText: `等待确认：${tc.name.replace(/__/g, '.')}`,
-                pendingConfirm: {
-                  toolName: tc.name,
-                  label: `允许执行高风险指令 ${tc.name.replace(/__/g, '.')}？`,
-                  args: tc.arguments,
-                  resolve,
-                },
+            const { alwaysAllowAllHighRisk, alwaysAllowedTools } = get()
+            const autoAllowed = alwaysAllowAllHighRisk || alwaysAllowedTools.includes(tc.name)
+            if (!autoAllowed) {
+              const lang = resolveLanguage(usePrefsStore.getState().language)
+              const dotName = tc.name.replace(/__/g, '.')
+              const decision = await new Promise<ConfirmDecision>((resolve) => {
+                set({
+                  status: 'awaiting-confirm',
+                  phaseText: lang === 'en' ? `Awaiting approval: ${dotName}` : `等待确认：${dotName}`,
+                  pendingConfirm: {
+                    toolName: tc.name,
+                    label: lang === 'en' ? `Allow high-risk action ${dotName}?` : `允许执行高风险指令 ${dotName}？`,
+                    args: tc.arguments,
+                    resolve,
+                  },
+                })
               })
-            })
-            set({ status: 'running', pendingConfirm: null })
-            if (!approved) {
-              chatMessages.push({
-                role: 'tool',
-                toolCallId: tc.id,
-                name: tc.name,
-                content: JSON.stringify({ ok: false, message: '用户取消了该高风险操作' }),
-              })
-              continue
+              set({ status: 'running', pendingConfirm: null })
+              if (decision === 'always-tool') {
+                const nextList = Array.from(new Set([...get().alwaysAllowedTools, tc.name]))
+                persistAlwaysAllowedTools(nextList)
+                set({ alwaysAllowedTools: nextList })
+              } else if (decision === 'always-all') {
+                persistAlwaysAllowAll(true)
+                set({ alwaysAllowAllHighRisk: true })
+              } else if (decision === 'reject') {
+                chatMessages.push({
+                  role: 'tool',
+                  toolCallId: tc.id,
+                  name: tc.name,
+                  content: JSON.stringify({ ok: false, message: '用户取消了该高风险操作' }),
+                })
+                continue
+              }
             }
           }
 
@@ -1017,6 +1079,7 @@ function formatRefsContext(attachedRefs: AiRefItem[]): string {
   const nodeRefs = attachedRefs.filter((r) => r.kind === 'node')
   const codeRefs = attachedRefs.filter((r) => r.kind === 'script' || r.kind === 'shader')
   const assetRefs = attachedRefs.filter((r) => r.kind === 'asset')
+  const folderRefs = attachedRefs.filter((r) => r.kind === 'folder')
 
   const selectedText = nodeRefs.length > 0
     ? `\n当前引用/选中的场景节点（精简快照）：\n${nodeRefs
@@ -1075,7 +1138,27 @@ function formatRefsContext(attachedRefs: AiRefItem[]): string {
         .join('\n')}`
     : ''
 
-  return `${selectedText}${codeText}${assetText}`
+  const folderText = folderRefs.length > 0
+    ? `\n用户附加分析的工程目录（含目录下资源清单）：\n${folderRefs
+        .map((r) => {
+          const items = queryAssetSearch('', undefined, r.id)
+          if (items.length === 0) return `- 目录 ${r.id}：当前为空（可用 query__asset_search 再确认或在此目录下创建资源）`
+          const preview = items.map((it) => {
+            const extra = 'relativePath' in it
+              ? ` (${it.relativePath})`
+              : 'fileName' in it
+                ? ` (${it.fileName})`
+                : 'clipCount' in it && typeof it.clipCount === 'number' && it.clipCount > 0
+                  ? ` (${it.clipCount} clips)`
+                  : ''
+            return `  · [${it.kind}] ${it.name} (id: ${it.id}, folder: ${it.folder})${extra}`
+          })
+          return `- 目录 ${r.id}（列出 ${items.length} 项）：\n${preview.join('\n')}`
+        })
+        .join('\n')}`
+    : ''
+
+  return `${selectedText}${codeText}${assetText}${folderText}`
 }
 
 /** 本轮开始时的工程快照。追加在用户消息尾部，而不是放进系统提示，以保持系统提示逐字稳定 */
@@ -1123,16 +1206,20 @@ function buildTurnContext(attachedRefs: AiRefItem[]): string {
     .join('\n')
 }
 
-let cachedSystemPrompt: string | null = null
+const cachedSystemPrompts: Partial<Record<'zh' | 'en', string>> = {}
 
 /**
- * 系统提示：完全静态（不含任何工程状态），整段可被提示缓存命中。
+ * 系统提示：按语言完全静态（不含任何工程状态），整段可被提示缓存命中。
  * 需要告诉模型的工程现状一律走 buildTurnContext 或工具返回。
  */
-function buildSystemPrompt(): string {
-  if (cachedSystemPrompt) return cachedSystemPrompt
+function buildSystemPrompt(lang: 'zh' | 'en'): string {
+  const cached = cachedSystemPrompts[lang]
+  if (cached) return cached
+  const intro = lang === 'en'
+    ? 'You are the built-in AI creative assistant for the T3D Game Project Manager, reading and modifying the user project via tools. Always respond in English (if the user explicitly asks in another language, follow their language).'
+    : '你是 T3D 游戏工程管理器的内置 AI 创作助手，通过工具直接读取和修改用户的工程。始终用简体中文回复。'
   const lines: string[] = [
-    '你是 T3D 游戏工程管理器的内置 AI 创作助手，通过工具直接读取和修改用户的工程。始终用简体中文回复。',
+    intro,
     '',
     '【工作方式】',
     '1. 按任务规模行事：',
@@ -1235,6 +1322,7 @@ function buildSystemPrompt(): string {
       '【能力包】能力包与玩法包：挂载物理、粒子、水面、天空、导航等能力前，建议先调用 query__registry_describe（指定 category）确认能力 ID 与参数 Schema。',
     )
 
-  cachedSystemPrompt = lines.join('\n')
-  return cachedSystemPrompt
+  const prompt = lines.join('\n')
+  cachedSystemPrompts[lang] = prompt
+  return prompt
 }

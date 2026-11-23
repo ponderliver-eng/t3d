@@ -145,10 +145,10 @@ const CAPABILITY_META: Record<CapabilityId, CapabilityMetaEntry> = {
   },
   water: {
     label: '海洋与水体表面',
-    description: 'Gerstner 波浪、反射折射、焦散与水下后处理效果',
-    scope: 'picture',
-    dataPath: 'picture.capabilities.water（或平面节点挂载）',
-    writeWith: 'capability__setPictureData (capabilityId="water")',
+    description: 'Gerstner 波浪、反射折射、焦散与水下后处理效果（挂载在平面或网格节点上）',
+    scope: 'node',
+    dataPath: 'node.capabilities.water',
+    writeWith: 'capability__setNodeData (capabilityId="water")',
     defaults: () => ({ ...defaultWater() }),
     fields: {
       enabled: 'boolean，是否开启水体',

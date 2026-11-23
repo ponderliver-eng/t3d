@@ -1,4 +1,5 @@
 import { describeCapabilities } from '../../capabilities/describe'
+import { findNavigationPath, getNavigationStatus } from '../../capabilities/navigation/session'
 import { CAPABILITIES, capabilityEnabled, isKnownCapabilityDataKey } from '../../capabilities/registry'
 import { ASSETS_ROOT, isWithin, normalizeDir } from '../../editor/assets/folders'
 import { assetDirectory, useAssetStore } from '../../editor/assets/library'
@@ -342,6 +343,40 @@ export function queryRegistryDescribe(
     out.commands = commandBus.list().filter((c) => !id || c.id === id)
   }
   return out
+}
+
+export function queryNavigation(
+  start?: [number, number, number],
+  end?: [number, number, number],
+) {
+  const state = useEditorStore.getState()
+  const enabled = capabilityEnabled(state.capabilities, 'navigation')
+  const status = getNavigationStatus()
+  const baked = status.phase === 'ready'
+  const base = {
+    enabled,
+    baked,
+    phase: status.phase,
+    triangles: status.triangles,
+    sceneId: status.sceneId || state.activeSceneId,
+    ...(status.text ? { statusText: status.text } : {}),
+  }
+  if (!start || !end) {
+    return base
+  }
+  if (!enabled) {
+    return { ...base, reachable: false, path: null, reason: 'navigation 能力包未启用' }
+  }
+  if (!baked) {
+    return { ...base, reachable: false, path: null, reason: '当前场景尚未烘焙导航网格（或正在烘焙中），无法计算路径' }
+  }
+  const path = findNavigationPath(start, end)
+  return {
+    ...base,
+    reachable: Boolean(path && path.length > 0),
+    path: path ?? null,
+    pointCount: path?.length ?? 0,
+  }
 }
 
 export function queryDbRows(tableId: string, limit = 50) {

@@ -110,6 +110,16 @@ export function navDebugGeometry(): NavDebugMesh | null {
   return debugMesh
 }
 
+export function getNavigationStatus() {
+  const ui = useNavUi.getState()
+  return {
+    phase: ui.phase,
+    text: ui.text,
+    sceneId: ui.sceneId,
+    triangles: ui.triangles,
+  }
+}
+
 export function findNavigationPath(start: Vec3, end: Vec3): Vec3[] | null {
   const runtime = getRuntimeWorld()
   if (!capabilityEnabled(runtime.getCapabilities(), 'navigation')) return null

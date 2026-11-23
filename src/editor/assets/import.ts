@@ -19,6 +19,7 @@ import { openUiEditor } from '../ui/session'
 import type { PbrSlot, SceneNode, Vec3 } from '../scene/types'
 
 export const ASSET_MIME = 'application/x-t3d-asset'
+export const FOLDER_MIME = 'application/x-t3d-folder'
 export const NODE_MIME = 'application/x-t3d-node'
 
 export function isNodeDrag(data: DataTransfer): boolean {

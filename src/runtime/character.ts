@@ -3,7 +3,7 @@ import { moveCharacters } from '../capabilities/physics/session'
 import { sampleWaterSurface } from '../capabilities/water/session'
 import { addRuntimeTag } from '../gameplay/runtimeTags'
 import { clearJuice } from '../gameplay/juiceClock'
-import { emitFootstep } from './signals'
+import { emitCharacterEvent, emitFootstep } from './signals'
 import { playJuice } from '../gameplay/juice'
 import { carryFor } from './devices'
 import type { Vec3 } from '../editor/scene/types'
@@ -98,6 +98,27 @@ function takeRelocation(id: string): Vec3 | null {
   return next
 }
 
+export interface CharacterRuntimeModifiers {
+  moveSpeedMul?: number
+  gravityMul?: number
+  inputLock?: boolean
+}
+
+const runtimeModifiers = new Map<string, CharacterRuntimeModifiers>()
+
+export function setCharacterModifiers(nodeId: string, patch: CharacterRuntimeModifiers): void {
+  const prev = runtimeModifiers.get(nodeId) ?? {}
+  runtimeModifiers.set(nodeId, { ...prev, ...patch })
+}
+
+export function getCharacterModifiers(nodeId: string): CharacterRuntimeModifiers {
+  return { ...(runtimeModifiers.get(nodeId) ?? {}) }
+}
+
+export function clearCharacterModifiers(nodeId: string): void {
+  runtimeModifiers.delete(nodeId)
+}
+
 let simClock = 0
 
 function stepCharacters(dt: number, host: SceneRuntimeHost) {
@@ -107,6 +128,7 @@ function stepCharacters(dt: number, host: SceneRuntimeHost) {
     simClock = 0
     motion.clear()
     orders.clear()
+    runtimeModifiers.clear()
     consumeTaps()
     clearJuice()
     return
@@ -135,12 +157,18 @@ function stepCharacters(dt: number, host: SceneRuntimeHost) {
       live.vy = 0
       live.grounded = true
     }
-    const wish = wishInput(spec)
-    const sprint = isActionPressed('Sprint') || held('ShiftLeft') || held('ShiftRight')
-    const speed = spec.moveSpeed * (sprint && wish.amount > 0 ? spec.sprintMultiplier : 1)
+    const mods = runtimeModifiers.get(node.id)
+    const inputLocked = Boolean(mods?.inputLock)
+    const moveSpeedMul = typeof mods?.moveSpeedMul === 'number' && Number.isFinite(mods.moveSpeedMul) ? Math.max(0, mods.moveSpeedMul) : 1
+    const gravityMul = typeof mods?.gravityMul === 'number' && Number.isFinite(mods.gravityMul) ? Math.max(0, mods.gravityMul) : 1
+    const effectiveGravity = spec.gravity * gravityMul
+
+    const wish = inputLocked ? { x: 0, z: 0, amount: 0 } : wishInput(spec)
+    const sprint = !inputLocked && (isActionPressed('Sprint') || held('ShiftLeft') || held('ShiftRight'))
+    const speed = spec.moveSpeed * moveSpeedMul * (sprint && wish.amount > 0 ? spec.sprintMultiplier : 1)
     const basis = facingBasis(spec, node.id, nodes, object.position.x, object.position.z, yaw, host)
     const world = rotate(wish.x, wish.z, basis.moveYaw)
-    const dashPressed = spec.dash && (wasActionTapped('Dash') || tapped(spec.dashKey || 'KeyC'))
+    const dashPressed = !inputLocked && spec.dash && (wasActionTapped('Dash') || tapped(spec.dashKey || 'KeyC'))
     if (dashPressed && now >= live.dashReady) {
       const dir = wish.amount > 0.1 ? world : { x: Math.sin(live.yaw), z: Math.cos(live.yaw) }
       const len = Math.hypot(dir.x, dir.z) || 1
@@ -199,27 +227,30 @@ function stepCharacters(dt: number, host: SceneRuntimeHost) {
       : groundUnder(host, useCapsule ? footX : object.position.x, useCapsule ? feet : object.position.y, useCapsule ? footZ : object.position.z, node.id, spec)
     const touchingFloor = ground !== null && feet <= ground + 0.12
     const swimJumping = now <= live.swimJumpUntil
+    const wasGrounded = live.grounded
     if (water && submerged >= enterDepth) {
       if (!live.swimming) {
         live.swimming = true
         live.jumpsUsed = 0
         live.jumpPhase = 'none'
         live.clip = ''
+        emitCharacterEvent(node.id, 'onEnterWater', { waterHeight: water.height })
       }
     } else if (!water || (submerged < exitDepth && (touchingFloor || swimJumping || submerged < -0.2))) {
       if (live.swimming) {
         live.swimming = false
         live.clip = ''
         if (!swimJumping) live.lastGrounded = now
+        emitCharacterEvent(node.id, 'onExitWater')
       }
     }
 
     const onGround = !live.swimming && (live.grounded || (ground !== null && feet <= ground + 0.08 && live.vy <= 0.1))
     if (onGround) live.lastGrounded = now
     const coyote = now - live.lastGrounded <= spec.coyoteTime
-    if (wasActionTapped('Jump') || tapped('Space')) live.jumpBufferUntil = now + spec.jumpBuffer
+    if (!inputLocked && (wasActionTapped('Jump') || tapped('Space'))) live.jumpBufferUntil = now + spec.jumpBuffer
     if (onGround && live.vy <= 0) live.jumpsUsed = 0
-    const canJump = live.swimming || (coyote && live.jumpsUsed === 0) || (!onGround && live.jumpsUsed > 0 && live.jumpsUsed < spec.maxJumps) || (onGround && live.jumpsUsed < spec.maxJumps)
+    const canJump = !inputLocked && (live.swimming || (coyote && live.jumpsUsed === 0) || (!onGround && live.jumpsUsed > 0 && live.jumpsUsed < spec.maxJumps) || (onGround && live.jumpsUsed < spec.maxJumps))
     let jumped = false
     if (now <= live.jumpBufferUntil && canJump && !dodging) {
       if (live.swimming) {
@@ -232,6 +263,7 @@ function stepCharacters(dt: number, host: SceneRuntimeHost) {
       live.jumpBufferUntil = 0
       live.lastGrounded = -999
       jumped = true
+      emitCharacterEvent(node.id, 'onJump', { swimming: live.swimming, jumpIndex: live.jumpsUsed })
     }
     if (live.swimming && water) {
       const swimScale = Math.max(0.1, spec.swimSpeedMultiplier ?? 0.65)
@@ -240,7 +272,7 @@ function stepCharacters(dt: number, host: SceneRuntimeHost) {
         moveZ *= swimScale
       }
       if (now <= live.swimJumpUntil) {
-        live.vy -= spec.gravity * dt
+        live.vy -= effectiveGravity * dt
       } else {
         // 弹簧-阻尼浮力：让角色随实时浪高柔和起伏，并叠加轻微的随浪斜坡漂流
         const targetFeetY = water.height - targetSubmerged
@@ -250,7 +282,7 @@ function stepCharacters(dt: number, host: SceneRuntimeHost) {
       }
     } else {
       const supported = onGround || live.grounded
-      if (!(supported && live.vy <= 0)) live.vy -= spec.gravity * dt
+      if (!(supported && live.vy <= 0)) live.vy -= effectiveGravity * dt
     }
     const damp = Math.exp(-(live.grounded ? 10 : 2.5) * dt)
     live.extVx *= damp
@@ -308,6 +340,7 @@ function stepCharacters(dt: number, host: SceneRuntimeHost) {
       live.grounded = true
       live.lastGrounded = now
       if (!jumped) live.jumpsUsed = 0
+      if (!wasGrounded) emitCharacterEvent(node.id, 'onLand')
     } else {
       live.grounded = false
     }

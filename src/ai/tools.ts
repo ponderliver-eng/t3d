@@ -3,6 +3,7 @@ import {
   diagnoseProject,
   queryAssetSearch,
   queryDbRows,
+  queryNavigation,
   queryNodeInspect,
   queryProjectOverview,
   queryRegistryDescribe,
@@ -223,6 +224,18 @@ const QUERY_TOOLS: AiToolSpec[] = [
     },
   },
   {
+    name: 'query__navigation',
+    description: '查询当前场景导航网格烘焙状态（是否已烘焙、三角面数）；传入 start 与 end 世界坐标时检测两点可达性并返回路径点（未烘焙时明确提示）',
+    parameters: {
+      type: 'object',
+      properties: {
+        start: { type: 'array', items: { type: 'number' }, minItems: 3, maxItems: 3, description: '可选：起点世界坐标 [x, y, z]' },
+        end: { type: 'array', items: { type: 'number' }, minItems: 3, maxItems: 3, description: '可选：终点世界坐标 [x, y, z]' },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
     name: 'playtest__run_smoke',
     description:
       '确定性自动试玩：按固定步长推进游戏、注入虚拟输入、断言节点/变量/日志状态，返回运行时报错（已去重）、脚本 self.log 输出的日志（logs）、断言结果与性能预算。验收玩法逻辑的首选方式（比截图更可靠也更快），结束后自动退出试玩。需要观察过程而不只是结果时，用 watchNodes + sampleEvery 拿运动轨迹，或在脚本里临时 self.log 关键变量后从 logs 读回，不要新建探测脚本。',
@@ -265,7 +278,17 @@ const QUERY_TOOLS: AiToolSpec[] = [
           items: { type: 'string' },
           description: '可选：结束时回报这些节点（名称或 ID）的实时位置、朝向（rotation 度，[1] 为 yaw）、可见性，以及其上各脚本的 self.state 快照（scriptState），用于确认角色/敌人是否按预期运动、内部变量是否正确',
         },
-        sampleEvery: { type: 'number', description: '可选：配合 watchNodes，每隔这么多游戏秒采样一次位置与 yaw，返回 trajectory 轨迹数组（如 0.25；最多保留 60 个采样点）' },
+        watchFields: {
+          type: 'array',
+          items: { type: 'string' },
+          description: '可选：配合 sampleEvery，限定每个节点在 trajectory 中采样的脚本 self.state 字段名白名单（如 ["hp", "phase"]，也支持 "scriptId.field"）；不传时默认自动采样每个脚本的标量状态字段',
+        },
+        watchVars: {
+          type: 'array',
+          items: { type: 'string' },
+          description: '可选：配合 sampleEvery，每步同步采样的 UI/全局变量名列表（如 ["score", "wave", "aliveCount"]），结果放在 trajectory[i].vars 中',
+        },
+        sampleEvery: { type: 'number', description: '可选：配合 watchNodes 或 watchVars，每隔这么多游戏秒采样一次位置、yaw、脚本状态与全局变量，返回 trajectory 时间序列（最多保留 60 个采样点）' },
         autoStop: { type: 'boolean', description: '完成后是否自动退出试玩，默认 true' },
       },
       required: ['steps'],
@@ -569,6 +592,24 @@ async function executeAiToolInner(
         data: items,
       }
     }
+    case 'query__navigation': {
+      const toVec3 = (raw: unknown): [number, number, number] | undefined =>
+        Array.isArray(raw) && raw.length === 3 && raw.every((n) => typeof n === 'number' && Number.isFinite(n))
+          ? [raw[0], raw[1], raw[2]]
+          : undefined
+      const start = toVec3(resolvedArgs.start)
+      const end = toVec3(resolvedArgs.end)
+      const res = queryNavigation(start, end)
+      const reachable = 'reachable' in res ? res.reachable : false
+      return {
+        ok: true,
+        toolName,
+        displayLabel: res.baked
+          ? `导航查询（已烘焙 ${res.triangles} 面${start && end ? `，${reachable ? '可达' : '不可达'}` : ''}）`
+          : `导航查询（未烘焙：${res.phase}）`,
+        data: res,
+      }
+    }
     case 'query__ui_inspect': {
       const assets = useAssetStore.getState().assets
       const id = typeof resolvedArgs.assetId === 'string' ? resolvedArgs.assetId.trim() : ''
@@ -673,21 +714,51 @@ async function executeAiToolInner(
       const watchList = Array.isArray(args.watchNodes)
         ? args.watchNodes.filter((item): item is string => typeof item === 'string' && Boolean(item.trim())).slice(0, 12)
         : []
+      const watchFields = Array.isArray(args.watchFields)
+        ? args.watchFields.filter((item): item is string => typeof item === 'string' && Boolean(item.trim())).slice(0, 24)
+        : null
+      const watchVars = Array.isArray(args.watchVars)
+        ? args.watchVars.filter((item): item is string => typeof item === 'string' && Boolean(item.trim())).slice(0, 20)
+        : []
       const sampleEvery = typeof args.sampleEvery === 'number' && args.sampleEvery > 0 ? Math.max(0.05, args.sampleEvery) : 0
-      const trajectory: Array<{ t: number; nodes: Record<string, { pos: [number, number, number]; yaw: number } | null> }> = []
-      if (sampleEvery > 0 && watchList.length > 0) {
+      const trajectory: Array<{
+        t: number
+        nodes?: Record<string, { pos: [number, number, number]; yaw: number; state?: Record<string, Record<string, unknown>> } | null>
+        vars?: Record<string, unknown>
+      }> = []
+      if (sampleEvery > 0 && (watchList.length > 0 || watchVars.length > 0)) {
         session.setSampler(sampleEvery, (t) => {
-          const nodes: Record<string, { pos: [number, number, number]; yaw: number } | null> = {}
-          for (const query of watchList) {
-            const pose = session.read({ kind: 'nodePose', nodeIdOrName: query.trim() }) as PlaytestNodePose | null
-            nodes[query] = pose
-              ? {
-                  pos: pose.position.map((v) => Number(v.toFixed(2))) as [number, number, number],
-                  yaw: Number(pose.rotation[1].toFixed(1)),
-                }
-              : null
+          const entry: {
+            t: number
+            nodes?: Record<string, { pos: [number, number, number]; yaw: number; state?: Record<string, Record<string, unknown>> } | null>
+            vars?: Record<string, unknown>
+          } = { t }
+          if (watchList.length > 0) {
+            const nodes: Record<string, { pos: [number, number, number]; yaw: number; state?: Record<string, Record<string, unknown>> } | null> = {}
+            for (const query of watchList) {
+              const pose = session.read({ kind: 'nodePose', nodeIdOrName: query.trim() }) as PlaytestNodePose | null
+              if (!pose) {
+                nodes[query] = null
+                continue
+              }
+              const sampledState = sampleNodeScriptState(pose.id, watchFields)
+              nodes[query] = {
+                pos: pose.position.map((v) => Number(v.toFixed(2))) as [number, number, number],
+                yaw: Number(pose.rotation[1].toFixed(1)),
+                ...(sampledState ? { state: sampledState } : {}),
+              }
+            }
+            entry.nodes = nodes
           }
-          trajectory.push({ t, nodes })
+          if (watchVars.length > 0) {
+            const vars: Record<string, unknown> = {}
+            for (const varName of watchVars) {
+              const key = varName.trim()
+              vars[key] = compactSampleValue(session.read({ kind: 'uiVar', name: key }))
+            }
+            entry.vars = vars
+          }
+          trajectory.push(entry)
         })
       }
       const report = session.runSmoke(steps, { autoStop: false })
@@ -725,7 +796,7 @@ async function executeAiToolInner(
           metrics: report.metrics,
           ...(watched ? { watchedNodes: watched } : {}),
           ...(thinned.length > 0 ? { trajectory: thinned } : {}),
-          ...(sampleEvery > 0 && watchList.length === 0 ? { trajectoryNote: 'sampleEvery 需要配合 watchNodes 才会采样' } : {}),
+          ...(sampleEvery > 0 && watchList.length === 0 && watchVars.length === 0 ? { trajectoryNote: 'sampleEvery 需要配合 watchNodes 或 watchVars 才会采样' } : {}),
           ...(lastShot ? { dataUrl: lastShot } : {}),
         },
       }
@@ -1020,6 +1091,41 @@ interface WatchedNode {
   visible?: boolean
   /** 该节点上各行为脚本的 self.state 只读快照 */
   scriptState?: Record<string, Record<string, unknown>>
+}
+
+function compactSampleValue(val: unknown): unknown {
+  if (val === null || val === undefined || typeof val === 'boolean') return val ?? null
+  if (typeof val === 'number') return Number.isFinite(val) ? Number(val.toFixed(3)) : null
+  if (typeof val === 'string') return val.length > 48 ? `${val.slice(0, 48)}…` : val
+  return undefined
+}
+
+function sampleNodeScriptState(
+  nodeId: string,
+  fieldWhitelist: string[] | null,
+): Record<string, Record<string, unknown>> | null {
+  const snap = readScriptStateSnapshot(nodeId)
+  if (!snap) return null
+  const out: Record<string, Record<string, unknown>> = {}
+  for (const [scriptId, fields] of Object.entries(snap)) {
+    const picked: Record<string, unknown> = {}
+    let count = 0
+    for (const [k, rawVal] of Object.entries(fields)) {
+      if (fieldWhitelist && fieldWhitelist.length > 0) {
+        if (!fieldWhitelist.includes(k) && !fieldWhitelist.includes(`${scriptId}.${k}`)) continue
+      } else if (count >= 8) {
+        break
+      }
+      const compact = compactSampleValue(rawVal)
+      if (compact === undefined) continue
+      picked[k] = compact
+      count += 1
+    }
+    if (Object.keys(picked).length > 0) {
+      out[scriptId] = picked
+    }
+  }
+  return Object.keys(out).length > 0 ? out : null
 }
 
 function readWatchedNodes(session: PlaytestSession, raw: unknown): WatchedNode[] | null {
