@@ -123,13 +123,14 @@ const QUERY_TOOLS: AiToolSpec[] = [
   },
   {
     name: 'query__asset_search',
-    description: '按关键词、种类（model/texture/material/ui/prefab/scene/effect/audio/document/script/shader）与所在目录搜索工程资产',
+    description: '按关键词、种类（model/animation/texture/material/ui/prefab/scene/effect/audio/document/script/shader）与所在目录搜索工程资产。精确搜索少量模型/动画或设 includeDetails=true 时返回动画片段名列表（clips）与模型挂点列表（sockets）',
     parameters: {
       type: 'object',
       properties: {
         query: { type: 'string', description: '搜索关键词，空字符串表示列出全部' },
-        kind: { type: 'string', description: '可选资产种类过滤（含 script / shader）' },
+        kind: { type: 'string', description: '可选资产种类过滤（含 script / shader / animation）' },
         folder: { type: 'string', description: '可选目录过滤（如 Assets/Scripts 或 Assets/Materials）' },
+        includeDetails: { type: 'boolean', description: '是否展开返回模型/动画的片段列表与挂点详情，默认仅在命中 <=5 条时自动展开' },
       },
       additionalProperties: false,
     },
@@ -476,6 +477,7 @@ async function executeAiToolInner(
           typeof args.query === 'string' ? args.query : '',
           typeof args.kind === 'string' ? args.kind : undefined,
           typeof args.folder === 'string' ? args.folder : undefined,
+          args.includeDetails === true,
         ),
       }
     case 'query__registry_describe':

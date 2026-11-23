@@ -1,4 +1,5 @@
 import { Euler, Matrix4, Quaternion, Vector3 } from 'three'
+import { useAssetStore } from '../../../editor/assets/library'
 import { makeNode, nextOrder, uniqueName } from '../../../editor/scene/kinds'
 import { useEditorStore } from '../../../editor/scene/store'
 import { isUnder } from '../../../editor/scene/transform'
@@ -348,13 +349,273 @@ const reparentNodeCmd: CommandDef<ReparentNodeParams, { nodeId: string; parentId
   },
 }
 
+interface BatchCreateItem {
+  kind?: NodeKind
+  name?: string
+  parentId?: string | null
+  position?: Vec3
+  rotation?: Vec3
+  scale?: Vec3
+  lookAt?: Vec3
+  snapToGround?: boolean
+  assetId?: string | null
+  materialAssetId?: string | null
+  color?: string
+}
+
+interface BatchCreateNodesParams {
+  items: BatchCreateItem[]
+}
+
+const MAX_BATCH_CREATE = 100
+
+const batchCreateNodesCmd: CommandDef<
+  BatchCreateNodesParams,
+  { created: Array<{ nodeId: string; name: string; position: Vec3 }> }
+> = {
+  id: 'scene.batchCreateNodes',
+  title: '批量创建场景节点',
+  description: '在一次事务中批量创建多个节点（最多 100 个），一次写入场景树，适合批量摆树、路灯、障碍物与道具阵列',
+  risk: 'safe',
+  params: {
+    type: 'object',
+    fields: {
+      items: {
+        type: 'list',
+        minItems: 1,
+        maxItems: MAX_BATCH_CREATE,
+        label: '节点列表',
+        description: '要创建的节点配置数组（1~100 项），每项可含 kind/name/parentId/position/rotation/scale/lookAt/snapToGround/assetId/materialAssetId/color',
+        item: {
+          type: 'object',
+          fields: {
+            kind: { type: 'enum', options: VALID_KINDS, default: 'empty', label: '节点种类' },
+            name: { type: 'string', default: '', label: '名称' },
+            parentId: { type: 'ref', target: 'node', default: null, label: '父节点 ID' },
+            position: { type: 'vec3', default: [0, 0, 0], label: '位置' },
+            rotation: { type: 'vec3', default: [0, 0, 0], label: '旋转（度）' },
+            scale: { type: 'vec3', default: [1, 1, 1], label: '缩放' },
+            lookAt: { type: 'vec3', default: [0, 0, 0], optional: true, label: '朝向目标世界坐标' },
+            snapToGround: { type: 'boolean', default: false, label: '创建后贴地放置' },
+            assetId: { type: 'ref', target: 'asset', default: null, optional: true, label: '关联资产 ID（如模型/特效）' },
+            materialAssetId: { type: 'ref', target: 'asset', default: null, optional: true, label: '关联材质资产 ID' },
+            color: { type: 'color', default: '#ffffff', optional: true, label: '颜色' },
+          },
+        },
+      },
+    },
+  },
+  run(_ctx, p) {
+    const items = Array.isArray(p.items) ? p.items : []
+    if (items.length === 0) {
+      return { ok: false, code: 'params.invalid', message: 'items 不能为空数组' }
+    }
+    if (items.length > MAX_BATCH_CREATE) {
+      return {
+        ok: false,
+        code: 'params.limitExceeded',
+        message: `单次最多批量创建 ${MAX_BATCH_CREATE} 个节点，当前请求了 ${items.length} 个`,
+        hint: '请分批调用 scene.batchCreateNodes',
+      }
+    }
+
+    const state = useEditorStore.getState()
+    const nextNodes: Record<string, SceneNode> = { ...state.nodes }
+    const createdNodes: SceneNode[] = []
+    const snapIds: string[] = []
+    const validKindSet = new Set(VALID_KINDS.map((k) => k.value))
+
+    for (let i = 0; i < items.length; i += 1) {
+      const item = items[i] ?? {}
+      const kind: NodeKind = item.kind && validKindSet.has(item.kind) ? item.kind : 'empty'
+      const parentId = item.parentId ?? null
+      if (parentId && !nextNodes[parentId]) {
+        return {
+          ok: false,
+          code: 'node.notFound',
+          message: `第 ${i + 1} 项的父节点 "${parentId}" 不存在`,
+        }
+      }
+      const defaultLabel = VALID_KINDS.find((k) => k.value === kind)?.label ?? kind
+      const baseName = (typeof item.name === 'string' ? item.name.trim() : '') || defaultLabel
+      const pos: Vec3 = Array.isArray(item.position) && item.position.length === 3 ? [...item.position] : [0, 0, 0]
+      const rot: Vec3 = Array.isArray(item.lookAt) && item.lookAt.length === 3
+        ? computeLookAtRotationDeg(kind, pos, item.lookAt)
+        : (Array.isArray(item.rotation) && item.rotation.length === 3 ? [...item.rotation] : [0, 0, 0])
+      const scl: Vec3 = Array.isArray(item.scale) && item.scale.length === 3 ? [...item.scale] : [1, 1, 1]
+
+      const node = makeNode({
+        id: crypto.randomUUID(),
+        kind,
+        name: uniqueName(nextNodes, baseName),
+        parentId,
+        order: nextOrder(nextNodes, parentId),
+        position: pos,
+        rotation: rot,
+        scale: scl,
+        ...(item.assetId !== undefined ? { assetId: item.assetId } : {}),
+        ...(item.materialAssetId !== undefined ? { materialAssetId: item.materialAssetId } : {}),
+        ...(typeof item.color === 'string' && item.color ? { color: item.color } : {}),
+      })
+      nextNodes[node.id] = node
+      createdNodes.push(node)
+      if (item.snapToGround) snapIds.push(node.id)
+    }
+
+    const createdIds = createdNodes.map((n) => n.id)
+    useEditorStore.setState({ nodes: nextNodes, selection: createdIds })
+
+    if (snapIds.length > 0) {
+      const snappedList = measureGroundSnap(snapIds)
+      if (snappedList.length > 0) {
+        const afterSnap: Record<string, SceneNode> = { ...useEditorStore.getState().nodes }
+        for (const item of snappedList) {
+          const cur = afterSnap[item.id]
+          if (!cur) continue
+          const nextPos: Vec3 = [...item.position]
+          afterSnap[item.id] = { ...cur, position: nextPos }
+          const created = createdNodes.find((n) => n.id === item.id)
+          if (created) created.position = nextPos
+        }
+        useEditorStore.setState({ nodes: afterSnap })
+      }
+    }
+
+    return {
+      ok: true,
+      value: {
+        created: createdNodes.map((n) => ({ nodeId: n.id, name: n.name, position: n.position })),
+      },
+      changed: {
+        nodesAdded: createdIds,
+        summary: `批量创建 ${createdNodes.length} 个节点`,
+      },
+    }
+  },
+}
+
+interface AttachToSocketParams {
+  nodeId: string
+  modelNodeId: string | null
+  bone?: string
+  socketId?: string
+  position?: Vec3
+  rotation?: Vec3
+  scale?: Vec3
+}
+
+const attachToSocketCmd: CommandDef<
+  AttachToSocketParams,
+  { nodeId: string; modelNodeId: string | null; socketBone: string | null }
+> = {
+  id: 'scene.attachToSocket',
+  title: '挂载或解绑模型骨骼挂点',
+  description: '将节点挂载到指定模型节点的骨骼挂点（socketBone）上随骨骼跟随；modelNodeId 传 null 表示解除骨骼挂载',
+  risk: 'safe',
+  params: {
+    type: 'object',
+    fields: {
+      nodeId: { type: 'ref', target: 'node', required: true, label: '要挂载的节点 ID' },
+      modelNodeId: { type: 'ref', target: 'node', default: null, label: '目标模型节点 ID（null 表示解除挂载）' },
+      bone: { type: 'string', default: '', optional: true, label: '骨骼名称或路径（如 RightHand）' },
+      socketId: { type: 'string', default: '', optional: true, label: '可选：模型资产上定义的挂点 ID 或名称' },
+      position: { type: 'vec3', default: [0, 0, 0], optional: true, label: '挂点局部位置偏移' },
+      rotation: { type: 'vec3', default: [0, 0, 0], optional: true, label: '挂点局部旋转偏移（度）' },
+      scale: { type: 'vec3', default: [1, 1, 1], optional: true, label: '挂点局部缩放' },
+    },
+  },
+  run(_ctx, p) {
+    const state = useEditorStore.getState()
+    const node = state.nodes[p.nodeId]
+    if (!node) {
+      return { ok: false, code: 'node.notFound', message: `节点 "${p.nodeId}" 不存在` }
+    }
+
+    if (!p.modelNodeId) {
+      const nextNode: SceneNode = { ...node }
+      delete nextNode.socketBone
+      useEditorStore.setState({
+        nodes: { ...state.nodes, [p.nodeId]: nextNode },
+      })
+      return {
+        ok: true,
+        value: { nodeId: p.nodeId, modelNodeId: null, socketBone: null },
+        changed: { nodesUpdated: [p.nodeId], summary: `解除节点 ${node.name} 的骨骼挂载` },
+      }
+    }
+
+    const modelNode = state.nodes[p.modelNodeId]
+    if (!modelNode) {
+      return { ok: false, code: 'node.notFound', message: `目标模型节点 "${p.modelNodeId}" 不存在` }
+    }
+    if (modelNode.kind !== 'model') {
+      return {
+        ok: false,
+        code: 'params.invalid',
+        message: `目标节点 "${modelNode.name}" 不是 model 类型，无法挂载骨骼`,
+      }
+    }
+    if (p.modelNodeId === p.nodeId || isUnder(state.nodes, p.modelNodeId, p.nodeId)) {
+      return {
+        ok: false,
+        code: 'scene.cycleParent',
+        message: '不能将节点挂载到自身或其子节点的骨骼上',
+      }
+    }
+
+    let resolvedBone = typeof p.bone === 'string' ? p.bone.trim() : ''
+    if (!resolvedBone && typeof p.socketId === 'string' && p.socketId.trim() && modelNode.assetId) {
+      const asset = useAssetStore.getState().assets[modelNode.assetId]
+      const sockets = asset?.kind === 'model' ? asset.sockets : undefined
+      const socket = sockets?.find(
+        (s) => s.id === p.socketId!.trim() || s.name === p.socketId!.trim(),
+      )
+      if (socket) resolvedBone = socket.bone
+    }
+    if (!resolvedBone) {
+      return {
+        ok: false,
+        code: 'params.invalid',
+        message: '必须提供有效的 bone（骨骼路径）或已在模型资产上登记的 socketId',
+        hint: '可先用 query__node_inspect 或 query__asset_search 查看模型资产的 sockets 列表',
+      }
+    }
+
+    const order = node.parentId === p.modelNodeId ? node.order : nextOrder(state.nodes, p.modelNodeId)
+    const nextNode: SceneNode = {
+      ...node,
+      parentId: p.modelNodeId,
+      order,
+      socketBone: resolvedBone,
+      position: p.position ? [...p.position] : [0, 0, 0],
+      rotation: p.rotation ? [...p.rotation] : [0, 0, 0],
+      ...(p.scale ? { scale: [...p.scale] } : {}),
+    }
+
+    useEditorStore.setState({
+      nodes: { ...state.nodes, [p.nodeId]: nextNode },
+    })
+
+    return {
+      ok: true,
+      value: { nodeId: p.nodeId, modelNodeId: p.modelNodeId, socketBone: resolvedBone },
+      changed: {
+        nodesUpdated: [p.nodeId],
+        summary: `将 ${node.name} 挂载到 ${modelNode.name} 的骨骼 ${resolvedBone}`,
+      },
+    }
+  },
+}
+
 export function registerSceneCommands(): () => void {
   const unsubs = [
     commandBus.register(createNodeCmd),
+    commandBus.register(batchCreateNodesCmd),
     commandBus.register(deleteNodesCmd),
     commandBus.register(setTransformCmd),
     commandBus.register(renameNodeCmd),
     commandBus.register(reparentNodeCmd),
+    commandBus.register(attachToSocketCmd),
   ]
   return () => unsubs.forEach((fn) => fn())
 }

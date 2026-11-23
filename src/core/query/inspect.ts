@@ -1,4 +1,5 @@
-import { CAPABILITIES, capabilityEnabled, isKnownCapabilityDataKey, type CapabilityManifest } from '../../capabilities/registry'
+import { describeCapabilities } from '../../capabilities/describe'
+import { CAPABILITIES, capabilityEnabled, isKnownCapabilityDataKey } from '../../capabilities/registry'
 import { ASSETS_ROOT, isWithin, normalizeDir } from '../../editor/assets/folders'
 import { assetDirectory, useAssetStore } from '../../editor/assets/library'
 import { useEditorStore } from '../../editor/scene/store'
@@ -197,6 +198,7 @@ export function queryNodeInspect(nodeId: string) {
       rotation: [...node.rotation],
       scale: [...node.scale],
     },
+    ...(node.socketBone ? { socketBone: node.socketBone } : {}),
     assetId: node.assetId,
     physics: node.physics ?? null,
     navigation: node.navigation ?? null,
@@ -209,15 +211,24 @@ export function queryNodeInspect(nodeId: string) {
       ...(ruleCount > 0 ? { manualRulesNote: `该节点含 ${ruleCount} 条人工手配律令（只读提示，AI 不修改律令）` } : {}),
     },
     ...(node.kind === 'model' || node.clip
-      ? {
-          animation: {
-            clip: node.clip,
-            clipAssetId: node.clipAssetId,
-            clipPlaying: node.clipPlaying,
-            clipLoop: node.clipLoop ?? true,
-            clipSpeed: node.clipSpeed ?? 1,
-          },
-        }
+      ? (() => {
+          const modelAsset = node.assetId ? useAssetStore.getState().assets[node.assetId] : undefined
+          const clipCatalog = modelAsset && (modelAsset.kind === 'model' || modelAsset.kind === 'animation')
+            ? modelAsset.clipCatalog
+            : undefined
+          const sockets = modelAsset && modelAsset.kind === 'model' ? modelAsset.sockets : undefined
+          return {
+            animation: {
+              clip: node.clip,
+              clipAssetId: node.clipAssetId,
+              clipPlaying: node.clipPlaying,
+              clipLoop: node.clipLoop ?? true,
+              clipSpeed: node.clipSpeed ?? 1,
+              ...(clipCatalog?.length ? { availableClips: clipCatalog.map((c) => c.name) } : {}),
+              ...(sockets?.length ? { availableSockets: sockets } : {}),
+            },
+          }
+        })()
       : {}),
     drivers: describeNodeDrivers(node),
     // null 只表示「还没挂」，不是「引擎不支持」
@@ -231,13 +242,13 @@ export function queryNodeInspect(nodeId: string) {
   }
 }
 
-export function queryAssetSearch(query = '', kind?: string, folder?: string) {
+export function queryAssetSearch(query = '', kind?: string, folder?: string, includeDetails = false) {
   const q = query.trim().toLowerCase()
   const assetState = useAssetStore.getState()
   const assets = Object.values(assetState.assets)
   const targetFolder = folder?.trim() ? normalizeDir(folder) : null
 
-  const regularResults = assets
+  const filteredRegular = assets
     .filter((asset) => {
       if (kind && asset.kind !== kind) return false
       const dir = assetDirectory(asset.id, assetState.assetDirs)
@@ -247,13 +258,34 @@ export function queryAssetSearch(query = '', kind?: string, folder?: string) {
         || asset.id.toLowerCase().includes(q)
         || ('fileName' in asset && asset.fileName.toLowerCase().includes(q))
     })
+
+  const expandDetails = includeDetails || (q.length > 0 && filteredRegular.length <= 5)
+
+  const regularResults = filteredRegular
     .map((asset) => ({
       id: asset.id,
       name: asset.name,
       kind: asset.kind,
       folder: assetDirectory(asset.id, assetState.assetDirs),
       ...(asset.kind === 'document' ? { fileName: asset.fileName } : {}),
-      ...(asset.kind === 'model' ? { importScale: asset.importScale ?? 1, clipCount: asset.clipCatalog?.length ?? 0 } : {}),
+      ...(asset.kind === 'model'
+        ? {
+            importScale: asset.importScale ?? 1,
+            clipCount: asset.clipCatalog?.length ?? 0,
+            socketCount: asset.sockets?.length ?? 0,
+          }
+        : {}),
+      ...(asset.kind === 'animation'
+        ? {
+            clipCount: asset.clipCatalog?.length ?? 0,
+          }
+        : {}),
+      ...(expandDetails && (asset.kind === 'model' || asset.kind === 'animation')
+        ? {
+            ...(asset.clipCatalog?.length ? { clips: asset.clipCatalog } : {}),
+            ...(asset.kind === 'model' && asset.sockets?.length ? { sockets: asset.sockets } : {}),
+          }
+        : {}),
     }))
 
   const codeResults = Object.values(useCodeAssetStore.getState().assets)
@@ -290,13 +322,7 @@ export function queryRegistryDescribe(
     out.nodeAnimation = NODE_ANIMATION_NOTE
   }
   if (category === 'capabilities' || category === 'all') {
-    const items = (CAPABILITIES as readonly CapabilityManifest[]).filter((c) => !id || c.id === id)
-    out.capabilities = items.map((c) => ({
-      id: c.id,
-      defaultEnabled: c.defaultEnabled,
-      category: c.category,
-      dependencies: c.dependencies ?? [],
-    }))
+    out.capabilities = describeCapabilities(id)
   }
   if (category === 'gameplayPacks' || category === 'all') {
     const packs = listGameplayPacks().filter((p) => !id || p.id === id)

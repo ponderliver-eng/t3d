@@ -13,6 +13,7 @@ import {
 import { DEFAULT_PERFORMANCE_BUDGET, type PerformanceBudget } from '../core/query/diagnose'
 import { useAssetStore } from '../editor/assets/library'
 import { useEditorStore } from '../editor/scene/store'
+import { readScriptStateSnapshot } from '../core/codeAssets/scriptRuntime'
 import { stepSceneRuntime, type SceneRuntimeHost } from '../runtime/sceneRuntime'
 import type { UiNode } from '../runtime/ui/spec'
 import { dispatchUiClick, uiValues } from '../runtime/ui/values'
@@ -20,6 +21,7 @@ import { getRuntimeWorld } from '../runtime/world'
 
 export type PlaytestReadQuery =
   | { kind: 'nodePose'; nodeIdOrName: string }
+  | { kind: 'scriptState'; nodeIdOrName: string }
   | { kind: 'uiVar'; name: string }
   | { kind: 'logs'; limit?: number }
   | { kind: 'metrics' }
@@ -210,6 +212,9 @@ export class PlaytestSession {
       (n) => n.id === query.nodeIdOrName || n.name === query.nodeIdOrName,
     )
     if (!target) return null
+    if (query.kind === 'scriptState') {
+      return readScriptStateSnapshot(target.id)
+    }
     const obj = getViewportBridge()?.resolveObject(target.id) ?? this.headlessObjects.get(target.id)
     if (obj) {
       const deg = 180 / Math.PI

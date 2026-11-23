@@ -102,6 +102,42 @@ interface BehaviorInstanceRecord {
 const compiledBehaviors = new Map<string, BehaviorDefinition>()
 const compiledSystems = new Map<string, { def: SystemDefinition; unregister: () => void; mounted: boolean; state: Record<string, unknown> }>()
 const instanceStates = new Map<string, BehaviorInstanceRecord>()
+const runtimeErrorCounts = new Map<string, number>()
+
+function extractShortStack(error: unknown): string {
+  if (!(error instanceof Error) || !error.stack) return ''
+  const lines = error.stack
+    .split('\n')
+    .slice(1)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+  if (lines.length === 0) return ''
+  const scriptFrames = lines.filter((line) => line.includes('t3d:///'))
+  const picked = (scriptFrames.length > 0 ? scriptFrames : lines).slice(0, 3)
+  return `\n  at ${picked.join('\n  at ')}`
+}
+
+function reportRuntimeError(
+  phase: string,
+  scriptId: string,
+  label: string,
+  error: unknown,
+  nodeId?: string,
+): void {
+  const world = getRuntimeWorld()
+  const message = error instanceof Error ? error.message : String(error)
+  const key = `${phase}|${scriptId}|${nodeId ?? ''}|${message}`
+  const count = (runtimeErrorCounts.get(key) ?? 0) + 1
+  runtimeErrorCounts.set(key, count)
+  const nodeName = nodeId ? world.getNodes()[nodeId]?.name : undefined
+  const nodeDesc = nodeId ? ` 节点=${nodeName ? `"${nodeName}"(${nodeId})` : nodeId}` : ''
+  if (count === 1) {
+    const stack = extractShortStack(error)
+    world.log('error', `[${phase}] ${label} (${scriptId})${nodeDesc}: ${message}${stack}`)
+  } else if (count === 10 || count === 100 || count === 1000) {
+    world.log('error', `[${phase}] ${label} (${scriptId})${nodeDesc} 已重复报错 ${count} 次: ${message}`)
+  }
+}
 const messageQueue: Array<{ targetNodeId: string | null; name: string; payload?: unknown; senderId?: string }> = []
 const uiEventHandlers = new Map<string, Map<string, Set<(payload?: unknown) => void>>>()
 const uiEventQueue: Array<{ eventName: string; payload: { nodeId: string; kind: string; varId?: string; value?: string } }> = []
@@ -681,7 +717,7 @@ function resetAndInvokeSpawn(nodeId: string, payload: unknown, host: SceneRuntim
         def.onStart?.(ctx)
         def.onSpawn?.(ctx, payload)
       } catch (error) {
-        getRuntimeWorld().log('error', `脚本 "${def.name}" 激活错误: ${error instanceof Error ? error.message : String(error)}`)
+        reportRuntimeError('onSpawn', sid, `脚本 "${def.name}"`, error, subId)
       }
     }
   }
@@ -2075,7 +2111,7 @@ export function compileAndRegisterScript(
           def.onStep?.(api, sysEntry.state, dt)
           def.onUpdate?.(api, sysEntry.state, dt)
         } catch (error) {
-          getRuntimeWorld().log('error', `系统 "${def.name}" 运行错误: ${error instanceof Error ? error.message : String(error)}`)
+          reportRuntimeError('system', id, `系统 "${def.name}"`, error)
         }
       },
     )
@@ -2214,6 +2250,7 @@ export function clearScriptRuntimeState(): void {
     }
   }
   instanceStates.clear()
+  runtimeErrorCounts.clear()
   messageQueue.length = 0
   uiEventHandlers.clear()
   uiEventQueue.length = 0
@@ -2335,14 +2372,17 @@ function stepProjectScripts(dt: number, host: SceneRuntimeHost) {
       }
       const ctx = buildScriptContext(node, scriptId, rawParams, rec.state, host)
       measureCost(`script:${scriptId}`, () => {
+        let phase = 'onUpdate'
         try {
           if (!rec!.started) {
             rec!.started = true
+            phase = 'onStart'
             def.onStart?.(ctx)
+            phase = 'onUpdate'
           }
           def.onUpdate?.(ctx, dt)
         } catch (error) {
-          world.log('error', `脚本 "${def.name}" 运行错误: ${error instanceof Error ? error.message : String(error)}`)
+          reportRuntimeError(phase, scriptId, `脚本 "${def.name}"`, error, node.id)
         }
       })
     }
@@ -2402,7 +2442,7 @@ function stepProjectScripts(dt: number, host: SceneRuntimeHost) {
         try {
           ag.onArrive?.()
         } catch (error) {
-          world.log('error', `Spline 到达回调错误: ${error instanceof Error ? error.message : String(error)}`)
+          reportRuntimeError('spline.onArrive', 'spline', 'Spline 到达回调', error, ag.nodeId)
         }
       }
     }
@@ -2432,7 +2472,7 @@ function stepProjectScripts(dt: number, host: SceneRuntimeHost) {
         tw.apply(eased)
         tw.onUpdate?.(eased)
       } catch (error) {
-        world.log('error', `Tween 更新错误: ${error instanceof Error ? error.message : String(error)}`)
+        reportRuntimeError('tween.onUpdate', 'tween', 'Tween 更新回调', error, tw.ownerNodeId)
         activeTweens.delete(tw.id)
         continue
       }
@@ -2446,7 +2486,7 @@ function stepProjectScripts(dt: number, host: SceneRuntimeHost) {
           try {
             tw.onComplete?.()
           } catch (error) {
-            world.log('error', `Tween 完成回调错误: ${error instanceof Error ? error.message : String(error)}`)
+            reportRuntimeError('tween.onComplete', 'tween', 'Tween 完成回调', error, tw.ownerNodeId)
           }
         }
       }
@@ -2475,7 +2515,7 @@ function stepProjectScripts(dt: number, host: SceneRuntimeHost) {
         try {
           timer.callback()
         } catch (error) {
-          world.log('error', `脚本定时器回调错误: ${error instanceof Error ? error.message : String(error)}`)
+          reportRuntimeError('timer', 'timer', '脚本定时器回调', error, timer.nodeId)
         }
       }
     }
@@ -2497,7 +2537,7 @@ function stepProjectScripts(dt: number, host: SceneRuntimeHost) {
         try {
           def.onMessage(ctx, { name: msg.name, payload: msg.payload, sender })
         } catch (error) {
-          world.log('error', `脚本 "${def.name}" 消息处理错误: ${error instanceof Error ? error.message : String(error)}`)
+          reportRuntimeError(`onMessage:${msg.name}`, rec.scriptId, `脚本 "${def.name}"`, error, rec.nodeId)
         }
       }
     }
@@ -2515,7 +2555,7 @@ function stepProjectScripts(dt: number, host: SceneRuntimeHost) {
           try {
             fn(evt.payload)
           } catch (error) {
-            world.log('error', `UI 事件 "${evt.eventName}" 处理错误: ${error instanceof Error ? error.message : String(error)}`)
+            reportRuntimeError(`uiEvent:${evt.eventName}`, instKey, `UI 事件 "${evt.eventName}"`, error, evt.payload.nodeId)
           }
         }
       }

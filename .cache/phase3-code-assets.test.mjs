@@ -3943,27 +3943,27 @@ var init_schema = __esm({
     SPLINE_PATH_CAPABILITY_ID = "splinePath";
     SPLINE_SCHEMA = {
       type: "object",
-      label: "Spline \u8DEF\u5F84\u8FD0\u52A8",
+      label: "spline.title",
       fields: {
-        enabled: { type: "boolean", default: true, label: "\u542F\u7528" },
-        pathNodeId: { type: "ref", target: "node", kinds: ["spline"], default: null, label: "Spline \u66F2\u7EBF\u8282\u70B9" },
+        enabled: { type: "boolean", default: true, label: "field.enable" },
+        pathNodeId: { type: "ref", target: "node", kinds: ["spline"], default: null, label: "spline.pathNode" },
         mode: {
           type: "enum",
           default: "loop",
-          label: "\u8FD0\u884C\u6A21\u5F0F",
+          label: "spline.mode",
           options: [
-            { value: "once", label: "\u5355\u6B21\u5230\u8FBE" },
-            { value: "loop", label: "\u5FAA\u73AF" },
-            { value: "pingPong", label: "\u5F80\u8FD4" }
+            { value: "once", label: "spline.mode.once" },
+            { value: "loop", label: "spline.mode.loop" },
+            { value: "pingPong", label: "spline.mode.pingPong" }
           ]
         },
-        speed: { type: "number", default: 4, min: 0.05, max: 200, step: 0.5, label: "\u79FB\u52A8\u901F\u5EA6 (m/s)" },
-        tension: { type: "number", default: 0.5, min: 0, max: 1, step: 0.05, label: "\u66F2\u7EBF\u5F20\u529B" },
-        closed: { type: "boolean", default: false, label: "\u95ED\u5408\u66F2\u7EBF" },
-        faceDirection: { type: "boolean", default: true, label: "\u671D\u5411\u8DEF\u5F84\u5207\u7EBF" },
-        planeXZ: { type: "boolean", default: false, label: "\u4FDD\u6301\u5F53\u524D\u9AD8\u5EA6 (XZ)" },
-        autoStart: { type: "boolean", default: true, label: "\u8BD5\u73A9\u81EA\u52A8\u542F\u52A8" },
-        startProgress: { type: "number", default: 0, min: 0, max: 1, step: 0.05, label: "\u8D77\u59CB\u8FDB\u5EA6 (0~1)" }
+        speed: { type: "number", default: 4, min: 0.05, max: 200, step: 0.5, label: "spline.speed" },
+        tension: { type: "number", default: 0.5, min: 0, max: 1, step: 0.05, label: "spline.curveTension" },
+        closed: { type: "boolean", default: false, label: "field.closed" },
+        faceDirection: { type: "boolean", default: true, label: "spline.face" },
+        planeXZ: { type: "boolean", default: false, label: "spline.planeXZ" },
+        autoStart: { type: "boolean", default: true, label: "spline.autoStart" },
+        startProgress: { type: "number", default: 0, min: 0, max: 1, step: 0.05, label: "spline.start" }
       }
     };
   }
@@ -4139,50 +4139,50 @@ var init_schema2 = __esm({
     TWEEN_CAPABILITY_ID = "tween";
     TWEEN_SCHEMA = {
       type: "object",
-      label: "Tween \u8865\u95F4\u52A8\u6548",
+      label: "tween.title",
       fields: {
-        enabled: { type: "boolean", default: true, label: "\u542F\u7528" },
+        enabled: { type: "boolean", default: true, label: "field.enable" },
         property: {
           type: "enum",
           default: "floatBob",
-          label: "\u52A8\u6548\u7C7B\u578B",
+          label: "tween.kind",
           options: [
-            { value: "floatBob", label: "\u60AC\u6D6E\u6D6E\u52A8 (PingPong)" },
-            { value: "positionOffset", label: "\u4F4D\u7F6E\u504F\u79FB" },
-            { value: "rotationOffset", label: "\u65CB\u8F6C\u89D2\u5EA6 (\u5EA6)" },
-            { value: "scaleMultiplier", label: "\u7F29\u653E\u500D\u7387\u53D8\u5316" }
+            { value: "floatBob", label: "tween.kind.floatBob" },
+            { value: "positionOffset", label: "tween.kind.positionOffset" },
+            { value: "rotationOffset", label: "tween.kind.rotationOffset" },
+            { value: "scaleMultiplier", label: "tween.kind.scaleMultiplier" }
           ]
         },
-        delta: { type: "vec3", default: [0, 0.35, 0], label: "\u53D8\u5316\u91CF (X/Y/Z)" },
-        duration: { type: "number", default: 1.2, min: 0.05, max: 60, step: 0.1, label: "\u5355\u7A0B\u65F6\u957F (\u79D2)" },
-        delay: { type: "number", default: 0, min: 0, max: 30, step: 0.1, label: "\u8D77\u59CB\u5EF6\u8FDF (\u79D2)" },
+        delta: { type: "vec3", default: [0, 0.35, 0], label: "tween.delta" },
+        duration: { type: "number", default: 1.2, min: 0.05, max: 60, step: 0.1, label: "tween.duration" },
+        delay: { type: "number", default: 0, min: 0, max: 30, step: 0.1, label: "tween.delay" },
         ease: {
           type: "enum",
           default: "inOutSine",
-          label: "\u7F13\u52A8\u66F2\u7EBF",
+          label: "tween.ease",
           options: [
-            { value: "linear", label: "\u7EBF\u6027 (Linear)" },
-            { value: "inOutSine", label: "\u6B63\u5F26\u7F13\u5165\u7F13\u51FA (Sine)" },
-            { value: "outQuad", label: "\u4E8C\u6B21\u7F13\u51FA (OutQuad)" },
-            { value: "inOutQuad", label: "\u4E8C\u6B21\u7F13\u5165\u7F13\u51FA (InOutQuad)" },
-            { value: "outCubic", label: "\u4E09\u6B21\u7F13\u51FA (OutCubic)" },
-            { value: "inOutCubic", label: "\u4E09\u6B21\u7F13\u5165\u7F13\u51FA (InOutCubic)" },
-            { value: "outBack", label: "\u56DE\u5F39 (OutBack)" },
-            { value: "outBounce", label: "\u5F39\u8DF3 (OutBounce)" },
-            { value: "outElastic", label: "\u5F39\u6027 (OutElastic)" }
+            { value: "linear", label: "tween.ease.linear" },
+            { value: "inOutSine", label: "tween.ease.inOutSine" },
+            { value: "outQuad", label: "tween.ease.outQuad" },
+            { value: "inOutQuad", label: "tween.ease.inOutQuad" },
+            { value: "outCubic", label: "tween.ease.outCubic" },
+            { value: "inOutCubic", label: "tween.ease.inOutCubic" },
+            { value: "outBack", label: "tween.ease.outBack" },
+            { value: "outBounce", label: "tween.ease.outBounce" },
+            { value: "outElastic", label: "tween.ease.outElastic" }
           ]
         },
         loopMode: {
           type: "enum",
           default: "pingPong",
-          label: "\u5FAA\u73AF\u6A21\u5F0F",
+          label: "tween.repeat",
           options: [
-            { value: "once", label: "\u5355\u6B21" },
-            { value: "loop", label: "\u4ECE\u5934\u5FAA\u73AF" },
-            { value: "pingPong", label: "\u5F80\u8FD4 (PingPong)" }
+            { value: "once", label: "tween.repeat.once" },
+            { value: "loop", label: "tween.repeat.loop" },
+            { value: "pingPong", label: "tween.repeat.pingPong" }
           ]
         },
-        autoStart: { type: "boolean", default: true, label: "\u8BD5\u73A9\u81EA\u52A8\u64AD\u653E" }
+        autoStart: { type: "boolean", default: true, label: "tween.autoStart" }
       }
     };
   }
@@ -4331,16 +4331,16 @@ var init_schema3 = __esm({
     CROWD_CAPABILITY_ID = "crowd";
     CROWD_SCHEMA = {
       type: "object",
-      label: "\u7FA4\u4F53\u907F\u8BA9 (Crowd)",
+      label: "crowd.title",
       fields: {
-        enabled: { type: "boolean", default: true, label: "\u542F\u7528" },
-        radius: { type: "number", default: 0.8, min: 0.2, max: 10, step: 0.1, label: "\u907F\u8BA9\u534A\u5F84 (m)" },
-        maxSpeed: { type: "number", default: 4.5, min: 0.1, max: 50, step: 0.5, label: "\u6700\u5927\u901F\u5EA6 (m/s)" },
-        separationWeight: { type: "number", default: 1.8, min: 0, max: 10, step: 0.1, label: "\u5206\u79BB\u6743\u91CD" },
-        cohesionWeight: { type: "number", default: 0.25, min: 0, max: 5, step: 0.05, label: "\u51DD\u805A\u6743\u91CD" },
-        alignmentWeight: { type: "number", default: 0.35, min: 0, max: 5, step: 0.05, label: "\u5BF9\u9F50\u6743\u91CD" },
-        planeXZ: { type: "boolean", default: true, label: "XZ \u5E73\u9762\u79FB\u52A8" },
-        faceDirection: { type: "boolean", default: true, label: "\u671D\u5411\u79FB\u52A8\u65B9\u5411" }
+        enabled: { type: "boolean", default: true, label: "field.enable" },
+        radius: { type: "number", default: 0.8, min: 0.2, max: 10, step: 0.1, label: "crowd.radius" },
+        maxSpeed: { type: "number", default: 4.5, min: 0.1, max: 50, step: 0.5, label: "crowd.maxSpeed" },
+        separationWeight: { type: "number", default: 1.8, min: 0, max: 10, step: 0.1, label: "crowd.separation" },
+        cohesionWeight: { type: "number", default: 0.25, min: 0, max: 5, step: 0.05, label: "crowd.cohesion" },
+        alignmentWeight: { type: "number", default: 0.35, min: 0, max: 5, step: 0.05, label: "crowd.alignment" },
+        planeXZ: { type: "boolean", default: true, label: "crowd.planeXZ" },
+        faceDirection: { type: "boolean", default: true, label: "crowd.face" }
       }
     };
   }
@@ -4772,27 +4772,27 @@ var init_schema4 = __esm({
     PROJECTILE_CAPABILITY_ID = "projectile";
     PROJECTILE_SCHEMA = {
       type: "object",
-      label: "\u901A\u7528\u5F39\u9053 (Projectile)",
+      label: "projectile.title",
       fields: {
-        enabled: { type: "boolean", default: true, label: "\u542F\u7528" },
+        enabled: { type: "boolean", default: true, label: "field.enable" },
         mode: {
           type: "enum",
           default: "linear",
-          label: "\u5F39\u9053\u6A21\u5F0F",
+          label: "projectile.mode",
           options: [
-            { value: "linear", label: "\u76F4\u7EBF\u98DE\u884C" },
-            { value: "homing", label: "\u81EA\u52A8\u8FFD\u8E2A" },
-            { value: "ballistic", label: "\u629B\u7269\u7EBF" }
+            { value: "linear", label: "projectile.mode.linear" },
+            { value: "homing", label: "projectile.mode.homing" },
+            { value: "ballistic", label: "projectile.mode.ballistic" }
           ]
         },
-        speed: { type: "number", default: 22, min: 0.5, max: 200, step: 1, label: "\u98DE\u884C\u901F\u5EA6 (m/s)" },
-        gravity: { type: "number", default: 9.8, min: 0, max: 50, step: 0.5, label: "\u91CD\u529B\u52A0\u901F\u5EA6" },
-        turnRate: { type: "number", default: 6, min: 0.1, max: 30, step: 0.5, label: "\u8FFD\u8E2A\u8F6C\u5411\u7387 (rad/s)" },
-        maxLifetime: { type: "number", default: 3, min: 0.1, max: 60, step: 0.2, label: "\u6700\u5927\u5BFF\u547D (s)" },
-        hitRadius: { type: "number", default: 0.65, min: 0.05, max: 10, step: 0.05, label: "\u547D\u4E2D\u5224\u5B9A\u534A\u5F84 (m)" },
-        targetTag: { type: "string", default: "enemy", label: "\u76EE\u6807\u6807\u7B7E" },
-        damage: { type: "number", default: 10, min: 0, max: 9999, step: 1, label: "\u4F24\u5BB3\u503C" },
-        destroyOnHit: { type: "boolean", default: true, label: "\u547D\u4E2D\u540E\u56DE\u6C60/\u9500\u6BC1" }
+        speed: { type: "number", default: 22, min: 0.5, max: 200, step: 1, label: "projectile.speed" },
+        gravity: { type: "number", default: 9.8, min: 0, max: 50, step: 0.5, label: "projectile.gravity" },
+        turnRate: { type: "number", default: 6, min: 0.1, max: 30, step: 0.5, label: "projectile.turn" },
+        maxLifetime: { type: "number", default: 3, min: 0.1, max: 60, step: 0.2, label: "projectile.life" },
+        hitRadius: { type: "number", default: 0.65, min: 0.05, max: 10, step: 0.05, label: "projectile.hitRadius" },
+        targetTag: { type: "string", default: "enemy", label: "projectile.targetTag" },
+        damage: { type: "number", default: 10, min: 0, max: 9999, step: 1, label: "projectile.damage" },
+        destroyOnHit: { type: "boolean", default: true, label: "projectile.destroy" }
       }
     };
   }
@@ -5949,15 +5949,572 @@ import { Group } from "three";
 
 // src/core/codeAssets/compiler.ts
 import ts from "typescript";
+
+// src/core/codeAssets/typeDefs.ts
+var CORE_ES_LIB_DTS = `
+declare type PropertyKey = string | number | symbol;
+declare type Partial<T> = { [P in keyof T]?: T[P] };
+declare type Required<T> = { [P in keyof T]-?: T[P] };
+declare type Readonly<T> = { readonly [P in keyof T]: T[P] };
+declare type Pick<T, K extends keyof T> = { [P in K]: T[P] };
+declare type Record<K extends keyof any, T> = { [P in K]: T };
+declare type Exclude<T, U> = T extends U ? never : T;
+declare type Extract<T, U> = T extends U ? T : never;
+declare type Omit<T, K extends keyof any> = Pick<T, Exclude<keyof T, K>>;
+declare type NonNullable<T> = T & {};
+declare type Parameters<T extends (...args: any) => any> = T extends (...args: infer P) => any ? P : never;
+declare type ReturnType<T extends (...args: any) => any> = T extends (...args: any) => infer R ? R : any;
+declare type Awaited<T> = T extends null | undefined ? T : T extends object & { then(onfulfilled: infer F, ...args: any): any } ? F extends (value: infer V, ...args: any) => any ? Awaited<V> : never : T;
+
+interface Symbol { readonly description: string | undefined; toString(): string }
+interface SymbolConstructor { readonly iterator: unique symbol; readonly toStringTag: unique symbol }
+declare var Symbol: SymbolConstructor;
+
+interface IteratorResult<T, TReturn = any> { done?: boolean; value: T }
+interface Iterator<T, TReturn = any, TNext = undefined> { next(...args: [] | [TNext]): IteratorResult<T, TReturn> }
+interface Iterable<T> { [Symbol.iterator](): Iterator<T> }
+interface IterableIterator<T> extends Iterable<T>, Iterator<T> {}
+
+interface Function { apply(this: Function, thisArg: any, argArray?: any): any; call(this: Function, thisArg: any, ...argArray: any[]): any; bind(this: Function, thisArg: any, ...argArray: any[]): any; readonly length: number; readonly name: string }
+interface CallableFunction extends Function {}
+interface NewableFunction extends Function {}
+interface IArguments { [index: number]: any; length: number }
+
+interface Object { constructor: Function; toString(): string; valueOf(): Object; hasOwnProperty(v: PropertyKey): boolean }
+interface ObjectConstructor {
+  keys(o: object): string[];
+  values<T>(o: { [s: string]: T } | ArrayLike<T>): T[];
+  values(o: {}): any[];
+  entries<T>(o: { [s: string]: T } | ArrayLike<T>): [string, T][];
+  entries(o: {}): [string, any][];
+  assign<T extends {}, U>(target: T, source: U): T & U;
+  assign<T extends {}, U, V>(target: T, source1: U, source2: V): T & U & V;
+  assign(target: object, ...sources: any[]): any;
+  fromEntries<T = any>(entries: Iterable<readonly [PropertyKey, T]>): { [k: string]: T };
+  freeze<T>(o: T): Readonly<T>;
+  is(value1: unknown, value2: unknown): boolean;
+}
+declare var Object: ObjectConstructor;
+
+interface ArrayLike<T> { readonly length: number; readonly [n: number]: T }
+
+interface ReadonlyArray<T> {
+  readonly length: number;
+  readonly [n: number]: T;
+  [Symbol.iterator](): IterableIterator<T>;
+  concat(...items: (T | ConcatArray<T>)[]): T[];
+  join(separator?: string): string;
+  slice(start?: number, end?: number): T[];
+  indexOf(searchElement: T, fromIndex?: number): number;
+  lastIndexOf(searchElement: T, fromIndex?: number): number;
+  every(predicate: (value: T, index: number, array: readonly T[]) => unknown, thisArg?: any): boolean;
+  some(predicate: (value: T, index: number, array: readonly T[]) => unknown, thisArg?: any): boolean;
+  forEach(callbackfn: (value: T, index: number, array: readonly T[]) => void, thisArg?: any): void;
+  map<U>(callbackfn: (value: T, index: number, array: readonly T[]) => U, thisArg?: any): U[];
+  filter<S extends T>(predicate: (value: T, index: number, array: readonly T[]) => value is S, thisArg?: any): S[];
+  filter(predicate: (value: T, index: number, array: readonly T[]) => unknown, thisArg?: any): T[];
+  reduce<U = T>(callbackfn: (previousValue: U, currentValue: T, currentIndex: number, array: readonly T[]) => U, initialValue?: U): U;
+  find<S extends T>(predicate: (value: T, index: number, obj: readonly T[]) => value is S, thisArg?: any): S | undefined;
+  find(predicate: (value: T, index: number, obj: readonly T[]) => unknown, thisArg?: any): T | undefined;
+  findIndex(predicate: (value: T, index: number, obj: readonly T[]) => unknown, thisArg?: any): number;
+  includes(searchElement: T, fromIndex?: number): boolean;
+  flat<D extends number = 1>(depth?: D): any[];
+  flatMap<U>(callback: (value: T, index: number, array: readonly T[]) => U | readonly U[]): U[];
+  at(index: number): T | undefined;
+}
+interface ConcatArray<T> { readonly length: number; readonly [n: number]: T; join(separator?: string): string; slice(start?: number, end?: number): T[] }
+
+interface Array<T> {
+  length: number;
+  [n: number]: T;
+  [Symbol.iterator](): IterableIterator<T>;
+  push(...items: T[]): number;
+  pop(): T | undefined;
+  shift(): T | undefined;
+  unshift(...items: T[]): number;
+  splice(start: number, deleteCount?: number, ...items: T[]): T[];
+  slice(start?: number, end?: number): T[];
+  concat(...items: (T | ConcatArray<T>)[]): T[];
+  join(separator?: string): string;
+  reverse(): T[];
+  sort(compareFn?: (a: T, b: T) => number): this;
+  indexOf(searchElement: T, fromIndex?: number): number;
+  lastIndexOf(searchElement: T, fromIndex?: number): number;
+  every(predicate: (value: T, index: number, array: T[]) => unknown, thisArg?: any): boolean;
+  some(predicate: (value: T, index: number, array: T[]) => unknown, thisArg?: any): boolean;
+  forEach(callbackfn: (value: T, index: number, array: T[]) => void, thisArg?: any): void;
+  map<U>(callbackfn: (value: T, index: number, array: T[]) => U, thisArg?: any): U[];
+  filter<S extends T>(predicate: (value: T, index: number, array: T[]) => value is S, thisArg?: any): S[];
+  filter(predicate: (value: T, index: number, array: T[]) => unknown, thisArg?: any): T[];
+  reduce<U = T>(callbackfn: (previousValue: U, currentValue: T, currentIndex: number, array: T[]) => U, initialValue?: U): U;
+  find<S extends T>(predicate: (value: T, index: number, obj: T[]) => value is S, thisArg?: any): S | undefined;
+  find(predicate: (value: T, index: number, obj: T[]) => unknown, thisArg?: any): T | undefined;
+  findIndex(predicate: (value: T, index: number, obj: T[]) => unknown, thisArg?: any): number;
+  includes(searchElement: T, fromIndex?: number): boolean;
+  fill(value: T, start?: number, end?: number): this;
+  flat<D extends number = 1>(depth?: D): any[];
+  flatMap<U>(callback: (value: T, index: number, array: T[]) => U | readonly U[]): U[];
+  at(index: number): T | undefined;
+}
+interface ArrayConstructor {
+  new <T>(...items: T[]): T[];
+  from<T>(iterable: Iterable<T> | ArrayLike<T>): T[];
+  from<T, U>(iterable: Iterable<T> | ArrayLike<T>, mapfn: (v: T, k: number) => U): U[];
+  isArray(arg: any): arg is any[];
+}
+declare var Array: ArrayConstructor;
+
+interface String {
+  readonly length: number;
+  charAt(pos: number): string;
+  charCodeAt(index: number): number;
+  concat(...strings: string[]): string;
+  indexOf(searchString: string, position?: number): number;
+  lastIndexOf(searchString: string, position?: number): number;
+  localeCompare(that: string): number;
+  match(regexp: string | RegExp): RegExpMatchArray | null;
+  replace(searchValue: string | RegExp, replaceValue: string | ((substring: string, ...args: any[]) => string)): string;
+  replaceAll(searchValue: string | RegExp, replaceValue: string | ((substring: string, ...args: any[]) => string)): string;
+  search(regexp: string | RegExp): number;
+  slice(start?: number, end?: number): string;
+  split(separator: string | RegExp, limit?: number): string[];
+  substring(start: number, end?: number): string;
+  toLowerCase(): string;
+  toUpperCase(): string;
+  trim(): string;
+  trimStart(): string;
+  trimEnd(): string;
+  padStart(maxLength: number, fillString?: string): string;
+  padEnd(maxLength: number, fillString?: string): string;
+  startsWith(searchString: string, position?: number): boolean;
+  endsWith(searchString: string, endPosition?: number): boolean;
+  includes(searchString: string, position?: number): boolean;
+  repeat(count: number): string;
+}
+interface StringConstructor { (value?: any): string; fromCharCode(...codes: number[]): string }
+declare var String: StringConstructor;
+
+interface Number { toFixed(fractionDigits?: number): string; toString(radix?: number): string; valueOf(): number }
+interface NumberConstructor { (value?: any): number; isFinite(number: unknown): boolean; isNaN(number: unknown): boolean; isInteger(number: unknown): boolean; parseFloat(string: string): number; parseInt(string: string, radix?: number): number; readonly MAX_VALUE: number; readonly MIN_VALUE: number; readonly NaN: number }
+declare var Number: NumberConstructor;
+
+interface Boolean { valueOf(): boolean }
+interface BooleanConstructor { <T>(value?: T): boolean }
+declare var Boolean: BooleanConstructor;
+
+interface RegExpMatchArray extends Array<string> { index?: number; input?: string }
+interface RegExpExecArray extends Array<string> { index: number; input: string }
+interface RegExp { test(string: string): boolean; exec(string: string): RegExpExecArray | null; readonly source: string; readonly flags: string }
+interface RegExpConstructor { new (pattern: RegExp | string, flags?: string): RegExp; (pattern: RegExp | string, flags?: string): RegExp }
+declare var RegExp: RegExpConstructor;
+
+interface Error { name: string; message: string; stack?: string }
+interface ErrorConstructor { new (message?: string): Error; (message?: string): Error }
+declare var Error: ErrorConstructor;
+
+interface Date { getTime(): number; toISOString(): string; valueOf(): number }
+interface DateConstructor { new (): Date; new (value: number | string): Date; now(): number }
+declare var Date: DateConstructor;
+
+interface Map<K, V> {
+  clear(): void; delete(key: K): boolean; forEach(callbackfn: (value: V, key: K, map: Map<K, V>) => void): void;
+  get(key: K): V | undefined; has(key: K): boolean; set(key: K, value: V): this; readonly size: number;
+  entries(): IterableIterator<[K, V]>; keys(): IterableIterator<K>; values(): IterableIterator<V>; [Symbol.iterator](): IterableIterator<[K, V]>;
+}
+interface MapConstructor { new <K = any, V = any>(entries?: readonly (readonly [K, V])[] | null): Map<K, V> }
+declare var Map: MapConstructor;
+
+interface Set<T> {
+  add(value: T): this; clear(): void; delete(value: T): boolean; forEach(callbackfn: (value: T, value2: T, set: Set<T>) => void): void;
+  has(value: T): boolean; readonly size: number;
+  entries(): IterableIterator<[T, T]>; keys(): IterableIterator<T>; values(): IterableIterator<T>; [Symbol.iterator](): IterableIterator<T>;
+}
+interface SetConstructor { new <T = any>(values?: readonly T[] | null): Set<T> }
+declare var Set: SetConstructor;
+
+interface Promise<T> {
+  then<TResult1 = T, TResult2 = never>(onfulfilled?: ((value: T) => TResult1 | PromiseLike<TResult1>) | null, onrejected?: ((reason: any) => TResult2 | PromiseLike<TResult2>) | null): Promise<TResult1 | TResult2>;
+  catch<TResult = never>(onrejected?: ((reason: any) => TResult | PromiseLike<TResult>) | null): Promise<T | TResult>;
+  finally(onfinally?: (() => void) | null): Promise<T>;
+}
+interface PromiseLike<T> { then<TResult1 = T, TResult2 = never>(onfulfilled?: ((value: T) => TResult1 | PromiseLike<TResult1>) | null, onrejected?: ((reason: any) => TResult2 | PromiseLike<TResult2>) | null): PromiseLike<TResult1 | TResult2> }
+interface PromiseConstructor { new <T>(executor: (resolve: (value: T | PromiseLike<T>) => void, reject: (reason?: any) => void) => void): Promise<T>; resolve<T>(value: T | PromiseLike<T>): Promise<T>; reject<T = never>(reason?: any): Promise<T>; all<T extends readonly unknown[]>(values: T): Promise<{ -readonly [P in keyof T]: Awaited<T[P]> }> }
+declare var Promise: PromiseConstructor;
+
+interface Math {
+  readonly E: number; readonly LN10: number; readonly LN2: number; readonly LOG2E: number; readonly LOG10E: number; readonly PI: number; readonly SQRT1_2: number; readonly SQRT2: number;
+  abs(x: number): number; acos(x: number): number; asin(x: number): number; atan(x: number): number; atan2(y: number, x: number): number;
+  ceil(x: number): number; cos(x: number): number; exp(x: number): number; floor(x: number): number; hypot(...values: number[]): number;
+  log(x: number): number; max(...values: number[]): number; min(...values: number[]): number; pow(x: number, y: number): number;
+  random(): number; round(x: number): number; sign(x: number): number; sin(x: number): number; sqrt(x: number): number; tan(x: number): number; trunc(x: number): number;
+}
+declare var Math: Math;
+
+interface JSON { parse(text: string): any; stringify(value: any, replacer?: any, space?: string | number): string }
+declare var JSON: JSON;
+
+declare var console: { log(...data: any[]): void; warn(...data: any[]): void; error(...data: any[]): void; info(...data: any[]): void };
+declare var performance: { now(): number };
+declare function parseInt(string: string, radix?: number): number;
+declare function parseFloat(string: string): number;
+declare function isNaN(number: number): boolean;
+declare function isFinite(number: number): boolean;
+declare function structuredClone<T>(value: T): T;
+declare var undefined: undefined;
+declare var NaN: number;
+declare var Infinity: number;
+`;
+var RUNTIME_DTS_SUMMARY = `export interface Vec2 { x: number; y: number }
+export interface Vec3 { x: number; y: number; z: number }
+export interface Vec4 { x: number; y: number; z: number; w: number }
+export type ScriptParamSchema =
+  | { type: 'number'; default: number; min?: number; max?: number; step?: number; label: string; description?: string }
+  | { type: 'boolean'; default: boolean; label: string; description?: string }
+  | { type: 'string'; default: string; label: string; description?: string }
+  | { type: 'color'; default: string; label: string; description?: string }
+  | { type: 'vec2'; default: readonly [number, number]; label: string; description?: string }
+  | { type: 'vec3'; default: readonly [number, number, number]; label: string; description?: string }
+  | { type: 'enum'; options: ReadonlyArray<{ value: string; label: string }>; default: string; label: string; description?: string }
+  | { type: 'texture'; default?: string | null; label: string; description?: string }
+  | { type: 'ref'; target: 'node' | 'asset' | 'clip' | 'tableRow'; kinds?: readonly string[]; tableId?: string; default?: string | null; label: string; description?: string }
+  | Record<string, unknown>
+export type ScriptParamMap = Record<string, ScriptParamSchema>
+export interface NodeHandle {
+  readonly id: string; readonly name: string; readonly tags: readonly string[]; readonly parent: NodeHandle | null
+  position: Vec3; rotation: Vec3; scale: Vec3; visible: boolean
+  hasTag(tag: string): boolean
+  addTag(tag: string): void
+  removeTag(tag: string): void
+  getChildren(): readonly NodeHandle[]
+  sendMessage(name: string, payload?: unknown): void
+  getBehavior<T = Record<string, (...args: unknown[]) => unknown>>(behavior: unknown): T | null
+  destroy(): void
+}
+export interface ScriptContext<P = Record<string, unknown>, S = Record<string, unknown>> {
+  readonly node: NodeHandle; readonly params: P; readonly state: S; readonly elapsedTime: number
+  position: Vec3; rotation: Vec3; scale: Vec3; visible: boolean
+  readonly forward: Vec3; readonly right: Vec3
+  distanceTo(target: Vec3 | NodeHandle): number
+  hasTag(tag: string): boolean
+  addTag(tag: string): void
+  removeTag(tag: string): void
+  directionTo(target: Vec3 | NodeHandle, options?: { planeXZ?: boolean }): Vec3
+  translate(delta: Vec3, space?: 'local' | 'world'): void
+  rotateY(radians: number): void
+  moveToward(target: Vec3 | NodeHandle, maxDistance: number, options?: { faceTarget?: boolean; planeXZ?: boolean }): boolean
+  lookAt(target: Vec3 | NodeHandle, options?: { yOnly?: boolean }): void
+  sendMessage(name: string, payload?: unknown): void
+  broadcast(name: string, payload?: unknown): void
+  getBehavior<T = Record<string, (...args: unknown[]) => unknown>>(behavior: unknown): T | null
+  findNodeById(id: string): NodeHandle | null
+  findNodesByTag(tag: string): readonly NodeHandle[]
+  findNodesInRadius(center: Vec3, radius: number, tag?: string): readonly NodeHandle[]
+  cloneNode(templateOrName: string | NodeHandle, options?: { position?: Vec3; rotation?: Vec3; scale?: Vec3; parent?: NodeHandle | string | null; visible?: boolean; name?: string; initMessage?: string; initPayload?: unknown }): NodeHandle | null
+  spawnPrefab(prefabId: string, options?: { position?: Vec3; rotation?: Vec3; name?: string }): NodeHandle | null
+  destroyNode(node: NodeHandle): void
+  readonly pool: {
+    preload(templateOrPrefab: string | NodeHandle, count: number): void
+    acquire(templateOrPrefab: string | NodeHandle, options?: { position?: Vec3; rotation?: Vec3; scale?: Vec3; payload?: unknown }): NodeHandle | null
+    release(node: NodeHandle): void
+    stats(templateOrPrefab?: string | NodeHandle): { active: number; pooled: number; total: number }
+  }
+  after(seconds: number, callback: () => void): number
+  every(seconds: number, callback: () => void): number
+  cancelTimer(timerId: number): void
+  readonly physics: {
+    raycast(origin: Vec3, dir: Vec3, maxDistance: number): { node: NodeHandle; point: Vec3; normal: Vec3; distance: number } | null
+    sphereCast(center: Vec3, radius: number, options?: { tag?: string }): readonly NodeHandle[]
+    applyImpulse(impulse: Vec3): void
+    applyForce(force: Vec3): void
+  }
+  readonly nav: {
+    moveTo(target: Vec3, speed?: number): boolean
+    stop(): void
+    readonly isMoving: boolean
+  }
+  readonly spline: {
+    create(pointsOrParent: string | NodeHandle | ReadonlyArray<Vec3 | NodeHandle>, options?: { closed?: boolean; tension?: number }): {
+      readonly length: number; readonly closed: boolean; readonly points: readonly Vec3[]
+      pointAt(t: number): Vec3; tangentAt(t: number): Vec3
+      pointAtDistance(distance: number): Vec3; tangentAtDistance(distance: number): Vec3
+    }
+    follow(pointsOrParent: string | NodeHandle | ReadonlyArray<Vec3 | NodeHandle>, options?: {
+      speed?: number; closed?: boolean; tension?: number; loop?: boolean; pingPong?: boolean
+      faceDirection?: boolean; planeXZ?: boolean; startProgress?: number; onArrive?: () => void
+    }): boolean
+    stop(): void
+    readonly isFollowing: boolean
+    readonly progress: number
+  }
+  readonly tween: {
+    to(target: NodeHandle | { position?: Vec3; rotation?: Vec3; scale?: Vec3 }, props: { position?: Vec3; rotation?: Vec3; scale?: Vec3 }, duration: number, options?: { ease?: string; delay?: number; repeat?: number; yoyo?: boolean; onUpdate?: (p: number) => void; onComplete?: () => void }): number
+    value(from: number, to: number, duration: number, onUpdate: (val: number) => void, options?: { ease?: string; delay?: number; repeat?: number; yoyo?: boolean; onComplete?: () => void }): number
+    punchScale(strength?: number, duration?: number): number
+    shakePosition(intensity?: number, duration?: number): number
+    cancel(tweenId: number): void
+    cancelAll(): void
+  }
+  readonly curve: {
+    create(keys: ReadonlyArray<readonly [number, number] | { t: number; v: number; mode?: 'linear' | 'smooth' | 'step' }>, options?: { wrap?: 'clamp' | 'loop' | 'pingPong' }): { eval(t: number): number }
+    eval(keys: ReadonlyArray<readonly [number, number] | { t: number; v: number; mode?: 'linear' | 'smooth' | 'step' }>, t: number, options?: { wrap?: 'clamp' | 'loop' | 'pingPong' }): number
+    ease(name: string, t: number): number
+    parabola(t: number, height?: number): number
+    pulse(t: number): number
+  }
+  readonly crowd: {
+    moveTo(target: Vec3 | readonly [number, number, number], options?: { speed?: number; arriveDist?: number; onArrive?: () => void }): void
+    stop(): void
+    readonly isMoving: boolean
+    formation(units: ReadonlyArray<string | NodeHandle>, center: Vec3 | readonly [number, number, number], options?: { formation?: string; spacing?: number; facingYaw?: number; speed?: number; arriveDist?: number }): void
+    stats(): { active: number; total: number }
+  }
+  readonly projectile: {
+    launch(options?: {
+      direction?: Vec3 | readonly [number, number, number]
+      target?: string | NodeHandle | null
+      owner?: string | NodeHandle | null
+      mode?: 'linear' | 'ballistic' | 'homing'
+      speed?: number; gravity?: number; turnRate?: number; maxLifetime?: number
+      hitRadius?: number; targetTag?: string; damage?: number; destroyOnHit?: boolean
+      onHit?: (hitNode: NodeHandle | null, pos: Vec3) => void
+    }): void
+    reset(): void
+  }
+  readonly anim: {
+    playBody(clipName: string, opts?: { loop?: boolean; fade?: number; speed?: number }): void
+    playUpper(clipName: string, opts?: { loop?: boolean; fade?: number; speed?: number }): void
+    stopUpper(fade?: number): void
+  }
+  readonly input: {
+    isPressed(a: string): boolean
+    justPressed(a: string): boolean
+    isKeyPressed(code: string): boolean
+    axis2D(a: string): Vec2
+    /** \u76F8\u5BF9\u5F53\u524D\u76F8\u673A\u7684\u4E16\u754C\u6C34\u5E73\u79FB\u52A8\u65B9\u5411\uFF08y=0\uFF0C\u957F\u5EA6\u4E3A\u8F93\u5165\u5F3A\u5EA6 0~1\uFF09 */
+    moveDirection(a?: string): Vec3
+    pointerDelta(): Vec2
+    pointerPosition(): Vec2
+    wheelDelta(): number
+    isMouseButtonPressed(button: 0 | 1 | 2): boolean
+    justPressedMouseButton(button: 0 | 1 | 2): boolean
+    justReleasedMouseButton(button: 0 | 1 | 2): boolean
+  }
+  readonly audio: {
+    playSfx(id: string, opts?: { volume?: number; pitch?: number }): void
+    playBgm(id: string, opts?: { volume?: number; loop?: boolean }): void
+    stopBgm(): void
+  }
+  readonly fx: {
+    spawn(effectId: string, position: Vec3, options?: { scale?: number; autoDestroySec?: number }): NodeHandle | null
+  }
+  readonly ui: {
+    getVar(k: string): unknown
+    setVar(k: string, v: unknown): void
+    onEvent(eventName: string, handler: (payload?: unknown) => void): () => void
+    showScreen(screenIdOrName: string): void
+    hideScreen(screenIdOrName: string): void
+    toggleScreen(screenIdOrName: string): void
+    isScreenVisible(screenIdOrName: string): boolean
+    worldToScreen(position: Vec3 | NodeHandle): { x: number; y: number; ndcX: number; ndcY: number; visible: boolean } | null
+  }
+  readonly scene: {
+    currentId(): string
+    load(sceneId: string, options?: { spawnPoint?: string }): void
+  }
+  readonly global: {
+    get(key: string): unknown
+    set(key: string, value: unknown): void
+    remove(key: string): void
+  }
+  readonly storage: {
+    get(key: string): unknown
+    set(key: string, value: unknown): void
+    remove(key: string): void
+  }
+  readonly tables: {
+    getRow(tableId: string, rowId: string): Record<string, unknown> | null
+  }
+  log(...args: unknown[]): void
+  warn(...args: unknown[]): void
+}
+export interface GizmosApi {
+  readonly isSelected: boolean
+  line(from: Vec3 | NodeHandle, to: Vec3 | NodeHandle, opts?: { color?: string }): void
+  arrow(from: Vec3 | NodeHandle, dir: Vec3, length?: number, opts?: { color?: string }): void
+  wireSphere(center: Vec3 | NodeHandle, radius: number, opts?: { color?: string }): void
+  wireBox(center: Vec3 | NodeHandle, size: Vec3, opts?: { color?: string }): void
+  disc(center: Vec3 | NodeHandle, radius: number, opts?: { normal?: Vec3; color?: string }): void
+  radiusHandle(paramKey: string, opts?: { center?: Vec3 | NodeHandle; axis?: 'x' | 'y' | 'z'; color?: string }): void
+  positionHandle(paramKey: string, opts?: { color?: string }): void
+}
+export function defineBehavior<P extends ScriptParamMap, S extends Record<string, unknown>>(def: {
+  name: string; description?: string; params?: P; state?: () => S
+  methods?: Record<string, (self: ScriptContext<Record<string, any>, S>, ...args: any[]) => unknown>
+  onStart?: (self: ScriptContext<Record<string, any>, S>) => void
+  onSpawn?: (self: ScriptContext<Record<string, any>, S>, payload?: unknown) => void
+  onUpdate?: (self: ScriptContext<Record<string, any>, S>, dt: number) => void
+  onDestroy?: (self: ScriptContext<Record<string, any>, S>) => void
+  onMessage?: (self: ScriptContext<Record<string, any>, S>, msg: { name: string; payload?: unknown; sender?: NodeHandle }) => void
+  onDrawGizmos?: (self: ScriptContext<Record<string, any>, S>, gizmos: GizmosApi) => void
+}): unknown
+export function defineSystem<S extends Record<string, unknown>>(def: {
+  name: string; description?: string; stage?: 'prePhysics' | 'postPhysics' | 'postAnimation' | 'preRender'; order?: number
+  state?: () => S; createState?: () => S
+  onMount?: (world: Omit<ScriptContext<Record<string, any>, S>, 'node' | 'params' | 'state' | 'position' | 'rotation' | 'scale' | 'visible'>, state: S) => void
+  onInit?: (world: Omit<ScriptContext<Record<string, any>, S>, 'node' | 'params' | 'state' | 'position' | 'rotation' | 'scale' | 'visible'>, state: S) => void
+  onStep?: (world: Omit<ScriptContext<Record<string, any>, S>, 'node' | 'params' | 'state' | 'position' | 'rotation' | 'scale' | 'visible'>, state: S, dt: number) => void
+  onUpdate?: (world: Omit<ScriptContext<Record<string, any>, S>, 'node' | 'params' | 'state' | 'position' | 'rotation' | 'scale' | 'visible'>, state: S, dt: number) => void
+  onDispose?: (world: Omit<ScriptContext<Record<string, any>, S>, 'node' | 'params' | 'state' | 'position' | 'rotation' | 'scale' | 'visible'>, state: S) => void
+  onDestroy?: (world: Omit<ScriptContext<Record<string, any>, S>, 'node' | 'params' | 'state' | 'position' | 'rotation' | 'scale' | 'visible'>, state: S) => void
+}): unknown
+`;
+var SHADER_DTS_SUMMARY = `export interface ShaderNode {
+  add(other: unknown): ShaderNode; sub(other: unknown): ShaderNode; mul(other: unknown): ShaderNode; div(other: unknown): ShaderNode
+  min(other: unknown): ShaderNode; max(other: unknown): ShaderNode; pow(other: unknown): ShaderNode; mod(other: unknown): ShaderNode
+  clamp(min?: unknown, max?: unknown): ShaderNode; abs(): ShaderNode; fract(): ShaderNode; floor(): ShaderNode; ceil(): ShaderNode
+  sin(): ShaderNode; cos(): ShaderNode; sqrt(): ShaderNode; negate(): ShaderNode; oneMinus(): ShaderNode; saturate(): ShaderNode; normalize(): ShaderNode; length(): ShaderNode
+  dot(other: unknown): ShaderNode; cross(other: unknown): ShaderNode
+  readonly x: ShaderNode; readonly y: ShaderNode; readonly z: ShaderNode; readonly w: ShaderNode
+  readonly r: ShaderNode; readonly g: ShaderNode; readonly b: ShaderNode; readonly a: ShaderNode
+  readonly xy: ShaderNode; readonly xyz: ShaderNode; readonly rgb: ShaderNode
+}
+export function defineShader(def: {
+  name: string; description?: string; mode?: 'lit' | 'unlit'; transparent?: boolean; doubleSided?: boolean
+  params?: Record<string, unknown>
+  surface: (params: Record<string, any>) => {
+    baseColor?: unknown; normal?: unknown; roughness?: unknown; metalness?: unknown
+    emissive?: unknown; opacity?: unknown; vertexOffset?: unknown
+  }
+}): unknown
+export function float(x?: number): ShaderNode
+export function vec2(x?: number, y?: number): ShaderNode
+export function vec3(x?: number, y?: number, z?: number): ShaderNode
+export function vec4(x?: number, y?: number, z?: number, w?: number): ShaderNode
+export function color(hexOrR: string | number, g?: number, b?: number): ShaderNode
+export function mix(a: unknown, b: unknown, t: unknown): ShaderNode
+export function clamp(x: unknown, min?: unknown, max?: unknown): ShaderNode
+export function smoothstep(edge0: unknown, edge1: unknown, x: unknown): ShaderNode
+export function step(edge: unknown, x: unknown): ShaderNode
+export function sin(x: unknown): ShaderNode
+export function cos(x: unknown): ShaderNode
+export function tan(x: unknown): ShaderNode
+export function abs(x: unknown): ShaderNode
+export function sign(x: unknown): ShaderNode
+export function floor(x: unknown): ShaderNode
+export function ceil(x: unknown): ShaderNode
+export function fract(x: unknown): ShaderNode
+export function pow(x: unknown, y: unknown): ShaderNode
+export function sqrt(x: unknown): ShaderNode
+export function exp(x: unknown): ShaderNode
+export function log(x: unknown): ShaderNode
+export function saturate(x: unknown): ShaderNode
+export function min(a: unknown, b: unknown): ShaderNode
+export function max(a: unknown, b: unknown): ShaderNode
+export function dot(a: unknown, b: unknown): ShaderNode
+export function cross(a: unknown, b: unknown): ShaderNode
+export function normalize(v: unknown): ShaderNode
+export function length(v: unknown): ShaderNode
+export function distance(a: unknown, b: unknown): ShaderNode
+export function reflect(incident: unknown, normal: unknown): ShaderNode
+export function fwidth(x: unknown): ShaderNode
+export function fresnel(normal: unknown, viewDir: unknown, power?: unknown): ShaderNode
+export function texture(texRef: unknown, uv?: unknown): ShaderNode
+export function uv(index?: number): ShaderNode
+export const time: ShaderNode
+export const deltaTime: ShaderNode
+export const normalView: ShaderNode
+export const normalWorld: ShaderNode
+export const normalLocal: ShaderNode
+export const positionWorld: ShaderNode
+export const positionLocal: ShaderNode
+export const viewDirection: ShaderNode
+export const cameraPosition: ShaderNode
+export const screenUV: ShaderNode
+export function vertexColor(): ShaderNode
+`;
+
+// src/core/codeAssets/compiler.ts
 function diagnosticHint(code, message) {
   if (message.includes("t3d/shader") || message.includes("t3d/runtime")) {
     return '\u8BF7\u786E\u4FDD\u4ECE "t3d/shader" \u6216 "t3d/runtime" \u5BFC\u5165\u767D\u540D\u5355 API';
   }
   if (code === 2304) return "\u5B58\u5728\u672A\u5B9A\u4E49\u7684\u6807\u8BC6\u7B26\uFF0C\u8BF7\u68C0\u67E5\u62FC\u5199\u6216\u4ECE t3d/runtime / t3d/shader \u5BFC\u5165";
+  if (code === 2339) return "\u8BBF\u95EE\u4E86\u5BF9\u8C61\u4E0A\u4E0D\u5B58\u5728\u7684\u5C5E\u6027\u6216\u65B9\u6CD5\uFF0C\u8BF7\u5BF9\u7167 .t3d/runtime.d.ts / .t3d/shader.d.ts \u68C0\u67E5 API \u540D\u79F0";
   if (code === 2322 || code === 2345) return "\u7C7B\u578B\u4E0D\u5339\u914D\uFF0C\u8BF7\u68C0\u67E5\u53C2\u6570\u6216\u8FD4\u56DE\u503C\u7C7B\u578B\u662F\u5426\u7B26\u5408\u5951\u7EA6";
+  if (code === 2554 || code === 2555) return "\u51FD\u6570\u8C03\u7528\u53C2\u6570\u6570\u91CF\u4E0D\u5339\u914D\uFF0C\u8BF7\u68C0\u67E5\u5FC5\u586B\u53C2\u6570";
   return "\u8BF7\u6839\u636E\u62A5\u9519\u884C\u53F7\u4FEE\u6B63\u8BED\u6CD5\u6216\u7C7B\u578B\u9519\u8BEF";
 }
+var LIB_PATH = "/__lib.d.ts";
+var RUNTIME_DTS_PATH = "/node_modules/t3d/runtime.d.ts";
+var SHADER_DTS_PATH = "/node_modules/t3d/shader.d.ts";
+function toCodeDiagnostic(diag, fileName) {
+  const start2 = diag.start ?? 0;
+  const pos = diag.file ? diag.file.getLineAndCharacterOfPosition(start2) : { line: 0, character: 0 };
+  const msg = ts.flattenDiagnosticMessageText(diag.messageText, "\n");
+  return {
+    file: fileName,
+    line: pos.line + 1,
+    column: pos.character + 1,
+    severity: diag.category === ts.DiagnosticCategory.Warning ? "warning" : "error",
+    message: msg,
+    hint: diagnosticHint(diag.code, msg)
+  };
+}
+function runSemanticTypeCheck(fileName, source) {
+  const entryPath = `/__user__/${fileName.replace(/^\/+/, "")}`;
+  const virtualFiles = /* @__PURE__ */ new Map([
+    [LIB_PATH, CORE_ES_LIB_DTS],
+    [RUNTIME_DTS_PATH, RUNTIME_DTS_SUMMARY],
+    [SHADER_DTS_PATH, SHADER_DTS_SUMMARY],
+    [entryPath, source]
+  ]);
+  const compilerOptions = {
+    target: ts.ScriptTarget.ES2022,
+    module: ts.ModuleKind.ESNext,
+    moduleResolution: ts.ModuleResolutionKind.Bundler,
+    strict: true,
+    noImplicitAny: false,
+    skipLibCheck: true,
+    noEmit: true,
+    baseUrl: "/",
+    paths: {
+      "t3d/runtime": [RUNTIME_DTS_PATH],
+      "t3d/shader": [SHADER_DTS_PATH]
+    }
+  };
+  const host = {
+    getSourceFile: (name, languageVersion) => {
+      const content = virtualFiles.get(name);
+      if (content === void 0) return void 0;
+      return ts.createSourceFile(name, content, languageVersion, true);
+    },
+    getDefaultLibFileName: () => LIB_PATH,
+    writeFile: () => {
+    },
+    getCurrentDirectory: () => "/",
+    getDirectories: () => [],
+    fileExists: (name) => virtualFiles.has(name),
+    readFile: (name) => virtualFiles.get(name),
+    getCanonicalFileName: (name) => name,
+    useCaseSensitiveFileNames: () => true,
+    getNewLine: () => "\n",
+    resolveModuleNames: (moduleNames) => moduleNames.map((mod2) => {
+      if (mod2 === "t3d/runtime") return { resolvedFileName: RUNTIME_DTS_PATH, isExternalLibraryImport: true };
+      if (mod2 === "t3d/shader") return { resolvedFileName: SHADER_DTS_PATH, isExternalLibraryImport: true };
+      return void 0;
+    })
+  };
+  const program = ts.createProgram([entryPath], compilerOptions, host);
+  const sourceFile = program.getSourceFile(entryPath);
+  if (!sourceFile) return [];
+  const rawDiags = [
+    ...program.getSyntacticDiagnostics(sourceFile),
+    ...program.getSemanticDiagnostics(sourceFile)
+  ];
+  return rawDiags.map((d) => toCodeDiagnostic(d, fileName));
+}
 function checkAndTranspileTs(fileName, source) {
+  const semanticDiagnostics = runSemanticTypeCheck(fileName, source);
   const compilerOptions = {
     target: ts.ScriptTarget.ES2022,
     module: ts.ModuleKind.CommonJS,
@@ -5971,19 +6528,15 @@ function checkAndTranspileTs(fileName, source) {
     reportDiagnostics: true,
     compilerOptions
   });
-  const diagnostics = (output.diagnostics ?? []).map((diag) => {
-    const start2 = diag.start ?? 0;
-    const pos = diag.file ? diag.file.getLineAndCharacterOfPosition(start2) : { line: 0, character: 0 };
-    const msg = ts.flattenDiagnosticMessageText(diag.messageText, "\n");
-    return {
-      file: fileName,
-      line: pos.line + 1,
-      column: pos.character + 1,
-      severity: diag.category === ts.DiagnosticCategory.Warning ? "warning" : "error",
-      message: msg,
-      hint: diagnosticHint(diag.code, msg)
-    };
-  });
+  const transpileDiags = (output.diagnostics ?? []).map((diag) => toCodeDiagnostic(diag, fileName));
+  const seen = /* @__PURE__ */ new Set();
+  const diagnostics = [];
+  for (const d of [...semanticDiagnostics, ...transpileDiags]) {
+    const key = `${d.line}:${d.column}:${d.message}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    diagnostics.push(d);
+  }
   const hasError = diagnostics.some((d) => d.severity === "error");
   if (hasError) {
     return { ok: false, diagnostics };
@@ -6003,7 +6556,9 @@ function evaluateTranspiledModule(fileName, jsCode, injectedModules) {
     throw new Error(`\u4E0D\u5141\u8BB8\u5BFC\u5165\u672A\u6388\u6743\u6A21\u5757 "${specifier}"\uFF08\u4EC5\u5141\u8BB8 ${Object.keys(injectedModules).join(", ")}\uFF09`);
   };
   try {
-    const fn = new Function("require", "module", "exports", jsCode);
+    const safeUrl = fileName.replace(/[\r\n]/g, "_");
+    const fn = new Function("require", "module", "exports", `${jsCode}
+//# sourceURL=t3d:///${safeUrl}`);
     fn(customRequire, moduleObj, moduleObj.exports);
     const exported = moduleObj.exports.default ?? moduleObj.exports;
     return {
@@ -6332,6 +6887,31 @@ init_fieldSchema();
 var compiledBehaviors = /* @__PURE__ */ new Map();
 var compiledSystems = /* @__PURE__ */ new Map();
 var instanceStates = /* @__PURE__ */ new Map();
+var runtimeErrorCounts = /* @__PURE__ */ new Map();
+function extractShortStack(error) {
+  if (!(error instanceof Error) || !error.stack) return "";
+  const lines = error.stack.split("\n").slice(1).map((line) => line.trim()).filter((line) => line.length > 0);
+  if (lines.length === 0) return "";
+  const scriptFrames = lines.filter((line) => line.includes("t3d:///"));
+  const picked = (scriptFrames.length > 0 ? scriptFrames : lines).slice(0, 3);
+  return `
+  at ${picked.join("\n  at ")}`;
+}
+function reportRuntimeError(phase, scriptId, label, error, nodeId) {
+  const world3 = getRuntimeWorld();
+  const message = error instanceof Error ? error.message : String(error);
+  const key = `${phase}|${scriptId}|${nodeId ?? ""}|${message}`;
+  const count = (runtimeErrorCounts.get(key) ?? 0) + 1;
+  runtimeErrorCounts.set(key, count);
+  const nodeName = nodeId ? world3.getNodes()[nodeId]?.name : void 0;
+  const nodeDesc = nodeId ? ` \u8282\u70B9=${nodeName ? `"${nodeName}"(${nodeId})` : nodeId}` : "";
+  if (count === 1) {
+    const stack = extractShortStack(error);
+    world3.log("error", `[${phase}] ${label} (${scriptId})${nodeDesc}: ${message}${stack}`);
+  } else if (count === 10 || count === 100 || count === 1e3) {
+    world3.log("error", `[${phase}] ${label} (${scriptId})${nodeDesc} \u5DF2\u91CD\u590D\u62A5\u9519 ${count} \u6B21: ${message}`);
+  }
+}
 var messageQueue = [];
 var uiEventHandlers = /* @__PURE__ */ new Map();
 var uiEventQueue = [];
@@ -6783,7 +7363,7 @@ function resetAndInvokeSpawn(nodeId, payload, host) {
         def.onStart?.(ctx);
         def.onSpawn?.(ctx, payload);
       } catch (error) {
-        getRuntimeWorld().log("error", `\u811A\u672C "${def.name}" \u6FC0\u6D3B\u9519\u8BEF: ${error instanceof Error ? error.message : String(error)}`);
+        reportRuntimeError("onSpawn", sid, `\u811A\u672C "${def.name}"`, error, subId);
       }
     }
   }
@@ -8041,7 +8621,7 @@ function compileAndRegisterScript(id, fileName, source) {
           def2.onStep?.(api, sysEntry.state, dt);
           def2.onUpdate?.(api, sysEntry.state, dt);
         } catch (error) {
-          getRuntimeWorld().log("error", `\u7CFB\u7EDF "${def2.name}" \u8FD0\u884C\u9519\u8BEF: ${error instanceof Error ? error.message : String(error)}`);
+          reportRuntimeError("system", id, `\u7CFB\u7EDF "${def2.name}"`, error);
         }
       }
     );
@@ -8108,6 +8688,7 @@ function clearScriptRuntimeState() {
     }
   }
   instanceStates.clear();
+  runtimeErrorCounts.clear();
   messageQueue.length = 0;
   uiEventHandlers.clear();
   uiEventQueue.length = 0;
@@ -8225,14 +8806,17 @@ function stepProjectScripts(dt, host) {
       }
       const ctx = buildScriptContext(node, scriptId, rawParams, rec.state, host);
       measureCost(`script:${scriptId}`, () => {
+        let phase = "onUpdate";
         try {
           if (!rec.started) {
             rec.started = true;
+            phase = "onStart";
             def.onStart?.(ctx);
+            phase = "onUpdate";
           }
           def.onUpdate?.(ctx, dt);
         } catch (error) {
-          world3.log("error", `\u811A\u672C "${def.name}" \u8FD0\u884C\u9519\u8BEF: ${error instanceof Error ? error.message : String(error)}`);
+          reportRuntimeError(phase, scriptId, `\u811A\u672C "${def.name}"`, error, node.id);
         }
       });
     }
@@ -8290,7 +8874,7 @@ function stepProjectScripts(dt, host) {
         try {
           ag.onArrive?.();
         } catch (error) {
-          world3.log("error", `Spline \u5230\u8FBE\u56DE\u8C03\u9519\u8BEF: ${error instanceof Error ? error.message : String(error)}`);
+          reportRuntimeError("spline.onArrive", "spline", "Spline \u5230\u8FBE\u56DE\u8C03", error, ag.nodeId);
         }
       }
     }
@@ -8318,7 +8902,7 @@ function stepProjectScripts(dt, host) {
         tw.apply(eased);
         tw.onUpdate?.(eased);
       } catch (error) {
-        world3.log("error", `Tween \u66F4\u65B0\u9519\u8BEF: ${error instanceof Error ? error.message : String(error)}`);
+        reportRuntimeError("tween.onUpdate", "tween", "Tween \u66F4\u65B0\u56DE\u8C03", error, tw.ownerNodeId);
         activeTweens.delete(tw.id);
         continue;
       }
@@ -8332,7 +8916,7 @@ function stepProjectScripts(dt, host) {
           try {
             tw.onComplete?.();
           } catch (error) {
-            world3.log("error", `Tween \u5B8C\u6210\u56DE\u8C03\u9519\u8BEF: ${error instanceof Error ? error.message : String(error)}`);
+            reportRuntimeError("tween.onComplete", "tween", "Tween \u5B8C\u6210\u56DE\u8C03", error, tw.ownerNodeId);
           }
         }
       }
@@ -8359,7 +8943,7 @@ function stepProjectScripts(dt, host) {
         try {
           timer.callback();
         } catch (error) {
-          world3.log("error", `\u811A\u672C\u5B9A\u65F6\u5668\u56DE\u8C03\u9519\u8BEF: ${error instanceof Error ? error.message : String(error)}`);
+          reportRuntimeError("timer", "timer", "\u811A\u672C\u5B9A\u65F6\u5668\u56DE\u8C03", error, timer.nodeId);
         }
       }
     }
@@ -8379,7 +8963,7 @@ function stepProjectScripts(dt, host) {
         try {
           def.onMessage(ctx, { name: msg.name, payload: msg.payload, sender });
         } catch (error) {
-          world3.log("error", `\u811A\u672C "${def.name}" \u6D88\u606F\u5904\u7406\u9519\u8BEF: ${error instanceof Error ? error.message : String(error)}`);
+          reportRuntimeError(`onMessage:${msg.name}`, rec.scriptId, `\u811A\u672C "${def.name}"`, error, rec.nodeId);
         }
       }
     }
@@ -8395,7 +8979,7 @@ function stepProjectScripts(dt, host) {
           try {
             fn(evt.payload);
           } catch (error) {
-            world3.log("error", `UI \u4E8B\u4EF6 "${evt.eventName}" \u5904\u7406\u9519\u8BEF: ${error instanceof Error ? error.message : String(error)}`);
+            reportRuntimeError(`uiEvent:${evt.eventName}`, instKey, `UI \u4E8B\u4EF6 "${evt.eventName}"`, error, evt.payload.nodeId);
           }
         }
       }
@@ -8821,5 +9405,115 @@ test("compileAndRegisterScript \u6302\u8F7D __project__ \u69FD\u4F4D\u5E76\u652F
   assert.equal(r2.ok, true);
   stepSceneRuntime(1 / 60, host);
   assert.equal(lastCountLog, "count=14");
+  clearScriptRuntimeState();
+});
+test("checkAndTranspileTs \u6267\u884C\u8BED\u4E49\u7C7B\u578B\u68C0\u67E5\u5E76\u8986\u76D6\u5B8C\u6574 RUNTIME_DTS_SUMMARY", () => {
+  for (const key of ["anim", "physics", "nav", "crowd", "projectile", "scene", "getBehavior", "fx", "global", "storage", "tables"]) {
+    assert.ok(RUNTIME_DTS_SUMMARY.includes(key), `RUNTIME_DTS_SUMMARY \u7F3A\u5C11 ${key}`);
+  }
+  const badApi = checkAndTranspileTs(
+    "scripts/bad-api.ts",
+    `
+      import { defineBehavior } from 't3d/runtime'
+      export default defineBehavior({
+        name: 'BadApi',
+        onUpdate(self) {
+          self.anim.nonExistentMethod('idle')
+        },
+      })
+    `
+  );
+  assert.equal(badApi.ok, false);
+  assert.ok(badApi.diagnostics.some((d) => d.message.includes("nonExistentMethod")));
+  const goodApi = checkAndTranspileTs(
+    "scripts/good-api.ts",
+    `
+      import { defineBehavior } from 't3d/runtime'
+      export default defineBehavior({
+        name: 'GoodApi',
+        onStart(self) {
+          self.anim.playBody('idle', { loop: true })
+          self.nav.moveTo({ x: 1, y: 0, z: 2 }, 3)
+          self.crowd.moveTo([1, 0, 2])
+          self.projectile.launch({ speed: 10 })
+          self.physics.applyImpulse({ x: 0, y: 1, z: 0 })
+          const sid = self.scene.currentId()
+          if (sid) self.log(sid)
+        },
+      })
+    `
+  );
+  assert.equal(goodApi.ok, true);
+});
+test("\u8FD0\u884C\u65F6\u62A5\u9519\u5E26\u9636\u6BB5/\u811A\u672C/\u8282\u70B9/\u5806\u6808\u4FE1\u606F\u4E14\u540C\u9519\u8BEF\u81EA\u52A8\u53BB\u91CD", () => {
+  clearScriptRuntimeState();
+  const errScript = `
+    import { defineBehavior } from 't3d/runtime'
+    export default defineBehavior({
+      name: 'Thrower',
+      onUpdate() {
+        throw new Error('boom_test')
+      },
+    })
+  `;
+  const res = compileAndRegisterScript("thrower", "scripts/thrower.ts", errScript);
+  assert.equal(res.ok, true);
+  const nodeObj = new Group();
+  const nodes = {
+    "n-err": {
+      id: "n-err",
+      name: "BuggyBox",
+      kind: "box",
+      parentId: null,
+      position: [0, 0, 0],
+      rotation: [0, 0, 0],
+      scale: [1, 1, 1],
+      visible: true,
+      color: "#ffffff",
+      roughness: 0.5,
+      metalness: 0,
+      assetId: null,
+      materialAssetId: null,
+      slots: [],
+      castShadow: false,
+      receiveShadow: true,
+      gameplay: { packs: { __project__: { thrower: {} } } }
+    }
+  };
+  const errorLogs = [];
+  setRuntimeWorld({
+    getNodes: () => nodes,
+    setNodes: () => {
+    },
+    updateNode: () => {
+    },
+    getActiveSceneId: () => "default",
+    getPicture: () => ({}),
+    getCapabilities: () => ({}),
+    getGameplayPacks: () => ["core"],
+    getGameDatabase: () => ({ tables: {} }),
+    getTags: () => [],
+    getAsset: () => void 0,
+    listAssets: () => [],
+    getPlayState: () => "playing",
+    markPlayDirty: () => {
+    },
+    log: (lvl, msg) => {
+      if (lvl === "error") errorLogs.push(msg);
+    }
+  });
+  const host = {
+    ready: true,
+    resolveObject: (id) => id === "n-err" ? nodeObj : null,
+    updateAnimations: () => {
+    }
+  };
+  for (let i = 0; i < 5; i += 1) stepSceneRuntime(1 / 60, host);
+  assert.equal(errorLogs.length, 1);
+  assert.ok(errorLogs[0].includes("[onUpdate]"));
+  assert.ok(errorLogs[0].includes("BuggyBox"));
+  assert.ok(errorLogs[0].includes("n-err"));
+  assert.ok(errorLogs[0].includes("boom_test"));
+  assert.ok(errorLogs[0].includes("scripts/thrower.ts"));
   clearScriptRuntimeState();
 });
