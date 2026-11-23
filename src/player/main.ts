@@ -14,6 +14,7 @@ import {
   CylinderGeometry,
   DirectionalLight,
   DoubleSide,
+  EquirectangularReflectionMapping,
   Fog,
   FrontSide,
   Group,
@@ -46,10 +47,14 @@ import {
   Vector3,
 } from 'three'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
+import { RGBELoader } from 'three/addons/loaders/RGBELoader.js'
+import { EXRLoader } from 'three/addons/loaders/EXRLoader.js'
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js'
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js'
 import { WebGPURenderer } from 'three/webgpu'
 import { normalizeCapabilities, syncCapabilityRuntimes } from '../capabilities/registry'
+import { SKY_CAPABILITY_ID } from '../capabilities/sky/defaults'
+import { skyFogActive } from '../capabilities/sky/session'
 import { compileShaderSource, buildMaterialFromShader, registerShaderTextureResolver, type CompiledShaderAsset } from '../core/codeAssets/shaderRuntime'
 import { clearScriptRuntimeState, compileAndRegisterScript } from '../core/codeAssets/scriptRuntime'
 import {
@@ -61,20 +66,31 @@ import {
 import type { BuildLoadingConfig, BuildSettings } from '../core/project/buildSettings'
 import type { PbrSlot, SceneNode, ScenePicture, Vec3 } from '../editor/scene/types'
 import type { GameDatabase } from '../gameplay/types'
+import type { HumanoidRetargetAdjust } from '../runtime/animation/humanoidAdjust'
+import { mergedHumanoidSlots, preserveHumanoidAvatarOverrides, type ModelHumanoidAvatar } from '../runtime/animation/humanoidAvatar'
+import { bindHumanoidClip } from '../runtime/animation/humanoidRetarget'
+import { describeHumanoid, type ModelHumanoid } from '../runtime/animation/humanoidRig'
+import { lockClipInPlace, maskClip } from '../runtime/animation/playback'
 import { attachAudioListener } from '../runtime/audio'
 import '../runtime/camera'
 import '../runtime/character'
 import '../runtime/locomotion'
 import '../runtime/devices'
+import { RuntimePicturePipeline } from '../runtime/picturePipeline'
+import { bumpPlayerUiScene, mountPlayerUiOverlay } from '../runtime/playerUiOverlay'
 import '../runtime/rules'
 import { stepSceneRuntime, type SceneRuntimeHost } from '../runtime/sceneRuntime'
 import '../runtime/soundSource'
+import { createVolumeLight } from '../runtime/volumeLight'
 import { setRuntimeWorld, type RuntimeAssetSummary, type RuntimeRenderContext, type RuntimeWorld } from '../runtime/world'
 
 interface ExportedAssetEntry extends RuntimeAssetSummary {
   fileName?: string
   importScale?: number
+  humanoidAvatar?: ModelHumanoidAvatar | null
+  humanoidRetarget?: HumanoidRetargetAdjust | null
   slot?: PbrSlot
+  slots?: PbrSlot[]
   document?: unknown
   nodes?: Record<string, SceneNode>
 }
@@ -111,19 +127,26 @@ const DEG_TO_RAD = Math.PI / 180
 class PlayerAssetManager {
   private readonly gltfLoader = new GLTFLoader()
   private readonly texLoader = new TextureLoader()
-  private readonly modelCache = new Map<string, { scene: Group; clips: AnimationClip[] }>()
+  private readonly hdrLoader = new RGBELoader()
+  private readonly exrLoader = new EXRLoader()
+  private readonly modelCache = new Map<string, { scene: Group; clips: AnimationClip[]; humanoid: ModelHumanoid }>()
   private readonly texCache = new Map<string, Texture>()
   private readonly linearTexCache = new Map<string, Texture>()
+  private readonly envCache = new Map<string, Texture>()
   private readonly pending = new Map<string, Promise<void>>()
 
-  constructor(private readonly assets: Record<string, ExportedAssetEntry>) {
+  constructor(readonly assets: Record<string, ExportedAssetEntry>) {
     this.gltfLoader.setMeshoptDecoder(MeshoptDecoder)
   }
 
-  getModelClone(assetId: string): { scene: Object3D; clips: AnimationClip[] } | null {
+  getModelClone(assetId: string): { scene: Object3D; clips: AnimationClip[]; humanoid: ModelHumanoid } | null {
     const tpl = this.modelCache.get(assetId)
     if (!tpl) return null
-    return { scene: cloneSkinned(tpl.scene), clips: tpl.clips }
+    return { scene: cloneSkinned(tpl.scene), clips: tpl.clips, humanoid: tpl.humanoid }
+  }
+
+  getModelTemplate(assetId: string) {
+    return this.modelCache.get(assetId) ?? null
   }
 
   getClips(assetId: string): AnimationClip[] {
@@ -143,8 +166,13 @@ class PlayerAssetManager {
     return linear
   }
 
+  getEnvironment(assetId: string | null | undefined): Texture | null {
+    if (!assetId) return null
+    return this.envCache.get(assetId) ?? null
+  }
+
   async ensureAsset(assetId: string): Promise<void> {
-    if (this.modelCache.has(assetId) || this.texCache.has(assetId)) return
+    if (this.modelCache.has(assetId) || this.texCache.has(assetId) || this.envCache.has(assetId)) return
     const inflight = this.pending.get(assetId)
     if (inflight) return inflight
 
@@ -155,7 +183,9 @@ class PlayerAssetManager {
       try {
         if (asset.kind === 'model' || asset.kind === 'animation') {
           const gltf = await this.gltfLoader.loadAsync(asset.url!)
-          this.modelCache.set(assetId, { scene: gltf.scene, clips: gltf.animations ?? [] })
+          const clips = gltf.animations ?? []
+          const humanoid = describeHumanoid(gltf.scene, clips)
+          this.modelCache.set(assetId, { scene: gltf.scene, clips, humanoid })
         } else if (asset.kind === 'texture') {
           const lower = (asset.fileName || asset.url || '').toLowerCase()
           if (lower.endsWith('.ktx2') || lower.endsWith('.tga')) return
@@ -166,6 +196,12 @@ class PlayerAssetManager {
           tex.wrapT = RepeatWrapping
           tex.needsUpdate = true
           this.texCache.set(assetId, tex)
+        } else if (asset.kind === 'environment') {
+          const ext = (asset.fileName || asset.url || '').split('.').pop()?.toLowerCase()
+          const primary = ext === 'exr' ? this.exrLoader.loadAsync(asset.url!) : this.hdrLoader.loadAsync(asset.url!)
+          const tex = await (ext === 'env' ? primary.catch(() => this.exrLoader.loadAsync(asset.url!)) : primary)
+          tex.mapping = EquirectangularReflectionMapping
+          this.envCache.set(assetId, tex)
         }
       } catch (err) {
         console.warn(`[T3D Player] 资源加载失败 (${asset.name}):`, err)
@@ -184,7 +220,7 @@ class PlayerAssetManager {
   ): Promise<void> {
     const targets = assetIds.filter((id) => {
       const a = this.assets[id]
-      return Boolean(a?.url && (a.kind === 'model' || a.kind === 'animation' || a.kind === 'texture'))
+      return Boolean(a?.url && (a.kind === 'model' || a.kind === 'animation' || a.kind === 'texture' || a.kind === 'environment'))
     })
     const total = targets.length
     if (total === 0) {
@@ -319,45 +355,88 @@ interface PlayerAnimEntry {
   actions: Map<string, AnimationAction>
   activeKey: string | null
   activeAction: AnimationAction | null
-  boneNameMap: Map<string, string>
+  upperKey: string | null
+  upperAction: AnimationAction | null
 }
 
-function normalizeBoneKey(name: string): string {
-  return name
-    .replace(/^mixamorig\d*:/i, '')
-    .replace(/^Armature\|/i, '')
-    .replace(/^.*\|/, '')
-    .replace(/^.*\//, '')
-    .toLowerCase()
+function resolvePlayerClipAndAsset(
+  ownerAssetId: string,
+  clipOrAsset: string,
+  explicitAssetId: string | null | undefined,
+  assetMgr: PlayerAssetManager,
+): { clip: AnimationClip; sourceId: string } | null {
+  const raw = (clipOrAsset ?? '').trim()
+  if (!raw) return null
+
+  const findInAsset = (id: string, name: string): AnimationClip | undefined => {
+    const clips = assetMgr.getClips(id)
+    return clips.find((c) => c.name === name) ?? (id !== ownerAssetId && clips.length === 1 ? clips[0] : undefined)
+  }
+
+  if (explicitAssetId) {
+    const hit = findInAsset(explicitAssetId, raw)
+    if (hit) return { clip: hit, sourceId: explicitAssetId }
+  }
+
+  // 1. 角色自身模型包含该剪辑
+  const selfHit = findInAsset(ownerAssetId, raw)
+  if (selfHit) return { clip: selfHit, sourceId: ownerAssetId }
+
+  // 2. 在工程所有 animation / model 资产中按剪辑名查找（优先 animation 资产）
+  const entries = Object.values(assetMgr.assets)
+  for (const kind of ['animation', 'model'] as const) {
+    for (const a of entries) {
+      if (a.kind !== kind) continue
+      const clips = assetMgr.getClips(a.id)
+      const hit = clips.find((c) => c.name === raw)
+      if (hit) return { clip: hit, sourceId: a.id }
+    }
+  }
+
+  // 3. 兜底：若传入的是动画资产 ID 或资产名，则取其首个剪辑
+  const byAsset = assetMgr.assets[raw]
+    ?? entries.find((a) => (a.kind === 'animation' || a.kind === 'model') && a.name === raw)
+  if (byAsset && (byAsset.kind === 'animation' || byAsset.kind === 'model')) {
+    const first = assetMgr.getClips(byAsset.id)[0]
+    if (first) return { clip: first, sourceId: byAsset.id }
+  }
+
+  return null
 }
 
-function buildBoneNameMap(root: Object3D): Map<string, string> {
-  const map = new Map<string, string>()
-  root.traverse((obj) => {
-    if (!obj.name) return
-    const key = normalizeBoneKey(obj.name)
-    if (key && !map.has(key)) map.set(key, obj.name)
-  })
-  return map
-}
-
-function bindClipToTarget(clip: AnimationClip, entry: PlayerAnimEntry): AnimationClip {
-  let changed = false
-  const tracks = clip.tracks.map((track) => {
-    const dot = track.name.indexOf('.')
-    if (dot <= 0) return track
-    const nodePart = track.name.slice(0, dot)
-    const propPart = track.name.slice(dot)
-    if (entry.rootScene.getObjectByName(nodePart)) return track
-    const mapped = entry.boneNameMap.get(normalizeBoneKey(nodePart))
-    if (!mapped || mapped === nodePart) return track
-    changed = true
-    const cloned = track.clone()
-    cloned.name = `${mapped}${propPart}`
-    return cloned
-  })
-  if (!changed) return clip
-  return new AnimationClip(clip.name, clip.duration, tracks, clip.blendMode)
+function buildBoundClip(
+  rawClip: AnimationClip,
+  sourceId: string,
+  ownerAssetId: string,
+  assetMgr: PlayerAssetManager,
+  mask: 'full' | 'upper' | 'lower' = 'full',
+  inPlace = false,
+): AnimationClip {
+  let clip = rawClip
+  if (sourceId !== ownerAssetId) {
+    const targetTpl = assetMgr.getModelTemplate(ownerAssetId)
+    const sourceTpl = assetMgr.getModelTemplate(sourceId)
+    const targetAsset = assetMgr.assets[ownerAssetId]
+    const sourceAsset = assetMgr.assets[sourceId]
+    if (targetTpl?.humanoid.profile) {
+      const targetAvatar = preserveHumanoidAvatarOverrides(targetTpl.humanoid.avatar, targetAsset?.humanoidAvatar) ?? targetTpl.humanoid.avatar
+      const sourceAvatar = preserveHumanoidAvatarOverrides(sourceTpl?.humanoid.avatar, sourceAsset?.humanoidAvatar) ?? sourceTpl?.humanoid.avatar
+      const bound = bindHumanoidClip({
+        clip: rawClip,
+        sourceProfile: sourceTpl?.humanoid.profile ?? null,
+        sourceSkeletons: sourceTpl?.humanoid.skeletons ?? [],
+        sourceAvatar,
+        targetProfile: targetTpl.humanoid.profile,
+        targetSlots: mergedHumanoidSlots(targetAvatar),
+        adjust: targetAsset?.humanoidRetarget ?? null,
+      })
+      if (bound) clip = bound
+    }
+  }
+  if (mask === 'upper') clip = maskClip(clip, 'upperBody')
+  else if (mask === 'lower') clip = maskClip(clip, 'lowerBody')
+  if (inPlace) clip = lockClipInPlace(clip)
+  return clip
 }
 
 function resolveSlotData(slot: PbrSlot, assets: Record<string, ExportedAssetEntry>): PbrSlot {
@@ -511,7 +590,8 @@ function applyPlayerModelMaterials(
   assetMgr: PlayerAssetManager,
   assets: Record<string, ExportedAssetEntry>,
 ) {
-  const slots = Array.isArray(node.slots) ? node.slots : []
+  const assetSlots = node.assetId && Array.isArray(assets[node.assetId]?.slots) ? assets[node.assetId]!.slots! : []
+  const slots = Array.isArray(node.slots) && node.slots.length > 0 ? node.slots : assetSlots
   const overrides = node.partOverrides
   const hiddenSet = new Set(node.hiddenParts ?? [])
   const hasSlotOrMat = slots.length > 0 || Boolean(node.materialAssetId) || Boolean(overrides && Object.keys(overrides).length > 0)
@@ -569,18 +649,13 @@ function playBodyOnEntry(
   assetMgr: PlayerAssetManager,
   options?: { assetId?: string | null; loop?: boolean; fade?: number; speed?: number },
 ) {
-  if (!clipName) return
-  const sourceId = options?.assetId || entry.ownerAssetId
-  const clips = assetMgr.getClips(sourceId)
-  const rawClip = clips.find((c) => c.name === clipName)
-    ?? (sourceId !== entry.ownerAssetId && clips.length === 1 ? clips[0] : undefined)
-    ?? (sourceId !== entry.ownerAssetId ? assetMgr.getClips(entry.ownerAssetId).find((c) => c.name === clipName) : undefined)
-  if (!rawClip) return
+  const resolved = resolvePlayerClipAndAsset(entry.ownerAssetId, clipName, options?.assetId, assetMgr)
+  if (!resolved) return
 
-  const key = `${sourceId}\0${rawClip.name}`
+  const key = `body\0${resolved.sourceId}\0${resolved.clip.name}`
   let action = entry.actions.get(key)
   if (!action) {
-    const bound = sourceId !== entry.ownerAssetId ? bindClipToTarget(rawClip, entry) : rawClip
+    const bound = buildBoundClip(resolved.clip, resolved.sourceId, entry.ownerAssetId, assetMgr, 'full', false)
     action = entry.mixer.clipAction(bound)
     entry.actions.set(key, action)
   }
@@ -609,6 +684,53 @@ function playBodyOnEntry(
   }
   entry.activeKey = key
   entry.activeAction = action
+}
+
+function playUpperOnEntry(
+  entry: PlayerAnimEntry,
+  clipName: string,
+  assetMgr: PlayerAssetManager,
+  options?: { assetId?: string | null; loop?: boolean; fade?: number; speed?: number },
+) {
+  const resolved = resolvePlayerClipAndAsset(entry.ownerAssetId, clipName, options?.assetId, assetMgr)
+  if (!resolved) return
+
+  const key = `upper\0${resolved.sourceId}\0${resolved.clip.name}`
+  let action = entry.actions.get(key)
+  if (!action) {
+    const bound = buildBoundClip(resolved.clip, resolved.sourceId, entry.ownerAssetId, assetMgr, 'upper', false)
+    action = entry.mixer.clipAction(bound)
+    entry.actions.set(key, action)
+  }
+
+  const loop = options?.loop === true
+  action.setLoop(loop ? LoopRepeat : LoopOnce, loop ? Infinity : 1)
+  action.clampWhenFinished = !loop
+  action.setEffectiveTimeScale(options?.speed ?? 1)
+  action.setEffectiveWeight(1)
+
+  const fade = Math.max(0, options?.fade ?? 0.12)
+  const prev = entry.upperAction
+  action.reset()
+  action.enabled = true
+  action.paused = false
+  action.play()
+  if (prev && prev !== action && fade > 0) {
+    prev.crossFadeTo(action, fade, false)
+  } else if (prev && prev !== action) {
+    prev.stop()
+  }
+  entry.upperKey = key
+  entry.upperAction = action
+}
+
+function stopUpperOnEntry(entry: PlayerAnimEntry, fade = 0.15) {
+  const prev = entry.upperAction
+  if (!prev) return
+  if (fade > 0) prev.fadeOut(fade)
+  else prev.stop()
+  entry.upperKey = null
+  entry.upperAction = null
 }
 
 function buildStandaloneWorld(
@@ -643,15 +765,33 @@ function buildStandaloneWorld(
     getGameplayPacks: () => gameplayPacks,
     getGameDatabase: () => gameDatabase,
     clipDuration: (assetId, clipName) => {
-      if (!assetId || !clipName) return 0
-      const clips = assetMgr.getClips(assetId)
-      const hit = clips.find((c) => c.name === clipName) ?? (clips.length === 1 ? clips[0] : undefined)
-      return hit?.duration ?? 0
+      if (!clipName) return 0
+      if (assetId) {
+        const clips = assetMgr.getClips(assetId)
+        const hit = clips.find((c) => c.name === clipName) ?? (clips.length === 1 ? clips[0] : undefined)
+        if (hit) return hit.duration
+      }
+      for (const a of Object.values(assets)) {
+        if (a.kind !== 'animation' && a.kind !== 'model') continue
+        const hit = assetMgr.getClips(a.id).find((c) => c.name === clipName)
+        if (hit) return hit.duration
+      }
+      return 0
     },
     playBody: (nodeId, clipName, options) => {
       const entry = getAnimEntry(nodeId)
       if (!entry) return
       playBodyOnEntry(entry, clipName, assetMgr, options)
+    },
+    playUpper: (nodeId, clipName, options) => {
+      const entry = getAnimEntry(nodeId)
+      if (!entry) return
+      playUpperOnEntry(entry, clipName, assetMgr, options)
+    },
+    stopUpper: (nodeId, fade) => {
+      const entry = getAnimEntry(nodeId)
+      if (!entry) return
+      stopUpperOnEntry(entry, fade)
     },
     getTags: () => [],
     getAsset: (id) => assets[id],
@@ -737,13 +877,16 @@ function mountSceneObjects(
           actions: new Map(),
           activeKey: null,
           activeAction: null,
-          boneNameMap: buildBoneNameMap(modelClone.scene),
+          upperKey: null,
+          upperAction: null,
         }
         animEntries.set(node.id, entry)
         const animState = node.animator?.enabled && node.animator.defaultStateId
           ? node.animator.states?.find((s) => s.id === node.animator!.defaultStateId)
           : undefined
-        const initClip = animState?.clip ?? node.clip
+        const charIdle = node.gameplay?.character?.enabled ? node.gameplay.character.idleClip : undefined
+        const locoIdle = node.gameplay?.locomotion?.enabled ? node.gameplay.locomotion.idleClip : undefined
+        const initClip = animState?.clip || node.clip || charIdle || locoIdle || ''
         if (initClip && node.clipPlaying !== false) {
           playBodyOnEntry(entry, initClip, assetMgr, {
             assetId: animState?.clipAssetId ?? node.clipAssetId,
@@ -752,25 +895,35 @@ function mountSceneObjects(
             speed: animState?.speed ?? node.clipSpeed ?? 1,
           })
         }
+        if (node.overlayClip && node.overlayPlaying) {
+          playUpperOnEntry(entry, node.overlayClip, assetMgr, {
+            assetId: node.overlayAssetId,
+            loop: node.overlayLoop === true,
+            fade: node.clipFade ?? 0.15,
+          })
+        }
       }
     } else if (node.kind === 'directional-light') {
       const light = new DirectionalLight(node.color || '#ffffff', node.intensity ?? 2)
       light.castShadow = Boolean(node.castShadow)
-      light.shadow.mapSize.set(1024, 1024)
+      light.shadow.mapSize.set(2048, 2048)
+      const distance = Math.max(node.range ?? 20, 4)
       light.shadow.camera.near = 0.5
-      light.shadow.camera.far = 120
-      light.shadow.camera.left = -28
-      light.shadow.camera.right = 28
-      light.shadow.camera.top = 28
-      light.shadow.camera.bottom = -28
+      light.shadow.camera.far = distance * 4
+      light.shadow.camera.left = -distance
+      light.shadow.camera.right = distance
+      light.shadow.camera.top = distance
+      light.shadow.camera.bottom = -distance
       if (typeof node.shadowBias === 'number') light.shadow.bias = node.shadowBias
       if (typeof node.shadowNormalBias === 'number') light.shadow.normalBias = node.shadowNormalBias
-      light.target.position.set(0, 0, -1)
+      light.target.position.set(0, -1, 0)
       group.add(light)
       group.add(light.target)
     } else if (node.kind === 'point-light') {
       const light = new PointLight(node.color || '#ffffff', node.intensity ?? 2, node.range ?? 15, node.decay ?? 2)
       light.castShadow = Boolean(node.castShadow)
+      if (typeof node.shadowBias === 'number') light.shadow.bias = node.shadowBias
+      if (typeof node.shadowNormalBias === 'number') light.shadow.normalBias = node.shadowNormalBias
       group.add(light)
     } else if (node.kind === 'spot-light') {
       const light = new SpotLight(
@@ -783,7 +936,8 @@ function mountSceneObjects(
       )
       light.castShadow = Boolean(node.castShadow)
       if (typeof node.shadowBias === 'number') light.shadow.bias = node.shadowBias
-      light.target.position.set(0, 0, -1)
+      if (typeof node.shadowNormalBias === 'number') light.shadow.normalBias = node.shadowNormalBias
+      light.target.position.set(0, -1, 0)
       group.add(light)
       group.add(light.target)
     } else if (node.kind === 'hemisphere-light') {
@@ -838,15 +992,53 @@ function toneMappingOfPlayer(mode: ScenePicture['toneMapping'] | undefined) {
   return ACESFilmicToneMapping
 }
 
-function applyPlayerPicture(renderer: WebGPURenderer, scene: Scene, picture: ScenePicture) {
-  scene.background = new Color(picture.background || '#181d26')
+function applyPlayerPicture(
+  renderer: WebGPURenderer,
+  scene: Scene,
+  picture: ScenePicture,
+  assetMgr: PlayerAssetManager,
+  capabilities: Record<string, boolean>,
+  volume: ReturnType<typeof createVolumeLight>,
+) {
+  if (!capabilities[SKY_CAPABILITY_ID]) {
+    const env = assetMgr.getEnvironment(picture.envAssetId)
+    if (env) {
+      scene.environment = env
+      scene.background = env
+    } else {
+      scene.environment = null
+      scene.background = new Color(picture.background || '#181d26')
+    }
+  }
   renderer.toneMapping = toneMappingOfPlayer(picture.toneMapping)
   renderer.toneMappingExposure = typeof picture.exposure === 'number' ? picture.exposure : 1.05
-  if (picture.fog) {
+  volume.sync(picture)
+  if (picture.fog && !skyFogActive()) {
     scene.fog = new Fog(picture.fogColor || '#181d26', picture.fogNear ?? 15, picture.fogFar ?? 85)
   } else {
     scene.fog = null
   }
+}
+
+function applyInitialSceneCamera(
+  camera: PerspectiveCamera,
+  nodes: Record<string, SceneNode>,
+  mountedMap: Map<string, Group>,
+) {
+  const camNodes = Object.values(nodes).filter((n) => n.kind === 'camera' && n.visible !== false)
+  if (camNodes.length === 0) return
+  const mainCam = camNodes.find((n) => n.tagId === 'main-camera' || n.tagId === 'MainCamera') ?? camNodes[0]
+  if (!mainCam) return
+  const obj = mountedMap.get(mainCam.id)
+  if (obj) {
+    obj.updateWorldMatrix(true, false)
+    obj.getWorldPosition(camera.position)
+    obj.getWorldQuaternion(camera.quaternion)
+  }
+  camera.fov = mainCam.fov ?? 55
+  camera.near = Math.max(0.001, mainCam.near ?? 0.1)
+  camera.far = Math.max(camera.near + 0.01, mainCam.far ?? 1000)
+  camera.updateProjectionMatrix()
 }
 
 async function createRenderer(
@@ -931,11 +1123,17 @@ async function boot() {
   await syncCapabilityRuntimes(world.getCapabilities())
 
   const { renderer, canvas } = await createRenderer(rootEl, canvasStyle)
+  const picturePipeline = new RuntimePicturePipeline(renderer, {
+    onError: (msg) => console.error('[T3D Player]', msg),
+  })
+  const volume = createVolumeLight()
   const scene = new Scene()
+  scene.add(volume.mesh)
   const camera = new PerspectiveCamera(55, window.innerWidth / Math.max(1, window.innerHeight), 0.1, 1000)
   camera.position.set(0, 4, 8)
   camera.lookAt(0, 1, 0)
   attachAudioListener(camera)
+  mountPlayerUiOverlay(rootEl)
 
   const preloadMode = payload.buildSettings?.preloadMode ?? 'entry-scene'
   const entryId = payload.entrySceneId ?? payload.activeSceneId ?? 'default'
@@ -965,16 +1163,22 @@ async function boot() {
   }
 
   mounted = mountSceneObjects(scene, world.getNodes(), assetMgr, assets)
-  applyPlayerPicture(renderer, scene, world.getPicture())
+  applyInitialSceneCamera(camera, world.getNodes(), mounted.map)
+  applyPlayerPicture(renderer, scene, world.getPicture(), assetMgr, world.getCapabilities(), volume)
+  bumpPlayerUiScene()
 
   // 进场前先触发一次能力包挂载钩子（如水体、天空），再统一预编译着色器
   for (const item of beforeRenderHooks) {
     item.hook({ renderer, scene, camera, dt: 0 })
   }
-  const maybeCompileAsync = (renderer as unknown as { compileAsync?: (s: Scene, c: PerspectiveCamera) => Promise<void> }).compileAsync
-  if (typeof maybeCompileAsync === 'function') {
-    await maybeCompileAsync.call(renderer, scene, camera).catch(() => undefined)
+  const initW = window.innerWidth
+  const initH = Math.max(1, window.innerHeight)
+  const initPic = world.getPicture()
+  const initEffects = picturePipeline.usesEffects(initPic)
+  if (initEffects) {
+    picturePipeline.render(scene, camera, initPic, initW, initH)
   }
+  await picturePipeline.precompile(scene, camera, initEffects).catch(() => undefined)
   await overlay.hide()
 
   // 若选择仅预加载初始场景，则进入后在空闲时后台预热其余场景资源
@@ -1015,10 +1219,15 @@ async function boot() {
           compileAndRegisterScript(script.id, script.relativePath, script.source)
         }
         mounted = mountSceneObjects(scene, world.getNodes(), assetMgr, assets)
-        applyPlayerPicture(renderer, scene, world.getPicture())
-        if (typeof maybeCompileAsync === 'function') {
-          await maybeCompileAsync.call(renderer, scene, camera).catch(() => undefined)
+        applyInitialSceneCamera(camera, world.getNodes(), mounted.map)
+        applyPlayerPicture(renderer, scene, world.getPicture(), assetMgr, world.getCapabilities(), volume)
+        bumpPlayerUiScene()
+        const pic = world.getPicture()
+        const useFx = picturePipeline.usesEffects(pic)
+        if (useFx) {
+          picturePipeline.render(scene, camera, pic, window.innerWidth, Math.max(1, window.innerHeight))
         }
+        await picturePipeline.precompile(scene, camera, useFx).catch(() => undefined)
         if (loadingCfg.enabled && loadingCfg.showOnSceneSwitch) {
           await overlay.hide()
         }
@@ -1224,7 +1433,12 @@ async function boot() {
       item.hook({ renderer, scene, camera, dt })
     }
     if (!switchingScene) stepSceneRuntime(dt, host)
-    renderer.render(scene, camera)
+    const pic = world.getPicture()
+    if (picturePipeline.usesEffects(pic)) {
+      picturePipeline.render(scene, camera, pic, window.innerWidth, Math.max(1, window.innerHeight))
+    } else {
+      renderer.render(scene, camera)
+    }
     requestAnimationFrame(frame)
   }
   requestAnimationFrame(frame)

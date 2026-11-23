@@ -9,7 +9,7 @@ import {
 import { diagnoseProject } from '../core/query/diagnose'
 import { readModelArtifact } from '../editor/assets/cache'
 import { useAssetStore, type ProjectAsset, type SceneAsset } from '../editor/assets/library'
-import { loadModelTemplate } from '../editor/assets/models'
+import { getModelTemplate, loadModelTemplate } from '../editor/assets/models'
 import { assetRecord, directoryProjectName, readAssetBytes } from '../editor/project/disk'
 import { electronBridge, joinProjectPath } from '../editor/project/electronBridge'
 import { useEditorStore } from '../editor/scene/store'
@@ -137,8 +137,12 @@ export function collectSceneDependencies(
     if (node.aoAssetId) addAsset(node.aoAssetId)
     if (node.clipAssetId) addAsset(node.clipAssetId)
     if (node.overlayAssetId) addAsset(node.overlayAssetId)
-    if (Array.isArray(node.slots)) {
-      for (const slot of node.slots) {
+    if (node.screen?.documentId) addAsset(node.screen.documentId)
+    const effectiveSlots = Array.isArray(node.slots) && node.slots.length > 0
+      ? node.slots
+      : (node.kind === 'model' && node.assetId ? getModelTemplate(node.assetId)?.slots : undefined)
+    if (Array.isArray(effectiveSlots)) {
+      for (const slot of effectiveSlots) {
         if (slot.materialAssetId) addAsset(slot.materialAssetId)
         collectSlotDeps(slot, assets, collected)
       }
@@ -151,6 +155,12 @@ export function collectSceneDependencies(
     if (node.animator) scanUnknownRefs(node.animator, assets, collected)
     if (node.capabilities) scanUnknownRefs(node.capabilities, assets, collected)
     if (node.gameplay) scanUnknownRefs(node.gameplay, assets, collected)
+    // 当节点带有动画/角色/运动或脚本逻辑时，剪辑可能仅按名称引用工程内的 animation 资源而未显式填 clipAssetId
+    if (node.kind === 'model' || node.gameplay?.character || node.gameplay?.locomotion || node.animator || node.clip) {
+      for (const a of Object.values(assets)) {
+        if (a.kind === 'animation') addAsset(a.id)
+      }
+    }
   }
 
   // 再展开一遍新增间接引用
@@ -223,6 +233,7 @@ async function cookTextureToWebp(
 }
 
 export function resolveScenesForBuild(settings: BuildSettings): ExportedSceneData[] {
+  useEditorStore.getState().flushActiveScene()
   const editor = useEditorStore.getState()
   const assets = useAssetStore.getState().assets
   const sceneAssets: Record<string, SceneAsset> = {}
@@ -282,10 +293,13 @@ export function buildExportedProjectPayload(
       fileName: nextFileName,
       clipCatalog: 'clipCatalog' in asset ? asset.clipCatalog : undefined,
       importScale: 'importScale' in asset ? asset.importScale : undefined,
+      humanoidAvatar: 'humanoidAvatar' in asset ? asset.humanoidAvatar : undefined,
+      humanoidRetarget: 'humanoidRetarget' in asset ? asset.humanoidRetarget : undefined,
       simulation: 'simulation' in asset ? asset.simulation : undefined,
       materialAssetId: 'materialAssetId' in asset ? asset.materialAssetId : undefined,
       quarksVersion: 'quarksVersion' in asset ? asset.quarksVersion : undefined,
       slot: asset.kind === 'material' ? asset.slot : undefined,
+      slots: asset.kind === 'model' ? getModelTemplate(id)?.slots : undefined,
       document: asset.kind === 'ui' ? asset.document : undefined,
       nodes: asset.kind === 'prefab' ? asset.nodes : undefined,
     }
@@ -391,6 +405,7 @@ export async function exportWebPlayerBundle(
   }
 
   const reportProgress = options?.onProgress
+  useEditorStore.getState().flushActiveScene()
   const editor = useEditorStore.getState()
   const allAssets = useAssetStore.getState().assets
   const sceneIds = Object.values(allAssets).filter((a) => a.kind === 'scene').map((a) => a.id)
@@ -440,6 +455,19 @@ export async function exportWebPlayerBundle(
   }
 
   const builtScenes = resolveScenesForBuild(settings)
+  // 预加载模型模板以提取自动推断的材质槽位与重定向剪辑，并重新汇总依赖
+  for (const sc of builtScenes) {
+    for (const node of Object.values(sc.nodes)) {
+      if (node.kind === 'model' && node.assetId) {
+        const modelAsset = allAssets[node.assetId]
+        if (modelAsset && modelAsset.kind === 'model') {
+          await loadModelTemplate(modelAsset).catch(() => null)
+        }
+      }
+    }
+    const extra = [settings.loading.logoAssetId, settings.loading.backgroundAssetId]
+    sc.requiredAssetIds = collectSceneDependencies(sc.nodes, sc.picture, allAssets, extra)
+  }
   const requiredSet = new Set<string>()
   if (settings.stripUnusedAssets) {
     for (const sc of builtScenes) {

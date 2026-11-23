@@ -7,6 +7,7 @@ const result = await build({
   metafile: true,
   format: 'esm',
   platform: 'browser',
+  loader: { '.css': 'empty' },
   external: ['three', 'three/webgpu', 'three/tsl', '@dimforge/rapier3d-compat', 'recast-navigation'],
 })
 
