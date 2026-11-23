@@ -91,8 +91,11 @@ export async function importFiles(files: File[], dir = useAssetStore.getState().
   for (const file of otherFiles) {
     if (file.name.toLowerCase().endsWith('.json')) {
       const effectId = await importEffectJson(file, dir)
-      if (effectId) created.push(effectId)
-      continue
+      if (effectId) {
+        created.push(effectId)
+        continue
+      }
+      // 非 Quarks 粒子特效的 JSON 作为普通文本文档导入
     }
     const kind = fileKindFor(file.name)
     if (!kind) {
@@ -206,6 +209,8 @@ async function ingest(asset: FileAsset, bytes: ArrayBuffer, dir?: string): Promi
     } else if (asset.kind === 'environment') {
       await loadEnvironmentAsset(asset)
       useEditorStore.getState().log('info', translate('log.importedEnv', { name: asset.name }))
+    } else if (asset.kind === 'document') {
+      useEditorStore.getState().log('info', translate('log.importedDocument', { name: asset.name }))
     } else {
       useEditorStore.getState().log('info', translate('log.importedAudio', { name: asset.name }))
     }
@@ -564,14 +569,10 @@ async function importEffectJson(file: File, dir: string): Promise<string | null>
   try {
     json = JSON.parse(await file.text())
   } catch {
-    useEditorStore.getState().log('warn', translate('particles.notQuarks', { name: file.name }))
     return null
   }
   const document = readQuarksDocument(json)
-  if (!document) {
-    useEditorStore.getState().log('warn', translate('particles.notQuarks', { name: file.name }))
-    return null
-  }
+  if (!document) return null
   const base = file.name.replace(/\.json$/i, '')
   let mapAssetId: string | null = null
   if (document.appearance.image) {
@@ -626,13 +627,70 @@ async function importEffectJson(file: File, dir: string): Promise<string | null>
   return effectId
 }
 
+const DOCUMENT_EXTS = ['md', 'markdown', 'txt', 'json', 'yaml', 'yml', 'csv', 'tsv', 'xml', 'ini', 'cfg', 'conf', 'toml', 'log']
+
 export function fileKindFor(fileName: string): FileKind | null {
   const ext = fileName.toLowerCase().split('.').pop() ?? ''
   if (['glb', 'gltf', 'obj', 'fbx', 'dae', '3ds', 'stl'].includes(ext)) return 'model'
   if (['hdr', 'exr', 'env'].includes(ext)) return 'environment'
   if (['png', 'jpg', 'jpeg', 'webp', 'ktx2', 'svg'].includes(ext)) return 'texture'
   if (['mp3', 'wav', 'ogg'].includes(ext)) return 'audio'
+  if (DOCUMENT_EXTS.includes(ext)) return 'document'
   return null
+}
+
+export async function readDocumentText(assetId: string): Promise<string> {
+  const bytes = await readFileBytes(assetId)
+  if (bytes) return new TextDecoder('utf-8').decode(bytes)
+  const asset = useAssetStore.getState().assets[assetId]
+  if (asset && 'url' in asset && asset.url) {
+    const response = await fetch(asset.url)
+    if (response.ok) return await response.text()
+  }
+  throw new Error('文档源文件不存在')
+}
+
+export async function saveDocumentText(assetId: string, text: string): Promise<boolean> {
+  const asset = useAssetStore.getState().assets[assetId]
+  if (!asset || asset.kind !== 'document') return false
+  const encoded = new TextEncoder().encode(text)
+  const bytes = encoded.buffer.slice(encoded.byteOffset, encoded.byteOffset + encoded.byteLength)
+  const hash = await sha256(bytes)
+  const nextUrl = URL.createObjectURL(new Blob([bytes], { type: 'text/plain;charset=utf-8' }))
+  if (asset.url && asset.url.startsWith('blob:')) URL.revokeObjectURL(asset.url)
+  useAssetStore.getState().patch(assetId, { url: nextUrl, hash })
+  await rememberFile({
+    id: asset.id,
+    name: asset.name,
+    kind: asset.kind,
+    fileName: asset.fileName,
+    hash,
+    thumb: asset.thumb,
+    bytes,
+  })
+  return true
+}
+
+export async function createDefaultDocument(dir = useAssetStore.getState().browseDir, ext: 'md' | 'txt' = 'md'): Promise<string | null> {
+  const baseName = uniqueAssetName(ext === 'md' ? '新文档' : '新文本')
+  const fileName = `${baseName}.${ext}`
+  const template = ext === 'md' ? `# ${baseName}\n\n` : ''
+  const encoded = new TextEncoder().encode(template)
+  const bytes = encoded.buffer.slice(encoded.byteOffset, encoded.byteOffset + encoded.byteLength)
+  const hash = await sha256(bytes)
+  const asset: FileAsset = {
+    id: crypto.randomUUID(),
+    name: baseName,
+    kind: 'document',
+    url: URL.createObjectURL(new Blob([bytes], { type: 'text/plain;charset=utf-8' })),
+    fileName,
+    hash,
+    thumb: null,
+  }
+  const ok = await ingest(asset, bytes, dir)
+  if (!ok) return null
+  useEditorStore.getState().inspectAsset(asset.id)
+  return asset.id
 }
 
 function hasMesh(root: { traverse: (fn: (child: { type?: string }) => void) => void }): boolean {

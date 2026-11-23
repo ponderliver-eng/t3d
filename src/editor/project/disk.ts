@@ -891,7 +891,7 @@ function asRecord(value: unknown): DirectoryAssetRecord | null {
 }
 
 function isFileKind(value: unknown): value is AssetMeta['kind'] {
-  return value === 'model' || value === 'texture' || value === 'animation' || value === 'audio' || value === 'environment'
+  return value === 'model' || value === 'texture' || value === 'animation' || value === 'audio' || value === 'environment' || value === 'document'
 }
 
 async function rememberHandle(handle: FileSystemDirectoryHandle): Promise<void> {

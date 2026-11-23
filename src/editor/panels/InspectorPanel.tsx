@@ -528,7 +528,7 @@ function CodeAssetSettings({ asset }: { asset: CodeAssetRecord }) {
 
 function AssetSettings({ asset }: { asset: import('../assets/library').ProjectAsset }) {
   const { t } = useI18n()
-  const preview = asset.kind === 'model' || asset.kind === 'texture' || asset.kind === 'material' || asset.kind === 'environment'
+  const preview = asset.kind === 'model' || asset.kind === 'texture' || asset.kind === 'material' || asset.kind === 'environment' || asset.kind === 'document'
     ? asset.kind
     : null
   return (
@@ -631,7 +631,7 @@ function ObjectName({ node, disabled }: { node: SceneNode, disabled: boolean }) 
 
 function assetKindLabel(kind: string): string {
   const key = `asset.${kind}` as MessageKey
-  const known = ['scene', 'model', 'texture', 'environment', 'material', 'animation', 'audio', 'prefab', 'effect', 'ui']
+  const known = ['scene', 'model', 'texture', 'environment', 'material', 'animation', 'audio', 'document', 'prefab', 'effect', 'ui']
   return known.includes(kind) ? translate(key) : kind
 }
 

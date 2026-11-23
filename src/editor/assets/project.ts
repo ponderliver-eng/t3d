@@ -932,7 +932,7 @@ function waitForSmoothFrames(): Promise<{ total: number, frames: number, slow: n
 }
 
 function stripRedundantThumb(meta: AssetMeta): AssetMeta {
-  if ((meta.kind === 'animation' || meta.kind === 'audio' || meta.kind === 'environment') && meta.thumb) {
+  if ((meta.kind === 'animation' || meta.kind === 'audio' || meta.kind === 'environment' || meta.kind === 'document') && meta.thumb) {
     void patchAssetMeta(meta.id, { thumb: null }).catch(() => undefined)
     return { ...meta, thumb: null }
   }

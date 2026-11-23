@@ -6,7 +6,7 @@ import type { UiDocument } from '../../runtime/ui/spec'
 import type { PbrSlot, SceneNode, ScenePicture, EditorView } from '../scene/types'
 import { ASSETS_ROOT, directoryExists, isWithin, joinDir, normalizeDir, parentDir, relocateDir, uniqueFolderName } from './folders'
 
-export type FileKind = 'model' | 'texture' | 'animation' | 'audio' | 'environment'
+export type FileKind = 'model' | 'texture' | 'animation' | 'audio' | 'environment' | 'document'
 
 export interface FileAsset {
   id: string

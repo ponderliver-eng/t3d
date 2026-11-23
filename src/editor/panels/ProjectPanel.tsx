@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type MouseEvent } from 'react'
 import { createPortal } from 'react-dom'
-import { Box, ChevronRight, Clapperboard, Component, CopyPlus, FileCode2, Folder, FolderOpen, FolderPlus, FolderSearch, Globe, Image, Layers, LayoutGrid, List, ListTree, MapPin, Minus, Music, PackageOpen, Palette, PanelsTopLeft, Pencil, Plus, RefreshCw, Rows3, Scaling, Search, Sparkles, Sun, Trash2, Unlink, Upload, Wand2, X } from 'lucide-react'
+import { Box, ChevronRight, Clapperboard, Component, CopyPlus, FileCode2, FileText, Folder, FolderOpen, FolderPlus, FolderSearch, Globe, Image, Layers, LayoutGrid, List, ListTree, MapPin, Minus, Music, PackageOpen, Palette, PanelsTopLeft, Pencil, Plus, RefreshCw, Rows3, Scaling, Search, Sparkles, Sun, Trash2, Unlink, Upload, Wand2, X } from 'lucide-react'
 import { CLIP_MIME } from '../animation/playback'
-import { ASSET_MIME, assignClip, bindImportInput, createDefaultMaterial, createDefaultUi, deleteAsset, duplicateAsset, importFiles, isNodeDrag, logNamed, NODE_MIME, openAsset, openImport, reimportModel, reportAssetUsers } from '../assets/import'
+import { ASSET_MIME, assignClip, bindImportInput, createDefaultDocument, createDefaultMaterial, createDefaultUi, deleteAsset, duplicateAsset, importFiles, isNodeDrag, logNamed, NODE_MIME, openAsset, openImport, reimportModel, reportAssetUsers } from '../assets/import'
 import { savePrefabFromSelection } from '../assets/import'
 import { readPrefab } from '../assets/prefab'
 import { ASSETS_ROOT, directoryTree, findDir, isWithin, parentDir, type DirNode } from '../assets/folders'
@@ -33,6 +33,7 @@ const PILLS = [
   { id: 'image', icon: Image },
   { id: 'audio', icon: Music },
   { id: 'animation', icon: Clapperboard },
+  { id: 'document', icon: FileText },
   { id: 'scene', icon: Globe },
   { id: 'used', icon: MapPin },
   { id: 'unused', icon: Unlink },
@@ -53,6 +54,7 @@ const KIND_ICON = {
   material: Palette,
   animation: Clapperboard,
   audio: Music,
+  document: FileText,
   prefab: Component,
   effect: Sparkles,
   ui: PanelsTopLeft,
@@ -66,6 +68,7 @@ const KIND_COLOR: Record<string, string> = {
   material: 'var(--color-material)',
   animation: 'var(--text-accent)',
   audio: 'var(--color-sound)',
+  document: '#7dd3fc',
   prefab: '#a966d3',
   effect: '#ffb25a',
   ui: '#4a9eff',
@@ -73,7 +76,7 @@ const KIND_COLOR: Record<string, string> = {
 
 function kindLabel(kind: string): string {
   const key = `asset.${kind}` as MessageKey
-  const known = ['scene', 'model', 'texture', 'environment', 'material', 'animation', 'audio', 'prefab', 'effect', 'ui']
+  const known = ['scene', 'model', 'texture', 'environment', 'material', 'animation', 'audio', 'document', 'prefab', 'effect', 'ui']
   return known.includes(kind) ? translate(key) : kind
 }
 
@@ -140,6 +143,7 @@ export default function ProjectPanel() {
       if (pill === 'model' && asset.kind !== 'model' && asset.kind !== 'prefab') return false
       if (pill === 'image' && asset.kind !== 'texture' && asset.kind !== 'material' && asset.kind !== 'environment') return false
       if (pill === 'audio' && asset.kind !== 'audio') return false
+      if (pill === 'document' && asset.kind !== 'document') return false
       if (pill === 'animation' && asset.kind !== 'animation' && clipEntries(asset).length === 0) return false
       if (pill === 'scene' && asset.kind !== 'scene') return false
       if (pill === 'used' && !referenced.has(asset.id)) return false
@@ -369,7 +373,7 @@ export default function ProjectPanel() {
             type="file"
             multiple
             hidden
-            accept=".gltf,.glb,.obj,.fbx,.dae,.3ds,.stl,.png,.jpg,.jpeg,.webp,.svg,.ktx2,.hdr,.exr,.env,.mp3,.wav,.ogg,.unitypackage"
+            accept=".gltf,.glb,.obj,.fbx,.dae,.3ds,.stl,.png,.jpg,.jpeg,.webp,.svg,.ktx2,.hdr,.exr,.env,.mp3,.wav,.ogg,.md,.markdown,.txt,.json,.yaml,.yml,.csv,.tsv,.xml,.ini,.cfg,.conf,.toml,.log,.unitypackage"
             onChange={event => {
               const files = [...(event.target.files ?? [])]
               event.target.value = ''
@@ -806,6 +810,20 @@ function CreateMenu({ dir, onDone, onNewFolder }: { dir: string, onDone: () => v
             <button type="button" onClick={() => { useAssetStore.getState().setBrowseDir(dir); useEditorStore.getState().createScene(); onDone() }}><Globe size={12} />{t('project.createScene')}</button>
             <button type="button" onClick={() => { createDefaultMaterial(dir); onDone() }}><Palette size={12} />{t('project.createMaterial')}</button>
             <button type="button" onClick={() => { createDefaultUi(dir); onDone() }}><PanelsTopLeft size={12} />{t('project.createUi')}</button>
+            <button type="button" onClick={() => {
+              void createDefaultDocument(dir, 'md').then(id => {
+                const created = id ? useAssetStore.getState().assets[id] : null
+                if (created) openAssetPreview('document', created.id, created.name)
+              })
+              onDone()
+            }}><FileText size={12} />Markdown 文档</button>
+            <button type="button" onClick={() => {
+              void createDefaultDocument(dir, 'txt').then(id => {
+                const created = id ? useAssetStore.getState().assets[id] : null
+                if (created) openAssetPreview('document', created.id, created.name)
+              })
+              onDone()
+            }}><FileText size={12} />文本文档</button>
             <button type="button" disabled={!hasSelection} onClick={() => { useAssetStore.getState().setBrowseDir(dir); savePrefabFromSelection(); onDone() }}><Component size={12} />{t('project.createPrefab')}</button>
             <div className="project-panel__sep" />
             <button
@@ -955,7 +973,7 @@ function detailOf(asset: ProjectAsset, used: boolean): string {
 }
 
 function previewKind(kind: string): PreviewKind | null {
-  if (kind === 'model' || kind === 'texture' || kind === 'material' || kind === 'environment' || kind === 'animation' || kind === 'audio') return kind
+  if (kind === 'model' || kind === 'texture' || kind === 'material' || kind === 'environment' || kind === 'animation' || kind === 'audio' || kind === 'document') return kind
   return null
 }
 
@@ -981,6 +999,7 @@ function assetTitle(asset: ProjectAsset): string {
   if (asset.kind === 'environment') return translate('project.envHint')
   if (asset.kind === 'texture' || asset.kind === 'material') return translate('project.textureHint')
   if (asset.kind === 'animation') return translate('project.animHint')
+  if (asset.kind === 'document') return translate('project.docHint')
   return translate('project.audioHint')
 }
 
