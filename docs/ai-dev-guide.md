@@ -58,6 +58,9 @@ T3D 的 AI 系统横跨「主进程代理 → 渲染进程状态循环 → 核�
 ### 2.4 让模型拿得到信息
 - `script__read` / `shader__read`：返回完整当前源码。`script__patch` 的 `find` 必须与它逐字一致，所以这两个工具的返回不截断（上限 60000 字符）。
 - 试玩类工具（`playtest__run_smoke`、`viewport__capture({ playSeconds })`、`playtest__control`）统一返回**去重计数后的运行时报错**，并可用 `watchNodes` 回报节点实时位置。模型不需要写探测脚本。
+- 试玩类工具同时返回 `logs`（脚本 `self.log` 的输出，按首次出现顺序去重计数，见 `summarizeInfoLogs`）。`watchNodes` 回报位置、朝向（度）、可见性与各脚本的 `self.state` 只读快照（`readScriptStateSnapshot`，深度与长度有上限）；`playtest__run_smoke` 加 `sampleEvery` 返回 `trajectory` 轨迹（最多 60 个采样点）。试玩/暂停期间 `query__node_inspect` 附带同样的 `runtime` 字段。**不提供任意表达式求值**：`self.log` + `self.state` 快照已覆盖读值需求，且不需要新增执行入口。
+- 「数据是否生效」可查：`query__node_inspect` 的 `drivers` 逐项标明每个数据槽在试玩中是否被运行时驱动（内置组件 / 脚本编译状态 / 未启用的包 / 写错位置的数据）；`query__registry_describe({ category: "coreComponents" })` 返回内置组件的字段、默认值、枚举与说明（登记表在 `src/gameplay/coreComponents.ts`，与 `gameplay.setCoreComponent` 指令共用）。
+- `query__code_assets` 反查脚本挂载（`attachedTo` / `orphan`）；`query__ui_inspect` 在界面已渲染时返回 `layout`（量 DOM 得到的实际矩形与溢出问题，`src/ai/uiLayout.ts`），`viewport__capture` 试玩截图时自动附带 `uiLayoutIssues`；`query__project_diagnose` 附带 `renderBreakdown`（按节点的三角面与网格批次前 8 名，`src/ai/renderBreakdown.ts`）。
 - `kb__read`：范例库，见第 4.3 节。
 - 日志游标：`store.logs` 是 300 条的环形窗口，取“某时刻之后的日志”必须用 `captureLogCursor()` / `readLogsSince()`（按日志 id），不能用数组下标。
 
@@ -153,7 +156,13 @@ Demo 质量的主要杠杆不是更长的提示词，而是**让 AI 从验证过
   2. 再查 `contracts/t3d/runtime.d.ts` 与 `src/core/codeAssets/workspace.ts`（类型契约是否同步）。
   3. 最后查 `src/ai/agentLoop.ts` 的 `buildSystemPrompt`（提示词是否明确告知了真实 API 和单位）。
   4. **每次修复完底层坑，务必回写更新本节避坑清单，保持跨设备记忆一致。**
-- **不要用提示词禁令修工具缺陷**：AI 反复做某件蠢事时，先问：Windows PowerShell 环境下多命令用 `;` 分隔，不要用 `&&`。
+- **不要用提示词禁令修工具缺陷**：AI 反复做某件蠢事（建探测脚本、反复截图、试字段名）时，先问它是不是拿不到该拿的信息。优先让工具把信息返回出来（报错、日志、状态快照、字段清单），而不是在提示词里加一条「严禁」。
+- **不要破坏缓存前缀**：系统提示必须完全静态，工具全集常驻；每轮变化的内容只能追加在用户消息尾部的 `<工程上下文>` 里，历史只追加、超预算才原地折叠。往系统提示里插入时间、选中节点等动态内容会让整段缓存失效。
+- **契约与运行时不一致**：行为脚本的真实约定是 `state: () => ({})` 与 `onUpdate(self, dt)`，`contracts/t3d/runtime.d.ts` 里的 `createState` / `onStep` 与实现不符；提示词与范例一律以运行时为准，对齐前不要据契约文件写脚本。
+- **`physics.raycast` 的 `hit.node` 不可靠**：目前返回的是调用者自身，只有 `distance` 与 `point` 可用。
+- **内置组件不在 `packs` 里**：`character` / `cameraFollow` / `interact` / `trigger` / `mover` / `checkpoint` / `score` / `soundSource` 的数据在 `node.gameplay.<组件>`，由 `gameplay.setCoreComponent` 写入；`gameplay.setComponentData` 写到 `packs.core.<同名>` 会被拒绝，因为运行时不读那里。无头测试要驱动内置角色，需显式 `import '../src/runtime/character'`（它以副作用方式注册）。
+- **试玩锁包含暂停**：`play.locked` 在 `playState !== 'stopped'` 时都生效，暂停中也不能改工程。调参循环是「`script__patch` → `playtest__run_smoke`」，后者自带启动与退出。
+- **命令行**：Windows PowerShell 环境下多命令用 `;` 分隔，不要用 `&&`。
 
 ---
 

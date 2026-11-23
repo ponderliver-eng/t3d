@@ -2118,6 +2118,47 @@ export function getRegisteredBehavior(scriptId: string): BehaviorDefinition | un
   return compiledBehaviors.get(scriptId)
 }
 
+function snapshotStateValue(value: unknown, depth: number): unknown {
+  if (value === null || value === undefined) return value ?? null
+  if (typeof value === 'number') return Number.isFinite(value) ? Number(value.toFixed(4)) : String(value)
+  if (typeof value === 'boolean') return value
+  if (typeof value === 'string') return value.length > 200 ? `${value.slice(0, 200)}…` : value
+  if (typeof value === 'function') return '[function]'
+  if (depth <= 0) return Array.isArray(value) ? `[array ${value.length}]` : '[object]'
+  if (Array.isArray(value)) {
+    const head = value.slice(0, 12).map((item) => snapshotStateValue(item, depth - 1))
+    if (value.length > 12) head.push(`…共 ${value.length} 项`)
+    return head
+  }
+  if (value instanceof Map) return `[Map ${value.size}]`
+  if (value instanceof Set) return `[Set ${value.size}]`
+  const out: Record<string, unknown> = {}
+  let count = 0
+  for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
+    if (count >= 24) {
+      out['…'] = '字段过多已省略'
+      break
+    }
+    out[key] = snapshotStateValue(item, depth - 1)
+    count += 1
+  }
+  return out
+}
+
+/**
+ * 只读快照：试玩期间某个节点上各行为脚本的 self.state（供试玩验收与调试读取，不暴露可变引用）。
+ * 非试玩或该节点没有已启动的脚本实例时返回 null。
+ */
+export function readScriptStateSnapshot(nodeId: string): Record<string, Record<string, unknown>> | null {
+  let out: Record<string, Record<string, unknown>> | null = null
+  for (const rec of instanceStates.values()) {
+    if (rec.nodeId !== nodeId) continue
+    out ??= {}
+    out[rec.scriptId] = snapshotStateValue(rec.state, 3) as Record<string, unknown>
+  }
+  return out
+}
+
 export function unregisterCompiledScript(scriptId: string): void {
   compiledBehaviors.delete(scriptId)
   const sys = compiledSystems.get(scriptId)

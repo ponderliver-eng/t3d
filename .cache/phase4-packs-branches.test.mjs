@@ -10024,6 +10024,49 @@ function compileAndRegisterScript(id, fileName, source) {
     exports: { id, file: fileName, kind: "behavior", behavior: def }
   };
 }
+function snapshotStateValue(value, depth) {
+  if (value === null || value === void 0) return value ?? null;
+  if (typeof value === "number") return Number.isFinite(value) ? Number(value.toFixed(4)) : String(value);
+  if (typeof value === "boolean") return value;
+  if (typeof value === "string") return value.length > 200 ? `${value.slice(0, 200)}\u2026` : value;
+  if (typeof value === "function") return "[function]";
+  if (depth <= 0) return Array.isArray(value) ? `[array ${value.length}]` : "[object]";
+  if (Array.isArray(value)) {
+    const head = value.slice(0, 12).map((item) => snapshotStateValue(item, depth - 1));
+    if (value.length > 12) head.push(`\u2026\u5171 ${value.length} \u9879`);
+    return head;
+  }
+  if (value instanceof Map) return `[Map ${value.size}]`;
+  if (value instanceof Set) return `[Set ${value.size}]`;
+  const out = {};
+  let count = 0;
+  for (const [key, item] of Object.entries(value)) {
+    if (count >= 24) {
+      out["\u2026"] = "\u5B57\u6BB5\u8FC7\u591A\u5DF2\u7701\u7565";
+      break;
+    }
+    out[key] = snapshotStateValue(item, depth - 1);
+    count += 1;
+  }
+  return out;
+}
+function readScriptStateSnapshot(nodeId) {
+  let out = null;
+  for (const rec of instanceStates.values()) {
+    if (rec.nodeId !== nodeId) continue;
+    out ??= {};
+    out[rec.scriptId] = snapshotStateValue(rec.state, 3);
+  }
+  return out;
+}
+function unregisterCompiledScript(scriptId) {
+  compiledBehaviors.delete(scriptId);
+  const sys = compiledSystems.get(scriptId);
+  if (sys) {
+    sys.unregister();
+    compiledSystems.delete(scriptId);
+  }
+}
 function clearScriptRuntimeState() {
   for (const [sysId, sys] of compiledSystems.entries()) {
     if (sys.mounted) {
@@ -10963,6 +11006,26 @@ async function saveAndCompileCodeAsset(kind, idOrName, source, folder) {
     useEditorStore.getState().log("info", `\u4EE3\u7801\u8D44\u4EA7\u5DF2\u7F16\u8BD1\u5E76\u70ED\u91CD\u8F7D\uFF1A${rel}`);
   }
   return record;
+}
+async function deleteCodeAsset(id) {
+  const record = useCodeAssetStore.getState().assets[id];
+  if (!record) return;
+  if (record.kind === "script") {
+    unregisterCompiledScript(id);
+  }
+  const dirKey = codeAssetDirKey(record.kind, id);
+  useCodeAssetStore.getState().removeAsset(id);
+  useAssetStore.setState((state) => {
+    if (!(dirKey in state.assetDirs)) return {};
+    const next = { ...state.assetDirs };
+    delete next[dirKey];
+    return { assetDirs: next, revision: state.revision + 1 };
+  });
+  const dir = projectDirectoryPath();
+  const bridge = electronBridge();
+  if (dir && bridge?.fs?.unlinkFile && record.relativePath) {
+    await bridge.fs.unlinkFile(joinProjectPath(dir, record.relativePath)).catch(() => void 0);
+  }
 }
 function defaultTemplateFor(kind, name) {
   if (kind === "shader") {
@@ -16490,6 +16553,148 @@ if (typeof window !== "undefined") {
   });
 }
 
+// src/gameplay/coreComponents.ts
+init_sceneRuntime();
+var asRecord = (value) => value;
+var CORE_COMPONENTS = [
+  {
+    id: "character",
+    label: "\u89D2\u8272\u63A7\u5236\u5668",
+    description: "\u5F15\u64CE\u5185\u7F6E\u7684\u89D2\u8272\u79FB\u52A8\uFF1A\u8BFB\u53D6 Move/Jump/Sprint/Dash \u8F93\u5165\u52A8\u4F5C\uFF0C\u5904\u7406\u884C\u8D70\u3001\u51B2\u523A\u3001\u591A\u6BB5\u8DF3\u3001\u95EA\u907F\u3001\u6E38\u6CF3\u4E0E\u8D34\u5730\uFF0C\u5E76\u6309\u8FD0\u52A8\u72B6\u6001\u81EA\u52A8\u5207\u6362 idle/walk/run/jump/air/land/dodge/swim \u52A8\u753B\u3002\u6302\u4E0A\u5373\u53EF\u64CD\u63A7\uFF0C\u65E0\u9700\u81EA\u5DF1\u5199\u79FB\u52A8\u811A\u672C\u3002",
+    defaults: () => asRecord(defaultCharacter()),
+    enums: {
+      driver: ["capsule", "nav", "hybrid"],
+      mode: ["adventure", "strafe", "lockOn", "pointAndClick", "topDown", "side25d", "firstPerson"],
+      clickButton: ["left", "right"]
+    },
+    notes: [
+      "xxxClip \u586B\u52A8\u753B\u7247\u6BB5\u540D\uFF0CxxxClipAssetId \u586B\u7247\u6BB5\u6240\u5728\u7684\u6A21\u578B/\u52A8\u753B\u8D44\u4EA7 ID\uFF08\u7247\u6BB5\u5C31\u5728\u8282\u70B9\u81EA\u8EAB\u6A21\u578B\u91CC\u65F6\u7559\u7A7A\uFF09\uFF1B\u7247\u6BB5\u540D\u53EF\u7528 query__asset_search \u67E5\u770B\u6A21\u578B\u7684 clips\u3002",
+      "\u7559\u7A7A\u7684\u7247\u6BB5\u69FD\u4F4D\u4E0D\u4F1A\u64AD\u653E\u52A8\u753B\uFF1B\u53EA\u586B idleClip/walkClip/runClip \u4E09\u4E2A\u5C31\u80FD\u5F97\u5230\u57FA\u672C\u7684\u7AD9\u7ACB/\u8D70/\u8DD1\u3002",
+      "\u8BBE\u7F6E character \u65F6\u4F1A\u81EA\u52A8\u6309 mode \u914D\u597D\u540C\u8282\u70B9\u7684 cameraFollow\uFF1B\u540C\u4E00\u573A\u666F\u53EA\u5E94\u6709\u4E00\u4E2A\u542F\u7528\u7684 character\u3002",
+      "\u89D2\u8272\u5DF2\u7531\u5185\u7F6E\u63A7\u5236\u5668\u9A71\u52A8\u65F6\uFF0C\u4E0D\u8981\u518D\u6302\u4E00\u4E2A\u81EA\u5DF1\u6539 position \u7684\u79FB\u52A8\u811A\u672C\uFF0C\u4E24\u8005\u4F1A\u4E92\u76F8\u8986\u76D6\u3002"
+    ]
+  },
+  {
+    id: "cameraFollow",
+    label: "\u8DDF\u968F\u76F8\u673A",
+    description: "\u5F15\u64CE\u5185\u7F6E\u7684\u8DDF\u968F\u955C\u5934\uFF1A\u6309 offset/pivot \u8DDF\u968F\u76EE\u6807\uFF0C\u652F\u6301\u9F20\u6807\u73AF\u7ED5\u3001\u6EDA\u8F6E\u7F29\u653E\u4E0E\u9632\u7A7F\u5899\u3002\u6302\u5728\u89D2\u8272\u8282\u70B9\u4E0A\u8868\u793A\u8DDF\u968F\u81EA\u5DF1\u3002",
+    defaults: () => asRecord(defaultCameraFollow()),
+    extraFields: {
+      preset: "\u6700\u8FD1\u5957\u7528\u7684\u673A\u4F4D\uFF08\u540C character.mode \u53D6\u503C\uFF09",
+      orbitYaw: "\u5F00\u5C40\u6C34\u5E73\u73AF\u7ED5\u89D2\uFF08\u5EA6\uFF09",
+      orbitPitch: "\u5F00\u5C40\u4FEF\u4EF0\u89D2\uFF08\u5EA6\uFF09"
+    },
+    enums: { orbit: ["none", "rightDrag", "mouse"] },
+    notes: ["\u8282\u70B9\u4E0A\u5DF2\u6709 character \u65F6\uFF0C\u673A\u4F4D\u4F1A\u88AB character.mode \u7EA6\u675F\uFF08\u5982\u4FEF\u89C6\u89D2\u5F3A\u5236 orbit=none\uFF09\u3002"]
+  },
+  {
+    id: "interact",
+    label: "\u53EF\u4EA4\u4E92\u7269",
+    description: "\u73A9\u5BB6\u8FDB\u5165 radius \u8303\u56F4\u5E76\u6309\u4E0B key \u65F6\uFF0C\u5411\u672C\u8282\u70B9\u53D1\u9001 message \u6D88\u606F\uFF08\u811A\u672C\u5728 onMessage \u91CC\u63A5\u6536\uFF09\u3002",
+    defaults: () => asRecord(defaultInteract())
+  },
+  {
+    id: "trigger",
+    label: "\u89E6\u53D1\u533A\u57DF",
+    description: "\u73A9\u5BB6\u8FDB\u5165/\u79BB\u5F00 radius \u8303\u56F4\u65F6\u5206\u522B\u53D1\u9001 enterMessage / exitMessage \u6D88\u606F\u3002",
+    defaults: () => asRecord(defaultTrigger())
+  },
+  {
+    id: "mover",
+    label: "\u79FB\u52A8\u5E73\u53F0",
+    description: "\u8BA9\u8282\u70B9\u6CBF offset \u5F80\u8FD4\u79FB\u52A8\uFF08duration \u5355\u7A0B\u79D2\u6570\uFF0Cpause \u7AEF\u70B9\u505C\u7559\uFF09\uFF0C\u53EF\u642D\u8F7D\u7AD9\u5728\u4E0A\u9762\u7684\u89D2\u8272\u3002autoPlay=false \u65F6\u6536\u5230 startMessage \u624D\u542F\u52A8\u3002",
+    defaults: () => asRecord(defaultMover())
+  },
+  {
+    id: "checkpoint",
+    label: "\u5B58\u6863\u70B9 / \u51FA\u751F\u70B9",
+    description: "\u89D2\u8272\u8FDB\u5165 radius \u540E\u8BB0\u4E3A\u91CD\u751F\u70B9\uFF1B\u89D2\u8272\u6389\u5230 abyssY \u4EE5\u4E0B\u65F6\u5728\u6700\u8FD1\u7684\u5B58\u6863\u70B9\u91CD\u751F\u5E76\u53D1\u9001 message\u3002spawn=true \u8868\u793A\u5F00\u5C40\u51FA\u751F\u70B9\u3002",
+    defaults: () => asRecord(defaultCheckpoint())
+  },
+  {
+    id: "score",
+    label: "\u5173\u5361\u8BA1\u5206",
+    description: "\u5185\u7F6E\u7684\u76EE\u6807\u5206\u6570/\u9650\u65F6\u5173\u5361\u89C4\u5219\uFF1A\u8FBE\u5230 target \u53D1\u9001 victoryMessage\uFF0C\u8D85\u8FC7 timeLimit\uFF08\u79D2\uFF0C0 \u4E3A\u4E0D\u9650\u65F6\uFF09\u53D1\u9001 defeatMessage\u3002",
+    defaults: () => asRecord(defaultScore())
+  },
+  {
+    id: "soundSource",
+    label: "\u7A7A\u95F4\u97F3\u6E90",
+    description: "\u8BD5\u73A9\u5F00\u59CB\u540E\u5728\u8282\u70B9\u4F4D\u7F6E\u64AD\u653E assetId \u6307\u5411\u7684\u97F3\u9891\uFF0C\u97F3\u91CF\u968F\u8DDD\u79BB\u8870\u51CF\u3002",
+    defaults: () => asRecord(defaultSoundSource())
+  }
+];
+function findCoreComponent(id) {
+  return CORE_COMPONENTS.find((item) => item.id === id) ?? null;
+}
+function isCoreComponentId(id) {
+  return CORE_COMPONENTS.some((item) => item.id === id);
+}
+function coreComponentFieldNames(manifest) {
+  return [...Object.keys(manifest.defaults()), ...Object.keys(manifest.extraFields ?? {})];
+}
+function describeCoreComponents(id) {
+  return CORE_COMPONENTS.filter((item) => !id || item.id === id).map((item) => ({
+    id: item.id,
+    label: item.label,
+    description: item.description,
+    dataPath: `node.gameplay.${item.id}`,
+    writeWith: "gameplay__setCoreComponent",
+    defaults: item.defaults(),
+    ...item.extraFields ? { extraFields: item.extraFields } : {},
+    ...item.enums ? { enums: item.enums } : {},
+    ...item.notes ? { notes: item.notes } : {}
+  }));
+}
+function applyCoreComponentPatch(prev, componentId, patch) {
+  const manifest = findCoreComponent(componentId);
+  if (!manifest) {
+    return {
+      ok: false,
+      message: `\u672A\u77E5\u7684\u5185\u7F6E\u7EC4\u4EF6 "${componentId}"`,
+      hint: `\u53EF\u7528\u7684\u5185\u7F6E\u7EC4\u4EF6\uFF1A${CORE_COMPONENTS.map((item) => item.id).join(", ")}`
+    };
+  }
+  const gameplay = { ...prev ?? {} };
+  if (patch === null) {
+    delete gameplay[manifest.id];
+    if (manifest.id === "character") delete gameplay.cameraFollow;
+    return { ok: true, gameplay: Object.keys(gameplay).length > 0 ? gameplay : null, data: null };
+  }
+  const allowed = coreComponentFieldNames(manifest);
+  const unknown = Object.keys(patch).filter((key) => !allowed.includes(key));
+  if (unknown.length > 0) {
+    return {
+      ok: false,
+      message: `\u5185\u7F6E\u7EC4\u4EF6 ${manifest.id} \u4E0D\u8BA4\u8BC6\u5B57\u6BB5\uFF1A${unknown.join(", ")}`,
+      hint: `\u53EF\u7528\u5B57\u6BB5\uFF1A${allowed.join(", ")}`
+    };
+  }
+  for (const [key, options] of Object.entries(manifest.enums ?? {})) {
+    if (key in patch && !options.includes(String(patch[key]))) {
+      return {
+        ok: false,
+        message: `\u5185\u7F6E\u7EC4\u4EF6 ${manifest.id}.${key} \u7684\u53D6\u503C "${String(patch[key])}" \u65E0\u6548`,
+        hint: `\u53EF\u9009\u503C\uFF1A${options.join(", ")}`
+      };
+    }
+  }
+  const current = gameplay[manifest.id] ?? manifest.defaults();
+  const next = { ...manifest.defaults(), ...current, ...patch };
+  gameplay[manifest.id] = next;
+  if (manifest.id === "character") {
+    const character = next;
+    const baseCam = gameplay.cameraFollow ?? defaultCameraFollow();
+    gameplay.cameraFollow = "mode" in patch ? resolveCharacterCamera(character, { ...baseCam, ...cameraPresetForMode(character.mode) }) : resolveCharacterCamera(character, baseCam);
+  } else if (manifest.id === "cameraFollow" && gameplay.character) {
+    const character = { ...defaultCharacter(), ...gameplay.character };
+    if (character.enabled) {
+      gameplay.cameraFollow = resolveCharacterCamera(character, next);
+    }
+  }
+  return { ok: true, gameplay, data: gameplay[manifest.id] };
+}
+
 // src/core/query/inspect.ts
 init_registry();
 function resolveCodeAssetFolder(kind, id, relativePath, assetDirs) {
@@ -16575,11 +16780,62 @@ function querySceneOutline(parentId = null, maxDepth = 3) {
   };
   return build(parentId, 1);
 }
+var NODE_ANIMATION_NOTE = {
+  dataPath: "node.clip / clipAssetId / clipPlaying / clipLoop / clipSpeed",
+  description: "\u6A21\u578B\u8282\u70B9\u7684\u9759\u6001\u52A8\u753B\u69FD\u4F4D\uFF1A\u8BD5\u73A9\u5F00\u59CB\u65F6\u82E5 clipPlaying \u4E3A\u771F\u5219\u5FAA\u73AF\u64AD\u653E clip\u3002\u5B83\u53EA\u662F\u300C\u5F00\u5C40\u9ED8\u8BA4\u52A8\u753B\u300D\uFF0C\u4E0D\u4F1A\u968F\u8FD0\u52A8\u72B6\u6001\u5207\u6362\u3002",
+  howToDrive: [
+    "\u89D2\u8272\u968F\u79FB\u52A8\u81EA\u52A8\u5207 idle/walk/run\uFF1A\u7528\u5185\u7F6E\u7EC4\u4EF6 character\uFF08gameplay__setCoreComponent\uFF09\uFF0C\u586B idleClip/walkClip/runClip\u3002",
+    '\u811A\u672C\u91CC\u6309\u903B\u8F91\u64AD\u653E\uFF1Aself.anim.playBody(clipName, { loop, fade, speed }) / playUpper / stopUpper\uFF1B\u7247\u6BB5\u6765\u81EA\u5176\u4ED6\u8D44\u4EA7\u65F6\u53C2\u6570\u58F0\u660E\u4E3A ref(target:"clip")\u3002'
+  ]
+};
+function describeNodeDrivers(node) {
+  const notes = [];
+  const gameplay = node.gameplay;
+  for (const item of CORE_COMPONENTS) {
+    const data = gameplay?.[item.id];
+    if (data) notes.push(`gameplay.${item.id}\uFF1A\u5185\u7F6E${item.label}\uFF0C${data.enabled === false ? "\u5DF2\u505C\u7528" : "\u8BD5\u73A9\u4E2D\u7531\u5F15\u64CE\u9A71\u52A8"}`);
+  }
+  const enabledPacks = useEditorStore.getState().gameplayPacks;
+  for (const [packId, bag] of Object.entries(gameplay?.packs ?? {})) {
+    if (packId === "__project__") {
+      const compiled = useCodeAssetStore.getState().assets;
+      for (const [scriptId, params] of Object.entries(bag ?? {})) {
+        const record = compiled[scriptId];
+        const disabled = Boolean(params && typeof params === "object" && params.__enabled === false);
+        notes.push(
+          `\u811A\u672C ${scriptId}\uFF1A${!record ? "\u811A\u672C\u4E0D\u5B58\u5728\uFF0C\u4E0D\u4F1A\u8FD0\u884C" : !record.ok ? "\u7F16\u8BD1\u5931\u8D25\uFF0C\u4E0D\u4F1A\u8FD0\u884C" : disabled ? "\u5DF2\u505C\u7528" : "\u8BD5\u73A9\u4E2D\u8FD0\u884C"}`
+        );
+      }
+      continue;
+    }
+    if (packId === "core") {
+      const keys = Object.keys(bag ?? {}).filter((key) => isCoreComponentId(key));
+      if (keys.length > 0) {
+        notes.push(`gameplay.packs.core.${keys.join("/")}\uFF1A\u4EC5\u6570\u636E\uFF0C\u8FD0\u884C\u65F6\u4E0D\u8BFB\u53D6\u8FD9\u91CC\uFF1B\u5185\u7F6E\u7EC4\u4EF6\u8BF7\u7528 gameplay__setCoreComponent \u5199\u5230 gameplay.<\u7EC4\u4EF6>`);
+      }
+      continue;
+    }
+    if (!enabledPacks.includes(packId)) notes.push(`gameplay.packs.${packId}\uFF1A\u73A9\u6CD5\u5305\u672A\u542F\u7528\uFF0C\u4EC5\u6570\u636E`);
+  }
+  for (const capId of Object.keys(node.capabilities ?? {})) {
+    if (!capabilityEnabled(useEditorStore.getState().capabilities, capId)) notes.push(`capabilities.${capId}\uFF1A\u80FD\u529B\u5305\u672A\u542F\u7528\uFF0C\u4EC5\u6570\u636E`);
+  }
+  if (node.clip) {
+    notes.push(`clip="${node.clip}"\uFF1A${node.clipPlaying ? "\u8BD5\u73A9\u5F00\u5C40\u81EA\u52A8\u64AD\u653E" : "\u672A\u52FE\u9009\u64AD\u653E\uFF0C\u4EC5\u6570\u636E"}\uFF08\u4E0D\u968F\u8FD0\u52A8\u72B6\u6001\u5207\u6362\uFF09`);
+  }
+  return notes;
+}
 function queryNodeInspect(nodeId) {
   const { nodes } = useEditorStore.getState();
   const node = nodes[nodeId];
   if (!node) return null;
   const ruleCount = node.gameplay?.rules?.length ?? 0;
+  const coreData = {};
+  for (const item of CORE_COMPONENTS) {
+    if (item.id === "character" || item.id === "cameraFollow") continue;
+    const data = node.gameplay?.[item.id];
+    if (data) coreData[item.id] = data;
+  }
   return {
     id: node.id,
     name: node.name,
@@ -16599,9 +16855,20 @@ function queryNodeInspect(nodeId) {
     gameplay: {
       character: node.gameplay?.character ?? null,
       cameraFollow: node.gameplay?.cameraFollow ?? null,
+      ...coreData,
       packs: node.gameplay?.packs ?? {},
       ...ruleCount > 0 ? { manualRulesNote: `\u8BE5\u8282\u70B9\u542B ${ruleCount} \u6761\u4EBA\u5DE5\u624B\u914D\u5F8B\u4EE4\uFF08\u53EA\u8BFB\u63D0\u793A\uFF0CAI \u4E0D\u4FEE\u6539\u5F8B\u4EE4\uFF09` } : {}
     },
+    ...node.kind === "model" || node.clip ? {
+      animation: {
+        clip: node.clip,
+        clipAssetId: node.clipAssetId,
+        clipPlaying: node.clipPlaying,
+        clipLoop: node.clipLoop ?? true,
+        clipSpeed: node.clipSpeed ?? 1
+      }
+    } : {},
+    drivers: describeNodeDrivers(node),
     tagId: node.tagId ?? null,
     tagIds: node.tagIds ?? [],
     renderLayerId: node.renderLayerId ?? "default"
@@ -16643,6 +16910,10 @@ function queryAssetSearch(query = "", kind, folder) {
 }
 function queryRegistryDescribe(category, id) {
   const out = {};
+  if (category === "coreComponents" || category === "all") {
+    out.coreComponents = describeCoreComponents(id);
+    out.nodeAnimation = NODE_ANIMATION_NOTE;
+  }
   if (category === "capabilities" || category === "all") {
     const items = CAPABILITIES.filter((c) => !id || c.id === id);
     out.capabilities = items.map((c) => ({
@@ -16802,7 +17073,7 @@ function diagnoseProject(budget = DEFAULT_PERFORMANCE_BUDGET) {
         category: "playability",
         target: script.id,
         message: `\u811A\u672C "${script.relativePath}" \u7F16\u8BD1\u5931\u8D25\uFF08${script.diagnostics[0]?.message ?? "\u5B58\u5728\u8BED\u6CD5\u6216\u7ED3\u6784\u9519\u8BEF"}\uFF09`,
-        hint: "\u8C03\u7528 query__code_read \u67E5\u770B\u6E90\u7801\u5E76\u7528 script.update / script.patch \u4FEE\u590D"
+        hint: "\u8C03\u7528 script__read \u67E5\u770B\u6E90\u7801\u5E76\u7528 script.update / script.patch \u4FEE\u590D"
       });
     }
   }
@@ -17395,12 +17666,26 @@ function summarizeRuntimeLogs(logs, maxEach = 8) {
   const warnings = collect("warn");
   return { errorCount: errors.total, warningCount: warnings.total, errors: errors.lines, warnings: warnings.lines };
 }
+function summarizeInfoLogs(logs, maxLines = 40) {
+  const counts = /* @__PURE__ */ new Map();
+  for (const item of logs) {
+    if (item.level === "error" || item.level === "warn") continue;
+    counts.set(item.message, (counts.get(item.message) ?? 0) + 1);
+  }
+  const lines = Array.from(counts.entries()).slice(0, maxLines).map(([message, n]) => {
+    const text = message.length > 300 ? `${message.slice(0, 300)}\u2026` : message;
+    return n > 1 ? `${text}\uFF08\u91CD\u590D ${n} \u6B21\uFF09` : text;
+  });
+  if (counts.size > maxLines) lines.push(`\u2026\u53E6\u6709 ${counts.size - maxLines} \u79CD\u4E0D\u540C\u65E5\u5FD7\u672A\u5217\u51FA`);
+  return lines;
+}
 var PlaytestSession = class {
   active = false;
   startedFromStopped = false;
   elapsedSec = 0;
   stepsSimulated = 0;
   logCursor = null;
+  sampler = null;
   screenshots = [];
   assertions = [];
   headlessObjects = /* @__PURE__ */ new Map();
@@ -17439,6 +17724,10 @@ var PlaytestSession = class {
       }
       this.elapsedSec += dt;
       this.stepsSimulated += 1;
+      if (this.sampler && this.elapsedSec + 1e-6 >= this.sampler.next) {
+        this.sampler.next += this.sampler.every;
+        this.sampler.onSample(Number(this.elapsedSec.toFixed(3)));
+      }
     }
   }
   read(query) {
@@ -17464,17 +17753,28 @@ var PlaytestSession = class {
     if (!target) return null;
     const obj = getViewportBridge()?.resolveObject(target.id) ?? this.headlessObjects.get(target.id);
     if (obj) {
-      return {
+      const deg = 180 / Math.PI;
+      const pose2 = {
         id: target.id,
         name: target.name,
-        position: [obj.position.x, obj.position.y, obj.position.z]
+        position: [obj.position.x, obj.position.y, obj.position.z],
+        rotation: [obj.rotation.x * deg, obj.rotation.y * deg, obj.rotation.z * deg],
+        visible: obj.visible
       };
+      return pose2;
     }
-    return {
+    const pose = {
       id: target.id,
       name: target.name,
-      position: [...target.position]
+      position: [...target.position],
+      rotation: [...target.rotation],
+      visible: target.visible
     };
+    return pose;
+  }
+  /** 每推进 everySec 游戏秒回调一次，用于采样节点轨迹等过程数据 */
+  setSampler(everySec, onSample) {
+    this.sampler = { every: Math.max(1 / 60, everySec), next: 0, onSample };
   }
   evaluateCondition(condition) {
     if (condition.kind === "elapsed") {
@@ -17520,6 +17820,7 @@ var PlaytestSession = class {
     const logs = readLogsSince(this.logCursor);
     const errors = logs.filter((item) => item.level === "error").map((item) => item.message);
     const warnings = logs.filter((item) => item.level === "warn").map((item) => item.message);
+    const infoLogs = summarizeInfoLogs(logs);
     const render = readMainRenderMetrics();
     const budgetNotes = [];
     let budgetPassed = true;
@@ -17542,6 +17843,7 @@ var PlaytestSession = class {
       warningCount: warnings.length,
       errors,
       warnings,
+      logs: infoLogs,
       screenshots: [...this.screenshots],
       assertions: [...this.assertions],
       metrics: {
@@ -17659,6 +17961,113 @@ function findMountedUiButton(target) {
     }
   }
   return null;
+}
+
+// src/ai/renderBreakdown.ts
+function geometryTriangles(geometry) {
+  if (!geometry) return 0;
+  const count = geometry.index ? geometry.index.count : geometry.getAttribute("position")?.count ?? 0;
+  return Math.floor(count / 3);
+}
+function measureRenderBreakdown(top = 8) {
+  const bridge = getViewportBridge();
+  if (!bridge) return null;
+  const nodes = useEditorStore.getState().nodes;
+  const entries = [];
+  for (const node of Object.values(nodes)) {
+    const rootObj = bridge.resolveObject(node.id);
+    if (!rootObj) continue;
+    let triangles = 0;
+    let meshDraws = 0;
+    const walk = (obj) => {
+      if (!obj.visible) return;
+      const owner = obj.userData?.nodeId;
+      if (obj !== rootObj && typeof owner === "string" && owner !== node.id) return;
+      const mesh = obj;
+      if (mesh.isMesh) {
+        const instances = mesh.isInstancedMesh ? Math.max(0, mesh.count ?? 1) : 1;
+        triangles += geometryTriangles(mesh.geometry) * instances;
+        meshDraws += Array.isArray(mesh.material) ? Math.max(1, mesh.material.length) : 1;
+      }
+      for (const child of obj.children) walk(child);
+    };
+    walk(rootObj);
+    if (triangles > 0 || meshDraws > 0) {
+      entries.push({ id: node.id, name: node.name, kind: node.kind, triangles, meshDraws });
+    }
+  }
+  entries.sort((a, b) => b.triangles - a.triangles);
+  return {
+    top: entries.slice(0, top),
+    totalTriangles: entries.reduce((sum, item) => sum + item.triangles, 0),
+    totalMeshDraws: entries.reduce((sum, item) => sum + item.meshDraws, 0)
+  };
+}
+
+// src/ai/uiLayout.ts
+var NOT_RENDERED_NOTE = "\u8BE5\u754C\u9762\u5F53\u524D\u6CA1\u6709\u6E32\u67D3\uFF0C\u62FF\u4E0D\u5230\u8BA1\u7B97\u5E03\u5C40\u3002\u8BD5\u73A9\u4E2D\uFF08viewport__capture({ playSeconds }) \u4F1A\u81EA\u52A8\u9644\u5E26 uiLayoutIssues\uFF0C\u6216 playtest__control play \u4E4B\u540E\u518D\u67E5\u8BE2\uFF09\u6216\u5728 UI \u7F16\u8F91\u5668\u91CC\u6253\u5F00\u8BE5\u754C\u9762\u65F6\u53EF\u7528\u3002";
+function findRenderedElement(nodeId) {
+  if (typeof document === "undefined") return null;
+  const selector = `[data-ui-node-id="${nodeId.replace(/["\\]/g, "\\$&")}"]`;
+  return document.querySelector(`.ui-screen-stack ${selector}`) ?? document.querySelector(`.ui-dom-preview ${selector}`);
+}
+function measureUiLayout(root2, options) {
+  const rootEl = findRenderedElement(root2.id);
+  if (!rootEl) return { rendered: false, note: NOT_RENDERED_NOTE };
+  const rootRect = rootEl.getBoundingClientRect();
+  if (rootRect.width <= 0 || rootRect.height <= 0) return { rendered: false, note: NOT_RENDERED_NOTE };
+  const entries = [];
+  const visit = (node, parentRect) => {
+    const el = node.id === root2.id ? rootEl : rootEl.querySelector(`[data-ui-node-id="${node.id.replace(/["\\]/g, "\\$&")}"]`);
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const issues = [];
+    const hidden = node.visible === false || getComputedStyle(el).display === "none";
+    if (!hidden) {
+      if (rect.width < 1 || rect.height < 1) {
+        issues.push("\u5C3A\u5BF8\u4E3A 0\uFF0C\u4E0D\u53EF\u89C1");
+      } else {
+        const outside = rect.right <= rootRect.left || rect.left >= rootRect.right || rect.bottom <= rootRect.top || rect.top >= rootRect.bottom;
+        if (outside) {
+          issues.push("\u5B8C\u5168\u5728\u754C\u9762\u8303\u56F4\u4E4B\u5916");
+        } else if (rect.left < rootRect.left - 1 || rect.top < rootRect.top - 1 || rect.right > rootRect.right + 1 || rect.bottom > rootRect.bottom + 1) {
+          issues.push("\u90E8\u5206\u8D85\u51FA\u754C\u9762\u8FB9\u754C");
+        }
+        if (parentRect && node.id !== root2.id) {
+          const dx = Math.max(parentRect.left - rect.left, rect.right - parentRect.right);
+          const dy = Math.max(parentRect.top - rect.top, rect.bottom - parentRect.bottom);
+          if (dx > 1 || dy > 1) {
+            issues.push(`\u8D85\u51FA\u7236\u5BB9\u5668\uFF08\u6A2A\u5411 ${Math.max(0, Math.round(dx))}px\uFF0C\u7EB5\u5411 ${Math.max(0, Math.round(dy))}px\uFF09`);
+          }
+        }
+        if ((node.type === "text" || node.type === "button") && (el.scrollWidth > el.clientWidth + 1 || el.scrollHeight > el.clientHeight + 1)) {
+          issues.push("\u6587\u5B57\u5185\u5BB9\u8D85\u51FA\u81EA\u8EAB\u77E9\u5F62\uFF0C\u53EF\u80FD\u88AB\u88C1\u5207\u6216\u6EA2\u51FA");
+        }
+      }
+    }
+    entries.push({
+      id: node.id,
+      ...node.name ? { name: node.name } : {},
+      type: node.type,
+      rect: [
+        Math.round(rect.left - rootRect.left),
+        Math.round(rect.top - rootRect.top),
+        Math.round(rect.width),
+        Math.round(rect.height)
+      ],
+      ...hidden ? { issues: ["\u5F53\u524D\u9690\u85CF"] } : issues.length > 0 ? { issues } : {}
+    });
+    if (hidden) return;
+    for (const child of node.children ?? []) visit(child, rect);
+  };
+  visit(root2, null);
+  const withIssues = entries.filter((item) => item.issues && item.issues[0] !== "\u5F53\u524D\u9690\u85CF");
+  return {
+    rendered: true,
+    rootSize: [Math.round(rootRect.width), Math.round(rootRect.height)],
+    nodes: options?.issuesOnly ? withIssues : entries,
+    issueCount: withIssues.length
+  };
 }
 
 // src/ai/knowledge/recipes.ts
@@ -18271,12 +18680,24 @@ async function executeAiToolInner(toolName, args) {
     case "query__node_inspect": {
       const nodeId = String(resolvedArgs.nodeId ?? "");
       const node = queryNodeInspect(nodeId);
+      const playState = useEditorStore.getState().playState;
+      const runtime2 = node && playState !== "stopped" ? readWatchedNodes(new PlaytestSession(), [nodeId])?.[0] : null;
       return {
         ok: Boolean(node),
         toolName,
         displayLabel: `\u68C0\u67E5\u8282\u70B9 ${node?.name ?? nodeId}`,
         targetNodeId: node ? nodeId : void 0,
-        data: node ?? {
+        data: node ? runtime2?.found ? {
+          ...node,
+          runtime: {
+            playState,
+            note: "transform \u662F\u7F16\u8F91\u6001\u6570\u636E\uFF1B\u8BD5\u73A9\u4E2D\u7684\u5B9E\u65F6\u72B6\u6001\u4EE5 runtime \u4E3A\u51C6",
+            position: runtime2.position,
+            rotation: runtime2.rotation,
+            visible: runtime2.visible,
+            ...runtime2.scriptState ? { scriptState: runtime2.scriptState } : {}
+          }
+        } : node : {
           ok: false,
           message: `\u8282\u70B9 "${nodeId}" \u4E0D\u5B58\u5728`,
           availableNodes: listCompactNodes()
@@ -18316,16 +18737,38 @@ async function executeAiToolInner(toolName, args) {
       };
     case "query__project_diagnose": {
       const report = diagnoseProject();
+      const breakdown = measureRenderBreakdown(8);
       return {
         ok: true,
         toolName,
         displayLabel: `\u5DE5\u7A0B\u4F53\u68C0\uFF08${report.errorCount} \u9519\u8BEF\uFF0C${report.warningCount} \u8B66\u544A\uFF09`,
-        data: report
+        data: breakdown && breakdown.top.length > 0 ? {
+          ...report,
+          renderBreakdown: {
+            note: "\u6309\u8282\u70B9\u7EDF\u8BA1\u7684\u4E09\u89D2\u9762\u4E0E\u7F51\u683C\u6279\u6B21\uFF08\u5B50\u8282\u70B9\u5355\u72EC\u8BA1\uFF09\uFF1B\u603B DrawCall \u8FD8\u5305\u542B\u9634\u5F71\u7B49\u989D\u5916\u901A\u9053",
+            totalTriangles: breakdown.totalTriangles,
+            totalMeshDraws: breakdown.totalMeshDraws,
+            topNodes: breakdown.top
+          }
+        } : report
       };
     }
     case "query__code_assets": {
       const assetDirs = useAssetStore.getState().assetDirs;
+      const usage = /* @__PURE__ */ new Map();
+      for (const node of Object.values(useEditorStore.getState().nodes)) {
+        const bag = node.gameplay?.packs?.__project__;
+        if (!bag || typeof bag !== "object") continue;
+        for (const [scriptId, params] of Object.entries(bag)) {
+          const enabled = !(params && typeof params === "object" && params.__enabled === false);
+          const list = usage.get(scriptId) ?? [];
+          list.push({ id: node.id, name: node.name, enabled });
+          usage.set(scriptId, list);
+        }
+      }
       const items = Object.values(useCodeAssetStore.getState().assets).map((item) => {
+        const attached = usage.get(item.id) ?? [];
+        const isSystem = item.kind === "script" && item.compiledScript?.kind === "system";
         const dirKey = `code:${item.kind}:${item.id}`;
         const folder = assetDirs[dirKey] ?? (item.relativePath.startsWith("Assets/") && item.relativePath.includes("/") ? item.relativePath.slice(0, item.relativePath.lastIndexOf("/")) : item.kind === "shader" ? "Assets/Shaders" : "Assets/Scripts");
         return {
@@ -18335,13 +18778,20 @@ async function executeAiToolInner(toolName, args) {
           folder,
           relativePath: item.relativePath,
           ok: item.ok,
-          diagnostics: item.diagnostics
+          diagnostics: item.diagnostics,
+          ...item.kind === "script" ? isSystem ? { scriptKind: "system", note: "\u5168\u5C40\u7CFB\u7EDF\u811A\u672C\uFF0C\u65E0\u9700\u6302\u8F7D\u5230\u8282\u70B9" } : {
+            scriptKind: "behavior",
+            attachedTo: attached.slice(0, 20),
+            ...attached.length > 20 ? { attachedCount: attached.length } : {},
+            ...attached.length === 0 ? { orphan: true } : {}
+          } : {}
         };
       });
+      const orphanCount = items.filter((item) => "orphan" in item && item.orphan).length;
       return {
         ok: true,
         toolName,
-        displayLabel: `\u4EE3\u7801\u8D44\u4EA7\u5217\u8868\uFF08${items.length} \u4E2A\uFF09`,
+        displayLabel: `\u4EE3\u7801\u8D44\u4EA7\u5217\u8868\uFF08${items.length} \u4E2A${orphanCount > 0 ? `\uFF0C${orphanCount} \u4E2A\u672A\u6302\u8F7D` : ""}\uFF09`,
         data: items
       };
     }
@@ -18367,7 +18817,12 @@ async function executeAiToolInner(toolName, args) {
           ok: true,
           toolName,
           displayLabel: `\u8BFB\u53D6 UI \u6587\u6863 ${hit.name}`,
-          data: { id: hit.id, name: hit.name, document: hit.document }
+          data: {
+            id: hit.id,
+            name: hit.name,
+            document: hit.document,
+            layout: hit.document?.root ? measureUiLayout(hit.document.root) : { rendered: false }
+          }
         };
       }
       const list = Object.values(assets).filter((a) => a.kind === "ui").map((a) => ({ id: a.id, name: a.name }));
@@ -18434,9 +18889,27 @@ async function executeAiToolInner(toolName, args) {
       const steps = Array.isArray(args.steps) ? args.steps : [];
       const session = new PlaytestSession();
       const autoStop = typeof args.autoStop === "boolean" ? args.autoStop : true;
+      const watchList = Array.isArray(args.watchNodes) ? args.watchNodes.filter((item) => typeof item === "string" && Boolean(item.trim())).slice(0, 12) : [];
+      const sampleEvery = typeof args.sampleEvery === "number" && args.sampleEvery > 0 ? Math.max(0.05, args.sampleEvery) : 0;
+      const trajectory = [];
+      if (sampleEvery > 0 && watchList.length > 0) {
+        session.setSampler(sampleEvery, (t) => {
+          const nodes = {};
+          for (const query of watchList) {
+            const pose = session.read({ kind: "nodePose", nodeIdOrName: query.trim() });
+            nodes[query] = pose ? {
+              pos: pose.position.map((v) => Number(v.toFixed(2))),
+              yaw: Number(pose.rotation[1].toFixed(1))
+            } : null;
+          }
+          trajectory.push({ t, nodes });
+        });
+      }
       const report = session.runSmoke(steps, { autoStop: false });
-      const watched = readWatchedNodes(session, args.watchNodes);
+      const watched = readWatchedNodes(session, watchList);
       if (autoStop) session.stop();
+      const MAX_SAMPLES = 60;
+      const thinned = trajectory.length > MAX_SAMPLES ? Array.from({ length: MAX_SAMPLES }, (_, i) => trajectory[Math.round(i * (trajectory.length - 1) / (MAX_SAMPLES - 1))]) : trajectory;
       const logSummary = summarizeRuntimeLogs([
         ...report.errors.map((message) => ({ level: "error", message })),
         ...report.warnings.map((message) => ({ level: "warn", message }))
@@ -18455,9 +18928,12 @@ async function executeAiToolInner(toolName, args) {
           runtimeErrorCount: logSummary.errorCount,
           runtimeErrors: logSummary.errors,
           runtimeWarnings: logSummary.warnings,
+          logs: report.logs,
           assertions: report.assertions,
           metrics: report.metrics,
           ...watched ? { watchedNodes: watched } : {},
+          ...thinned.length > 0 ? { trajectory: thinned } : {},
+          ...sampleEvery > 0 && watchList.length === 0 ? { trajectoryNote: "sampleEvery \u9700\u8981\u914D\u5408 watchNodes \u624D\u4F1A\u91C7\u6837" } : {},
           ...lastShot ? { dataUrl: lastShot } : {}
         }
       };
@@ -18478,7 +18954,9 @@ async function executeAiToolInner(toolName, args) {
       const waitSec = typeof args.waitSeconds === "number" && args.waitSeconds > 0 ? args.waitSeconds : 0.05;
       await waitRealFrames(waitSec);
       const nextState = useEditorStore.getState().playState;
-      const logSummary = summarizeRuntimeLogs(readLogsSince(manualPlayLogCursor));
+      const sinceLogs = readLogsSince(manualPlayLogCursor);
+      const logSummary = summarizeRuntimeLogs(sinceLogs);
+      const watched = nextState !== "stopped" ? readWatchedNodes(new PlaytestSession(), args.watchNodes) : null;
       return {
         ok: true,
         toolName,
@@ -18487,7 +18965,10 @@ async function executeAiToolInner(toolName, args) {
           playState: nextState,
           runtimeErrorCount: logSummary.errorCount,
           runtimeErrors: logSummary.errors,
-          runtimeWarnings: logSummary.warnings
+          runtimeWarnings: logSummary.warnings,
+          logs: summarizeInfoLogs(sinceLogs),
+          ...watched ? { watchedNodes: watched } : {},
+          ...nextState !== "stopped" ? { note: "\u8BD5\u73A9/\u6682\u505C\u671F\u95F4\u5DE5\u7A0B\u5904\u4E8E\u9501\u5B9A\u72B6\u6001\uFF1B\u8981\u4FEE\u6539\u811A\u672C\u6216\u8282\u70B9\u8BF7\u5148 stop" } : {}
         }
       };
     }
@@ -18506,19 +18987,22 @@ async function executeAiToolInner(toolName, args) {
       }
       let dataUrl = null;
       let watched = null;
+      let uiLayoutIssues = null;
       try {
         dataUrl = await captureViewportComposite({
           width: typeof args.width === "number" ? args.width : void 0,
           height: typeof args.height === "number" ? args.height : void 0
         });
         watched = readWatchedNodes(new PlaytestSession(), args.watchNodes);
+        if (useEditorStore.getState().playState !== "stopped") uiLayoutIssues = collectMountedUiIssues();
       } finally {
         if (startedHere && !keepPlaying && useEditorStore.getState().playState !== "stopped") {
           useEditorStore.getState().stop();
         }
       }
       const played = startedHere || store.playState !== "stopped";
-      const logSummary = played ? summarizeRuntimeLogs(readLogsSince(logCursor)) : null;
+      const playedLogs = played ? readLogsSince(logCursor) : null;
+      const logSummary = playedLogs ? summarizeRuntimeLogs(playedLogs) : null;
       return {
         ok: Boolean(dataUrl),
         toolName,
@@ -18529,9 +19013,11 @@ async function executeAiToolInner(toolName, args) {
           ...logSummary ? {
             runtimeErrorCount: logSummary.errorCount,
             runtimeErrors: logSummary.errors,
-            runtimeWarnings: logSummary.warnings
+            runtimeWarnings: logSummary.warnings,
+            logs: summarizeInfoLogs(playedLogs ?? [])
           } : {},
-          ...watched ? { watchedNodes: watched } : {}
+          ...watched ? { watchedNodes: watched } : {},
+          ...uiLayoutIssues && uiLayoutIssues.length > 0 ? { uiLayoutIssues } : {}
         }
       };
     }
@@ -18696,14 +19182,32 @@ function readWatchedNodes(session, raw) {
   return raw.filter((item) => typeof item === "string" && Boolean(item.trim())).slice(0, 12).map((query) => {
     const pose = session.read({ kind: "nodePose", nodeIdOrName: query.trim() });
     if (!pose) return { query, found: false };
+    const scriptState = readScriptStateSnapshot(pose.id);
     return {
       query,
       found: true,
       id: pose.id,
       name: pose.name,
-      position: pose.position.map((v) => Number(v.toFixed(3)))
+      position: pose.position.map((v) => Number(v.toFixed(3))),
+      rotation: pose.rotation.map((v) => Number(v.toFixed(1))),
+      visible: pose.visible,
+      ...scriptState ? { scriptState } : {}
     };
   });
+}
+function collectMountedUiIssues() {
+  const assets = useAssetStore.getState().assets;
+  const out = [];
+  for (const node of Object.values(useEditorStore.getState().nodes)) {
+    if (node.kind !== "screen" || !node.screen?.documentId) continue;
+    const asset = assets[node.screen.documentId];
+    if (asset?.kind !== "ui" || !asset.document?.root) continue;
+    const report = measureUiLayout(asset.document.root, { issuesOnly: true });
+    if (report.rendered && report.nodes && report.nodes.length > 0) {
+      out.push({ screen: node.name, nodes: report.nodes.slice(0, 12) });
+    }
+  }
+  return out;
 }
 async function waitRealFrames(seconds) {
   const ms = Math.max(0, Math.min(1e4, seconds * 1e3));
@@ -20108,6 +20612,82 @@ function registerCodeAssetCommands() {
       };
     }
   };
+  const scriptDetachCmd = {
+    id: "script.detach",
+    title: "\u4ECE\u8282\u70B9\u5378\u4E0B\u811A\u672C",
+    description: "\u79FB\u9664\u8282\u70B9 node.gameplay.packs.__project__[scriptId] \u7684\u6302\u8F7D\uFF08\u811A\u672C\u6587\u4EF6\u672C\u8EAB\u4FDD\u7559\uFF09",
+    params: {
+      type: "object",
+      fields: {
+        nodeId: { type: "ref", target: "node", default: "", label: "\u76EE\u6807\u8282\u70B9 ID" },
+        scriptId: { type: "string", default: "", label: "\u811A\u672C ID" }
+      }
+    },
+    risk: "safe",
+    run(_ctx, params) {
+      const nodeId = String(params.nodeId || "");
+      const scriptId = normalizeCodeAssetId("script", String(params.scriptId || ""));
+      const store = useEditorStore.getState();
+      const node = store.nodes[nodeId];
+      if (!node) return { ok: false, code: "NOT_FOUND", message: `\u8282\u70B9 "${nodeId}" \u4E0D\u5B58\u5728` };
+      const prevPacks = node.gameplay?.packs ?? {};
+      const prevProject = prevPacks.__project__ ?? {};
+      if (!(scriptId in prevProject)) {
+        return {
+          ok: false,
+          code: "NOT_ATTACHED",
+          message: `\u8282\u70B9 "${node.name}" \u6CA1\u6709\u6302\u8F7D\u811A\u672C ${scriptId}`,
+          hint: `\u8BE5\u8282\u70B9\u5F53\u524D\u6302\u8F7D\uFF1A${Object.keys(prevProject).join(", ") || "\uFF08\u65E0\uFF09"}`
+        };
+      }
+      const { [scriptId]: _removed, ...rest } = prevProject;
+      store.updateNode(nodeId, {
+        gameplay: { ...node.gameplay, packs: { ...prevPacks, __project__: rest } }
+      });
+      return {
+        ok: true,
+        value: { nodeId, scriptId },
+        changed: { nodesUpdated: [nodeId], summary: `\u4ECE\u8282\u70B9 "${node.name}" \u5378\u4E0B\u811A\u672C ${scriptId}` }
+      };
+    }
+  };
+  const scriptDeleteCmd = {
+    id: "script.delete",
+    title: "\u5220\u9664\u811A\u672C\u8D44\u4EA7",
+    description: "\u5220\u9664\u4E00\u4E2A\u811A\u672C\u6587\u4EF6\uFF08\u5982\u8C03\u8BD5\u7528\u7684\u4E34\u65F6\u811A\u672C\uFF09\u3002\u4ECD\u88AB\u8282\u70B9\u6302\u8F7D\u7684\u811A\u672C\u4F1A\u88AB\u62D2\u7EDD\uFF0C\u9700\u5148 script.detach\uFF1B\u5220\u9664\u6587\u4EF6\u4E0D\u53EF\u968F\u5BF9\u8BDD\u64A4\u9500",
+    params: {
+      type: "object",
+      fields: {
+        id: { type: "string", default: "", label: "\u811A\u672C ID" }
+      }
+    },
+    risk: "confirm",
+    async run(_ctx, params) {
+      const id = normalizeCodeAssetId("script", String(params.id || "").trim());
+      const record = useCodeAssetStore.getState().assets[id];
+      if (!record || record.kind !== "script") {
+        return { ok: false, code: "NOT_FOUND", message: `\u811A\u672C "${id}" \u4E0D\u5B58\u5728` };
+      }
+      const users = Object.values(useEditorStore.getState().nodes).filter((node) => {
+        const bag = node.gameplay?.packs?.__project__;
+        return Boolean(bag && id in bag);
+      });
+      if (users.length > 0) {
+        return {
+          ok: false,
+          code: "IN_USE",
+          message: `\u811A\u672C ${id} \u4ECD\u6302\u8F7D\u5728 ${users.length} \u4E2A\u8282\u70B9\u4E0A\uFF1A${users.slice(0, 8).map((n) => n.name).join("\u3001")}`,
+          hint: "\u5148\u5BF9\u8FD9\u4E9B\u8282\u70B9\u8C03\u7528 script.detach\uFF0C\u518D\u5220\u9664\u811A\u672C"
+        };
+      }
+      await deleteCodeAsset(id);
+      return {
+        ok: true,
+        value: { id, relativePath: record.relativePath },
+        changed: { projectChanged: true, filesChanged: [record.relativePath], summary: `\u5220\u9664\u811A\u672C ${record.relativePath}` }
+      };
+    }
+  };
   const openExternalCmd = {
     id: "codeAsset.openExternal",
     title: "\u7528\u5916\u90E8\u7F16\u8F91\u5668\u6253\u5F00\u4EE3\u7801\u8D44\u4EA7",
@@ -20224,6 +20804,8 @@ function registerCodeAssetCommands() {
     commandBus.register(scriptPatchCmd),
     commandBus.register(scriptCheckCmd),
     commandBus.register(scriptAttachCmd),
+    commandBus.register(scriptDetachCmd),
+    commandBus.register(scriptDeleteCmd),
     commandBus.register(openExternalCmd)
   ];
   return () => unsubs.forEach((fn) => fn());
@@ -20287,6 +20869,14 @@ var setComponentDataCmd = {
     if (!node) {
       return { ok: false, code: "node.notFound", message: `\u8282\u70B9 "${p.nodeId}" \u4E0D\u5B58\u5728` };
     }
+    if (p.packId === "core" && isCoreComponentId(p.componentId)) {
+      return {
+        ok: false,
+        code: "gameplay.useCoreComponent",
+        message: `"${p.componentId}" \u662F\u5F15\u64CE\u5185\u7F6E\u7EC4\u4EF6\uFF0C\u6570\u636E\u5728 node.gameplay.${p.componentId}\uFF0C\u5199\u8FDB packs.core \u4E0D\u4F1A\u88AB\u8FD0\u884C\u65F6\u8BC6\u522B`,
+        hint: `\u6539\u7528 gameplay.setCoreComponent({ nodeId, componentId: "${p.componentId}", patch })`
+      };
+    }
     const prevGameplay = node.gameplay ?? {};
     const prevPacks = prevGameplay.packs ?? {};
     const prevPackData = prevPacks[p.packId] ?? {};
@@ -20317,6 +20907,47 @@ var setComponentDataCmd = {
       changed: {
         nodesUpdated: [p.nodeId],
         summary: `\u66F4\u65B0\u8282\u70B9 ${node.name} \u7684\u73A9\u6CD5\u7EC4\u4EF6 ${p.packId}.${p.componentId}`
+      }
+    };
+  }
+};
+var setCoreComponentCmd = {
+  id: "gameplay.setCoreComponent",
+  title: "\u8BBE\u7F6E\u8282\u70B9\u7684\u5185\u7F6E\u6838\u5FC3\u7EC4\u4EF6",
+  description: `\u6302\u8F7D\u3001\u66F4\u65B0\u6216\u79FB\u9664\u5F15\u64CE\u5185\u7F6E\u7EC4\u4EF6\uFF08${CORE_COMPONENTS.map((item) => `${item.id} ${item.label}`).join(" / ")}\uFF09\uFF0C\u6570\u636E\u5199\u5728 node.gameplay[componentId]\uFF0C\u7531\u8FD0\u884C\u65F6\u76F4\u63A5\u9A71\u52A8\u3001\u65E0\u9700\u811A\u672C\u3002\u5B57\u6BB5\u4E0E\u9ED8\u8BA4\u503C\u7528 query__registry_describe({ category: "coreComponents" }) \u67E5\u770B\uFF1Bpatch \u53EA\u9700\u5199\u8981\u6539\u7684\u5B57\u6BB5\uFF0C\u672A\u6302\u8F7D\u65F6\u81EA\u52A8\u8865\u5168\u9ED8\u8BA4\u503C`,
+  risk: "safe",
+  params: {
+    type: "object",
+    fields: {
+      nodeId: { type: "ref", target: "node", required: true, label: "\u8282\u70B9 ID" },
+      componentId: {
+        type: "enum",
+        options: CORE_COMPONENTS.map((item) => ({ value: item.id, label: item.label })),
+        default: "character",
+        label: "\u5185\u7F6E\u7EC4\u4EF6 ID"
+      },
+      patch: { type: "object", fields: {}, optional: true, label: "\u5B57\u6BB5\u8865\u4E01\uFF08\u7559\u7A7A\u5219\u6309\u9ED8\u8BA4\u503C\u6302\u8F7D\uFF09" },
+      remove: { type: "boolean", default: false, optional: true, label: "\u662F\u5426\u79FB\u9664\u8BE5\u7EC4\u4EF6" }
+    }
+  },
+  run(_ctx, p) {
+    const state = useEditorStore.getState();
+    const node = state.nodes[p.nodeId];
+    if (!node) {
+      return { ok: false, code: "node.notFound", message: `\u8282\u70B9 "${p.nodeId}" \u4E0D\u5B58\u5728` };
+    }
+    const patch = p.remove === true ? null : p.patch && typeof p.patch === "object" ? p.patch : {};
+    const applied = applyCoreComponentPatch(node.gameplay, p.componentId, patch);
+    if (!applied.ok) {
+      return { ok: false, code: "gameplay.invalidCoreComponent", message: applied.message, hint: applied.hint };
+    }
+    state.updateNode(p.nodeId, { gameplay: applied.gameplay });
+    return {
+      ok: true,
+      value: { nodeId: p.nodeId, componentId: p.componentId, data: applied.data },
+      changed: {
+        nodesUpdated: [p.nodeId],
+        summary: `${patch === null ? "\u79FB\u9664" : "\u8BBE\u7F6E"}\u8282\u70B9 ${node.name} \u7684\u5185\u7F6E\u7EC4\u4EF6 ${p.componentId}`
       }
     };
   }
@@ -20398,6 +21029,7 @@ function registerGameplayCommands() {
   const unsubs = [
     commandBus.register(setPackEnabledCmd),
     commandBus.register(setComponentDataCmd),
+    commandBus.register(setCoreComponentCmd),
     commandBus.register(upsertRowCmd),
     commandBus.register(deleteRowCmd)
   ];

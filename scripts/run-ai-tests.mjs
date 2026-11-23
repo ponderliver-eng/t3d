@@ -3,7 +3,7 @@ import { execFileSync } from 'node:child_process'
 import fs from 'node:fs'
 import { build } from 'esbuild'
 
-const entries = ['tests/ai-knowledge.test.ts', 'tests/ai-providers.test.ts']
+const entries = ['tests/ai-knowledge.test.ts', 'tests/ai-providers.test.ts', 'tests/ai-observability.test.ts']
 const banner = [
   'if(typeof globalThis.localStorage==="undefined"){const m=new Map();globalThis.localStorage={get length(){return m.size},clear:()=>m.clear(),getItem:k=>m.get(k)??null,key:i=>[...m.keys()][i]??null,removeItem:k=>{m.delete(k)},setItem:(k,v)=>{m.set(k,String(v))}};}',
   'if(typeof globalThis.document==="undefined"){globalThis.document={documentElement:{style:{}}};}',

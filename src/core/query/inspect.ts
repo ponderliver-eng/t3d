@@ -3,6 +3,7 @@ import { ASSETS_ROOT, isWithin, normalizeDir } from '../../editor/assets/folders
 import { assetDirectory, useAssetStore } from '../../editor/assets/library'
 import { useEditorStore } from '../../editor/scene/store'
 import type { SceneNode } from '../../editor/scene/types'
+import { CORE_COMPONENTS, describeCoreComponents, isCoreComponentId } from '../../gameplay/coreComponents'
 import { listGameplayPacks, tableRows } from '../../gameplay/registry'
 import { codeAssetDirKey, defaultCodeAssetDir, useCodeAssetStore } from '../codeAssets/workspace'
 import { commandBus } from '../commands/bus'
@@ -117,12 +118,68 @@ export function querySceneOutline(parentId: string | null = null, maxDepth = 3):
   return build(parentId, 1)
 }
 
+/** 节点动画字段说明：这些是 SceneNode 的既有字段，不属于任何能力包，登记清单里单独说明一次 */
+const NODE_ANIMATION_NOTE = {
+  dataPath: 'node.clip / clipAssetId / clipPlaying / clipLoop / clipSpeed',
+  description:
+    '模型节点的静态动画槽位：试玩开始时若 clipPlaying 为真则循环播放 clip。它只是「开局默认动画」，不会随运动状态切换。',
+  howToDrive: [
+    '角色随移动自动切 idle/walk/run：用内置组件 character（gameplay__setCoreComponent），填 idleClip/walkClip/runClip。',
+    '脚本里按逻辑播放：self.anim.playBody(clipName, { loop, fade, speed }) / playUpper / stopUpper；片段来自其他资产时参数声明为 ref(target:"clip")。',
+  ],
+}
+
+/** 节点上各数据槽由谁驱动：运行时识别的才会在试玩中生效，其余只是数据 */
+function describeNodeDrivers(node: SceneNode): string[] {
+  const notes: string[] = []
+  const gameplay = node.gameplay
+  for (const item of CORE_COMPONENTS) {
+    const data = gameplay?.[item.id] as { enabled?: boolean } | null | undefined
+    if (data) notes.push(`gameplay.${item.id}：内置${item.label}，${data.enabled === false ? '已停用' : '试玩中由引擎驱动'}`)
+  }
+  const enabledPacks = useEditorStore.getState().gameplayPacks
+  for (const [packId, bag] of Object.entries(gameplay?.packs ?? {})) {
+    if (packId === '__project__') {
+      const compiled = useCodeAssetStore.getState().assets
+      for (const [scriptId, params] of Object.entries((bag ?? {}) as Record<string, unknown>)) {
+        const record = compiled[scriptId]
+        const disabled = Boolean(params && typeof params === 'object' && (params as Record<string, unknown>).__enabled === false)
+        notes.push(
+          `脚本 ${scriptId}：${!record ? '脚本不存在，不会运行' : !record.ok ? '编译失败，不会运行' : disabled ? '已停用' : '试玩中运行'}`,
+        )
+      }
+      continue
+    }
+    if (packId === 'core') {
+      const keys = Object.keys((bag ?? {}) as Record<string, unknown>).filter((key) => isCoreComponentId(key))
+      if (keys.length > 0) {
+        notes.push(`gameplay.packs.core.${keys.join('/')}：仅数据，运行时不读取这里；内置组件请用 gameplay__setCoreComponent 写到 gameplay.<组件>`)
+      }
+      continue
+    }
+    if (!enabledPacks.includes(packId)) notes.push(`gameplay.packs.${packId}：玩法包未启用，仅数据`)
+  }
+  for (const capId of Object.keys(node.capabilities ?? {})) {
+    if (!capabilityEnabled(useEditorStore.getState().capabilities, capId)) notes.push(`capabilities.${capId}：能力包未启用，仅数据`)
+  }
+  if (node.clip) {
+    notes.push(`clip="${node.clip}"：${node.clipPlaying ? '试玩开局自动播放' : '未勾选播放，仅数据'}（不随运动状态切换）`)
+  }
+  return notes
+}
+
 export function queryNodeInspect(nodeId: string) {
   const { nodes } = useEditorStore.getState()
   const node = nodes[nodeId]
   if (!node) return null
 
   const ruleCount = node.gameplay?.rules?.length ?? 0
+  const coreData: Record<string, unknown> = {}
+  for (const item of CORE_COMPONENTS) {
+    if (item.id === 'character' || item.id === 'cameraFollow') continue
+    const data = node.gameplay?.[item.id]
+    if (data) coreData[item.id] = data
+  }
   return {
     id: node.id,
     name: node.name,
@@ -142,9 +199,22 @@ export function queryNodeInspect(nodeId: string) {
     gameplay: {
       character: node.gameplay?.character ?? null,
       cameraFollow: node.gameplay?.cameraFollow ?? null,
+      ...coreData,
       packs: node.gameplay?.packs ?? {},
       ...(ruleCount > 0 ? { manualRulesNote: `该节点含 ${ruleCount} 条人工手配律令（只读提示，AI 不修改律令）` } : {}),
     },
+    ...(node.kind === 'model' || node.clip
+      ? {
+          animation: {
+            clip: node.clip,
+            clipAssetId: node.clipAssetId,
+            clipPlaying: node.clipPlaying,
+            clipLoop: node.clipLoop ?? true,
+            clipSpeed: node.clipSpeed ?? 1,
+          },
+        }
+      : {}),
+    drivers: describeNodeDrivers(node),
     tagId: node.tagId ?? null,
     tagIds: node.tagIds ?? [],
     renderLayerId: node.renderLayerId ?? 'default',
@@ -197,8 +267,15 @@ export function queryAssetSearch(query = '', kind?: string, folder?: string) {
   return [...regularResults, ...codeResults].slice(0, 60)
 }
 
-export function queryRegistryDescribe(category: 'capabilities' | 'gameplayPacks' | 'commands' | 'all', id?: string) {
+export function queryRegistryDescribe(
+  category: 'capabilities' | 'gameplayPacks' | 'coreComponents' | 'commands' | 'all',
+  id?: string,
+) {
   const out: Record<string, unknown> = {}
+  if (category === 'coreComponents' || category === 'all') {
+    out.coreComponents = describeCoreComponents(id)
+    out.nodeAnimation = NODE_ANIMATION_NOTE
+  }
   if (category === 'capabilities' || category === 'all') {
     const items = (CAPABILITIES as readonly CapabilityManifest[]).filter((c) => !id || c.id === id)
     out.capabilities = items.map((c) => ({

@@ -50,6 +50,8 @@ export interface PlaytestReport {
   warningCount: number
   errors: string[]
   warnings: string[]
+  /** 脚本 self.log 等普通日志（已去重） */
+  logs: string[]
   screenshots: string[]
   assertions: Array<{ passed: boolean; message: string }>
   metrics: {
@@ -99,12 +101,45 @@ export function summarizeRuntimeLogs(
   return { errorCount: errors.total, warningCount: warnings.total, errors: errors.lines, warnings: warnings.lines }
 }
 
+/**
+ * 脚本 self.log(...) 输出的普通日志（info 级），按首次出现顺序去重计数。
+ * 逐帧打印的日志会折叠成一行「（重复 N 次）」，保证有限篇幅内能看到尽量多不同的内容。
+ */
+export function summarizeInfoLogs(
+  logs: ReadonlyArray<{ level: string; message: string }>,
+  maxLines = 40,
+): string[] {
+  const counts = new Map<string, number>()
+  for (const item of logs) {
+    if (item.level === 'error' || item.level === 'warn') continue
+    counts.set(item.message, (counts.get(item.message) ?? 0) + 1)
+  }
+  const lines = Array.from(counts.entries())
+    .slice(0, maxLines)
+    .map(([message, n]) => {
+      const text = message.length > 300 ? `${message.slice(0, 300)}…` : message
+      return n > 1 ? `${text}（重复 ${n} 次）` : text
+    })
+  if (counts.size > maxLines) lines.push(`…另有 ${counts.size - maxLines} 种不同日志未列出`)
+  return lines
+}
+
+export interface PlaytestNodePose {
+  id: string
+  name: string
+  position: [number, number, number]
+  /** 欧拉角（度）。rotation[1] 即朝向 yaw，0 表示朝 +Z */
+  rotation: [number, number, number]
+  visible: boolean
+}
+
 export class PlaytestSession {
   private active = false
   private startedFromStopped = false
   private elapsedSec = 0
   private stepsSimulated = 0
   private logCursor: string | null = null
+  private sampler: { every: number; next: number; onSample: (elapsedSec: number) => void } | null = null
   private readonly screenshots: string[] = []
   private readonly assertions: Array<{ passed: boolean; message: string }> = []
   private readonly headlessObjects = new Map<string, Group>()
@@ -147,6 +182,10 @@ export class PlaytestSession {
       }
       this.elapsedSec += dt
       this.stepsSimulated += 1
+      if (this.sampler && this.elapsedSec + 1e-6 >= this.sampler.next) {
+        this.sampler.next += this.sampler.every
+        this.sampler.onSample(Number(this.elapsedSec.toFixed(3)))
+      }
     }
   }
 
@@ -173,17 +212,29 @@ export class PlaytestSession {
     if (!target) return null
     const obj = getViewportBridge()?.resolveObject(target.id) ?? this.headlessObjects.get(target.id)
     if (obj) {
-      return {
+      const deg = 180 / Math.PI
+      const pose: PlaytestNodePose = {
         id: target.id,
         name: target.name,
-        position: [obj.position.x, obj.position.y, obj.position.z] as [number, number, number],
+        position: [obj.position.x, obj.position.y, obj.position.z],
+        rotation: [obj.rotation.x * deg, obj.rotation.y * deg, obj.rotation.z * deg],
+        visible: obj.visible,
       }
+      return pose
     }
-    return {
+    const pose: PlaytestNodePose = {
       id: target.id,
       name: target.name,
       position: [...target.position] as [number, number, number],
+      rotation: [...target.rotation] as [number, number, number],
+      visible: target.visible,
     }
+    return pose
+  }
+
+  /** 每推进 everySec 游戏秒回调一次，用于采样节点轨迹等过程数据 */
+  setSampler(everySec: number, onSample: (elapsedSec: number) => void): void {
+    this.sampler = { every: Math.max(1 / 60, everySec), next: 0, onSample }
   }
 
   evaluateCondition(condition: PlaytestWaitCondition): boolean {
@@ -235,6 +286,7 @@ export class PlaytestSession {
     const logs = readLogsSince(this.logCursor)
     const errors = logs.filter((item) => item.level === 'error').map((item) => item.message)
     const warnings = logs.filter((item) => item.level === 'warn').map((item) => item.message)
+    const infoLogs = summarizeInfoLogs(logs)
     const render = readMainRenderMetrics()
     const budgetNotes: string[] = []
     let budgetPassed = true
@@ -257,6 +309,7 @@ export class PlaytestSession {
       warningCount: warnings.length,
       errors,
       warnings,
+      logs: infoLogs,
       screenshots: [...this.screenshots],
       assertions: [...this.assertions],
       metrics: {

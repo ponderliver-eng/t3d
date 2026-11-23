@@ -21,9 +21,14 @@ import {
   PlaytestSession,
   captureLogCursor,
   readLogsSince,
+  summarizeInfoLogs,
   summarizeRuntimeLogs,
+  type PlaytestNodePose,
   type SmokeStep,
 } from '../playtest/session'
+import { readScriptStateSnapshot } from '../core/codeAssets/scriptRuntime'
+import { measureRenderBreakdown } from './renderBreakdown'
+import { measureUiLayout, type UiLayoutEntry } from './uiLayout'
 import { findRecipe, listRecipeIndex } from './knowledge/recipes'
 
 export interface AiToolSpec {
@@ -106,7 +111,7 @@ const QUERY_TOOLS: AiToolSpec[] = [
   },
   {
     name: 'query__node_inspect',
-    description: '查看单个节点的完整数据（变换、能力包、玩法组件、只读律令提示）',
+    description: '查看单个节点的完整数据（变换、能力包、内置组件、脚本挂载、动画槽位）。drivers 字段标明每个数据槽在试玩中是否真的被运行时驱动；试玩/暂停期间额外返回 runtime（实时位置、朝向、可见性与各脚本的 self.state 快照）',
     parameters: {
       type: 'object',
       properties: {
@@ -131,13 +136,13 @@ const QUERY_TOOLS: AiToolSpec[] = [
   },
   {
     name: 'query__registry_describe',
-    description: '查询已登记的能力包、玩法包、组件默认值及可用指令说明',
+    description: '查询已登记的能力包、玩法包组件、引擎内置组件（coreComponents：character 角色控制器 / cameraFollow / interact / trigger / mover / checkpoint / score / soundSource 的字段、默认值与说明，以及节点动画槽位说明）及可用指令说明',
     parameters: {
       type: 'object',
       properties: {
         category: {
           type: 'string',
-          enum: ['capabilities', 'gameplayPacks', 'commands', 'all'],
+          enum: ['capabilities', 'gameplayPacks', 'coreComponents', 'commands', 'all'],
           description: '查询类别',
         },
         id: { type: 'string', description: '可选：只看指定 ID' },
@@ -161,12 +166,12 @@ const QUERY_TOOLS: AiToolSpec[] = [
   },
   {
     name: 'query__project_diagnose',
-    description: '对当前工程做引用完整性、可玩性、能力包与性能预算体检',
+    description: '对当前工程做引用完整性、可玩性、能力包与性能预算体检；renderBreakdown 按节点列出三角面与网格批次最多的前几名，用于定位性能超标的来源',
     parameters: { type: 'object', properties: {}, additionalProperties: false },
   },
   {
     name: 'query__code_assets',
-    description: '列出当前工程已编译的脚本与着色器资产（含编译状态与诊断信息）',
+    description: '列出当前工程的脚本与着色器资产（编译状态、诊断信息），并反查每个脚本挂在哪些节点上（attachedTo）；没有任何节点挂载的行为脚本标记 orphan: true',
     parameters: { type: 'object', properties: {}, additionalProperties: false },
   },
   {
@@ -207,7 +212,7 @@ const QUERY_TOOLS: AiToolSpec[] = [
   },
   {
     name: 'query__ui_inspect',
-    description: '读取指定 UI 资产的完整 UiDocument 节点树与绑定/点击事件详情（不传 assetId 则列出全部 UI 资产）',
+    description: '读取指定 UI 资产的完整 UiDocument 节点树与绑定/点击事件详情（不传 assetId 则列出全部 UI 资产）。界面正在渲染时（试玩中或在 UI 编辑器打开）额外返回 layout：每个节点计算后的实际矩形，以及超出父容器/界面边界、文字溢出等问题',
     parameters: {
       type: 'object',
       properties: {
@@ -219,7 +224,7 @@ const QUERY_TOOLS: AiToolSpec[] = [
   {
     name: 'playtest__run_smoke',
     description:
-      '确定性自动试玩：按固定步长推进游戏、注入虚拟输入、断言节点/变量/日志状态，返回运行时报错（已去重）、断言结果与性能预算。验收玩法逻辑的首选方式（比截图更可靠也更快），结束后自动退出试玩。',
+      '确定性自动试玩：按固定步长推进游戏、注入虚拟输入、断言节点/变量/日志状态，返回运行时报错（已去重）、脚本 self.log 输出的日志（logs）、断言结果与性能预算。验收玩法逻辑的首选方式（比截图更可靠也更快），结束后自动退出试玩。需要观察过程而不只是结果时，用 watchNodes + sampleEvery 拿运动轨迹，或在脚本里临时 self.log 关键变量后从 logs 读回，不要新建探测脚本。',
     parameters: {
       type: 'object',
       properties: {
@@ -257,8 +262,9 @@ const QUERY_TOOLS: AiToolSpec[] = [
         watchNodes: {
           type: 'array',
           items: { type: 'string' },
-          description: '可选：结束时回报这些节点（名称或 ID）的实时世界位置，用于确认角色/敌人是否按预期运动',
+          description: '可选：结束时回报这些节点（名称或 ID）的实时位置、朝向（rotation 度，[1] 为 yaw）、可见性，以及其上各脚本的 self.state 快照（scriptState），用于确认角色/敌人是否按预期运动、内部变量是否正确',
         },
+        sampleEvery: { type: 'number', description: '可选：配合 watchNodes，每隔这么多游戏秒采样一次位置与 yaw，返回 trajectory 轨迹数组（如 0.25；最多保留 60 个采样点）' },
         autoStop: { type: 'boolean', description: '完成后是否自动退出试玩，默认 true' },
       },
       required: ['steps'],
@@ -267,7 +273,7 @@ const QUERY_TOOLS: AiToolSpec[] = [
   },
   {
     name: 'viewport__capture',
-    description: '抓取当前视口截图（含 3D 场景与叠加 UI 界面），用于检查构图、朝向与 UI 排版。若传入 playSeconds（如 0.8），会自动启动试玩运行指定秒数后截图并自动退出试玩，同时返回这段时间内的运行时报错与警告。',
+    description: '抓取当前视口截图（含 3D 场景与叠加 UI 界面），用于检查构图、朝向与 UI 排版。若传入 playSeconds（如 0.8），会自动启动试玩运行指定秒数后截图并自动退出试玩，同时返回这段时间内的运行时报错、警告、脚本日志，以及已挂载界面的布局问题（uiLayoutIssues：超出父容器/屏幕、文字溢出）。',
     parameters: {
       type: 'object',
       properties: {
@@ -275,19 +281,20 @@ const QUERY_TOOLS: AiToolSpec[] = [
         height: { type: 'number', description: '可选缩放高度' },
         playSeconds: { type: 'number', description: '可选：自动开启试玩并运行指定秒数（如 0.5~2.0）后再截图' },
         keepPlaying: { type: 'boolean', description: '可选：截图后是否保持试玩状态（默认 false，自动恢复编辑态以便继续修改工程）' },
-        watchNodes: { type: 'array', items: { type: 'string' }, description: '可选：同时回报这些节点（名称或 ID）的实时世界位置' },
+        watchNodes: { type: 'array', items: { type: 'string' }, description: '可选：同时回报这些节点（名称或 ID）的实时位置、朝向、可见性与脚本 self.state 快照' },
       },
       additionalProperties: false,
     },
   },
   {
     name: 'playtest__control',
-    description: '控制编辑器实时试玩状态（开始试玩 play / 暂停 pause / 停止并还原 stop），可配合 waitSeconds 等待；返回自开始试玩以来的运行时报错与警告。一般验收请直接用 playtest__run_smoke 或 viewport__capture({ playSeconds })，无需手动控制',
+    description: '控制编辑器实时试玩状态（开始试玩 play / 暂停 pause / 停止并还原 stop），可配合 waitSeconds 等待；返回自开始试玩以来的运行时报错、警告与脚本日志。试玩与暂停期间工程都是锁定的，修改脚本/节点前必须先 stop。一般验收请直接用 playtest__run_smoke 或 viewport__capture({ playSeconds })，无需手动控制',
     parameters: {
       type: 'object',
       properties: {
         action: { type: 'string', enum: ['play', 'pause', 'stop'], description: '控制动作' },
         waitSeconds: { type: 'number', description: '可选：执行后等待的真实秒数（如 0.5）' },
+        watchNodes: { type: 'array', items: { type: 'string' }, description: '可选：回报这些节点（名称或 ID）此刻的实时位置、朝向与脚本 self.state 快照' },
       },
       required: ['action'],
       additionalProperties: false,
@@ -432,12 +439,28 @@ async function executeAiToolInner(
     case 'query__node_inspect': {
       const nodeId = String(resolvedArgs.nodeId ?? '')
       const node = queryNodeInspect(nodeId)
+      const playState = useEditorStore.getState().playState
+      const runtime = node && playState !== 'stopped' ? readWatchedNodes(new PlaytestSession(), [nodeId])?.[0] : null
       return {
         ok: Boolean(node),
         toolName,
         displayLabel: `检查节点 ${node?.name ?? nodeId}`,
         targetNodeId: node ? nodeId : undefined,
-        data: node ?? {
+        data: node
+          ? runtime?.found
+            ? {
+                ...node,
+                runtime: {
+                  playState,
+                  note: 'transform 是编辑态数据；试玩中的实时状态以 runtime 为准',
+                  position: runtime.position,
+                  rotation: runtime.rotation,
+                  visible: runtime.visible,
+                  ...(runtime.scriptState ? { scriptState: runtime.scriptState } : {}),
+                },
+              }
+            : node
+          : {
           ok: false,
           message: `节点 "${nodeId}" 不存在`,
           availableNodes: listCompactNodes(),
@@ -461,7 +484,7 @@ async function executeAiToolInner(
         toolName,
         displayLabel: `读取登记清单 (${String(args.category ?? 'all')})`,
         data: queryRegistryDescribe(
-          (args.category as 'capabilities' | 'gameplayPacks' | 'commands' | 'all') ?? 'all',
+          (args.category as 'capabilities' | 'gameplayPacks' | 'coreComponents' | 'commands' | 'all') ?? 'all',
           typeof args.id === 'string' ? args.id : undefined,
         ),
       }
@@ -477,16 +500,40 @@ async function executeAiToolInner(
       }
     case 'query__project_diagnose': {
       const report = diagnoseProject()
+      const breakdown = measureRenderBreakdown(8)
       return {
         ok: true,
         toolName,
         displayLabel: `工程体检（${report.errorCount} 错误，${report.warningCount} 警告）`,
-        data: report,
+        data: breakdown && breakdown.top.length > 0
+          ? {
+              ...report,
+              renderBreakdown: {
+                note: '按节点统计的三角面与网格批次（子节点单独计）；总 DrawCall 还包含阴影等额外通道',
+                totalTriangles: breakdown.totalTriangles,
+                totalMeshDraws: breakdown.totalMeshDraws,
+                topNodes: breakdown.top,
+              },
+            }
+          : report,
       }
     }
     case 'query__code_assets': {
       const assetDirs = useAssetStore.getState().assetDirs
+      const usage = new Map<string, Array<{ id: string; name: string; enabled: boolean }>>()
+      for (const node of Object.values(useEditorStore.getState().nodes)) {
+        const bag = node.gameplay?.packs?.__project__ as Record<string, unknown> | undefined
+        if (!bag || typeof bag !== 'object') continue
+        for (const [scriptId, params] of Object.entries(bag)) {
+          const enabled = !(params && typeof params === 'object' && (params as Record<string, unknown>).__enabled === false)
+          const list = usage.get(scriptId) ?? []
+          list.push({ id: node.id, name: node.name, enabled })
+          usage.set(scriptId, list)
+        }
+      }
       const items = Object.values(useCodeAssetStore.getState().assets).map((item) => {
+        const attached = usage.get(item.id) ?? []
+        const isSystem = item.kind === 'script' && item.compiledScript?.kind === 'system'
         const dirKey = `code:${item.kind}:${item.id}`
         const folder = assetDirs[dirKey]
           ?? (item.relativePath.startsWith('Assets/') && item.relativePath.includes('/')
@@ -500,12 +547,23 @@ async function executeAiToolInner(
           relativePath: item.relativePath,
           ok: item.ok,
           diagnostics: item.diagnostics,
+          ...(item.kind === 'script'
+            ? isSystem
+              ? { scriptKind: 'system', note: '全局系统脚本，无需挂载到节点' }
+              : {
+                  scriptKind: 'behavior',
+                  attachedTo: attached.slice(0, 20),
+                  ...(attached.length > 20 ? { attachedCount: attached.length } : {}),
+                  ...(attached.length === 0 ? { orphan: true } : {}),
+                }
+            : {}),
         }
       })
+      const orphanCount = items.filter((item) => 'orphan' in item && item.orphan).length
       return {
         ok: true,
         toolName,
-        displayLabel: `代码资产列表（${items.length} 个）`,
+        displayLabel: `代码资产列表（${items.length} 个${orphanCount > 0 ? `，${orphanCount} 个未挂载` : ''}）`,
         data: items,
       }
     }
@@ -533,7 +591,12 @@ async function executeAiToolInner(
           ok: true,
           toolName,
           displayLabel: `读取 UI 文档 ${hit.name}`,
-          data: { id: hit.id, name: hit.name, document: hit.document },
+          data: {
+            id: hit.id,
+            name: hit.name,
+            document: hit.document,
+            layout: hit.document?.root ? measureUiLayout(hit.document.root) : { rendered: false },
+          },
         }
       }
       const list = Object.values(assets)
@@ -605,9 +668,34 @@ async function executeAiToolInner(
       const session = new PlaytestSession()
       const autoStop = typeof args.autoStop === 'boolean' ? args.autoStop : true
       // 先不自动停止：需要在仍处于试玩态时读取被观察节点的实时位置
+      const watchList = Array.isArray(args.watchNodes)
+        ? args.watchNodes.filter((item): item is string => typeof item === 'string' && Boolean(item.trim())).slice(0, 12)
+        : []
+      const sampleEvery = typeof args.sampleEvery === 'number' && args.sampleEvery > 0 ? Math.max(0.05, args.sampleEvery) : 0
+      const trajectory: Array<{ t: number; nodes: Record<string, { pos: [number, number, number]; yaw: number } | null> }> = []
+      if (sampleEvery > 0 && watchList.length > 0) {
+        session.setSampler(sampleEvery, (t) => {
+          const nodes: Record<string, { pos: [number, number, number]; yaw: number } | null> = {}
+          for (const query of watchList) {
+            const pose = session.read({ kind: 'nodePose', nodeIdOrName: query.trim() }) as PlaytestNodePose | null
+            nodes[query] = pose
+              ? {
+                  pos: pose.position.map((v) => Number(v.toFixed(2))) as [number, number, number],
+                  yaw: Number(pose.rotation[1].toFixed(1)),
+                }
+              : null
+          }
+          trajectory.push({ t, nodes })
+        })
+      }
       const report = session.runSmoke(steps, { autoStop: false })
-      const watched = readWatchedNodes(session, args.watchNodes)
+      const watched = readWatchedNodes(session, watchList)
       if (autoStop) session.stop()
+      // 采样点过多时等间隔抽稀，始终保留首尾
+      const MAX_SAMPLES = 60
+      const thinned = trajectory.length > MAX_SAMPLES
+        ? Array.from({ length: MAX_SAMPLES }, (_, i) => trajectory[Math.round((i * (trajectory.length - 1)) / (MAX_SAMPLES - 1))])
+        : trajectory
       const logSummary = summarizeRuntimeLogs([
         ...report.errors.map((message) => ({ level: 'error', message })),
         ...report.warnings.map((message) => ({ level: 'warn', message })),
@@ -630,9 +718,12 @@ async function executeAiToolInner(
           runtimeErrorCount: logSummary.errorCount,
           runtimeErrors: logSummary.errors,
           runtimeWarnings: logSummary.warnings,
+          logs: report.logs,
           assertions: report.assertions,
           metrics: report.metrics,
           ...(watched ? { watchedNodes: watched } : {}),
+          ...(thinned.length > 0 ? { trajectory: thinned } : {}),
+          ...(sampleEvery > 0 && watchList.length === 0 ? { trajectoryNote: 'sampleEvery 需要配合 watchNodes 才会采样' } : {}),
           ...(lastShot ? { dataUrl: lastShot } : {}),
         },
       }
@@ -653,7 +744,10 @@ async function executeAiToolInner(
       const waitSec = typeof args.waitSeconds === 'number' && args.waitSeconds > 0 ? args.waitSeconds : 0.05
       await waitRealFrames(waitSec)
       const nextState = useEditorStore.getState().playState
-      const logSummary = summarizeRuntimeLogs(readLogsSince(manualPlayLogCursor))
+      const sinceLogs = readLogsSince(manualPlayLogCursor)
+      const logSummary = summarizeRuntimeLogs(sinceLogs)
+      // stop 之后对象已还原为编辑态，实时状态没有意义
+      const watched = nextState !== 'stopped' ? readWatchedNodes(new PlaytestSession(), args.watchNodes) : null
       return {
         ok: true,
         toolName,
@@ -663,6 +757,9 @@ async function executeAiToolInner(
           runtimeErrorCount: logSummary.errorCount,
           runtimeErrors: logSummary.errors,
           runtimeWarnings: logSummary.warnings,
+          logs: summarizeInfoLogs(sinceLogs),
+          ...(watched ? { watchedNodes: watched } : {}),
+          ...(nextState !== 'stopped' ? { note: '试玩/暂停期间工程处于锁定状态；要修改脚本或节点请先 stop' } : {}),
         },
       }
     }
@@ -681,19 +778,22 @@ async function executeAiToolInner(
       }
       let dataUrl: string | null = null
       let watched: ReturnType<typeof readWatchedNodes> = null
+      let uiLayoutIssues: Array<{ screen: string; nodes: UiLayoutEntry[] }> | null = null
       try {
         dataUrl = await captureViewportComposite({
           width: typeof args.width === 'number' ? args.width : undefined,
           height: typeof args.height === 'number' ? args.height : undefined,
         })
         watched = readWatchedNodes(new PlaytestSession(), args.watchNodes)
+        if (useEditorStore.getState().playState !== 'stopped') uiLayoutIssues = collectMountedUiIssues()
       } finally {
         if (startedHere && !keepPlaying && useEditorStore.getState().playState !== 'stopped') {
           useEditorStore.getState().stop()
         }
       }
       const played = startedHere || store.playState !== 'stopped'
-      const logSummary = played ? summarizeRuntimeLogs(readLogsSince(logCursor)) : null
+      const playedLogs = played ? readLogsSince(logCursor) : null
+      const logSummary = playedLogs ? summarizeRuntimeLogs(playedLogs) : null
       return {
         ok: Boolean(dataUrl),
         toolName,
@@ -708,9 +808,11 @@ async function executeAiToolInner(
                 runtimeErrorCount: logSummary.errorCount,
                 runtimeErrors: logSummary.errors,
                 runtimeWarnings: logSummary.warnings,
+                logs: summarizeInfoLogs(playedLogs ?? []),
               }
             : {}),
           ...(watched ? { watchedNodes: watched } : {}),
+          ...(uiLayoutIssues && uiLayoutIssues.length > 0 ? { uiLayoutIssues } : {}),
         },
       }
     }
@@ -905,27 +1007,55 @@ function resolveAssetIdFuzzy(raw: string): string {
 /** playtest__control 手动开始试玩时记录的日志游标，用于停止/暂停时回报这段时间的运行时报错 */
 let manualPlayLogCursor: string | null = null
 
-function readWatchedNodes(
-  session: PlaytestSession,
-  raw: unknown,
-): Array<{ query: string; found: boolean; id?: string; name?: string; position?: [number, number, number] }> | null {
+interface WatchedNode {
+  query: string
+  found: boolean
+  id?: string
+  name?: string
+  position?: [number, number, number]
+  /** 欧拉角（度），[1] 为 yaw */
+  rotation?: [number, number, number]
+  visible?: boolean
+  /** 该节点上各行为脚本的 self.state 只读快照 */
+  scriptState?: Record<string, Record<string, unknown>>
+}
+
+function readWatchedNodes(session: PlaytestSession, raw: unknown): WatchedNode[] | null {
   if (!Array.isArray(raw) || raw.length === 0) return null
   return raw
     .filter((item): item is string => typeof item === 'string' && Boolean(item.trim()))
     .slice(0, 12)
-    .map((query) => {
-      const pose = session.read({ kind: 'nodePose', nodeIdOrName: query.trim() }) as
-        | { id: string; name: string; position: [number, number, number] }
-        | null
+    .map((query): WatchedNode => {
+      const pose = session.read({ kind: 'nodePose', nodeIdOrName: query.trim() }) as PlaytestNodePose | null
       if (!pose) return { query, found: false }
+      const scriptState = readScriptStateSnapshot(pose.id)
       return {
         query,
         found: true,
         id: pose.id,
         name: pose.name,
         position: pose.position.map((v) => Number(v.toFixed(3))) as [number, number, number],
+        rotation: pose.rotation.map((v) => Number(v.toFixed(1))) as [number, number, number],
+        visible: pose.visible,
+        ...(scriptState ? { scriptState } : {}),
       }
     })
+}
+
+/** 试玩中已挂载界面的布局问题（只列有问题的节点） */
+function collectMountedUiIssues(): Array<{ screen: string; nodes: UiLayoutEntry[] }> {
+  const assets = useAssetStore.getState().assets
+  const out: Array<{ screen: string; nodes: UiLayoutEntry[] }> = []
+  for (const node of Object.values(useEditorStore.getState().nodes)) {
+    if (node.kind !== 'screen' || !node.screen?.documentId) continue
+    const asset = assets[node.screen.documentId]
+    if (asset?.kind !== 'ui' || !asset.document?.root) continue
+    const report = measureUiLayout(asset.document.root, { issuesOnly: true })
+    if (report.rendered && report.nodes && report.nodes.length > 0) {
+      out.push({ screen: node.name, nodes: report.nodes.slice(0, 12) })
+    }
+  }
+  return out
 }
 
 async function waitRealFrames(seconds: number): Promise<void> {

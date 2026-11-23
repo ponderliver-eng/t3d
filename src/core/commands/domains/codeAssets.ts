@@ -6,6 +6,7 @@ import {
   codeAssetRelativePath,
   compileCodeAsset,
   defaultTemplateFor,
+  deleteCodeAsset,
   normalizeCodeAssetId,
   saveAndCompileCodeAsset,
   useCodeAssetStore,
@@ -394,6 +395,84 @@ export function registerCodeAssetCommands(): () => void {
     },
   }
 
+  const scriptDetachCmd: CommandDef<{ nodeId: string; scriptId: string }> = {
+    id: 'script.detach',
+    title: '从节点卸下脚本',
+    description: '移除节点 node.gameplay.packs.__project__[scriptId] 的挂载（脚本文件本身保留）',
+    params: {
+      type: 'object',
+      fields: {
+        nodeId: { type: 'ref', target: 'node', default: '', label: '目标节点 ID' },
+        scriptId: { type: 'string', default: '', label: '脚本 ID' },
+      },
+    },
+    risk: 'safe',
+    run(_ctx, params) {
+      const nodeId = String(params.nodeId || '')
+      const scriptId = normalizeCodeAssetId('script', String(params.scriptId || ''))
+      const store = useEditorStore.getState()
+      const node = store.nodes[nodeId]
+      if (!node) return { ok: false, code: 'NOT_FOUND', message: `节点 "${nodeId}" 不存在` }
+      const prevPacks = node.gameplay?.packs ?? {}
+      const prevProject = (prevPacks.__project__ ?? {}) as Record<string, unknown>
+      if (!(scriptId in prevProject)) {
+        return {
+          ok: false,
+          code: 'NOT_ATTACHED',
+          message: `节点 "${node.name}" 没有挂载脚本 ${scriptId}`,
+          hint: `该节点当前挂载：${Object.keys(prevProject).join(', ') || '（无）'}`,
+        }
+      }
+      const { [scriptId]: _removed, ...rest } = prevProject
+      store.updateNode(nodeId, {
+        gameplay: { ...node.gameplay, packs: { ...prevPacks, __project__: rest } },
+      })
+      return {
+        ok: true,
+        value: { nodeId, scriptId },
+        changed: { nodesUpdated: [nodeId], summary: `从节点 "${node.name}" 卸下脚本 ${scriptId}` },
+      }
+    },
+  }
+
+  const scriptDeleteCmd: CommandDef<{ id: string }> = {
+    id: 'script.delete',
+    title: '删除脚本资产',
+    description: '删除一个脚本文件（如调试用的临时脚本）。仍被节点挂载的脚本会被拒绝，需先 script.detach；删除文件不可随对话撤销',
+    params: {
+      type: 'object',
+      fields: {
+        id: { type: 'string', default: '', label: '脚本 ID' },
+      },
+    },
+    risk: 'confirm',
+    async run(_ctx, params) {
+      const id = normalizeCodeAssetId('script', String(params.id || '').trim())
+      const record = useCodeAssetStore.getState().assets[id]
+      if (!record || record.kind !== 'script') {
+        return { ok: false, code: 'NOT_FOUND', message: `脚本 "${id}" 不存在` }
+      }
+      const users = Object.values(useEditorStore.getState().nodes).filter((node) => {
+        const bag = node.gameplay?.packs?.__project__ as Record<string, unknown> | undefined
+        return Boolean(bag && id in bag)
+      })
+      if (users.length > 0) {
+        return {
+          ok: false,
+          code: 'IN_USE',
+          message: `脚本 ${id} 仍挂载在 ${users.length} 个节点上：${users.slice(0, 8).map((n) => n.name).join('、')}`,
+          hint: '先对这些节点调用 script.detach，再删除脚本',
+        }
+      }
+      await deleteCodeAsset(id)
+      return {
+        ok: true,
+        value: { id, relativePath: record.relativePath },
+        changed: { projectChanged: true, filesChanged: [record.relativePath], summary: `删除脚本 ${record.relativePath}` },
+      }
+    },
+  }
+
   const openExternalCmd: CommandDef<OpenExternalParams> = {
     id: 'codeAsset.openExternal',
     title: '用外部编辑器打开代码资产',
@@ -516,6 +595,8 @@ export function registerCodeAssetCommands(): () => void {
     commandBus.register(scriptPatchCmd),
     commandBus.register(scriptCheckCmd),
     commandBus.register(scriptAttachCmd),
+    commandBus.register(scriptDetachCmd),
+    commandBus.register(scriptDeleteCmd),
     commandBus.register(openExternalCmd),
   ]
   return () => unsubs.forEach((fn) => fn())

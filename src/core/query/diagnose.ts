@@ -150,7 +150,7 @@ export function diagnoseProject(budget: PerformanceBudget = DEFAULT_PERFORMANCE_
         category: 'playability',
         target: script.id,
         message: `脚本 "${script.relativePath}" 编译失败（${script.diagnostics[0]?.message ?? '存在语法或结构错误'}）`,
-        hint: '调用 query__code_read 查看源码并用 script.update / script.patch 修复',
+        hint: '调用 script__read 查看源码并用 script.update / script.patch 修复',
       })
     }
   }

@@ -6,6 +6,7 @@ import {
   resolveEnabledPackIds,
 } from '../../../gameplay/registry'
 import type { GameDatabaseRow } from '../../../gameplay/types'
+import { CORE_COMPONENTS, applyCoreComponentPatch, isCoreComponentId } from '../../../gameplay/coreComponents'
 import { commandBus } from '../bus'
 import type { CommandDef } from '../types'
 
@@ -78,6 +79,14 @@ const setComponentDataCmd: CommandDef<SetComponentDataParams, { nodeId: string; 
     if (!node) {
       return { ok: false, code: 'node.notFound', message: `节点 "${p.nodeId}" 不存在` }
     }
+    if (p.packId === 'core' && isCoreComponentId(p.componentId)) {
+      return {
+        ok: false,
+        code: 'gameplay.useCoreComponent',
+        message: `"${p.componentId}" 是引擎内置组件，数据在 node.gameplay.${p.componentId}，写进 packs.core 不会被运行时识别`,
+        hint: `改用 gameplay.setCoreComponent({ nodeId, componentId: "${p.componentId}", patch })`,
+      }
+    }
     const prevGameplay = node.gameplay ?? {}
     const prevPacks = prevGameplay.packs ?? {}
     const prevPackData = (prevPacks[p.packId] ?? {}) as Record<string, Record<string, unknown> | undefined>
@@ -109,6 +118,57 @@ const setComponentDataCmd: CommandDef<SetComponentDataParams, { nodeId: string; 
       changed: {
         nodesUpdated: [p.nodeId],
         summary: `更新节点 ${node.name} 的玩法组件 ${p.packId}.${p.componentId}`,
+      },
+    }
+  },
+}
+
+interface SetCoreComponentParams {
+  nodeId: string
+  componentId: string
+  patch?: Record<string, unknown>
+  remove?: boolean
+}
+
+const setCoreComponentCmd: CommandDef<SetCoreComponentParams, { nodeId: string; componentId: string; data: Record<string, unknown> | null }> = {
+  id: 'gameplay.setCoreComponent',
+  title: '设置节点的内置核心组件',
+  description:
+    `挂载、更新或移除引擎内置组件（${CORE_COMPONENTS.map((item) => `${item.id} ${item.label}`).join(' / ')}），数据写在 node.gameplay[componentId]，由运行时直接驱动、无需脚本。`
+    + '字段与默认值用 query__registry_describe({ category: "coreComponents" }) 查看；patch 只需写要改的字段，未挂载时自动补全默认值',
+  risk: 'safe',
+  params: {
+    type: 'object',
+    fields: {
+      nodeId: { type: 'ref', target: 'node', required: true, label: '节点 ID' },
+      componentId: {
+        type: 'enum',
+        options: CORE_COMPONENTS.map((item) => ({ value: item.id, label: item.label })),
+        default: 'character',
+        label: '内置组件 ID',
+      },
+      patch: { type: 'object', fields: {}, optional: true, label: '字段补丁（留空则按默认值挂载）' },
+      remove: { type: 'boolean', default: false, optional: true, label: '是否移除该组件' },
+    },
+  },
+  run(_ctx, p) {
+    const state = useEditorStore.getState()
+    const node = state.nodes[p.nodeId]
+    if (!node) {
+      return { ok: false, code: 'node.notFound', message: `节点 "${p.nodeId}" 不存在` }
+    }
+    const patch = p.remove === true ? null : (p.patch && typeof p.patch === 'object' ? p.patch : {})
+    const applied = applyCoreComponentPatch(node.gameplay, p.componentId, patch)
+    if (!applied.ok) {
+      return { ok: false, code: 'gameplay.invalidCoreComponent', message: applied.message, hint: applied.hint }
+    }
+    state.updateNode(p.nodeId, { gameplay: applied.gameplay })
+    return {
+      ok: true,
+      value: { nodeId: p.nodeId, componentId: p.componentId, data: applied.data },
+      changed: {
+        nodesUpdated: [p.nodeId],
+        summary: `${patch === null ? '移除' : '设置'}节点 ${node.name} 的内置组件 ${p.componentId}`,
       },
     }
   },
@@ -205,6 +265,7 @@ export function registerGameplayCommands(): () => void {
   const unsubs = [
     commandBus.register(setPackEnabledCmd),
     commandBus.register(setComponentDataCmd),
+    commandBus.register(setCoreComponentCmd),
     commandBus.register(upsertRowCmd),
     commandBus.register(deleteRowCmd),
   ]

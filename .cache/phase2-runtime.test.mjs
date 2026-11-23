@@ -15112,7 +15112,7 @@ function diagnoseProject(budget = DEFAULT_PERFORMANCE_BUDGET) {
         category: "playability",
         target: script.id,
         message: `\u811A\u672C "${script.relativePath}" \u7F16\u8BD1\u5931\u8D25\uFF08${script.diagnostics[0]?.message ?? "\u5B58\u5728\u8BED\u6CD5\u6216\u7ED3\u6784\u9519\u8BEF"}\uFF09`,
-        hint: "\u8C03\u7528 query__code_read \u67E5\u770B\u6E90\u7801\u5E76\u7528 script.update / script.patch \u4FEE\u590D"
+        hint: "\u8C03\u7528 script__read \u67E5\u770B\u6E90\u7801\u5E76\u7528 script.update / script.patch \u4FEE\u590D"
       });
     }
   }
@@ -15370,12 +15370,26 @@ function readLogsSince(cursor) {
   const idx = logs.findIndex((item) => item.id === cursor);
   return idx >= 0 ? logs.slice(idx + 1) : logs;
 }
+function summarizeInfoLogs(logs, maxLines = 40) {
+  const counts = /* @__PURE__ */ new Map();
+  for (const item of logs) {
+    if (item.level === "error" || item.level === "warn") continue;
+    counts.set(item.message, (counts.get(item.message) ?? 0) + 1);
+  }
+  const lines = Array.from(counts.entries()).slice(0, maxLines).map(([message, n]) => {
+    const text = message.length > 300 ? `${message.slice(0, 300)}\u2026` : message;
+    return n > 1 ? `${text}\uFF08\u91CD\u590D ${n} \u6B21\uFF09` : text;
+  });
+  if (counts.size > maxLines) lines.push(`\u2026\u53E6\u6709 ${counts.size - maxLines} \u79CD\u4E0D\u540C\u65E5\u5FD7\u672A\u5217\u51FA`);
+  return lines;
+}
 var PlaytestSession = class {
   active = false;
   startedFromStopped = false;
   elapsedSec = 0;
   stepsSimulated = 0;
   logCursor = null;
+  sampler = null;
   screenshots = [];
   assertions = [];
   headlessObjects = /* @__PURE__ */ new Map();
@@ -15414,6 +15428,10 @@ var PlaytestSession = class {
       }
       this.elapsedSec += dt;
       this.stepsSimulated += 1;
+      if (this.sampler && this.elapsedSec + 1e-6 >= this.sampler.next) {
+        this.sampler.next += this.sampler.every;
+        this.sampler.onSample(Number(this.elapsedSec.toFixed(3)));
+      }
     }
   }
   read(query) {
@@ -15439,17 +15457,28 @@ var PlaytestSession = class {
     if (!target) return null;
     const obj = getViewportBridge()?.resolveObject(target.id) ?? this.headlessObjects.get(target.id);
     if (obj) {
-      return {
+      const deg = 180 / Math.PI;
+      const pose2 = {
         id: target.id,
         name: target.name,
-        position: [obj.position.x, obj.position.y, obj.position.z]
+        position: [obj.position.x, obj.position.y, obj.position.z],
+        rotation: [obj.rotation.x * deg, obj.rotation.y * deg, obj.rotation.z * deg],
+        visible: obj.visible
       };
+      return pose2;
     }
-    return {
+    const pose = {
       id: target.id,
       name: target.name,
-      position: [...target.position]
+      position: [...target.position],
+      rotation: [...target.rotation],
+      visible: target.visible
     };
+    return pose;
+  }
+  /** 每推进 everySec 游戏秒回调一次，用于采样节点轨迹等过程数据 */
+  setSampler(everySec, onSample) {
+    this.sampler = { every: Math.max(1 / 60, everySec), next: 0, onSample };
   }
   evaluateCondition(condition) {
     if (condition.kind === "elapsed") {
@@ -15495,6 +15524,7 @@ var PlaytestSession = class {
     const logs = readLogsSince(this.logCursor);
     const errors = logs.filter((item) => item.level === "error").map((item) => item.message);
     const warnings = logs.filter((item) => item.level === "warn").map((item) => item.message);
+    const infoLogs = summarizeInfoLogs(logs);
     const render = readMainRenderMetrics();
     const budgetNotes = [];
     let budgetPassed = true;
@@ -15517,6 +15547,7 @@ var PlaytestSession = class {
       warningCount: warnings.length,
       errors,
       warnings,
+      logs: infoLogs,
       screenshots: [...this.screenshots],
       assertions: [...this.assertions],
       metrics: {
