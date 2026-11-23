@@ -144,9 +144,11 @@ test('范例库：第三人称控制器按输入移动并在落地后停在地�
     makeNode('cam', 'Camera', { kind: 'camera', position: [0, 3, -6] }),
     makeNode('player', 'Player', {
       position: [0, 2, 0],
-      ...withScripts({ ThirdPersonController: { camera: 'cam' } }),
+      ...withScripts({ ThirdPersonController: {} }),
     }),
   ])
+  // 相机在 -Z 侧看向 +Z：水平方位角为 180°
+  sim.host.yaw = () => Math.PI
 
   // 相机在 -Z 侧，向前推摇杆应当让角色沿 +Z 远离相机
   injectVirtualInput({ type: 'axis', action: 'Move', x: 0, y: 1 })

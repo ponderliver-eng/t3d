@@ -37,7 +37,6 @@ export default defineBehavior({
   name: "第三人称角色控制",
   description: "WASD 相对相机移动、空格跳跃、Shift 奔跑，并按速度切换待机/行走/奔跑动画",
   params: {
-    camera: { type: "ref", target: "node", label: "相机节点", default: null },
     idleClip: { type: "ref", target: "clip", label: "待机剪辑", default: null },
     walkClip: { type: "ref", target: "clip", label: "行走剪辑", default: null },
     runClip: { type: "ref", target: "clip", label: "奔跑剪辑", default: null },
@@ -57,26 +56,11 @@ export default defineBehavior({
     const s = self.state
     const pos = self.position
 
-    // 1) 以「相机指向角色」的水平方向作为前方，避免依赖相机自身的朝向约定
-    let fx = 0
-    let fz = 1
-    if (p.camera) {
-      const dx = pos.x - p.camera.position.x
-      const dz = pos.z - p.camera.position.z
-      const len = Math.hypot(dx, dz)
-      if (len > 0.001) {
-        fx = dx / len
-        fz = dz / len
-      }
-    }
-    // 右方 = 前方 × 上方
-    const rx = -fz
-    const rz = fx
-
-    // 2) 输入：axis2D 的 y 向前为正、x 向右为正
-    const axis = self.input.axis2D("Move")
-    let mx = fx * axis.y + rx * axis.x
-    let mz = fz * axis.y + rz * axis.x
+    // 1) 输入：moveDirection 直接给出「相对当前相机」的世界水平方向（W = 画面远处），
+    //    方位角由引擎按相机视线算好，不要自己从相机旋转里推
+    const dir = self.input.moveDirection("Move")
+    let mx = dir.x
+    let mz = dir.z
     const mLen = Math.hypot(mx, mz)
     const moving = mLen > 0.05
     const sprinting = moving && self.input.isPressed("Sprint")
@@ -495,7 +479,7 @@ export const RECIPES: Recipe[] = [
     setup: [
       '角色节点：已有蒙皮模型就用 kind:"model"；没有模型就用 kind:"capsule"（此时三个剪辑参数留空即可）。',
       '场景里要有一个相机节点（建议同时挂 follow-camera 范例）。',
-      'script__create 写入源码后，script__attach 到角色，params 传 camera（相机节点 ID 或名称）与三个剪辑名（来自模型或动画资产的 clips 列表）。',
+      'script__create 写入源码后，script__attach 到角色，params 传三个剪辑名（来自模型或动画资产的 clips 列表）。移动方向自动相对当前相机，不需要传相机。',
       '地面不在 y=0 时把 groundY 设为地面高度。',
     ],
     files: [{ scriptId: 'ThirdPersonController', attachTo: '玩家角色节点', source: THIRD_PERSON_CONTROLLER }],
@@ -504,6 +488,8 @@ export const RECIPES: Recipe[] = [
     pitfalls: [
       '剪辑参数必须是 ref(target:"clip")，直接把参数值传给 self.anim.playBody，引擎会自动在模型与外部动画资产里找同名剪辑。',
       '不要每帧调用 playBody，只在目标剪辑变化时调用。',
+      '相对相机的移动一律用 self.input.moveDirection()；不要读相机的 rotation 自己算方位角，欧拉角在相机有俯仰时会算偏。',
+      '只需要标准的走/跑/跳加动画切换时，直接用内置组件 character（gameplay__setCoreComponent）更省事；需要自定义移动手感才用这份脚本。',
     ],
   },
   {

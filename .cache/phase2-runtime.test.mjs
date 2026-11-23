@@ -8590,6 +8590,7 @@ function buildScriptContext(node, scriptId, rawParams, stateObj, host) {
       justReleased: () => false,
       axis1D: (action) => isActionPressed(action) ? 1 : 0,
       axis2D: (action) => getActionAxis2D(action),
+      moveDirection: (action = "Move") => viewRelativeMove(action, host),
       pointerDelta: () => ({ ...framePointerDelta }),
       pointerPosition: () => ({ ...framePointerPos }),
       wheelDelta: () => frameWheelDelta,
@@ -8921,6 +8922,7 @@ function buildSystemWorldApi(systemId, host) {
       justReleased: () => false,
       axis1D: (action) => isActionPressed(action) ? 1 : 0,
       axis2D: (action) => getActionAxis2D(action),
+      moveDirection: (action = "Move") => viewRelativeMove(action, host),
       pointerDelta: () => ({ ...framePointerDelta }),
       pointerPosition: () => ({ ...framePointerPos }),
       wheelDelta: () => frameWheelDelta,
@@ -9009,6 +9011,20 @@ function buildSystemWorldApi(systemId, host) {
     },
     log: (...args) => world3.log("info", args.map(String).join(" ")),
     warn: (...args) => world3.log("warn", args.map(String).join(" "))
+  };
+}
+function viewRelativeMove(action, host) {
+  const axis = getActionAxis2D(action);
+  const length4 = Math.hypot(axis.x, axis.y);
+  if (length4 < 1e-4) return { x: 0, y: 0, z: 0 };
+  const scale = length4 > 1 ? 1 / length4 : 1;
+  const yaw = host.yaw?.() ?? 0;
+  const sin3 = Math.sin(yaw);
+  const cos3 = Math.cos(yaw);
+  return {
+    x: (axis.x * cos3 - axis.y * sin3) * scale,
+    y: 0,
+    z: (-axis.x * sin3 - axis.y * cos3) * scale
   };
 }
 function clearScriptRuntimeState() {

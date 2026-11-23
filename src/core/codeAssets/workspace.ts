@@ -164,6 +164,8 @@ export interface ScriptContext<P = Record<string, unknown>, S = Record<string, u
     justPressed(a: string): boolean
     isKeyPressed(code: string): boolean
     axis2D(a: string): Vec2
+    /** 相对当前相机的世界水平移动方向（y=0，长度为输入强度 0~1） */
+    moveDirection(a?: string): Vec3
     pointerDelta(): Vec2
     pointerPosition(): Vec2
     wheelDelta(): number

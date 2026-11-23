@@ -325,6 +325,8 @@ export interface InputApi {
   justReleased(action: string): boolean
   axis1D(action: string): number
   axis2D(action: string): Vec2
+  /** 相对当前观察相机的世界水平移动方向（y 恒为 0，长度为输入强度 0~1）。W 即画面里的「远处」 */
+  moveDirection(action?: string): Vec3
   pointerDelta(): Vec2
   pointerPosition(): Vec2
   wheelDelta(): number

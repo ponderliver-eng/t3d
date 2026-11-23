@@ -1563,6 +1563,7 @@ function buildScriptContext(
       justReleased: () => false,
       axis1D: (action: string) => (isActionPressed(action) ? 1 : 0),
       axis2D: (action: string) => getActionAxis2D(action),
+      moveDirection: (action = 'Move') => viewRelativeMove(action, host),
       pointerDelta: () => ({ ...framePointerDelta }),
       pointerPosition: () => ({ ...framePointerPos }),
       wheelDelta: () => frameWheelDelta,
@@ -1932,6 +1933,7 @@ function buildSystemWorldApi(systemId: string, host: SceneRuntimeHost) {
       justReleased: () => false,
       axis1D: (action: string) => (isActionPressed(action) ? 1 : 0),
       axis2D: (action: string) => getActionAxis2D(action),
+      moveDirection: (action = 'Move') => viewRelativeMove(action, host),
       pointerDelta: () => ({ ...framePointerDelta }),
       pointerPosition: () => ({ ...framePointerPos }),
       wheelDelta: () => frameWheelDelta,
@@ -2116,6 +2118,27 @@ export function compileAndRegisterScript(
 
 export function getRegisteredBehavior(scriptId: string): BehaviorDefinition | undefined {
   return compiledBehaviors.get(scriptId)
+}
+
+/**
+ * 把二维输入轴换算成「相对当前观察相机」的世界水平方向（y 恒为 0，长度即输入强度，最大 1）。
+ * 与内置角色控制器用的是同一个相机水平方位角（宿主按视线方向算出，不受俯仰影响），
+ * 脚本不需要自己从相机旋转里推方位角。
+ */
+export function viewRelativeMove(action: string, host: SceneRuntimeHost): Vec3Obj {
+  const axis = getActionAxis2D(action)
+  const length = Math.hypot(axis.x, axis.y)
+  if (length < 1e-4) return { x: 0, y: 0, z: 0 }
+  const scale = length > 1 ? 1 / length : 1
+  const yaw = host.yaw?.() ?? 0
+  const sin = Math.sin(yaw)
+  const cos = Math.cos(yaw)
+  // 相机 yaw=0 时视线朝 -Z、右手边是 +X
+  return {
+    x: (axis.x * cos - axis.y * sin) * scale,
+    y: 0,
+    z: (-axis.x * sin - axis.y * cos) * scale,
+  }
 }
 
 function snapshotStateValue(value: unknown, depth: number): unknown {

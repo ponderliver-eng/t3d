@@ -7614,6 +7614,7 @@ function buildScriptContext(node, scriptId, rawParams, stateObj, host) {
       justReleased: () => false,
       axis1D: (action) => isActionPressed(action) ? 1 : 0,
       axis2D: (action) => getActionAxis2D(action),
+      moveDirection: (action = "Move") => viewRelativeMove(action, host),
       pointerDelta: () => ({ ...framePointerDelta }),
       pointerPosition: () => ({ ...framePointerPos }),
       wheelDelta: () => frameWheelDelta,
@@ -7945,6 +7946,7 @@ function buildSystemWorldApi(systemId, host) {
       justReleased: () => false,
       axis1D: (action) => isActionPressed(action) ? 1 : 0,
       axis2D: (action) => getActionAxis2D(action),
+      moveDirection: (action = "Move") => viewRelativeMove(action, host),
       pointerDelta: () => ({ ...framePointerDelta }),
       pointerPosition: () => ({ ...framePointerPos }),
       wheelDelta: () => frameWheelDelta,
@@ -8116,6 +8118,20 @@ function compileAndRegisterScript(id, fileName, source) {
     diagnostics: transpiled.diagnostics,
     jsCode: transpiled.jsCode,
     exports: { id, file: fileName, kind: "behavior", behavior: def }
+  };
+}
+function viewRelativeMove(action, host) {
+  const axis = getActionAxis2D(action);
+  const length3 = Math.hypot(axis.x, axis.y);
+  if (length3 < 1e-4) return { x: 0, y: 0, z: 0 };
+  const scale = length3 > 1 ? 1 / length3 : 1;
+  const yaw = host.yaw?.() ?? 0;
+  const sin2 = Math.sin(yaw);
+  const cos2 = Math.cos(yaw);
+  return {
+    x: (axis.x * cos2 - axis.y * sin2) * scale,
+    y: 0,
+    z: (-axis.x * sin2 - axis.y * cos2) * scale
   };
 }
 function clearScriptRuntimeState() {
@@ -8577,7 +8593,6 @@ export default defineBehavior({
   name: "\u7B2C\u4E09\u4EBA\u79F0\u89D2\u8272\u63A7\u5236",
   description: "WASD \u76F8\u5BF9\u76F8\u673A\u79FB\u52A8\u3001\u7A7A\u683C\u8DF3\u8DC3\u3001Shift \u5954\u8DD1\uFF0C\u5E76\u6309\u901F\u5EA6\u5207\u6362\u5F85\u673A/\u884C\u8D70/\u5954\u8DD1\u52A8\u753B",
   params: {
-    camera: { type: "ref", target: "node", label: "\u76F8\u673A\u8282\u70B9", default: null },
     idleClip: { type: "ref", target: "clip", label: "\u5F85\u673A\u526A\u8F91", default: null },
     walkClip: { type: "ref", target: "clip", label: "\u884C\u8D70\u526A\u8F91", default: null },
     runClip: { type: "ref", target: "clip", label: "\u5954\u8DD1\u526A\u8F91", default: null },
@@ -8597,26 +8612,11 @@ export default defineBehavior({
     const s = self.state
     const pos = self.position
 
-    // 1) \u4EE5\u300C\u76F8\u673A\u6307\u5411\u89D2\u8272\u300D\u7684\u6C34\u5E73\u65B9\u5411\u4F5C\u4E3A\u524D\u65B9\uFF0C\u907F\u514D\u4F9D\u8D56\u76F8\u673A\u81EA\u8EAB\u7684\u671D\u5411\u7EA6\u5B9A
-    let fx = 0
-    let fz = 1
-    if (p.camera) {
-      const dx = pos.x - p.camera.position.x
-      const dz = pos.z - p.camera.position.z
-      const len = Math.hypot(dx, dz)
-      if (len > 0.001) {
-        fx = dx / len
-        fz = dz / len
-      }
-    }
-    // \u53F3\u65B9 = \u524D\u65B9 \xD7 \u4E0A\u65B9
-    const rx = -fz
-    const rz = fx
-
-    // 2) \u8F93\u5165\uFF1Aaxis2D \u7684 y \u5411\u524D\u4E3A\u6B63\u3001x \u5411\u53F3\u4E3A\u6B63
-    const axis = self.input.axis2D("Move")
-    let mx = fx * axis.y + rx * axis.x
-    let mz = fz * axis.y + rz * axis.x
+    // 1) \u8F93\u5165\uFF1AmoveDirection \u76F4\u63A5\u7ED9\u51FA\u300C\u76F8\u5BF9\u5F53\u524D\u76F8\u673A\u300D\u7684\u4E16\u754C\u6C34\u5E73\u65B9\u5411\uFF08W = \u753B\u9762\u8FDC\u5904\uFF09\uFF0C
+    //    \u65B9\u4F4D\u89D2\u7531\u5F15\u64CE\u6309\u76F8\u673A\u89C6\u7EBF\u7B97\u597D\uFF0C\u4E0D\u8981\u81EA\u5DF1\u4ECE\u76F8\u673A\u65CB\u8F6C\u91CC\u63A8
+    const dir = self.input.moveDirection("Move")
+    let mx = dir.x
+    let mz = dir.z
     const mLen = Math.hypot(mx, mz)
     const moving = mLen > 0.05
     const sprinting = moving && self.input.isPressed("Sprint")
@@ -9026,14 +9026,16 @@ var RECIPES = [
     setup: [
       '\u89D2\u8272\u8282\u70B9\uFF1A\u5DF2\u6709\u8499\u76AE\u6A21\u578B\u5C31\u7528 kind:"model"\uFF1B\u6CA1\u6709\u6A21\u578B\u5C31\u7528 kind:"capsule"\uFF08\u6B64\u65F6\u4E09\u4E2A\u526A\u8F91\u53C2\u6570\u7559\u7A7A\u5373\u53EF\uFF09\u3002',
       "\u573A\u666F\u91CC\u8981\u6709\u4E00\u4E2A\u76F8\u673A\u8282\u70B9\uFF08\u5EFA\u8BAE\u540C\u65F6\u6302 follow-camera \u8303\u4F8B\uFF09\u3002",
-      "script__create \u5199\u5165\u6E90\u7801\u540E\uFF0Cscript__attach \u5230\u89D2\u8272\uFF0Cparams \u4F20 camera\uFF08\u76F8\u673A\u8282\u70B9 ID \u6216\u540D\u79F0\uFF09\u4E0E\u4E09\u4E2A\u526A\u8F91\u540D\uFF08\u6765\u81EA\u6A21\u578B\u6216\u52A8\u753B\u8D44\u4EA7\u7684 clips \u5217\u8868\uFF09\u3002",
+      "script__create \u5199\u5165\u6E90\u7801\u540E\uFF0Cscript__attach \u5230\u89D2\u8272\uFF0Cparams \u4F20\u4E09\u4E2A\u526A\u8F91\u540D\uFF08\u6765\u81EA\u6A21\u578B\u6216\u52A8\u753B\u8D44\u4EA7\u7684 clips \u5217\u8868\uFF09\u3002\u79FB\u52A8\u65B9\u5411\u81EA\u52A8\u76F8\u5BF9\u5F53\u524D\u76F8\u673A\uFF0C\u4E0D\u9700\u8981\u4F20\u76F8\u673A\u3002",
       "\u5730\u9762\u4E0D\u5728 y=0 \u65F6\u628A groundY \u8BBE\u4E3A\u5730\u9762\u9AD8\u5EA6\u3002"
     ],
     files: [{ scriptId: "ThirdPersonController", attachTo: "\u73A9\u5BB6\u89D2\u8272\u8282\u70B9", source: THIRD_PERSON_CONTROLLER }],
     verify: 'playtest__run_smoke\uFF1A\u5148 input \u6CE8\u5165 {type:"axis",action:"Move",x:0,y:1}\uFF0Cstep 1 \u79D2\uFF0C\u518D assert nodeMoved\uFF08from \u4E3A\u89D2\u8272\u521D\u59CB\u4F4D\u7F6E\uFF0CminDistance 1\uFF09\u3002',
     pitfalls: [
       '\u526A\u8F91\u53C2\u6570\u5FC5\u987B\u662F ref(target:"clip")\uFF0C\u76F4\u63A5\u628A\u53C2\u6570\u503C\u4F20\u7ED9 self.anim.playBody\uFF0C\u5F15\u64CE\u4F1A\u81EA\u52A8\u5728\u6A21\u578B\u4E0E\u5916\u90E8\u52A8\u753B\u8D44\u4EA7\u91CC\u627E\u540C\u540D\u526A\u8F91\u3002',
-      "\u4E0D\u8981\u6BCF\u5E27\u8C03\u7528 playBody\uFF0C\u53EA\u5728\u76EE\u6807\u526A\u8F91\u53D8\u5316\u65F6\u8C03\u7528\u3002"
+      "\u4E0D\u8981\u6BCF\u5E27\u8C03\u7528 playBody\uFF0C\u53EA\u5728\u76EE\u6807\u526A\u8F91\u53D8\u5316\u65F6\u8C03\u7528\u3002",
+      "\u76F8\u5BF9\u76F8\u673A\u7684\u79FB\u52A8\u4E00\u5F8B\u7528 self.input.moveDirection()\uFF1B\u4E0D\u8981\u8BFB\u76F8\u673A\u7684 rotation \u81EA\u5DF1\u7B97\u65B9\u4F4D\u89D2\uFF0C\u6B27\u62C9\u89D2\u5728\u76F8\u673A\u6709\u4FEF\u4EF0\u65F6\u4F1A\u7B97\u504F\u3002",
+      "\u53EA\u9700\u8981\u6807\u51C6\u7684\u8D70/\u8DD1/\u8DF3\u52A0\u52A8\u753B\u5207\u6362\u65F6\uFF0C\u76F4\u63A5\u7528\u5185\u7F6E\u7EC4\u4EF6 character\uFF08gameplay__setCoreComponent\uFF09\u66F4\u7701\u4E8B\uFF1B\u9700\u8981\u81EA\u5B9A\u4E49\u79FB\u52A8\u624B\u611F\u624D\u7528\u8FD9\u4EFD\u811A\u672C\u3002"
     ]
   },
   {
@@ -9253,9 +9255,10 @@ test("\u8303\u4F8B\u5E93\uFF1A\u7B2C\u4E09\u4EBA\u79F0\u63A7\u5236\u5668\u6309\u
     makeNode("cam", "Camera", { kind: "camera", position: [0, 3, -6] }),
     makeNode("player", "Player", {
       position: [0, 2, 0],
-      ...withScripts({ ThirdPersonController: { camera: "cam" } })
+      ...withScripts({ ThirdPersonController: {} })
     })
   ]);
+  sim.host.yaw = () => Math.PI;
   injectVirtualInput({ type: "axis", action: "Move", x: 0, y: 1 });
   sim.run(1.5);
   const pos = sim.positionOf("player");

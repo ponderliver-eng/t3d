@@ -215,3 +215,66 @@ test('内置组件：角色控制器无需脚本即可响应 Move 输入', () =>
   clearAllVirtualInput()
   clearScriptRuntimeState()
 })
+
+test('输入直连：moveDirection 给出相对相机的世界方向，且与内置角色控制器一致', () => {
+  clearScriptRuntimeState()
+  clearAllVirtualInput()
+  const src = `
+import { defineBehavior } from 't3d/runtime'
+export default defineBehavior({
+  name: '直连移动',
+  onUpdate(self, dt) {
+    const d = self.input.moveDirection()
+    self.translate({ x: d.x * 4 * dt, y: 0, z: d.z * 4 * dt }, 'world')
+  },
+})
+`
+  const res = compileAndRegisterScript('DirectMove', 'Assets/Scripts/DirectMove.ts', src)
+  assert.equal(res.ok, true, JSON.stringify(res.diagnostics))
+  const character = applyCoreComponentPatch(null, 'character', { mode: 'adventure', dash: false, moveSpeed: 4, sprintMultiplier: 1 })
+  assert.ok(character.ok)
+
+  // 三种相机方位：看向 -Z、看向 +X、看向 +Z。按 W 都应朝视线方向走，按 D 朝画面右侧走
+  const cases: Array<{ yaw: number; forward: [number, number]; right: [number, number] }> = [
+    { yaw: 0, forward: [0, -1], right: [1, 0] },
+    { yaw: -Math.PI / 2, forward: [1, 0], right: [0, 1] },
+    { yaw: Math.PI, forward: [0, 1], right: [-1, 0] },
+  ]
+  for (const item of cases) {
+    for (const [axis, expected] of [[{ x: 0, y: 1 }, item.forward], [{ x: 1, y: 0 }, item.right]] as const) {
+      clearScriptRuntimeState()
+      clearAllVirtualInput()
+      const sim = createHeadlessWorld([
+        makeNode('scripted', 'Scripted', { gameplay: { packs: { __project__: { DirectMove: {} } } } } as Partial<SceneNode>),
+        makeNode('builtin', 'Builtin', { position: [10, 0, 0], gameplay: character.gameplay } as Partial<SceneNode>),
+      ])
+      sim.host.yaw = () => item.yaw
+      injectVirtualInput({ type: 'axis', action: 'Move', x: axis.x, y: axis.y })
+      sim.run(1)
+      const scripted = sim.host.resolveObject('scripted')!.position
+      const builtin = sim.host.resolveObject('builtin')!.position
+      const label = `yaw=${item.yaw.toFixed(2)} axis=(${axis.x},${axis.y})`
+      assert.ok(Math.abs(scripted.x - expected[0] * 4) < 0.1 && Math.abs(scripted.z - expected[1] * 4) < 0.1,
+        `${label} 脚本位移应为 (${expected[0] * 4}, ${expected[1] * 4})，实际 (${scripted.x.toFixed(2)}, ${scripted.z.toFixed(2)})`)
+      // 内置角色有加速过程，只比较方向
+      const bx = builtin.x - 10
+      const bl = Math.hypot(bx, builtin.z)
+      assert.ok(bl > 1, `${label} 内置角色应当移动，实际 ${bl.toFixed(2)}`)
+      assert.ok(Math.abs(bx / bl - expected[0]) < 0.05 && Math.abs(builtin.z / bl - expected[1]) < 0.05,
+        `${label} 内置角色方向应与脚本一致，实际 (${(bx / bl).toFixed(2)}, ${(builtin.z / bl).toFixed(2)})`)
+    }
+  }
+
+  // 斜向输入不超速
+  clearScriptRuntimeState()
+  clearAllVirtualInput()
+  const sim = createHeadlessWorld([
+    makeNode('scripted', 'Scripted', { gameplay: { packs: { __project__: { DirectMove: {} } } } } as Partial<SceneNode>),
+  ])
+  injectVirtualInput({ type: 'axis', action: 'Move', x: 1, y: 1 })
+  sim.run(1)
+  const p = sim.host.resolveObject('scripted')!.position
+  assert.ok(Math.abs(Math.hypot(p.x, p.z) - 4) < 0.1, `斜向移动距离应为 4，实际 ${Math.hypot(p.x, p.z).toFixed(2)}`)
+  clearAllVirtualInput()
+  clearScriptRuntimeState()
+})

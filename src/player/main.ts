@@ -250,11 +250,17 @@ async function boot() {
   resize()
   window.addEventListener('resize', resize)
 
+  const viewForward = new Vector3()
   const host: SceneRuntimeHost = {
     ready: true,
     resolveObject: (id) => objects.get(id) ?? null,
     updateAnimations: () => {},
-    yaw: () => camera.rotation.y,
+    // 不能直接读 camera.rotation.y：欧拉角在有俯仰时会偏，镜头转过 90° 后还会整个翻面
+    yaw: () => {
+      camera.getWorldDirection(viewForward)
+      if (viewForward.x * viewForward.x + viewForward.z * viewForward.z < 1e-6) return camera.rotation.y
+      return Math.atan2(-viewForward.x, -viewForward.z)
+    },
     pitch: () => camera.rotation.x,
     poseCamera: (position: Vec3, lookAt: Vec3, fov: number) => {
       camera.position.set(position[0], position[1], position[2])

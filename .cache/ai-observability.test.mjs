@@ -8157,6 +8157,7 @@ function buildScriptContext(node, scriptId, rawParams, stateObj, host) {
       justReleased: () => false,
       axis1D: (action) => isActionPressed(action) ? 1 : 0,
       axis2D: (action) => getActionAxis2D(action),
+      moveDirection: (action = "Move") => viewRelativeMove(action, host),
       pointerDelta: () => ({ ...framePointerDelta }),
       pointerPosition: () => ({ ...framePointerPos }),
       wheelDelta: () => frameWheelDelta,
@@ -8488,6 +8489,7 @@ function buildSystemWorldApi(systemId, host) {
       justReleased: () => false,
       axis1D: (action) => isActionPressed(action) ? 1 : 0,
       axis2D: (action) => getActionAxis2D(action),
+      moveDirection: (action = "Move") => viewRelativeMove(action, host),
       pointerDelta: () => ({ ...framePointerDelta }),
       pointerPosition: () => ({ ...framePointerPos }),
       wheelDelta: () => frameWheelDelta,
@@ -8659,6 +8661,20 @@ function compileAndRegisterScript(id, fileName, source) {
     diagnostics: transpiled.diagnostics,
     jsCode: transpiled.jsCode,
     exports: { id, file: fileName, kind: "behavior", behavior: def }
+  };
+}
+function viewRelativeMove(action, host) {
+  const axis = getActionAxis2D(action);
+  const length4 = Math.hypot(axis.x, axis.y);
+  if (length4 < 1e-4) return { x: 0, y: 0, z: 0 };
+  const scale = length4 > 1 ? 1 / length4 : 1;
+  const yaw = host.yaw?.() ?? 0;
+  const sin3 = Math.sin(yaw);
+  const cos3 = Math.cos(yaw);
+  return {
+    x: (axis.x * cos3 - axis.y * sin3) * scale,
+    y: 0,
+    z: (-axis.x * sin3 - axis.y * cos3) * scale
   };
 }
 function snapshotStateValue(value, depth) {
@@ -17086,6 +17102,67 @@ test("\u5185\u7F6E\u7EC4\u4EF6\uFF1A\u89D2\u8272\u63A7\u5236\u5668\u65E0\u9700\u
   const moved = Math.hypot(after.x - before.x, after.z - before.z);
   assert.deepEqual(sim.logs.filter((item) => item.level === "error"), []);
   assert.ok(moved > 2, `\u89D2\u8272\u5E94\u5728 1 \u79D2\u5185\u6C34\u5E73\u79FB\u52A8\u8D85\u8FC7 2 \u7C73\uFF0C\u5B9E\u9645 ${moved.toFixed(2)}`);
+  clearAllVirtualInput();
+  clearScriptRuntimeState();
+});
+test("\u8F93\u5165\u76F4\u8FDE\uFF1AmoveDirection \u7ED9\u51FA\u76F8\u5BF9\u76F8\u673A\u7684\u4E16\u754C\u65B9\u5411\uFF0C\u4E14\u4E0E\u5185\u7F6E\u89D2\u8272\u63A7\u5236\u5668\u4E00\u81F4", () => {
+  clearScriptRuntimeState();
+  clearAllVirtualInput();
+  const src = `
+import { defineBehavior } from 't3d/runtime'
+export default defineBehavior({
+  name: '\u76F4\u8FDE\u79FB\u52A8',
+  onUpdate(self, dt) {
+    const d = self.input.moveDirection()
+    self.translate({ x: d.x * 4 * dt, y: 0, z: d.z * 4 * dt }, 'world')
+  },
+})
+`;
+  const res = compileAndRegisterScript("DirectMove", "Assets/Scripts/DirectMove.ts", src);
+  assert.equal(res.ok, true, JSON.stringify(res.diagnostics));
+  const character = applyCoreComponentPatch(null, "character", { mode: "adventure", dash: false, moveSpeed: 4, sprintMultiplier: 1 });
+  assert.ok(character.ok);
+  const cases = [
+    { yaw: 0, forward: [0, -1], right: [1, 0] },
+    { yaw: -Math.PI / 2, forward: [1, 0], right: [0, 1] },
+    { yaw: Math.PI, forward: [0, 1], right: [-1, 0] }
+  ];
+  for (const item of cases) {
+    for (const [axis, expected] of [[{ x: 0, y: 1 }, item.forward], [{ x: 1, y: 0 }, item.right]]) {
+      clearScriptRuntimeState();
+      clearAllVirtualInput();
+      const sim2 = createHeadlessWorld([
+        makeNode2("scripted", "Scripted", { gameplay: { packs: { __project__: { DirectMove: {} } } } }),
+        makeNode2("builtin", "Builtin", { position: [10, 0, 0], gameplay: character.gameplay })
+      ]);
+      sim2.host.yaw = () => item.yaw;
+      injectVirtualInput({ type: "axis", action: "Move", x: axis.x, y: axis.y });
+      sim2.run(1);
+      const scripted = sim2.host.resolveObject("scripted").position;
+      const builtin = sim2.host.resolveObject("builtin").position;
+      const label = `yaw=${item.yaw.toFixed(2)} axis=(${axis.x},${axis.y})`;
+      assert.ok(
+        Math.abs(scripted.x - expected[0] * 4) < 0.1 && Math.abs(scripted.z - expected[1] * 4) < 0.1,
+        `${label} \u811A\u672C\u4F4D\u79FB\u5E94\u4E3A (${expected[0] * 4}, ${expected[1] * 4})\uFF0C\u5B9E\u9645 (${scripted.x.toFixed(2)}, ${scripted.z.toFixed(2)})`
+      );
+      const bx = builtin.x - 10;
+      const bl = Math.hypot(bx, builtin.z);
+      assert.ok(bl > 1, `${label} \u5185\u7F6E\u89D2\u8272\u5E94\u5F53\u79FB\u52A8\uFF0C\u5B9E\u9645 ${bl.toFixed(2)}`);
+      assert.ok(
+        Math.abs(bx / bl - expected[0]) < 0.05 && Math.abs(builtin.z / bl - expected[1]) < 0.05,
+        `${label} \u5185\u7F6E\u89D2\u8272\u65B9\u5411\u5E94\u4E0E\u811A\u672C\u4E00\u81F4\uFF0C\u5B9E\u9645 (${(bx / bl).toFixed(2)}, ${(builtin.z / bl).toFixed(2)})`
+      );
+    }
+  }
+  clearScriptRuntimeState();
+  clearAllVirtualInput();
+  const sim = createHeadlessWorld([
+    makeNode2("scripted", "Scripted", { gameplay: { packs: { __project__: { DirectMove: {} } } } })
+  ]);
+  injectVirtualInput({ type: "axis", action: "Move", x: 1, y: 1 });
+  sim.run(1);
+  const p = sim.host.resolveObject("scripted").position;
+  assert.ok(Math.abs(Math.hypot(p.x, p.z) - 4) < 0.1, `\u659C\u5411\u79FB\u52A8\u8DDD\u79BB\u5E94\u4E3A 4\uFF0C\u5B9E\u9645 ${Math.hypot(p.x, p.z).toFixed(2)}`);
   clearAllVirtualInput();
   clearScriptRuntimeState();
 });

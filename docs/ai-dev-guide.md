@@ -162,6 +162,7 @@ Demo 质量的主要杠杆不是更长的提示词，而是**让 AI 从验证过
 - **`physics.raycast` 的 `hit.node` 不可靠**：目前返回的是调用者自身，只有 `distance` 与 `point` 可用。
 - **内置组件不在 `packs` 里**：`character` / `cameraFollow` / `interact` / `trigger` / `mover` / `checkpoint` / `score` / `soundSource` 的数据在 `node.gameplay.<组件>`，由 `gameplay.setCoreComponent` 写入；`gameplay.setComponentData` 写到 `packs.core.<同名>` 会被拒绝，因为运行时不读那里。无头测试要驱动内置角色，需显式 `import '../src/runtime/character'`（它以副作用方式注册）。
 - **试玩锁包含暂停**：`play.locked` 在 `playState !== 'stopped'` 时都生效，暂停中也不能改工程。调参循环是「`script__patch` → `playtest__run_smoke`」，后者自带启动与退出。
+- **相机方位角只能从视线方向算**：`SceneRuntimeHost.yaw()` 必须用相机世界视线的水平投影（`atan2(-fx, -fz)`），不能读 `camera.rotation.y`——欧拉角在有俯仰时会偏，镜头水平转过 90° 后整个翻面。编辑器视口一直是对的，导出播放器（`src/player/main.ts`）曾直接读欧拉角，已修。脚本侧相对相机的移动统一用 `self.input.moveDirection()`（`viewRelativeMove`，与内置 `character` 共用同一个方位角），范例 `third-person-controller` 已改用它。
 - **命令行**：Windows PowerShell 环境下多命令用 `;` 分隔，不要用 `&&`。
 
 ---
