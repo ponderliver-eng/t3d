@@ -542,6 +542,8 @@ app.on('window-all-closed', () => {
               } catch (err) {
                 console.warn('[buildElectron] rcedit 替换 exe 图标失败:', err)
               }
+            } else {
+              console.warn('[buildElectron] 未找到 rcedit 可执行文件，跳过替换 exe 图标')
             }
           }
         } else {

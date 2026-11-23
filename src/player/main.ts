@@ -860,22 +860,28 @@ async function createRenderer(
     return c
   }
   const primary = makeCanvas()
+  const attachBackendInfo = (r: WebGPURenderer, fallback: boolean) => {
+    const backendName = (r as unknown as { backend?: { constructor?: { name?: string } } }).backend?.constructor?.name ?? (fallback ? 'WebGLBackend' : 'WebGPUBackend')
+    console.info(`[T3D Player] 渲染后端: ${backendName}${fallback ? ' (WebGL2 回退)' : ''}`)
+  }
   try {
-    const webgpu = new WebGPURenderer({ canvas: primary, antialias: true })
+    const webgpu = new WebGPURenderer({ canvas: primary, antialias: true, powerPreference: 'high-performance' })
     await webgpu.init()
     webgpu.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2))
     webgpu.shadowMap.enabled = true
     webgpu.shadowMap.type = PCFShadowMap
+    attachBackendInfo(webgpu, false)
     return { renderer: webgpu, canvas: primary }
   } catch (err) {
     console.warn('[T3D Player] WebGPU 初始化失败，回退 WebGL2:', err)
     primary.remove()
     const fallbackCanvas = makeCanvas()
-    const webgl = new WebGPURenderer({ canvas: fallbackCanvas, antialias: true, forceWebGL: true })
+    const webgl = new WebGPURenderer({ canvas: fallbackCanvas, antialias: true, forceWebGL: true, powerPreference: 'high-performance' })
     await webgl.init()
     webgl.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2))
     webgl.shadowMap.enabled = true
     webgl.shadowMap.type = PCFShadowMap
+    attachBackendInfo(webgl, true)
     return { renderer: webgl, canvas: fallbackCanvas }
   }
 }
@@ -924,7 +930,7 @@ async function boot() {
   setRuntimeWorld(world)
   await syncCapabilityRuntimes(world.getCapabilities())
 
-  const { renderer } = await createRenderer(rootEl, canvasStyle)
+  const { renderer, canvas } = await createRenderer(rootEl, canvasStyle)
   const scene = new Scene()
   const camera = new PerspectiveCamera(55, window.innerWidth / Math.max(1, window.innerHeight), 0.1, 1000)
   camera.position.set(0, 4, 8)
@@ -1036,6 +1042,105 @@ async function boot() {
   const probeRay = new Raycaster()
   const probeOrigin = new Vector3()
   const probeDir = new Vector3()
+  const clickRay = new Raycaster()
+
+  let pointerDelta = { x: 0, y: 0 }
+  const pointerNorm = { x: 0, y: 0 }
+  let mouseButtonsMask = 0
+  let rightButton = false
+  let wheelDelta = 0
+  const clickPoints: { left: [number, number, number] | null; right: [number, number, number] | null } = { left: null, right: null }
+  const clickHits: { left: { nodeId: string | null; point: [number, number, number] } | null; right: { nodeId: string | null; point: [number, number, number] } | null } = { left: null, right: null }
+  let downPos: { x: number; y: number; button: number } | null = null
+
+  const needsMouseLock = () => {
+    const nodes = world.getNodes()
+    return Object.values(nodes).some((n) => {
+      const ch = n.gameplay?.character
+      if (!ch?.enabled) return false
+      return ch.mode === 'firstPerson' || ch.mode === 'strafe' || n.gameplay?.cameraFollow?.orbit === 'mouse'
+    })
+  }
+
+  const isObjVisible = (obj: Object3D): boolean => {
+    let cur: Object3D | null = obj
+    while (cur) {
+      if (!cur.visible) return false
+      cur = cur.parent
+    }
+    return true
+  }
+
+  const collectProbeMeshes = (ignoreObj: Object3D | undefined, out: Object3D[]) => {
+    if (!mounted) return
+    const walk = (obj: Object3D) => {
+      if (!obj.visible || obj === ignoreObj) return
+      if (obj.userData?.t3dWaterMesh) return
+      const mesh = obj as Mesh & { isSkinnedMesh?: boolean }
+      if (mesh.isMesh && !mesh.isSkinnedMesh) {
+        out.push(mesh)
+      }
+      for (const child of obj.children) walk(child)
+    }
+    for (const child of mounted.root.children) walk(child)
+  }
+
+  canvas.addEventListener('contextmenu', (e) => e.preventDefault())
+  canvas.addEventListener('pointerdown', (e) => {
+    mouseButtonsMask = e.buttons
+    rightButton = (e.buttons & 2) !== 0
+    if (e.button === 0 || e.button === 2) {
+      downPos = { x: e.clientX, y: e.clientY, button: e.button }
+    }
+    if (needsMouseLock() && document.pointerLockElement !== canvas) {
+      void Promise.resolve(canvas.requestPointerLock?.()).catch(() => undefined)
+    }
+  })
+  window.addEventListener('pointermove', (e) => {
+    pointerDelta.x += e.movementX
+    pointerDelta.y += e.movementY
+    mouseButtonsMask = e.buttons
+    rightButton = (e.buttons & 2) !== 0
+    const rect = canvas.getBoundingClientRect()
+    if (rect.width > 0 && rect.height > 0) {
+      pointerNorm.x = ((e.clientX - rect.left) / rect.width) * 2 - 1
+      pointerNorm.y = -((e.clientY - rect.top) / rect.height) * 2 + 1
+    }
+  })
+  window.addEventListener('pointerup', (e) => {
+    mouseButtonsMask = e.buttons
+    rightButton = (e.buttons & 2) !== 0
+    if (!downPos || downPos.button !== e.button) {
+      downPos = null
+      return
+    }
+    const dx = e.clientX - downPos.x
+    const dy = e.clientY - downPos.y
+    const btn = downPos.button
+    downPos = null
+    if (dx * dx + dy * dy > 36 || !mounted) return
+    const rect = canvas.getBoundingClientRect()
+    if (rect.width <= 0 || rect.height <= 0) return
+    const nx = ((e.clientX - rect.left) / rect.width) * 2 - 1
+    const ny = -((e.clientY - rect.top) / rect.height) * 2 + 1
+    clickRay.setFromCamera({ x: nx, y: ny } as Vector2, camera)
+    const targets: Object3D[] = []
+    collectProbeMeshes(undefined, targets)
+    const hits = clickRay.intersectObjects(targets, false)
+    const hit = hits.find((h) => isObjVisible(h.object))
+    const key = btn === 2 ? 'right' : 'left'
+    if (hit) {
+      const pt: [number, number, number] = [hit.point.x, hit.point.y, hit.point.z]
+      let cur: Object3D | null = hit.object
+      while (cur && !cur.userData?.nodeId) cur = cur.parent
+      clickPoints[key] = pt
+      clickHits[key] = { nodeId: (cur?.userData?.nodeId as string) ?? null, point: pt }
+    }
+  })
+  canvas.addEventListener('wheel', (e) => {
+    wheelDelta += e.deltaY
+  }, { passive: true })
+
   const host: SceneRuntimeHost = {
     ready: true,
     resolveObject: (id) => mounted?.map.get(id) ?? null,
@@ -1046,25 +1151,17 @@ async function boot() {
     probe: (origin: Vec3, direction: Vec3, max: number, ignoreId: string) => {
       if (!mounted) return null
       probeOrigin.set(origin[0], origin[1], origin[2])
-      probeDir.set(direction[0], direction[1], direction[2]).normalize()
+      probeDir.set(direction[0], direction[1], direction[2])
+      if (probeDir.lengthSq() < 1e-8) return null
+      probeDir.normalize()
       probeRay.set(probeOrigin, probeDir)
+      probeRay.near = 0.02
       probeRay.far = max
       const ignoreObj = mounted.map.get(ignoreId)
-      const hits = probeRay.intersectObjects(mounted.root.children, true)
-      for (const hit of hits) {
-        if (hit.object.userData?.t3dWaterMesh) continue
-        if (ignoreObj) {
-          let cur: Object3D | null = hit.object
-          let skipped = false
-          while (cur) {
-            if (cur === ignoreObj) { skipped = true; break }
-            cur = cur.parent
-          }
-          if (skipped) continue
-        }
-        return hit.distance
-      }
-      return null
+      const targets: Object3D[] = []
+      collectProbeMeshes(ignoreObj, targets)
+      const hits = probeRay.intersectObjects(targets, false)
+      return hits.length > 0 ? hits[0].distance : null
     },
     // 不能直接读 camera.rotation.y：欧拉角在有俯仰时会偏，镜头转过 90° 后还会整个翻面
     yaw: () => {
@@ -1080,6 +1177,42 @@ async function boot() {
         camera.fov = fov
         camera.updateProjectionMatrix()
       }
+    },
+    pointerDelta: () => {
+      const delta = pointerDelta
+      pointerDelta = { x: 0, y: 0 }
+      return delta
+    },
+    peekPointerDelta: () => ({ ...pointerDelta }),
+    rightHeld: () => rightButton,
+    mouseButtons: () => mouseButtonsMask,
+    wheel: () => {
+      const delta = wheelDelta
+      wheelDelta = 0
+      return delta
+    },
+    peekWheel: () => wheelDelta,
+    consumeClick: (button) => {
+      const pt = clickPoints[button]
+      clickPoints[button] = null
+      return pt
+    },
+    pointerNormalized: () => ({ ...pointerNorm }),
+    consumeNodeClick: (button) => {
+      const hit = clickHits[button]
+      clickHits[button] = null
+      return hit
+    },
+    worldToScreen: (pos) => {
+      const w = window.innerWidth
+      const h = Math.max(1, window.innerHeight)
+      camera.updateMatrixWorld()
+      const projected = new Vector3(pos[0], pos[1], pos[2]).project(camera)
+      const inFront = projected.z >= -1 && projected.z <= 1
+      const x = (projected.x * 0.5 + 0.5) * w
+      const y = (-projected.y * 0.5 + 0.5) * h
+      const visible = inFront && projected.x >= -1 && projected.x <= 1 && projected.y >= -1 && projected.y <= 1
+      return { x, y, ndcX: projected.x, ndcY: projected.y, visible }
     },
   }
 
