@@ -57,6 +57,23 @@ export function allCapabilityManifests(): CapabilityManifest[] {
   return [...(CAPABILITIES as readonly CapabilityManifest[]), ...dynamicCapabilities.values()]
 }
 
+/** 不是能力包 ID、但运行时确实会读的节点数据槽 */
+const EXTRA_CAPABILITY_DATA_KEYS = ['splinePath']
+
+/**
+ * 某个 key 是否是运行时认识的能力数据槽（node.capabilities[key] / picture.capabilities[key]）。
+ * 以 __ 开头的是引擎内部槽位。写入不认识的 key 只会留下没人读的数据。
+ */
+export function isKnownCapabilityDataKey(key: string): boolean {
+  if (key.startsWith('__')) return true
+  if (EXTRA_CAPABILITY_DATA_KEYS.includes(key)) return true
+  return allCapabilityManifests().some(item => item.id === key)
+}
+
+export function knownCapabilityDataKeys(): string[] {
+  return [...allCapabilityManifests().map(item => item.id), ...EXTRA_CAPABILITY_DATA_KEYS]
+}
+
 export function defaultCapabilities(): Record<CapabilityId, boolean> {
   const base = Object.fromEntries(CAPABILITIES.map(item => [item.id, item.defaultEnabled])) as Record<string, boolean>
   for (const item of dynamicCapabilities.values()) base[item.id] = item.defaultEnabled

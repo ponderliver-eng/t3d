@@ -5,7 +5,7 @@ import {
   listGameplayPacks,
   resolveEnabledPackIds,
 } from '../../../gameplay/registry'
-import type { GameDatabaseRow } from '../../../gameplay/types'
+import { CORE_GAMEPLAY_PACK_ID, type GameDatabaseRow } from '../../../gameplay/types'
 import { CORE_COMPONENTS, applyCoreComponentPatch, isCoreComponentId } from '../../../gameplay/coreComponents'
 import { commandBus } from '../bus'
 import type { CommandDef } from '../types'
@@ -79,12 +79,36 @@ const setComponentDataCmd: CommandDef<SetComponentDataParams, { nodeId: string; 
     if (!node) {
       return { ok: false, code: 'node.notFound', message: `节点 "${p.nodeId}" 不存在` }
     }
-    if (p.packId === 'core' && isCoreComponentId(p.componentId)) {
+    const isCorePack = p.packId === 'core' || p.packId === CORE_GAMEPLAY_PACK_ID
+    if (isCorePack && isCoreComponentId(p.componentId)) {
       return {
         ok: false,
         code: 'gameplay.useCoreComponent',
-        message: `"${p.componentId}" 是引擎内置组件，数据在 node.gameplay.${p.componentId}，写进 packs.core 不会被运行时识别`,
+        message: `"${p.componentId}" 是引擎内置组件，数据在 node.gameplay.${p.componentId}，写进 packs 不会被运行时识别`,
         hint: `改用 gameplay.setCoreComponent({ nodeId, componentId: "${p.componentId}", patch })`,
+      }
+    }
+    if (p.packId !== '__project__') {
+      const pack = listGameplayPacks().find((item) => item.id === p.packId)
+      if (!pack) {
+        return {
+          ok: false,
+          code: 'gameplay.packNotFound',
+          message: `未找到玩法包 "${p.packId}"`,
+          hint: `已登记的玩法包：${listGameplayPacks().map((item) => item.id).join(', ')}。引擎内置组件（character / locomotion 等）用 gameplay.setCoreComponent`,
+        }
+      }
+      const known = (pack.components ?? []).map((item) => item.componentId)
+      // 用户沉淀的包会把脚本参数规整到自己的命名空间下，没有组件清单时不拦
+      if (!known.includes(p.componentId) && (known.length > 0 || isCorePack)) {
+        return {
+          ok: false,
+          code: 'gameplay.componentNotFound',
+          message: `玩法包 "${p.packId}" 里没有组件 "${p.componentId}"，写进去运行时也不会读取`,
+          hint: known.length > 0
+            ? `该包的组件：${known.join(', ')}`
+            : `该包没有可挂载的组件。引擎内置组件（${CORE_COMPONENTS.map((item) => item.id).join(' / ')}）用 gameplay.setCoreComponent`,
+        }
       }
     }
     const prevGameplay = node.gameplay ?? {}

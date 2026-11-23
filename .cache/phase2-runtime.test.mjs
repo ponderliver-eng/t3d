@@ -6263,6 +6263,11 @@ var init_session10 = __esm({
 function allCapabilityManifests() {
   return [...CAPABILITIES, ...dynamicCapabilities.values()];
 }
+function isKnownCapabilityDataKey(key) {
+  if (key.startsWith("__")) return true;
+  if (EXTRA_CAPABILITY_DATA_KEYS.includes(key)) return true;
+  return allCapabilityManifests().some((item) => item.id === key);
+}
 function defaultCapabilities() {
   const base = Object.fromEntries(CAPABILITIES.map((item) => [item.id, item.defaultEnabled]));
   for (const item of dynamicCapabilities.values()) base[item.id] = item.defaultEnabled;
@@ -6288,7 +6293,7 @@ function capabilityEnabled(capabilities, id) {
   }
   return capabilities[id];
 }
-var CAPABILITIES, dynamicCapabilities;
+var CAPABILITIES, dynamicCapabilities, EXTRA_CAPABILITY_DATA_KEYS;
 var init_registry2 = __esm({
   "src/capabilities/registry.ts"() {
     "use strict";
@@ -6305,6 +6310,7 @@ var init_registry2 = __esm({
       { id: "water", defaultEnabled: false, category: "environment", loadRuntime: () => Promise.resolve().then(() => (init_session2(), session_exports)) }
     ];
     dynamicCapabilities = /* @__PURE__ */ new Map();
+    EXTRA_CAPABILITY_DATA_KEYS = ["splinePath"];
   }
 });
 
@@ -15102,6 +15108,16 @@ function diagnoseProject(budget = DEFAULT_PERFORMANCE_BUDGET) {
         target: node.id,
         message: `\u8282\u70B9 "${node.name}" \u6302\u6709\u6C34\u4F53\u914D\u7F6E\uFF0C\u4F46\u5DE5\u7A0B\u5C1A\u672A\u542F\u7528 water \u80FD\u529B\u5305`,
         hint: "\u8C03\u7528 capability.setEnabled \u5F00\u542F water \u80FD\u529B\u5305"
+      });
+    }
+    for (const capId of Object.keys(node.capabilities ?? {})) {
+      if (isKnownCapabilityDataKey(capId)) continue;
+      issues.push({
+        severity: "warning",
+        category: "pack",
+        target: node.id,
+        message: `\u8282\u70B9 "${node.name}" \u4E0A\u7684 capabilities.${capId} \u4E0D\u662F\u5DF2\u767B\u8BB0\u7684\u80FD\u529B\u5305\uFF0C\u8FD0\u884C\u65F6\u4E0D\u4F1A\u8BFB\u53D6`,
+        hint: "\u8FD9\u662F\u65E0\u6548\u6570\u636E\u3002\u89D2\u8272\u79FB\u52A8/\u52A8\u753B\u8BF7\u7528 gameplay.setCoreComponent \u6302 character \u6216 locomotion"
       });
     }
     if (node.gameplay?.packs) {

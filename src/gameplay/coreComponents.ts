@@ -4,6 +4,7 @@ import {
   defaultCharacter,
   defaultCheckpoint,
   defaultInteract,
+  defaultLocomotion,
   defaultMover,
   defaultScore,
   defaultSoundSource,
@@ -27,6 +28,7 @@ export type CoreComponentId =
   | 'checkpoint'
   | 'score'
   | 'soundSource'
+  | 'locomotion'
 
 export interface CoreComponentManifest {
   id: CoreComponentId
@@ -59,6 +61,7 @@ export const CORE_COMPONENTS: readonly CoreComponentManifest[] = [
       '留空的片段槽位不会播放动画；只填 idleClip/walkClip/runClip 三个就能得到基本的站立/走/跑。',
       '设置 character 时会自动按 mode 配好同节点的 cameraFollow；同一场景只应有一个启用的 character。',
       '角色已由内置控制器驱动时，不要再挂一个自己改 position 的移动脚本，两者会互相覆盖。',
+      '挂载后即生效：重力、贴地、相对相机的移动方向、转身朝向、动画切换都由引擎完成。验收用 playtest__run_smoke 注入 Move 轴并断言 nodeMoved。',
     ],
   },
   {
@@ -109,6 +112,18 @@ export const CORE_COMPONENTS: readonly CoreComponentManifest[] = [
     label: '空间音源',
     description: '试玩开始后在节点位置播放 assetId 指向的音频，音量随距离衰减。',
     defaults: () => asRecord(defaultSoundSource()),
+  },
+  {
+    id: 'locomotion',
+    label: '运动动画',
+    description:
+      '按节点的实际移动速度自动切换动画：水平速度 ≥ walkSpeed 播 walkClip，≥ runSpeed 播 runClip，否则播 idleClip；离地时保持当前片段。它只看位移结果，不关心谁在移动节点，适合由脚本、导航或弹道驱动的敌人 / NPC / 自写控制器的角色——脚本只管移动，不用写动画切换。',
+    defaults: () => asRecord(defaultLocomotion()),
+    notes: [
+      'xxxClip 填片段名，xxxClipAssetId 填片段所在的模型/动画资产 ID（片段就在节点自身模型里时留空）。',
+      '节点上启用了 character 时本组件不生效（character 自带含跳跃、闪避的完整切换）。',
+      '脚本里仍可用 self.anim.playUpper 叠加上半身动作（攻击、受击）；不要同时在脚本里对同一节点调 playBody 切走跑，会和本组件互相抢。',
+    ],
   },
 ]
 

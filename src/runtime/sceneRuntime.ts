@@ -370,6 +370,38 @@ export function defaultScore(): ScoreSpec {
   }
 }
 
+/** 运动动画：按节点实际移动速度自动切换 待机/行走/奔跑 片段，与「谁在移动它」无关。 */
+export interface LocomotionSpec {
+  enabled: boolean
+  idleClip: string
+  idleClipAssetId: string
+  walkClip: string
+  walkClipAssetId: string
+  runClip: string
+  runClipAssetId: string
+  /** 水平速度（米/秒）达到它切到行走。 */
+  walkSpeed: number
+  /** 水平速度（米/秒）达到它切到奔跑。没填奔跑片段时不生效。 */
+  runSpeed: number
+  /** 切换时的过渡秒数。 */
+  fade: number
+}
+
+export function defaultLocomotion(): LocomotionSpec {
+  return {
+    enabled: true,
+    idleClip: '',
+    idleClipAssetId: '',
+    walkClip: '',
+    walkClipAssetId: '',
+    runClip: '',
+    runClipAssetId: '',
+    walkSpeed: 0.2,
+    runSpeed: 4.5,
+    fade: 0.15,
+  }
+}
+
 export type CoreRuleTriggerKind = 'playStart' | 'interact' | 'key' | 'message' | 'enter' | 'exit' | 'hit'
 export type CoreRuleCondKind = 'always' | 'hasTag' | 'missingTag' | 'compare' | 'formula'
 export type CoreRuleStepKind =
@@ -603,6 +635,7 @@ export interface NodeGameplay {
   checkpoint?: CheckpointSpec | null
   score?: ScoreSpec | null
   soundSource?: SoundSourceSpec | null
+  locomotion?: LocomotionSpec | null
   rules?: RuleEntry[]
   ruleStates?: RuleStateNode[]
   /** 领域包（属性、战斗、感知、背包、对话）按包 id 挂载的数据槽，关闭领域包时不清除数据。 */

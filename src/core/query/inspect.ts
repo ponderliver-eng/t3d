@@ -1,4 +1,4 @@
-import { CAPABILITIES, capabilityEnabled, type CapabilityManifest } from '../../capabilities/registry'
+import { CAPABILITIES, capabilityEnabled, isKnownCapabilityDataKey, type CapabilityManifest } from '../../capabilities/registry'
 import { ASSETS_ROOT, isWithin, normalizeDir } from '../../editor/assets/folders'
 import { assetDirectory, useAssetStore } from '../../editor/assets/library'
 import { useEditorStore } from '../../editor/scene/store'
@@ -124,7 +124,8 @@ const NODE_ANIMATION_NOTE = {
   description:
     '模型节点的静态动画槽位：试玩开始时若 clipPlaying 为真则循环播放 clip。它只是「开局默认动画」，不会随运动状态切换。',
   howToDrive: [
-    '角色随移动自动切 idle/walk/run：用内置组件 character（gameplay__setCoreComponent），填 idleClip/walkClip/runClip。',
+    '玩家角色随移动自动切 idle/walk/run/jump：用内置组件 character（gameplay__setCoreComponent），填 idleClip/walkClip/runClip。',
+    '脚本或导航驱动的对象（敌人、NPC）按速度自动切 idle/walk/run：用内置组件 locomotion，脚本里不用写动画切换。',
     '脚本里按逻辑播放：self.anim.playBody(clipName, { loop, fade, speed }) / playUpper / stopUpper；片段来自其他资产时参数声明为 ref(target:"clip")。',
   ],
 }
@@ -150,7 +151,7 @@ function describeNodeDrivers(node: SceneNode): string[] {
       }
       continue
     }
-    if (packId === 'core') {
+    if (packId === 'core' || packId === 't3d.core') {
       const keys = Object.keys((bag ?? {}) as Record<string, unknown>).filter((key) => isCoreComponentId(key))
       if (keys.length > 0) {
         notes.push(`gameplay.packs.core.${keys.join('/')}：仅数据，运行时不读取这里；内置组件请用 gameplay__setCoreComponent 写到 gameplay.<组件>`)
@@ -160,7 +161,11 @@ function describeNodeDrivers(node: SceneNode): string[] {
     if (!enabledPacks.includes(packId)) notes.push(`gameplay.packs.${packId}：玩法包未启用，仅数据`)
   }
   for (const capId of Object.keys(node.capabilities ?? {})) {
-    if (!capabilityEnabled(useEditorStore.getState().capabilities, capId)) notes.push(`capabilities.${capId}：能力包未启用，仅数据`)
+    if (!isKnownCapabilityDataKey(capId)) {
+      notes.push(`capabilities.${capId}：不是已登记的能力包，运行时不读取，纯属无效数据（可能是之前误写的，建议清理）`)
+    } else if (!capId.startsWith('__') && capId !== 'splinePath' && !capabilityEnabled(useEditorStore.getState().capabilities, capId)) {
+      notes.push(`capabilities.${capId}：能力包未启用，仅数据`)
+    }
   }
   if (node.clip) {
     notes.push(`clip="${node.clip}"：${node.clipPlaying ? '试玩开局自动播放' : '未勾选播放，仅数据'}（不随运动状态切换）`)
@@ -215,6 +220,11 @@ export function queryNodeInspect(nodeId: string) {
         }
       : {}),
     drivers: describeNodeDrivers(node),
+    // null 只表示「还没挂」，不是「引擎不支持」
+    availableCoreComponents: {
+      note: 'gameplay 里为 null 或缺失的内置组件只是尚未挂载；引擎运行时已实现，用 gameplay__setCoreComponent({ nodeId, componentId, patch }) 挂上即生效',
+      notMounted: CORE_COMPONENTS.filter((item) => !node.gameplay?.[item.id]).map((item) => `${item.id}（${item.label}）`),
+    },
     tagId: node.tagId ?? null,
     tagIds: node.tagIds ?? [],
     renderLayerId: node.renderLayerId ?? 'default',
@@ -294,6 +304,9 @@ export function queryRegistryDescribe(
       dependencies: p.dependencies ?? [],
       tables: p.tables?.map((t) => ({ tableId: t.tableId, title: t.title })) ?? [],
       components: p.components?.map((c) => ({ componentId: c.componentId, label: c.label, defaultData: c.defaultData() })) ?? [],
+      ...(p.components?.length
+        ? {}
+        : { note: '该包不提供可挂载组件（只有数据表/标签等）。角色控制器、跟随相机、运动动画等引擎内置组件见 category: "coreComponents"' }),
     }))
   }
   if (category === 'commands' || category === 'all') {

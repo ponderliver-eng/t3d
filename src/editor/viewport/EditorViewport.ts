@@ -71,6 +71,7 @@ import { registerViewportBridge, snapshotCanvasToDataUrl } from '../../core/prev
 import { attachAudioListener } from '../../runtime/audio'
 import '../../runtime/soundSource'
 import '../../runtime/character'
+import '../../runtime/locomotion'
 import '../../runtime/camera'
 import '../../runtime/devices'
 import '../../runtime/rules'

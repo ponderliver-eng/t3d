@@ -1,4 +1,4 @@
-import { capabilityEnabled } from '../../capabilities/registry'
+import { capabilityEnabled, isKnownCapabilityDataKey } from '../../capabilities/registry'
 import { useAssetStore } from '../../editor/assets/library'
 import { useEditorStore } from '../../editor/scene/store'
 import type { UiNode } from '../../runtime/ui/spec'
@@ -120,6 +120,17 @@ export function diagnoseProject(budget: PerformanceBudget = DEFAULT_PERFORMANCE_
         target: node.id,
         message: `节点 "${node.name}" 挂有水体配置，但工程尚未启用 water 能力包`,
         hint: '调用 capability.setEnabled 开启 water 能力包',
+      })
+    }
+
+    for (const capId of Object.keys(node.capabilities ?? {})) {
+      if (isKnownCapabilityDataKey(capId)) continue
+      issues.push({
+        severity: 'warning',
+        category: 'pack',
+        target: node.id,
+        message: `节点 "${node.name}" 上的 capabilities.${capId} 不是已登记的能力包，运行时不会读取`,
+        hint: '这是无效数据。角色移动/动画请用 gameplay.setCoreComponent 挂 character 或 locomotion',
       })
     }
 

@@ -160,7 +160,10 @@ Demo 质量的主要杠杆不是更长的提示词，而是**让 AI 从验证过
 - **不要破坏缓存前缀**：系统提示必须完全静态，工具全集常驻；每轮变化的内容只能追加在用户消息尾部的 `<工程上下文>` 里，历史只追加、超预算才原地折叠。往系统提示里插入时间、选中节点等动态内容会让整段缓存失效。
 - **契约与运行时不一致**：行为脚本的真实约定是 `state: () => ({})` 与 `onUpdate(self, dt)`，`contracts/t3d/runtime.d.ts` 里的 `createState` / `onStep` 与实现不符；提示词与范例一律以运行时为准，对齐前不要据契约文件写脚本。
 - **`physics.raycast` 的 `hit.node` 不可靠**：目前返回的是调用者自身，只有 `distance` 与 `point` 可用。
-- **内置组件不在 `packs` 里**：`character` / `cameraFollow` / `interact` / `trigger` / `mover` / `checkpoint` / `score` / `soundSource` 的数据在 `node.gameplay.<组件>`，由 `gameplay.setCoreComponent` 写入；`gameplay.setComponentData` 写到 `packs.core.<同名>` 会被拒绝，因为运行时不读那里。无头测试要驱动内置角色，需显式 `import '../src/runtime/character'`（它以副作用方式注册）。
+- **内置组件不在 `packs` 里**：`character` / `locomotion` / `cameraFollow` / `interact` / `trigger` / `mover` / `checkpoint` / `score` / `soundSource` 的数据在 `node.gameplay.<组件>`，由 `gameplay.setCoreComponent` 写入；`gameplay.setComponentData` 写到 `packs.core.<同名>` 会被拒绝，因为运行时不读那里。无头测试要驱动内置角色，需显式 `import '../src/runtime/character'`（它以副作用方式注册）。
+- **「没挂」不能长得像「不支持」**：AI 曾把 `gameplay.character: null` 和核心包（ID 是 `t3d.core`，不是 `core`）的空组件列表读成「引擎没有角色控制器」，于是手写了 119 行。现在 `query__node_inspect` 返回 `availableCoreComponents` 说明 null 只是未挂载，空组件的玩法包带指向 `coreComponents` 的说明。
+- **写入指令必须校验目标是否有人读**：`capability.setNodeData` / `setPictureData` 拒绝未登记的能力数据槽（`isKnownCapabilityDataKey`），`gameplay.setComponentData` 拒绝未登记的包与组件；此前任意 ID 都能写成功，留下没人读的数据。已存在的无效数据由体检报警告。
+- **动画切换与移动解耦**：内置 `locomotion`（`src/runtime/locomotion.ts`）按节点实际位移速度切 待机/行走/奔跑，不关心谁在移动节点；玩家角色由 `character` 自带切换。不做参数连线式的状态机编辑。
 - **试玩锁包含暂停**：`play.locked` 在 `playState !== 'stopped'` 时都生效，暂停中也不能改工程。调参循环是「`script__patch` → `playtest__run_smoke`」，后者自带启动与退出。
 - **相机方位角只能从视线方向算**：`SceneRuntimeHost.yaw()` 必须用相机世界视线的水平投影（`atan2(-fx, -fz)`），不能读 `camera.rotation.y`——欧拉角在有俯仰时会偏，镜头水平转过 90° 后整个翻面。编辑器视口一直是对的，导出播放器（`src/player/main.ts`）曾直接读欧拉角，已修。脚本侧相对相机的移动统一用 `self.input.moveDirection()`（`viewRelativeMove`，与内置 `character` 共用同一个方位角），范例 `third-person-controller` 已改用它。
 - **命令行**：Windows PowerShell 环境下多命令用 `;` 分隔，不要用 `&&`。

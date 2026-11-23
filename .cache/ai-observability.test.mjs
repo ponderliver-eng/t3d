@@ -4032,6 +4032,20 @@ function defaultScore() {
     defeatMessage: "onStageDefeat"
   };
 }
+function defaultLocomotion() {
+  return {
+    enabled: true,
+    idleClip: "",
+    idleClipAssetId: "",
+    walkClip: "",
+    walkClipAssetId: "",
+    runClip: "",
+    runClipAssetId: "",
+    walkSpeed: 0.2,
+    runSpeed: 4.5,
+    fade: 0.15
+  };
+}
 function isCoreCondition(kind) {
   return CONDS.includes(kind);
 }
@@ -6092,6 +6106,11 @@ var init_session9 = __esm({
 function allCapabilityManifests() {
   return [...CAPABILITIES, ...dynamicCapabilities.values()];
 }
+function isKnownCapabilityDataKey(key) {
+  if (key.startsWith("__")) return true;
+  if (EXTRA_CAPABILITY_DATA_KEYS.includes(key)) return true;
+  return allCapabilityManifests().some((item) => item.id === key);
+}
 function defaultCapabilities() {
   const base = Object.fromEntries(CAPABILITIES.map((item) => [item.id, item.defaultEnabled]));
   for (const item of dynamicCapabilities.values()) base[item.id] = item.defaultEnabled;
@@ -6117,7 +6136,7 @@ function capabilityEnabled(capabilities, id) {
   }
   return capabilities[id];
 }
-var CAPABILITIES, dynamicCapabilities;
+var CAPABILITIES, dynamicCapabilities, EXTRA_CAPABILITY_DATA_KEYS;
 var init_registry2 = __esm({
   "src/capabilities/registry.ts"() {
     "use strict";
@@ -6134,6 +6153,7 @@ var init_registry2 = __esm({
       { id: "water", defaultEnabled: false, category: "environment", loadRuntime: () => Promise.resolve().then(() => (init_session2(), session_exports)) }
     ];
     dynamicCapabilities = /* @__PURE__ */ new Map();
+    EXTRA_CAPABILITY_DATA_KEYS = ["splinePath"];
   }
 });
 
@@ -9059,7 +9079,8 @@ var CORE_COMPONENTS = [
       "xxxClip \u586B\u52A8\u753B\u7247\u6BB5\u540D\uFF0CxxxClipAssetId \u586B\u7247\u6BB5\u6240\u5728\u7684\u6A21\u578B/\u52A8\u753B\u8D44\u4EA7 ID\uFF08\u7247\u6BB5\u5C31\u5728\u8282\u70B9\u81EA\u8EAB\u6A21\u578B\u91CC\u65F6\u7559\u7A7A\uFF09\uFF1B\u7247\u6BB5\u540D\u53EF\u7528 query__asset_search \u67E5\u770B\u6A21\u578B\u7684 clips\u3002",
       "\u7559\u7A7A\u7684\u7247\u6BB5\u69FD\u4F4D\u4E0D\u4F1A\u64AD\u653E\u52A8\u753B\uFF1B\u53EA\u586B idleClip/walkClip/runClip \u4E09\u4E2A\u5C31\u80FD\u5F97\u5230\u57FA\u672C\u7684\u7AD9\u7ACB/\u8D70/\u8DD1\u3002",
       "\u8BBE\u7F6E character \u65F6\u4F1A\u81EA\u52A8\u6309 mode \u914D\u597D\u540C\u8282\u70B9\u7684 cameraFollow\uFF1B\u540C\u4E00\u573A\u666F\u53EA\u5E94\u6709\u4E00\u4E2A\u542F\u7528\u7684 character\u3002",
-      "\u89D2\u8272\u5DF2\u7531\u5185\u7F6E\u63A7\u5236\u5668\u9A71\u52A8\u65F6\uFF0C\u4E0D\u8981\u518D\u6302\u4E00\u4E2A\u81EA\u5DF1\u6539 position \u7684\u79FB\u52A8\u811A\u672C\uFF0C\u4E24\u8005\u4F1A\u4E92\u76F8\u8986\u76D6\u3002"
+      "\u89D2\u8272\u5DF2\u7531\u5185\u7F6E\u63A7\u5236\u5668\u9A71\u52A8\u65F6\uFF0C\u4E0D\u8981\u518D\u6302\u4E00\u4E2A\u81EA\u5DF1\u6539 position \u7684\u79FB\u52A8\u811A\u672C\uFF0C\u4E24\u8005\u4F1A\u4E92\u76F8\u8986\u76D6\u3002",
+      "\u6302\u8F7D\u540E\u5373\u751F\u6548\uFF1A\u91CD\u529B\u3001\u8D34\u5730\u3001\u76F8\u5BF9\u76F8\u673A\u7684\u79FB\u52A8\u65B9\u5411\u3001\u8F6C\u8EAB\u671D\u5411\u3001\u52A8\u753B\u5207\u6362\u90FD\u7531\u5F15\u64CE\u5B8C\u6210\u3002\u9A8C\u6536\u7528 playtest__run_smoke \u6CE8\u5165 Move \u8F74\u5E76\u65AD\u8A00 nodeMoved\u3002"
     ]
   },
   {
@@ -9110,6 +9131,17 @@ var CORE_COMPONENTS = [
     label: "\u7A7A\u95F4\u97F3\u6E90",
     description: "\u8BD5\u73A9\u5F00\u59CB\u540E\u5728\u8282\u70B9\u4F4D\u7F6E\u64AD\u653E assetId \u6307\u5411\u7684\u97F3\u9891\uFF0C\u97F3\u91CF\u968F\u8DDD\u79BB\u8870\u51CF\u3002",
     defaults: () => asRecord(defaultSoundSource())
+  },
+  {
+    id: "locomotion",
+    label: "\u8FD0\u52A8\u52A8\u753B",
+    description: "\u6309\u8282\u70B9\u7684\u5B9E\u9645\u79FB\u52A8\u901F\u5EA6\u81EA\u52A8\u5207\u6362\u52A8\u753B\uFF1A\u6C34\u5E73\u901F\u5EA6 \u2265 walkSpeed \u64AD walkClip\uFF0C\u2265 runSpeed \u64AD runClip\uFF0C\u5426\u5219\u64AD idleClip\uFF1B\u79BB\u5730\u65F6\u4FDD\u6301\u5F53\u524D\u7247\u6BB5\u3002\u5B83\u53EA\u770B\u4F4D\u79FB\u7ED3\u679C\uFF0C\u4E0D\u5173\u5FC3\u8C01\u5728\u79FB\u52A8\u8282\u70B9\uFF0C\u9002\u5408\u7531\u811A\u672C\u3001\u5BFC\u822A\u6216\u5F39\u9053\u9A71\u52A8\u7684\u654C\u4EBA / NPC / \u81EA\u5199\u63A7\u5236\u5668\u7684\u89D2\u8272\u2014\u2014\u811A\u672C\u53EA\u7BA1\u79FB\u52A8\uFF0C\u4E0D\u7528\u5199\u52A8\u753B\u5207\u6362\u3002",
+    defaults: () => asRecord(defaultLocomotion()),
+    notes: [
+      "xxxClip \u586B\u7247\u6BB5\u540D\uFF0CxxxClipAssetId \u586B\u7247\u6BB5\u6240\u5728\u7684\u6A21\u578B/\u52A8\u753B\u8D44\u4EA7 ID\uFF08\u7247\u6BB5\u5C31\u5728\u8282\u70B9\u81EA\u8EAB\u6A21\u578B\u91CC\u65F6\u7559\u7A7A\uFF09\u3002",
+      "\u8282\u70B9\u4E0A\u542F\u7528\u4E86 character \u65F6\u672C\u7EC4\u4EF6\u4E0D\u751F\u6548\uFF08character \u81EA\u5E26\u542B\u8DF3\u8DC3\u3001\u95EA\u907F\u7684\u5B8C\u6574\u5207\u6362\uFF09\u3002",
+      "\u811A\u672C\u91CC\u4ECD\u53EF\u7528 self.anim.playUpper \u53E0\u52A0\u4E0A\u534A\u8EAB\u52A8\u4F5C\uFF08\u653B\u51FB\u3001\u53D7\u51FB\uFF09\uFF1B\u4E0D\u8981\u540C\u65F6\u5728\u811A\u672C\u91CC\u5BF9\u540C\u4E00\u8282\u70B9\u8C03 playBody \u5207\u8D70\u8DD1\uFF0C\u4F1A\u548C\u672C\u7EC4\u4EF6\u4E92\u76F8\u62A2\u3002"
+    ]
   }
 ];
 function findCoreComponent(id) {
@@ -16920,7 +16952,79 @@ function slide(host, x, y, z, nextX, nextZ, id, radius) {
 }
 registerRuntimeSystem("core.character", RUNTIME_STAGE.POST_PHYSICS, stepCharacters);
 
+// src/runtime/locomotion.ts
+init_world();
+init_sceneRuntime();
+var tracks = /* @__PURE__ */ new Map();
+var EXIT_RATIO = 0.8;
+var TELEPORT_SPEED = 60;
+function pickState(spec, speed, prev) {
+  const runAt = spec.runClip ? Math.max(spec.walkSpeed, spec.runSpeed) : Infinity;
+  const walkAt = Math.max(0.01, spec.walkSpeed);
+  if (speed >= runAt || prev === "run" && speed >= runAt * EXIT_RATIO) return "run";
+  if (speed >= walkAt || prev !== "idle" && speed >= walkAt * EXIT_RATIO) return "walk";
+  return "idle";
+}
+function clipFor(spec, state) {
+  if (state === "run" && spec.runClip) return { name: spec.runClip, assetId: spec.runClipAssetId };
+  if (state !== "idle" && spec.walkClip) return { name: spec.walkClip, assetId: spec.walkClipAssetId };
+  return { name: spec.idleClip, assetId: spec.idleClipAssetId };
+}
+function stepLocomotion(dt, host) {
+  const world3 = getRuntimeWorld();
+  if (world3.getPlayState() !== "playing") {
+    tracks.clear();
+    return;
+  }
+  if (dt <= 0) return;
+  const nodes = world3.getNodes();
+  const seen = /* @__PURE__ */ new Set();
+  for (const node of Object.values(nodes)) {
+    const raw = node.gameplay?.locomotion;
+    if (!raw?.enabled) continue;
+    if (node.gameplay?.character?.enabled) continue;
+    const object = host.resolveObject(node.id);
+    if (!object || !object.visible) continue;
+    seen.add(node.id);
+    const spec = { ...defaultLocomotion(), ...raw };
+    const { x, y, z } = object.position;
+    let track = tracks.get(node.id);
+    if (!track) {
+      track = { x, y, z, speed: 0, state: "idle", clipKey: "" };
+      tracks.set(node.id, track);
+    } else {
+      const planar = Math.hypot(x - track.x, z - track.z) / dt;
+      const vertical = Math.abs(y - track.y) / dt;
+      track.x = x;
+      track.y = y;
+      track.z = z;
+      if (planar > TELEPORT_SPEED) {
+        track.speed = 0;
+      } else {
+        track.speed += (planar - track.speed) * Math.min(1, dt * 14);
+        if (vertical <= 2) track.state = pickState(spec, track.speed, track.state);
+      }
+    }
+    const clip = clipFor(spec, track.state);
+    if (!clip.name) continue;
+    const key = `${clip.assetId}\0${clip.name}`;
+    if (key === track.clipKey) continue;
+    track.clipKey = key;
+    const own = !clip.assetId || clip.assetId === node.assetId;
+    world3.playBody?.(node.id, clip.name, { assetId: own ? null : clip.assetId, loop: true, fade: spec.fade });
+  }
+  if (tracks.size > seen.size) {
+    for (const id of tracks.keys()) if (!seen.has(id)) tracks.delete(id);
+  }
+}
+function readLocomotionState(nodeId) {
+  const track = tracks.get(nodeId);
+  return track ? { state: track.state, speed: Number(track.speed.toFixed(2)) } : null;
+}
+registerRuntimeSystem("core.locomotion", 58, stepLocomotion);
+
 // tests/ai-observability.test.ts
+init_registry2();
 init_sceneRuntime();
 init_world();
 function makeNode2(id, name, patch = {}) {
@@ -16943,6 +17047,7 @@ function createHeadlessWorld(initial2) {
   let nodes = Object.fromEntries(initial2.map((n) => [n.id, n]));
   const objects = /* @__PURE__ */ new Map();
   const logs = [];
+  const played = [];
   const world3 = {
     getNodes: () => nodes,
     setNodes: (next) => {
@@ -16964,6 +17069,9 @@ function createHeadlessWorld(initial2) {
     },
     log: (level, message) => {
       logs.push({ level, message });
+    },
+    playBody: (nodeId, clip, options) => {
+      played.push({ nodeId, clip, assetId: options?.assetId, loop: options?.loop });
     }
   };
   const host = {
@@ -16988,6 +17096,7 @@ function createHeadlessWorld(initial2) {
   return {
     host,
     logs,
+    played,
     run: (seconds) => {
       const steps = Math.round(seconds * 60);
       for (let i = 0; i < steps; i += 1) stepSceneRuntime(1 / 60, host);
@@ -17165,4 +17274,65 @@ export default defineBehavior({
   assert.ok(Math.abs(Math.hypot(p.x, p.z) - 4) < 0.1, `\u659C\u5411\u79FB\u52A8\u8DDD\u79BB\u5E94\u4E3A 4\uFF0C\u5B9E\u9645 ${Math.hypot(p.x, p.z).toFixed(2)}`);
   clearAllVirtualInput();
   clearScriptRuntimeState();
+});
+test("\u8FD0\u52A8\u52A8\u753B\uFF1A\u53EA\u770B\u4F4D\u79FB\u7ED3\u679C\uFF0C\u6309\u901F\u5EA6\u5728 \u5F85\u673A/\u884C\u8D70/\u5954\u8DD1 \u4E4B\u95F4\u5207\u6362\uFF0C\u4E0E\u79FB\u52A8\u811A\u672C\u89E3\u8026", () => {
+  clearScriptRuntimeState();
+  clearAllVirtualInput();
+  const src = `
+import { defineBehavior } from 't3d/runtime'
+export default defineBehavior({
+  name: '\u5DE1\u903B',
+  state: () => ({ speed: 0 }),
+  onMessage(self, msg) {
+    if (msg.name === 'setSpeed') self.state.speed = Number(msg.payload)
+  },
+  onUpdate(self, dt) {
+    self.translate({ x: self.state.speed * dt, y: 0, z: 0 }, 'world')
+  },
+})
+`;
+  const res = compileAndRegisterScript("Patrol", "Assets/Scripts/Patrol.ts", src);
+  assert.equal(res.ok, true, JSON.stringify(res.diagnostics));
+  const driver2 = `
+import { defineBehavior } from 't3d/runtime'
+export default defineBehavior({
+  name: '\u8C03\u901F',
+  onUpdate(self) {
+    const t = self.elapsedTime
+    self.broadcast('setSpeed', t < 1 ? 0 : t < 2 ? 2 : t < 3 ? 6 : 0)
+  },
+})
+`;
+  assert.equal(compileAndRegisterScript("SpeedDriver", "Assets/Scripts/SpeedDriver.ts", driver2).ok, true);
+  const mounted = applyCoreComponentPatch(
+    { packs: { __project__: { Patrol: {} } } },
+    "locomotion",
+    { idleClip: "Idle", walkClip: "Walk", runClip: "Run", runClipAssetId: "anim-pack" }
+  );
+  assert.ok(mounted.ok);
+  const sim = createHeadlessWorld([
+    makeNode2("npc", "NPC", { assetId: "npc-model", gameplay: mounted.gameplay }),
+    makeNode2("driver", "Driver", { gameplay: { packs: { __project__: { SpeedDriver: {} } } } })
+  ]);
+  sim.run(0.9);
+  assert.equal(readLocomotionState("npc")?.state, "idle");
+  sim.run(1);
+  assert.equal(readLocomotionState("npc")?.state, "walk");
+  sim.run(1);
+  assert.equal(readLocomotionState("npc")?.state, "run");
+  sim.run(1);
+  assert.equal(readLocomotionState("npc")?.state, "idle");
+  assert.deepEqual(sim.logs.filter((item) => item.level === "error"), []);
+  assert.deepEqual(sim.played.map((item) => item.clip), ["Idle", "Walk", "Run", "Walk", "Idle"]);
+  assert.equal(sim.played[1].assetId, null);
+  assert.equal(sim.played[2].assetId, "anim-pack");
+  assert.ok(sim.played.every((item) => item.nodeId === "npc" && item.loop === true));
+  clearScriptRuntimeState();
+});
+test("\u65E0\u6548\u6570\u636E\u62E6\u622A\uFF1A\u4E0D\u8BA4\u8BC6\u7684\u80FD\u529B\u6570\u636E\u69FD\u4F1A\u88AB\u8BC6\u522B\u51FA\u6765", () => {
+  assert.equal(isKnownCapabilityDataKey("water"), true);
+  assert.equal(isKnownCapabilityDataKey("splinePath"), true);
+  assert.equal(isKnownCapabilityDataKey("__materialShaderParams"), true);
+  assert.equal(isKnownCapabilityDataKey("animation"), false);
+  assert.equal(isKnownCapabilityDataKey("character"), false);
 });

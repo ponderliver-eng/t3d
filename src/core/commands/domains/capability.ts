@@ -1,6 +1,8 @@
 import {
   CAPABILITIES,
   capabilityEnabled,
+  isKnownCapabilityDataKey,
+  knownCapabilityDataKeys,
   syncCapabilityRuntimes,
 } from '../../../capabilities/registry'
 import { useEditorStore } from '../../../editor/scene/store'
@@ -73,6 +75,14 @@ const setNodeCapabilityCmd: CommandDef<SetNodeCapabilityParams, { nodeId: string
         hint: '请通过 scene.outline 获取有效的节点 ID',
       }
     }
+    if (!isKnownCapabilityDataKey(p.capabilityId)) {
+      return {
+        ok: false,
+        code: 'capability.unknown',
+        message: `"${p.capabilityId}" 不是已登记的能力包，运行时不会读取这份数据`,
+        hint: `可用的能力数据槽：${knownCapabilityDataKeys().join(', ')}。角色移动与动画切换不是能力包：用 gameplay.setCoreComponent 挂 character（玩家）或 locomotion（按速度切动画），字段见 registry.describe 的 coreComponents`,
+      }
+    }
     const prevCaps = (node.capabilities ?? {}) as Record<string, Record<string, unknown> | undefined>
     const prevData = prevCaps[p.capabilityId] ?? {}
     const nextNode: SceneNode = {
@@ -114,6 +124,14 @@ const setPictureCapabilityCmd: CommandDef<SetPictureCapabilityParams, { capabili
     },
   },
   run(_ctx, p) {
+    if (!isKnownCapabilityDataKey(p.capabilityId)) {
+      return {
+        ok: false,
+        code: 'capability.unknown',
+        message: `"${p.capabilityId}" 不是已登记的能力包，运行时不会读取这份数据`,
+        hint: `可用的能力数据槽：${knownCapabilityDataKeys().join(', ')}。角色移动与动画切换不是能力包：用 gameplay.setCoreComponent 挂 character（玩家）或 locomotion（按速度切动画），字段见 registry.describe 的 coreComponents`,
+      }
+    }
     const state = useEditorStore.getState()
     const prevCaps = (state.picture.capabilities ?? {}) as Record<string, Record<string, unknown> | undefined>
     const prevData = prevCaps[p.capabilityId] ?? {}

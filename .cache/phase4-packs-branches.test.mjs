@@ -4666,6 +4666,20 @@ function defaultScore() {
     defeatMessage: "onStageDefeat"
   };
 }
+function defaultLocomotion() {
+  return {
+    enabled: true,
+    idleClip: "",
+    idleClipAssetId: "",
+    walkClip: "",
+    walkClipAssetId: "",
+    runClip: "",
+    runClipAssetId: "",
+    walkSpeed: 0.2,
+    runSpeed: 4.5,
+    fade: 0.15
+  };
+}
 function registerRuntimeSystem(id, order, step2) {
   const target = order >= RUNTIME_STAGE.POST_ANIMATION ? postAnimationSystems : order >= RUNTIME_STAGE.PHYSICS_NAV ? postPhysicsSystems : systems;
   const index = target.findIndex((item) => item.id === id);
@@ -6455,6 +6469,14 @@ function unregisterDynamicCapability(id) {
 function allCapabilityManifests() {
   return [...CAPABILITIES, ...dynamicCapabilities.values()];
 }
+function isKnownCapabilityDataKey(key) {
+  if (key.startsWith("__")) return true;
+  if (EXTRA_CAPABILITY_DATA_KEYS.includes(key)) return true;
+  return allCapabilityManifests().some((item) => item.id === key);
+}
+function knownCapabilityDataKeys() {
+  return [...allCapabilityManifests().map((item) => item.id), ...EXTRA_CAPABILITY_DATA_KEYS];
+}
 function defaultCapabilities() {
   const base = Object.fromEntries(CAPABILITIES.map((item) => [item.id, item.defaultEnabled]));
   for (const item of dynamicCapabilities.values()) base[item.id] = item.defaultEnabled;
@@ -6514,7 +6536,7 @@ function syncCapabilityRuntimes(capabilities) {
     pendingLoads.set(item.id, task);
   }
 }
-var CAPABILITIES, loadedModules, activeCleanup, pendingLoads, dynamicCapabilities;
+var CAPABILITIES, loadedModules, activeCleanup, pendingLoads, dynamicCapabilities, EXTRA_CAPABILITY_DATA_KEYS;
 var init_registry2 = __esm({
   "src/capabilities/registry.ts"() {
     "use strict";
@@ -6534,6 +6556,7 @@ var init_registry2 = __esm({
     activeCleanup = /* @__PURE__ */ new Map();
     pendingLoads = /* @__PURE__ */ new Map();
     dynamicCapabilities = /* @__PURE__ */ new Map();
+    EXTRA_CAPABILITY_DATA_KEYS = ["splinePath"];
   }
 });
 
@@ -16589,7 +16612,8 @@ var CORE_COMPONENTS = [
       "xxxClip \u586B\u52A8\u753B\u7247\u6BB5\u540D\uFF0CxxxClipAssetId \u586B\u7247\u6BB5\u6240\u5728\u7684\u6A21\u578B/\u52A8\u753B\u8D44\u4EA7 ID\uFF08\u7247\u6BB5\u5C31\u5728\u8282\u70B9\u81EA\u8EAB\u6A21\u578B\u91CC\u65F6\u7559\u7A7A\uFF09\uFF1B\u7247\u6BB5\u540D\u53EF\u7528 query__asset_search \u67E5\u770B\u6A21\u578B\u7684 clips\u3002",
       "\u7559\u7A7A\u7684\u7247\u6BB5\u69FD\u4F4D\u4E0D\u4F1A\u64AD\u653E\u52A8\u753B\uFF1B\u53EA\u586B idleClip/walkClip/runClip \u4E09\u4E2A\u5C31\u80FD\u5F97\u5230\u57FA\u672C\u7684\u7AD9\u7ACB/\u8D70/\u8DD1\u3002",
       "\u8BBE\u7F6E character \u65F6\u4F1A\u81EA\u52A8\u6309 mode \u914D\u597D\u540C\u8282\u70B9\u7684 cameraFollow\uFF1B\u540C\u4E00\u573A\u666F\u53EA\u5E94\u6709\u4E00\u4E2A\u542F\u7528\u7684 character\u3002",
-      "\u89D2\u8272\u5DF2\u7531\u5185\u7F6E\u63A7\u5236\u5668\u9A71\u52A8\u65F6\uFF0C\u4E0D\u8981\u518D\u6302\u4E00\u4E2A\u81EA\u5DF1\u6539 position \u7684\u79FB\u52A8\u811A\u672C\uFF0C\u4E24\u8005\u4F1A\u4E92\u76F8\u8986\u76D6\u3002"
+      "\u89D2\u8272\u5DF2\u7531\u5185\u7F6E\u63A7\u5236\u5668\u9A71\u52A8\u65F6\uFF0C\u4E0D\u8981\u518D\u6302\u4E00\u4E2A\u81EA\u5DF1\u6539 position \u7684\u79FB\u52A8\u811A\u672C\uFF0C\u4E24\u8005\u4F1A\u4E92\u76F8\u8986\u76D6\u3002",
+      "\u6302\u8F7D\u540E\u5373\u751F\u6548\uFF1A\u91CD\u529B\u3001\u8D34\u5730\u3001\u76F8\u5BF9\u76F8\u673A\u7684\u79FB\u52A8\u65B9\u5411\u3001\u8F6C\u8EAB\u671D\u5411\u3001\u52A8\u753B\u5207\u6362\u90FD\u7531\u5F15\u64CE\u5B8C\u6210\u3002\u9A8C\u6536\u7528 playtest__run_smoke \u6CE8\u5165 Move \u8F74\u5E76\u65AD\u8A00 nodeMoved\u3002"
     ]
   },
   {
@@ -16640,6 +16664,17 @@ var CORE_COMPONENTS = [
     label: "\u7A7A\u95F4\u97F3\u6E90",
     description: "\u8BD5\u73A9\u5F00\u59CB\u540E\u5728\u8282\u70B9\u4F4D\u7F6E\u64AD\u653E assetId \u6307\u5411\u7684\u97F3\u9891\uFF0C\u97F3\u91CF\u968F\u8DDD\u79BB\u8870\u51CF\u3002",
     defaults: () => asRecord(defaultSoundSource())
+  },
+  {
+    id: "locomotion",
+    label: "\u8FD0\u52A8\u52A8\u753B",
+    description: "\u6309\u8282\u70B9\u7684\u5B9E\u9645\u79FB\u52A8\u901F\u5EA6\u81EA\u52A8\u5207\u6362\u52A8\u753B\uFF1A\u6C34\u5E73\u901F\u5EA6 \u2265 walkSpeed \u64AD walkClip\uFF0C\u2265 runSpeed \u64AD runClip\uFF0C\u5426\u5219\u64AD idleClip\uFF1B\u79BB\u5730\u65F6\u4FDD\u6301\u5F53\u524D\u7247\u6BB5\u3002\u5B83\u53EA\u770B\u4F4D\u79FB\u7ED3\u679C\uFF0C\u4E0D\u5173\u5FC3\u8C01\u5728\u79FB\u52A8\u8282\u70B9\uFF0C\u9002\u5408\u7531\u811A\u672C\u3001\u5BFC\u822A\u6216\u5F39\u9053\u9A71\u52A8\u7684\u654C\u4EBA / NPC / \u81EA\u5199\u63A7\u5236\u5668\u7684\u89D2\u8272\u2014\u2014\u811A\u672C\u53EA\u7BA1\u79FB\u52A8\uFF0C\u4E0D\u7528\u5199\u52A8\u753B\u5207\u6362\u3002",
+    defaults: () => asRecord(defaultLocomotion()),
+    notes: [
+      "xxxClip \u586B\u7247\u6BB5\u540D\uFF0CxxxClipAssetId \u586B\u7247\u6BB5\u6240\u5728\u7684\u6A21\u578B/\u52A8\u753B\u8D44\u4EA7 ID\uFF08\u7247\u6BB5\u5C31\u5728\u8282\u70B9\u81EA\u8EAB\u6A21\u578B\u91CC\u65F6\u7559\u7A7A\uFF09\u3002",
+      "\u8282\u70B9\u4E0A\u542F\u7528\u4E86 character \u65F6\u672C\u7EC4\u4EF6\u4E0D\u751F\u6548\uFF08character \u81EA\u5E26\u542B\u8DF3\u8DC3\u3001\u95EA\u907F\u7684\u5B8C\u6574\u5207\u6362\uFF09\u3002",
+      "\u811A\u672C\u91CC\u4ECD\u53EF\u7528 self.anim.playUpper \u53E0\u52A0\u4E0A\u534A\u8EAB\u52A8\u4F5C\uFF08\u653B\u51FB\u3001\u53D7\u51FB\uFF09\uFF1B\u4E0D\u8981\u540C\u65F6\u5728\u811A\u672C\u91CC\u5BF9\u540C\u4E00\u8282\u70B9\u8C03 playBody \u5207\u8D70\u8DD1\uFF0C\u4F1A\u548C\u672C\u7EC4\u4EF6\u4E92\u76F8\u62A2\u3002"
+    ]
   }
 ];
 function findCoreComponent(id) {
@@ -16802,7 +16837,8 @@ var NODE_ANIMATION_NOTE = {
   dataPath: "node.clip / clipAssetId / clipPlaying / clipLoop / clipSpeed",
   description: "\u6A21\u578B\u8282\u70B9\u7684\u9759\u6001\u52A8\u753B\u69FD\u4F4D\uFF1A\u8BD5\u73A9\u5F00\u59CB\u65F6\u82E5 clipPlaying \u4E3A\u771F\u5219\u5FAA\u73AF\u64AD\u653E clip\u3002\u5B83\u53EA\u662F\u300C\u5F00\u5C40\u9ED8\u8BA4\u52A8\u753B\u300D\uFF0C\u4E0D\u4F1A\u968F\u8FD0\u52A8\u72B6\u6001\u5207\u6362\u3002",
   howToDrive: [
-    "\u89D2\u8272\u968F\u79FB\u52A8\u81EA\u52A8\u5207 idle/walk/run\uFF1A\u7528\u5185\u7F6E\u7EC4\u4EF6 character\uFF08gameplay__setCoreComponent\uFF09\uFF0C\u586B idleClip/walkClip/runClip\u3002",
+    "\u73A9\u5BB6\u89D2\u8272\u968F\u79FB\u52A8\u81EA\u52A8\u5207 idle/walk/run/jump\uFF1A\u7528\u5185\u7F6E\u7EC4\u4EF6 character\uFF08gameplay__setCoreComponent\uFF09\uFF0C\u586B idleClip/walkClip/runClip\u3002",
+    "\u811A\u672C\u6216\u5BFC\u822A\u9A71\u52A8\u7684\u5BF9\u8C61\uFF08\u654C\u4EBA\u3001NPC\uFF09\u6309\u901F\u5EA6\u81EA\u52A8\u5207 idle/walk/run\uFF1A\u7528\u5185\u7F6E\u7EC4\u4EF6 locomotion\uFF0C\u811A\u672C\u91CC\u4E0D\u7528\u5199\u52A8\u753B\u5207\u6362\u3002",
     '\u811A\u672C\u91CC\u6309\u903B\u8F91\u64AD\u653E\uFF1Aself.anim.playBody(clipName, { loop, fade, speed }) / playUpper / stopUpper\uFF1B\u7247\u6BB5\u6765\u81EA\u5176\u4ED6\u8D44\u4EA7\u65F6\u53C2\u6570\u58F0\u660E\u4E3A ref(target:"clip")\u3002'
   ]
 };
@@ -16826,7 +16862,7 @@ function describeNodeDrivers(node) {
       }
       continue;
     }
-    if (packId === "core") {
+    if (packId === "core" || packId === "t3d.core") {
       const keys = Object.keys(bag ?? {}).filter((key) => isCoreComponentId(key));
       if (keys.length > 0) {
         notes.push(`gameplay.packs.core.${keys.join("/")}\uFF1A\u4EC5\u6570\u636E\uFF0C\u8FD0\u884C\u65F6\u4E0D\u8BFB\u53D6\u8FD9\u91CC\uFF1B\u5185\u7F6E\u7EC4\u4EF6\u8BF7\u7528 gameplay__setCoreComponent \u5199\u5230 gameplay.<\u7EC4\u4EF6>`);
@@ -16836,7 +16872,11 @@ function describeNodeDrivers(node) {
     if (!enabledPacks.includes(packId)) notes.push(`gameplay.packs.${packId}\uFF1A\u73A9\u6CD5\u5305\u672A\u542F\u7528\uFF0C\u4EC5\u6570\u636E`);
   }
   for (const capId of Object.keys(node.capabilities ?? {})) {
-    if (!capabilityEnabled(useEditorStore.getState().capabilities, capId)) notes.push(`capabilities.${capId}\uFF1A\u80FD\u529B\u5305\u672A\u542F\u7528\uFF0C\u4EC5\u6570\u636E`);
+    if (!isKnownCapabilityDataKey(capId)) {
+      notes.push(`capabilities.${capId}\uFF1A\u4E0D\u662F\u5DF2\u767B\u8BB0\u7684\u80FD\u529B\u5305\uFF0C\u8FD0\u884C\u65F6\u4E0D\u8BFB\u53D6\uFF0C\u7EAF\u5C5E\u65E0\u6548\u6570\u636E\uFF08\u53EF\u80FD\u662F\u4E4B\u524D\u8BEF\u5199\u7684\uFF0C\u5EFA\u8BAE\u6E05\u7406\uFF09`);
+    } else if (!capId.startsWith("__") && capId !== "splinePath" && !capabilityEnabled(useEditorStore.getState().capabilities, capId)) {
+      notes.push(`capabilities.${capId}\uFF1A\u80FD\u529B\u5305\u672A\u542F\u7528\uFF0C\u4EC5\u6570\u636E`);
+    }
   }
   if (node.clip) {
     notes.push(`clip="${node.clip}"\uFF1A${node.clipPlaying ? "\u8BD5\u73A9\u5F00\u5C40\u81EA\u52A8\u64AD\u653E" : "\u672A\u52FE\u9009\u64AD\u653E\uFF0C\u4EC5\u6570\u636E"}\uFF08\u4E0D\u968F\u8FD0\u52A8\u72B6\u6001\u5207\u6362\uFF09`);
@@ -16887,6 +16927,11 @@ function queryNodeInspect(nodeId) {
       }
     } : {},
     drivers: describeNodeDrivers(node),
+    // null 只表示「还没挂」，不是「引擎不支持」
+    availableCoreComponents: {
+      note: "gameplay \u91CC\u4E3A null \u6216\u7F3A\u5931\u7684\u5185\u7F6E\u7EC4\u4EF6\u53EA\u662F\u5C1A\u672A\u6302\u8F7D\uFF1B\u5F15\u64CE\u8FD0\u884C\u65F6\u5DF2\u5B9E\u73B0\uFF0C\u7528 gameplay__setCoreComponent({ nodeId, componentId, patch }) \u6302\u4E0A\u5373\u751F\u6548",
+      notMounted: CORE_COMPONENTS.filter((item) => !node.gameplay?.[item.id]).map((item) => `${item.id}\uFF08${item.label}\uFF09`)
+    },
     tagId: node.tagId ?? null,
     tagIds: node.tagIds ?? [],
     renderLayerId: node.renderLayerId ?? "default"
@@ -16949,7 +16994,8 @@ function queryRegistryDescribe(category, id) {
       description: p.description,
       dependencies: p.dependencies ?? [],
       tables: p.tables?.map((t) => ({ tableId: t.tableId, title: t.title })) ?? [],
-      components: p.components?.map((c) => ({ componentId: c.componentId, label: c.label, defaultData: c.defaultData() })) ?? []
+      components: p.components?.map((c) => ({ componentId: c.componentId, label: c.label, defaultData: c.defaultData() })) ?? [],
+      ...p.components?.length ? {} : { note: '\u8BE5\u5305\u4E0D\u63D0\u4F9B\u53EF\u6302\u8F7D\u7EC4\u4EF6\uFF08\u53EA\u6709\u6570\u636E\u8868/\u6807\u7B7E\u7B49\uFF09\u3002\u89D2\u8272\u63A7\u5236\u5668\u3001\u8DDF\u968F\u76F8\u673A\u3001\u8FD0\u52A8\u52A8\u753B\u7B49\u5F15\u64CE\u5185\u7F6E\u7EC4\u4EF6\u89C1 category: "coreComponents"' }
     }));
   }
   if (category === "commands" || category === "all") {
@@ -17065,6 +17111,16 @@ function diagnoseProject(budget = DEFAULT_PERFORMANCE_BUDGET) {
         target: node.id,
         message: `\u8282\u70B9 "${node.name}" \u6302\u6709\u6C34\u4F53\u914D\u7F6E\uFF0C\u4F46\u5DE5\u7A0B\u5C1A\u672A\u542F\u7528 water \u80FD\u529B\u5305`,
         hint: "\u8C03\u7528 capability.setEnabled \u5F00\u542F water \u80FD\u529B\u5305"
+      });
+    }
+    for (const capId of Object.keys(node.capabilities ?? {})) {
+      if (isKnownCapabilityDataKey(capId)) continue;
+      issues.push({
+        severity: "warning",
+        category: "pack",
+        target: node.id,
+        message: `\u8282\u70B9 "${node.name}" \u4E0A\u7684 capabilities.${capId} \u4E0D\u662F\u5DF2\u767B\u8BB0\u7684\u80FD\u529B\u5305\uFF0C\u8FD0\u884C\u65F6\u4E0D\u4F1A\u8BFB\u53D6`,
+        hint: "\u8FD9\u662F\u65E0\u6548\u6570\u636E\u3002\u89D2\u8272\u79FB\u52A8/\u52A8\u753B\u8BF7\u7528 gameplay.setCoreComponent \u6302 character \u6216 locomotion"
       });
     }
     if (node.gameplay?.packs) {
@@ -19243,7 +19299,7 @@ function resolveAiNodeArgs(toolName, args) {
       }
     }
   }
-  if (toolName === "gameplay__setComponentData" || toolName === "capability__setNode" || toolName === "capability__setPicture") {
+  if (toolName === "gameplay__setComponentData" || toolName === "gameplay__setCoreComponent" || toolName === "capability__setNode" || toolName === "capability__setPicture") {
     if (!next.patch || typeof next.patch !== "object" || Array.isArray(next.patch)) {
       const alias = next.data ?? next.value ?? next.values ?? next.fields ?? next.config ?? next.componentData;
       if (typeof alias === "string" && alias.trim().startsWith("{")) {
@@ -20104,6 +20160,14 @@ var setNodeCapabilityCmd = {
         hint: "\u8BF7\u901A\u8FC7 scene.outline \u83B7\u53D6\u6709\u6548\u7684\u8282\u70B9 ID"
       };
     }
+    if (!isKnownCapabilityDataKey(p.capabilityId)) {
+      return {
+        ok: false,
+        code: "capability.unknown",
+        message: `"${p.capabilityId}" \u4E0D\u662F\u5DF2\u767B\u8BB0\u7684\u80FD\u529B\u5305\uFF0C\u8FD0\u884C\u65F6\u4E0D\u4F1A\u8BFB\u53D6\u8FD9\u4EFD\u6570\u636E`,
+        hint: `\u53EF\u7528\u7684\u80FD\u529B\u6570\u636E\u69FD\uFF1A${knownCapabilityDataKeys().join(", ")}\u3002\u89D2\u8272\u79FB\u52A8\u4E0E\u52A8\u753B\u5207\u6362\u4E0D\u662F\u80FD\u529B\u5305\uFF1A\u7528 gameplay.setCoreComponent \u6302 character\uFF08\u73A9\u5BB6\uFF09\u6216 locomotion\uFF08\u6309\u901F\u5EA6\u5207\u52A8\u753B\uFF09\uFF0C\u5B57\u6BB5\u89C1 registry.describe \u7684 coreComponents`
+      };
+    }
     const prevCaps = node.capabilities ?? {};
     const prevData = prevCaps[p.capabilityId] ?? {};
     const nextNode = {
@@ -20139,6 +20203,14 @@ var setPictureCapabilityCmd = {
     }
   },
   run(_ctx, p) {
+    if (!isKnownCapabilityDataKey(p.capabilityId)) {
+      return {
+        ok: false,
+        code: "capability.unknown",
+        message: `"${p.capabilityId}" \u4E0D\u662F\u5DF2\u767B\u8BB0\u7684\u80FD\u529B\u5305\uFF0C\u8FD0\u884C\u65F6\u4E0D\u4F1A\u8BFB\u53D6\u8FD9\u4EFD\u6570\u636E`,
+        hint: `\u53EF\u7528\u7684\u80FD\u529B\u6570\u636E\u69FD\uFF1A${knownCapabilityDataKeys().join(", ")}\u3002\u89D2\u8272\u79FB\u52A8\u4E0E\u52A8\u753B\u5207\u6362\u4E0D\u662F\u80FD\u529B\u5305\uFF1A\u7528 gameplay.setCoreComponent \u6302 character\uFF08\u73A9\u5BB6\uFF09\u6216 locomotion\uFF08\u6309\u901F\u5EA6\u5207\u52A8\u753B\uFF09\uFF0C\u5B57\u6BB5\u89C1 registry.describe \u7684 coreComponents`
+      };
+    }
     const state = useEditorStore.getState();
     const prevCaps = state.picture.capabilities ?? {};
     const prevData = prevCaps[p.capabilityId] ?? {};
@@ -20817,6 +20889,7 @@ function registerCodeAssetCommands() {
 
 // src/core/commands/domains/gameplay.ts
 init_registry();
+init_types();
 var setPackEnabledCmd = {
   id: "gameplay.setPackEnabled",
   title: "\u5F00\u5173\u73A9\u6CD5\u5305",
@@ -20873,13 +20946,34 @@ var setComponentDataCmd = {
     if (!node) {
       return { ok: false, code: "node.notFound", message: `\u8282\u70B9 "${p.nodeId}" \u4E0D\u5B58\u5728` };
     }
-    if (p.packId === "core" && isCoreComponentId(p.componentId)) {
+    const isCorePack = p.packId === "core" || p.packId === CORE_GAMEPLAY_PACK_ID;
+    if (isCorePack && isCoreComponentId(p.componentId)) {
       return {
         ok: false,
         code: "gameplay.useCoreComponent",
-        message: `"${p.componentId}" \u662F\u5F15\u64CE\u5185\u7F6E\u7EC4\u4EF6\uFF0C\u6570\u636E\u5728 node.gameplay.${p.componentId}\uFF0C\u5199\u8FDB packs.core \u4E0D\u4F1A\u88AB\u8FD0\u884C\u65F6\u8BC6\u522B`,
+        message: `"${p.componentId}" \u662F\u5F15\u64CE\u5185\u7F6E\u7EC4\u4EF6\uFF0C\u6570\u636E\u5728 node.gameplay.${p.componentId}\uFF0C\u5199\u8FDB packs \u4E0D\u4F1A\u88AB\u8FD0\u884C\u65F6\u8BC6\u522B`,
         hint: `\u6539\u7528 gameplay.setCoreComponent({ nodeId, componentId: "${p.componentId}", patch })`
       };
+    }
+    if (p.packId !== "__project__") {
+      const pack = listGameplayPacks().find((item) => item.id === p.packId);
+      if (!pack) {
+        return {
+          ok: false,
+          code: "gameplay.packNotFound",
+          message: `\u672A\u627E\u5230\u73A9\u6CD5\u5305 "${p.packId}"`,
+          hint: `\u5DF2\u767B\u8BB0\u7684\u73A9\u6CD5\u5305\uFF1A${listGameplayPacks().map((item) => item.id).join(", ")}\u3002\u5F15\u64CE\u5185\u7F6E\u7EC4\u4EF6\uFF08character / locomotion \u7B49\uFF09\u7528 gameplay.setCoreComponent`
+        };
+      }
+      const known = (pack.components ?? []).map((item) => item.componentId);
+      if (!known.includes(p.componentId) && (known.length > 0 || isCorePack)) {
+        return {
+          ok: false,
+          code: "gameplay.componentNotFound",
+          message: `\u73A9\u6CD5\u5305 "${p.packId}" \u91CC\u6CA1\u6709\u7EC4\u4EF6 "${p.componentId}"\uFF0C\u5199\u8FDB\u53BB\u8FD0\u884C\u65F6\u4E5F\u4E0D\u4F1A\u8BFB\u53D6`,
+          hint: known.length > 0 ? `\u8BE5\u5305\u7684\u7EC4\u4EF6\uFF1A${known.join(", ")}` : `\u8BE5\u5305\u6CA1\u6709\u53EF\u6302\u8F7D\u7684\u7EC4\u4EF6\u3002\u5F15\u64CE\u5185\u7F6E\u7EC4\u4EF6\uFF08${CORE_COMPONENTS.map((item) => item.id).join(" / ")}\uFF09\u7528 gameplay.setCoreComponent`
+        };
+      }
     }
     const prevGameplay = node.gameplay ?? {};
     const prevPacks = prevGameplay.packs ?? {};

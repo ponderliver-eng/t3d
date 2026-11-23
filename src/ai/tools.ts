@@ -1111,6 +1111,7 @@ function resolveAiNodeArgs(toolName: string, args: Record<string, unknown>): Rec
   }
   if (
     toolName === 'gameplay__setComponentData' ||
+    toolName === 'gameplay__setCoreComponent' ||
     toolName === 'capability__setNode' ||
     toolName === 'capability__setPicture'
   ) {

@@ -11,6 +11,8 @@ import { CORE_COMPONENTS, applyCoreComponentPatch, describeCoreComponents } from
 import { summarizeInfoLogs, summarizeRuntimeLogs } from '../src/playtest/session'
 // 内置角色控制器以副作用方式注册到运行时（编辑器视口与导出播放器入口都会导入它）
 import '../src/runtime/character'
+import { readLocomotionState } from '../src/runtime/locomotion'
+import { isKnownCapabilityDataKey } from '../src/capabilities/registry'
 import { stepSceneRuntime, type SceneRuntimeHost } from '../src/runtime/sceneRuntime'
 import { setRuntimeWorld, type RuntimeWorld } from '../src/runtime/world'
 import type { SceneNode, ScenePicture } from '../src/editor/scene/types'
@@ -36,6 +38,7 @@ function createHeadlessWorld(initial: SceneNode[]) {
   let nodes: Record<string, SceneNode> = Object.fromEntries(initial.map((n) => [n.id, n]))
   const objects = new Map<string, Group>()
   const logs: Array<{ level: string; message: string }> = []
+  const played: Array<{ nodeId: string; clip: string; assetId: string | null | undefined; loop: boolean | undefined }> = []
   const world: RuntimeWorld = {
     getNodes: () => nodes,
     setNodes: (next) => {
@@ -56,6 +59,9 @@ function createHeadlessWorld(initial: SceneNode[]) {
     markPlayDirty: () => {},
     log: (level, message) => {
       logs.push({ level, message })
+    },
+    playBody: (nodeId, clip, options) => {
+      played.push({ nodeId, clip, assetId: options?.assetId, loop: options?.loop })
     },
   }
   const host: SceneRuntimeHost = {
@@ -79,6 +85,7 @@ function createHeadlessWorld(initial: SceneNode[]) {
   return {
     host,
     logs,
+    played,
     run: (seconds: number) => {
       const steps = Math.round(seconds * 60)
       for (let i = 0; i < steps; i += 1) stepSceneRuntime(1 / 60, host)
@@ -277,4 +284,72 @@ export default defineBehavior({
   assert.ok(Math.abs(Math.hypot(p.x, p.z) - 4) < 0.1, `斜向移动距离应为 4，实际 ${Math.hypot(p.x, p.z).toFixed(2)}`)
   clearAllVirtualInput()
   clearScriptRuntimeState()
+})
+test('运动动画：只看位移结果，按速度在 待机/行走/奔跑 之间切换，与移动脚本解耦', () => {
+  clearScriptRuntimeState()
+  clearAllVirtualInput()
+  // 移动脚本里没有任何动画代码
+  const src = `
+import { defineBehavior } from 't3d/runtime'
+export default defineBehavior({
+  name: '巡逻',
+  state: () => ({ speed: 0 }),
+  onMessage(self, msg) {
+    if (msg.name === 'setSpeed') self.state.speed = Number(msg.payload)
+  },
+  onUpdate(self, dt) {
+    self.translate({ x: self.state.speed * dt, y: 0, z: 0 }, 'world')
+  },
+})
+`
+  const res = compileAndRegisterScript('Patrol', 'Assets/Scripts/Patrol.ts', src)
+  assert.equal(res.ok, true, JSON.stringify(res.diagnostics))
+  const driver = `
+import { defineBehavior } from 't3d/runtime'
+export default defineBehavior({
+  name: '调速',
+  onUpdate(self) {
+    const t = self.elapsedTime
+    self.broadcast('setSpeed', t < 1 ? 0 : t < 2 ? 2 : t < 3 ? 6 : 0)
+  },
+})
+`
+  assert.equal(compileAndRegisterScript('SpeedDriver', 'Assets/Scripts/SpeedDriver.ts', driver).ok, true)
+
+  const mounted = applyCoreComponentPatch(
+    { packs: { __project__: { Patrol: {} } } },
+    'locomotion',
+    { idleClip: 'Idle', walkClip: 'Walk', runClip: 'Run', runClipAssetId: 'anim-pack' },
+  )
+  assert.ok(mounted.ok)
+  const sim = createHeadlessWorld([
+    makeNode('npc', 'NPC', { assetId: 'npc-model', gameplay: mounted.gameplay } as Partial<SceneNode>),
+    makeNode('driver', 'Driver', { gameplay: { packs: { __project__: { SpeedDriver: {} } } } } as Partial<SceneNode>),
+  ])
+  sim.run(0.9)
+  assert.equal(readLocomotionState('npc')?.state, 'idle')
+  sim.run(1)
+  assert.equal(readLocomotionState('npc')?.state, 'walk')
+  sim.run(1)
+  assert.equal(readLocomotionState('npc')?.state, 'run')
+  sim.run(1)
+  assert.equal(readLocomotionState('npc')?.state, 'idle')
+
+  assert.deepEqual(sim.logs.filter((item) => item.level === 'error'), [])
+  // 每次状态变化只播一次，不逐帧重复调用
+  assert.deepEqual(sim.played.map((item) => item.clip), ['Idle', 'Walk', 'Run', 'Walk', 'Idle'])
+  // 片段在节点自身模型里时不带 assetId，来自外部动画资产时带上
+  assert.equal(sim.played[1].assetId, null)
+  assert.equal(sim.played[2].assetId, 'anim-pack')
+  assert.ok(sim.played.every((item) => item.nodeId === 'npc' && item.loop === true))
+
+  clearScriptRuntimeState()
+})
+
+test('无效数据拦截：不认识的能力数据槽会被识别出来', () => {
+  assert.equal(isKnownCapabilityDataKey('water'), true)
+  assert.equal(isKnownCapabilityDataKey('splinePath'), true)
+  assert.equal(isKnownCapabilityDataKey('__materialShaderParams'), true)
+  assert.equal(isKnownCapabilityDataKey('animation'), false)
+  assert.equal(isKnownCapabilityDataKey('character'), false)
 })
