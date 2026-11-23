@@ -15,9 +15,33 @@ import { parseImportedAiHistory, serializeAiHistoryForExport } from './historySt
 // 副作用导入：在 window 上注册开发用评测入口 __t3dAiEval
 import './evals/runner'
 
+const AI_PANEL_WIDTH_KEY = 't3d.ai.panelWidth'
+const AI_PANEL_MIN_WIDTH = 280
+const AI_PANEL_DEFAULT_WIDTH = 360
+
+function getAiPanelMaxWidth(): number {
+  if (typeof window === 'undefined') return 720
+  return Math.min(820, Math.max(420, Math.floor(window.innerWidth * 0.55)))
+}
+
+function clampAiPanelWidth(w: number): number {
+  return Math.max(AI_PANEL_MIN_WIDTH, Math.min(getAiPanelMaxWidth(), Math.round(w)))
+}
+
+function readAiPanelWidth(): number {
+  try {
+    const raw = Number(localStorage.getItem(AI_PANEL_WIDTH_KEY))
+    if (Number.isFinite(raw) && raw > 0) return clampAiPanelWidth(raw)
+  } catch { /* ignore */ }
+  return AI_PANEL_DEFAULT_WIDTH
+}
+
 export default function AiWorkbenchPanel() {
   const { t } = useI18n()
   const panelOpen = useAgentStore((s) => s.panelOpen)
+  const [panelWidth, setPanelWidth] = useState<number>(readAiPanelWidth)
+  const [resizingPanel, setResizingPanel] = useState(false)
+  const [resizeHover, setResizeHover] = useState(false)
   const setPanelOpen = useAgentStore((s) => s.setPanelOpen)
   const panelScrollTop = useAgentStore((s) => s.panelScrollTop)
   const panelScrollEpoch = useAgentStore((s) => s.panelScrollEpoch)
@@ -497,6 +521,39 @@ export default function AiWorkbenchPanel() {
     setVisibleCount((c) => Math.min(turns.length, c + step))
   }
 
+  useEffect(() => {
+    const onWinResize = () => setPanelWidth((w) => clampAiPanelWidth(w))
+    window.addEventListener('resize', onWinResize)
+    return () => window.removeEventListener('resize', onWinResize)
+  }, [])
+
+  const startPanelResize = (e: React.MouseEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return
+    e.preventDefault()
+    const startX = e.clientX
+    const startW = panelWidth
+    setResizingPanel(true)
+    const prevCursor = document.body.style.cursor
+    const prevSelect = document.body.style.userSelect
+    document.body.style.cursor = 'col-resize'
+    document.body.style.userSelect = 'none'
+    let latestW = startW
+    const onMove = (ev: MouseEvent) => {
+      latestW = clampAiPanelWidth(startW + (startX - ev.clientX))
+      setPanelWidth(latestW)
+    }
+    const onUp = () => {
+      setResizingPanel(false)
+      document.body.style.cursor = prevCursor
+      document.body.style.userSelect = prevSelect
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseup', onUp)
+      try { localStorage.setItem(AI_PANEL_WIDTH_KEY, String(latestW)) } catch { /* ignore */ }
+    }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseup', onUp)
+  }
+
   return (
     <aside
       onDragEnter={(e) => {
@@ -519,7 +576,10 @@ export default function AiWorkbenchPanel() {
       }}
       onDrop={handleDropToChat}
       style={{
-        width: '360px',
+        position: 'relative',
+        width: `${panelWidth}px`,
+        minWidth: `${AI_PANEL_MIN_WIDTH}px`,
+        maxWidth: '55vw',
         flexShrink: 0,
         display: 'flex',
         flexDirection: 'column',
@@ -530,6 +590,38 @@ export default function AiWorkbenchPanel() {
         zIndex: 20,
       }}
     >
+      {/* 左侧拖拽调宽热区 */}
+      <div
+        role="separator"
+        aria-orientation="vertical"
+        onMouseDown={startPanelResize}
+        onMouseEnter={() => setResizeHover(true)}
+        onMouseLeave={() => setResizeHover(false)}
+        onDoubleClick={() => {
+          setPanelWidth(AI_PANEL_DEFAULT_WIDTH)
+          try { localStorage.setItem(AI_PANEL_WIDTH_KEY, String(AI_PANEL_DEFAULT_WIDTH)) } catch { /* ignore */ }
+        }}
+        style={{
+          position: 'absolute',
+          top: 0,
+          bottom: 0,
+          left: -3,
+          width: 6,
+          cursor: 'col-resize',
+          zIndex: 40,
+          display: 'flex',
+          justifyContent: 'center',
+        }}
+      >
+        <div
+          style={{
+            width: 2,
+            height: '100%',
+            background: resizingPanel || resizeHover ? '#3b82f6' : 'transparent',
+            transition: 'background 0.12s ease',
+          }}
+        />
+      </div>
       <style>{`
         @keyframes t3d-ai-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
         .t3d-ai-turn .t3d-ai-turn-delete {
