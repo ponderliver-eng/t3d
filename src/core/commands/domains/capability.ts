@@ -48,20 +48,22 @@ const setCapabilityEnabledCmd: CommandDef<SetCapabilityEnabledParams, { capabili
 interface SetNodeCapabilityParams {
   nodeId: string
   capabilityId: string
-  patch: Record<string, unknown>
+  patch?: Record<string, unknown>
+  remove?: boolean
 }
 
 const setNodeCapabilityCmd: CommandDef<SetNodeCapabilityParams, { nodeId: string; capabilityId: string }> = {
   id: 'capability.setNodeData',
   title: '设置节点能力包数据',
-  description: '修改节点上指定能力包（如 node.capabilities.water）的数据字段',
+  description: '修改或移除节点上指定能力包（如 node.capabilities.water）的数据字段；传 remove: true 可清理已挂载或历史遗留的无效能力数据',
   risk: 'safe',
   params: {
     type: 'object',
     fields: {
       nodeId: { type: 'ref', target: 'node', required: true, label: '节点 ID' },
       capabilityId: { type: 'string', minLength: 1, default: 'water', label: '能力包 ID' },
-      patch: { type: 'object', fields: {}, label: '字段补丁' },
+      patch: { type: 'object', fields: {}, optional: true, label: '字段补丁' },
+      remove: { type: 'boolean', default: false, optional: true, label: '是否移除该能力数据' },
     },
   },
   run(_ctx, p) {
@@ -75,6 +77,26 @@ const setNodeCapabilityCmd: CommandDef<SetNodeCapabilityParams, { nodeId: string
         hint: '请通过 scene.outline 获取有效的节点 ID',
       }
     }
+    const prevCaps = (node.capabilities ?? {}) as Record<string, Record<string, unknown> | undefined>
+    if (p.remove === true) {
+      if (!(p.capabilityId in prevCaps)) {
+        return {
+          ok: true,
+          value: { nodeId: p.nodeId, capabilityId: p.capabilityId },
+          changed: { summary: `节点 ${node.name} 上没有 ${p.capabilityId} 数据，无需移除` },
+        }
+      }
+      const nextCaps = { ...prevCaps }
+      delete nextCaps[p.capabilityId]
+      useEditorStore.setState({
+        nodes: { ...state.nodes, [p.nodeId]: { ...node, capabilities: nextCaps } },
+      })
+      return {
+        ok: true,
+        value: { nodeId: p.nodeId, capabilityId: p.capabilityId },
+        changed: { nodesUpdated: [p.nodeId], summary: `移除节点 ${node.name} 的 ${p.capabilityId} 数据` },
+      }
+    }
     if (!isKnownCapabilityDataKey(p.capabilityId)) {
       return {
         ok: false,
@@ -83,15 +105,15 @@ const setNodeCapabilityCmd: CommandDef<SetNodeCapabilityParams, { nodeId: string
         hint: `可用的能力数据槽：${knownCapabilityDataKeys().join(', ')}。角色移动与动画切换不是能力包：用 gameplay.setCoreComponent 挂 character（玩家）或 locomotion（按速度切动画），字段见 registry.describe 的 coreComponents`,
       }
     }
-    const prevCaps = (node.capabilities ?? {}) as Record<string, Record<string, unknown> | undefined>
     const prevData = prevCaps[p.capabilityId] ?? {}
+    const patchObj = p.patch && typeof p.patch === 'object' ? p.patch : {}
     const nextNode: SceneNode = {
       ...node,
       capabilities: {
         ...prevCaps,
         [p.capabilityId]: {
           ...prevData,
-          ...p.patch,
+          ...patchObj,
         },
       },
     }

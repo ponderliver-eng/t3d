@@ -130,7 +130,7 @@ export function diagnoseProject(budget: PerformanceBudget = DEFAULT_PERFORMANCE_
         category: 'pack',
         target: node.id,
         message: `节点 "${node.name}" 上的 capabilities.${capId} 不是已登记的能力包，运行时不会读取`,
-        hint: '这是无效数据。角色移动/动画请用 gameplay.setCoreComponent 挂 character 或 locomotion',
+        hint: '可用 capability.setNodeData({ nodeId, capabilityId, remove: true }) 清理；角色移动/动画请用 gameplay.setCoreComponent 挂 character 或 locomotion',
       })
     }
 
