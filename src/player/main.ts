@@ -336,15 +336,11 @@ class LoadingOverlay {
 
 function createGeometryForNode(node: SceneNode) {
   if (node.kind === 'box') return new BoxGeometry(1, 1, 1)
-  if (node.kind === 'sphere') return new SphereGeometry(0.5, 24, 16)
+  if (node.kind === 'sphere') return new SphereGeometry(0.5, 32, 24)
   if (node.kind === 'cylinder') return new CylinderGeometry(0.5, 0.5, 1, 24)
-  if (node.kind === 'capsule') return new CapsuleGeometry(0.35, 0.7, 8, 16)
+  if (node.kind === 'capsule') return new CapsuleGeometry(0.3, 0.5, 6, 16)
   if (node.kind === 'cone') return new ConeGeometry(0.5, 1, 24)
-  if (node.kind === 'plane') {
-    const geo = new PlaneGeometry(10, 10)
-    geo.rotateX(-Math.PI / 2)
-    return geo
-  }
+  if (node.kind === 'plane') return new PlaneGeometry(1, 1)
   return null
 }
 
