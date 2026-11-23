@@ -275,6 +275,171 @@ function registerIpc() {
     await fs.copyFile(playerHtml, indexHtml)
     return { ok: true, copiedFiles: [playerHtml, indexHtml], message: '已复制 Web 播放包外壳' }
   })
+  ipcMain.handle(
+    'player:buildElectron',
+    async (
+      _event,
+      targetDir: string,
+      options: { appName?: string; width?: number; height?: number; fullscreen?: boolean; resizable?: boolean },
+    ) => {
+      const safeTarget = pathGuard.assertAllowed(targetDir, '构建 Electron 桌面端')
+      const candidates = [
+        path.join(__dirname, '../dist-player'),
+        path.join(app.getAppPath(), 'dist-player'),
+        path.join(process.cwd(), 'dist-player'),
+      ]
+      let shellDir: string | null = null
+      for (const candidate of candidates) {
+        try {
+          await fs.access(path.join(candidate, 'player.html'))
+          shellDir = candidate
+          break
+        } catch {
+          // try next
+        }
+      }
+      if (!shellDir) {
+        return { ok: false, appDir: '', executablePath: '', message: '未找到 dist-player 构建产物，请先运行 npm run build:player' }
+      }
+
+      const rawName = (options?.appName || 'Tact3D Game').trim()
+      const safeExeName = rawName.replace(/[<>:"/\\|?*\x00-\x1f]+/g, '_').trim() || 'Tact3D-Game'
+      const appDir = path.join(safeTarget, 'resources', 'app')
+      await fs.mkdir(appDir, { recursive: true })
+      await fs.cp(shellDir, appDir, { recursive: true, force: true })
+      await fs.copyFile(path.join(appDir, 'player.html'), path.join(appDir, 'index.html'))
+
+      const width = Math.max(320, Math.round(Number(options?.width) || 1280))
+      const height = Math.max(240, Math.round(Number(options?.height) || 720))
+      const fullscreen = Boolean(options?.fullscreen)
+      const resizable = options?.resizable !== false
+
+      await fs.writeFile(
+        path.join(appDir, 'package.json'),
+        `${JSON.stringify({ name: 'tact3d-player-app', version: '1.0.0', main: 'main.cjs' }, null, 2)}\n`,
+        'utf-8',
+      )
+
+      const mainCjs = `const { app, BrowserWindow } = require('electron');
+const http = require('http');
+const fs = require('fs');
+const path = require('path');
+
+const MIME = {
+  '.html': 'text/html; charset=utf-8',
+  '.js': 'application/javascript; charset=utf-8',
+  '.mjs': 'application/javascript; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.json': 'application/json; charset=utf-8',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.webp': 'image/webp',
+  '.ktx2': 'application/octet-stream',
+  '.glb': 'model/gltf-binary',
+  '.gltf': 'model/gltf+json',
+  '.wasm': 'application/wasm',
+  '.mp3': 'audio/mpeg',
+  '.wav': 'audio/wav',
+  '.ogg': 'audio/ogg',
+  '.svg': 'image/svg+xml',
+};
+
+function startStaticServer(rootDir) {
+  return new Promise((resolve) => {
+    const server = http.createServer((req, res) => {
+      const reqPath = decodeURIComponent((req.url || '/').split('?')[0]);
+      const rel = reqPath === '/' ? 'index.html' : reqPath.replace(/^\\/+/, '');
+      const full = path.resolve(rootDir, rel);
+      if (!full.startsWith(rootDir)) {
+        res.writeHead(403);
+        res.end();
+        return;
+      }
+      fs.readFile(full, (err, data) => {
+        if (err) {
+          res.writeHead(404);
+          res.end('Not Found');
+          return;
+        }
+        const ext = path.extname(full).toLowerCase();
+        res.writeHead(200, { 'Content-Type': MIME[ext] || 'application/octet-stream' });
+        res.end(data);
+      });
+    });
+    server.listen(0, '127.0.0.1', () => {
+      const addr = server.address();
+      resolve({ server, port: addr.port });
+    });
+  });
+}
+
+let serverRef = null;
+app.whenReady().then(async () => {
+  const { server, port } = await startStaticServer(__dirname);
+  serverRef = server;
+  const win = new BrowserWindow({
+    width: ${width},
+    height: ${height},
+    fullscreen: ${fullscreen},
+    resizable: ${resizable},
+    title: ${JSON.stringify(rawName)},
+    backgroundColor: '#141820',
+    autoHideMenuBar: true,
+    webPreferences: {
+      contextIsolation: true,
+      nodeIntegration: false,
+      backgroundThrottling: false,
+    },
+  });
+  win.setMenu(null);
+  win.loadURL('http://127.0.0.1:' + port + '/index.html');
+});
+
+app.on('window-all-closed', () => {
+  if (serverRef) serverRef.close();
+  app.quit();
+});
+`
+      await fs.writeFile(path.join(appDir, 'main.cjs'), mainCjs, 'utf-8')
+
+      let executablePath = ''
+      let runtimeCopied = false
+      const execDir = path.dirname(process.execPath)
+      try {
+        const entries = await fs.readdir(execDir, { withFileTypes: true })
+        for (const entry of entries) {
+          if (entry.name === 'resources') continue
+          const src = path.join(execDir, entry.name)
+          const dest = path.join(safeTarget, entry.name)
+          await fs.cp(src, dest, { recursive: true, force: true })
+        }
+        if (process.platform === 'win32') {
+          const origExe = path.join(safeTarget, path.basename(process.execPath))
+          const renamedExe = path.join(safeTarget, `${safeExeName}.exe`)
+          if (origExe.toLowerCase() !== renamedExe.toLowerCase()) {
+            await fs.rename(origExe, renamedExe).catch(() => undefined)
+          }
+          executablePath = renamedExe
+        } else {
+          executablePath = path.join(safeTarget, path.basename(process.execPath))
+        }
+        runtimeCopied = true
+      } catch (err) {
+        console.warn('[buildElectron] 复制 Electron 运行时失败:', err)
+      }
+
+      return {
+        ok: true,
+        appDir,
+        executablePath,
+        runtimeCopied,
+        message: runtimeCopied
+          ? `已构建 Electron 桌面端至 ${safeTarget}`
+          : `已生成桌面端资源包（${appDir}），但复制运行时失败`,
+      }
+    },
+  )
   ipcMain.handle('codeAssets:watchProject', async (_event, projectDir: string) => {
     const safe = pathGuard.assertAllowed(projectDir, '监听代码资产目录')
     await startProjectCodeWatchers(safe)

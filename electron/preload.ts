@@ -25,6 +25,10 @@ contextBridge.exposeInMainWorld('__electron', {
   },
   player: {
     copyShell: (targetDir: string) => ipcRenderer.invoke('player:copyShell', targetDir),
+    buildElectron: (
+      targetDir: string,
+      options: { appName?: string; width?: number; height?: number; fullscreen?: boolean; resizable?: boolean },
+    ) => ipcRenderer.invoke('player:buildElectron', targetDir, options),
   },
   codeAssets: {
     watchProject: (projectDir: string) => ipcRenderer.invoke('codeAssets:watchProject', projectDir),

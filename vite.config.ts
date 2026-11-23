@@ -7,6 +7,9 @@ import electron from 'vite-plugin-electron/simple'
 const rootDir = path.dirname(fileURLToPath(import.meta.url))
 
 export default defineConfig(({ mode }) => ({
+  worker: {
+    format: 'es',
+  },
   plugins: [
     react(),
     ...(mode === 'web'

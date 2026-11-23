@@ -5531,6 +5531,8 @@ var init_runtime = __esm({
       hazeOn = false;
       fogOn = false;
       apKey = "";
+      apFrame = 0;
+      apWarned = false;
       applyFogNode = (colorNode, scenePass) => {
         let node = colorNode;
         if (this.hazeOn && this.sky.aerialPerspectiveTexture) {
@@ -5599,7 +5601,7 @@ var init_runtime = __esm({
           const nextApKey = `${e[0].toFixed(3)},${e[4].toFixed(3)},${e[8].toFixed(3)},${e[12].toFixed(2)},${e[13].toFixed(2)},${e[14].toFixed(2)}|${settings.timeOfDay}|${settings.latitude}|${settings.dayOfYear}|${settings.north}|${settings.turbidity}|${settings.groundAlbedo}`;
           if (nextApKey !== this.apKey) {
             this.apKey = nextApKey;
-            void this.sky.updateAerialPerspective();
+            this.scheduleAerialPerspective();
           }
         } else {
           this.apKey = "";
@@ -5612,7 +5614,20 @@ var init_runtime = __esm({
           signature: `${settings.haze ? 1 : 0}${settings.fog ? 1 : 0}`
         });
       }
+      scheduleAerialPerspective() {
+        if (this.apFrame) return;
+        this.apFrame = requestAnimationFrame(() => {
+          this.apFrame = 0;
+          void this.sky.updateAerialPerspective().catch((error) => {
+            if (this.apWarned) return;
+            this.apWarned = true;
+            console.warn("[sky] \u5927\u6C14\u900F\u89C6\u66F4\u65B0\u5931\u8D25", error);
+          });
+        });
+      }
       dispose() {
+        if (this.apFrame) cancelAnimationFrame(this.apFrame);
+        this.apFrame = 0;
         this.starToken += 1;
         this.starsWanted = false;
         if (this.starsReady) this.sky.disableStars();

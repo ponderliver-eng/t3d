@@ -626,7 +626,7 @@ function emptyIndex() {
 var memoryDesign = createDefaultDesignDoc();
 function createDefaultDesignDoc() {
   return {
-    title: "\u672A\u547D\u540D\u6E38\u620F\u5DE5\u7A0B",
+    title: "\u672A\u547D\u540D\u6E38\u620F\u9879\u76EE",
     genre: "",
     perspective: "",
     coreLoop: "",
@@ -641,7 +641,7 @@ function createDefaultDesignDoc() {
 }
 function formatDesignMarkdown(doc) {
   return [
-    `# ${doc.title || "\u672A\u547D\u540D\u6E38\u620F\u5DE5\u7A0B"}`,
+    `# ${doc.title || "\u672A\u547D\u540D\u6E38\u620F\u9879\u76EE"}`,
     "",
     `- **\u7C7B\u578B**\uFF1A${doc.genre || "\u5F85\u5B9A"}`,
     `- **\u89C6\u89D2**\uFF1A${doc.perspective || "\u5F85\u5B9A"}`,

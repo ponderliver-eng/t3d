@@ -2,12 +2,16 @@ import { useEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import {
   Activity,
+  ArrowDown,
   ArrowRight,
+  ArrowUp,
   BookOpen,
   CheckCircle2,
   FileDown,
   GitBranch,
+  Globe,
   Layers,
+  Monitor,
   Package,
   Play,
   ShieldCheck,
@@ -24,10 +28,24 @@ import { electronBridge } from '../../editor/project/electronBridge'
 import { useI18n } from '../../editor/i18n'
 import { useEditorStore } from '../../editor/scene/store'
 import { listEnabledTableSchemas, tableRows } from '../../gameplay/registry'
-import { exportWebPlayerBundle } from '../../player/exporter'
 import { installPackBundle, listAllRecipes, sedimentProjectToPack, trustAndActivatePack, uninstallPack, usePackStore } from '../packs/manager'
 import type { PackBundle, PackTier } from '../packs/types'
 import { DEFAULT_PERFORMANCE_BUDGET, diagnoseProject } from '../query/diagnose'
+import {
+  exportWebPlayerBundle,
+  resolveScenesForBuild,
+  type BuildProgressInfo,
+} from '../../player/exporter'
+import {
+  loadBuildSettingsFromProject,
+  normalizeBuildSettings,
+  saveBuildSettingsToProject,
+  useBuildSettingsStore,
+  type BuildSettings,
+  type PreloadMode,
+  type TextureBuildMode,
+  type TextureMaxSize,
+} from './buildSettings'
 import {
   activeBranchId,
   createBranch,
@@ -87,13 +105,32 @@ export function ProjectManagerModal() {
   const [branchName, setBranchName] = useState('')
   const [cpLabel, setCpLabel] = useState('')
   const [exportMsg, setExportMsg] = useState('')
+  const [buildBusy, setBuildBusy] = useState(false)
+  const [buildProgress, setBuildProgress] = useState<BuildProgressInfo | null>(null)
+  const buildSettings = useBuildSettingsStore((s) => s.settings)
+  const setBuildSettings = useBuildSettingsStore((s) => s.setSettings)
 
   const installedPacks = usePackStore(s => s.installed)
   const assets = useAssetStore(s => s.assets)
   const activeSceneId = useEditorStore(s => s.activeSceneId)
+  const editorNodes = useEditorStore(s => s.nodes)
   const gameplayPacks = useEditorStore(s => s.gameplayPacks)
   const gameDatabase = useEditorStore(s => s.gameDatabase)
   useCheckpointUiStore(s => s.revision)
+
+  const sceneIdsKey = Object.values(assets).filter((a) => a.kind === 'scene').map((a) => a.id).join(',')
+  useEffect(() => {
+    if (!open || tab !== 'publish') return
+    const ids = sceneIdsKey ? sceneIdsKey.split(',') : []
+    void loadBuildSettingsFromProject(ids, activeSceneId)
+  }, [open, tab, sceneIdsKey, activeSceneId])
+
+  const updateBuild = (updater: (prev: BuildSettings) => BuildSettings) => {
+    const ids = Object.values(assets).filter((a) => a.kind === 'scene').map((a) => a.id)
+    const next = normalizeBuildSettings(updater(buildSettings), ids, activeSceneId)
+    setBuildSettings(next)
+    void saveBuildSettingsToProject(next)
+  }
 
   useEffect(() => {
     if (!open) return
@@ -180,8 +217,22 @@ export function ProjectManagerModal() {
     }
     const dir = await bridge.dialog.showOpenDirectoryDialog()
     if (!dir) return
-    const res = await exportWebPlayerBundle(dir)
-    setExportMsg(res.message)
+    setBuildBusy(true)
+    setExportMsg('')
+    setBuildProgress({ phase: 'prepare', current: 0, total: 1, label: '正在准备构建…' })
+    try {
+      const res = await exportWebPlayerBundle(dir, {
+        settings: buildSettings,
+        onProgress: (info) => setBuildProgress(info),
+      })
+      setExportMsg(res.message)
+      if (res.ok) {
+        await bridge.shell?.openPath(res.outputDir).catch(() => undefined)
+      }
+    } finally {
+      setBuildBusy(false)
+      setBuildProgress(null)
+    }
   }
 
   const tabs: Array<{ id: ManagerTabId; label: string; icon: typeof BookOpen; badge?: string; warn?: boolean }> = [
@@ -650,33 +701,379 @@ export function ProjectManagerModal() {
               </>
             )}
 
-            {tab === 'publish' && (
-              <>
-                <div className="pm-section-head">
-                  <div>
-                    <h3>{t('pm.publishTitle')}</h3>
-                    <p>{t('pm.publishLead')}</p>
+            {tab === 'publish' && (() => {
+              const builtPreview = resolveScenesForBuild(buildSettings)
+              const depCount = new Set(builtPreview.flatMap((s) => s.requiredAssetIds)).size
+              const totalNonSceneAssets = Object.values(assets).filter((a) => a.kind !== 'scene').length
+              const textureAssets = Object.values(assets).filter((a) => a.kind === 'texture')
+              const logoTex = buildSettings.loading.logoAssetId ? assets[buildSettings.loading.logoAssetId] : undefined
+              const logoUrl = logoTex && 'url' in logoTex ? logoTex.url : undefined
+
+              return (
+                <>
+                  <div className="pm-section-head">
+                    <div>
+                      <h3>{t('pm.publishTitle')}</h3>
+                      <p>配置目标平台、参与打包的场景与初始场景、资源优化与预加载策略，以及自定义 Loading 画面。</p>
+                    </div>
                   </div>
-                </div>
-                <div className="pm-card">
-                  <div className="pm-card__title">{t('pm.gate')}</div>
-                  <div style={{ fontSize: 12, color: report.errorCount === 0 ? '#4ade80' : '#fca5a5' }}>
-                    {report.errorCount === 0
-                      ? t('pm.gateOk')
-                      : t('pm.gateBad', { count: report.errorCount })}
+
+                  {/* 目标平台 */}
+                  <div className="pm-card">
+                    <div className="pm-card__title">目标平台（Build Target）</div>
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <button
+                        type="button"
+                        className={`pm-btn ${buildSettings.target === 'web' ? 'pm-btn--primary' : ''}`}
+                        onClick={() => updateBuild((p) => ({ ...p, target: 'web' }))}
+                      >
+                        <Globe size={13} /> Web 播放包（静态托管）
+                      </button>
+                      <button
+                        type="button"
+                        className={`pm-btn ${buildSettings.target === 'electron' ? 'pm-btn--primary' : ''}`}
+                        onClick={() => updateBuild((p) => ({ ...p, target: 'electron' }))}
+                      >
+                        <Monitor size={13} /> Electron 桌面端（独立 EXE）
+                      </button>
+                    </div>
+                    {buildSettings.target === 'electron' && (
+                      <div className="pm-grid-2" style={{ marginTop: 10 }}>
+                        <label className="pm-field">
+                          <span>应用名称（EXE 名称）</span>
+                          <input
+                            value={buildSettings.electron.appName}
+                            onChange={(e) => updateBuild((p) => ({ ...p, electron: { ...p.electron, appName: e.target.value } }))}
+                          />
+                        </label>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                          <label className="pm-field">
+                            <span>窗口宽度</span>
+                            <input
+                              type="number"
+                              min={320}
+                              value={buildSettings.electron.width}
+                              onChange={(e) => updateBuild((p) => ({ ...p, electron: { ...p.electron, width: Number(e.target.value) || 1280 } }))}
+                            />
+                          </label>
+                          <label className="pm-field">
+                            <span>窗口高度</span>
+                            <input
+                              type="number"
+                              min={240}
+                              value={buildSettings.electron.height}
+                              onChange={(e) => updateBuild((p) => ({ ...p, electron: { ...p.electron, height: Number(e.target.value) || 720 } }))}
+                            />
+                          </label>
+                        </div>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
+                          <input
+                            type="checkbox"
+                            checked={buildSettings.electron.fullscreen}
+                            onChange={(e) => updateBuild((p) => ({ ...p, electron: { ...p.electron, fullscreen: e.target.checked } }))}
+                          />
+                          默认全屏启动
+                        </label>
+                        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
+                          <input
+                            type="checkbox"
+                            checked={buildSettings.electron.resizable}
+                            onChange={(e) => updateBuild((p) => ({ ...p, electron: { ...p.electron, resizable: e.target.checked } }))}
+                          />
+                          允许调整窗口大小
+                        </label>
+                      </div>
+                    )}
                   </div>
-                  <div className="pm-actions">
-                    <button type="button" className="pm-btn pm-btn--primary" onClick={() => void handleExport()}>
-                      <FileDown size={13} /> {t('pm.export')}
-                    </button>
-                    <button type="button" className="pm-btn pm-btn--ai" onClick={() => askAi('请先运行一次冒烟试玩验证与体检，确认无误后提示我导出。')}>
-                      <Play size={13} /> {t('pm.smoke')}
-                    </button>
+
+                  {/* 场景配置 */}
+                  <div className="pm-card">
+                    <div className="pm-card__title">构建场景（Scenes In Build）</div>
+                    <div className="pm-list" style={{ gap: 4 }}>
+                      {buildSettings.scenes.map((entry, idx) => {
+                        const sc = assets[entry.sceneId]
+                        if (!sc || sc.kind !== 'scene') return null
+                        const isEntry = buildSettings.entrySceneId === entry.sceneId
+                        const nodeCount = entry.sceneId === activeSceneId ? Object.keys(editorNodes).length : Object.keys(sc.nodes).length
+                        return (
+                          <div
+                            key={entry.sceneId}
+                            className="pm-row"
+                            style={{
+                              padding: '6px 8px',
+                              borderRadius: 6,
+                              border: isEntry ? '1px solid rgba(74,158,255,0.45)' : '1px solid rgba(255,255,255,0.06)',
+                              background: entry.enabled ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.18)',
+                              opacity: entry.enabled ? 1 : 0.65,
+                            }}
+                          >
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                              <input
+                                type="checkbox"
+                                checked={entry.enabled}
+                                onChange={(e) => updateBuild((p) => ({
+                                  ...p,
+                                  scenes: p.scenes.map((s) => (s.sceneId === entry.sceneId ? { ...s, enabled: e.target.checked } : s)),
+                                }))}
+                              />
+                              <span style={{ fontSize: 11, color: '#94a3b8', minWidth: 18 }}>#{idx}</span>
+                              <strong style={{ fontSize: 12 }}>{sc.name}</strong>
+                              <span className="pm-pill">{nodeCount} 节点</span>
+                              {isEntry && <span className="pm-pill" style={{ background: 'rgba(34,197,94,0.16)', color: '#86efac' }}>初始场景</span>}
+                            </div>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                              {entry.enabled && !isEntry && (
+                                <button
+                                  type="button"
+                                  className="pm-btn"
+                                  style={{ padding: '2px 8px', fontSize: 11 }}
+                                  onClick={() => updateBuild((p) => ({ ...p, entrySceneId: entry.sceneId }))}
+                                >
+                                  设为初始
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                className="pm-btn"
+                                style={{ padding: '2px 5px' }}
+                                disabled={idx === 0}
+                                onClick={() => updateBuild((p) => {
+                                  const next = [...p.scenes]
+                                  const [item] = next.splice(idx, 1)
+                                  next.splice(idx - 1, 0, item)
+                                  return { ...p, scenes: next }
+                                })}
+                              >
+                                <ArrowUp size={12} />
+                              </button>
+                              <button
+                                type="button"
+                                className="pm-btn"
+                                style={{ padding: '2px 5px' }}
+                                disabled={idx === buildSettings.scenes.length - 1}
+                                onClick={() => updateBuild((p) => {
+                                  const next = [...p.scenes]
+                                  const [item] = next.splice(idx, 1)
+                                  next.splice(idx + 1, 0, item)
+                                  return { ...p, scenes: next }
+                                })}
+                              >
+                                <ArrowDown size={12} />
+                              </button>
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
                   </div>
-                  {exportMsg && <div style={{ fontSize: 12, color: '#93c5fd' }}>{exportMsg}</div>}
-                </div>
-              </>
-            )}
+
+                  {/* 资源管理与预加载 */}
+                  <div className="pm-card">
+                    <div className="pm-card__title">资源烘焙与预加载策略</div>
+                    <div className="pm-grid-2">
+                      <label className="pm-field">
+                        <span>预加载策略</span>
+                        <select
+                          value={buildSettings.preloadMode}
+                          onChange={(e) => updateBuild((p) => ({ ...p, preloadMode: e.target.value as PreloadMode }))}
+                        >
+                          <option value="entry-scene">仅预加载初始场景（后台静默预热其余场景）</option>
+                          <option value="all-scenes">首屏预加载全部打包场景</option>
+                          <option value="minimal">按需流式加载（最快进场）</option>
+                        </select>
+                      </label>
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                        <label className="pm-field">
+                          <span>贴图压缩格式</span>
+                          <select
+                            value={buildSettings.textureMode}
+                            onChange={(e) => updateBuild((p) => ({ ...p, textureMode: e.target.value as TextureBuildMode }))}
+                          >
+                            <option value="webp">高压缩 WebP（推荐）</option>
+                            <option value="original">保持原始格式</option>
+                          </select>
+                        </label>
+                        <label className="pm-field">
+                          <span>贴图最大尺寸</span>
+                          <select
+                            value={buildSettings.textureMaxSize}
+                            onChange={(e) => updateBuild((p) => ({ ...p, textureMaxSize: Number(e.target.value) as TextureMaxSize }))}
+                          >
+                            <option value={0}>不限制</option>
+                            <option value={2048}>2048 px</option>
+                            <option value={1024}>1024 px</option>
+                            <option value={512}>512 px</option>
+                          </select>
+                        </label>
+                      </div>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
+                        <input
+                          type="checkbox"
+                          checked={buildSettings.bakeModelsToGlb}
+                          onChange={(e) => updateBuild((p) => ({ ...p, bakeModelsToGlb: e.target.checked }))}
+                        />
+                        模型烘焙为 Meshopt 压缩二进制 (.glb)
+                      </label>
+                      <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
+                        <input
+                          type="checkbox"
+                          checked={buildSettings.stripUnusedAssets}
+                          onChange={(e) => updateBuild((p) => ({ ...p, stripUnusedAssets: e.target.checked }))}
+                        />
+                        剔除未引用资源（预计打包 {buildSettings.stripUnusedAssets ? depCount : totalNonSceneAssets} / {totalNonSceneAssets} 个）
+                      </label>
+                    </div>
+                  </div>
+
+                  {/* Loading 画面自定义 */}
+                  <div className="pm-card">
+                    <div className="pm-card__title">Loading 画面配置</div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 0.8fr', gap: 14, alignItems: 'start' }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, fontSize: 12 }}>
+                          <label style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                            <input
+                              type="checkbox"
+                              checked={buildSettings.loading.enabled}
+                              onChange={(e) => updateBuild((p) => ({ ...p, loading: { ...p.loading, enabled: e.target.checked } }))}
+                            />
+                            开启 Loading 画面
+                          </label>
+                          <label style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                            <input
+                              type="checkbox"
+                              checked={buildSettings.loading.showProgressBar}
+                              onChange={(e) => updateBuild((p) => ({ ...p, loading: { ...p.loading, showProgressBar: e.target.checked } }))}
+                            />
+                            显示进度条
+                          </label>
+                          <label style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                            <input
+                              type="checkbox"
+                              checked={buildSettings.loading.showOnSceneSwitch}
+                              onChange={(e) => updateBuild((p) => ({ ...p, loading: { ...p.loading, showOnSceneSwitch: e.target.checked } }))}
+                            />
+                            切场景时显示
+                          </label>
+                        </div>
+                        <div className="pm-grid-2">
+                          <label className="pm-field">
+                            <span>标题</span>
+                            <input
+                              value={buildSettings.loading.title}
+                              onChange={(e) => updateBuild((p) => ({ ...p, loading: { ...p.loading, title: e.target.value } }))}
+                            />
+                          </label>
+                          <label className="pm-field">
+                            <span>提示副标题</span>
+                            <input
+                              value={buildSettings.loading.subtitle}
+                              onChange={(e) => updateBuild((p) => ({ ...p, loading: { ...p.loading, subtitle: e.target.value } }))}
+                            />
+                          </label>
+                          <label className="pm-field">
+                            <span>Logo 贴图</span>
+                            <select
+                              value={buildSettings.loading.logoAssetId ?? ''}
+                              onChange={(e) => updateBuild((p) => ({ ...p, loading: { ...p.loading, logoAssetId: e.target.value || null } }))}
+                            >
+                              <option value="">无</option>
+                              {textureAssets.map((tex) => (
+                                <option key={tex.id} value={tex.id}>{tex.name}</option>
+                              ))}
+                            </select>
+                          </label>
+                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                            <label className="pm-field">
+                              <span>背景色</span>
+                              <input
+                                type="color"
+                                value={buildSettings.loading.backgroundColor}
+                                onChange={(e) => updateBuild((p) => ({ ...p, loading: { ...p.loading, backgroundColor: e.target.value } }))}
+                                style={{ height: 28, padding: 2 }}
+                              />
+                            </label>
+                            <label className="pm-field">
+                              <span>进度条颜色</span>
+                              <input
+                                type="color"
+                                value={buildSettings.loading.accentColor}
+                                onChange={(e) => updateBuild((p) => ({ ...p, loading: { ...p.loading, accentColor: e.target.value } }))}
+                                style={{ height: 28, padding: 2 }}
+                              />
+                            </label>
+                          </div>
+                        </div>
+                      </div>
+                      {/* Loading 实时预览 */}
+                      <div
+                        style={{
+                          borderRadius: 8,
+                          padding: 16,
+                          minHeight: 140,
+                          backgroundColor: buildSettings.loading.backgroundColor,
+                          border: '1px solid rgba(255,255,255,0.1)',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: 8,
+                          textAlign: 'center',
+                          opacity: buildSettings.loading.enabled ? 1 : 0.4,
+                        }}
+                      >
+                        {logoUrl && <img src={logoUrl} alt="" style={{ maxWidth: 64, maxHeight: 36, objectFit: 'contain' }} />}
+                        <div style={{ fontSize: 13, fontWeight: 700, color: '#f1f5f9' }}>
+                          {buildSettings.loading.title || 'Tact3D'}
+                        </div>
+                        <div style={{ fontSize: 10, color: '#94a3b8' }}>
+                          {buildSettings.loading.subtitle || '正在加载资源…'}
+                        </div>
+                        {buildSettings.loading.showProgressBar && (
+                          <div style={{ width: '80%', height: 5, borderRadius: 999, background: 'rgba(255,255,255,0.14)', overflow: 'hidden' }}>
+                            <div style={{ width: '64%', height: '100%', background: buildSettings.loading.accentColor }} />
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* 构建门禁与执行 */}
+                  <div className="pm-card">
+                    <div className="pm-card__title">{t('pm.gate')}</div>
+                    <div style={{ fontSize: 12, color: report.errorCount === 0 ? '#4ade80' : '#fca5a5' }}>
+                      {report.errorCount === 0
+                        ? t('pm.gateOk')
+                        : t('pm.gateBad', { count: report.errorCount })}
+                    </div>
+                    <div className="pm-actions">
+                      <button
+                        type="button"
+                        className="pm-btn pm-btn--primary"
+                        disabled={buildBusy}
+                        onClick={() => void handleExport()}
+                      >
+                        <FileDown size={13} />
+                        {buildBusy
+                          ? '正在构建…'
+                          : buildSettings.target === 'electron'
+                            ? '选择目录并构建桌面端'
+                            : t('pm.export')}
+                      </button>
+                      <button type="button" className="pm-btn pm-btn--ai" disabled={buildBusy} onClick={() => askAi('请先运行一次冒烟试玩验证与体检，确认无误后提示我构建。')}>
+                        <Play size={13} /> {t('pm.smoke')}
+                      </button>
+                    </div>
+                    {buildProgress && (
+                      <div style={{ fontSize: 11, color: '#93c5fd', marginTop: 6 }}>
+                        {buildProgress.label}
+                      </div>
+                    )}
+                    {exportMsg && <div style={{ fontSize: 12, color: '#93c5fd', marginTop: 6 }}>{exportMsg}</div>}
+                  </div>
+                </>
+              )
+            })()}
           </main>
         </div>
       </div>

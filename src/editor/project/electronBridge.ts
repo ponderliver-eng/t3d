@@ -26,6 +26,10 @@ export interface ElectronBridge {
   }
   player?: {
     copyShell: (targetDir: string) => Promise<{ ok: boolean; copiedFiles: string[]; message: string }>
+    buildElectron?: (
+      targetDir: string,
+      options: { appName?: string; width?: number; height?: number; fullscreen?: boolean; resizable?: boolean },
+    ) => Promise<{ ok: boolean; appDir: string; executablePath: string; runtimeCopied: boolean; message: string }>
   }
   codeAssets?: {
     watchProject: (projectDir: string) => Promise<boolean>
