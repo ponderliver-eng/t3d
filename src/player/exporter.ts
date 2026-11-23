@@ -120,6 +120,7 @@ export function collectSceneDependencies(
   for (const id of extraAssetIds) addAsset(id)
 
   if (picture) {
+    if ('envAssetId' in picture && typeof picture.envAssetId === 'string') addAsset(picture.envAssetId)
     if ('environmentAssetId' in picture && typeof picture.environmentAssetId === 'string') addAsset(picture.environmentAssetId)
     if (picture.capabilities) scanUnknownRefs(picture.capabilities, assets, collected)
   }
@@ -127,6 +128,13 @@ export function collectSceneDependencies(
   for (const node of Object.values(nodes)) {
     if (node.assetId) addAsset(node.assetId)
     if (node.materialAssetId) addAsset(node.materialAssetId)
+    if (node.mapAssetId) addAsset(node.mapAssetId)
+    if (node.normalAssetId) addAsset(node.normalAssetId)
+    if (node.metallicRoughnessAssetId) addAsset(node.metallicRoughnessAssetId)
+    if (node.roughnessAssetId) addAsset(node.roughnessAssetId)
+    if (node.metalnessAssetId) addAsset(node.metalnessAssetId)
+    if (node.emissiveAssetId) addAsset(node.emissiveAssetId)
+    if (node.aoAssetId) addAsset(node.aoAssetId)
     if (node.clipAssetId) addAsset(node.clipAssetId)
     if (node.overlayAssetId) addAsset(node.overlayAssetId)
     if (Array.isArray(node.slots)) {
@@ -273,6 +281,7 @@ export function buildExportedProjectPayload(
       url: rawUrl,
       fileName: nextFileName,
       clipCatalog: 'clipCatalog' in asset ? asset.clipCatalog : undefined,
+      importScale: 'importScale' in asset ? asset.importScale : undefined,
       simulation: 'simulation' in asset ? asset.simulation : undefined,
       materialAssetId: 'materialAssetId' in asset ? asset.materialAssetId : undefined,
       quarksVersion: 'quarksVersion' in asset ? asset.quarksVersion : undefined,

@@ -470,6 +470,11 @@ function startStaticServer(rootDir) {
 }
 
 let serverRef = null;
+app.commandLine.appendSwitch('enable-unsafe-webgpu');
+app.commandLine.appendSwitch('ignore-gpu-blocklist');
+app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
+app.commandLine.appendSwitch('gpu-disk-cache-size-kb', String(512 * 1024));
+
 app.whenReady().then(async () => {
   const { server, port } = await startStaticServer(__dirname);
   serverRef = server;
