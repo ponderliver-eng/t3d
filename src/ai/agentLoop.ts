@@ -392,7 +392,7 @@ export const useAgentStore = create<AgentState>((set, get) => ({
 
     set((s) => ({
       status: 'running',
-      phaseText: '正在分析需求与工程上下文…',
+      phaseText: '正在分析需求与项目上下文…',
       startedAt: Date.now(),
       streamingText: '',
       steerQueue: [],
@@ -564,7 +564,7 @@ export const useAgentStore = create<AgentState>((set, get) => ({
           }
           // 确定性验收由循环自己执行（零模型开销），只有真的发现问题才回灌给模型修复
           if (dirtySinceVerify && autoVerifyRounds < 2 && step + 1 < MAX_TOOL_STEPS && get().status !== 'idle') {
-            set({ phaseText: '正在自动验收（工程体检 + 试玩）…' })
+            set({ phaseText: '正在自动验收（项目体检 + 试玩）…' })
             const feedback = runAutoVerify(baselineDiagnoseErrors, logicDirtySinceSmoke)
             dirtySinceVerify = false
             logicDirtySinceSmoke = false
@@ -833,12 +833,12 @@ function toolPhaseLabel(toolName: string): string {
   if (toolName === 'query__ui_inspect') return '正在读取 UI 界面结构…'
   if (toolName === 'viewport__capture' || toolName === 'playtest__capture') return '正在截取视口画面…'
   if (toolName === 'playtest__control') return '正在切换试玩状态…'
-  if (toolName.startsWith('query__project_diagnose')) return '正在执行工程体检与性能预算检查…'
-  if (toolName.startsWith('query__')) return '正在读取工程信息…'
+  if (toolName.startsWith('query__project_diagnose')) return '正在执行项目体检与性能预算检查…'
+  if (toolName.startsWith('query__')) return '正在读取项目信息…'
   if (toolName.startsWith('playtest__')) return '正在执行试玩冒烟验证…'
   if (toolName.startsWith('pack__')) return '正在处理能力包…'
   if (toolName.startsWith('branch__')) return '正在切换 / 管理实验分支…'
-  if (toolName.startsWith('project__')) return '正在更新工程配置…'
+  if (toolName.startsWith('project__')) return '正在更新项目配置…'
   return `正在执行 ${toolName.replace(/__/g, '.')}…`
 }
 

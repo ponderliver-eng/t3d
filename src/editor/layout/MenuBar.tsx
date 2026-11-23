@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import {
-  ArrowDown, ArrowDownToLine, ArrowLeft, ArrowRight, ArrowUp, Axis3d, Box, Boxes, Camera, ChevronRight, Circle, ClipboardPaste, Clock, Cone, Copy, CopyPlus, Cylinder, Database, Eye, FilePlus, Flashlight, Focus, Folder, FolderCog, FolderOpen, FolderPlus, Grid3x3, Group, Layers, LayoutDashboard, Library, Lightbulb, Magnet, Music, Package, PackageOpen, PanelsTopLeft, Pill, Redo2, Save, SaveAll, Scan, Settings, SlidersHorizontal, Sparkles, Spline, Square, Sun, Sunrise, Tag, Trash2, Undo2, Upload, Waves,
+  ArrowDown, ArrowDownToLine, ArrowLeft, ArrowRight, ArrowUp, Axis3d, Box, Boxes, Camera, ChevronRight, Circle, ClipboardPaste, Clock, Cone, Copy, CopyPlus, Cylinder, Database, Eye, FilePlus, Flashlight, Focus, Folder, FolderKanban, FolderOpen, FolderPlus, Globe, Grid3x3, Group, Hammer, Info, LifeBuoy, LayoutDashboard, Library, Lightbulb, Magnet, Music, Package, PackageOpen, PanelsTopLeft, Pill, Redo2, Save, SaveAll, Scan, Settings, SlidersHorizontal, Sparkles, Spline, Square, Sun, Sunrise, Trash2, Undo2, Upload, Waves,
 } from 'lucide-react'
 import { capabilityEnabled } from '../../capabilities/registry'
 import { createWaterNode } from '../../capabilities/water/create'
@@ -11,15 +11,21 @@ import { useI18n, translate, type MessageKey } from '../i18n'
 import { usePrefsStore } from '../prefs/store'
 import { openImport } from '../assets/import'
 import { createDirectoryProject, notifyProjectSaved, openDirectoryProject, openRecentProject, saveCacheAsDirectoryProject, saveProjectNow } from '../assets/project'
-import { exportWebPlayerInteractive } from '../../player/exporter'
+import { useManagerModalStore } from '../../core/project/ProjectManagerModal'
 import { RecentProjectService, type RecentProject } from '../project/recents'
 import { bindPackagePicker, openPackagePicker, usePackageImportStore } from '../assets/packageImportStore'
 import { PackageExtractDialog } from '../panels/PackageExtractDialog'
-import { openProjectSettings } from '../project/ProjectSettingsDialog'
-import { useTaxonomyUi } from '../project/taxonomyUi'
 import { resetLayout } from './events'
 import type { CameraView, NodeKind } from '../scene/types'
 import './MenuBar.css'
+
+const APP_VERSION = '0.1.0'
+const HELP_SITE_URL = 'https://t3d.dev'
+const HELP_SUPPORT_URL = 'https://t3d.dev/support'
+
+function openHelpLink(url: string) {
+  window.open(url, '_blank', 'noopener,noreferrer')
+}
 
 export default function MenuBar() {
   const playing = useEditorStore(state => state.playState !== 'stopped')
@@ -46,6 +52,7 @@ export default function MenuBar() {
   const packageInputRef = useRef<HTMLInputElement>(null)
   const [recentProjects, setRecentProjects] = useState<RecentProject[]>(() => RecentProjectService.getAll())
   const [recentOpen, setRecentOpen] = useState(false)
+  const [aboutOpen, setAboutOpen] = useState(false)
   useEffect(() => {
     bindPackagePicker(() => packageInputRef.current?.click())
     return () => bindPackagePicker(null)
@@ -109,17 +116,8 @@ export default function MenuBar() {
           <Sep />
           <Item icon={<Upload size={13} />} onClick={openImport}>{t('menu.import')}</Item>
           <Item icon={<PackageOpen size={13} />} onClick={openPackagePicker}>{t('menu.extractPackage')}</Item>
-          <Item icon={<Package size={13} />} disabled={playing} onClick={() => { void exportWebPlayerInteractive() }}>{t('menu.exportWeb')}</Item>
           <Sep />
-          <Item icon={<Database size={13} />} onClick={() => useEditorStore.getState().setGameplayHubOpen(true)}>{t('menu.database')}</Item>
-          <Item icon={<Library size={13} />} onClick={() => useEditorStore.getState().setLibraryOpen(true)}>{t('menu.library')}</Item>
-          <Submenu icon={<FolderCog size={13} />} label={t('menu.projectMenu')}>
-            <Item icon={<SlidersHorizontal size={13} />} onClick={openProjectSettings}>{t('menu.projectSettings')}</Item>
-            <Item icon={<Database size={13} />} onClick={() => useEditorStore.getState().setGameplayHubOpen(true)}>{t('menu.database')}</Item>
-            <Item icon={<Library size={13} />} onClick={() => useEditorStore.getState().setLibraryOpen(true)}>{t('menu.library')}</Item>
-            <Item icon={<Tag size={13} />} onClick={() => useTaxonomyUi.getState().openTags()}>{t('menu.tags')}</Item>
-            <Item icon={<Layers size={13} />} onClick={() => useTaxonomyUi.getState().openLayers()}>{t('menu.layers')}</Item>
-          </Submenu>
+          <Item icon={<Hammer size={13} />} disabled={playing} onClick={() => useManagerModalStore.getState().openModal('publish')}>{t('menu.exportWeb')}</Item>
         </Dropdown>
         <Dropdown label={t('menu.edit')}>
           <Item icon={<Undo2 size={13} />} disabled={(playing && !uiOpen) || !canUndo} onClick={undoActive}>{t('menu.undo')}<span className="menubar__hint">Ctrl+Z</span></Item>
@@ -191,7 +189,29 @@ export default function MenuBar() {
           <Sep />
           <Item icon={<LayoutDashboard size={13} />} onClick={resetLayout}>{t('menu.resetLayout')}</Item>
         </Dropdown>
+        <Dropdown label={t('menu.projectMenu')}>
+          <Item icon={<FolderKanban size={13} />} onClick={() => useManagerModalStore.getState().openModal('design')}>{t('menu.hub')}</Item>
+          <Sep />
+          <Item icon={<Database size={13} />} onClick={() => useEditorStore.getState().setGameplayHubOpen(true)}>{t('menu.database')}</Item>
+          <Item icon={<Library size={13} />} onClick={() => useEditorStore.getState().setLibraryOpen(true)}>{t('menu.library')}</Item>
+        </Dropdown>
+        <Dropdown label={t('menu.help')}>
+          <Item icon={<Globe size={13} />} onClick={() => openHelpLink(HELP_SITE_URL)}>{t('menu.helpSite')}</Item>
+          <Item icon={<LifeBuoy size={13} />} onClick={() => openHelpLink(HELP_SUPPORT_URL)}>{t('menu.helpSupport')}</Item>
+          <Sep />
+          <Item icon={<Info size={13} />} onClick={() => setAboutOpen(true)}>{t('menu.about')}</Item>
+        </Dropdown>
       </div>
+      {aboutOpen && (
+        <div className="menubar-about" onClick={() => setAboutOpen(false)}>
+          <div className="menubar-about__card" role="dialog" aria-label={t('menu.about')} onClick={event => event.stopPropagation()}>
+            <strong>Tact3D</strong>
+            <span>{t('menu.aboutBody')}</span>
+            <span>{APP_VERSION}</span>
+            <button type="button" onClick={() => setAboutOpen(false)}>{t('pm.close')}</button>
+          </div>
+        </div>
+      )}
       <input
         ref={packageInputRef}
         type="file"

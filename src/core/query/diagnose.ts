@@ -118,7 +118,7 @@ export function diagnoseProject(budget: PerformanceBudget = DEFAULT_PERFORMANCE_
         severity: 'warning',
         category: 'pack',
         target: node.id,
-        message: `节点 "${node.name}" 挂有水体配置，但工程尚未启用 water 能力包`,
+        message: `节点 "${node.name}" 挂有水体配置，但项目尚未启用 water 能力包`,
         hint: '调用 capability.setEnabled 开启 water 能力包',
       })
     }
@@ -240,7 +240,7 @@ export function diagnoseProject(budget: PerformanceBudget = DEFAULT_PERFORMANCE_
           severity: 'warning',
           category: 'playability',
           target: script.id,
-          message: `脚本 "${script.id}" 读取了输入动作 "${actionName}"，但工程输入配置中未注册该动作`,
+          message: `脚本 "${script.id}" 读取了输入动作 "${actionName}"，但项目输入配置中未注册该动作`,
           hint: `调用 input.setAction 注册 "${actionName}" 的按键映射（或改用已注册动作：${Object.keys(inputActions).join(', ')}）`,
         })
       }
@@ -377,7 +377,7 @@ export function diagnoseProject(budget: PerformanceBudget = DEFAULT_PERFORMANCE_
     issues.push({
       severity: 'warning',
       category: 'budget',
-      message: `工程资产总体积较大（${(assetBytes / (1024 * 1024)).toFixed(1)} MB，预算 ${(budget.maxAssetBytes / (1024 * 1024)).toFixed(0)} MB）`,
+      message: `项目资产总体积较大（${(assetBytes / (1024 * 1024)).toFixed(1)} MB，预算 ${(budget.maxAssetBytes / (1024 * 1024)).toFixed(0)} MB）`,
       hint: '建议压缩贴图、开启 Meshopt/KTX2 或清理未引用资产',
     })
   }

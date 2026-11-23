@@ -392,7 +392,7 @@ export function ProjectManagerModal() {
                 <div className="pm-card">
                   <div className="pm-card__title">
                     <span>{t('pm.tables')}</span>
-                    <button type="button" className="pm-btn pm-btn--ai" style={{ height: 22, fontSize: 11 }} onClick={() => askAi('请检查当前工程策划数据表（tables）的数值平衡性并给出优化建议。')}>
+                    <button type="button" className="pm-btn pm-btn--ai" style={{ height: 22, fontSize: 11 }} onClick={() => askAi('请检查当前项目策划数据表（tables）的数值平衡性并给出优化建议。')}>
                       <Sparkles size={11} /> {t('pm.balance')}
                     </button>
                   </div>
@@ -484,7 +484,7 @@ export function ProjectManagerModal() {
                   <button
                     type="button"
                     className="pm-btn pm-btn--ai"
-                    onClick={() => askAi('请执行 query__project_diagnose 检查当前工程的问题与性能预算超标项，并逐一修复。')}
+                    onClick={() => askAi('请执行 query__project_diagnose 检查当前项目的问题与性能预算超标项，并逐一修复。')}
                   >
                     <Sparkles size={13} /> {t('pm.fixAll')}
                   </button>
@@ -523,7 +523,7 @@ export function ProjectManagerModal() {
                         <button
                           type="button"
                           className="pm-btn pm-btn--ai"
-                          onClick={() => askAi(`请修复以下工程体检问题：[${issue.category}] ${issue.message}${issue.target ? `（目标对象 ID: ${issue.target}）` : ''}。建议：${issue.hint}`)}
+                          onClick={() => askAi(`请修复以下项目体检问题：[${issue.category}] ${issue.message}${issue.target ? `（目标对象 ID: ${issue.target}）` : ''}。建议：${issue.hint}`)}
                         >
                           <Sparkles size={12} /> {t('pm.fix')}
                         </button>
@@ -545,7 +545,7 @@ export function ProjectManagerModal() {
 
                 <div className="pm-card">
                   <div className="pm-card__title">{t('pm.branches')}</div>
-                  <div style={{ display: 'flex', gap: 8 }}>
+                  <div className="pm-inline">
                     <input
                       className="pm-input"
                       value={branchName}
@@ -606,7 +606,7 @@ export function ProjectManagerModal() {
 
                 <div className="pm-card">
                   <div className="pm-card__title">{t('pm.checkpoints')}</div>
-                  <div style={{ display: 'flex', gap: 8 }}>
+                  <div className="pm-inline">
                     <input
                       className="pm-input"
                       value={cpLabel}

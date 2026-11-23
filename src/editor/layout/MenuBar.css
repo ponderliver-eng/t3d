@@ -25,6 +25,45 @@
   gap: 2px;
 }
 
+.menubar-about {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.45);
+}
+
+.menubar-about__card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  min-width: 220px;
+  padding: 22px 28px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg-header);
+  color: var(--text-secondary);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
+}
+
+.menubar-about__card strong {
+  color: var(--text-primary);
+  font-size: 16px;
+  letter-spacing: 1px;
+}
+
+.menubar-about__card button {
+  margin-top: 8px;
+  padding: 4px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-primary);
+}
+
 .menubar__item {
   padding: 3px 8px;
   font-size: var(--font-size-sm);

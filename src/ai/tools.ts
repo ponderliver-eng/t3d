@@ -447,7 +447,7 @@ async function executeAiToolInner(
       return {
         ok: true,
         toolName,
-        displayLabel: '读取工程概览',
+        displayLabel: '读取项目概览',
         data: queryProjectOverview(),
       }
     case 'query__scene_outline':
@@ -529,7 +529,7 @@ async function executeAiToolInner(
       return {
         ok: true,
         toolName,
-        displayLabel: `工程体检（${report.errorCount} 错误，${report.warningCount} 警告）`,
+        displayLabel: `项目体检（${report.errorCount} 错误，${report.warningCount} 警告）`,
         data: breakdown && breakdown.top.length > 0
           ? {
               ...report,
@@ -832,7 +832,7 @@ async function executeAiToolInner(
           runtimeWarnings: logSummary.warnings,
           logs: summarizeInfoLogs(sinceLogs),
           ...(watched ? { watchedNodes: watched } : {}),
-          ...(nextState !== 'stopped' ? { note: '试玩/暂停期间工程处于锁定状态；要修改脚本或节点请先 stop' } : {}),
+          ...(nextState !== 'stopped' ? { note: '试玩/暂停期间项目处于锁定状态；要修改脚本或节点请先 stop' } : {}),
         },
       }
     }

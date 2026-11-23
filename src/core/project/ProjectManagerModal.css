@@ -277,17 +277,32 @@
   flex-shrink: 0;
 }
 
+.pm-inline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pm-inline > .pm-input {
+  flex: 1;
+  min-width: 0;
+}
+
 .pm-btn {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
   gap: 5px;
   height: 28px;
-  padding: 0 10px;
+  padding: 0 12px;
   border-radius: 4px;
   border: 1px solid rgba(255, 255, 255, 0.14);
   background: rgba(255, 255, 255, 0.05);
   color: #e4e4e7;
   font-size: 12px;
+  line-height: 1;
+  white-space: nowrap;
   cursor: pointer;
 }
 

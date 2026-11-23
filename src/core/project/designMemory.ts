@@ -27,7 +27,7 @@ let memoryDesign: ProjectDesignDoc = createDefaultDesignDoc()
 
 export function createDefaultDesignDoc(): ProjectDesignDoc {
   return {
-    title: '未命名游戏工程',
+    title: '未命名游戏项目',
     genre: '',
     perspective: '',
     coreLoop: '',
@@ -91,7 +91,7 @@ export async function updateDesignDoc(patch: Partial<ProjectDesignDoc>): Promise
 
 export function formatDesignMarkdown(doc: ProjectDesignDoc): string {
   return [
-    `# ${doc.title || '未命名游戏工程'}`,
+    `# ${doc.title || '未命名游戏项目'}`,
     '',
     `- **类型**：${doc.genre || '待定'}`,
     `- **视角**：${doc.perspective || '待定'}`,

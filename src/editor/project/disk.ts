@@ -545,7 +545,7 @@ function emptyIndex(): CacheIndexFile {
 }
 
 function requireRoot(): ProjectRoot {
-  if (!root) throw new Error('没有打开的工程目录')
+  if (!root) throw new Error('没有打开的项目目录')
   return root
 }
 
@@ -586,7 +586,7 @@ function assertLayoutPath(path: string) {
     || normal === CACHE_ROOT
     || normal.startsWith(`${CACHE_ROOT}/`)
     || normal === '.cache'
-  if (!allowed) throw new Error(`路径超出工程布局：${normal}`)
+  if (!allowed) throw new Error(`路径超出项目布局：${normal}`)
 }
 
 function normalizeLayoutPath(path: string): string {

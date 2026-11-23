@@ -135,7 +135,7 @@ export async function exportWebPlayerBundle(targetDir: string): Promise<WebExpor
     shellCopied,
     message: shellCopied
       ? `已导出完整 Web 播放包至 ${cleanDir}（含 index.html 可直接静态托管运行）`
-      : `已导出工程数据至 ${cleanDir}${shellNote}`,
+      : `已导出项目数据至 ${cleanDir}${shellNote}`,
   }
 }
 
@@ -148,7 +148,7 @@ export async function exportWebPlayerInteractive(): Promise<WebExportResult | nu
   }
   const report = diagnoseProject()
   if (report.errorCount > 0) {
-    store.log('warn', `导出提示：工程存在 ${report.errorCount} 个错误（仍继续打包导出）`)
+    store.log('warn', `导出提示：项目存在 ${report.errorCount} 个错误（仍继续打包导出）`)
   }
   const targetDir = await bridge.dialog.showOpenDirectoryDialog()
   if (!targetDir) return null
