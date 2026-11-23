@@ -7,7 +7,7 @@ import { defaultSkySettings } from './sky/defaults'
 import { defaultWater } from './water/defaults'
 
 export interface CapabilityDescription {
-  id: CapabilityId
+  id: string
   label: string
   description: string
   defaultEnabled: boolean
@@ -25,7 +25,7 @@ interface CapabilityMetaEntry extends Omit<CapabilityDescription, 'id' | 'defaul
   defaults?: () => Record<string, unknown>
 }
 
-const CAPABILITY_META: Record<CapabilityId, CapabilityMetaEntry> = {
+const CAPABILITY_META: Record<CapabilityId | 'postEffects', CapabilityMetaEntry> = {
   physics: {
     label: '物理碰撞与刚体',
     description: '基于 Rapier 的刚体动力学、碰撞体、触发器与射线检测',
@@ -143,6 +143,17 @@ const CAPABILITY_META: Record<CapabilityId, CapabilityMetaEntry> = {
       moon: 'boolean，是否显示月亮',
     },
   },
+  postEffects: {
+    label: '自定义后期特效链',
+    description: '挂载由 definePostEffect 编写的全屏后期着色器，按顺序叠加在色调映射之前',
+    scope: 'picture',
+    dataPath: 'picture.capabilities.postEffects',
+    writeWith: 'capability__setPictureData (capabilityId="postEffects")',
+    defaults: () => ({ items: [] }),
+    fields: {
+      items: 'Array<{ id: string, enabled?: boolean, params?: Record<string, unknown> }>，启用的自定义后期着色器列表',
+    },
+  },
   water: {
     label: '海洋与水体表面',
     description: 'Gerstner 波浪、反射折射、焦散与水下后处理效果（挂载在平面或网格节点上）',
@@ -167,7 +178,7 @@ const CAPABILITY_META: Record<CapabilityId, CapabilityMetaEntry> = {
 }
 
 export function describeCapabilities(id?: string): CapabilityDescription[] {
-  return (CAPABILITIES as readonly CapabilityManifest[])
+  const entries: CapabilityDescription[] = (CAPABILITIES as readonly CapabilityManifest[])
     .filter((item) => !id || item.id === id)
     .map((item) => {
       const capId = item.id as CapabilityId
@@ -187,4 +198,21 @@ export function describeCapabilities(id?: string): CapabilityDescription[] {
         ...(meta.notes ? { notes: meta.notes } : {}),
       }
     })
+  if (!id || id === 'postEffects') {
+    const meta = CAPABILITY_META.postEffects
+    entries.push({
+      id: 'postEffects',
+      label: meta.label,
+      description: meta.description,
+      defaultEnabled: true,
+      category: 'visual',
+      dependencies: [],
+      scope: meta.scope,
+      dataPath: meta.dataPath,
+      writeWith: meta.writeWith,
+      ...(meta.defaults ? { defaults: meta.defaults() } : {}),
+      ...(meta.fields ? { fields: meta.fields } : {}),
+    })
+  }
+  return entries
 }

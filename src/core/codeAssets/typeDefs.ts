@@ -429,7 +429,7 @@ export function defineSystem<S extends Record<string, unknown>>(def: {
 export const SHADER_DTS_SUMMARY = `export interface ShaderNode {
   add(other: unknown): ShaderNode; sub(other: unknown): ShaderNode; mul(other: unknown): ShaderNode; div(other: unknown): ShaderNode
   min(other: unknown): ShaderNode; max(other: unknown): ShaderNode; pow(other: unknown): ShaderNode; mod(other: unknown): ShaderNode
-  clamp(min?: unknown, max?: unknown): ShaderNode; abs(): ShaderNode; fract(): ShaderNode; floor(): ShaderNode; ceil(): ShaderNode; round(): ShaderNode
+  clamp(min?: unknown, max?: unknown): ShaderNode; mix(b: unknown, t: unknown): ShaderNode; abs(): ShaderNode; fract(): ShaderNode; floor(): ShaderNode; ceil(): ShaderNode; round(): ShaderNode
   sin(): ShaderNode; cos(): ShaderNode; tan(): ShaderNode; sqrt(): ShaderNode; exp(): ShaderNode; log(): ShaderNode
   negate(): ShaderNode; oneMinus(): ShaderNode; saturate(): ShaderNode; normalize(): ShaderNode; length(): ShaderNode
   dot(other: unknown): ShaderNode; cross(other: unknown): ShaderNode; reflect(normal: unknown): ShaderNode; distance(other: unknown): ShaderNode
@@ -441,15 +441,51 @@ export const SHADER_DTS_SUMMARY = `export interface ShaderNode {
   readonly r: ShaderNode; readonly g: ShaderNode; readonly b: ShaderNode; readonly a: ShaderNode
   readonly xy: ShaderNode; readonly xz: ShaderNode; readonly yz: ShaderNode; readonly xyz: ShaderNode; readonly rgb: ShaderNode; readonly rgba: ShaderNode
 }
+export type ShaderMode = 'lit' | 'unlit' | 'physical' | 'toon' | 'sss'
+export interface ShaderLightingDirectContext {
+  lightDirection: ShaderNode
+  lightColor: ShaderNode
+  normal: ShaderNode
+  viewDirection: ShaderNode
+  diffuseColor: ShaderNode
+  params: Record<string, any>
+}
+export interface ShaderLightingIndirectContext {
+  normal: ShaderNode
+  viewDirection: ShaderNode
+  diffuseColor: ShaderNode
+  params: Record<string, any>
+}
+export interface PostEffectContext {
+  color: ShaderNode
+  depth: ShaderNode
+  normal: ShaderNode
+  uv: ShaderNode
+  time: ShaderNode
+  deltaTime: ShaderNode
+  params: Record<string, any>
+}
 export function defineShader(def: {
-  name: string; description?: string; mode?: 'lit' | 'unlit'; transparent?: boolean; doubleSided?: boolean
+  name: string; description?: string; mode?: ShaderMode; transparent?: boolean; doubleSided?: boolean
   side?: 'front' | 'back' | 'double'; depthWrite?: boolean; depthTest?: boolean
   blending?: 'normal' | 'additive' | 'subtractive' | 'multiply' | 'none'; alphaTest?: number; wireframe?: boolean
   params?: Record<string, unknown>
   surface: (params: Record<string, any>) => {
     baseColor?: unknown; normal?: unknown; roughness?: unknown; metalness?: unknown
     emissive?: unknown; opacity?: unknown; vertexOffset?: unknown
+    clearcoat?: unknown; clearcoatRoughness?: unknown; clearcoatNormal?: unknown
+    transmission?: unknown; ior?: unknown; thickness?: unknown; attenuationColor?: unknown; attenuationDistance?: unknown
+    sheen?: unknown; sheenRoughness?: unknown; iridescence?: unknown; iridescenceIOR?: unknown; iridescenceThickness?: unknown
+    anisotropy?: unknown; dispersion?: unknown; specularIntensity?: unknown; specularColor?: unknown
   }
+  lighting?: {
+    direct?: (ctx: ShaderLightingDirectContext) => ShaderNode | { diffuse?: unknown; specular?: unknown }
+    indirect?: (ctx: ShaderLightingIndirectContext) => ShaderNode | { diffuse?: unknown; specular?: unknown }
+  }
+}): unknown
+export function definePostEffect(def: {
+  name: string; description?: string; params?: Record<string, unknown>
+  apply: (ctx: PostEffectContext) => unknown
 }): unknown
 export function float(x?: number): ShaderNode
 export function int(x?: number): ShaderNode

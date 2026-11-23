@@ -16,7 +16,14 @@ import {
   type Texture,
 } from 'three'
 import * as tsl from 'three/tsl'
-import { MeshBasicNodeMaterial, MeshStandardNodeMaterial } from 'three/webgpu'
+import {
+  MeshBasicNodeMaterial,
+  MeshPhysicalNodeMaterial,
+  MeshSSSNodeMaterial,
+  MeshStandardNodeMaterial,
+  MeshToonNodeMaterial,
+  PhysicalLightingModel,
+} from 'three/webgpu'
 import { defaultForSchema } from '../schema/fieldSchema'
 import type { FieldSchema } from '../schema/fieldSchema'
 import { checkAndTranspileTs, evaluateTranspiledModule, type CompileResult } from './compiler'
@@ -54,13 +61,57 @@ function resolveTextureAsset(raw: unknown): Texture {
 export type ShaderParamSchema = FieldSchema
 export type ShaderParamMap = Record<string, ShaderParamSchema>
 
+export type ShaderMode = 'lit' | 'unlit' | 'physical' | 'toon' | 'sss'
 export type ShaderSide = 'front' | 'back' | 'double'
 export type ShaderBlending = 'normal' | 'additive' | 'subtractive' | 'multiply' | 'none'
+
+export interface ShaderLightingDirectContext {
+  lightDirection: unknown
+  lightColor: unknown
+  normal: unknown
+  viewDirection: unknown
+  diffuseColor: unknown
+  params: Record<string, unknown>
+}
+
+export interface ShaderLightingIndirectContext {
+  normal: unknown
+  viewDirection: unknown
+  diffuseColor: unknown
+  params: Record<string, unknown>
+}
+
+export interface ShaderSurfaceOutput {
+  baseColor?: unknown
+  normal?: unknown
+  roughness?: unknown
+  metalness?: unknown
+  emissive?: unknown
+  opacity?: unknown
+  vertexOffset?: unknown
+  clearcoat?: unknown
+  clearcoatRoughness?: unknown
+  clearcoatNormal?: unknown
+  transmission?: unknown
+  ior?: unknown
+  thickness?: unknown
+  attenuationColor?: unknown
+  attenuationDistance?: unknown
+  sheen?: unknown
+  sheenRoughness?: unknown
+  iridescence?: unknown
+  iridescenceIOR?: unknown
+  iridescenceThickness?: unknown
+  anisotropy?: unknown
+  dispersion?: unknown
+  specularIntensity?: unknown
+  specularColor?: unknown
+}
 
 export interface ShaderDefinition<P extends ShaderParamMap = ShaderParamMap> {
   name: string
   description?: string
-  mode?: 'lit' | 'unlit'
+  mode?: ShaderMode
   transparent?: boolean
   doubleSided?: boolean
   side?: ShaderSide
@@ -70,15 +121,29 @@ export interface ShaderDefinition<P extends ShaderParamMap = ShaderParamMap> {
   alphaTest?: number
   wireframe?: boolean
   params: P
-  surface: (params: Record<string, unknown>) => {
-    baseColor?: unknown
-    normal?: unknown
-    roughness?: unknown
-    metalness?: unknown
-    emissive?: unknown
-    opacity?: unknown
-    vertexOffset?: unknown
+  surface: (params: Record<string, unknown>) => ShaderSurfaceOutput
+  lighting?: {
+    direct?: (ctx: ShaderLightingDirectContext) => unknown
+    indirect?: (ctx: ShaderLightingIndirectContext) => unknown
   }
+}
+
+export interface PostEffectContext {
+  color: unknown
+  depth: unknown
+  normal: unknown
+  uv: unknown
+  time: unknown
+  deltaTime: unknown
+  params: Record<string, unknown>
+}
+
+export interface PostEffectDefinition<P extends ShaderParamMap = ShaderParamMap> {
+  __t3dPostEffect?: true
+  name: string
+  description?: string
+  params?: P
+  apply: (ctx: PostEffectContext) => unknown
 }
 
 export interface ShaderUniformEntry {
@@ -86,11 +151,20 @@ export interface ShaderUniformEntry {
   node: { value: unknown }
 }
 
+export type AnyNodeMaterial =
+  | MeshStandardNodeMaterial
+  | MeshBasicNodeMaterial
+  | MeshPhysicalNodeMaterial
+  | MeshToonNodeMaterial
+  | MeshSSSNodeMaterial
+
 export interface CompiledShaderAsset {
   id: string
   file: string
+  kind?: 'shader' | 'postEffect'
   definition: ShaderDefinition
-  material: MeshStandardNodeMaterial | MeshBasicNodeMaterial
+  postEffectDefinition?: PostEffectDefinition
+  material: AnyNodeMaterial
   paramValues: Record<string, unknown>
   uniforms: Record<string, ShaderUniformEntry>
 }
@@ -153,6 +227,10 @@ const tslFn = (name: string) => (...args: unknown[]) => {
 export function createShaderSdk() {
   return {
     defineShader: <P extends ShaderParamMap>(def: ShaderDefinition<P>) => def,
+    definePostEffect: <P extends ShaderParamMap>(def: PostEffectDefinition<P>): PostEffectDefinition<P> => ({
+      ...def,
+      __t3dPostEffect: true,
+    }),
     float: (x = 0) => tsl.float(x),
     int: (x = 0) => tsl.int(x),
     uint: (x = 0) => tsl.uint(x),
@@ -274,6 +352,26 @@ export function createShaderSdk() {
   }
 }
 
+const PHYSICAL_SURFACE_KEYS = new Set([
+  'clearcoat',
+  'clearcoatRoughness',
+  'clearcoatNormal',
+  'transmission',
+  'ior',
+  'thickness',
+  'attenuationColor',
+  'attenuationDistance',
+  'sheen',
+  'sheenRoughness',
+  'iridescence',
+  'iridescenceIOR',
+  'iridescenceThickness',
+  'anisotropy',
+  'dispersion',
+  'specularIntensity',
+  'specularColor',
+])
+
 const VALID_SURFACE_KEYS = new Set([
   'baseColor',
   'normal',
@@ -282,14 +380,33 @@ const VALID_SURFACE_KEYS = new Set([
   'emissive',
   'opacity',
   'vertexOffset',
+  ...PHYSICAL_SURFACE_KEYS,
 ])
+
+function applyLightingContribution(target: { directDiffuse?: unknown; directSpecular?: unknown; indirectDiffuse?: unknown; indirectSpecular?: unknown }, result: unknown, kind: 'direct' | 'indirect') {
+  if (!result || typeof result !== 'object') return
+  const r = result as { diffuse?: unknown; specular?: unknown; addAssign?: unknown }
+  if ('diffuse' in r || 'specular' in r) {
+    if (r.diffuse !== undefined) {
+      const slot = kind === 'direct' ? target.directDiffuse : target.indirectDiffuse
+      ;(slot as { addAssign?: (v: unknown) => void })?.addAssign?.(asNode(r.diffuse))
+    }
+    if (r.specular !== undefined) {
+      const slot = kind === 'direct' ? target.directSpecular : target.indirectSpecular
+      ;(slot as { addAssign?: (v: unknown) => void })?.addAssign?.(asNode(r.specular))
+    }
+    return
+  }
+  const slot = kind === 'direct' ? target.directDiffuse : target.indirectDiffuse
+  ;(slot as { addAssign?: (v: unknown) => void })?.addAssign?.(asNode(result))
+}
 
 export function buildMaterialFromShader(
   def: ShaderDefinition,
   overrides?: Record<string, unknown>,
   options?: { strict?: boolean },
 ): {
-  material: MeshStandardNodeMaterial | MeshBasicNodeMaterial
+  material: AnyNodeMaterial
   paramValues: Record<string, unknown>
   uniforms: Record<string, ShaderUniformEntry>
   warnings: string[]
@@ -371,7 +488,7 @@ export function buildMaterialFromShader(
   const unusedParams = declaredKeys.filter((k) => !accessedParams.has(k))
   if (unusedParams.length > 0) {
     const msg = `params 中声明了 ${unusedParams.join('、')}，但 surface() 中未使用`
-    if (options?.strict) {
+    if (options?.strict && !def.lighting) {
       throw new Error(msg)
     }
     warnings.push(msg)
@@ -382,7 +499,19 @@ export function buildMaterialFromShader(
   }
 
   const isUnlit = def.mode === 'unlit'
-  const material = isUnlit ? new MeshBasicNodeMaterial() : new MeshStandardNodeMaterial()
+  const usesPhysical = def.mode === 'physical' || outKeys.some((k) => PHYSICAL_SURFACE_KEYS.has(k))
+  let material: AnyNodeMaterial
+  if (isUnlit) {
+    material = new MeshBasicNodeMaterial()
+  } else if (def.mode === 'toon') {
+    material = new MeshToonNodeMaterial()
+  } else if (def.mode === 'sss') {
+    material = new MeshSSSNodeMaterial()
+  } else if (usesPhysical) {
+    material = new MeshPhysicalNodeMaterial()
+  } else {
+    material = new MeshStandardNodeMaterial()
+  }
 
   const baseColorNode = out.baseColor !== undefined ? out.baseColor : out.color
   if (baseColorNode !== undefined) {
@@ -395,11 +524,80 @@ export function buildMaterialFromShader(
     ;(material as unknown as { positionNode?: unknown }).positionNode = tsl.positionLocal.add(asNode(out.vertexOffset) as never)
   }
 
-  if (!isUnlit && material instanceof MeshStandardNodeMaterial) {
+  if (!isUnlit) {
     if (out.roughness !== undefined) (material as unknown as { roughnessNode?: unknown }).roughnessNode = asNode(out.roughness)
     if (out.metalness !== undefined) (material as unknown as { metalnessNode?: unknown }).metalnessNode = asNode(out.metalness)
     if (out.emissive !== undefined) (material as unknown as { emissiveNode?: unknown }).emissiveNode = asNode(out.emissive)
     if (out.normal !== undefined) (material as unknown as { normalNode?: unknown }).normalNode = asNode(out.normal)
+  }
+
+  if (!isUnlit && material instanceof MeshPhysicalNodeMaterial) {
+    const physMap: Array<[keyof ShaderSurfaceOutput, string]> = [
+      ['clearcoat', 'clearcoatNode'],
+      ['clearcoatRoughness', 'clearcoatRoughnessNode'],
+      ['clearcoatNormal', 'clearcoatNormalNode'],
+      ['transmission', 'transmissionNode'],
+      ['ior', 'iorNode'],
+      ['thickness', 'thicknessNode'],
+      ['attenuationColor', 'attenuationColorNode'],
+      ['attenuationDistance', 'attenuationDistanceNode'],
+      ['sheen', 'sheenNode'],
+      ['sheenRoughness', 'sheenRoughnessNode'],
+      ['iridescence', 'iridescenceNode'],
+      ['iridescenceIOR', 'iridescenceIORNode'],
+      ['iridescenceThickness', 'iridescenceThicknessNode'],
+      ['anisotropy', 'anisotropyNode'],
+      ['dispersion', 'dispersionNode'],
+      ['specularIntensity', 'specularIntensityNode'],
+      ['specularColor', 'specularColorNode'],
+    ]
+    for (const [key, nodeProp] of physMap) {
+      if (out[key] !== undefined) {
+        ;(material as unknown as Record<string, unknown>)[nodeProp] = asNode(out[key])
+      }
+    }
+  }
+
+  if (!isUnlit && def.lighting && (typeof def.lighting.direct === 'function' || typeof def.lighting.indirect === 'function')) {
+    const customLighting = def.lighting
+    class CustomShaderLightingModel extends PhysicalLightingModel {
+      override direct(
+        lightData: { lightDirection: unknown; lightColor: unknown; reflectedLight: { directDiffuse?: unknown; directSpecular?: unknown } },
+        builder: unknown,
+      ): void {
+        if (typeof customLighting.direct === 'function') {
+          const res = customLighting.direct({
+            lightDirection: lightData.lightDirection,
+            lightColor: lightData.lightColor,
+            normal: tsl.normalView,
+            viewDirection: tsl.positionViewDirection,
+            diffuseColor: tsl.diffuseColor,
+            params: trackedParams,
+          })
+          applyLightingContribution(lightData.reflectedLight, res, 'direct')
+          return
+        }
+        super.direct(lightData as never, builder as never)
+      }
+
+      override indirect(builder: Parameters<PhysicalLightingModel['indirect']>[0]): void {
+        if (typeof customLighting.indirect === 'function') {
+          const res = customLighting.indirect({
+            normal: tsl.normalView,
+            viewDirection: tsl.positionViewDirection,
+            diffuseColor: tsl.diffuseColor,
+            params: trackedParams,
+          })
+          const reflectedLight = (builder as unknown as { context?: { reflectedLight?: { indirectDiffuse?: unknown; indirectSpecular?: unknown } } })?.context?.reflectedLight
+          if (reflectedLight) {
+            applyLightingContribution(reflectedLight, res, 'indirect')
+          }
+          return
+        }
+        super.indirect(builder)
+      }
+    }
+    ;(material as unknown as { setupLightingModel?: () => unknown }).setupLightingModel = () => new CustomShaderLightingModel()
   }
 
   if (def.transparent) material.transparent = true
@@ -421,6 +619,52 @@ export function buildMaterialFromShader(
 }
 
 const compiledShaders = new Map<string, CompiledShaderAsset>()
+const compiledPostEffects = new Map<string, CompiledShaderAsset>()
+let postEffectRevision = 0
+
+export function getPostEffectRevision(): number {
+  return postEffectRevision
+}
+
+export function getCompiledPostEffect(effectId: string): CompiledShaderAsset | undefined {
+  return compiledPostEffects.get(effectId)
+}
+
+export function buildPostEffectNode(
+  effectId: string,
+  ctx: {
+    color: unknown
+    depth: unknown
+    normal: unknown
+    uv: unknown
+  },
+  overrides?: Record<string, unknown>,
+): unknown {
+  const compiled = compiledPostEffects.get(effectId)
+  if (!compiled?.postEffectDefinition) return ctx.color
+  if (overrides) {
+    for (const [k, v] of Object.entries(overrides)) {
+      updateCompiledShaderParam(compiled, k, v)
+    }
+  }
+  const runtimeParams: Record<string, unknown> = {}
+  for (const [k, v] of Object.entries(compiled.uniforms)) {
+    runtimeParams[k] = v.node
+  }
+  for (const [k, v] of Object.entries(compiled.paramValues)) {
+    if (!(k in runtimeParams)) runtimeParams[k] = v
+  }
+  const res = compiled.postEffectDefinition.apply({
+    color: ctx.color,
+    depth: ctx.depth,
+    normal: ctx.normal,
+    uv: ctx.uv,
+    time: tsl.time,
+    deltaTime: tsl.deltaTime,
+    params: runtimeParams,
+  })
+  return res !== undefined ? asNode(res) : ctx.color
+}
 
 export function updateCompiledShaderParam(
   compiled: CompiledShaderAsset,
@@ -455,10 +699,10 @@ export function compileShaderSource(
     return { ok: false, diagnostics: transpiled.diagnostics }
   }
   const sdk = createShaderSdk()
-  const evaluated = evaluateTranspiledModule<ShaderDefinition>(fileName, transpiled.jsCode, {
+  const evaluated = evaluateTranspiledModule<ShaderDefinition | PostEffectDefinition>(fileName, transpiled.jsCode, {
     't3d/shader': sdk,
   })
-  if (!evaluated.ok || !evaluated.exports || typeof evaluated.exports.surface !== 'function') {
+  if (!evaluated.ok || !evaluated.exports) {
     return {
       ok: false,
       diagnostics: evaluated.diagnostics.length
@@ -469,19 +713,93 @@ export function compileShaderSource(
               line: 1,
               column: 1,
               severity: 'error',
-              message: '着色器必须通过 export default defineShader({ ... }) 导出',
-              hint: '请检查默认导出是否包含 name、params 和 surface 函数',
+              message: '着色器必须通过 export default defineShader({ ... }) 或 definePostEffect({ ... }) 导出',
+              hint: '请检查默认导出是否包含 name、params 和 surface/apply 函数',
             },
           ],
     }
   }
 
+  const rawExports = evaluated.exports as unknown as Record<string, unknown>
+  if (rawExports.__t3dPostEffect && typeof rawExports.apply === 'function') {
+    const postDef = evaluated.exports as PostEffectDefinition
+    try {
+      const paramValues: Record<string, unknown> = {}
+      const uniforms: Record<string, ShaderUniformEntry> = {}
+      for (const [key, schema] of Object.entries(postDef.params ?? {})) {
+        const val = overrides && key in overrides ? overrides[key] : defaultForSchema(schema)
+        paramValues[key] = val
+        const built = paramToNode(schema, val)
+        if (built.uniformEntry) uniforms[key] = built.uniformEntry
+      }
+      const compatDef: ShaderDefinition = {
+        name: postDef.name,
+        description: postDef.description,
+        mode: 'unlit',
+        params: postDef.params ?? {},
+        surface: () => ({ baseColor: tsl.vec3(1, 1, 1) }),
+      }
+      const compiled: CompiledShaderAsset = {
+        id,
+        file: fileName,
+        kind: 'postEffect',
+        definition: compatDef,
+        postEffectDefinition: postDef,
+        material: new MeshBasicNodeMaterial(),
+        paramValues,
+        uniforms,
+      }
+      compiledPostEffects.set(id, compiled)
+      compiledShaders.set(id, compiled)
+      postEffectRevision += 1
+      return {
+        ok: true,
+        diagnostics: transpiled.diagnostics,
+        jsCode: transpiled.jsCode,
+        exports: compiled,
+      }
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error)
+      return {
+        ok: false,
+        diagnostics: [
+          {
+            file: fileName,
+            line: 1,
+            column: 1,
+            severity: 'error',
+            message: `TSL 后期特效构建失败：${msg}`,
+            hint: '请检查 apply() 参数与返回节点',
+          },
+        ],
+      }
+    }
+  }
+
+  if (typeof rawExports.surface !== 'function') {
+    return {
+      ok: false,
+      diagnostics: [
+        {
+          file: fileName,
+          line: 1,
+          column: 1,
+          severity: 'error',
+          message: '着色器必须通过 export default defineShader({ ... }) 或 definePostEffect({ ... }) 导出',
+          hint: '请检查默认导出是否包含 name、params 和 surface/apply 函数',
+        },
+      ],
+    }
+  }
+
+  const shaderDef = evaluated.exports as ShaderDefinition
   try {
-    const { material, paramValues, uniforms } = buildMaterialFromShader(evaluated.exports, overrides, { strict: true })
+    const { material, paramValues, uniforms } = buildMaterialFromShader(shaderDef, overrides, { strict: true })
     const compiled: CompiledShaderAsset = {
       id,
       file: fileName,
-      definition: evaluated.exports,
+      kind: 'shader',
+      definition: shaderDef,
       material,
       paramValues,
       uniforms,

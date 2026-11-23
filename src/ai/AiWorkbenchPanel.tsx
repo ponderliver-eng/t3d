@@ -2202,7 +2202,7 @@ function TurnActionsList({ actions, isActiveTurn }: { actions: AiActionPill[]; i
   const failCount = actions.filter((a) => !a.pending && !a.ok).length
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
       {!isActiveTurn && (
         <button
           type="button"
@@ -2274,14 +2274,11 @@ function TurnActionsList({ actions, isActiveTurn }: { actions: AiActionPill[]; i
                 alignItems: isError && errorOpen ? 'flex-start' : 'center',
                 gap: '6px',
                 textAlign: 'left',
-                padding: '4px 7px',
-                borderRadius: '4px',
-                border: act.pending
-                  ? '1px solid rgba(96,165,250,0.35)'
-                  : isError
-                    ? '1px solid rgba(248,113,113,0.35)'
-                    : '1px solid rgba(255,255,255,0.08)',
-                background: act.pending ? 'rgba(59,130,246,0.1)' : isError ? 'rgba(239,68,68,0.08)' : 'rgba(0,0,0,0.25)',
+                padding: isError ? '3px 6px' : '1px 2px',
+                lineHeight: 1.4,
+                borderRadius: isError ? '4px' : 0,
+                border: isError ? '1px solid rgba(248,113,113,0.35)' : 'none',
+                background: isError ? 'rgba(239,68,68,0.08)' : 'transparent',
                 color: act.pending ? '#93c5fd' : act.ok ? '#d4d4d8' : '#fca5a5',
                 fontSize: '11px',
                 cursor: canClick ? 'pointer' : 'default',

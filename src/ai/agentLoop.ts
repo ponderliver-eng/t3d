@@ -1299,10 +1299,13 @@ function buildSystemPrompt(lang: 'zh' | 'en'): string {
 
   lines.push(
       '',
-      '【着色器】编写自定义着色器（shader__create / shader__update）时，必须从 "t3d/shader" 导入 defineShader 与 TSL 节点函数，并严格使用：',
-      '   export default defineShader({ name: "中文名称", mode: "lit" | "unlit", transparent?: true, doubleSided?: false, params: { ... }, surface(p) { return { baseColor, emissive, roughness, metalness, opacity, normal, vertexOffset } } })',
-      '   - 严格规则：返回键名必须是 baseColor（不是 color）；params 中声明的所有参数必须在 surface(p) 中实际参与计算；使用 opacity 时需设置 transparent: true。',
-      '   - 可用节点（从 "t3d/shader" 导入）：uv(index?)、time、deltaTime、normalView、normalWorld、normalLocal、positionWorld、positionLocal、viewDirection、cameraPosition、screenUV、vertexColor()；构造：float、vec2、vec3、vec4、color；函数：mix、clamp、smoothstep、step、saturate、sin、cos、tan、abs、sign、floor、ceil、fract、pow、sqrt、exp、log、min、max、dot、cross、normalize、length、distance、reflect、fwidth、fresnel(normal, viewDir, power?)（支持 .add/.sub/.mul/.div/.pow/.min/.max/.clamp/.abs/.floor/.ceil/.fract/.saturate/.oneMinus/.negate）。',
+      '【着色器】编写自定义着色器（shader__create / shader__update）时，必须从 "t3d/shader" 导入 defineShader（或 definePostEffect）与 TSL 节点函数，并严格使用：',
+      '   export default defineShader({ name: "中文名称", mode: "lit" | "unlit" | "physical" | "toon" | "sss", transparent?: true, side?: "front"|"back"|"double", blending?: "normal"|"additive"|"subtractive"|"multiply"|"none", depthWrite?: boolean, alphaTest?: number, params: { ... }, surface(p) { return { baseColor, emissive, roughness, metalness, opacity, normal, vertexOffset, clearcoat?, transmission?, ior?, thickness?, sheen?, iridescence?, anisotropy?, dispersion? } }, lighting?: { direct?(ctx), indirect?(ctx) } })',
+      '   - 严格规则：返回键名必须是 baseColor（不是 color）；params 中声明的所有参数必须在 surface(p) 或 lighting 中实际参与计算；使用 opacity 时需设置 transparent: true。',
+      '   - 光照与材质模式：mode="physical" 自动启用物理扩展通道（清漆/玻璃透射/次表面/绒面/虹彩）；mode="toon" 启用卡通材质；mode="sss" 启用次表面散射；也可在 lit/physical/toon 上通过 lighting: { direct(ctx), indirect?(ctx) } 自定义光照模型（ctx 含 lightDirection、lightColor、normal、viewDirection、diffuseColor、params）。',
+      '   - 物体描边方案：用 side: "back" + vertexOffset 沿 normalLocal 外扩做背面描边材质，配合第二个同网格节点或双材质槽挂载。',
+      '   - 自定义全屏后期：export default definePostEffect({ name, params?, apply(ctx) { /* ctx: color, depth, normal, uv, time, deltaTime, params */ return newColor } })；编写后用 capability__setPictureData({ capabilityId: "postEffects", patch: { items: [{ id: "<shaderId>", enabled: true }] } }) 挂载生效。',
+      '   - 完整节点支持：If/Loop/Fn/select/uniform/varying/linearDepth()/viewportSharedTexture/viewportDepthTexture/screenUV/frontFacing/hash/fwidth/dFdx/dFdy/fresnel 等完整 TSL 能力（详见工程内 .t3d/shader.d.ts）；脚本内可通过 self.shader.setParam(shaderId, paramName, value) 在运行期零开销实时更新着色器/后期 Uniform 参数。',
       '   - 编写完成后，可用 shader__bind 绑定到指定材质或节点。',
     )
 

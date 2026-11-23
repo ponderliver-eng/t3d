@@ -6696,7 +6696,7 @@ export function defineSystem<S extends Record<string, unknown>>(def: {
 var SHADER_DTS_SUMMARY = `export interface ShaderNode {
   add(other: unknown): ShaderNode; sub(other: unknown): ShaderNode; mul(other: unknown): ShaderNode; div(other: unknown): ShaderNode
   min(other: unknown): ShaderNode; max(other: unknown): ShaderNode; pow(other: unknown): ShaderNode; mod(other: unknown): ShaderNode
-  clamp(min?: unknown, max?: unknown): ShaderNode; abs(): ShaderNode; fract(): ShaderNode; floor(): ShaderNode; ceil(): ShaderNode; round(): ShaderNode
+  clamp(min?: unknown, max?: unknown): ShaderNode; mix(b: unknown, t: unknown): ShaderNode; abs(): ShaderNode; fract(): ShaderNode; floor(): ShaderNode; ceil(): ShaderNode; round(): ShaderNode
   sin(): ShaderNode; cos(): ShaderNode; tan(): ShaderNode; sqrt(): ShaderNode; exp(): ShaderNode; log(): ShaderNode
   negate(): ShaderNode; oneMinus(): ShaderNode; saturate(): ShaderNode; normalize(): ShaderNode; length(): ShaderNode
   dot(other: unknown): ShaderNode; cross(other: unknown): ShaderNode; reflect(normal: unknown): ShaderNode; distance(other: unknown): ShaderNode
@@ -6708,15 +6708,51 @@ var SHADER_DTS_SUMMARY = `export interface ShaderNode {
   readonly r: ShaderNode; readonly g: ShaderNode; readonly b: ShaderNode; readonly a: ShaderNode
   readonly xy: ShaderNode; readonly xz: ShaderNode; readonly yz: ShaderNode; readonly xyz: ShaderNode; readonly rgb: ShaderNode; readonly rgba: ShaderNode
 }
+export type ShaderMode = 'lit' | 'unlit' | 'physical' | 'toon' | 'sss'
+export interface ShaderLightingDirectContext {
+  lightDirection: ShaderNode
+  lightColor: ShaderNode
+  normal: ShaderNode
+  viewDirection: ShaderNode
+  diffuseColor: ShaderNode
+  params: Record<string, any>
+}
+export interface ShaderLightingIndirectContext {
+  normal: ShaderNode
+  viewDirection: ShaderNode
+  diffuseColor: ShaderNode
+  params: Record<string, any>
+}
+export interface PostEffectContext {
+  color: ShaderNode
+  depth: ShaderNode
+  normal: ShaderNode
+  uv: ShaderNode
+  time: ShaderNode
+  deltaTime: ShaderNode
+  params: Record<string, any>
+}
 export function defineShader(def: {
-  name: string; description?: string; mode?: 'lit' | 'unlit'; transparent?: boolean; doubleSided?: boolean
+  name: string; description?: string; mode?: ShaderMode; transparent?: boolean; doubleSided?: boolean
   side?: 'front' | 'back' | 'double'; depthWrite?: boolean; depthTest?: boolean
   blending?: 'normal' | 'additive' | 'subtractive' | 'multiply' | 'none'; alphaTest?: number; wireframe?: boolean
   params?: Record<string, unknown>
   surface: (params: Record<string, any>) => {
     baseColor?: unknown; normal?: unknown; roughness?: unknown; metalness?: unknown
     emissive?: unknown; opacity?: unknown; vertexOffset?: unknown
+    clearcoat?: unknown; clearcoatRoughness?: unknown; clearcoatNormal?: unknown
+    transmission?: unknown; ior?: unknown; thickness?: unknown; attenuationColor?: unknown; attenuationDistance?: unknown
+    sheen?: unknown; sheenRoughness?: unknown; iridescence?: unknown; iridescenceIOR?: unknown; iridescenceThickness?: unknown
+    anisotropy?: unknown; dispersion?: unknown; specularIntensity?: unknown; specularColor?: unknown
   }
+  lighting?: {
+    direct?: (ctx: ShaderLightingDirectContext) => ShaderNode | { diffuse?: unknown; specular?: unknown }
+    indirect?: (ctx: ShaderLightingIndirectContext) => ShaderNode | { diffuse?: unknown; specular?: unknown }
+  }
+}): unknown
+export function definePostEffect(def: {
+  name: string; description?: string; params?: Record<string, unknown>
+  apply: (ctx: PostEffectContext) => unknown
 }): unknown
 export function float(x?: number): ShaderNode
 export function int(x?: number): ShaderNode
@@ -8830,7 +8866,14 @@ import {
   Vector4
 } from "three";
 import * as tsl from "three/tsl";
-import { MeshBasicNodeMaterial as MeshBasicNodeMaterial3, MeshStandardNodeMaterial } from "three/webgpu";
+import {
+  MeshBasicNodeMaterial as MeshBasicNodeMaterial3,
+  MeshPhysicalNodeMaterial,
+  MeshSSSNodeMaterial,
+  MeshStandardNodeMaterial,
+  MeshToonNodeMaterial,
+  PhysicalLightingModel
+} from "three/webgpu";
 var textureResolver = null;
 var cachedFallbackTex = null;
 function fallbackWhiteTexture() {
@@ -8908,6 +8951,10 @@ var tslFn = (name) => (...args) => {
 function createShaderSdk() {
   return {
     defineShader: (def) => def,
+    definePostEffect: (def) => ({
+      ...def,
+      __t3dPostEffect: true
+    }),
     float: (x = 0) => tsl.float(x),
     int: (x = 0) => tsl.int(x),
     uint: (x = 0) => tsl.uint(x),
@@ -9020,6 +9067,25 @@ function createShaderSdk() {
     }
   };
 }
+var PHYSICAL_SURFACE_KEYS = /* @__PURE__ */ new Set([
+  "clearcoat",
+  "clearcoatRoughness",
+  "clearcoatNormal",
+  "transmission",
+  "ior",
+  "thickness",
+  "attenuationColor",
+  "attenuationDistance",
+  "sheen",
+  "sheenRoughness",
+  "iridescence",
+  "iridescenceIOR",
+  "iridescenceThickness",
+  "anisotropy",
+  "dispersion",
+  "specularIntensity",
+  "specularColor"
+]);
 var VALID_SURFACE_KEYS = /* @__PURE__ */ new Set([
   "baseColor",
   "normal",
@@ -9027,8 +9093,26 @@ var VALID_SURFACE_KEYS = /* @__PURE__ */ new Set([
   "metalness",
   "emissive",
   "opacity",
-  "vertexOffset"
+  "vertexOffset",
+  ...PHYSICAL_SURFACE_KEYS
 ]);
+function applyLightingContribution(target, result, kind) {
+  if (!result || typeof result !== "object") return;
+  const r = result;
+  if ("diffuse" in r || "specular" in r) {
+    if (r.diffuse !== void 0) {
+      const slot2 = kind === "direct" ? target.directDiffuse : target.indirectDiffuse;
+      slot2?.addAssign?.(asNode(r.diffuse));
+    }
+    if (r.specular !== void 0) {
+      const slot2 = kind === "direct" ? target.directSpecular : target.indirectSpecular;
+      slot2?.addAssign?.(asNode(r.specular));
+    }
+    return;
+  }
+  const slot = kind === "direct" ? target.directDiffuse : target.indirectDiffuse;
+  slot?.addAssign?.(asNode(result));
+}
 function buildMaterialFromShader(def, overrides, options) {
   const paramValues = {};
   const runtimeParams = {};
@@ -9101,7 +9185,7 @@ function buildMaterialFromShader(def, overrides, options) {
   const unusedParams = declaredKeys.filter((k) => !accessedParams.has(k));
   if (unusedParams.length > 0) {
     const msg = `params \u4E2D\u58F0\u660E\u4E86 ${unusedParams.join("\u3001")}\uFF0C\u4F46 surface() \u4E2D\u672A\u4F7F\u7528`;
-    if (options?.strict) {
+    if (options?.strict && !def.lighting) {
       throw new Error(msg);
     }
     warnings.push(msg);
@@ -9110,7 +9194,19 @@ function buildMaterialFromShader(def, overrides, options) {
     warnings.push("surface() \u8FD4\u56DE\u4E86 opacity\uFF0C\u5EFA\u8BAE\u8BBE\u7F6E transparent: true \u624D\u4F1A\u751F\u6548");
   }
   const isUnlit = def.mode === "unlit";
-  const material = isUnlit ? new MeshBasicNodeMaterial3() : new MeshStandardNodeMaterial();
+  const usesPhysical = def.mode === "physical" || outKeys.some((k) => PHYSICAL_SURFACE_KEYS.has(k));
+  let material;
+  if (isUnlit) {
+    material = new MeshBasicNodeMaterial3();
+  } else if (def.mode === "toon") {
+    material = new MeshToonNodeMaterial();
+  } else if (def.mode === "sss") {
+    material = new MeshSSSNodeMaterial();
+  } else if (usesPhysical) {
+    material = new MeshPhysicalNodeMaterial();
+  } else {
+    material = new MeshStandardNodeMaterial();
+  }
   const baseColorNode = out.baseColor !== void 0 ? out.baseColor : out.color;
   if (baseColorNode !== void 0) {
     ;
@@ -9124,11 +9220,76 @@ function buildMaterialFromShader(def, overrides, options) {
     ;
     material.positionNode = tsl.positionLocal.add(asNode(out.vertexOffset));
   }
-  if (!isUnlit && material instanceof MeshStandardNodeMaterial) {
+  if (!isUnlit) {
     if (out.roughness !== void 0) material.roughnessNode = asNode(out.roughness);
     if (out.metalness !== void 0) material.metalnessNode = asNode(out.metalness);
     if (out.emissive !== void 0) material.emissiveNode = asNode(out.emissive);
     if (out.normal !== void 0) material.normalNode = asNode(out.normal);
+  }
+  if (!isUnlit && material instanceof MeshPhysicalNodeMaterial) {
+    const physMap = [
+      ["clearcoat", "clearcoatNode"],
+      ["clearcoatRoughness", "clearcoatRoughnessNode"],
+      ["clearcoatNormal", "clearcoatNormalNode"],
+      ["transmission", "transmissionNode"],
+      ["ior", "iorNode"],
+      ["thickness", "thicknessNode"],
+      ["attenuationColor", "attenuationColorNode"],
+      ["attenuationDistance", "attenuationDistanceNode"],
+      ["sheen", "sheenNode"],
+      ["sheenRoughness", "sheenRoughnessNode"],
+      ["iridescence", "iridescenceNode"],
+      ["iridescenceIOR", "iridescenceIORNode"],
+      ["iridescenceThickness", "iridescenceThicknessNode"],
+      ["anisotropy", "anisotropyNode"],
+      ["dispersion", "dispersionNode"],
+      ["specularIntensity", "specularIntensityNode"],
+      ["specularColor", "specularColorNode"]
+    ];
+    for (const [key, nodeProp] of physMap) {
+      if (out[key] !== void 0) {
+        ;
+        material[nodeProp] = asNode(out[key]);
+      }
+    }
+  }
+  if (!isUnlit && def.lighting && (typeof def.lighting.direct === "function" || typeof def.lighting.indirect === "function")) {
+    const customLighting = def.lighting;
+    class CustomShaderLightingModel extends PhysicalLightingModel {
+      direct(lightData, builder) {
+        if (typeof customLighting.direct === "function") {
+          const res = customLighting.direct({
+            lightDirection: lightData.lightDirection,
+            lightColor: lightData.lightColor,
+            normal: tsl.normalView,
+            viewDirection: tsl.positionViewDirection,
+            diffuseColor: tsl.diffuseColor,
+            params: trackedParams
+          });
+          applyLightingContribution(lightData.reflectedLight, res, "direct");
+          return;
+        }
+        super.direct(lightData, builder);
+      }
+      indirect(builder) {
+        if (typeof customLighting.indirect === "function") {
+          const res = customLighting.indirect({
+            normal: tsl.normalView,
+            viewDirection: tsl.positionViewDirection,
+            diffuseColor: tsl.diffuseColor,
+            params: trackedParams
+          });
+          const reflectedLight = builder?.context?.reflectedLight;
+          if (reflectedLight) {
+            applyLightingContribution(reflectedLight, res, "indirect");
+          }
+          return;
+        }
+        super.indirect(builder);
+      }
+    }
+    ;
+    material.setupLightingModel = () => new CustomShaderLightingModel();
   }
   if (def.transparent) material.transparent = true;
   if (def.side === "back") material.side = BackSide;
@@ -9147,6 +9308,37 @@ function buildMaterialFromShader(def, overrides, options) {
   return { material, paramValues, uniforms, warnings };
 }
 var compiledShaders = /* @__PURE__ */ new Map();
+var compiledPostEffects = /* @__PURE__ */ new Map();
+var postEffectRevision = 0;
+function getCompiledPostEffect(effectId) {
+  return compiledPostEffects.get(effectId);
+}
+function buildPostEffectNode(effectId, ctx, overrides) {
+  const compiled = compiledPostEffects.get(effectId);
+  if (!compiled?.postEffectDefinition) return ctx.color;
+  if (overrides) {
+    for (const [k, v] of Object.entries(overrides)) {
+      updateCompiledShaderParam(compiled, k, v);
+    }
+  }
+  const runtimeParams = {};
+  for (const [k, v] of Object.entries(compiled.uniforms)) {
+    runtimeParams[k] = v.node;
+  }
+  for (const [k, v] of Object.entries(compiled.paramValues)) {
+    if (!(k in runtimeParams)) runtimeParams[k] = v;
+  }
+  const res = compiled.postEffectDefinition.apply({
+    color: ctx.color,
+    depth: ctx.depth,
+    normal: ctx.normal,
+    uv: ctx.uv,
+    time: tsl.time,
+    deltaTime: tsl.deltaTime,
+    params: runtimeParams
+  });
+  return res !== void 0 ? asNode(res) : ctx.color;
+}
 function updateCompiledShaderParam(compiled, paramName, value) {
   const entry = compiled.uniforms[paramName];
   if (!entry) return false;
@@ -9171,7 +9363,7 @@ function compileShaderSource(id, fileName, source, overrides) {
   const evaluated = evaluateTranspiledModule(fileName, transpiled.jsCode, {
     "t3d/shader": sdk
   });
-  if (!evaluated.ok || !evaluated.exports || typeof evaluated.exports.surface !== "function") {
+  if (!evaluated.ok || !evaluated.exports) {
     return {
       ok: false,
       diagnostics: evaluated.diagnostics.length ? evaluated.diagnostics : [
@@ -9180,18 +9372,90 @@ function compileShaderSource(id, fileName, source, overrides) {
           line: 1,
           column: 1,
           severity: "error",
-          message: "\u7740\u8272\u5668\u5FC5\u987B\u901A\u8FC7 export default defineShader({ ... }) \u5BFC\u51FA",
-          hint: "\u8BF7\u68C0\u67E5\u9ED8\u8BA4\u5BFC\u51FA\u662F\u5426\u5305\u542B name\u3001params \u548C surface \u51FD\u6570"
+          message: "\u7740\u8272\u5668\u5FC5\u987B\u901A\u8FC7 export default defineShader({ ... }) \u6216 definePostEffect({ ... }) \u5BFC\u51FA",
+          hint: "\u8BF7\u68C0\u67E5\u9ED8\u8BA4\u5BFC\u51FA\u662F\u5426\u5305\u542B name\u3001params \u548C surface/apply \u51FD\u6570"
         }
       ]
     };
   }
+  const rawExports = evaluated.exports;
+  if (rawExports.__t3dPostEffect && typeof rawExports.apply === "function") {
+    const postDef = evaluated.exports;
+    try {
+      const paramValues = {};
+      const uniforms = {};
+      for (const [key, schema] of Object.entries(postDef.params ?? {})) {
+        const val = overrides && key in overrides ? overrides[key] : defaultForSchema(schema);
+        paramValues[key] = val;
+        const built = paramToNode(schema, val);
+        if (built.uniformEntry) uniforms[key] = built.uniformEntry;
+      }
+      const compatDef = {
+        name: postDef.name,
+        description: postDef.description,
+        mode: "unlit",
+        params: postDef.params ?? {},
+        surface: () => ({ baseColor: tsl.vec3(1, 1, 1) })
+      };
+      const compiled = {
+        id,
+        file: fileName,
+        kind: "postEffect",
+        definition: compatDef,
+        postEffectDefinition: postDef,
+        material: new MeshBasicNodeMaterial3(),
+        paramValues,
+        uniforms
+      };
+      compiledPostEffects.set(id, compiled);
+      compiledShaders.set(id, compiled);
+      postEffectRevision += 1;
+      return {
+        ok: true,
+        diagnostics: transpiled.diagnostics,
+        jsCode: transpiled.jsCode,
+        exports: compiled
+      };
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      return {
+        ok: false,
+        diagnostics: [
+          {
+            file: fileName,
+            line: 1,
+            column: 1,
+            severity: "error",
+            message: `TSL \u540E\u671F\u7279\u6548\u6784\u5EFA\u5931\u8D25\uFF1A${msg}`,
+            hint: "\u8BF7\u68C0\u67E5 apply() \u53C2\u6570\u4E0E\u8FD4\u56DE\u8282\u70B9"
+          }
+        ]
+      };
+    }
+  }
+  if (typeof rawExports.surface !== "function") {
+    return {
+      ok: false,
+      diagnostics: [
+        {
+          file: fileName,
+          line: 1,
+          column: 1,
+          severity: "error",
+          message: "\u7740\u8272\u5668\u5FC5\u987B\u901A\u8FC7 export default defineShader({ ... }) \u6216 definePostEffect({ ... }) \u5BFC\u51FA",
+          hint: "\u8BF7\u68C0\u67E5\u9ED8\u8BA4\u5BFC\u51FA\u662F\u5426\u5305\u542B name\u3001params \u548C surface/apply \u51FD\u6570"
+        }
+      ]
+    };
+  }
+  const shaderDef = evaluated.exports;
   try {
-    const { material, paramValues, uniforms } = buildMaterialFromShader(evaluated.exports, overrides, { strict: true });
+    const { material, paramValues, uniforms } = buildMaterialFromShader(shaderDef, overrides, { strict: true });
     const compiled = {
       id,
       file: fileName,
-      definition: evaluated.exports,
+      kind: "shader",
+      definition: shaderDef,
       material,
       paramValues,
       uniforms
@@ -11635,4 +11899,95 @@ test("\u8FD0\u884C\u65F6\u62A5\u9519\u5E26\u9636\u6BB5/\u811A\u672C/\u8282\u70B9
   assert.ok(errorLogs[0].includes("boom_test"));
   assert.ok(errorLogs[0].includes("scripts/thrower.ts"));
   clearScriptRuntimeState();
+});
+test("compileShaderSource \u652F\u6301 physical \u6269\u5C55\u6750\u8D28\u3001\u81EA\u5B9A\u4E49\u5149\u7167\u6A21\u578B\u4E0E definePostEffect \u540E\u671F\u94FE", () => {
+  const physRes = compileShaderSource(
+    "phys_glass",
+    "shaders/phys_glass.shader.ts",
+    `
+    import { defineShader, color } from 't3d/shader'
+    export default defineShader({
+      name: 'PhysGlass',
+      mode: 'physical',
+      params: {
+        tint: { type: 'color', default: '#aaddff', label: '\u989C\u8272' },
+        coat: { type: 'number', default: 0.9, label: '\u6E05\u6F06' },
+      },
+      surface(p) {
+        return {
+          baseColor: p.tint,
+          roughness: 0.08,
+          transmission: 0.95,
+          ior: 1.5,
+          clearcoat: p.coat,
+          iridescence: 0.4,
+        }
+      },
+    })
+    `
+  );
+  assert.equal(physRes.ok, true, JSON.stringify(physRes.diagnostics));
+  const physMat = physRes.exports?.material;
+  assert.ok(physMat.clearcoatNode);
+  assert.ok(physMat.transmissionNode);
+  assert.ok(physMat.iorNode);
+  assert.ok(physMat.iridescenceNode);
+  const toonRes = compileShaderSource(
+    "toon_custom",
+    "shaders/toon_custom.shader.ts",
+    `
+    import { defineShader, color, step, dot } from 't3d/shader'
+    export default defineShader({
+      name: 'ToonCustom',
+      mode: 'toon',
+      params: {
+        base: { type: 'color', default: '#ffaa66', label: '\u57FA\u7840\u8272' },
+        cutoff: { type: 'number', default: 0.3, label: '\u8272\u9636\u9608\u503C' },
+      },
+      surface(p) {
+        return { baseColor: p.base }
+      },
+      lighting: {
+        direct(ctx) {
+          const ndl = dot(ctx.normal, ctx.lightDirection)
+          const band = step(ctx.params.cutoff, ndl)
+          return ctx.diffuseColor.mul(ctx.lightColor).mul(band.mul(0.7).add(0.3))
+        },
+      },
+    })
+    `
+  );
+  assert.equal(toonRes.ok, true, JSON.stringify(toonRes.diagnostics));
+  const toonMat = toonRes.exports?.material;
+  assert.equal(typeof toonMat.setupLightingModel, "function");
+  const postRes = compileShaderSource(
+    "vignette_fx",
+    "shaders/vignette_fx.shader.ts",
+    `
+    import { definePostEffect, vec4, smoothstep, distance, vec2, float, mix } from 't3d/shader'
+    export default definePostEffect({
+      name: 'Vignette',
+      params: {
+        strength: { type: 'number', default: 0.5, label: '\u6697\u89D2\u5F3A\u5EA6' },
+      },
+      apply(ctx) {
+        const d = distance(ctx.uv, vec2(0.5, 0.5))
+        const mask = mix(float(1), ctx.params.strength.oneMinus(), smoothstep(0.2, 0.8, d))
+        return vec4(ctx.color.rgb.mul(mask), ctx.color.a)
+      },
+    })
+    `
+  );
+  assert.equal(postRes.ok, true, JSON.stringify(postRes.diagnostics));
+  assert.ok(getCompiledPostEffect("vignette_fx"));
+  assert.equal(setCompiledShaderParam("vignette_fx", "strength", 0.8), true);
+  assert.equal(getCompiledShaderParam("vignette_fx", "strength"), 0.8);
+  const fakeNode = { rgb: { mul: () => ({}) }, a: {} };
+  const outNode = buildPostEffectNode("vignette_fx", {
+    color: fakeNode,
+    depth: fakeNode,
+    normal: fakeNode,
+    uv: { x: 0.5, y: 0.5 }
+  });
+  assert.ok(outNode);
 });

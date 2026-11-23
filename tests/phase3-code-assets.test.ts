@@ -3,7 +3,13 @@ import test from 'node:test'
 import { Group } from 'three'
 import { checkAndTranspileTs } from '../src/core/codeAssets/compiler'
 import { clearScriptRuntimeState, compileAndRegisterScript } from '../src/core/codeAssets/scriptRuntime'
-import { compileShaderSource, getCompiledShaderParam, setCompiledShaderParam } from '../src/core/codeAssets/shaderRuntime'
+import {
+  buildPostEffectNode,
+  compileShaderSource,
+  getCompiledPostEffect,
+  getCompiledShaderParam,
+  setCompiledShaderParam,
+} from '../src/core/codeAssets/shaderRuntime'
 import { RUNTIME_DTS_SUMMARY } from '../src/core/codeAssets/typeDefs'
 import { stepSceneRuntime, type SceneRuntimeHost } from '../src/runtime/sceneRuntime'
 import { setRuntimeWorld, type RuntimeWorld } from '../src/runtime/world'
@@ -282,4 +288,98 @@ test('运行时报错带阶段/脚本/节点/堆栈信息且同错误自动去�
   assert.ok(errorLogs[0].includes('boom_test'))
   assert.ok(errorLogs[0].includes('scripts/thrower.ts'))
   clearScriptRuntimeState()
+})
+
+test('compileShaderSource 支持 physical 扩展材质、自定义光照模型与 definePostEffect 后期链', () => {
+  const physRes = compileShaderSource(
+    'phys_glass',
+    'shaders/phys_glass.shader.ts',
+    `
+    import { defineShader, color } from 't3d/shader'
+    export default defineShader({
+      name: 'PhysGlass',
+      mode: 'physical',
+      params: {
+        tint: { type: 'color', default: '#aaddff', label: '颜色' },
+        coat: { type: 'number', default: 0.9, label: '清漆' },
+      },
+      surface(p) {
+        return {
+          baseColor: p.tint,
+          roughness: 0.08,
+          transmission: 0.95,
+          ior: 1.5,
+          clearcoat: p.coat,
+          iridescence: 0.4,
+        }
+      },
+    })
+    `,
+  )
+  assert.equal(physRes.ok, true, JSON.stringify(physRes.diagnostics))
+  const physMat = physRes.exports?.material as unknown as Record<string, unknown>
+  assert.ok(physMat.clearcoatNode)
+  assert.ok(physMat.transmissionNode)
+  assert.ok(physMat.iorNode)
+  assert.ok(physMat.iridescenceNode)
+
+  const toonRes = compileShaderSource(
+    'toon_custom',
+    'shaders/toon_custom.shader.ts',
+    `
+    import { defineShader, color, step, dot } from 't3d/shader'
+    export default defineShader({
+      name: 'ToonCustom',
+      mode: 'toon',
+      params: {
+        base: { type: 'color', default: '#ffaa66', label: '基础色' },
+        cutoff: { type: 'number', default: 0.3, label: '色阶阈值' },
+      },
+      surface(p) {
+        return { baseColor: p.base }
+      },
+      lighting: {
+        direct(ctx) {
+          const ndl = dot(ctx.normal, ctx.lightDirection)
+          const band = step(ctx.params.cutoff, ndl)
+          return ctx.diffuseColor.mul(ctx.lightColor).mul(band.mul(0.7).add(0.3))
+        },
+      },
+    })
+    `,
+  )
+  assert.equal(toonRes.ok, true, JSON.stringify(toonRes.diagnostics))
+  const toonMat = toonRes.exports?.material as unknown as { setupLightingModel?: () => unknown }
+  assert.equal(typeof toonMat.setupLightingModel, 'function')
+
+  const postRes = compileShaderSource(
+    'vignette_fx',
+    'shaders/vignette_fx.shader.ts',
+    `
+    import { definePostEffect, vec4, smoothstep, distance, vec2, float, mix } from 't3d/shader'
+    export default definePostEffect({
+      name: 'Vignette',
+      params: {
+        strength: { type: 'number', default: 0.5, label: '暗角强度' },
+      },
+      apply(ctx) {
+        const d = distance(ctx.uv, vec2(0.5, 0.5))
+        const mask = mix(float(1), ctx.params.strength.oneMinus(), smoothstep(0.2, 0.8, d))
+        return vec4(ctx.color.rgb.mul(mask), ctx.color.a)
+      },
+    })
+    `,
+  )
+  assert.equal(postRes.ok, true, JSON.stringify(postRes.diagnostics))
+  assert.ok(getCompiledPostEffect('vignette_fx'))
+  assert.equal(setCompiledShaderParam('vignette_fx', 'strength', 0.8), true)
+  assert.equal(getCompiledShaderParam('vignette_fx', 'strength'), 0.8)
+  const fakeNode = { rgb: { mul: () => ({}) }, a: {} }
+  const outNode = buildPostEffectNode('vignette_fx', {
+    color: fakeNode,
+    depth: fakeNode,
+    normal: fakeNode,
+    uv: { x: 0.5, y: 0.5 },
+  })
+  assert.ok(outNode)
 })

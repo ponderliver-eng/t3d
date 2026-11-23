@@ -146,14 +146,14 @@ const setPictureCapabilityCmd: CommandDef<SetPictureCapabilityParams, { capabili
     },
   },
   run(_ctx, p) {
-    if (p.capabilityId !== 'sky') {
+    if (p.capabilityId !== 'sky' && p.capabilityId !== 'postEffects') {
       return {
         ok: false,
         code: 'capability.notPictureScoped',
         message: `"${p.capabilityId}" 不是场景画面级（picture.capabilities）能力包，写入这里不会生效`,
         hint: p.capabilityId === 'water' || p.capabilityId === 'buoyancy' || p.capabilityId === 'physics' || p.capabilityId === 'particles' || p.capabilityId === 'navigation'
           ? `请改用 capability.setNodeData({ nodeId, capabilityId: "${p.capabilityId}", patch }) 挂载到具体节点上`
-          : '当前仅 sky 为场景画面级（picture.capabilities.sky）能力包',
+          : '当前仅 sky 与 postEffects 为场景画面级（picture.capabilities）能力包',
       }
     }
     const state = useEditorStore.getState()

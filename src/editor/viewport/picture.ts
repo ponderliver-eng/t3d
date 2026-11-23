@@ -1,6 +1,6 @@
 import { Color, UnsignedByteType, Vector3, type Camera, type Object3D, type Scene, type WebGPURenderer } from 'three/webgpu'
 import { RenderPipeline } from 'three/webgpu'
-import { abs, clamp, diffuseColor, exp, float, hue, max, metalness, mix, mrt, normalView, output, packNormalToRGB, pass, roughness, sample, saturation, smoothstep, uniform, unpackRGBToNormal, vec3, vec4 } from 'three/tsl'
+import { abs, clamp, diffuseColor, exp, float, hue, max, metalness, mix, mrt, normalView, output, packNormalToRGB, pass, roughness, sample, saturation, screenUV, smoothstep, uniform, unpackRGBToNormal, vec3, vec4 } from 'three/tsl'
 import { useEditorStore } from '../scene/store'
 import { bloom } from 'three/addons/tsl/display/BloomNode.js'
 import { ssao } from 'three/addons/tsl/display/SSAONode.js'
@@ -13,6 +13,32 @@ import type { ScenePicture } from '../scene/types'
 import { SelectionOutlineNode } from './selectionOutline'
 import { composeSkyFog, skyFogActive, skyFogRevision } from '../../capabilities/sky/session'
 import { anyUnderwaterEffectEnabled, sampleUnderwaterView } from '../../capabilities/water/session'
+import { buildPostEffectNode, getCompiledPostEffect, getPostEffectRevision, setCompiledShaderParam } from '../../core/codeAssets/shaderRuntime'
+
+interface CustomPostEffectEntry {
+  id: string
+  params?: Record<string, unknown>
+}
+
+function readCustomPostEffects(picture: ScenePicture): CustomPostEffectEntry[] {
+  const raw = picture.capabilities?.postEffects
+  if (!raw) return []
+  const list = Array.isArray(raw) ? raw : Array.isArray((raw as { items?: unknown }).items) ? (raw as { items: unknown[] }).items : []
+  const result: CustomPostEffectEntry[] = []
+  for (const item of list) {
+    if (!item || typeof item !== 'object') continue
+    const rec = item as { id?: unknown; enabled?: unknown; params?: unknown }
+    if (rec.enabled === false) continue
+    if (typeof rec.id !== 'string' || !rec.id.trim()) continue
+    const id = rec.id.trim()
+    if (!getCompiledPostEffect(id)) continue
+    result.push({
+      id,
+      params: rec.params && typeof rec.params === 'object' ? (rec.params as Record<string, unknown>) : undefined,
+    })
+  }
+  return result
+}
 
 interface BloomUniforms {
   strength: { value: number }
@@ -68,12 +94,14 @@ export class ScenePicturePipeline {
   constructor(private readonly renderer: WebGPURenderer) {}
 
   usesEffects(picture: ScenePicture, hasOutline = false): boolean {
-    return hasOutline || picture.bloom || picture.ssr || picture.ssgi || picture.aa !== false || picture.ao || picture.dof || picture.hue !== 0 || picture.saturation !== 1 || skyFogActive() || anyUnderwaterEffectEnabled()
+    return hasOutline || picture.bloom || picture.ssr || picture.ssgi || picture.aa !== false || picture.ao || picture.dof || picture.hue !== 0 || picture.saturation !== 1 || skyFogActive() || anyUnderwaterEffectEnabled() || readCustomPostEffects(picture).length > 0
   }
 
   render(scene: Scene, camera: Camera, picture: ScenePicture, width: number, height: number, outlineTargets: readonly Object3D[] = [], flashTarget: Object3D | null = null) {
     const underwaterEnabled = anyUnderwaterEffectEnabled()
-    const key = [camera.uuid, picture.toneMapping, picture.bloom, picture.ssr, picture.ssgi, picture.ssgi && picture.ssgiDenoise, picture.aa !== false, picture.ao, picture.dof, picture.hue !== 0 || picture.saturation !== 1, skyFogRevision(), underwaterEnabled, width, height].join('|')
+    const customPosts = readCustomPostEffects(picture)
+    const customPostKey = customPosts.length > 0 ? `${getPostEffectRevision()}:${customPosts.map((p) => p.id).join(',')}` : ''
+    const key = [camera.uuid, picture.toneMapping, picture.bloom, picture.ssr, picture.ssgi, picture.ssgi && picture.ssgiDenoise, picture.aa !== false, picture.ao, picture.dof, picture.hue !== 0 || picture.saturation !== 1, skyFogRevision(), underwaterEnabled, customPostKey, width, height].join('|')
     if (this.failed && this.key === key) {
       this.renderer.render(scene, camera)
       return
@@ -121,6 +149,12 @@ export class ScenePicturePipeline {
         this.underwaterNode.color.value.set(underwater.color)
       } else {
         this.underwaterNode.weight.value = 0
+      }
+    }
+    for (const post of customPosts) {
+      if (!post.params) continue
+      for (const [k, v] of Object.entries(post.params)) {
+        setCompiledShaderParam(post.id, k, v)
       }
     }
     try {
@@ -258,9 +292,31 @@ export class ScenePicturePipeline {
     } else {
       this.underwaterNode = null
     }
-    const graded = picture.hue !== 0 || picture.saturation !== 1
+    let graded = picture.hue !== 0 || picture.saturation !== 1
       ? vec4(saturation(hue(current.rgb as never, picture.hue), picture.saturation), current.a as never)
       : current
+    const customPosts = readCustomPostEffects(picture)
+    if (customPosts.length > 0) {
+      const postDepth = scenePass.getViewZNode()
+      const postNormal = normalNode ?? sceneNormal(scenePass, picture.ssr)
+      for (const post of customPosts) {
+        try {
+          const next = buildPostEffectNode(
+            post.id,
+            {
+              color: graded,
+              depth: postDepth,
+              normal: postNormal,
+              uv: screenUV,
+            },
+            post.params,
+          )
+          if (next) graded = next as typeof graded
+        } catch (err) {
+          console.warn(`[T3D PostEffect] ${post.id} 构建失败，已跳过:`, err)
+        }
+      }
+    }
     const outlinePass = new SelectionOutlineNode(scene, camera)
     this.outlineNode = outlinePass
     const outlineSample = (outlinePass as unknown as { rgb: unknown, a: unknown })
