@@ -1,4 +1,5 @@
 import { ChevronDown, ChevronRight, Plus, Trash2 } from 'lucide-react'
+import { useSyncExternalStore } from 'react'
 import { CardReset } from '../../editor/panels/CardReset'
 import { useInspectorCardOpen } from '../../editor/panels/inspectorMemory'
 import { useI18n } from '../../editor/i18n'
@@ -10,10 +11,12 @@ import {
   SPLINE_PATH_CAPABILITY_ID,
   type SplinePathData,
 } from './schema'
+import { getActiveSplinePoints, setActiveSplinePoint, setActiveSplinePoints, subscribeActiveSplinePoint } from '../../editor/viewport/splineGizmo'
 
 export function SplinePathCard({ node, disabled }: { node: SceneNode; disabled: boolean }) {
   const { t } = useI18n()
   const [open, setOpen] = useInspectorCardOpen(SPLINE_PATH_CAPABILITY_ID)
+  const activePoints = useSyncExternalStore(subscribeActiveSplinePoint, getActiveSplinePoints)
   if (node.kind !== 'spline') return null
   const data = normalizeSplinePath(node.capabilities?.[SPLINE_PATH_CAPABILITY_ID])
 
@@ -58,6 +61,13 @@ export function SplinePathCard({ node, disabled }: { node: SceneNode; disabled: 
 
   const removePoint = (idx: number) => {
     if (data.points.length <= 2) return
+    const next = getActiveSplinePoints().flatMap(point => {
+      if (point.id !== node.id) return [point]
+      if (point.index === idx) return []
+      if (point.index > idx) return [{ id: node.id, index: point.index - 1 }]
+      return [point]
+    })
+    setActiveSplinePoints(next)
     commit({ ...data, points: data.points.filter((_, i) => i !== idx) })
   }
 
@@ -134,11 +144,17 @@ export function SplinePathCard({ node, disabled }: { node: SceneNode; disabled: 
             {data.points.map((pt, idx) => (
               <div
                 key={idx}
+                onClick={() => {
+                  if (!disabled) setActiveSplinePoint({ id: node.id, index: idx })
+                }}
                 style={{
                   display: 'grid',
                   gridTemplateColumns: '24px 1fr 1fr 1fr 22px',
                   gap: 4,
                   alignItems: 'center',
+                  borderRadius: 4,
+                  outline: activePoints.some(point => point.id === node.id && point.index === idx) ? '1px solid rgba(248, 250, 252, 0.7)' : 'none',
+                  cursor: disabled ? 'default' : 'pointer',
                 }}
               >
                 <span style={{ fontSize: 11, color: idx === 0 ? '#fbbf24' : '#94a3b8' }}>#{idx}</span>

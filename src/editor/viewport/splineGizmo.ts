@@ -8,6 +8,8 @@ import {
   Mesh,
   MeshBasicMaterial,
   Object3D,
+  OrthographicCamera,
+  PerspectiveCamera,
   SphereGeometry,
   Vector3,
 } from 'three'
@@ -15,6 +17,11 @@ import { normalizeSplinePath, SPLINE_PATH_CAPABILITY_ID, type SplinePathData } f
 import { createSplinePath } from '../../runtime/motion'
 import type { SceneNode } from '../scene/types'
 import { EDITOR_HELPER_LAYER } from '../project/taxonomy'
+
+export interface SplinePointRef {
+  id: string
+  index: number
+}
 
 export interface SplineGizmoState {
   group: Group
@@ -24,6 +31,34 @@ export interface SplineGizmoState {
   pickTargets: Object3D[]
   signature: string
   selected: boolean
+  activeIndices: number[]
+}
+
+const HANDLE_RADIUS = 0.16
+let activeSplinePoints: SplinePointRef[] = []
+const activeSplineListeners = new Set<() => void>()
+
+export function getActiveSplinePoints(): readonly SplinePointRef[] {
+  return activeSplinePoints
+}
+
+export function getActiveSplinePoint(): SplinePointRef | null {
+  return activeSplinePoints[0] ?? null
+}
+
+export function setActiveSplinePoints(next: readonly SplinePointRef[]) {
+  if (next.length === activeSplinePoints.length && next.every((point, index) => point.id === activeSplinePoints[index]?.id && point.index === activeSplinePoints[index]?.index)) return
+  activeSplinePoints = next.slice()
+  for (const listener of activeSplineListeners) listener()
+}
+
+export function setActiveSplinePoint(next: SplinePointRef | null) {
+  setActiveSplinePoints(next ? [next] : [])
+}
+
+export function subscribeActiveSplinePoint(listener: () => void) {
+  activeSplineListeners.add(listener)
+  return () => { activeSplineListeners.delete(listener) }
 }
 
 function markSplineHelper(obj: Object3D, nodeId: string, pointIndex?: number) {
@@ -35,13 +70,12 @@ function markSplineHelper(obj: Object3D, nodeId: string, pointIndex?: number) {
   }
 }
 
-function buildSignature(data: SplinePathData, selected: boolean): string {
+function buildSignature(data: SplinePathData, selected: boolean, activeIndices: number[]): string {
   const pts = data.points.map((p) => `${p[0].toFixed(3)},${p[1].toFixed(3)},${p[2].toFixed(3)}`).join(';')
-  return `${selected ? '1' : '0'}|${data.closed ? '1' : '0'}|${data.tension.toFixed(3)}|${data.color}|${pts}`
+  return `${selected ? '1' : '0'}|${activeIndices.join(',')}|${data.closed ? '1' : '0'}|${data.tension.toFixed(3)}|${data.color}|${pts}`
 }
 
-const SHARED_HANDLE_GEO = new SphereGeometry(0.14, 14, 10)
-const SHARED_START_GEO = new SphereGeometry(0.18, 14, 10)
+const SHARED_HANDLE_GEO = new SphereGeometry(HANDLE_RADIUS, 16, 12)
 
 export function createSplineGizmo(node: SceneNode): SplineGizmoState {
   const group = new Group()
@@ -79,17 +113,20 @@ export function createSplineGizmo(node: SceneNode): SplineGizmoState {
     pickTargets: [curveLine],
     signature: '',
     selected: false,
+    activeIndices: [],
   }
   syncSplineGizmo(state, node, false)
   return state
 }
 
-export function syncSplineGizmo(state: SplineGizmoState, node: SceneNode, selected: boolean) {
+export function syncSplineGizmo(state: SplineGizmoState, node: SceneNode, selected: boolean, activeIndices: readonly number[] = []) {
   const data = normalizeSplinePath(node.capabilities?.[SPLINE_PATH_CAPABILITY_ID])
-  const sig = buildSignature(data, selected)
+  const picked = [...new Set(activeIndices.filter(index => index >= 0 && index < data.points.length))].sort((a, b) => a - b)
+  const sig = buildSignature(data, selected, picked)
   if (state.signature === sig) return
   state.signature = sig
   state.selected = selected
+  state.activeIndices = picked
 
   const curveMat = state.curveLine.material as LineBasicMaterial
   curveMat.color.set(data.color || '#34d399')
@@ -126,19 +163,22 @@ export function syncSplineGizmo(state: SplineGizmoState, node: SceneNode, select
     state.hullLine.computeLineDistances()
   }
 
-  // 3. 控制点拖拽球体手柄
-  const needCount = selected ? data.points.length : Math.min(1, data.points.length)
+  // 3. 每个控制点一个可拾取球体。未选中时也保留，方便直接点中。
+  const needCount = data.points.length
   while (state.handles.length < needCount) {
     const idx = state.handles.length
-    const isStart = idx === 0
     const mat = new MeshBasicMaterial({
-      color: isStart ? '#fbbf24' : '#34d399',
+      color: '#34d399',
       depthTest: false,
+      depthWrite: false,
       transparent: true,
       opacity: 0.95,
+      toneMapped: false,
+      fog: false,
     })
-    const mesh = new Mesh(isStart ? SHARED_START_GEO : SHARED_HANDLE_GEO, mat)
+    const mesh = new Mesh(SHARED_HANDLE_GEO, mat)
     mesh.renderOrder = 30
+    mesh.frustumCulled = false
     markSplineHelper(mesh, node.id, idx)
     state.group.add(mesh)
     state.handles.push(mesh)
@@ -156,10 +196,43 @@ export function syncSplineGizmo(state: SplineGizmoState, node: SceneNode, select
     handle.visible = true
     handle.position.set(p[0], p[1], p[2])
     const mat = handle.material as MeshBasicMaterial
-    mat.color.set(i === 0 ? '#fbbf24' : data.color || '#34d399')
+    const active = picked.includes(i)
+    mat.color.set(active ? '#f8fafc' : i === 0 ? '#fbbf24' : data.color || '#34d399')
+    mat.opacity = selected ? 1 : 0.82
     markSplineHelper(handle, node.id, i)
-    if (selected) state.pickTargets.push(handle)
+    state.pickTargets.push(handle)
   }
+}
+
+const handleWorld = new Vector3()
+const handleScale = new Vector3()
+
+/** 按屏幕像素保持手柄大小，远近都能点中。 */
+export function layoutSplineHandles(state: SplineGizmoState, camera: PerspectiveCamera | OrthographicCamera, viewportHeight: number) {
+  const pixels = 5.5
+  for (const handle of state.handles) {
+    if (!handle.visible) continue
+    handle.getWorldPosition(handleWorld)
+    const distance = Math.max(camera.position.distanceTo(handleWorld), 0.25)
+    let radius: number
+    if (camera instanceof PerspectiveCamera) {
+      const fov = camera.fov * Math.PI / 180
+      radius = (2 * Math.tan(fov / 2) * distance * pixels) / Math.max(viewportHeight, 1)
+    } else {
+      const span = (camera.top - camera.bottom) / Math.max(camera.zoom, 0.0001)
+      radius = (span * pixels) / Math.max(viewportHeight, 1)
+    }
+    const parentScale = handle.parent?.getWorldScale(handleScale).x || 1
+    const active = state.activeIndices.includes(handle.userData.splinePointIndex as number)
+    const next = Math.max(radius, 0.02) / (HANDLE_RADIUS * parentScale) * (active ? 1.28 : 1)
+    handle.scale.setScalar(next)
+  }
+}
+
+export function restoreSplineHelperLayers(state: SplineGizmoState) {
+  state.group.traverse(obj => {
+    obj.layers.set(EDITOR_HELPER_LAYER)
+  })
 }
 
 export function disposeSplineGizmo(state: SplineGizmoState) {

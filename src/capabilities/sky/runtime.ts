@@ -31,6 +31,8 @@ class SkyRuntime {
   private hazeOn = false
   private fogOn = false
   private apKey = ''
+  private apFrame = 0
+  private apWarned = false
   private readonly applyFogNode = (colorNode: unknown, scenePass: unknown) => {
     let node = colorNode
     if (this.hazeOn && this.sky.aerialPerspectiveTexture) {
@@ -120,7 +122,7 @@ class SkyRuntime {
       const nextApKey = `${e[0].toFixed(3)},${e[4].toFixed(3)},${e[8].toFixed(3)},${e[12].toFixed(2)},${e[13].toFixed(2)},${e[14].toFixed(2)}|${settings.timeOfDay}|${settings.latitude}|${settings.dayOfYear}|${settings.north}|${settings.turbidity}|${settings.groundAlbedo}`
       if (nextApKey !== this.apKey) {
         this.apKey = nextApKey
-        void this.sky.updateAerialPerspective()
+        this.scheduleAerialPerspective()
       }
     } else {
       this.apKey = ''
@@ -134,7 +136,21 @@ class SkyRuntime {
     })
   }
 
+  private scheduleAerialPerspective() {
+    if (this.apFrame) return
+    this.apFrame = requestAnimationFrame(() => {
+      this.apFrame = 0
+      void this.sky.updateAerialPerspective().catch((error: unknown) => {
+        if (this.apWarned) return
+        this.apWarned = true
+        console.warn('[sky] 大气透视更新失败', error)
+      })
+    })
+  }
+
   dispose() {
+    if (this.apFrame) cancelAnimationFrame(this.apFrame)
+    this.apFrame = 0
     this.starToken += 1
     this.starsWanted = false
     if (this.starsReady) this.sky.disableStars()

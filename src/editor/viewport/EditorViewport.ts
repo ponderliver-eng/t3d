@@ -63,7 +63,7 @@ import { SKY_CAPABILITY_ID } from '../../capabilities/sky/defaults'
 import { collectNavSurfaces } from '../../capabilities/navigation/collect'
 import { syncNavDebug } from '../../capabilities/navigation/debug'
 import { normalizeSplinePath, SPLINE_PATH_CAPABILITY_ID } from '../../capabilities/spline/schema'
-import { createSplineGizmo, disposeSplineGizmo, splinePointWorldPosition, syncSplineGizmo, type SplineGizmoState } from './splineGizmo'
+import { createSplineGizmo, disposeSplineGizmo, getActiveSplinePoints, layoutSplineHandles, restoreSplineHelperLayers, setActiveSplinePoint, setActiveSplinePoints, splinePointWorldPosition, subscribeActiveSplinePoint, syncSplineGizmo, type SplineGizmoState, type SplinePointRef } from './splineGizmo'
 import { consumeNavBake, navDebugGeometry } from '../../capabilities/navigation/session'
 import { beginFrameCosts, measureCost, takeCostAverages } from '../../runtime/frameProfile'
 import { stepSceneRuntime, type SceneRuntimeHost } from '../../runtime/sceneRuntime'
@@ -168,6 +168,7 @@ export class EditorViewport {
   private partFlashTimer = 0
   private lastFlashNonce = 0
   private unsubInspectorMemory: () => void
+  private unsubSplinePoint: () => void
   private unregisterViewportBridge: (() => void) | null = null
   private ignoreDoubleClick = false
   private selectionKey = ''
@@ -185,6 +186,10 @@ export class EditorViewport {
   private deviceDrag: { id: string, role: DeviceHandleRole } | null = null
   private scriptGizmoDrag: ScriptGizmoHandleMeta | null = null
   private splineDrag: { id: string, pointIndex: number } | null = null
+  private splinePointAttached = false
+  private splinePointBases: { index: number, world: Vector3 }[] = []
+  private readonly splineProxyOrigin = new Vector3()
+  private syncing = false
   private deviceGesture = false
   private marquee: HTMLDivElement | null = null
   private centerAttached = false
@@ -374,6 +379,11 @@ export class EditorViewport {
     this.unsubscribe = useEditorStore.subscribe(() => this.onStore())
     this.unsubscribeAssets = useAssetStore.subscribe(() => this.onStore())
     this.unsubscribeCodeAssets = useCodeAssetStore.subscribe(() => this.onStore())
+    this.unsubSplinePoint = subscribeActiveSplinePoint(() => {
+      if (this.syncing || this.splineDrag || this.driving) return
+      this.attachKey = ''
+      this.sync()
+    })
     this.unsubInspectorMemory = useInspectorMemory.subscribe(state => {
       const req = state.partFlashRequest
       if (!req || req.nonce === this.lastFlashNonce) return
@@ -503,6 +513,8 @@ export class EditorViewport {
     this.unsubscribeAssets()
     this.unsubscribeCodeAssets()
     this.unsubInspectorMemory()
+    this.unsubSplinePoint()
+    setActiveSplinePoint(null)
     this.resizeObserver.disconnect()
     setSpawnProvider(() => [0, 0, 0])
     setGroundSnapper(null)
@@ -572,7 +584,17 @@ export class EditorViewport {
   }
 
   private sync() {
+    this.syncing = true
+    try {
+      this.syncScene()
+    } finally {
+      this.syncing = false
+    }
+  }
+
+  private syncScene() {
     const state = useEditorStore.getState()
+    this.reconcileSplinePoint(state.nodes, state.selection, state.playState)
     syncCapabilityRuntimes(state.capabilities)
     const assetRevision = useAssetStore.getState().revision
     const codeRevision = useCodeAssetStore.getState().revision
@@ -621,12 +643,13 @@ export class EditorViewport {
       const layerBit = layerBitIndex(node.renderLayerId, state.layers)
       group.visible = node.visible && (state.editorCullingMask & (1 << layerBit)) !== 0
       const splineSelected = editing && state.selection.includes(id)
+      const splineActiveKey = getActiveSplinePoints().filter(point => point.id === id).map(point => point.index).join(',')
       const viewDirty = nodeChanged
         || data.syncedAssetRevision !== assetRevision
         || data.syncedCodeRevision !== codeRevision
         || data.syncedEditing !== editing
         || data.syncedHelpers !== helpers
-        || (data.splineGizmo !== undefined && data.splineGizmo.selected !== splineSelected)
+        || (data.splineGizmo !== undefined && (data.splineGizmo.selected !== splineSelected || data.splineGizmo.activeIndices.join(',') !== splineActiveKey))
       if (viewDirty) {
         this.updateView(group, node, editing)
         data.syncedNode = node
@@ -639,6 +662,7 @@ export class EditorViewport {
         applyNodeLayers(group, layerBit)
         data.syncedLayerBit = layerBit
       }
+      if (data.splineGizmo) restoreSplineHelperLayers(data.splineGizmo)
     }
 
     this.pickables.length = 0
@@ -653,7 +677,7 @@ export class EditorViewport {
     this.raycaster.layers.mask = this.rig.persp.layers.mask
     this.grid.visible = state.gridVisible && state.playState === 'stopped'
     this.placeGrid()
-    this.transform.mode = state.gizmoMode
+    this.transform.mode = this.splinePointsForGizmo(state.nodes, state.selection).length > 0 ? 'translate' : state.gizmoMode
     this.transform.space = state.gizmoSpace
     this.transform.translationSnap = state.snap ? state.snapStep : null
     this.transform.rotationSnap = state.snap ? 15 * DEG : null
@@ -673,6 +697,7 @@ export class EditorViewport {
       state.gizmoSpace,
       state.gizmoOrigin,
       state.playState,
+      this.splinePointKey(state.nodes, state.selection),
     ].join('|')
     if (!this.driving && attachKey !== this.attachKey) {
       this.attachKey = attachKey
@@ -816,8 +841,10 @@ export class EditorViewport {
     }
     if (data.splineGizmo) {
       const selected = editing && useEditorStore.getState().selection.includes(node.id)
+      const indices = getActiveSplinePoints().filter(point => point.id === node.id).map(point => point.index)
       data.splineGizmo.group.visible = showHelpers
-      syncSplineGizmo(data.splineGizmo, node, selected)
+      syncSplineGizmo(data.splineGizmo, node, selected, indices)
+      restoreSplineHelperLayers(data.splineGizmo)
     }
     if (data.pick && data.pick !== data.guide?.icon && data.pick !== data.splineGizmo?.curveLine && !isMesh(node.kind) && node.kind !== 'model') data.pick.visible = showHelpers
     const pickMesh = data.pick as Mesh | undefined
@@ -886,10 +913,68 @@ export class EditorViewport {
     return moves
   }
 
+  private splinePointKey(nodes: Record<string, SceneNode>, selection: string[]) {
+    return this.splinePointsForGizmo(nodes, selection).map(point => point.index).join(',')
+  }
+
+  private splinePointsForGizmo(nodes: Record<string, SceneNode>, selection: string[]) {
+    if (selection.length !== 1) return []
+    const id = selection[0]
+    const node = nodes[id]
+    if (!node || node.kind !== 'spline' || node.locked) return []
+    const count = normalizeSplinePath(node.capabilities?.[SPLINE_PATH_CAPABILITY_ID]).points.length
+    return getActiveSplinePoints().filter(point => point.id === id && point.index >= 0 && point.index < count)
+  }
+
+  private reconcileSplinePoint(nodes: Record<string, SceneNode>, selection: string[], playState: string) {
+    const points = getActiveSplinePoints()
+    if (points.length === 0) return
+    if (playState !== 'stopped') {
+      setActiveSplinePoints([])
+      return
+    }
+    const valid = points.filter(point => {
+      if (!selection.includes(point.id)) return false
+      const node = nodes[point.id]
+      if (!node || node.kind !== 'spline' || node.locked) return false
+      const count = normalizeSplinePath(node.capabilities?.[SPLINE_PATH_CAPABILITY_ID]).points.length
+      return point.index >= 0 && point.index < count
+    })
+    if (valid.length !== points.length) setActiveSplinePoints(valid)
+  }
+
   private attachToSelection() {
     const { nodes, selection, playState, gizmoOrigin } = useEditorStore.getState()
     const ids = selection.filter(id => nodes[id] && !nodes[id].locked)
     this.centerAttached = false
+    this.splinePointAttached = false
+    const splinePoints = playState === 'stopped' ? this.splinePointsForGizmo(nodes, ids) : []
+    if (splinePoints.length > 0) {
+      const group = this.objects.get(splinePoints[0].id)
+      const node = nodes[splinePoints[0].id]
+      if (group && node) {
+        const centroid = new Vector3()
+        let count = 0
+        for (const point of splinePoints) {
+          const world = splinePointWorldPosition(group, node, point.index)
+          if (!world) continue
+          centroid.add(world)
+          count += 1
+        }
+        if (count > 0) {
+          centroid.multiplyScalar(1 / count)
+          this.proxy.position.copy(centroid)
+          group.getWorldQuaternion(this.proxy.quaternion)
+          this.proxy.scale.set(1, 1, 1)
+          this.proxy.updateMatrixWorld(true)
+          this.proxyAttached = false
+          this.singleId = null
+          this.splinePointAttached = true
+          this.transform.attach(this.proxy)
+          return
+        }
+      }
+    }
     if (playState !== 'stopped' || ids.length === 0) {
       this.transform.detach()
       this.proxyAttached = false
@@ -933,6 +1018,11 @@ export class EditorViewport {
     const state = useEditorStore.getState()
     const ids = state.selection.filter(id => state.nodes[id] && !state.nodes[id].locked)
     this.driving = true
+    if (this.splinePointAttached) {
+      this.captureSplinePointBases()
+      state.beginGesture(translate('spline.gesture'))
+      return
+    }
     this.baselines = []
     if (this.proxyAttached) {
       this.proxyStart.copy(this.proxy.position)
@@ -960,15 +1050,18 @@ export class EditorViewport {
   }
 
   private onGizmoChange = () => {
-    if (this.proxyAttached) this.applyProxy()
+    if (this.splinePointAttached) this.writeSplinePoint()
+    else if (this.proxyAttached) this.applyProxy()
     else if (this.singleId) this.writeObject(this.singleId)
   }
 
   private onGizmoUp = () => {
-    if (this.proxyAttached) this.applyProxy()
+    if (this.splinePointAttached) this.writeSplinePoint()
+    else if (this.proxyAttached) this.applyProxy()
     else if (this.singleId) this.writeObject(this.singleId)
     this.driving = false
     this.baselines = []
+    this.splinePointBases = []
     this.attachKey = ''
     useEditorStore.getState().endGesture()
   }
@@ -1013,6 +1106,58 @@ export class EditorViewport {
       }
       this.writeObject(base.id)
     }
+  }
+
+  private captureSplinePointBases() {
+    const points = getActiveSplinePoints()
+    const id = points[0]?.id
+    const group = id ? this.objects.get(id) : undefined
+    const node = id ? useEditorStore.getState().nodes[id] : undefined
+    this.splineProxyOrigin.copy(this.proxy.position)
+    this.splinePointBases = []
+    if (!group || !node) return
+    for (const point of points) {
+      if (point.id !== id) continue
+      const world = splinePointWorldPosition(group, node, point.index)
+      if (world) this.splinePointBases.push({ index: point.index, world })
+    }
+  }
+
+  private writeSplinePoint() {
+    const id = this.splinePointBases[0] ? getActiveSplinePoints()[0]?.id : undefined
+    const group = id ? this.objects.get(id) : undefined
+    const node = id ? useEditorStore.getState().nodes[id] : undefined
+    if (!id || !group || !node || this.splinePointBases.length === 0) return
+    group.updateMatrixWorld(true)
+    const delta = this.proxy.position.clone().sub(this.splineProxyOrigin)
+    const pathData = normalizeSplinePath(node.capabilities?.[SPLINE_PATH_CAPABILITY_ID])
+    const points = pathData.points.map(point => [point[0], point[1], point[2]] as [number, number, number])
+    let changed = false
+    for (const base of this.splinePointBases) {
+      const prev = points[base.index]
+      if (!prev) continue
+      const local = group.worldToLocal(base.world.clone().add(delta))
+      const next = this.snapSplineLocal(local.x, local.y, local.z)
+      if (prev[0] !== next[0] || prev[1] !== next[1] || prev[2] !== next[2]) changed = true
+      points[base.index] = next
+    }
+    if (!changed) return
+    useEditorStore.getState().updateNode(id, {
+      capabilities: {
+        ...(node.capabilities ?? {}),
+        [SPLINE_PATH_CAPABILITY_ID]: { ...pathData, points },
+      },
+    })
+  }
+
+  private snapSplineLocal(x: number, y: number, z: number): [number, number, number] {
+    const { snap, snapStep } = useEditorStore.getState()
+    const round = (value: number) => {
+      if (!snap) return Math.round(value * 1000) / 1000
+      const step = snapStep > 0 ? snapStep : 1
+      return Math.round(value / step) * step
+    }
+    return [round(x), round(y), round(z)]
   }
 
   private writeObject(id: string) {
@@ -1340,9 +1485,46 @@ export class EditorViewport {
 
   private selectMarquee(x0: number, y0: number, x1: number, y1: number, additive: boolean) {
     const ids = this.collectMarqueeIds(x0, y0, x1, y1)
+    const points = this.collectMarqueeSplinePoints(x0, y0, x1, y1)
     const store = useEditorStore.getState()
-    if (additive) store.setSelection([...new Set([...store.selection, ...ids])])
-    else store.setSelection(ids)
+    const pointIds = points.map(point => point.id)
+    if (points.length > 0) {
+      const nextPoints = additive ? mergeSplinePoints(getActiveSplinePoints(), points) : points
+      setActiveSplinePoints(nextPoints)
+      const base = additive ? [...store.selection, ...ids, ...pointIds] : [...ids, ...pointIds]
+      store.setSelection([...new Set(base)])
+      return
+    }
+    if (!additive) setActiveSplinePoints([])
+    store.setSelection(additive ? [...new Set([...store.selection, ...ids])] : ids)
+  }
+
+  private collectMarqueeSplinePoints(x0: number, y0: number, x1: number, y1: number): SplinePointRef[] {
+    const left = Math.min(x0, x1)
+    const right = Math.max(x0, x1)
+    const top = Math.min(y0, y1)
+    const bottom = Math.max(y0, y1)
+    const rect = this.canvas.getBoundingClientRect()
+    const camera = this.viewCamera()
+    const nodes = useEditorStore.getState().nodes
+    const hits: SplinePointRef[] = []
+    for (const [id, group] of this.objects) {
+      const node = nodes[id]
+      const gizmo = dataOf(group).splineGizmo
+      if (!node?.visible || node.locked || node.kind !== 'spline' || !gizmo?.group.visible) continue
+      gizmo.group.updateMatrixWorld(true)
+      for (const handle of gizmo.handles) {
+        if (!handle.visible || !isRendered(handle)) continue
+        const index = handle.userData.splinePointIndex
+        if (typeof index !== 'number') continue
+        const ndc = handle.getWorldPosition(new Vector3()).project(camera)
+        if (ndc.z < -1 || ndc.z > 1) continue
+        const sx = (ndc.x * 0.5 + 0.5) * rect.width + rect.left
+        const sy = (-ndc.y * 0.5 + 0.5) * rect.height + rect.top
+        if (sx >= left && sx <= right && sy >= top && sy <= bottom) hits.push({ id, index })
+      }
+    }
+    return hits
   }
 
   private pickId(clientX: number, clientY: number): string | null {
@@ -1370,9 +1552,13 @@ export class EditorViewport {
     }
     const hit = this.pickSurface(clientX, clientY)
     if (!hit) {
+      setActiveSplinePoint(null)
       setSelection([])
       return
     }
+    const pointIndex = hit.object.userData.splinePointIndex
+    if (typeof pointIndex === 'number') setActiveSplinePoint({ id: hit.id, index: pointIndex })
+    else setActiveSplinePoint(null)
     const node = nodes[hit.id]
     if (node?.kind === 'model' && selection.length === 1 && selection[0] === hit.id) {
       const group = this.objects.get(hit.id)
@@ -1740,6 +1926,14 @@ export class EditorViewport {
     }
     this.refreshDeviceGuides(state.nodes, show, state.selection)
     this.scriptGizmos.refresh(state.nodes, show, state.selection)
+    const camera = this.viewCamera()
+    for (const group of this.objects.values()) {
+      const gizmo = dataOf(group).splineGizmo
+      if (!gizmo?.group.visible) continue
+      restoreSplineHelperLayers(gizmo)
+      gizmo.group.updateMatrixWorld(true)
+      layoutSplineHandles(gizmo, camera, this.height)
+    }
   }
 
   private syncColliderGuide(group: Group, node: SceneNode, physics: boolean, characterOn: boolean) {
@@ -1793,21 +1987,8 @@ export class EditorViewport {
       }
     }
 
-    const splineHandles = [...this.objects.values()].flatMap(group => {
-      const g = dataOf(group).splineGizmo
-      return g && g.selected ? g.handles : []
-    })
-    const splineHit = this.raycaster.intersectObjects(splineHandles, false).find(item => item.object.visible)
-    if (splineHit) {
-      const id = splineHit.object.userData.splineNodeId as string | undefined
-      const pointIndex = splineHit.object.userData.splinePointIndex as number | undefined
-      if (id && typeof pointIndex === 'number') {
-        this.splineDrag = { id, pointIndex }
-        this.ignoreDoubleClick = true
-        this.canvas.setPointerCapture(event.pointerId)
-        return true
-      }
-    }
+    if (this.claimSplineHandle(event)) return true
+    if (this.transform.axis) return false
 
     const handles = [...this.objects.values()].flatMap(group => dataOf(group).device?.handles ?? [])
     const hit = this.raycaster.intersectObjects(handles, false).find(item => item.object.visible)
@@ -1818,6 +1999,35 @@ export class EditorViewport {
     this.deviceDrag = { id, role }
     this.ignoreDoubleClick = true
     this.canvas.setPointerCapture(event.pointerId)
+    return true
+  }
+
+  private claimSplineHandle(event: PointerEvent): boolean {
+    const handles = [...this.objects.values()].flatMap(group => {
+      const gizmo = dataOf(group).splineGizmo
+      if (!gizmo?.group.visible) return []
+      return gizmo.handles.filter(handle => handle.visible && isRendered(handle))
+    })
+    if (handles.length === 0) return false
+    for (const handle of handles) handle.updateMatrixWorld()
+    const hit = this.raycaster.intersectObjects(handles, false)[0]
+    if (!hit || !isRendered(hit.object)) return false
+    const id = hit.object.userData.splineNodeId as string | undefined
+    const pointIndex = hit.object.userData.splinePointIndex as number | undefined
+    if (!id || typeof pointIndex !== 'number') return false
+    const axis = this.transform.axis
+    const axisDrag = typeof axis === 'string' && axis !== 'XYZ' && axis !== 'XYZE'
+    if (axisDrag && getActiveSplinePoints().some(point => point.id === id && point.index === pointIndex)) return false
+    this.splineDrag = { id, pointIndex }
+    setActiveSplinePoint({ id, index: pointIndex })
+    const store = useEditorStore.getState()
+    if (store.selection.length !== 1 || store.selection[0] !== id) store.setSelection([id])
+    this.attachKey = ''
+    this.sync()
+    this.ignoreDoubleClick = true
+    this.canvas.setPointerCapture(event.pointerId)
+    event.stopImmediatePropagation()
+    event.preventDefault()
     return true
   }
 
@@ -1851,31 +2061,32 @@ export class EditorViewport {
       if (!group || !node || !this.aimPointer(event.clientX, event.clientY)) return
       const worldPt = splinePointWorldPosition(group, node, pointIndex)
       if (!worldPt) return
-      const normal = event.shiftKey
-        ? this.viewCamera().getWorldPosition(new Vector3()).sub(worldPt).setY(0)
-        : new Vector3(0, 1, 0)
-      if (normal.lengthSq() < 1e-6) normal.set(0, 0, 1)
-      normal.normalize()
+      const normal = new Vector3()
+      this.viewCamera().getWorldDirection(normal)
+      if (normal.lengthSq() < 1e-6) normal.set(0, 0, -1)
       const hit = new Vector3()
       if (!this.raycaster.ray.intersectPlane(new Plane().setFromNormalAndCoplanarPoint(normal, worldPt), hit)) return
-      group.updateMatrixWorld()
+      group.updateMatrixWorld(true)
       const localPt = group.worldToLocal(hit.clone())
-      const round3 = (v: number) => Math.round(v * 1000) / 1000
       const pathData = normalizeSplinePath(node.capabilities?.[SPLINE_PATH_CAPABILITY_ID])
-      const nextPoints = pathData.points.map((p, idx) =>
-        idx === pointIndex ? ([round3(localPt.x), round3(localPt.y), round3(localPt.z)] as [number, number, number]) : p,
-      )
+      const nextPoint = this.snapSplineLocal(localPt.x, localPt.y, localPt.z)
+      const prev = pathData.points[pointIndex]
+      if (!prev || (prev[0] === nextPoint[0] && prev[1] === nextPoint[1] && prev[2] === nextPoint[2])) return
       const store = useEditorStore.getState()
       if (!this.deviceGesture) {
-        store.beginGesture('编辑 Spline 控制点')
+        store.beginGesture(translate('spline.gesture'))
         this.deviceGesture = true
       }
       store.updateNode(id, {
         capabilities: {
           ...(node.capabilities ?? {}),
-          [SPLINE_PATH_CAPABILITY_ID]: { ...pathData, points: nextPoints },
+          [SPLINE_PATH_CAPABILITY_ID]: { ...pathData, points: pathData.points.map((item, index) => index === pointIndex ? nextPoint : item) },
         },
       })
+      if (this.splinePointAttached) {
+        this.proxy.position.copy(group.localToWorld(new Vector3(nextPoint[0], nextPoint[1], nextPoint[2])))
+        this.proxy.updateMatrixWorld(true)
+      }
       return
     }
 
@@ -2566,6 +2777,18 @@ function belongsToNode(object: Object3D, nodeId: string): boolean {
     current = current.parent
   }
   return false
+}
+
+function mergeSplinePoints(current: readonly SplinePointRef[], extra: readonly SplinePointRef[]): SplinePointRef[] {
+  const seen = new Set(current.map(point => `${point.id}:${point.index}`))
+  const next = current.slice()
+  for (const point of extra) {
+    const key = `${point.id}:${point.index}`
+    if (seen.has(key)) continue
+    seen.add(key)
+    next.push(point)
+  }
+  return next
 }
 
 function isRendered(object: Object3D): boolean {

@@ -17,6 +17,7 @@ import { bindPackagePicker, openPackagePicker, usePackageImportStore } from '../
 import { PackageExtractDialog } from '../panels/PackageExtractDialog'
 import { resetLayout } from './events'
 import type { CameraView, NodeKind } from '../scene/types'
+import aboutBanner from './about-banner.svg?url'
 import './MenuBar.css'
 
 const APP_VERSION = '0.1.0'
@@ -205,9 +206,12 @@ export default function MenuBar() {
       {aboutOpen && (
         <div className="menubar-about" onClick={() => setAboutOpen(false)}>
           <div className="menubar-about__card" role="dialog" aria-label={t('menu.about')} onClick={event => event.stopPropagation()}>
-            <strong>Tact3D</strong>
-            <span>{t('menu.aboutBody')}</span>
-            <span>{APP_VERSION}</span>
+            <img className="menubar-about__art" src={aboutBanner} alt="" />
+            <div className="menubar-about__body">
+              <strong>Tact3D</strong>
+              <p>{t('menu.aboutBody')}</p>
+              <span className="menubar-about__version">{APP_VERSION}</span>
+            </div>
             <button type="button" onClick={() => setAboutOpen(false)}>{t('pm.close')}</button>
           </div>
         </div>
