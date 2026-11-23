@@ -103,7 +103,8 @@ export function capabilityEnabled(capabilities: Record<string, boolean> | undefi
 }
 
 /** 根据当前工程的 capabilities 开关，按需懒加载已启用的能力包或卸载已关闭的能力包。 */
-export function syncCapabilityRuntimes(capabilities: Record<string, boolean> | undefined) {
+export function syncCapabilityRuntimes(capabilities: Record<string, boolean> | undefined): Promise<void> {
+  const tasks: Promise<void>[] = []
   for (const item of allCapabilityManifests()) {
     const enabled = capabilityEnabled(capabilities, item.id)
     if (!enabled) {
@@ -115,7 +116,12 @@ export function syncCapabilityRuntimes(capabilities: Record<string, boolean> | u
       loadedModules.get(item.id)?.dispose?.()
       continue
     }
-    if (!item.loadRuntime || activeCleanup.has(item.id) || pendingLoads.has(item.id)) continue
+    if (!item.loadRuntime || activeCleanup.has(item.id)) continue
+    const inflight = pendingLoads.get(item.id)
+    if (inflight) {
+      tasks.push(inflight)
+      continue
+    }
     const cached = loadedModules.get(item.id)
     if (cached) {
       const cleanup = cached.mount?.()
@@ -135,5 +141,7 @@ export function syncCapabilityRuntimes(capabilities: Record<string, boolean> | u
       console.warn(`[capability] ${item.id} 加载失败`, error)
     })
     pendingLoads.set(item.id, task)
+    tasks.push(task)
   }
+  return Promise.all(tasks).then(() => undefined)
 }

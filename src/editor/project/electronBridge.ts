@@ -28,8 +28,8 @@ export interface ElectronBridge {
     copyShell: (targetDir: string) => Promise<{ ok: boolean; copiedFiles: string[]; message: string }>
     buildElectron?: (
       targetDir: string,
-      options: { appName?: string; width?: number; height?: number; fullscreen?: boolean; resizable?: boolean },
-    ) => Promise<{ ok: boolean; appDir: string; executablePath: string; runtimeCopied: boolean; message: string }>
+      options: { appName?: string; width?: number; height?: number; fullscreen?: boolean; resizable?: boolean; iconPngBytes?: number[] },
+    ) => Promise<{ ok: boolean; appDir: string; executablePath: string; runtimeCopied: boolean; iconPatched?: boolean; message: string }>
   }
   codeAssets?: {
     watchProject: (projectDir: string) => Promise<boolean>

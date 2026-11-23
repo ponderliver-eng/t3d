@@ -31,6 +31,7 @@ export interface BuildElectronConfig {
   height: number
   fullscreen: boolean
   resizable: boolean
+  iconAssetId: string | null
 }
 
 export interface BuildSettings {
@@ -76,6 +77,7 @@ export function createDefaultBuildSettings(projectName = 'Tact3D Game'): BuildSe
       height: 720,
       fullscreen: false,
       resizable: true,
+      iconAssetId: null,
     },
   }
 }
@@ -155,6 +157,7 @@ export function normalizeBuildSettings(
       height: typeof rawElectron.height === 'number' && rawElectron.height >= 240 ? Math.round(rawElectron.height) : base.electron.height,
       fullscreen: Boolean(rawElectron.fullscreen),
       resizable: rawElectron.resizable !== false,
+      iconAssetId: typeof rawElectron.iconAssetId === 'string' && rawElectron.iconAssetId ? rawElectron.iconAssetId : null,
     },
   }
 }

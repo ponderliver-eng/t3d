@@ -27,7 +27,7 @@ contextBridge.exposeInMainWorld('__electron', {
     copyShell: (targetDir: string) => ipcRenderer.invoke('player:copyShell', targetDir),
     buildElectron: (
       targetDir: string,
-      options: { appName?: string; width?: number; height?: number; fullscreen?: boolean; resizable?: boolean },
+      options: { appName?: string; width?: number; height?: number; fullscreen?: boolean; resizable?: boolean; iconPngBytes?: number[] },
     ) => ipcRenderer.invoke('player:buildElectron', targetDir, options),
   },
   codeAssets: {

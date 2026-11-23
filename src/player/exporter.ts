@@ -1,5 +1,6 @@
 import { getInputActionMap } from '../core/input/actionMap'
 import { useCodeAssetStore } from '../core/codeAssets/workspace'
+import { normalizeCapabilities } from '../capabilities/registry'
 import {
   useBuildSettingsStore,
   loadBuildSettingsFromProject,
@@ -106,8 +107,13 @@ export function collectSceneDependencies(
       for (const imgId of uiImgs) {
         addAsset(imgId)
       }
-    } else if (asset.kind === 'model' && 'materialAssetId' in asset && typeof asset.materialAssetId === 'string') {
-      addAsset(asset.materialAssetId)
+    } else if (asset.kind === 'model') {
+      if ('materialAssetId' in asset && typeof asset.materialAssetId === 'string') {
+        addAsset(asset.materialAssetId)
+      }
+      if ('materialHint' in asset && asset.materialHint) {
+        scanUnknownRefs(asset.materialHint, assets, collected)
+      }
     }
   }
 
@@ -121,6 +127,8 @@ export function collectSceneDependencies(
   for (const node of Object.values(nodes)) {
     if (node.assetId) addAsset(node.assetId)
     if (node.materialAssetId) addAsset(node.materialAssetId)
+    if (node.clipAssetId) addAsset(node.clipAssetId)
+    if (node.overlayAssetId) addAsset(node.overlayAssetId)
     if (Array.isArray(node.slots)) {
       for (const slot of node.slots) {
         if (slot.materialAssetId) addAsset(slot.materialAssetId)
@@ -132,6 +140,7 @@ export function collectSceneDependencies(
         if (ov.materialAssetId) addAsset(ov.materialAssetId)
       }
     }
+    if (node.animator) scanUnknownRefs(node.animator, assets, collected)
     if (node.capabilities) scanUnknownRefs(node.capabilities, assets, collected)
     if (node.gameplay) scanUnknownRefs(node.gameplay, assets, collected)
   }
@@ -294,13 +303,62 @@ export function buildExportedProjectPayload(
     scenes: scenesMap,
     sceneOrder: builtScenes.map((s) => s.id),
     buildSettings: settings,
-    capabilities: editor.capabilities,
+    capabilities: normalizeCapabilities(editor.capabilities),
     gameplayPacks: editor.gameplayPacks,
     gameDatabase: editor.gameDatabase,
     assets: assetSummary,
     scripts,
     shaders,
     inputMap: getInputActionMap(),
+  }
+}
+
+async function renderIconAssetToPngBytes(assetId: string | null | undefined): Promise<number[] | undefined> {
+  if (!assetId) return undefined
+  const asset = useAssetStore.getState().assets[assetId]
+  if (!asset || asset.kind !== 'texture') return undefined
+  const raw = await readAssetBytes(assetId).catch(() => null)
+  if (!raw || raw.byteLength === 0) return undefined
+  if (typeof createImageBitmap !== 'function') return undefined
+
+  const lower = ('fileName' in asset && asset.fileName ? asset.fileName : '').toLowerCase()
+  const mime = lower.endsWith('.png')
+    ? 'image/png'
+    : lower.endsWith('.webp')
+      ? 'image/webp'
+      : 'image/jpeg'
+  const copy = new Uint8Array(raw.byteLength)
+  copy.set(new Uint8Array(raw))
+  const bitmap = await createImageBitmap(new Blob([copy.buffer], { type: mime })).catch(() => null)
+  if (!bitmap) return undefined
+
+  try {
+    const size = 512
+    const side = Math.min(bitmap.width, bitmap.height)
+    const sx = Math.floor((bitmap.width - side) / 2)
+    const sy = Math.floor((bitmap.height - side) / 2)
+
+    let outBlob: Blob | null = null
+    if (typeof OffscreenCanvas !== 'undefined') {
+      const canvas = new OffscreenCanvas(size, size)
+      const ctx = canvas.getContext('2d')
+      if (!ctx) return undefined
+      ctx.drawImage(bitmap, sx, sy, side, side, 0, 0, size, size)
+      outBlob = await canvas.convertToBlob({ type: 'image/png' })
+    } else if (typeof document !== 'undefined') {
+      const canvas = document.createElement('canvas')
+      canvas.width = size
+      canvas.height = size
+      const ctx = canvas.getContext('2d')
+      if (!ctx) return undefined
+      ctx.drawImage(bitmap, sx, sy, side, side, 0, 0, size, size)
+      outBlob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, 'image/png'))
+    }
+    if (!outBlob) return undefined
+    const buf = await outBlob.arrayBuffer()
+    return Array.from(new Uint8Array(buf))
+  } finally {
+    bitmap.close()
   }
 }
 
@@ -350,7 +408,11 @@ export async function exportWebPlayerBundle(
       }
     }
     reportProgress?.({ phase: 'package', current: 0, total: 1, label: '正在初始化 Electron 桌面端外壳…' })
-    const elecRes = await bridge.player.buildElectron(cleanDir, settings.electron)
+    const iconPngBytes = await renderIconAssetToPngBytes(settings.electron.iconAssetId)
+    const elecRes = await bridge.player.buildElectron(cleanDir, {
+      ...settings.electron,
+      iconPngBytes,
+    })
     if (!elecRes.ok) {
       return { ok: false, outputDir: cleanDir, files: [], shellCopied: false, message: elecRes.message }
     }
@@ -407,8 +469,21 @@ export async function exportWebPlayerBundle(
     if ((asset.kind === 'model' || asset.kind === 'animation') && settings.bakeModelsToGlb && 'hash' in asset) {
       let baked = asset.hash ? await readModelArtifact(asset.hash).catch(() => null) : null
       if (!baked) {
-        await loadModelTemplate(asset).catch(() => null)
+        const tpl = await loadModelTemplate(asset).catch(() => null)
         if (asset.hash) baked = await readModelArtifact(asset.hash).catch(() => null)
+        if (!baked && tpl) {
+          const { GLTFExporter } = await import('three/addons/exporters/GLTFExporter.js')
+          const exporter = new GLTFExporter()
+          const glbData = await exporter.parseAsync(tpl.scene, {
+            binary: true,
+            animations: tpl.clips,
+            onlyVisible: false,
+          }).catch(() => null)
+          if (glbData instanceof ArrayBuffer) baked = glbData
+          else if (ArrayBuffer.isView(glbData)) {
+            baked = glbData.buffer.slice(glbData.byteOffset, glbData.byteOffset + glbData.byteLength) as ArrayBuffer
+          }
+        }
       }
       if (baked && baked.byteLength > 0) {
         outBytes = new Uint8Array(baked)
@@ -470,7 +545,7 @@ export async function exportWebPlayerBundle(
         sceneCount: builtScenes.length,
         assetCount: Object.keys(payload.assets).length,
         nodeCount: Object.keys(payload.nodes).length,
-        capabilities: Object.keys(payload.capabilities).filter((k) => payload.capabilities[k]),
+        capabilities: Object.keys(payload.capabilities).filter((k) => (payload.capabilities as Record<string, boolean>)[k]),
         shellCopied,
         executablePath,
         playerEntry: settings.target === 'electron' ? 'main.cjs' : shellCopied ? 'index.html' : 'player.html',

@@ -1,5 +1,8 @@
 import {
   AmbientLight,
+  AnimationAction,
+  AnimationClip,
+  AnimationMixer,
   BoxGeometry,
   CapsuleGeometry,
   Color,
@@ -7,11 +10,17 @@ import {
   DirectionalLight,
   Group,
   HemisphereLight,
+  LoopOnce,
+  LoopRepeat,
   Mesh,
   MeshStandardMaterial,
+  NoColorSpace,
+  Object3D,
   PerspectiveCamera,
   PlaneGeometry,
   PointLight,
+  Raycaster,
+  RepeatWrapping,
   Scene,
   SphereGeometry,
   SpotLight,
@@ -22,8 +31,9 @@ import {
 } from 'three'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js'
+import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js'
 import { WebGPURenderer } from 'three/webgpu'
-import { syncCapabilityRuntimes } from '../capabilities/registry'
+import { normalizeCapabilities, syncCapabilityRuntimes } from '../capabilities/registry'
 import { clearScriptRuntimeState, compileAndRegisterScript } from '../core/codeAssets/scriptRuntime'
 import {
   bindGlobalInputListeners,
@@ -83,21 +93,36 @@ const DEG_TO_RAD = Math.PI / 180
 class PlayerAssetManager {
   private readonly gltfLoader = new GLTFLoader()
   private readonly texLoader = new TextureLoader()
-  private readonly modelCache = new Map<string, Group>()
+  private readonly modelCache = new Map<string, { scene: Group; clips: AnimationClip[] }>()
   private readonly texCache = new Map<string, Texture>()
+  private readonly linearTexCache = new Map<string, Texture>()
   private readonly pending = new Map<string, Promise<void>>()
 
   constructor(private readonly assets: Record<string, ExportedAssetEntry>) {
     this.gltfLoader.setMeshoptDecoder(MeshoptDecoder)
   }
 
-  getModelClone(assetId: string): Group | null {
+  getModelClone(assetId: string): { scene: Object3D; clips: AnimationClip[] } | null {
     const tpl = this.modelCache.get(assetId)
-    return tpl ? tpl.clone(true) : null
+    if (!tpl) return null
+    return { scene: cloneSkinned(tpl.scene), clips: tpl.clips }
   }
 
-  getTexture(assetId: string): Texture | null {
-    return this.texCache.get(assetId) ?? null
+  getClips(assetId: string): AnimationClip[] {
+    return this.modelCache.get(assetId)?.clips ?? []
+  }
+
+  getTexture(assetId: string, srgb = true): Texture | null {
+    if (srgb) return this.texCache.get(assetId) ?? null
+    const cached = this.linearTexCache.get(assetId)
+    if (cached) return cached
+    const base = this.texCache.get(assetId)
+    if (!base) return null
+    const linear = base.clone()
+    linear.colorSpace = NoColorSpace
+    linear.needsUpdate = true
+    this.linearTexCache.set(assetId, linear)
+    return linear
   }
 
   async ensureAsset(assetId: string): Promise<void> {
@@ -112,12 +137,16 @@ class PlayerAssetManager {
       try {
         if (asset.kind === 'model' || asset.kind === 'animation') {
           const gltf = await this.gltfLoader.loadAsync(asset.url!)
-          this.modelCache.set(assetId, gltf.scene)
+          this.modelCache.set(assetId, { scene: gltf.scene, clips: gltf.animations ?? [] })
         } else if (asset.kind === 'texture') {
           const lower = (asset.fileName || asset.url || '').toLowerCase()
           if (lower.endsWith('.ktx2') || lower.endsWith('.tga')) return
           const tex = await this.texLoader.loadAsync(asset.url!)
           tex.colorSpace = SRGBColorSpace
+          tex.flipY = false
+          tex.wrapS = RepeatWrapping
+          tex.wrapT = RepeatWrapping
+          tex.needsUpdate = true
           this.texCache.set(assetId, tex)
         }
       } catch (err) {
@@ -264,13 +293,200 @@ function createGeometryForNode(node: SceneNode) {
   return null
 }
 
-function buildStandaloneWorld(payload: ExportedProjectPayload) {
+interface PlayerAnimEntry {
+  ownerAssetId: string
+  rootScene: Object3D
+  mixer: AnimationMixer
+  actions: Map<string, AnimationAction>
+  activeKey: string | null
+  activeAction: AnimationAction | null
+  boneNameMap: Map<string, string>
+}
+
+function normalizeBoneKey(name: string): string {
+  return name
+    .replace(/^mixamorig\d*:/i, '')
+    .replace(/^Armature\|/i, '')
+    .replace(/^.*\|/, '')
+    .replace(/^.*\//, '')
+    .toLowerCase()
+}
+
+function buildBoneNameMap(root: Object3D): Map<string, string> {
+  const map = new Map<string, string>()
+  root.traverse((obj) => {
+    if (!obj.name) return
+    const key = normalizeBoneKey(obj.name)
+    if (key && !map.has(key)) map.set(key, obj.name)
+  })
+  return map
+}
+
+function bindClipToTarget(clip: AnimationClip, entry: PlayerAnimEntry): AnimationClip {
+  let changed = false
+  const tracks = clip.tracks.map((track) => {
+    const dot = track.name.indexOf('.')
+    if (dot <= 0) return track
+    const nodePart = track.name.slice(0, dot)
+    const propPart = track.name.slice(dot)
+    if (entry.rootScene.getObjectByName(nodePart)) return track
+    const mapped = entry.boneNameMap.get(normalizeBoneKey(nodePart))
+    if (!mapped || mapped === nodePart) return track
+    changed = true
+    const cloned = track.clone()
+    cloned.name = `${mapped}${propPart}`
+    return cloned
+  })
+  if (!changed) return clip
+  return new AnimationClip(clip.name, clip.duration, tracks, clip.blendMode)
+}
+
+function resolveSlotData(slot: PbrSlot, assets: Record<string, ExportedAssetEntry>): PbrSlot {
+  if (slot.materialAssetId) {
+    const linked = assets[slot.materialAssetId]
+    if (linked?.slot) return { ...linked.slot, name: slot.name }
+  }
+  return slot
+}
+
+function applySlotToMaterial(
+  mat: MeshStandardMaterial,
+  rawSlot: PbrSlot,
+  assetMgr: PlayerAssetManager,
+  assets: Record<string, ExportedAssetEntry>,
+) {
+  const slot = resolveSlotData(rawSlot, assets)
+  if (slot.color) mat.color.set(slot.color)
+  if (typeof slot.roughness === 'number') mat.roughness = slot.roughness
+  if (typeof slot.metalness === 'number') mat.metalness = slot.metalness
+  if (slot.emissive) mat.emissive.set(slot.emissive)
+  if (typeof slot.emissiveIntensity === 'number') mat.emissiveIntensity = slot.emissiveIntensity
+  if (typeof slot.opacity === 'number' && slot.opacity < 1) {
+    mat.opacity = slot.opacity
+    mat.transparent = true
+  }
+
+  const mapTex = slot.mapAssetId ? assetMgr.getTexture(slot.mapAssetId, true) : null
+  if (mapTex) mat.map = mapTex
+
+  const normalTex = slot.normalAssetId ? assetMgr.getTexture(slot.normalAssetId, false) : null
+  if (normalTex) mat.normalMap = normalTex
+
+  const mrId = slot.metallicRoughnessAssetId ?? slot.roughnessAssetId ?? slot.metalnessAssetId
+  const mrTex = mrId ? assetMgr.getTexture(mrId, false) : null
+  if (mrTex) {
+    mat.roughnessMap = mrTex
+    mat.metalnessMap = mrTex
+  }
+
+  const emissiveTex = slot.emissiveAssetId ? assetMgr.getTexture(slot.emissiveAssetId, true) : null
+  if (emissiveTex) mat.emissiveMap = emissiveTex
+
+  const aoTex = slot.aoAssetId ? assetMgr.getTexture(slot.aoAssetId, false) : null
+  if (aoTex) mat.aoMap = aoTex
+
+  mat.needsUpdate = true
+}
+
+function applyPlayerModelMaterials(
+  root: Object3D,
+  node: SceneNode,
+  assetMgr: PlayerAssetManager,
+  assets: Record<string, ExportedAssetEntry>,
+) {
+  const slots = Array.isArray(node.slots) ? node.slots : []
+  if (slots.length === 0 && !node.materialAssetId) return
+  const indexByName = new Map(slots.map((s, idx) => [s.name, idx]))
+  const nodeMatSlot = node.materialAssetId ? assets[node.materialAssetId]?.slot : undefined
+
+  root.traverse((child) => {
+    const mesh = child as Mesh
+    if (!mesh.isMesh) return
+    if (mesh.geometry?.attributes?.uv && !mesh.geometry.attributes.uv2) {
+      mesh.geometry.setAttribute('uv2', mesh.geometry.attributes.uv)
+    }
+    const existingIndices = Array.isArray(mesh.userData?.t3dSlotIndices)
+      ? (mesh.userData.t3dSlotIndices as number[])
+      : null
+    const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material]
+    const nextMats = mats.map((m, idx) => {
+      if (!m) return m
+      const std = (m as MeshStandardMaterial).isMeshStandardMaterial
+        ? (m as MeshStandardMaterial).clone()
+        : new MeshStandardMaterial({ color: '#ffffff' })
+      let slot: PbrSlot | undefined
+      const slotIdx = existingIndices?.[idx] ?? indexByName.get(m.name) ?? (slots.length === 1 ? 0 : idx)
+      if (typeof slotIdx === 'number' && slotIdx >= 0 && slotIdx < slots.length) {
+        slot = slots[slotIdx]
+      } else if (nodeMatSlot) {
+        slot = nodeMatSlot
+      }
+      if (slot) applySlotToMaterial(std, slot, assetMgr, assets)
+      return std
+    })
+    mesh.material = Array.isArray(mesh.material) ? nextMats : nextMats[0]
+  })
+}
+
+function playBodyOnEntry(
+  entry: PlayerAnimEntry,
+  clipName: string,
+  assetMgr: PlayerAssetManager,
+  options?: { assetId?: string | null; loop?: boolean; fade?: number; speed?: number },
+) {
+  if (!clipName) return
+  const sourceId = options?.assetId || entry.ownerAssetId
+  const clips = assetMgr.getClips(sourceId)
+  const rawClip = clips.find((c) => c.name === clipName)
+    ?? (sourceId !== entry.ownerAssetId && clips.length === 1 ? clips[0] : undefined)
+    ?? (sourceId !== entry.ownerAssetId ? assetMgr.getClips(entry.ownerAssetId).find((c) => c.name === clipName) : undefined)
+  if (!rawClip) return
+
+  const key = `${sourceId}\0${rawClip.name}`
+  let action = entry.actions.get(key)
+  if (!action) {
+    const bound = sourceId !== entry.ownerAssetId ? bindClipToTarget(rawClip, entry) : rawClip
+    action = entry.mixer.clipAction(bound)
+    entry.actions.set(key, action)
+  }
+
+  const loop = options?.loop !== false
+  action.setLoop(loop ? LoopRepeat : LoopOnce, loop ? Infinity : 1)
+  action.clampWhenFinished = !loop
+  action.setEffectiveTimeScale(options?.speed ?? 1)
+  action.setEffectiveWeight(1)
+
+  if (entry.activeKey === key && entry.activeAction === action) {
+    if (!action.isRunning()) action.play()
+    return
+  }
+
+  const fade = Math.max(0, options?.fade ?? 0.15)
+  const prev = entry.activeAction
+  action.reset()
+  action.enabled = true
+  action.paused = false
+  action.play()
+  if (prev && prev !== action && fade > 0) {
+    prev.crossFadeTo(action, fade, false)
+  } else if (prev && prev !== action) {
+    prev.stop()
+  }
+  entry.activeKey = key
+  entry.activeAction = action
+}
+
+function buildStandaloneWorld(
+  payload: ExportedProjectPayload,
+  assetMgr: PlayerAssetManager,
+  getAnimEntry: (nodeId: string) => PlayerAnimEntry | undefined,
+) {
   const initialSceneId = payload.entrySceneId ?? payload.activeSceneId ?? 'default'
   const firstScene = payload.scenes?.[initialSceneId]
   let activeSceneId = initialSceneId
   let nodes: Record<string, SceneNode> = structuredClone(firstScene?.nodes ?? payload.nodes ?? {})
   let picture: ScenePicture = structuredClone((firstScene?.picture ?? payload.picture ?? {}) as ScenePicture)
-  const capabilities = payload.capabilities ?? {}
+  const capabilities = normalizeCapabilities(payload.capabilities)
   const gameplayPacks = payload.gameplayPacks ?? ['core']
   const gameDatabase = payload.gameDatabase ?? { tables: {} }
   const assets = payload.assets ?? {}
@@ -291,6 +507,17 @@ function buildStandaloneWorld(payload: ExportedProjectPayload) {
     getCapabilities: () => capabilities,
     getGameplayPacks: () => gameplayPacks,
     getGameDatabase: () => gameDatabase,
+    clipDuration: (assetId, clipName) => {
+      if (!assetId || !clipName) return 0
+      const clips = assetMgr.getClips(assetId)
+      const hit = clips.find((c) => c.name === clipName) ?? (clips.length === 1 ? clips[0] : undefined)
+      return hit?.duration ?? 0
+    },
+    playBody: (nodeId, clipName, options) => {
+      const entry = getAnimEntry(nodeId)
+      if (!entry) return
+      playBodyOnEntry(entry, clipName, assetMgr, options)
+    },
     getTags: () => [],
     getAsset: (id) => assets[id],
     listAssets: () => Object.values(assets),
@@ -326,14 +553,17 @@ function mountSceneObjects(
   nodes: Record<string, SceneNode>,
   assetMgr: PlayerAssetManager,
   assets: Record<string, ExportedAssetEntry>,
-): { root: Group; map: Map<string, Group> } {
+): { root: Group; map: Map<string, Group>; mixers: AnimationMixer[]; animEntries: Map<string, PlayerAnimEntry> } {
   const map = new Map<string, Group>()
+  const mixers: AnimationMixer[] = []
+  const animEntries = new Map<string, PlayerAnimEntry>()
   const root = new Group()
   scene.add(root)
 
   for (const node of Object.values(nodes)) {
     const group = new Group()
     group.name = node.name
+    group.userData.nodeId = node.id
     group.visible = node.visible !== false
     group.position.set(node.position[0], node.position[1], node.position[2])
     group.rotation.set(
@@ -362,13 +592,38 @@ function mountSceneObjects(
     } else if (node.kind === 'model' && node.assetId) {
       const modelClone = assetMgr.getModelClone(node.assetId)
       if (modelClone) {
-        modelClone.traverse((child) => {
+        applyPlayerModelMaterials(modelClone.scene, node, assetMgr, assets)
+        modelClone.scene.traverse((child) => {
           if ((child as Mesh).isMesh) {
             child.castShadow = Boolean(node.castShadow)
             child.receiveShadow = node.receiveShadow !== false
           }
         })
-        group.add(modelClone)
+        group.add(modelClone.scene)
+        const mixer = new AnimationMixer(modelClone.scene)
+        mixers.push(mixer)
+        const entry: PlayerAnimEntry = {
+          ownerAssetId: node.assetId,
+          rootScene: modelClone.scene,
+          mixer,
+          actions: new Map(),
+          activeKey: null,
+          activeAction: null,
+          boneNameMap: buildBoneNameMap(modelClone.scene),
+        }
+        animEntries.set(node.id, entry)
+        const animState = node.animator?.enabled && node.animator.defaultStateId
+          ? node.animator.states?.find((s) => s.id === node.animator!.defaultStateId)
+          : undefined
+        const initClip = animState?.clip ?? node.clip
+        if (initClip && node.clipPlaying !== false) {
+          playBodyOnEntry(entry, initClip, assetMgr, {
+            assetId: animState?.clipAssetId ?? node.clipAssetId,
+            loop: animState ? animState.loop !== false : node.clipLoop !== false,
+            fade: node.clipFade ?? 0.15,
+            speed: animState?.speed ?? node.clipSpeed ?? 1,
+          })
+        }
       }
     } else if (node.kind === 'directional-light') {
       const light = new DirectionalLight(node.color || '#ffffff', node.intensity ?? 2)
@@ -404,7 +659,7 @@ function mountSceneObjects(
     root.add(key)
   }
 
-  return { root, map }
+  return { root, map, mixers, animEntries }
 }
 
 function attachTouchOverlay(container: HTMLElement) {
@@ -470,9 +725,14 @@ async function boot() {
   bindGlobalInputListeners()
   attachTouchOverlay(rootEl)
 
-  const { world, beforeRenderHooks, switchSceneData } = buildStandaloneWorld(payload)
+  let mounted: ReturnType<typeof mountSceneObjects> | null = null
+  const { world, beforeRenderHooks, switchSceneData } = buildStandaloneWorld(
+    payload,
+    assetMgr,
+    (nodeId) => mounted?.animEntries.get(nodeId),
+  )
   setRuntimeWorld(world)
-  syncCapabilityRuntimes(world.getCapabilities())
+  await syncCapabilityRuntimes(world.getCapabilities())
 
   const renderer = await createRenderer(canvas)
   const scene = new Scene()
@@ -504,10 +764,13 @@ async function boot() {
     compileAndRegisterScript(script.id, script.relativePath, script.source)
   }
 
-  let mounted = mountSceneObjects(scene, world.getNodes(), assetMgr, assets)
+  mounted = mountSceneObjects(scene, world.getNodes(), assetMgr, assets)
   scene.background = new Color(world.getPicture().background || '#181d26')
 
-  // 进场前预编译着色器，减少首次渲染掉帧
+  // 进场前先触发一次能力包挂载钩子（如水体、天空），再统一预编译着色器
+  for (const item of beforeRenderHooks) {
+    item.hook({ renderer, scene, camera, dt: 0 })
+  }
   const maybeCompileAsync = (renderer as unknown as { compileAsync?: (s: Scene, c: PerspectiveCamera) => Promise<void> }).compileAsync
   if (typeof maybeCompileAsync === 'function') {
     await maybeCompileAsync.call(renderer, scene, camera).catch(() => undefined)
@@ -545,7 +808,7 @@ async function boot() {
         await assetMgr.preloadList(getPreloadIdsForScene(nextId), (loaded, total, name) => {
           overlay.setProgress(loaded / Math.max(1, total), name)
         })
-        scene.remove(mounted.root)
+        if (mounted) scene.remove(mounted.root)
         clearScriptRuntimeState()
         switchSceneData(nextId, nextScene.nodes, nextScene.picture)
         for (const script of payload.scripts ?? []) {
@@ -576,10 +839,39 @@ async function boot() {
   window.addEventListener('resize', resize)
 
   const viewForward = new Vector3()
+  const probeRay = new Raycaster()
+  const probeOrigin = new Vector3()
+  const probeDir = new Vector3()
   const host: SceneRuntimeHost = {
     ready: true,
-    resolveObject: (id) => mounted.map.get(id) ?? null,
-    updateAnimations: () => {},
+    resolveObject: (id) => mounted?.map.get(id) ?? null,
+    updateAnimations: (dt: number) => {
+      if (!mounted) return
+      for (const mixer of mounted.mixers) mixer.update(dt)
+    },
+    probe: (origin: Vec3, direction: Vec3, max: number, ignoreId: string) => {
+      if (!mounted) return null
+      probeOrigin.set(origin[0], origin[1], origin[2])
+      probeDir.set(direction[0], direction[1], direction[2]).normalize()
+      probeRay.set(probeOrigin, probeDir)
+      probeRay.far = max
+      const ignoreObj = mounted.map.get(ignoreId)
+      const hits = probeRay.intersectObjects(mounted.root.children, true)
+      for (const hit of hits) {
+        if (hit.object.userData?.t3dWaterMesh) continue
+        if (ignoreObj) {
+          let cur: Object3D | null = hit.object
+          let skipped = false
+          while (cur) {
+            if (cur === ignoreObj) { skipped = true; break }
+            cur = cur.parent
+          }
+          if (skipped) continue
+        }
+        return hit.distance
+      }
+      return null
+    },
     // 不能直接读 camera.rotation.y：欧拉角在有俯仰时会偏，镜头转过 90° 后还会整个翻面
     yaw: () => {
       camera.getWorldDirection(viewForward)
@@ -601,10 +893,10 @@ async function boot() {
   const frame = (now: number) => {
     const dt = Math.min(0.05, Math.max(0.001, (now - lastTime) / 1000))
     lastTime = now
-    if (!switchingScene) stepSceneRuntime(dt, host)
     for (const item of beforeRenderHooks) {
       item.hook({ renderer, scene, camera, dt })
     }
+    if (!switchingScene) stepSceneRuntime(dt, host)
     renderer.render(scene, camera)
     requestAnimationFrame(frame)
   }

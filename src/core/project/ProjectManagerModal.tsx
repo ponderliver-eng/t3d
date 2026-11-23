@@ -24,6 +24,7 @@ import {
 import { create } from 'zustand'
 import { useAgentStore } from '../../ai/agentLoop'
 import { useAssetStore } from '../../editor/assets/library'
+import { AssetPicker } from '../../editor/panels/AssetPicker'
 import { electronBridge } from '../../editor/project/electronBridge'
 import { useI18n } from '../../editor/i18n'
 import { useEditorStore } from '../../editor/scene/store'
@@ -107,6 +108,7 @@ export function ProjectManagerModal() {
   const [exportMsg, setExportMsg] = useState('')
   const [buildBusy, setBuildBusy] = useState(false)
   const [buildProgress, setBuildProgress] = useState<BuildProgressInfo | null>(null)
+  const [iconPickerOpen, setIconPickerOpen] = useState(false)
   const buildSettings = useBuildSettingsStore((s) => s.settings)
   const setBuildSettings = useBuildSettingsStore((s) => s.setSettings)
 
@@ -708,6 +710,8 @@ export function ProjectManagerModal() {
               const textureAssets = Object.values(assets).filter((a) => a.kind === 'texture')
               const logoTex = buildSettings.loading.logoAssetId ? assets[buildSettings.loading.logoAssetId] : undefined
               const logoUrl = logoTex && 'url' in logoTex ? logoTex.url : undefined
+              const iconTex = buildSettings.electron.iconAssetId ? assets[buildSettings.electron.iconAssetId] : undefined
+              const iconUrl = iconTex && 'url' in iconTex ? iconTex.url : undefined
 
               return (
                 <>
@@ -720,36 +724,48 @@ export function ProjectManagerModal() {
 
                   {/* 目标平台 */}
                   <div className="pm-card">
-                    <div className="pm-card__title">目标平台（Build Target）</div>
-                    <div style={{ display: 'flex', gap: 8 }}>
+                    <div className="pm-card__title">
+                      <span>目标平台（Build Target）</span>
+                    </div>
+                    <div className="pm-target-grid">
                       <button
                         type="button"
-                        className={`pm-btn ${buildSettings.target === 'web' ? 'pm-btn--primary' : ''}`}
+                        className={`pm-target-card ${buildSettings.target === 'web' ? 'is-on' : ''}`}
                         onClick={() => updateBuild((p) => ({ ...p, target: 'web' }))}
                       >
-                        <Globe size={13} /> Web 播放包（静态托管）
+                        <span className="pm-target-card__icon"><Globe size={16} /></span>
+                        <span className="pm-target-card__text">
+                          <strong>Web 播放包</strong>
+                          <span>输出静态网页目录，可直接部署或本地预览</span>
+                        </span>
                       </button>
                       <button
                         type="button"
-                        className={`pm-btn ${buildSettings.target === 'electron' ? 'pm-btn--primary' : ''}`}
+                        className={`pm-target-card ${buildSettings.target === 'electron' ? 'is-on' : ''}`}
                         onClick={() => updateBuild((p) => ({ ...p, target: 'electron' }))}
                       >
-                        <Monitor size={13} /> Electron 桌面端（独立 EXE）
+                        <span className="pm-target-card__icon"><Monitor size={16} /></span>
+                        <span className="pm-target-card__text">
+                          <strong>Electron 桌面端</strong>
+                          <span>生成独立桌面应用目录与可执行文件</span>
+                        </span>
                       </button>
                     </div>
                     {buildSettings.target === 'electron' && (
-                      <div className="pm-grid-2" style={{ marginTop: 10 }}>
+                      <div className="pm-grid-2">
                         <label className="pm-field">
                           <span>应用名称（EXE 名称）</span>
                           <input
+                            className="pm-input"
                             value={buildSettings.electron.appName}
                             onChange={(e) => updateBuild((p) => ({ ...p, electron: { ...p.electron, appName: e.target.value } }))}
                           />
                         </label>
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                        <div className="pm-grid-2">
                           <label className="pm-field">
                             <span>窗口宽度</span>
                             <input
+                              className="pm-input"
                               type="number"
                               min={320}
                               value={buildSettings.electron.width}
@@ -759,6 +775,7 @@ export function ProjectManagerModal() {
                           <label className="pm-field">
                             <span>窗口高度</span>
                             <input
+                              className="pm-input"
                               type="number"
                               min={240}
                               value={buildSettings.electron.height}
@@ -766,30 +783,73 @@ export function ProjectManagerModal() {
                             />
                           </label>
                         </div>
-                        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
+                        <label className="pm-check">
                           <input
                             type="checkbox"
                             checked={buildSettings.electron.fullscreen}
                             onChange={(e) => updateBuild((p) => ({ ...p, electron: { ...p.electron, fullscreen: e.target.checked } }))}
                           />
-                          默认全屏启动
+                          <span>默认全屏启动</span>
                         </label>
-                        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
+                        <label className="pm-check">
                           <input
                             type="checkbox"
                             checked={buildSettings.electron.resizable}
                             onChange={(e) => updateBuild((p) => ({ ...p, electron: { ...p.electron, resizable: e.target.checked } }))}
                           />
-                          允许调整窗口大小
+                          <span>允许调整窗口大小</span>
                         </label>
+                        <div className="pm-field" style={{ gridColumn: '1 / -1' }}>
+                          <span>应用图标（自动转换为多分辨率 .ico 并写入 .exe）</span>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                            <div
+                              style={{
+                                width: 38,
+                                height: 38,
+                                borderRadius: 6,
+                                border: '1px solid rgba(255,255,255,0.12)',
+                                background: 'rgba(15,23,42,0.75)',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center',
+                                overflow: 'hidden',
+                                flexShrink: 0,
+                              }}
+                            >
+                              <img src={iconUrl || './tact3d-icon.png'} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                            </div>
+                            <div style={{ flex: 1, minWidth: 0, fontSize: 12, color: iconTex ? '#e2e8f0' : '#94a3b8', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                              {iconTex ? iconTex.name : '默认 Tact3D 图标'}
+                            </div>
+                            <button
+                              type="button"
+                              className="pm-btn pm-btn--sm"
+                              onClick={() => setIconPickerOpen(true)}
+                            >
+                              选择贴图…
+                            </button>
+                            {buildSettings.electron.iconAssetId && (
+                              <button
+                                type="button"
+                                className="pm-btn pm-btn--sm"
+                                onClick={() => updateBuild((p) => ({ ...p, electron: { ...p.electron, iconAssetId: null } }))}
+                              >
+                                清除
+                              </button>
+                            )}
+                          </div>
+                        </div>
                       </div>
                     )}
                   </div>
 
                   {/* 场景配置 */}
                   <div className="pm-card">
-                    <div className="pm-card__title">构建场景（Scenes In Build）</div>
-                    <div className="pm-list" style={{ gap: 4 }}>
+                    <div className="pm-card__title">
+                      <span>构建场景（Scenes In Build）</span>
+                      <span className="pm-pill">{builtPreview.length} 个已启用</span>
+                    </div>
+                    <div className="pm-list">
                       {buildSettings.scenes.map((entry, idx) => {
                         const sc = assets[entry.sceneId]
                         if (!sc || sc.kind !== 'scene') return null
@@ -800,33 +860,32 @@ export function ProjectManagerModal() {
                             key={entry.sceneId}
                             className="pm-row"
                             style={{
-                              padding: '6px 8px',
-                              borderRadius: 6,
-                              border: isEntry ? '1px solid rgba(74,158,255,0.45)' : '1px solid rgba(255,255,255,0.06)',
-                              background: entry.enabled ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.18)',
-                              opacity: entry.enabled ? 1 : 0.65,
+                              borderColor: isEntry ? 'rgba(74,158,255,0.45)' : undefined,
+                              background: isEntry ? 'rgba(74,158,255,0.08)' : undefined,
+                              opacity: entry.enabled ? 1 : 0.58,
                             }}
                           >
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                              <input
-                                type="checkbox"
-                                checked={entry.enabled}
-                                onChange={(e) => updateBuild((p) => ({
-                                  ...p,
-                                  scenes: p.scenes.map((s) => (s.sceneId === entry.sceneId ? { ...s, enabled: e.target.checked } : s)),
-                                }))}
-                              />
-                              <span style={{ fontSize: 11, color: '#94a3b8', minWidth: 18 }}>#{idx}</span>
-                              <strong style={{ fontSize: 12 }}>{sc.name}</strong>
+                            <div className="pm-row__title">
+                              <label className="pm-check">
+                                <input
+                                  type="checkbox"
+                                  checked={entry.enabled}
+                                  onChange={(e) => updateBuild((p) => ({
+                                    ...p,
+                                    scenes: p.scenes.map((s) => (s.sceneId === entry.sceneId ? { ...s, enabled: e.target.checked } : s)),
+                                  }))}
+                                />
+                              </label>
+                              <span style={{ fontSize: 11, color: '#94a3b8', minWidth: 20 }}>#{idx}</span>
+                              <span>{sc.name}</span>
                               <span className="pm-pill">{nodeCount} 节点</span>
-                              {isEntry && <span className="pm-pill" style={{ background: 'rgba(34,197,94,0.16)', color: '#86efac' }}>初始场景</span>}
+                              {isEntry && <span className="pm-pill pm-pill--ok">初始场景</span>}
                             </div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                            <div className="pm-actions">
                               {entry.enabled && !isEntry && (
                                 <button
                                   type="button"
-                                  className="pm-btn"
-                                  style={{ padding: '2px 8px', fontSize: 11 }}
+                                  className="pm-btn pm-btn--sm"
                                   onClick={() => updateBuild((p) => ({ ...p, entrySceneId: entry.sceneId }))}
                                 >
                                   设为初始
@@ -834,8 +893,7 @@ export function ProjectManagerModal() {
                               )}
                               <button
                                 type="button"
-                                className="pm-btn"
-                                style={{ padding: '2px 5px' }}
+                                className="pm-btn pm-btn--sm"
                                 disabled={idx === 0}
                                 onClick={() => updateBuild((p) => {
                                   const next = [...p.scenes]
@@ -848,8 +906,7 @@ export function ProjectManagerModal() {
                               </button>
                               <button
                                 type="button"
-                                className="pm-btn"
-                                style={{ padding: '2px 5px' }}
+                                className="pm-btn pm-btn--sm"
                                 disabled={idx === buildSettings.scenes.length - 1}
                                 onClick={() => updateBuild((p) => {
                                   const next = [...p.scenes]
@@ -869,11 +926,17 @@ export function ProjectManagerModal() {
 
                   {/* 资源管理与预加载 */}
                   <div className="pm-card">
-                    <div className="pm-card__title">资源烘焙与预加载策略</div>
+                    <div className="pm-card__title">
+                      <span>资源烘焙与预加载策略</span>
+                      <span className="pm-pill">
+                        预计打包 {buildSettings.stripUnusedAssets ? depCount : totalNonSceneAssets} / {totalNonSceneAssets} 个资源
+                      </span>
+                    </div>
                     <div className="pm-grid-2">
                       <label className="pm-field">
                         <span>预加载策略</span>
                         <select
+                          className="pm-select"
                           value={buildSettings.preloadMode}
                           onChange={(e) => updateBuild((p) => ({ ...p, preloadMode: e.target.value as PreloadMode }))}
                         >
@@ -882,10 +945,11 @@ export function ProjectManagerModal() {
                           <option value="minimal">按需流式加载（最快进场）</option>
                         </select>
                       </label>
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                      <div className="pm-grid-2">
                         <label className="pm-field">
                           <span>贴图压缩格式</span>
                           <select
+                            className="pm-select"
                             value={buildSettings.textureMode}
                             onChange={(e) => updateBuild((p) => ({ ...p, textureMode: e.target.value as TextureBuildMode }))}
                           >
@@ -896,6 +960,7 @@ export function ProjectManagerModal() {
                         <label className="pm-field">
                           <span>贴图最大尺寸</span>
                           <select
+                            className="pm-select"
                             value={buildSettings.textureMaxSize}
                             onChange={(e) => updateBuild((p) => ({ ...p, textureMaxSize: Number(e.target.value) as TextureMaxSize }))}
                           >
@@ -906,60 +971,66 @@ export function ProjectManagerModal() {
                           </select>
                         </label>
                       </div>
-                      <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
+                      <label className="pm-check">
                         <input
                           type="checkbox"
                           checked={buildSettings.bakeModelsToGlb}
                           onChange={(e) => updateBuild((p) => ({ ...p, bakeModelsToGlb: e.target.checked }))}
                         />
-                        模型烘焙为 Meshopt 压缩二进制 (.glb)
+                        <span>模型烘焙为 Meshopt 压缩二进制 (.glb)</span>
                       </label>
-                      <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12 }}>
+                      <label className="pm-check">
                         <input
                           type="checkbox"
                           checked={buildSettings.stripUnusedAssets}
                           onChange={(e) => updateBuild((p) => ({ ...p, stripUnusedAssets: e.target.checked }))}
                         />
-                        剔除未引用资源（预计打包 {buildSettings.stripUnusedAssets ? depCount : totalNonSceneAssets} / {totalNonSceneAssets} 个）
+                        <span>自动剔除未引用冗余资源</span>
                       </label>
                     </div>
                   </div>
 
                   {/* Loading 画面自定义 */}
                   <div className="pm-card">
-                    <div className="pm-card__title">Loading 画面配置</div>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 0.8fr', gap: 14, alignItems: 'start' }}>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, fontSize: 12 }}>
-                          <label style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                    <div className="pm-card__title">
+                      <span>Loading 画面配置</span>
+                      <span className={`pm-pill ${buildSettings.loading.enabled ? 'pm-pill--ok' : ''}`}>
+                        {buildSettings.loading.enabled ? '已启用' : '已关闭'}
+                      </span>
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1.25fr 0.75fr', gap: 16, alignItems: 'start' }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 14 }}>
+                          <label className="pm-check">
                             <input
                               type="checkbox"
                               checked={buildSettings.loading.enabled}
                               onChange={(e) => updateBuild((p) => ({ ...p, loading: { ...p.loading, enabled: e.target.checked } }))}
                             />
-                            开启 Loading 画面
+                            <span>开启 Loading 画面</span>
                           </label>
-                          <label style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                          <label className="pm-check">
                             <input
                               type="checkbox"
                               checked={buildSettings.loading.showProgressBar}
                               onChange={(e) => updateBuild((p) => ({ ...p, loading: { ...p.loading, showProgressBar: e.target.checked } }))}
                             />
-                            显示进度条
+                            <span>显示进度条</span>
                           </label>
-                          <label style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                          <label className="pm-check">
                             <input
                               type="checkbox"
                               checked={buildSettings.loading.showOnSceneSwitch}
                               onChange={(e) => updateBuild((p) => ({ ...p, loading: { ...p.loading, showOnSceneSwitch: e.target.checked } }))}
                             />
-                            切场景时显示
+                            <span>切场景时显示</span>
                           </label>
                         </div>
                         <div className="pm-grid-2">
                           <label className="pm-field">
                             <span>标题</span>
                             <input
+                              className="pm-input"
                               value={buildSettings.loading.title}
                               onChange={(e) => updateBuild((p) => ({ ...p, loading: { ...p.loading, title: e.target.value } }))}
                             />
@@ -967,6 +1038,7 @@ export function ProjectManagerModal() {
                           <label className="pm-field">
                             <span>提示副标题</span>
                             <input
+                              className="pm-input"
                               value={buildSettings.loading.subtitle}
                               onChange={(e) => updateBuild((p) => ({ ...p, loading: { ...p.loading, subtitle: e.target.value } }))}
                             />
@@ -974,6 +1046,7 @@ export function ProjectManagerModal() {
                           <label className="pm-field">
                             <span>Logo 贴图</span>
                             <select
+                              className="pm-select"
                               value={buildSettings.loading.logoAssetId ?? ''}
                               onChange={(e) => updateBuild((p) => ({ ...p, loading: { ...p.loading, logoAssetId: e.target.value || null } }))}
                             >
@@ -983,23 +1056,25 @@ export function ProjectManagerModal() {
                               ))}
                             </select>
                           </label>
-                          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                          <div className="pm-grid-2">
                             <label className="pm-field">
                               <span>背景色</span>
                               <input
+                                className="pm-input"
                                 type="color"
                                 value={buildSettings.loading.backgroundColor}
                                 onChange={(e) => updateBuild((p) => ({ ...p, loading: { ...p.loading, backgroundColor: e.target.value } }))}
-                                style={{ height: 28, padding: 2 }}
+                                style={{ padding: 2 }}
                               />
                             </label>
                             <label className="pm-field">
                               <span>进度条颜色</span>
                               <input
+                                className="pm-input"
                                 type="color"
                                 value={buildSettings.loading.accentColor}
                                 onChange={(e) => updateBuild((p) => ({ ...p, loading: { ...p.loading, accentColor: e.target.value } }))}
-                                style={{ height: 28, padding: 2 }}
+                                style={{ padding: 2 }}
                               />
                             </label>
                           </div>
@@ -1007,30 +1082,21 @@ export function ProjectManagerModal() {
                       </div>
                       {/* Loading 实时预览 */}
                       <div
+                        className="pm-loading-preview"
                         style={{
-                          borderRadius: 8,
-                          padding: 16,
-                          minHeight: 140,
                           backgroundColor: buildSettings.loading.backgroundColor,
-                          border: '1px solid rgba(255,255,255,0.1)',
-                          display: 'flex',
-                          flexDirection: 'column',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          gap: 8,
-                          textAlign: 'center',
-                          opacity: buildSettings.loading.enabled ? 1 : 0.4,
+                          opacity: buildSettings.loading.enabled ? 1 : 0.38,
                         }}
                       >
                         {logoUrl && <img src={logoUrl} alt="" style={{ maxWidth: 64, maxHeight: 36, objectFit: 'contain' }} />}
-                        <div style={{ fontSize: 13, fontWeight: 700, color: '#f1f5f9' }}>
+                        <div style={{ fontSize: 13.5, fontWeight: 700, color: '#f1f5f9' }}>
                           {buildSettings.loading.title || 'Tact3D'}
                         </div>
-                        <div style={{ fontSize: 10, color: '#94a3b8' }}>
+                        <div style={{ fontSize: 10.5, color: '#94a3b8' }}>
                           {buildSettings.loading.subtitle || '正在加载资源…'}
                         </div>
                         {buildSettings.loading.showProgressBar && (
-                          <div style={{ width: '80%', height: 5, borderRadius: 999, background: 'rgba(255,255,255,0.14)', overflow: 'hidden' }}>
+                          <div style={{ width: '82%', height: 5, borderRadius: 999, background: 'rgba(255,255,255,0.14)', overflow: 'hidden' }}>
                             <div style={{ width: '64%', height: '100%', background: buildSettings.loading.accentColor }} />
                           </div>
                         )}
@@ -1040,36 +1106,42 @@ export function ProjectManagerModal() {
 
                   {/* 构建门禁与执行 */}
                   <div className="pm-card">
-                    <div className="pm-card__title">{t('pm.gate')}</div>
-                    <div style={{ fontSize: 12, color: report.errorCount === 0 ? '#4ade80' : '#fca5a5' }}>
-                      {report.errorCount === 0
-                        ? t('pm.gateOk')
-                        : t('pm.gateBad', { count: report.errorCount })}
-                    </div>
-                    <div className="pm-actions">
-                      <button
-                        type="button"
-                        className="pm-btn pm-btn--primary"
-                        disabled={buildBusy}
-                        onClick={() => void handleExport()}
-                      >
-                        <FileDown size={13} />
-                        {buildBusy
-                          ? '正在构建…'
-                          : buildSettings.target === 'electron'
-                            ? '选择目录并构建桌面端'
-                            : t('pm.export')}
-                      </button>
-                      <button type="button" className="pm-btn pm-btn--ai" disabled={buildBusy} onClick={() => askAi('请先运行一次冒烟试玩验证与体检，确认无误后提示我构建。')}>
-                        <Play size={13} /> {t('pm.smoke')}
-                      </button>
+                    <div className="pm-build-footer">
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                        <span className={`pm-pill ${report.errorCount === 0 ? 'pm-pill--ok' : 'pm-pill--err'}`}>
+                          {report.errorCount === 0 ? '门禁通过' : `${report.errorCount} 项错误`}
+                        </span>
+                        <span style={{ fontSize: 12, color: report.errorCount === 0 ? '#94a3b8' : '#fca5a5' }}>
+                          {report.errorCount === 0
+                            ? t('pm.gateOk')
+                            : t('pm.gateBad', { count: report.errorCount })}
+                        </span>
+                      </div>
+                      <div className="pm-actions">
+                        <button type="button" className="pm-btn pm-btn--ai" disabled={buildBusy} onClick={() => askAi('请先运行一次冒烟试玩验证与体检，确认无误后提示我构建。')}>
+                          <Play size={13} /> {t('pm.smoke')}
+                        </button>
+                        <button
+                          type="button"
+                          className="pm-btn pm-btn--primary"
+                          disabled={buildBusy}
+                          onClick={() => void handleExport()}
+                        >
+                          <FileDown size={13} />
+                          {buildBusy
+                            ? '正在构建…'
+                            : buildSettings.target === 'electron'
+                              ? '选择目录并构建桌面端'
+                              : t('pm.export')}
+                        </button>
+                      </div>
                     </div>
                     {buildProgress && (
-                      <div style={{ fontSize: 11, color: '#93c5fd', marginTop: 6 }}>
+                      <div style={{ fontSize: 11.5, color: '#93c5fd' }}>
                         {buildProgress.label}
                       </div>
                     )}
-                    {exportMsg && <div style={{ fontSize: 12, color: '#93c5fd', marginTop: 6 }}>{exportMsg}</div>}
+                    {exportMsg && <div style={{ fontSize: 12, color: '#93c5fd' }}>{exportMsg}</div>}
                   </div>
                 </>
               )
@@ -1077,6 +1149,18 @@ export function ProjectManagerModal() {
           </main>
         </div>
       </div>
+      {iconPickerOpen && (
+        <AssetPicker
+          title="选择桌面应用图标贴图"
+          kinds={['texture']}
+          selectedId={buildSettings.electron.iconAssetId}
+          onSelect={(assetId) => {
+            updateBuild((p) => ({ ...p, electron: { ...p.electron, iconAssetId: assetId || null } }))
+            setIconPickerOpen(false)
+          }}
+          onClose={() => setIconPickerOpen(false)}
+        />
+      )}
     </div>,
     document.body,
   )

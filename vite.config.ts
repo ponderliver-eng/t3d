@@ -23,7 +23,7 @@ export default defineConfig(({ mode }) => ({
                   target: 'node20',
                   outDir: 'dist-electron',
                   rollupOptions: {
-                    external: ['electron', 'node:url', 'node:path', 'node:fs/promises'],
+                    external: ['electron', 'node:url', 'node:path', 'node:fs/promises', 'node:child_process'],
                     output: {
                       format: 'es',
                       inlineDynamicImports: true,
