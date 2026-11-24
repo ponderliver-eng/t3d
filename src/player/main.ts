@@ -7,6 +7,7 @@ import {
   AnimationMixer,
   BackSide,
   BoxGeometry,
+  CanvasTexture,
   CapsuleGeometry,
   CineonToneMapping,
   Color,
@@ -15,6 +16,7 @@ import {
   DirectionalLight,
   DoubleSide,
   EquirectangularReflectionMapping,
+  Euler,
   Fog,
   FrontSide,
   Group,
@@ -34,6 +36,7 @@ import {
   PerspectiveCamera,
   PlaneGeometry,
   PointLight,
+  Quaternion,
   Raycaster,
   ReinhardToneMapping,
   RepeatWrapping,
@@ -66,6 +69,7 @@ import {
 import type { BuildLoadingConfig, BuildSettings } from '../core/project/buildSettings'
 import type { PbrSlot, SceneNode, ScenePicture, Vec3 } from '../editor/scene/types'
 import type { GameDatabase } from '../gameplay/types'
+import { activeAnimatorState, stepAnimator } from '../runtime/animation/animator'
 import type { HumanoidRetargetAdjust } from '../runtime/animation/humanoidAdjust'
 import { mergedHumanoidSlots, preserveHumanoidAvatarOverrides, type ModelHumanoidAvatar } from '../runtime/animation/humanoidAvatar'
 import { bindHumanoidClip } from '../runtime/animation/humanoidRetarget'
@@ -132,6 +136,7 @@ class PlayerAssetManager {
   private readonly modelCache = new Map<string, { scene: Group; clips: AnimationClip[]; humanoid: ModelHumanoid }>()
   private readonly texCache = new Map<string, Texture>()
   private readonly linearTexCache = new Map<string, Texture>()
+  private readonly unityMrCache = new Map<string, Texture>()
   private readonly envCache = new Map<string, Texture>()
   private readonly pending = new Map<string, Promise<void>>()
 
@@ -164,6 +169,53 @@ class PlayerAssetManager {
     linear.needsUpdate = true
     this.linearTexCache.set(assetId, linear)
     return linear
+  }
+
+  getUnityMetallicRoughnessTexture(assetId: string): Texture | null {
+    const cached = this.unityMrCache.get(assetId)
+    if (cached) return cached
+    const base = this.getTexture(assetId, false)
+    if (!base || typeof document === 'undefined') return base
+    const image = base.image as { width?: number; height?: number; naturalWidth?: number; naturalHeight?: number } | undefined
+    const w = image?.naturalWidth || image?.width || 0
+    const h = image?.naturalHeight || image?.height || 0
+    if (!image || w <= 0 || h <= 0) return base
+    try {
+      const canvas = document.createElement('canvas')
+      canvas.width = w
+      canvas.height = h
+      const ctx = canvas.getContext('2d', { willReadFrequently: true })
+      if (!ctx) return base
+      ctx.drawImage(image as CanvasImageSource, 0, 0, w, h)
+      const imgData = ctx.getImageData(0, 0, w, h)
+      const data = imgData.data
+      let hasAlpha = false
+      const firstA = data[3] ?? 255
+      for (let i = 3; i < data.length; i += 4) {
+        if (Math.abs((data[i] ?? 255) - firstA) > 2) { hasAlpha = true; break }
+      }
+      const useA = hasAlpha || firstA < 250
+      for (let i = 0; i < data.length; i += 4) {
+        const r = data[i]!
+        const g = data[i + 1]!
+        const a = data[i + 3]!
+        data[i] = g > 0 ? g : 255
+        data[i + 1] = 255 - (useA ? a : r)
+        data[i + 2] = r
+        data[i + 3] = 255
+      }
+      ctx.putImageData(imgData, 0, 0)
+      const converted = new CanvasTexture(canvas)
+      converted.colorSpace = NoColorSpace
+      converted.flipY = base.flipY
+      converted.wrapS = base.wrapS
+      converted.wrapT = base.wrapT
+      converted.needsUpdate = true
+      this.unityMrCache.set(assetId, converted)
+      return converted
+    } catch {
+      return base
+    }
   }
 
   getEnvironment(assetId: string | null | undefined): Texture | null {
@@ -353,6 +405,8 @@ interface PlayerAnimEntry {
   activeAction: AnimationAction | null
   upperKey: string | null
   upperAction: AnimationAction | null
+  animatorState?: string
+  animatorTime?: number
 }
 
 function resolvePlayerClipAndAsset(
@@ -562,7 +616,9 @@ function buildMaterialFromSlot(
     const normalTex = slot.normalAssetId ? assetMgr.getTexture(slot.normalAssetId, false) : null
     if (normalTex) std.normalMap = normalTex
 
-    const mrTex = mrId ? assetMgr.getTexture(mrId, false) : null
+    const mrTex = mrId
+      ? (isUnity ? assetMgr.getUnityMetallicRoughnessTexture(mrId) : assetMgr.getTexture(mrId, false))
+      : null
     if (mrTex) {
       std.roughnessMap = mrTex
       std.metalnessMap = mrTex
@@ -572,7 +628,9 @@ function buildMaterialFromSlot(
     if (emissiveTex) std.emissiveMap = emissiveTex
 
     const aoId = slot.aoAssetId ?? (isUnity ? mrId : null)
-    const aoTex = aoId ? assetMgr.getTexture(aoId, false) : null
+    const aoTex = aoId
+      ? (isUnity && aoId === mrId ? assetMgr.getUnityMetallicRoughnessTexture(aoId) : assetMgr.getTexture(aoId, false))
+      : null
     if (aoTex) std.aoMap = aoTex
   }
 
@@ -733,6 +791,7 @@ function buildStandaloneWorld(
   payload: ExportedProjectPayload,
   assetMgr: PlayerAssetManager,
   getAnimEntry: (nodeId: string) => PlayerAnimEntry | undefined,
+  onInstantiateNode: (node: SceneNode) => void,
 ) {
   const initialSceneId = payload.entrySceneId ?? payload.activeSceneId ?? 'default'
   const firstScene = payload.scenes?.[initialSceneId]
@@ -744,6 +803,49 @@ function buildStandaloneWorld(
   const gameDatabase = payload.gameDatabase ?? { tables: {} }
   const assets = payload.assets ?? {}
   const beforeRenderHooks: Array<{ id: string; order: number; hook: (ctx: RuntimeRenderContext) => void }> = []
+  let forcedCameraId = ''
+  let forcedCameraUntil = 0
+
+  const instantiatePrefabTree = (
+    prefabIdOrName: string,
+    options?: { parentId?: string | null; position?: Vec3 },
+  ): string | null => {
+    const prefabAsset = Object.values(assets).find(
+      (a) => a.kind === 'prefab' && (a.id === prefabIdOrName || a.name === prefabIdOrName),
+    )
+    if (!prefabAsset || prefabAsset.kind !== 'prefab' || !prefabAsset.nodes) return null
+    const templateNodes = Array.isArray(prefabAsset.nodes)
+      ? Object.fromEntries((prefabAsset.nodes as SceneNode[]).map((n) => [n.id, n]))
+      : (prefabAsset.nodes as Record<string, SceneNode>)
+    const roots = Object.values(templateNodes).filter((n) => !n.parentId || !templateNodes[n.parentId])
+    if (roots.length === 0) return null
+
+    const idMap = new Map<string, string>()
+    for (const src of Object.values(templateNodes)) {
+      idMap.set(src.id, crypto.randomUUID())
+    }
+    const primaryRootId = idMap.get(roots[0].id) ?? null
+    const created: SceneNode[] = []
+    for (const src of Object.values(templateNodes)) {
+      const nextId = idMap.get(src.id)!
+      const copy = structuredClone(src)
+      copy.id = nextId
+      const isRoot = !src.parentId || !templateNodes[src.parentId]
+      copy.parentId = isRoot ? (options?.parentId ?? null) : (idMap.get(src.parentId!) ?? null)
+      if (isRoot && src.id === roots[0].id && options?.position) {
+        copy.position = [options.position[0], options.position[1], options.position[2]]
+      }
+      copy.prefabAssetId = prefabAsset.id
+      copy.prefabInstanceId = primaryRootId ?? nextId
+      copy.prefabTemplateId = src.id
+      nodes[nextId] = copy
+      created.push(copy)
+    }
+    for (const item of created) {
+      onInstantiateNode(item)
+    }
+    return primaryRootId
+  }
 
   const world: RuntimeWorld = {
     getNodes: () => nodes,
@@ -789,6 +891,23 @@ function buildStandaloneWorld(
       if (!entry) return
       stopUpperOnEntry(entry, fade)
     },
+    bodyProgress: (nodeId) => {
+      const entry = getAnimEntry(nodeId)
+      const action = entry?.activeAction
+      if (!action) return 0
+      const dur = action.getClip().duration
+      if (dur <= 0) return 0
+      return Math.min(1, Math.max(0, action.time / dur))
+    },
+    forcePlayCamera: (cameraId, duration) => {
+      forcedCameraId = cameraId
+      forcedCameraUntil = typeof duration === 'number' && duration > 0 ? performance.now() + duration * 1000 : 0
+    },
+    clearPlayCameraForce: () => {
+      forcedCameraId = ''
+      forcedCameraUntil = 0
+    },
+    instantiatePrefab: instantiatePrefabTree,
     getTags: () => [],
     getAsset: (id) => assets[id],
     listAssets: () => Object.values(assets),
@@ -814,9 +933,206 @@ function buildStandaloneWorld(
     activeSceneId = nextId
     nodes = structuredClone(nextNodes)
     picture = structuredClone((nextPicture ?? {}) as ScenePicture)
+    forcedCameraId = ''
+    forcedCameraUntil = 0
   }
 
-  return { world, beforeRenderHooks, switchSceneData }
+  const activeForcedCameraId = () => {
+    if (!forcedCameraId) return ''
+    if (forcedCameraUntil > 0 && performance.now() > forcedCameraUntil) {
+      forcedCameraId = ''
+      forcedCameraUntil = 0
+      return ''
+    }
+    return forcedCameraId
+  }
+
+  return { world, beforeRenderHooks, switchSceneData, activeForcedCameraId }
+}
+
+function findPlayerModelBone(root: Object3D, key: string): Object3D | null {
+  let found: Object3D | null = null
+  const walk = (object: Object3D, parentPath: string) => {
+    if (found) return
+    const label = object.name || object.type
+    const path = parentPath ? `${parentPath}/${label}` : label
+    const bone = object.type === 'Bone' || (object as { isBone?: boolean }).isBone
+    if (bone && (path === key || object.name === key)) {
+      found = object
+      return
+    }
+    for (const child of object.children) walk(child, object === root ? '' : path)
+  }
+  for (const child of root.children) walk(child, '')
+  return found
+}
+
+function appendPlayerLocalPose(
+  parent: { position: Vector3; quaternion: Quaternion; scale: Vector3 },
+  node: Pick<SceneNode, 'position' | 'rotation' | 'scale'>,
+) {
+  const position = new Vector3(node.position[0], node.position[1], node.position[2])
+    .multiply(parent.scale)
+    .applyQuaternion(parent.quaternion)
+    .add(parent.position)
+  const q = new Quaternion().setFromEuler(
+    new Euler(node.rotation[0] * DEG_TO_RAD, node.rotation[1] * DEG_TO_RAD, node.rotation[2] * DEG_TO_RAD, 'XYZ'),
+  )
+  return {
+    position,
+    quaternion: parent.quaternion.clone().multiply(q),
+    scale: parent.scale.clone().multiply(new Vector3(node.scale[0], node.scale[1], node.scale[2])),
+  }
+}
+
+function posePlayerSockets(
+  nodes: Record<string, SceneNode>,
+  map: Map<string, Group>,
+  modelRoots: Map<string, Object3D>,
+) {
+  const pos = new Vector3()
+  const quat = new Quaternion()
+  const scl = new Vector3()
+  for (const node of Object.values(nodes)) {
+    if (!node.socketBone || !node.parentId) continue
+    const parentGroup = map.get(node.parentId)
+    const modelRoot = modelRoots.get(node.parentId)
+    const group = map.get(node.id)
+    if (!parentGroup || !modelRoot || !group) continue
+    const bone = findPlayerModelBone(modelRoot, node.socketBone)
+    if (!bone) continue
+    bone.updateWorldMatrix(true, false)
+    bone.matrixWorld.decompose(pos, quat, scl)
+    const world = appendPlayerLocalPose({ position: pos, quaternion: quat, scale: parentGroup.scale }, node)
+    group.position.copy(world.position)
+    group.quaternion.copy(world.quaternion)
+    group.scale.copy(world.scale)
+  }
+}
+
+function mountSinglePlayerNode(
+  node: SceneNode,
+  mounted: { root: Group; map: Map<string, Group>; mixers: AnimationMixer[]; animEntries: Map<string, PlayerAnimEntry>; modelRoots: Map<string, Object3D> },
+  assetMgr: PlayerAssetManager,
+  assets: Record<string, ExportedAssetEntry>,
+): Group {
+  const existing = mounted.map.get(node.id)
+  if (existing) return existing
+
+  const group = new Group()
+  group.name = node.name
+  group.userData.nodeId = node.id
+  group.visible = node.visible !== false
+  group.position.set(node.position[0], node.position[1], node.position[2])
+  group.rotation.set(
+    node.rotation[0] * DEG_TO_RAD,
+    node.rotation[1] * DEG_TO_RAD,
+    node.rotation[2] * DEG_TO_RAD,
+    'XYZ',
+  )
+  group.scale.set(node.scale[0], node.scale[1], node.scale[2])
+
+  const geo = createGeometryForNode(node)
+  if (geo) {
+    if (geo.attributes?.uv && !geo.attributes.uv2) {
+      geo.setAttribute('uv2', geo.attributes.uv)
+    }
+    const slot = slotFromPlayerNode(node, assets)
+    const mat = buildMaterialFromSlot(null, slot, assetMgr, assets)
+    const mesh = new Mesh(geo, mat)
+    mesh.castShadow = Boolean(node.castShadow)
+    mesh.receiveShadow = node.receiveShadow !== false
+    group.add(mesh)
+  } else if (node.kind === 'model' && node.assetId) {
+    const modelClone = assetMgr.getModelClone(node.assetId)
+    if (modelClone) {
+      const modelAsset = assets[node.assetId]
+      const importScale = typeof modelAsset?.importScale === 'number' && modelAsset.importScale > 0 ? modelAsset.importScale : 1
+      modelClone.scene.scale.setScalar(importScale)
+      applyPlayerModelMaterials(modelClone.scene, node, assetMgr, assets)
+      group.add(modelClone.scene)
+      mounted.modelRoots.set(node.id, modelClone.scene)
+      const mixer = new AnimationMixer(modelClone.scene)
+      mounted.mixers.push(mixer)
+      const entry: PlayerAnimEntry = {
+        ownerAssetId: node.assetId,
+        rootScene: modelClone.scene,
+        mixer,
+        actions: new Map(),
+        activeKey: null,
+        activeAction: null,
+        upperKey: null,
+        upperAction: null,
+        animatorState: node.animator?.enabled ? node.animator.stateId : undefined,
+        animatorTime: 0,
+      }
+      mounted.animEntries.set(node.id, entry)
+      const animState = node.animator?.enabled && node.animator.defaultStateId
+        ? node.animator.states?.find((s) => s.id === node.animator!.defaultStateId)
+        : undefined
+      const charIdle = node.gameplay?.character?.enabled ? node.gameplay.character.idleClip : undefined
+      const locoIdle = node.gameplay?.locomotion?.enabled ? node.gameplay.locomotion.idleClip : undefined
+      const initClip = animState?.clip || node.clip || charIdle || locoIdle || ''
+      if (initClip && node.clipPlaying !== false) {
+        playBodyOnEntry(entry, initClip, assetMgr, {
+          assetId: animState?.clipAssetId ?? node.clipAssetId,
+          loop: animState ? animState.loop !== false : node.clipLoop !== false,
+          fade: node.clipFade ?? 0.15,
+          speed: animState?.speed ?? node.clipSpeed ?? 1,
+        })
+      }
+      if (node.overlayClip && node.overlayPlaying) {
+        playUpperOnEntry(entry, node.overlayClip, assetMgr, {
+          assetId: node.overlayAssetId,
+          loop: node.overlayLoop === true,
+          fade: node.clipFade ?? 0.15,
+        })
+      }
+    }
+  } else if (node.kind === 'directional-light') {
+    const light = new DirectionalLight(node.color || '#ffffff', node.intensity ?? 2)
+    light.castShadow = Boolean(node.castShadow)
+    light.shadow.mapSize.set(2048, 2048)
+    const distance = Math.max(node.range ?? 20, 4)
+    light.shadow.camera.near = 0.5
+    light.shadow.camera.far = distance * 4
+    light.shadow.camera.left = -distance
+    light.shadow.camera.right = distance
+    light.shadow.camera.top = distance
+    light.shadow.camera.bottom = -distance
+    if (typeof node.shadowBias === 'number') light.shadow.bias = node.shadowBias
+    if (typeof node.shadowNormalBias === 'number') light.shadow.normalBias = node.shadowNormalBias
+    light.target.position.set(0, -1, 0)
+    group.add(light)
+    group.add(light.target)
+  } else if (node.kind === 'point-light') {
+    const light = new PointLight(node.color || '#ffffff', node.intensity ?? 2, node.range ?? 15, node.decay ?? 2)
+    light.castShadow = Boolean(node.castShadow)
+    if (typeof node.shadowBias === 'number') light.shadow.bias = node.shadowBias
+    if (typeof node.shadowNormalBias === 'number') light.shadow.normalBias = node.shadowNormalBias
+    group.add(light)
+  } else if (node.kind === 'spot-light') {
+    const light = new SpotLight(
+      node.color || '#ffffff',
+      node.intensity ?? 2,
+      node.range ?? 15,
+      ((node.spotAngle ?? 40) * DEG_TO_RAD),
+      node.penumbra ?? 0.25,
+      node.decay ?? 2,
+    )
+    light.castShadow = Boolean(node.castShadow)
+    if (typeof node.shadowBias === 'number') light.shadow.bias = node.shadowBias
+    if (typeof node.shadowNormalBias === 'number') light.shadow.normalBias = node.shadowNormalBias
+    light.target.position.set(0, -1, 0)
+    group.add(light)
+    group.add(light.target)
+  } else if (node.kind === 'hemisphere-light') {
+    const light = new HemisphereLight(node.color || '#dbeafe', node.groundColor || '#334155', node.intensity ?? 1)
+    group.add(light)
+  }
+
+  mounted.map.set(node.id, group)
+  return group
 }
 
 function mountSceneObjects(
@@ -824,143 +1140,37 @@ function mountSceneObjects(
   nodes: Record<string, SceneNode>,
   assetMgr: PlayerAssetManager,
   assets: Record<string, ExportedAssetEntry>,
-): { root: Group; map: Map<string, Group>; mixers: AnimationMixer[]; animEntries: Map<string, PlayerAnimEntry> } {
-  const map = new Map<string, Group>()
-  const mixers: AnimationMixer[] = []
-  const animEntries = new Map<string, PlayerAnimEntry>()
-  const root = new Group()
-  scene.add(root)
+) {
+  const mounted = {
+    root: new Group(),
+    map: new Map<string, Group>(),
+    mixers: [] as AnimationMixer[],
+    animEntries: new Map<string, PlayerAnimEntry>(),
+    modelRoots: new Map<string, Object3D>(),
+  }
+  scene.add(mounted.root)
 
   for (const node of Object.values(nodes)) {
-    const group = new Group()
-    group.name = node.name
-    group.userData.nodeId = node.id
-    group.visible = node.visible !== false
-    group.position.set(node.position[0], node.position[1], node.position[2])
-    group.rotation.set(
-      node.rotation[0] * DEG_TO_RAD,
-      node.rotation[1] * DEG_TO_RAD,
-      node.rotation[2] * DEG_TO_RAD,
-      'XYZ',
-    )
-    group.scale.set(node.scale[0], node.scale[1], node.scale[2])
-
-    const geo = createGeometryForNode(node)
-    if (geo) {
-      if (geo.attributes?.uv && !geo.attributes.uv2) {
-        geo.setAttribute('uv2', geo.attributes.uv)
-      }
-      const slot = slotFromPlayerNode(node, assets)
-      const mat = buildMaterialFromSlot(null, slot, assetMgr, assets)
-      const mesh = new Mesh(geo, mat)
-      mesh.castShadow = Boolean(node.castShadow)
-      mesh.receiveShadow = node.receiveShadow !== false
-      group.add(mesh)
-    } else if (node.kind === 'model' && node.assetId) {
-      const modelClone = assetMgr.getModelClone(node.assetId)
-      if (modelClone) {
-        const modelAsset = assets[node.assetId]
-        const importScale = typeof modelAsset?.importScale === 'number' && modelAsset.importScale > 0 ? modelAsset.importScale : 1
-        modelClone.scene.scale.setScalar(importScale)
-        applyPlayerModelMaterials(modelClone.scene, node, assetMgr, assets)
-        group.add(modelClone.scene)
-        const mixer = new AnimationMixer(modelClone.scene)
-        mixers.push(mixer)
-        const entry: PlayerAnimEntry = {
-          ownerAssetId: node.assetId,
-          rootScene: modelClone.scene,
-          mixer,
-          actions: new Map(),
-          activeKey: null,
-          activeAction: null,
-          upperKey: null,
-          upperAction: null,
-        }
-        animEntries.set(node.id, entry)
-        const animState = node.animator?.enabled && node.animator.defaultStateId
-          ? node.animator.states?.find((s) => s.id === node.animator!.defaultStateId)
-          : undefined
-        const charIdle = node.gameplay?.character?.enabled ? node.gameplay.character.idleClip : undefined
-        const locoIdle = node.gameplay?.locomotion?.enabled ? node.gameplay.locomotion.idleClip : undefined
-        const initClip = animState?.clip || node.clip || charIdle || locoIdle || ''
-        if (initClip && node.clipPlaying !== false) {
-          playBodyOnEntry(entry, initClip, assetMgr, {
-            assetId: animState?.clipAssetId ?? node.clipAssetId,
-            loop: animState ? animState.loop !== false : node.clipLoop !== false,
-            fade: node.clipFade ?? 0.15,
-            speed: animState?.speed ?? node.clipSpeed ?? 1,
-          })
-        }
-        if (node.overlayClip && node.overlayPlaying) {
-          playUpperOnEntry(entry, node.overlayClip, assetMgr, {
-            assetId: node.overlayAssetId,
-            loop: node.overlayLoop === true,
-            fade: node.clipFade ?? 0.15,
-          })
-        }
-      }
-    } else if (node.kind === 'directional-light') {
-      const light = new DirectionalLight(node.color || '#ffffff', node.intensity ?? 2)
-      light.castShadow = Boolean(node.castShadow)
-      light.shadow.mapSize.set(2048, 2048)
-      const distance = Math.max(node.range ?? 20, 4)
-      light.shadow.camera.near = 0.5
-      light.shadow.camera.far = distance * 4
-      light.shadow.camera.left = -distance
-      light.shadow.camera.right = distance
-      light.shadow.camera.top = distance
-      light.shadow.camera.bottom = -distance
-      if (typeof node.shadowBias === 'number') light.shadow.bias = node.shadowBias
-      if (typeof node.shadowNormalBias === 'number') light.shadow.normalBias = node.shadowNormalBias
-      light.target.position.set(0, -1, 0)
-      group.add(light)
-      group.add(light.target)
-    } else if (node.kind === 'point-light') {
-      const light = new PointLight(node.color || '#ffffff', node.intensity ?? 2, node.range ?? 15, node.decay ?? 2)
-      light.castShadow = Boolean(node.castShadow)
-      if (typeof node.shadowBias === 'number') light.shadow.bias = node.shadowBias
-      if (typeof node.shadowNormalBias === 'number') light.shadow.normalBias = node.shadowNormalBias
-      group.add(light)
-    } else if (node.kind === 'spot-light') {
-      const light = new SpotLight(
-        node.color || '#ffffff',
-        node.intensity ?? 2,
-        node.range ?? 15,
-        ((node.spotAngle ?? 40) * DEG_TO_RAD),
-        node.penumbra ?? 0.25,
-        node.decay ?? 2,
-      )
-      light.castShadow = Boolean(node.castShadow)
-      if (typeof node.shadowBias === 'number') light.shadow.bias = node.shadowBias
-      if (typeof node.shadowNormalBias === 'number') light.shadow.normalBias = node.shadowNormalBias
-      light.target.position.set(0, -1, 0)
-      group.add(light)
-      group.add(light.target)
-    } else if (node.kind === 'hemisphere-light') {
-      const light = new HemisphereLight(node.color || '#dbeafe', node.groundColor || '#334155', node.intensity ?? 1)
-      group.add(light)
-    }
-
-    map.set(node.id, group)
+    mountSinglePlayerNode(node, mounted, assetMgr, assets)
   }
 
   for (const node of Object.values(nodes)) {
-    const obj = map.get(node.id)
+    const obj = mounted.map.get(node.id)
     if (!obj) continue
-    const parent = node.parentId ? map.get(node.parentId) : undefined
-    ;(parent ?? root).add(obj)
+    // socketBone 挂点节点在世界空间同步，直接挂在 root 下避免父级二次变换
+    const parent = node.parentId && !node.socketBone ? mounted.map.get(node.parentId) : undefined
+    ;(parent ?? mounted.root).add(obj)
   }
 
-  // 保底基础环境光，避免无灯光场景全黑
   const hasAnyLight = Object.values(nodes).some((n) => n.kind.endsWith('-light'))
   if (!hasAnyLight) {
-    root.add(new AmbientLight('#ffffff', 0.65))
+    mounted.root.add(new AmbientLight('#ffffff', 0.65))
     const key = new DirectionalLight('#ffffff', 1.6)
     key.position.set(6, 12, 8)
-    root.add(key)
+    mounted.root.add(key)
   }
 
-  return { root, map, mixers, animEntries }
+  return mounted
 }
 
 function attachTouchOverlay(container: HTMLElement) {
@@ -1110,10 +1320,16 @@ async function boot() {
   attachTouchOverlay(rootEl)
 
   let mounted: ReturnType<typeof mountSceneObjects> | null = null
-  const { world, beforeRenderHooks, switchSceneData } = buildStandaloneWorld(
+  const { world, beforeRenderHooks, switchSceneData, activeForcedCameraId } = buildStandaloneWorld(
     payload,
     assetMgr,
     (nodeId) => mounted?.animEntries.get(nodeId),
+    (node) => {
+      if (!mounted) return
+      const obj = mountSinglePlayerNode(node, mounted, assetMgr, assets)
+      const parent = node.parentId && !node.socketBone ? mounted.map.get(node.parentId) : undefined
+      ;(parent ?? mounted.root).add(obj)
+    },
   )
   setRuntimeWorld(world)
   await syncCapabilityRuntimes(world.getCapabilities())
@@ -1256,7 +1472,41 @@ async function boot() {
   let wheelDelta = 0
   const clickPoints: { left: [number, number, number] | null; right: [number, number, number] | null } = { left: null, right: null }
   const clickHits: { left: { nodeId: string | null; point: [number, number, number] } | null; right: { nodeId: string | null; point: [number, number, number] } | null } = { left: null, right: null }
-  let downPos: { x: number; y: number; button: number } | null = null
+  let downPos: { x: number; y: number; button: number; additive: boolean } | null = null
+  let playMarqueeEnabled = false
+  let playMarqueeResult: { ids: string[]; additive: boolean } | null = null
+  let marqueeEl: HTMLDivElement | null = null
+
+  const ensureMarqueeEl = () => {
+    if (marqueeEl) return marqueeEl
+    marqueeEl = document.createElement('div')
+    marqueeEl.style.cssText = 'position:fixed;display:none;border:1px solid rgba(96,165,250,0.9);background:rgba(59,130,246,0.18);pointer-events:none;z-index:15;'
+    rootEl.appendChild(marqueeEl)
+    return marqueeEl
+  }
+
+  const collectMarqueeIds = (x0: number, y0: number, x1: number, y1: number): string[] => {
+    if (!mounted) return []
+    const rect = canvas.getBoundingClientRect()
+    if (rect.width <= 0 || rect.height <= 0) return []
+    const minX = Math.min(x0, x1) - rect.left
+    const maxX = Math.max(x0, x1) - rect.left
+    const minY = Math.min(y0, y1) - rect.top
+    const maxY = Math.max(y0, y1) - rect.top
+    const ids: string[] = []
+    const pos = new Vector3()
+    camera.updateMatrixWorld()
+    for (const [id, group] of mounted.map) {
+      if (!isObjVisible(group)) continue
+      group.getWorldPosition(pos)
+      pos.project(camera)
+      if (pos.z < -1 || pos.z > 1) continue
+      const sx = (pos.x * 0.5 + 0.5) * rect.width
+      const sy = (-pos.y * 0.5 + 0.5) * rect.height
+      if (sx >= minX && sx <= maxX && sy >= minY && sy <= maxY) ids.push(id)
+    }
+    return ids
+  }
 
   const needsMouseLock = () => {
     const nodes = world.getNodes()
@@ -1295,7 +1545,7 @@ async function boot() {
     mouseButtonsMask = e.buttons
     rightButton = (e.buttons & 2) !== 0
     if (e.button === 0 || e.button === 2) {
-      downPos = { x: e.clientX, y: e.clientY, button: e.button }
+      downPos = { x: e.clientX, y: e.clientY, button: e.button, additive: e.shiftKey || e.ctrlKey || e.metaKey }
     }
     if (needsMouseLock() && document.pointerLockElement !== canvas) {
       void Promise.resolve(canvas.requestPointerLock?.()).catch(() => undefined)
@@ -1311,10 +1561,24 @@ async function boot() {
       pointerNorm.x = ((e.clientX - rect.left) / rect.width) * 2 - 1
       pointerNorm.y = -((e.clientY - rect.top) / rect.height) * 2 + 1
     }
+    if (playMarqueeEnabled && downPos?.button === 0) {
+      const dx = e.clientX - downPos.x
+      const dy = e.clientY - downPos.y
+      if (dx * dx + dy * dy >= 36) {
+        const box = ensureMarqueeEl()
+        box.style.display = 'block'
+        box.style.left = `${Math.min(downPos.x, e.clientX)}px`
+        box.style.top = `${Math.min(downPos.y, e.clientY)}px`
+        box.style.width = `${Math.abs(dx)}px`
+        box.style.height = `${Math.abs(dy)}px`
+      }
+    }
   })
   window.addEventListener('pointerup', (e) => {
     mouseButtonsMask = e.buttons
     rightButton = (e.buttons & 2) !== 0
+    const draggedMarquee = marqueeEl?.style.display === 'block'
+    if (marqueeEl) marqueeEl.style.display = 'none'
     if (!downPos || downPos.button !== e.button) {
       downPos = null
       return
@@ -1322,7 +1586,15 @@ async function boot() {
     const dx = e.clientX - downPos.x
     const dy = e.clientY - downPos.y
     const btn = downPos.button
+    const press = downPos
     downPos = null
+    if (btn === 0 && draggedMarquee && playMarqueeEnabled) {
+      playMarqueeResult = {
+        ids: collectMarqueeIds(press.x, press.y, e.clientX, e.clientY),
+        additive: press.additive,
+      }
+      return
+    }
     if (dx * dx + dy * dy > 36 || !mounted) return
     const rect = canvas.getBoundingClientRect()
     if (rect.width <= 0 || rect.height <= 0) return
@@ -1351,6 +1623,33 @@ async function boot() {
     resolveObject: (id) => mounted?.map.get(id) ?? null,
     updateAnimations: (dt: number) => {
       if (!mounted) return
+      const nodes = world.getNodes()
+      for (const [nodeId, entry] of mounted.animEntries) {
+        const node = nodes[nodeId]
+        if (!node?.animator?.enabled || node.clipPlaying === false) continue
+        if (entry.animatorState !== node.animator.stateId) {
+          entry.animatorState = node.animator.stateId
+          entry.animatorTime = 0
+        }
+        const st = activeAnimatorState(node.animator)
+        const dur = st?.clip ? (world.clipDuration?.(st.clipAssetId || node.assetId, st.clip) ?? 0) : 0
+        entry.animatorTime = (entry.animatorTime ?? 0) + dt * (st?.speed || 1)
+        const stepped = stepAnimator(node.animator, entry.animatorTime, dur)
+        if (stepped.changed) {
+          entry.animatorState = stepped.controller.stateId
+          entry.animatorTime = 0
+          world.updateNode(nodeId, { animator: stepped.controller })
+          const nextState = activeAnimatorState(stepped.controller)
+          if (nextState?.clip) {
+            playBodyOnEntry(entry, nextState.clip, assetMgr, {
+              assetId: nextState.clipAssetId,
+              loop: nextState.loop !== false,
+              fade: stepped.fade,
+              speed: nextState.speed,
+            })
+          }
+        }
+      }
       for (const mixer of mounted.mixers) mixer.update(dt)
     },
     probe: (origin: Vec3, direction: Vec3, max: number, ignoreId: string) => {
@@ -1408,6 +1707,18 @@ async function boot() {
       clickHits[button] = null
       return hit
     },
+    setPlayMarqueeEnabled: (enabled) => {
+      playMarqueeEnabled = enabled
+      if (!enabled) {
+        playMarqueeResult = null
+        if (marqueeEl) marqueeEl.style.display = 'none'
+      }
+    },
+    consumePlayMarquee: () => {
+      const next = playMarqueeResult
+      playMarqueeResult = null
+      return next
+    },
     worldToScreen: (pos) => {
       const w = window.innerWidth
       const h = Math.max(1, window.innerHeight)
@@ -1428,7 +1739,26 @@ async function boot() {
     for (const item of beforeRenderHooks) {
       item.hook({ renderer, scene, camera, dt })
     }
-    if (!switchingScene) stepSceneRuntime(dt, host)
+    if (!switchingScene) {
+      stepSceneRuntime(dt, host)
+      if (mounted) {
+        posePlayerSockets(world.getNodes(), mounted.map, mounted.modelRoots)
+        const forcedId = activeForcedCameraId()
+        if (forcedId) {
+          const camNode = world.getNodes()[forcedId]
+          const camObj = mounted.map.get(forcedId)
+          if (camNode?.kind === 'camera' && camObj) {
+            camObj.updateWorldMatrix(true, false)
+            camObj.getWorldPosition(camera.position)
+            camObj.getWorldQuaternion(camera.quaternion)
+            camera.fov = camNode.fov ?? camera.fov
+            camera.near = Math.max(0.001, camNode.near ?? camera.near)
+            camera.far = Math.max(camera.near + 0.01, camNode.far ?? camera.far)
+            camera.updateProjectionMatrix()
+          }
+        }
+      }
+    }
     const pic = world.getPicture()
     if (picturePipeline.usesEffects(pic)) {
       picturePipeline.render(scene, camera, pic, window.innerWidth, Math.max(1, window.innerHeight))
