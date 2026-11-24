@@ -61,7 +61,7 @@ import {
   toggleCheckpointStar,
   useCheckpointUiStore,
 } from './checkpoints'
-import { getDesignDoc, updateDesignDoc } from './designMemory'
+import { getDesignDoc, loadDesignDocFromProject, updateDesignDoc } from './designMemory'
 import './ProjectManagerModal.css'
 
 export type ManagerTabId = 'design' | 'packs' | 'diagnose' | 'branches' | 'publish'
@@ -136,16 +136,26 @@ export function ProjectManagerModal() {
 
   useEffect(() => {
     if (!open) return
-    const doc = getDesignDoc()
-    setTitle(doc.title)
-    setGenre(doc.genre)
-    setPerspective(doc.perspective)
-    setCoreLoop(doc.coreLoop)
-    setWinLose(doc.winLose)
-    setArtStyle(doc.artStyle)
-    setPaletteText(doc.colorPalette.join(', '))
-    setControls(doc.controls)
-    setNotes(doc.notes)
+    let cancelled = false
+    const apply = (doc: ReturnType<typeof getDesignDoc>) => {
+      setTitle(doc.title)
+      setGenre(doc.genre)
+      setPerspective(doc.perspective)
+      setCoreLoop(doc.coreLoop)
+      setWinLose(doc.winLose)
+      setArtStyle(doc.artStyle)
+      setPaletteText(doc.colorPalette.join(', '))
+      setControls(doc.controls)
+      setNotes(doc.notes)
+    }
+    apply(getDesignDoc())
+    // 再从磁盘读回一次：design.md 可能被手工或外部编辑器改过
+    void loadDesignDocFromProject().then((doc) => {
+      if (!cancelled) apply(doc)
+    })
+    return () => {
+      cancelled = true
+    }
   }, [open])
 
   if (!open) return null

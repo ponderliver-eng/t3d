@@ -2,10 +2,12 @@ import { useEditorStore } from '../../../editor/scene/store'
 import type { ScenePicture } from '../../../editor/scene/types'
 import {
   createCheckpoint,
-  getDesignDoc,
+  getDesignMarkdown,
+  loadDesignDocFromProject,
   restoreCheckpoint,
   updateDesignDoc,
   type ProjectDesignDoc,
+  type ProjectDesignPatch,
 } from '../../project'
 import { commandBus } from '../bus'
 import type { CommandDef } from '../types'
@@ -79,33 +81,62 @@ const openSceneCmd: CommandDef<OpenSceneParams, { sceneId: string }> = {
   },
 }
 
-const getDesignCmd: CommandDef<Record<string, never>, ProjectDesignDoc> = {
+const getDesignCmd: CommandDef<Record<string, never>, ProjectDesignDoc & { markdown: string }> = {
   id: 'project.design.get',
   title: '读取工程设计规范（design.md）',
   mutatesDocument: false,
   risk: 'safe',
   params: { type: 'object', fields: {} },
-  run() {
-    return { ok: true, value: getDesignDoc(), changed: {} }
+  async run() {
+    // 先从磁盘读回：用户可能刚手改过 design.md
+    const doc = await loadDesignDocFromProject()
+    return { ok: true, value: { ...doc, markdown: getDesignMarkdown() }, changed: {} }
   },
 }
 
 interface UpdateDesignParams {
-  patch: Partial<ProjectDesignDoc>
+  patch: ProjectDesignPatch
 }
+
+const designText = (label: string, description?: string) =>
+  ({ type: 'string', default: '', label, optional: true, ...(description ? { description } : {}) }) as const
 
 const updateDesignCmd: CommandDef<UpdateDesignParams, ProjectDesignDoc> = {
   id: 'project.design.update',
   title: '更新工程设计规范（design.md）',
-  description: '更新游戏设计概要与风格规范（标题、类型、视角、核心循环、胜负条件、美术风格、色彩板、操作映射、命名约定）',
+  description:
+    '更新游戏设计概要与风格规范。只传需要修改的字段，未传的字段与 design.md 里用户手写的其它章节都会原样保留；追加自由说明用 appendNotes，不要用 notes 整段覆盖',
   risk: 'safe',
   params: {
     type: 'object',
     fields: {
-      patch: { type: 'object', fields: {}, label: '设计规范补丁' },
+      patch: {
+        type: 'object',
+        label: '设计规范补丁',
+        description: '只包含要修改的字段',
+        fields: {
+          title: designText('游戏标题'),
+          genre: designText('类型'),
+          perspective: designText('视角'),
+          coreLoop: designText('核心循环'),
+          winLose: designText('胜负条件'),
+          artStyle: designText('美术风格'),
+          colorPalette: {
+            type: 'list',
+            label: '色彩板',
+            optional: true,
+            item: { type: 'string', default: '', label: '颜色（十六进制或名称）' },
+          },
+          controls: designText('操作映射'),
+          namingRules: designText('命名约定'),
+          notes: designText('补充说明', '整段替换「补充说明」小节；一般应改用 appendNotes'),
+          appendNotes: designText('追加补充说明', '追加到「补充说明」小节末尾，不覆盖已有内容'),
+        },
+      },
     },
   },
   async run(_ctx, p) {
+    await loadDesignDocFromProject()
     const next = await updateDesignDoc(p.patch)
     return {
       ok: true,

@@ -24,6 +24,10 @@ export interface ElectronBridge {
   dialog: {
     showOpenDirectoryDialog: () => Promise<string | null>
   }
+  app?: {
+    /** 用户级资料库根目录（`<userData>/T3D`），已在主进程路径白名单内 */
+    userLibraryRoot: () => Promise<string>
+  }
   player?: {
     copyShell: (targetDir: string) => Promise<{ ok: boolean; copiedFiles: string[]; message: string }>
     buildElectron?: (

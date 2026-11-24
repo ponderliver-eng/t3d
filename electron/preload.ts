@@ -23,6 +23,9 @@ contextBridge.exposeInMainWorld('__electron', {
   dialog: {
     showOpenDirectoryDialog: () => ipcRenderer.invoke('dialog:showOpenDirectoryDialog'),
   },
+  app: {
+    userLibraryRoot: () => ipcRenderer.invoke('app:userLibraryRoot'),
+  },
   player: {
     copyShell: (targetDir: string) => ipcRenderer.invoke('player:copyShell', targetDir),
     buildElectron: (

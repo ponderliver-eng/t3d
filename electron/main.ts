@@ -137,7 +137,7 @@ function stopProjectWatchers() {
 
 async function startProjectCodeWatchers(projectDir: string) {
   if (watchedProjectRoot === projectDir && projectWatchers.length > 0) return
-  stopProjectCodeWatchers()
+  stopProjectWatchers()
   watchedProjectRoot = projectDir
   const pendingTimers = new Map<string, NodeJS.Timeout>()
 
@@ -230,6 +230,8 @@ function registerIpc() {
       inflightChats.delete(requestId)
     }
   })
+
+  ipcMain.handle('app:userLibraryRoot', () => userLibraryRoot)
 
   ipcMain.handle('fs:authorizeRoot', (_event, dirPath: string) => {
     return pathGuard.authorizeRoot(dirPath)

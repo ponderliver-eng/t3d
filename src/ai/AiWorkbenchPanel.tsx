@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type DragEvent } from 'react'
-import { AlertTriangle, Bot, Box, Camera, Check, ChevronDown, ChevronRight, Copy, Download, FileBox, FileCode2, Folder, Loader2, Plus, RotateCcw, Send, Settings, ShieldCheck, Sparkles, Square, Trash2, Upload, Wand2, X } from 'lucide-react'
+import { AlertTriangle, BookOpen, Bot, Box, Camera, Check, ChevronDown, ChevronRight, Copy, Download, FileBox, FileCode2, Folder, Loader2, Plus, RotateCcw, Send, Settings, ShieldCheck, Sparkles, Square, Trash2, Upload, Wand2, X } from 'lucide-react'
 import { createCheckpoint } from '../core/project/checkpoints'
 import { useManagerModalStore } from '../core/project/ProjectManagerModal'
 import { openCodeAssetModal } from '../core/codeAssets/CodeAssetModal'
@@ -12,6 +12,7 @@ import { translate, useI18n } from '../editor/i18n'
 import { useEditorStore } from '../editor/scene/store'
 import { useAgentStore, type AiActionPill, type AiRefItem } from './agentLoop'
 import { parseImportedAiHistory, serializeAiHistoryForExport } from './historyStorage'
+import KnowledgeDrawer, { TurnContextLine } from './KnowledgeDrawer'
 // 副作用导入：在 window 上注册开发用评测入口 __t3dAiEval
 import './evals/runner'
 
@@ -84,6 +85,7 @@ export default function AiWorkbenchPanel() {
   const [input, setInput] = useState('')
   const [droppingToChat, setDroppingToChat] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [knowledgeOpen, setKnowledgeOpen] = useState(false)
   const [modelMenuOpen, setModelMenuOpen] = useState(false)
   const [confirmMenuOpen, setConfirmMenuOpen] = useState(false)
   const confirmMenuRef = useRef<HTMLDivElement | null>(null)
@@ -295,6 +297,13 @@ export default function AiWorkbenchPanel() {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight
     }
   }, [turns, streamingText, panelOpen, status])
+
+  // 所有 Hook 必须在下面的提前返回之前调用，否则面板开合时 Hook 数量变化会让组件崩溃
+  useEffect(() => {
+    const onWinResize = () => setPanelWidth((w) => clampAiPanelWidth(w))
+    window.addEventListener('resize', onWinResize)
+    return () => window.removeEventListener('resize', onWinResize)
+  }, [])
 
   if (!panelOpen) return null
 
@@ -521,12 +530,6 @@ export default function AiWorkbenchPanel() {
     setVisibleCount((c) => Math.min(turns.length, c + step))
   }
 
-  useEffect(() => {
-    const onWinResize = () => setPanelWidth((w) => clampAiPanelWidth(w))
-    window.addEventListener('resize', onWinResize)
-    return () => window.removeEventListener('resize', onWinResize)
-  }, [])
-
   const startPanelResize = (e: React.MouseEvent<HTMLDivElement>) => {
     if (e.button !== 0) return
     e.preventDefault()
@@ -726,6 +729,17 @@ export default function AiWorkbenchPanel() {
         )}
         <button
           type="button"
+          title={t('ai.knowledgeTip')}
+          onClick={() => {
+            setKnowledgeOpen((v) => !v)
+            setSettingsOpen(false)
+          }}
+          style={knowledgeOpen ? { ...iconBtnStyle, color: '#93c5fd', borderColor: 'rgba(96,165,250,0.45)' } : iconBtnStyle}
+        >
+          <BookOpen size={13} />
+        </button>
+        <button
+          type="button"
           title={t('ai.settingsTip')}
           onClick={() => setSettingsOpen((v) => !v)}
           style={iconBtnStyle}
@@ -750,6 +764,17 @@ export default function AiWorkbenchPanel() {
           <X size={13} />
         </button>
       </div>
+
+      {/* 知识与规则抽屉 */}
+      {knowledgeOpen && (
+        <KnowledgeDrawer
+          onClose={() => setKnowledgeOpen(false)}
+          onUse={(prompt) => {
+            setInput(prompt)
+            setKnowledgeOpen(false)
+          }}
+        />
+      )}
 
       {/* 模型设置抽屉 */}
       {settingsOpen && (
@@ -1198,6 +1223,10 @@ export default function AiWorkbenchPanel() {
               >
                 <AiMarkdown text={streamingText} />
               </div>
+            )}
+
+            {turn.role === 'assistant' && (turn.context || turn.checks) && (
+              <TurnContextLine context={turn.context} checks={turn.checks} onOpen={() => setKnowledgeOpen(true)} />
             )}
 
             {turn.actions && turn.actions.length > 0 && (

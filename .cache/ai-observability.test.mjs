@@ -4348,27 +4348,27 @@ var init_schema = __esm({
     SPLINE_PATH_CAPABILITY_ID = "splinePath";
     SPLINE_SCHEMA = {
       type: "object",
-      label: "Spline \u8DEF\u5F84\u8FD0\u52A8",
+      label: "spline.title",
       fields: {
-        enabled: { type: "boolean", default: true, label: "\u542F\u7528" },
-        pathNodeId: { type: "ref", target: "node", kinds: ["spline"], default: null, label: "Spline \u66F2\u7EBF\u8282\u70B9" },
+        enabled: { type: "boolean", default: true, label: "field.enable" },
+        pathNodeId: { type: "ref", target: "node", kinds: ["spline"], default: null, label: "spline.pathNode" },
         mode: {
           type: "enum",
           default: "loop",
-          label: "\u8FD0\u884C\u6A21\u5F0F",
+          label: "spline.mode",
           options: [
-            { value: "once", label: "\u5355\u6B21\u5230\u8FBE" },
-            { value: "loop", label: "\u5FAA\u73AF" },
-            { value: "pingPong", label: "\u5F80\u8FD4" }
+            { value: "once", label: "spline.mode.once" },
+            { value: "loop", label: "spline.mode.loop" },
+            { value: "pingPong", label: "spline.mode.pingPong" }
           ]
         },
-        speed: { type: "number", default: 4, min: 0.05, max: 200, step: 0.5, label: "\u79FB\u52A8\u901F\u5EA6 (m/s)" },
-        tension: { type: "number", default: 0.5, min: 0, max: 1, step: 0.05, label: "\u66F2\u7EBF\u5F20\u529B" },
-        closed: { type: "boolean", default: false, label: "\u95ED\u5408\u66F2\u7EBF" },
-        faceDirection: { type: "boolean", default: true, label: "\u671D\u5411\u8DEF\u5F84\u5207\u7EBF" },
-        planeXZ: { type: "boolean", default: false, label: "\u4FDD\u6301\u5F53\u524D\u9AD8\u5EA6 (XZ)" },
-        autoStart: { type: "boolean", default: true, label: "\u8BD5\u73A9\u81EA\u52A8\u542F\u52A8" },
-        startProgress: { type: "number", default: 0, min: 0, max: 1, step: 0.05, label: "\u8D77\u59CB\u8FDB\u5EA6 (0~1)" }
+        speed: { type: "number", default: 4, min: 0.05, max: 200, step: 0.5, label: "spline.speed" },
+        tension: { type: "number", default: 0.5, min: 0, max: 1, step: 0.05, label: "spline.curveTension" },
+        closed: { type: "boolean", default: false, label: "field.closed" },
+        faceDirection: { type: "boolean", default: true, label: "spline.face" },
+        planeXZ: { type: "boolean", default: false, label: "spline.planeXZ" },
+        autoStart: { type: "boolean", default: true, label: "spline.autoStart" },
+        startProgress: { type: "number", default: 0, min: 0, max: 1, step: 0.05, label: "spline.start" }
       }
     };
   }
@@ -4544,50 +4544,50 @@ var init_schema2 = __esm({
     TWEEN_CAPABILITY_ID = "tween";
     TWEEN_SCHEMA = {
       type: "object",
-      label: "Tween \u8865\u95F4\u52A8\u6548",
+      label: "tween.title",
       fields: {
-        enabled: { type: "boolean", default: true, label: "\u542F\u7528" },
+        enabled: { type: "boolean", default: true, label: "field.enable" },
         property: {
           type: "enum",
           default: "floatBob",
-          label: "\u52A8\u6548\u7C7B\u578B",
+          label: "tween.kind",
           options: [
-            { value: "floatBob", label: "\u60AC\u6D6E\u6D6E\u52A8 (PingPong)" },
-            { value: "positionOffset", label: "\u4F4D\u7F6E\u504F\u79FB" },
-            { value: "rotationOffset", label: "\u65CB\u8F6C\u89D2\u5EA6 (\u5EA6)" },
-            { value: "scaleMultiplier", label: "\u7F29\u653E\u500D\u7387\u53D8\u5316" }
+            { value: "floatBob", label: "tween.kind.floatBob" },
+            { value: "positionOffset", label: "tween.kind.positionOffset" },
+            { value: "rotationOffset", label: "tween.kind.rotationOffset" },
+            { value: "scaleMultiplier", label: "tween.kind.scaleMultiplier" }
           ]
         },
-        delta: { type: "vec3", default: [0, 0.35, 0], label: "\u53D8\u5316\u91CF (X/Y/Z)" },
-        duration: { type: "number", default: 1.2, min: 0.05, max: 60, step: 0.1, label: "\u5355\u7A0B\u65F6\u957F (\u79D2)" },
-        delay: { type: "number", default: 0, min: 0, max: 30, step: 0.1, label: "\u8D77\u59CB\u5EF6\u8FDF (\u79D2)" },
+        delta: { type: "vec3", default: [0, 0.35, 0], label: "tween.delta" },
+        duration: { type: "number", default: 1.2, min: 0.05, max: 60, step: 0.1, label: "tween.duration" },
+        delay: { type: "number", default: 0, min: 0, max: 30, step: 0.1, label: "tween.delay" },
         ease: {
           type: "enum",
           default: "inOutSine",
-          label: "\u7F13\u52A8\u66F2\u7EBF",
+          label: "tween.ease",
           options: [
-            { value: "linear", label: "\u7EBF\u6027 (Linear)" },
-            { value: "inOutSine", label: "\u6B63\u5F26\u7F13\u5165\u7F13\u51FA (Sine)" },
-            { value: "outQuad", label: "\u4E8C\u6B21\u7F13\u51FA (OutQuad)" },
-            { value: "inOutQuad", label: "\u4E8C\u6B21\u7F13\u5165\u7F13\u51FA (InOutQuad)" },
-            { value: "outCubic", label: "\u4E09\u6B21\u7F13\u51FA (OutCubic)" },
-            { value: "inOutCubic", label: "\u4E09\u6B21\u7F13\u5165\u7F13\u51FA (InOutCubic)" },
-            { value: "outBack", label: "\u56DE\u5F39 (OutBack)" },
-            { value: "outBounce", label: "\u5F39\u8DF3 (OutBounce)" },
-            { value: "outElastic", label: "\u5F39\u6027 (OutElastic)" }
+            { value: "linear", label: "tween.ease.linear" },
+            { value: "inOutSine", label: "tween.ease.inOutSine" },
+            { value: "outQuad", label: "tween.ease.outQuad" },
+            { value: "inOutQuad", label: "tween.ease.inOutQuad" },
+            { value: "outCubic", label: "tween.ease.outCubic" },
+            { value: "inOutCubic", label: "tween.ease.inOutCubic" },
+            { value: "outBack", label: "tween.ease.outBack" },
+            { value: "outBounce", label: "tween.ease.outBounce" },
+            { value: "outElastic", label: "tween.ease.outElastic" }
           ]
         },
         loopMode: {
           type: "enum",
           default: "pingPong",
-          label: "\u5FAA\u73AF\u6A21\u5F0F",
+          label: "tween.repeat",
           options: [
-            { value: "once", label: "\u5355\u6B21" },
-            { value: "loop", label: "\u4ECE\u5934\u5FAA\u73AF" },
-            { value: "pingPong", label: "\u5F80\u8FD4 (PingPong)" }
+            { value: "once", label: "tween.repeat.once" },
+            { value: "loop", label: "tween.repeat.loop" },
+            { value: "pingPong", label: "tween.repeat.pingPong" }
           ]
         },
-        autoStart: { type: "boolean", default: true, label: "\u8BD5\u73A9\u81EA\u52A8\u64AD\u653E" }
+        autoStart: { type: "boolean", default: true, label: "tween.autoStart" }
       }
     };
   }
@@ -4736,16 +4736,16 @@ var init_schema3 = __esm({
     CROWD_CAPABILITY_ID = "crowd";
     CROWD_SCHEMA = {
       type: "object",
-      label: "\u7FA4\u4F53\u907F\u8BA9 (Crowd)",
+      label: "crowd.title",
       fields: {
-        enabled: { type: "boolean", default: true, label: "\u542F\u7528" },
-        radius: { type: "number", default: 0.8, min: 0.2, max: 10, step: 0.1, label: "\u907F\u8BA9\u534A\u5F84 (m)" },
-        maxSpeed: { type: "number", default: 4.5, min: 0.1, max: 50, step: 0.5, label: "\u6700\u5927\u901F\u5EA6 (m/s)" },
-        separationWeight: { type: "number", default: 1.8, min: 0, max: 10, step: 0.1, label: "\u5206\u79BB\u6743\u91CD" },
-        cohesionWeight: { type: "number", default: 0.25, min: 0, max: 5, step: 0.05, label: "\u51DD\u805A\u6743\u91CD" },
-        alignmentWeight: { type: "number", default: 0.35, min: 0, max: 5, step: 0.05, label: "\u5BF9\u9F50\u6743\u91CD" },
-        planeXZ: { type: "boolean", default: true, label: "XZ \u5E73\u9762\u79FB\u52A8" },
-        faceDirection: { type: "boolean", default: true, label: "\u671D\u5411\u79FB\u52A8\u65B9\u5411" }
+        enabled: { type: "boolean", default: true, label: "field.enable" },
+        radius: { type: "number", default: 0.8, min: 0.2, max: 10, step: 0.1, label: "crowd.radius" },
+        maxSpeed: { type: "number", default: 4.5, min: 0.1, max: 50, step: 0.5, label: "crowd.maxSpeed" },
+        separationWeight: { type: "number", default: 1.8, min: 0, max: 10, step: 0.1, label: "crowd.separation" },
+        cohesionWeight: { type: "number", default: 0.25, min: 0, max: 5, step: 0.05, label: "crowd.cohesion" },
+        alignmentWeight: { type: "number", default: 0.35, min: 0, max: 5, step: 0.05, label: "crowd.alignment" },
+        planeXZ: { type: "boolean", default: true, label: "crowd.planeXZ" },
+        faceDirection: { type: "boolean", default: true, label: "crowd.face" }
       }
     };
   }
@@ -5325,27 +5325,27 @@ var init_schema4 = __esm({
     PROJECTILE_CAPABILITY_ID = "projectile";
     PROJECTILE_SCHEMA = {
       type: "object",
-      label: "\u901A\u7528\u5F39\u9053 (Projectile)",
+      label: "projectile.title",
       fields: {
-        enabled: { type: "boolean", default: true, label: "\u542F\u7528" },
+        enabled: { type: "boolean", default: true, label: "field.enable" },
         mode: {
           type: "enum",
           default: "linear",
-          label: "\u5F39\u9053\u6A21\u5F0F",
+          label: "projectile.mode",
           options: [
-            { value: "linear", label: "\u76F4\u7EBF\u98DE\u884C" },
-            { value: "homing", label: "\u81EA\u52A8\u8FFD\u8E2A" },
-            { value: "ballistic", label: "\u629B\u7269\u7EBF" }
+            { value: "linear", label: "projectile.mode.linear" },
+            { value: "homing", label: "projectile.mode.homing" },
+            { value: "ballistic", label: "projectile.mode.ballistic" }
           ]
         },
-        speed: { type: "number", default: 22, min: 0.5, max: 200, step: 1, label: "\u98DE\u884C\u901F\u5EA6 (m/s)" },
-        gravity: { type: "number", default: 9.8, min: 0, max: 50, step: 0.5, label: "\u91CD\u529B\u52A0\u901F\u5EA6" },
-        turnRate: { type: "number", default: 6, min: 0.1, max: 30, step: 0.5, label: "\u8FFD\u8E2A\u8F6C\u5411\u7387 (rad/s)" },
-        maxLifetime: { type: "number", default: 3, min: 0.1, max: 60, step: 0.2, label: "\u6700\u5927\u5BFF\u547D (s)" },
-        hitRadius: { type: "number", default: 0.65, min: 0.05, max: 10, step: 0.05, label: "\u547D\u4E2D\u5224\u5B9A\u534A\u5F84 (m)" },
-        targetTag: { type: "string", default: "enemy", label: "\u76EE\u6807\u6807\u7B7E" },
-        damage: { type: "number", default: 10, min: 0, max: 9999, step: 1, label: "\u4F24\u5BB3\u503C" },
-        destroyOnHit: { type: "boolean", default: true, label: "\u547D\u4E2D\u540E\u56DE\u6C60/\u9500\u6BC1" }
+        speed: { type: "number", default: 22, min: 0.5, max: 200, step: 1, label: "projectile.speed" },
+        gravity: { type: "number", default: 9.8, min: 0, max: 50, step: 0.5, label: "projectile.gravity" },
+        turnRate: { type: "number", default: 6, min: 0.1, max: 30, step: 0.5, label: "projectile.turn" },
+        maxLifetime: { type: "number", default: 3, min: 0.1, max: 60, step: 0.2, label: "projectile.life" },
+        hitRadius: { type: "number", default: 0.65, min: 0.05, max: 10, step: 0.05, label: "projectile.hitRadius" },
+        targetTag: { type: "string", default: "enemy", label: "projectile.targetTag" },
+        damage: { type: "number", default: 10, min: 0, max: 9999, step: 1, label: "projectile.damage" },
+        destroyOnHit: { type: "boolean", default: true, label: "projectile.destroy" }
       }
     };
   }
@@ -5768,6 +5768,8 @@ var init_runtime = __esm({
       hazeOn = false;
       fogOn = false;
       apKey = "";
+      apFrame = 0;
+      apWarned = false;
       applyFogNode = (colorNode, scenePass) => {
         let node = colorNode;
         if (this.hazeOn && this.sky.aerialPerspectiveTexture) {
@@ -5836,7 +5838,7 @@ var init_runtime = __esm({
           const nextApKey = `${e[0].toFixed(3)},${e[4].toFixed(3)},${e[8].toFixed(3)},${e[12].toFixed(2)},${e[13].toFixed(2)},${e[14].toFixed(2)}|${settings.timeOfDay}|${settings.latitude}|${settings.dayOfYear}|${settings.north}|${settings.turbidity}|${settings.groundAlbedo}`;
           if (nextApKey !== this.apKey) {
             this.apKey = nextApKey;
-            void this.sky.updateAerialPerspective();
+            this.scheduleAerialPerspective();
           }
         } else {
           this.apKey = "";
@@ -5849,7 +5851,20 @@ var init_runtime = __esm({
           signature: `${settings.haze ? 1 : 0}${settings.fog ? 1 : 0}`
         });
       }
+      scheduleAerialPerspective() {
+        if (this.apFrame) return;
+        this.apFrame = requestAnimationFrame(() => {
+          this.apFrame = 0;
+          void this.sky.updateAerialPerspective().catch((error) => {
+            if (this.apWarned) return;
+            this.apWarned = true;
+            console.warn("[sky] \u5927\u6C14\u900F\u89C6\u66F4\u65B0\u5931\u8D25", error);
+          });
+        });
+      }
       dispose() {
+        if (this.apFrame) cancelAnimationFrame(this.apFrame);
+        this.apFrame = 0;
         this.starToken += 1;
         this.starsWanted = false;
         if (this.starsReady) this.sky.disableStars();
@@ -6551,7 +6566,7 @@ init_session7();
 init_session8();
 init_session();
 init_registry();
-import { Vector3 as Vector39 } from "three";
+import { Vector3 as Vector310 } from "three";
 
 // src/runtime/audio.ts
 init_sceneRuntime();
@@ -6800,8649 +6815,6 @@ registerRuntimeSystem("core.audio", 44, () => {
 });
 installUnlock();
 
-// src/core/codeAssets/scriptRuntime.ts
-init_frameProfile();
-init_motion();
-init_sceneRuntime();
-
-// src/runtime/ui/bindings.ts
-var EMPTY_UI_VALUES = { variables: {}, components: {}, screens: {} };
-
-// src/runtime/ui/values.ts
-var variables = {};
-var components = {};
-var screens = {};
-var snapshot = EMPTY_UI_VALUES;
-var listeners = /* @__PURE__ */ new Set();
-var clickListeners = /* @__PURE__ */ new Set();
-function publish() {
-  snapshot = {
-    variables: { ...variables },
-    components: Object.fromEntries(Object.entries(components).map(([id, fields]) => [id, { ...fields }])),
-    screens: { ...screens }
-  };
-  for (const listener2 of listeners) listener2();
-}
-function uiValues() {
-  return snapshot;
-}
-function writeUiVariable(varId, value) {
-  variables = { ...variables, [varId]: value };
-  publish();
-}
-function setScreenVisible(nodeId, visible) {
-  screens = { ...screens, [nodeId]: visible };
-  publish();
-}
-function resetUiValues() {
-  variables = {};
-  components = {};
-  screens = {};
-  publish();
-}
-function onUiClick(listener2) {
-  clickListeners.add(listener2);
-  return () => clickListeners.delete(listener2);
-}
-
-// src/core/codeAssets/scriptRuntime.ts
-init_world();
-init_actionMap();
-init_fieldSchema();
-
-// src/core/codeAssets/compiler.ts
-import ts from "typescript";
-function diagnosticHint(code, message) {
-  if (message.includes("t3d/shader") || message.includes("t3d/runtime")) {
-    return '\u8BF7\u786E\u4FDD\u4ECE "t3d/shader" \u6216 "t3d/runtime" \u5BFC\u5165\u767D\u540D\u5355 API';
-  }
-  if (code === 2304) return "\u5B58\u5728\u672A\u5B9A\u4E49\u7684\u6807\u8BC6\u7B26\uFF0C\u8BF7\u68C0\u67E5\u62FC\u5199\u6216\u4ECE t3d/runtime / t3d/shader \u5BFC\u5165";
-  if (code === 2322 || code === 2345) return "\u7C7B\u578B\u4E0D\u5339\u914D\uFF0C\u8BF7\u68C0\u67E5\u53C2\u6570\u6216\u8FD4\u56DE\u503C\u7C7B\u578B\u662F\u5426\u7B26\u5408\u5951\u7EA6";
-  return "\u8BF7\u6839\u636E\u62A5\u9519\u884C\u53F7\u4FEE\u6B63\u8BED\u6CD5\u6216\u7C7B\u578B\u9519\u8BEF";
-}
-function checkAndTranspileTs(fileName, source) {
-  const compilerOptions = {
-    target: ts.ScriptTarget.ES2022,
-    module: ts.ModuleKind.CommonJS,
-    esModuleInterop: true,
-    strict: true,
-    skipLibCheck: true,
-    isolatedModules: true
-  };
-  const output = ts.transpileModule(source, {
-    fileName,
-    reportDiagnostics: true,
-    compilerOptions
-  });
-  const diagnostics = (output.diagnostics ?? []).map((diag) => {
-    const start2 = diag.start ?? 0;
-    const pos = diag.file ? diag.file.getLineAndCharacterOfPosition(start2) : { line: 0, character: 0 };
-    const msg = ts.flattenDiagnosticMessageText(diag.messageText, "\n");
-    return {
-      file: fileName,
-      line: pos.line + 1,
-      column: pos.character + 1,
-      severity: diag.category === ts.DiagnosticCategory.Warning ? "warning" : "error",
-      message: msg,
-      hint: diagnosticHint(diag.code, msg)
-    };
-  });
-  const hasError = diagnostics.some((d) => d.severity === "error");
-  if (hasError) {
-    return { ok: false, diagnostics };
-  }
-  return {
-    ok: true,
-    diagnostics,
-    jsCode: output.outputText
-  };
-}
-function evaluateTranspiledModule(fileName, jsCode, injectedModules) {
-  const moduleObj = { exports: {} };
-  const customRequire = (specifier) => {
-    if (specifier in injectedModules) {
-      return injectedModules[specifier];
-    }
-    throw new Error(`\u4E0D\u5141\u8BB8\u5BFC\u5165\u672A\u6388\u6743\u6A21\u5757 "${specifier}"\uFF08\u4EC5\u5141\u8BB8 ${Object.keys(injectedModules).join(", ")}\uFF09`);
-  };
-  try {
-    const fn = new Function("require", "module", "exports", jsCode);
-    fn(customRequire, moduleObj, moduleObj.exports);
-    const exported = moduleObj.exports.default ?? moduleObj.exports;
-    return {
-      ok: true,
-      diagnostics: [],
-      jsCode,
-      exports: exported
-    };
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    return {
-      ok: false,
-      diagnostics: [
-        {
-          file: fileName,
-          line: 1,
-          column: 1,
-          severity: "error",
-          message: `\u6A21\u5757\u6267\u884C\u5931\u8D25\uFF1A${message}`,
-          hint: "\u8BF7\u68C0\u67E5\u9876\u5C42\u4EE3\u7801\u662F\u5426\u5B58\u5728\u8FD0\u884C\u65F6\u5F02\u5E38\u6216\u975E\u6CD5\u6A21\u5757\u5BFC\u5165"
-        }
-      ]
-    };
-  }
-}
-
-// src/core/codeAssets/scriptRuntime.ts
-var compiledBehaviors = /* @__PURE__ */ new Map();
-var compiledSystems = /* @__PURE__ */ new Map();
-var instanceStates = /* @__PURE__ */ new Map();
-var messageQueue = [];
-var uiEventHandlers = /* @__PURE__ */ new Map();
-var uiEventQueue = [];
-var uiClickSubscribed = false;
-var globalMemory = /* @__PURE__ */ new Map();
-var persistentMemory = /* @__PURE__ */ new Map();
-var navAgents = /* @__PURE__ */ new Map();
-var pooledInactive = /* @__PURE__ */ new Set();
-var nodePoolKey = /* @__PURE__ */ new Map();
-var poolBuckets = /* @__PURE__ */ new Map();
-var scriptTimers = /* @__PURE__ */ new Map();
-var splineFollowAgents = /* @__PURE__ */ new Map();
-var activeTweens = /* @__PURE__ */ new Map();
-var sfxCooldownAt = /* @__PURE__ */ new Map();
-var nextTimerId = 1;
-var nextTweenId = 1;
-function ensureUiClickBridge() {
-  if (uiClickSubscribed) return;
-  uiClickSubscribed = true;
-  onUiClick((action, uiNodeId) => {
-    if (getRuntimeWorld().getPlayState() !== "playing") return;
-    if (action.kind === "sendMessage" && action.message) {
-      const payload = { nodeId: uiNodeId, kind: action.kind };
-      uiEventQueue.push({
-        eventName: action.message,
-        payload
-      });
-      messageQueue.push({
-        targetNodeId: null,
-        name: action.message,
-        payload
-      });
-    } else if (action.kind === "setVariable" && action.varId) {
-      uiEventQueue.push({
-        eventName: `var:${action.varId}`,
-        payload: { nodeId: uiNodeId, kind: action.kind, varId: action.varId, value: action.value }
-      });
-    }
-  });
-}
-function resolveScreenNodeId(screenIdOrName) {
-  const nodes = getRuntimeWorld().getNodes();
-  if (nodes[screenIdOrName]?.kind === "screen") return screenIdOrName;
-  const hit = Object.values(nodes).find((n) => n.kind === "screen" && n.name === screenIdOrName);
-  return hit ? hit.id : null;
-}
-var simElapsed = 0;
-var framePointerDelta = { x: 0, y: 0 };
-var framePointerPos = { x: 0, y: 0 };
-var frameWheelDelta = 0;
-var prevMouseButtons = 0;
-var currMouseButtons = 0;
-function mouseButtonMask(button) {
-  if (button === 0) return 1;
-  if (button === 1) return 4;
-  if (button === 2) return 2;
-  return 0;
-}
-function instanceKey2(nodeId, scriptId) {
-  return `${nodeId}::${scriptId}`;
-}
-function resolveVec3Input(target) {
-  if (!target || typeof target !== "object") return null;
-  const rec = target;
-  if (typeof rec.x === "number" && typeof rec.y === "number" && typeof rec.z === "number") {
-    return { x: rec.x, y: rec.y, z: rec.z };
-  }
-  if (rec.position && typeof rec.position === "object") {
-    const pos = rec.position;
-    if (typeof pos.x === "number" && typeof pos.y === "number" && typeof pos.z === "number") {
-      return { x: pos.x, y: pos.y, z: pos.z };
-    }
-  }
-  return null;
-}
-function toVec3Obj(tuple) {
-  return { x: tuple[0], y: tuple[1], z: tuple[2] };
-}
-function makeNodeHandle(nodeId, host) {
-  const world3 = getRuntimeWorld();
-  const node = world3.getNodes()[nodeId];
-  if (!node) return null;
-  const obj = host.resolveObject(nodeId);
-  const collectTags = () => {
-    const out = [];
-    if (node.tagId && !out.includes(node.tagId)) out.push(node.tagId);
-    if (Array.isArray(node.tagIds)) {
-      for (const t of node.tagIds) {
-        if (t && !out.includes(t)) out.push(t);
-      }
-    }
-    for (const rt of listRuntimeTags(node.id)) {
-      if (rt.tag && !out.includes(rt.tag)) out.push(rt.tag);
-    }
-    return out;
-  };
-  return {
-    get id() {
-      return node.id;
-    },
-    get name() {
-      return node.name;
-    },
-    get tags() {
-      return collectTags();
-    },
-    get parent() {
-      return node.parentId ? makeNodeHandle(node.parentId, host) : null;
-    },
-    get position() {
-      return obj ? { x: obj.position.x, y: obj.position.y, z: obj.position.z } : toVec3Obj(node.position);
-    },
-    set position(val) {
-      if (obj) obj.position.set(val.x, val.y, val.z);
-      node.position[0] = val.x;
-      node.position[1] = val.y;
-      node.position[2] = val.z;
-    },
-    get rotation() {
-      return obj ? { x: obj.rotation.x, y: obj.rotation.y, z: obj.rotation.z } : {
-        x: node.rotation[0] * Math.PI / 180,
-        y: node.rotation[1] * Math.PI / 180,
-        z: node.rotation[2] * Math.PI / 180
-      };
-    },
-    set rotation(val) {
-      if (obj) obj.rotation.set(val.x, val.y, val.z);
-      node.rotation[0] = val.x * 180 / Math.PI;
-      node.rotation[1] = val.y * 180 / Math.PI;
-      node.rotation[2] = val.z * 180 / Math.PI;
-    },
-    get scale() {
-      return obj ? { x: obj.scale.x, y: obj.scale.y, z: obj.scale.z } : toVec3Obj(node.scale);
-    },
-    set scale(val) {
-      if (obj) obj.scale.set(val.x, val.y, val.z);
-      node.scale[0] = val.x;
-      node.scale[1] = val.y;
-      node.scale[2] = val.z;
-    },
-    get visible() {
-      if (pooledInactive.has(nodeId)) return false;
-      return obj ? obj.visible : node.visible;
-    },
-    set visible(val) {
-      if (obj) obj.visible = val;
-      node.visible = val;
-      if (!nodePoolKey.has(nodeId)) {
-        world3.updateNode(nodeId, { visible: val });
-      }
-    },
-    hasTag: (tag) => nodeHasTag(node, String(tag ?? "")),
-    addTag: (tag) => {
-      const t = String(tag ?? "").trim();
-      if (!t) return;
-      const list = Array.isArray(node.tagIds) ? [...node.tagIds] : [];
-      if (!list.includes(t)) {
-        list.push(t);
-        node.tagIds = list;
-      }
-    },
-    removeTag: (tag) => {
-      const t = String(tag ?? "").trim();
-      if (!t) return;
-      if (node.tagId === t) node.tagId = void 0;
-      if (Array.isArray(node.tagIds)) {
-        node.tagIds = node.tagIds.filter((x) => x !== t);
-      }
-    },
-    getChildren: () => {
-      const all = world3.getNodes();
-      return Object.values(all).filter((c) => c.parentId === node.id && !isNodePooledInactive(c.id, all)).sort((a, b) => (a.order ?? 0) - (b.order ?? 0)).map((c) => makeNodeHandle(c.id, host)).filter(Boolean);
-    },
-    sendMessage: (name, payload) => {
-      messageQueue.push({ targetNodeId: nodeId, name, payload });
-    },
-    getBehavior: (behavior) => {
-      const targetEntry = Object.entries(node.gameplay?.packs?.__project__ ?? {}).find(
-        ([sid2]) => compiledBehaviors.get(sid2) === behavior || compiledBehaviors.get(sid2)?.name === behavior?.name
-      );
-      if (!targetEntry) return null;
-      const [sid, rawParams] = targetEntry;
-      const rec = instanceStates.get(instanceKey2(nodeId, sid));
-      if (!rec) return null;
-      const ctx = buildScriptContext(node, sid, rawParams, rec.state, host);
-      const wrapped = {};
-      for (const [mName, fn] of Object.entries(behavior.methods ?? {})) {
-        wrapped[mName] = (...args) => fn(ctx, ...args);
-      }
-      return wrapped;
-    },
-    destroy: () => {
-      destroyOrReleaseNode(nodeId, host);
-    }
-  };
-}
-function cancelTimersForNode(nodeId) {
-  for (const [tid, t] of scriptTimers.entries()) {
-    if (t.nodeId === nodeId) scriptTimers.delete(tid);
-  }
-  splineFollowAgents.delete(nodeId);
-  for (const [twId, tw] of activeTweens.entries()) {
-    if (tw.ownerNodeId === nodeId) activeTweens.delete(twId);
-  }
-}
-function resolveSplinePointsInput(input, host) {
-  const world3 = getRuntimeWorld();
-  const nodes = world3.getNodes();
-  if (Array.isArray(input)) {
-    const pts = [];
-    for (const item of input) {
-      const v = resolveVec3Input(item);
-      if (v) pts.push(v);
-    }
-    return { points: pts };
-  }
-  const parentNode = resolveTemplateNode(input, nodes);
-  if (!parentNode) return { points: [] };
-  const rawSplinePath = parentNode.capabilities?.splinePath;
-  if (parentNode.kind === "spline" || rawSplinePath) {
-    const pathObj = host.resolveObject(parentNode.id);
-    if (pathObj) pathObj.updateMatrixWorld();
-    const rawPts = Array.isArray(rawSplinePath?.points) ? rawSplinePath.points : [];
-    const pts = [];
-    for (const p of rawPts) {
-      if (!Array.isArray(p) || p.length < 3) continue;
-      const lx = Number(p[0]) || 0;
-      const ly = Number(p[1]) || 0;
-      const lz = Number(p[2]) || 0;
-      if (pathObj) {
-        const v = new Vector39(lx, ly, lz).applyMatrix4(pathObj.matrixWorld);
-        pts.push({ x: v.x, y: v.y, z: v.z });
-      } else {
-        pts.push({
-          x: parentNode.position[0] + lx,
-          y: parentNode.position[1] + ly,
-          z: parentNode.position[2] + lz
-        });
-      }
-    }
-    return {
-      points: pts,
-      closed: typeof rawSplinePath?.closed === "boolean" ? rawSplinePath.closed : void 0,
-      tension: typeof rawSplinePath?.tension === "number" ? rawSplinePath.tension : void 0
-    };
-  }
-  const children = Object.values(nodes).filter((n) => n.parentId === parentNode.id && !isNodePooledInactive(n.id, nodes)).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-  const targets = children.length > 0 ? children : [parentNode];
-  return {
-    points: targets.map((n) => {
-      const obj = host.resolveObject(n.id);
-      return obj ? { x: obj.position.x, y: obj.position.y, z: obj.position.z } : toVec3Obj(n.position);
-    })
-  };
-}
-function buildCurveApi() {
-  return {
-    create: (keys, options) => createAnimationCurve(keys, options),
-    eval: (keys, t, options) => createAnimationCurve(keys, options).eval(t),
-    ease: (name, t) => evalEasing(name, t),
-    parabola: (t, height = 1) => {
-      const u = Math.max(0, Math.min(1, Number.isFinite(t) ? t : 0));
-      return 4 * u * (1 - u) * height;
-    },
-    pulse: (t) => {
-      const u = Math.max(0, Math.min(1, Number.isFinite(t) ? t : 0));
-      return Math.sin(u * Math.PI);
-    }
-  };
-}
-function isNodePooledInactive(nodeId, nodes) {
-  let cur = nodeId;
-  let guard = 0;
-  while (cur && guard < 16) {
-    if (pooledInactive.has(cur)) return true;
-    cur = nodes[cur]?.parentId ?? null;
-    guard += 1;
-  }
-  return false;
-}
-function resolveTemplateNode(templateOrName, nodes) {
-  if (!templateOrName) return null;
-  if (typeof templateOrName === "object" && typeof templateOrName.id === "string") {
-    return nodes[templateOrName.id] ?? null;
-  }
-  if (typeof templateOrName === "string") {
-    const key = templateOrName.trim();
-    if (!key) return null;
-    if (nodes[key]) return nodes[key];
-    return Object.values(nodes).find((n) => n.name === key) ?? null;
-  }
-  return null;
-}
-function cloneSceneSubtree(templateNode, options, host) {
-  const world3 = getRuntimeWorld();
-  const allNodes = world3.getNodes();
-  const clonedMap = {};
-  const idMap = /* @__PURE__ */ new Map();
-  const collect = (srcId) => {
-    const src = allNodes[srcId];
-    if (!src) return;
-    const nextId2 = typeof crypto !== "undefined" && typeof crypto.randomUUID === "function" ? crypto.randomUUID() : `rt_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-    idMap.set(srcId, nextId2);
-    for (const child of Object.values(allNodes)) {
-      if (child.parentId === srcId) collect(child.id);
-    }
-  };
-  collect(templateNode.id);
-  if (idMap.size === 0) return null;
-  const rootNewId = idMap.get(templateNode.id);
-  const parentOpt = options?.parent;
-  const resolvedParentId = parentOpt === void 0 ? templateNode.parentId : parentOpt === null ? null : typeof parentOpt === "string" ? allNodes[parentOpt]?.id ?? Object.values(allNodes).find((n) => n.name === parentOpt)?.id ?? null : parentOpt.id ?? null;
-  for (const [oldId, newId] of idMap.entries()) {
-    const src = allNodes[oldId];
-    const copy = structuredClone(src);
-    copy.id = newId;
-    if (oldId === templateNode.id) {
-      copy.parentId = resolvedParentId;
-      copy.visible = options?.visible !== void 0 ? options.visible : true;
-      if (options?.name) copy.name = options.name;
-      else copy.name = `${src.name}_${newId.slice(0, 4)}`;
-      const posVec = resolveVec3Input(options?.position);
-      if (posVec) copy.position = [posVec.x, posVec.y, posVec.z];
-      const rotVec = resolveVec3Input(options?.rotation);
-      if (rotVec) {
-        copy.rotation = [
-          rotVec.x * 180 / Math.PI,
-          rotVec.y * 180 / Math.PI,
-          rotVec.z * 180 / Math.PI
-        ];
-      }
-      const scaleVec = resolveVec3Input(options?.scale);
-      if (scaleVec) copy.scale = [scaleVec.x, scaleVec.y, scaleVec.z];
-    } else {
-      copy.parentId = src.parentId ? idMap.get(src.parentId) ?? null : null;
-    }
-    delete copy.prefabAssetId;
-    delete copy.prefabInstanceId;
-    delete copy.prefabTemplateId;
-    delete copy.prefabHostTemplateId;
-    clonedMap[newId] = copy;
-  }
-  world3.setNodes({ ...allNodes, ...clonedMap });
-  const spawnedObj = host.resolveObject(rootNewId);
-  if (spawnedObj) {
-    const rootNode = clonedMap[rootNewId];
-    spawnedObj.visible = rootNode.visible;
-    spawnedObj.position.set(rootNode.position[0], rootNode.position[1], rootNode.position[2]);
-    spawnedObj.rotation.set(
-      rootNode.rotation[0] * Math.PI / 180,
-      rootNode.rotation[1] * Math.PI / 180,
-      rootNode.rotation[2] * Math.PI / 180
-    );
-    spawnedObj.scale.set(rootNode.scale[0], rootNode.scale[1], rootNode.scale[2]);
-  }
-  return rootNewId;
-}
-function spawnFromTemplateOrPrefab(templateOrPrefab, options, host) {
-  const world3 = getRuntimeWorld();
-  const nodes = world3.getNodes();
-  const tplNode = resolveTemplateNode(templateOrPrefab, nodes);
-  if (tplNode) {
-    const rootId = cloneSceneSubtree(tplNode, options, host);
-    if (!rootId) return null;
-    return {
-      rootId,
-      templatePos: [...tplNode.position],
-      templateRotDeg: [...tplNode.rotation],
-      templateScale: [...tplNode.scale],
-      templateTagId: tplNode.tagId,
-      templateTagIds: tplNode.tagIds ? [...tplNode.tagIds] : void 0
-    };
-  }
-  if (typeof templateOrPrefab === "string" && templateOrPrefab.trim()) {
-    const posVec = resolveVec3Input(options?.position);
-    const pos = posVec ? [posVec.x, posVec.y, posVec.z] : [0, 0, 0];
-    const parentOpt = options?.parent;
-    const parentId = typeof parentOpt === "string" ? parentOpt : parentOpt && "id" in parentOpt ? parentOpt.id ?? null : null;
-    const rootId = world3.instantiatePrefab?.(templateOrPrefab.trim(), { parentId, position: pos }) ?? null;
-    if (!rootId) return null;
-    const spawned = world3.getNodes()[rootId];
-    if (spawned) {
-      if (options?.visible !== void 0) spawned.visible = options.visible;
-      if (options?.name) spawned.name = options.name;
-      const rotVec = resolveVec3Input(optsOrRot(options?.rotation));
-      if (rotVec) {
-        spawned.rotation = [rotVec.x * 180 / Math.PI, rotVec.y * 180 / Math.PI, rotVec.z * 180 / Math.PI];
-      }
-      const scaleVec = resolveVec3Input(options?.scale);
-      if (scaleVec) spawned.scale = [scaleVec.x, scaleVec.y, scaleVec.z];
-      const spawnedObj = host.resolveObject(rootId);
-      if (spawnedObj) {
-        spawnedObj.visible = spawned.visible;
-        spawnedObj.position.set(spawned.position[0], spawned.position[1], spawned.position[2]);
-        spawnedObj.rotation.set(
-          spawned.rotation[0] * Math.PI / 180,
-          spawned.rotation[1] * Math.PI / 180,
-          spawned.rotation[2] * Math.PI / 180
-        );
-        spawnedObj.scale.set(spawned.scale[0], spawned.scale[1], spawned.scale[2]);
-      }
-      return {
-        rootId,
-        templatePos: [0, 0, 0],
-        templateRotDeg: [...spawned.rotation],
-        templateScale: [...spawned.scale],
-        templateTagId: spawned.tagId,
-        templateTagIds: spawned.tagIds ? [...spawned.tagIds] : void 0
-      };
-    }
-    return { rootId };
-  }
-  return null;
-}
-function optsOrRot(rot) {
-  return rot;
-}
-function resetAndInvokeSpawn(nodeId, payload, host) {
-  const nodes = getRuntimeWorld().getNodes();
-  const targetNode = nodes[nodeId];
-  if (!targetNode) return;
-  const subtreeIds2 = [];
-  const collectSubtree = (id) => {
-    subtreeIds2.push(id);
-    for (const candidate of Object.values(nodes)) {
-      if (candidate.parentId === id) collectSubtree(candidate.id);
-    }
-  };
-  collectSubtree(nodeId);
-  for (const subId of subtreeIds2) {
-    const subNode = nodes[subId];
-    if (!subNode) continue;
-    const projectScripts = subNode.gameplay?.packs?.__project__;
-    if (!projectScripts || typeof projectScripts !== "object") continue;
-    for (const [sid, rawParams] of Object.entries(projectScripts)) {
-      if (rawParams && typeof rawParams === "object" && rawParams.__enabled === false) continue;
-      const def = compiledBehaviors.get(sid);
-      if (!def) continue;
-      const key = instanceKey2(subId, sid);
-      const rec = {
-        nodeId: subId,
-        scriptId: sid,
-        started: true,
-        state: def.state ? { ...def.state() } : {}
-      };
-      instanceStates.set(key, rec);
-      const ctx = buildScriptContext(subNode, sid, rawParams, rec.state, host);
-      try {
-        def.onStart?.(ctx);
-        def.onSpawn?.(ctx, payload);
-      } catch (error) {
-        getRuntimeWorld().log("error", `\u811A\u672C "${def.name}" \u6FC0\u6D3B\u9519\u8BEF: ${error instanceof Error ? error.message : String(error)}`);
-      }
-    }
-  }
-}
-function releaseToPool(nodeId, host) {
-  const pKey = nodePoolKey.get(nodeId);
-  if (!pKey) return false;
-  const bucket = poolBuckets.get(pKey);
-  if (!bucket) return false;
-  if (pooledInactive.has(nodeId)) return true;
-  pooledInactive.add(nodeId);
-  const nodes = getRuntimeWorld().getNodes();
-  const resetSubtree = (id) => {
-    cancelTimersForNode(id);
-    navAgents.delete(id);
-    resetProjectileState(id);
-    stopCrowdAgent(id);
-    splineFollowAgents.delete(id);
-    for (const [tid, tw] of activeTweens.entries()) {
-      if (tw.ownerNodeId === id) activeTweens.delete(tid);
-    }
-    if (nodes[id]?.physics) {
-      setPhysicsVelocity(id, [0, 0, 0]);
-    }
-    for (const child of Object.values(nodes)) {
-      if (child.parentId === id) resetSubtree(child.id);
-    }
-  };
-  resetSubtree(nodeId);
-  const obj = host.resolveObject(nodeId);
-  if (obj) obj.visible = false;
-  const n = nodes[nodeId];
-  if (n) n.visible = false;
-  if (!bucket.idle.includes(nodeId)) {
-    bucket.idle.push(nodeId);
-  }
-  return true;
-}
-function destroyOrReleaseNode(nodeId, host) {
-  if (releaseToPool(nodeId, host)) return;
-  cancelTimersForNode(nodeId);
-  navAgents.delete(nodeId);
-  const world3 = getRuntimeWorld();
-  const prev = world3.getNodes();
-  if (!prev[nodeId]) return;
-  const next = { ...prev };
-  const removeTree = (id) => {
-    delete next[id];
-    cancelTimersForNode(id);
-    for (const child of Object.values(prev)) {
-      if (child.parentId === id) removeTree(child.id);
-    }
-  };
-  removeTree(nodeId);
-  world3.setNodes(next);
-}
-function resolvePoolKey(templateOrPrefab) {
-  if (!templateOrPrefab) return null;
-  if (typeof templateOrPrefab === "object" && typeof templateOrPrefab.id === "string") {
-    return `node:${templateOrPrefab.id}`;
-  }
-  if (typeof templateOrPrefab === "string" && templateOrPrefab.trim()) {
-    return `ref:${templateOrPrefab.trim()}`;
-  }
-  return null;
-}
-function buildScriptContext(node, scriptId, rawParams, stateObj, host) {
-  const world3 = getRuntimeWorld();
-  const def = compiledBehaviors.get(scriptId);
-  const resolvedParams = {};
-  const inputRecord = rawParams && typeof rawParams === "object" ? rawParams : {};
-  for (const [k, schema] of Object.entries(def?.params ?? {})) {
-    const val = k in inputRecord ? inputRecord[k] : defaultForSchema(schema);
-    if (schema.type === "vec2" && Array.isArray(val)) resolvedParams[k] = { x: Number(val[0]) || 0, y: Number(val[1]) || 0 };
-    else if (schema.type === "vec3" && Array.isArray(val)) resolvedParams[k] = { x: Number(val[0]) || 0, y: Number(val[1]) || 0, z: Number(val[2]) || 0 };
-    else if (schema.type === "ref" && schema.target === "node" && typeof val === "string") resolvedParams[k] = makeNodeHandle(val, host);
-    else resolvedParams[k] = val;
-  }
-  const handle = makeNodeHandle(node.id, host);
-  const obj = host.resolveObject(node.id);
-  return {
-    node: handle,
-    params: resolvedParams,
-    state: stateObj,
-    elapsedTime: simElapsed,
-    get position() {
-      return handle.position;
-    },
-    set position(v) {
-      handle.position = v;
-    },
-    get rotation() {
-      return handle.rotation;
-    },
-    set rotation(v) {
-      handle.rotation = v;
-    },
-    get scale() {
-      return handle.scale;
-    },
-    set scale(v) {
-      handle.scale = v;
-    },
-    get visible() {
-      return handle.visible;
-    },
-    set visible(v) {
-      handle.visible = v;
-    },
-    hasTag: (tag) => handle.hasTag(tag),
-    addTag: (tag) => handle.addTag(tag),
-    removeTag: (tag) => handle.removeTag(tag),
-    get forward() {
-      const yaw = handle.rotation.y;
-      return { x: Math.sin(yaw), y: 0, z: Math.cos(yaw) };
-    },
-    get right() {
-      const yaw = handle.rotation.y;
-      return { x: Math.cos(yaw), y: 0, z: -Math.sin(yaw) };
-    },
-    distanceTo(target) {
-      const vec = resolveVec3Input(target);
-      if (!vec) return Number.POSITIVE_INFINITY;
-      const cur = handle.position;
-      return Math.hypot(vec.x - cur.x, vec.y - cur.y, vec.z - cur.z);
-    },
-    directionTo(target, options) {
-      const vec = resolveVec3Input(target);
-      if (!vec) return { x: 0, y: 0, z: 1 };
-      const cur = handle.position;
-      const dx = vec.x - cur.x;
-      const dy = options?.planeXZ ? 0 : vec.y - cur.y;
-      const dz = vec.z - cur.z;
-      const len = Math.hypot(dx, dy, dz);
-      if (len <= 1e-6) return { x: 0, y: 0, z: 1 };
-      return { x: dx / len, y: dy / len, z: dz / len };
-    },
-    translate(delta, space = "world") {
-      const cur = handle.position;
-      if (space === "local") {
-        const yaw = handle.rotation.y;
-        const sinY = Math.sin(yaw);
-        const cosY = Math.cos(yaw);
-        const wx = delta.x * cosY + delta.z * sinY;
-        const wz = -delta.x * sinY + delta.z * cosY;
-        handle.position = { x: cur.x + wx, y: cur.y + delta.y, z: cur.z + wz };
-      } else {
-        handle.position = { x: cur.x + delta.x, y: cur.y + delta.y, z: cur.z + delta.z };
-      }
-    },
-    rotateY(radians) {
-      const rot = handle.rotation;
-      handle.rotation = { x: rot.x, y: rot.y + radians, z: rot.z };
-    },
-    moveToward(target, maxDistance, options) {
-      const vec = resolveVec3Input(target);
-      if (!vec) return false;
-      const cur = handle.position;
-      const dx = vec.x - cur.x;
-      const dy = options?.planeXZ ? 0 : vec.y - cur.y;
-      const dz = vec.z - cur.z;
-      const dist = Math.hypot(dx, dy, dz);
-      if (options?.faceTarget && (Math.abs(dx) > 1e-5 || Math.abs(dz) > 1e-5)) {
-        const yaw = Math.atan2(dx, dz);
-        const r = handle.rotation;
-        handle.rotation = { x: r.x, y: yaw, z: r.z };
-      }
-      if (dist <= 1e-4 || dist <= maxDistance) {
-        handle.position = { x: vec.x, y: options?.planeXZ ? cur.y : vec.y, z: vec.z };
-        return true;
-      }
-      const ratio = maxDistance / dist;
-      handle.position = {
-        x: cur.x + dx * ratio,
-        y: cur.y + dy * ratio,
-        z: cur.z + dz * ratio
-      };
-      return false;
-    },
-    lookAt(target, options) {
-      const vec = resolveVec3Input(target);
-      if (!vec || !Number.isFinite(vec.x) || !Number.isFinite(vec.y) || !Number.isFinite(vec.z)) return;
-      const cur = handle.position;
-      if (options?.yOnly) {
-        const dx = vec.x - cur.x;
-        const dz = vec.z - cur.z;
-        if (Math.abs(dx) > 1e-5 || Math.abs(dz) > 1e-5) {
-          const r = handle.rotation;
-          handle.rotation = { x: r.x, y: Math.atan2(dx, dz), z: r.z };
-        }
-        return;
-      }
-      if (!obj) {
-        const dx = vec.x - cur.x;
-        const dz = vec.z - cur.z;
-        const dy = vec.y - cur.y;
-        const horiz = Math.hypot(dx, dz);
-        const yaw = Math.atan2(dx, dz);
-        const pitch = -Math.atan2(dy, Math.max(1e-5, horiz));
-        handle.rotation = { x: pitch, y: yaw, z: 0 };
-        return;
-      }
-      if (node.kind === "camera") {
-        const p = obj.position;
-        obj.lookAt(2 * p.x - vec.x, 2 * p.y - vec.y, 2 * p.z - vec.z);
-      } else {
-        obj.lookAt(vec.x, vec.y, vec.z);
-      }
-      node.rotation[0] = obj.rotation.x * 180 / Math.PI;
-      node.rotation[1] = obj.rotation.y * 180 / Math.PI;
-      node.rotation[2] = obj.rotation.z * 180 / Math.PI;
-    },
-    sendMessage(name, payload) {
-      messageQueue.push({ targetNodeId: node.id, name, payload, senderId: node.id });
-    },
-    broadcast(name, payload) {
-      messageQueue.push({ targetNodeId: null, name, payload, senderId: node.id });
-    },
-    getBehavior: (behavior) => handle.getBehavior(behavior),
-    findNodeById: (id) => makeNodeHandle(id, host),
-    findNodesByTag: (tag) => {
-      const all = world3.getNodes();
-      return Object.values(all).filter((n) => !isNodePooledInactive(n.id, all) && nodeHasTag(n, tag)).map((n) => makeNodeHandle(n.id, host)).filter(Boolean);
-    },
-    findNodesInRadius: (center, radius, tag) => {
-      const r2 = radius * radius;
-      const all = world3.getNodes();
-      return Object.values(all).filter((n) => {
-        if (isNodePooledInactive(n.id, all)) return false;
-        if (tag && !nodeHasTag(n, tag)) return false;
-        const p = host.resolveObject(n.id)?.position;
-        const x = p ? p.x : n.position[0];
-        const y = p ? p.y : n.position[1];
-        const z = p ? p.z : n.position[2];
-        const dx = x - center.x;
-        const dy = y - center.y;
-        const dz = z - center.z;
-        return dx * dx + dy * dy + dz * dz <= r2;
-      }).map((n) => makeNodeHandle(n.id, host)).filter(Boolean);
-    },
-    cloneNode: (templateOrName, opts) => {
-      const tpl = resolveTemplateNode(templateOrName, world3.getNodes());
-      if (!tpl) return null;
-      const spawnedId = cloneSceneSubtree(tpl, opts, host);
-      if (!spawnedId) return null;
-      if (opts?.initMessage) {
-        messageQueue.push({ targetNodeId: spawnedId, name: opts.initMessage, payload: opts.initPayload, senderId: node.id });
-      }
-      return makeNodeHandle(spawnedId, host);
-    },
-    spawnPrefab: (prefabId, opts) => {
-      const posVec = resolveVec3Input(opts?.position);
-      const pos = posVec ? [posVec.x, posVec.y, posVec.z] : [0, 0, 0];
-      const parentId = typeof opts?.parent === "string" ? opts.parent : opts?.parent && typeof opts.parent === "object" ? opts.parent.id ?? null : null;
-      const spawnedId = world3.instantiatePrefab?.(prefabId, { parentId, position: pos }) ?? null;
-      if (!spawnedId) return null;
-      const spawnedNode = world3.getNodes()[spawnedId];
-      if (spawnedNode) {
-        if (opts?.name) spawnedNode.name = opts.name;
-        const rotVec = resolveVec3Input(opts?.rotation);
-        if (rotVec) {
-          spawnedNode.rotation = [rotVec.x * 180 / Math.PI, rotVec.y * 180 / Math.PI, rotVec.z * 180 / Math.PI];
-        }
-        const scaleVec = resolveVec3Input(opts?.scale);
-        if (scaleVec) spawnedNode.scale = [scaleVec.x, scaleVec.y, scaleVec.z];
-      }
-      return makeNodeHandle(spawnedId, host);
-    },
-    destroyNode: (target) => {
-      const targetId = typeof target === "string" ? target : target?.id;
-      if (targetId) destroyOrReleaseNode(targetId, host);
-    },
-    pool: {
-      preload: (templateOrPrefab, count) => {
-        const key = resolvePoolKey(templateOrPrefab);
-        if (!key) return;
-        const targetCount = Math.max(0, Math.min(200, Math.floor(count)));
-        let bucket = poolBuckets.get(key);
-        if (!bucket) {
-          bucket = { all: [], idle: [] };
-          poolBuckets.set(key, bucket);
-        }
-        while (bucket.all.length < targetCount) {
-          const spawned = spawnFromTemplateOrPrefab(templateOrPrefab, { visible: false }, host);
-          if (!spawned) break;
-          if (!bucket.templatePos && spawned.templatePos) bucket.templatePos = spawned.templatePos;
-          if (!bucket.templateRotDeg && spawned.templateRotDeg) bucket.templateRotDeg = spawned.templateRotDeg;
-          if (!bucket.templateScale && spawned.templateScale) bucket.templateScale = spawned.templateScale;
-          if (bucket.templateTagId === void 0 && spawned.templateTagId !== void 0) bucket.templateTagId = spawned.templateTagId;
-          if (bucket.templateTagIds === void 0 && spawned.templateTagIds !== void 0) bucket.templateTagIds = spawned.templateTagIds;
-          pooledInactive.add(spawned.rootId);
-          nodePoolKey.set(spawned.rootId, key);
-          bucket.all.push(spawned.rootId);
-          bucket.idle.push(spawned.rootId);
-        }
-      },
-      acquire: (templateOrPrefab, opts) => {
-        const key = resolvePoolKey(templateOrPrefab);
-        if (!key) return null;
-        let bucket = poolBuckets.get(key);
-        if (!bucket) {
-          bucket = { all: [], idle: [] };
-          poolBuckets.set(key, bucket);
-        }
-        const allNodes = world3.getNodes();
-        let pickedId = null;
-        while (bucket.idle.length > 0) {
-          const cand = bucket.idle.pop();
-          if (allNodes[cand]) {
-            pickedId = cand;
-            break;
-          }
-        }
-        if (!pickedId) {
-          const spawned = spawnFromTemplateOrPrefab(templateOrPrefab, {
-            position: opts?.position,
-            rotation: opts?.rotation,
-            scale: opts?.scale,
-            visible: true
-          }, host);
-          if (!spawned) return null;
-          if (!bucket.templatePos && spawned.templatePos) bucket.templatePos = spawned.templatePos;
-          if (!bucket.templateRotDeg && spawned.templateRotDeg) bucket.templateRotDeg = spawned.templateRotDeg;
-          if (!bucket.templateScale && spawned.templateScale) bucket.templateScale = spawned.templateScale;
-          if (bucket.templateTagId === void 0 && spawned.templateTagId !== void 0) bucket.templateTagId = spawned.templateTagId;
-          if (bucket.templateTagIds === void 0 && spawned.templateTagIds !== void 0) bucket.templateTagIds = spawned.templateTagIds;
-          pickedId = spawned.rootId;
-          nodePoolKey.set(pickedId, key);
-          bucket.all.push(pickedId);
-        } else {
-          pooledInactive.delete(pickedId);
-          const n = world3.getNodes()[pickedId];
-          const objTarget = host.resolveObject(pickedId);
-          const posVec = resolveVec3Input(opts?.position);
-          const rotVec = resolveVec3Input(opts?.rotation);
-          const scaleVec = resolveVec3Input(opts?.scale);
-          if (n) {
-            n.visible = true;
-            n.tagId = bucket.templateTagId;
-            n.tagIds = bucket.templateTagIds ? [...bucket.templateTagIds] : void 0;
-            if (posVec) n.position = [posVec.x, posVec.y, posVec.z];
-            else if (bucket.templatePos) n.position = [...bucket.templatePos];
-            if (rotVec) n.rotation = [rotVec.x * 180 / Math.PI, rotVec.y * 180 / Math.PI, rotVec.z * 180 / Math.PI];
-            else if (bucket.templateRotDeg) n.rotation = [...bucket.templateRotDeg];
-            if (scaleVec) n.scale = [scaleVec.x, scaleVec.y, scaleVec.z];
-            else if (bucket.templateScale) n.scale = [...bucket.templateScale];
-          }
-          if (objTarget && n) {
-            objTarget.visible = true;
-            objTarget.position.set(n.position[0], n.position[1], n.position[2]);
-            objTarget.rotation.set(
-              n.rotation[0] * Math.PI / 180,
-              n.rotation[1] * Math.PI / 180,
-              n.rotation[2] * Math.PI / 180
-            );
-            objTarget.scale.set(n.scale[0], n.scale[1], n.scale[2]);
-          }
-        }
-        resetAndInvokeSpawn(pickedId, opts?.payload, host);
-        return makeNodeHandle(pickedId, host);
-      },
-      release: (target) => {
-        const targetId = typeof target === "string" ? target : target?.id;
-        if (targetId) destroyOrReleaseNode(targetId, host);
-      },
-      stats: (templateOrPrefab) => {
-        if (templateOrPrefab) {
-          const key = resolvePoolKey(templateOrPrefab);
-          const b = key ? poolBuckets.get(key) : void 0;
-          const total2 = b ? b.all.length : 0;
-          const pooled2 = b ? b.idle.length : 0;
-          return { active: Math.max(0, total2 - pooled2), pooled: pooled2, total: total2 };
-        }
-        let total = 0;
-        let pooled = 0;
-        for (const b of poolBuckets.values()) {
-          total += b.all.length;
-          pooled += b.idle.length;
-        }
-        return { active: Math.max(0, total - pooled), pooled, total };
-      }
-    },
-    after: (seconds, callback) => {
-      const id = nextTimerId++;
-      const delay = Math.max(0, Number(seconds) || 0);
-      scriptTimers.set(id, { id, nodeId: node.id, scriptId, remaining: delay, interval: delay, repeat: false, callback });
-      return id;
-    },
-    every: (seconds, callback) => {
-      const id = nextTimerId++;
-      const interval = Math.max(0.016, Number(seconds) || 0.1);
-      scriptTimers.set(id, { id, nodeId: node.id, scriptId, remaining: interval, interval, repeat: true, callback });
-      return id;
-    },
-    cancelTimer: (timerId) => {
-      scriptTimers.delete(timerId);
-    },
-    physics: {
-      raycast: (origin, dir, maxDistance) => {
-        const dist = host.probe?.(
-          [origin.x, origin.y, origin.z],
-          [dir.x, dir.y, dir.z],
-          maxDistance,
-          node.id
-        );
-        if (dist === null || dist === void 0) return null;
-        return {
-          node: handle,
-          point: {
-            x: origin.x + dir.x * dist,
-            y: origin.y + dir.y * dist,
-            z: origin.z + dir.z * dist
-          },
-          normal: { x: 0, y: 1, z: 0 },
-          distance: dist
-        };
-      },
-      sphereCast: (center, radius, options) => {
-        const nodes = world3.getNodes();
-        const r2 = radius * radius;
-        const hits = [];
-        for (const n of Object.values(nodes)) {
-          if (!n.visible || n.id === node.id || isNodePooledInactive(n.id, nodes)) continue;
-          if (options?.tag && n.tagId !== options.tag && !n.tagIds?.includes(options.tag)) continue;
-          const o = host.resolveObject(n.id);
-          const px = o ? o.position.x : n.position[0];
-          const py = o ? o.position.y : n.position[1];
-          const pz = o ? o.position.z : n.position[2];
-          const dx = px - center.x;
-          const dy = py - center.y;
-          const dz = pz - center.z;
-          if (dx * dx + dy * dy + dz * dz <= r2) {
-            const h = makeNodeHandle(n.id, host);
-            if (h) hits.push(h);
-          }
-        }
-        return hits;
-      },
-      getVelocity: () => {
-        const st = getPhysicsBodyState(node.id);
-        if (!st) return { x: 0, y: 0, z: 0 };
-        return { x: st.linvel[0], y: st.linvel[1], z: st.linvel[2] };
-      },
-      setVelocity: (velocity) => {
-        setPhysicsVelocity(node.id, [velocity.x, velocity.y, velocity.z]);
-      },
-      applyImpulse: (impulse) => {
-        applyPhysicsImpulse(node.id, [impulse.x, impulse.y, impulse.z]);
-      },
-      applyForce: (force) => {
-        applyPhysicsForce(node.id, [force.x, force.y, force.z]);
-      }
-    },
-    nav: {
-      moveTo: (target, speed = 3.5) => {
-        const cur = handle.position;
-        const path = findNavigationPath([cur.x, cur.y, cur.z], [target.x, target.y, target.z]);
-        if (!path || path.length === 0) {
-          navAgents.delete(node.id);
-          return false;
-        }
-        navAgents.set(node.id, { path, index: 0, speed: Math.max(0.1, speed) });
-        return true;
-      },
-      stop: () => {
-        navAgents.delete(node.id);
-      },
-      get isMoving() {
-        return navAgents.has(node.id);
-      }
-    },
-    spline: {
-      create: (pointsOrParent, options) => {
-        const resolved = resolveSplinePointsInput(pointsOrParent, host);
-        return createSplinePath(resolved.points, {
-          closed: options?.closed ?? resolved.closed,
-          tension: options?.tension ?? resolved.tension
-        });
-      },
-      follow: (pointsOrParent, options) => {
-        let spline;
-        if (pointsOrParent && typeof pointsOrParent === "object" && "pointAtDistance" in pointsOrParent) {
-          spline = pointsOrParent;
-        } else {
-          const resolved = resolveSplinePointsInput(pointsOrParent, host);
-          spline = createSplinePath(resolved.points, {
-            closed: options?.closed ?? options?.loop ?? resolved.closed,
-            tension: options?.tension ?? resolved.tension
-          });
-        }
-        if (spline.points.length === 0) {
-          splineFollowAgents.delete(node.id);
-          return false;
-        }
-        const startT = Math.max(0, Math.min(1, Number(options?.startProgress ?? 0)));
-        const startDist = startT * spline.length;
-        const startPos = spline.pointAtDistance(startDist);
-        handle.position = {
-          x: startPos.x,
-          y: options?.planeXZ ? handle.position.y : startPos.y,
-          z: startPos.z
-        };
-        splineFollowAgents.set(node.id, {
-          nodeId: node.id,
-          spline,
-          distance: startDist,
-          speed: Math.max(0.01, Number(options?.speed ?? 4)),
-          direction: 1,
-          loop: Boolean(options?.loop),
-          pingPong: Boolean(options?.pingPong),
-          faceDirection: options?.faceDirection !== false,
-          planeXZ: Boolean(options?.planeXZ),
-          onArrive: options?.onArrive
-        });
-        return true;
-      },
-      stop: () => {
-        splineFollowAgents.delete(node.id);
-      },
-      get isFollowing() {
-        return splineFollowAgents.has(node.id);
-      },
-      get progress() {
-        const ag = splineFollowAgents.get(node.id);
-        if (!ag || ag.spline.length <= 1e-6) return 0;
-        return Math.max(0, Math.min(1, ag.distance / ag.spline.length));
-      }
-    },
-    tween: {
-      to: (target, props, duration, options) => {
-        const targetHandle = target && typeof target === "object" && "id" in target && typeof target.id === "string" ? makeNodeHandle(target.id, host) ?? target : target;
-        if (!targetHandle) return -1;
-        const startPos = props.position && targetHandle.position ? { ...targetHandle.position } : null;
-        const startRot = props.rotation && targetHandle.rotation ? { ...targetHandle.rotation } : null;
-        const startScale = props.scale && targetHandle.scale ? { ...targetHandle.scale } : null;
-        const endPos = resolveVec3Input(props.position);
-        const endRot = resolveVec3Input(props.rotation);
-        const endScale = resolveVec3Input(props.scale);
-        const id = nextTweenId++;
-        const dur = Math.max(1e-3, Number(duration) || 1e-3);
-        activeTweens.set(id, {
-          id,
-          ownerNodeId: node.id,
-          delayRemaining: Math.max(0, Number(options?.delay ?? 0)),
-          elapsed: 0,
-          duration: dur,
-          ease: options?.ease ?? "outQuad",
-          repeat: Math.max(0, Math.floor(options?.repeat ?? 0)),
-          yoyo: Boolean(options?.yoyo),
-          reversed: false,
-          completedCount: 0,
-          apply: (t) => {
-            if (startPos && endPos) {
-              targetHandle.position = {
-                x: startPos.x + (endPos.x - startPos.x) * t,
-                y: startPos.y + (endPos.y - startPos.y) * t,
-                z: startPos.z + (endPos.z - startPos.z) * t
-              };
-            }
-            if (startRot && endRot) {
-              targetHandle.rotation = {
-                x: startRot.x + (endRot.x - startRot.x) * t,
-                y: startRot.y + (endRot.y - startRot.y) * t,
-                z: startRot.z + (endRot.z - startRot.z) * t
-              };
-            }
-            if (startScale && endScale) {
-              targetHandle.scale = {
-                x: startScale.x + (endScale.x - startScale.x) * t,
-                y: startScale.y + (endScale.y - startScale.y) * t,
-                z: startScale.z + (endScale.z - startScale.z) * t
-              };
-            }
-          },
-          onUpdate: options?.onUpdate,
-          onComplete: options?.onComplete
-        });
-        return id;
-      },
-      value: (from, to, duration, onUpdate, options) => {
-        const id = nextTweenId++;
-        const dur = Math.max(1e-3, Number(duration) || 1e-3);
-        activeTweens.set(id, {
-          id,
-          ownerNodeId: node.id,
-          delayRemaining: Math.max(0, Number(options?.delay ?? 0)),
-          elapsed: 0,
-          duration: dur,
-          ease: options?.ease ?? "outQuad",
-          repeat: Math.max(0, Math.floor(options?.repeat ?? 0)),
-          yoyo: Boolean(options?.yoyo),
-          reversed: false,
-          completedCount: 0,
-          apply: (t) => {
-            onUpdate(from + (to - from) * t);
-          },
-          onComplete: options?.onComplete
-        });
-        return id;
-      },
-      punchScale: (strength = 0.25, duration = 0.22) => {
-        const base = { ...handle.scale };
-        const id = nextTweenId++;
-        const dur = Math.max(0.05, Number(duration) || 0.22);
-        activeTweens.set(id, {
-          id,
-          ownerNodeId: node.id,
-          delayRemaining: 0,
-          elapsed: 0,
-          duration: dur,
-          ease: "linear",
-          repeat: 0,
-          yoyo: false,
-          reversed: false,
-          completedCount: 0,
-          apply: (t) => {
-            const pulse = Math.sin(t * Math.PI) * strength;
-            handle.scale = {
-              x: base.x * (1 + pulse),
-              y: base.y * (1 + pulse),
-              z: base.z * (1 + pulse)
-            };
-          },
-          onComplete: () => {
-            handle.scale = base;
-          }
-        });
-        return id;
-      },
-      shakePosition: (intensity = 0.18, duration = 0.25) => {
-        const base = { ...handle.position };
-        const id = nextTweenId++;
-        const dur = Math.max(0.05, Number(duration) || 0.25);
-        activeTweens.set(id, {
-          id,
-          ownerNodeId: node.id,
-          delayRemaining: 0,
-          elapsed: 0,
-          duration: dur,
-          ease: "linear",
-          repeat: 0,
-          yoyo: false,
-          reversed: false,
-          completedCount: 0,
-          apply: (t) => {
-            const decay = 1 - t;
-            const amp = intensity * decay;
-            handle.position = {
-              x: base.x + (Math.random() * 2 - 1) * amp,
-              y: base.y + (Math.random() * 2 - 1) * amp,
-              z: base.z + (Math.random() * 2 - 1) * amp
-            };
-          },
-          onComplete: () => {
-            handle.position = base;
-          }
-        });
-        return id;
-      },
-      cancel: (tweenId) => {
-        activeTweens.delete(tweenId);
-      },
-      cancelAll: () => {
-        for (const [twId, tw] of activeTweens.entries()) {
-          if (tw.ownerNodeId === node.id) activeTweens.delete(twId);
-        }
-      }
-    },
-    curve: buildCurveApi(),
-    crowd: {
-      moveTo: (target, options) => {
-        const v = resolveVec3Input(target);
-        if (!v) return;
-        setCrowdTarget(node.id, v, options);
-      },
-      stop: () => stopCrowdAgent(node.id),
-      get isMoving() {
-        return isCrowdMoving(node.id);
-      },
-      formation: (units, center, options) => {
-        const c = resolveVec3Input(center);
-        if (!c) return;
-        const nodes = world3.getNodes();
-        const ids = units.map((u) => resolveTemplateNode(u, nodes)?.id ?? (typeof u === "string" ? u : u?.id)).filter((id) => Boolean(id));
-        setCrowdFormation(ids, c, options);
-      },
-      stats: () => getCrowdStats()
-    },
-    projectile: {
-      launch: (options) => {
-        const nodes = world3.getNodes();
-        const targetId = options?.target ? resolveTemplateNode(options.target, nodes)?.id ?? (typeof options.target === "string" ? options.target : options.target?.id) : null;
-        const ownerId = options?.owner ? resolveTemplateNode(options.owner, nodes)?.id ?? (typeof options.owner === "string" ? options.owner : options.owner?.id) : node.id;
-        launchProjectile(node.id, {
-          direction: options?.direction ? resolveVec3Input(options.direction) ?? void 0 : void 0,
-          targetId,
-          ownerId,
-          mode: options?.mode,
-          speed: options?.speed,
-          gravity: options?.gravity,
-          turnRate: options?.turnRate,
-          maxLifetime: options?.maxLifetime,
-          hitRadius: options?.hitRadius,
-          targetTag: options?.targetTag,
-          damage: options?.damage,
-          destroyOnHit: options?.destroyOnHit,
-          onHit: options?.onHit ? (hitNodeId, pos) => {
-            options.onHit(makeNodeHandle(hitNodeId, host), pos);
-          } : void 0
-        });
-      },
-      reset: () => resetProjectileState(node.id)
-    },
-    anim: {
-      playBody: (clipName, opts) => {
-        world3.playBody?.(node.id, clipName, opts);
-      },
-      playUpper: (clipName, opts) => {
-        world3.playUpper?.(node.id, clipName, opts);
-      },
-      stopUpper: (fade2) => world3.stopUpper?.(node.id, fade2)
-    },
-    audio: {
-      playSfx: (assetId, opts) => {
-        const now = typeof performance !== "undefined" ? performance.now() : Date.now();
-        const last = sfxCooldownAt.get(assetId) ?? 0;
-        if (now - last < 40) return;
-        sfxCooldownAt.set(assetId, now);
-        playSound({ assetId, bus: "sfx", volume: opts?.volume, playbackRate: opts?.pitch, parent: obj ?? void 0 });
-      },
-      playBgm: (assetId, opts) => {
-        playSound({ assetId, bus: "music", volume: opts?.volume, loop: opts?.loop ?? true });
-      },
-      stopBgm: () => stopMusic()
-    },
-    fx: {
-      spawn: (effectId, position, options) => {
-        const nodes = world3.getNodes();
-        const id = `fx_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-        const s = options?.scale ?? 1;
-        const fxNode = {
-          ...node,
-          id,
-          name: `FX_${effectId.slice(0, 8)}`,
-          kind: "effect",
-          parentId: null,
-          visible: true,
-          locked: false,
-          position: [position.x, position.y, position.z],
-          rotation: [0, 0, 0],
-          scale: [s, s, s],
-          castShadow: false,
-          receiveShadow: false,
-          assetId: effectId,
-          slots: [],
-          gameplay: {},
-          physics: void 0,
-          effect: {
-            assetId: effectId,
-            quarksVersion: "1.0",
-            playing: true,
-            materialAssetId: null,
-            simulation: null
-          }
-        };
-        world3.setNodes({ ...nodes, [id]: fxNode });
-        const ttl = options?.autoDestroySec !== void 0 ? options.autoDestroySec : 3;
-        if (ttl > 0) {
-          const tid = nextTimerId++;
-          scriptTimers.set(tid, {
-            id: tid,
-            nodeId: id,
-            scriptId,
-            remaining: ttl,
-            interval: ttl,
-            repeat: false,
-            callback: () => destroyOrReleaseNode(id, host)
-          });
-        }
-      }
-    },
-    input: {
-      isPressed: (actionOrKey) => isActionPressed(actionOrKey) || isKeyHeld(actionOrKey) || isKeyHeld(`Key${actionOrKey.toUpperCase()}`),
-      justPressed: (actionOrKey) => wasActionTapped(actionOrKey) || wasKeyTapped(actionOrKey) || wasKeyTapped(`Key${actionOrKey.toUpperCase()}`),
-      isKeyPressed: (code) => isKeyHeld(code) || isKeyHeld(`Key${code.toUpperCase()}`),
-      justReleased: () => false,
-      axis1D: (action) => isActionPressed(action) ? 1 : 0,
-      axis2D: (action) => getActionAxis2D(action),
-      moveDirection: (action = "Move") => viewRelativeMove(action, host),
-      pointerDelta: () => ({ ...framePointerDelta }),
-      pointerPosition: () => ({ ...framePointerPos }),
-      wheelDelta: () => frameWheelDelta,
-      isMouseButtonPressed: (button) => (currMouseButtons & mouseButtonMask(button)) !== 0,
-      justPressedMouseButton: (button) => (currMouseButtons & mouseButtonMask(button)) !== 0 && (prevMouseButtons & mouseButtonMask(button)) === 0,
-      justReleasedMouseButton: (button) => (currMouseButtons & mouseButtonMask(button)) === 0 && (prevMouseButtons & mouseButtonMask(button)) !== 0
-    },
-    ui: {
-      getVar: (key) => uiValues().variables[key],
-      setVar: (key, value) => writeUiVariable(key, value),
-      onEvent: (eventName, handler) => {
-        ensureUiClickBridge();
-        const instKey = instanceKey2(node.id, scriptId);
-        let byEvent = uiEventHandlers.get(instKey);
-        if (!byEvent) {
-          byEvent = /* @__PURE__ */ new Map();
-          uiEventHandlers.set(instKey, byEvent);
-        }
-        let set = byEvent.get(eventName);
-        if (!set) {
-          set = /* @__PURE__ */ new Set();
-          byEvent.set(eventName, set);
-        }
-        set.add(handler);
-        return () => {
-          set?.delete(handler);
-        };
-      },
-      showScreen: (screenIdOrName) => {
-        const sid = resolveScreenNodeId(screenIdOrName);
-        if (sid) setScreenVisible(sid, true);
-      },
-      hideScreen: (screenIdOrName) => {
-        const sid = resolveScreenNodeId(screenIdOrName);
-        if (sid) setScreenVisible(sid, false);
-      },
-      toggleScreen: (screenIdOrName) => {
-        const sid = resolveScreenNodeId(screenIdOrName);
-        if (!sid) return;
-        const nodeTarget = world3.getNodes()[sid];
-        const curMap = uiValues().screens;
-        const cur = sid in curMap ? curMap[sid] : Boolean(nodeTarget?.screen?.visibleOnPlay ?? true);
-        setScreenVisible(sid, !cur);
-      },
-      isScreenVisible: (screenIdOrName) => {
-        const sid = resolveScreenNodeId(screenIdOrName);
-        if (!sid) return false;
-        const nodeTarget = world3.getNodes()[sid];
-        const curMap = uiValues().screens;
-        return sid in curMap ? curMap[sid] : Boolean(nodeTarget?.screen?.visibleOnPlay ?? true);
-      },
-      worldToScreen: (position) => {
-        const vec = resolveVec3Input(position);
-        if (!vec || !host.worldToScreen) return null;
-        return host.worldToScreen([vec.x, vec.y, vec.z]);
-      }
-    },
-    scene: {
-      currentId: () => world3.getActiveSceneId(),
-      load: (sceneId, options) => {
-        if (typeof window !== "undefined") {
-          window.dispatchEvent(new CustomEvent("t3d:load-scene", { detail: { sceneId, spawnPoint: options?.spawnPoint } }));
-        }
-      }
-    },
-    global: {
-      get: (key) => globalMemory.get(key),
-      set: (key, value) => {
-        globalMemory.set(key, value);
-      },
-      remove: (key) => {
-        globalMemory.delete(key);
-      }
-    },
-    storage: {
-      get: (key) => persistentMemory.get(key),
-      set: (key, value) => {
-        persistentMemory.set(key, value);
-      },
-      remove: (key) => {
-        persistentMemory.delete(key);
-      }
-    },
-    tables: {
-      getRow: (tableId, rowId) => findRow(world3.getGameDatabase(), tableId, rowId)?.fields ?? null
-    },
-    log: (...args) => world3.log("info", args.map(String).join(" ")),
-    warn: (...args) => world3.log("warn", args.map(String).join(" "))
-  };
-}
-function buildSystemWorldApi(systemId, host) {
-  const world3 = getRuntimeWorld();
-  const sysNodeId = `__system__:${systemId}`;
-  const poolHelpers = {
-    preload: (templateOrPrefab, count) => {
-      const key = resolvePoolKey(templateOrPrefab);
-      if (!key) return;
-      const targetCount = Math.max(0, Math.min(200, Math.floor(count)));
-      let bucket = poolBuckets.get(key);
-      if (!bucket) {
-        bucket = { all: [], idle: [] };
-        poolBuckets.set(key, bucket);
-      }
-      while (bucket.all.length < targetCount) {
-        const spawned = spawnFromTemplateOrPrefab(templateOrPrefab, { visible: false }, host);
-        if (!spawned) break;
-        if (!bucket.templatePos && spawned.templatePos) bucket.templatePos = spawned.templatePos;
-        if (!bucket.templateRotDeg && spawned.templateRotDeg) bucket.templateRotDeg = spawned.templateRotDeg;
-        if (!bucket.templateScale && spawned.templateScale) bucket.templateScale = spawned.templateScale;
-        if (bucket.templateTagId === void 0 && spawned.templateTagId !== void 0) bucket.templateTagId = spawned.templateTagId;
-        if (bucket.templateTagIds === void 0 && spawned.templateTagIds !== void 0) bucket.templateTagIds = spawned.templateTagIds;
-        pooledInactive.add(spawned.rootId);
-        nodePoolKey.set(spawned.rootId, key);
-        bucket.all.push(spawned.rootId);
-        bucket.idle.push(spawned.rootId);
-      }
-    },
-    acquire: (templateOrPrefab, opts) => {
-      const key = resolvePoolKey(templateOrPrefab);
-      if (!key) return null;
-      let bucket = poolBuckets.get(key);
-      if (!bucket) {
-        bucket = { all: [], idle: [] };
-        poolBuckets.set(key, bucket);
-      }
-      const allNodes = world3.getNodes();
-      let pickedId = null;
-      while (bucket.idle.length > 0) {
-        const cand = bucket.idle.pop();
-        if (allNodes[cand]) {
-          pickedId = cand;
-          break;
-        }
-      }
-      if (!pickedId) {
-        const spawned = spawnFromTemplateOrPrefab(templateOrPrefab, {
-          position: opts?.position,
-          rotation: opts?.rotation,
-          scale: opts?.scale,
-          visible: true
-        }, host);
-        if (!spawned) return null;
-        if (!bucket.templatePos && spawned.templatePos) bucket.templatePos = spawned.templatePos;
-        if (!bucket.templateRotDeg && spawned.templateRotDeg) bucket.templateRotDeg = spawned.templateRotDeg;
-        if (!bucket.templateScale && spawned.templateScale) bucket.templateScale = spawned.templateScale;
-        if (bucket.templateTagId === void 0 && spawned.templateTagId !== void 0) bucket.templateTagId = spawned.templateTagId;
-        if (bucket.templateTagIds === void 0 && spawned.templateTagIds !== void 0) bucket.templateTagIds = spawned.templateTagIds;
-        pickedId = spawned.rootId;
-        nodePoolKey.set(pickedId, key);
-        bucket.all.push(pickedId);
-      } else {
-        pooledInactive.delete(pickedId);
-        const n = world3.getNodes()[pickedId];
-        const objTarget = host.resolveObject(pickedId);
-        const posVec = resolveVec3Input(opts?.position);
-        const rotVec = resolveVec3Input(opts?.rotation);
-        const scaleVec = resolveVec3Input(opts?.scale);
-        if (n) {
-          n.visible = true;
-          n.tagId = bucket.templateTagId;
-          n.tagIds = bucket.templateTagIds ? [...bucket.templateTagIds] : void 0;
-          if (posVec) n.position = [posVec.x, posVec.y, posVec.z];
-          else if (bucket.templatePos) n.position = [...bucket.templatePos];
-          if (rotVec) n.rotation = [rotVec.x * 180 / Math.PI, rotVec.y * 180 / Math.PI, rotVec.z * 180 / Math.PI];
-          else if (bucket.templateRotDeg) n.rotation = [...bucket.templateRotDeg];
-          if (scaleVec) n.scale = [scaleVec.x, scaleVec.y, scaleVec.z];
-          else if (bucket.templateScale) n.scale = [...bucket.templateScale];
-        }
-        if (objTarget && n) {
-          objTarget.visible = true;
-          objTarget.position.set(n.position[0], n.position[1], n.position[2]);
-          objTarget.rotation.set(
-            n.rotation[0] * Math.PI / 180,
-            n.rotation[1] * Math.PI / 180,
-            n.rotation[2] * Math.PI / 180
-          );
-          objTarget.scale.set(n.scale[0], n.scale[1], n.scale[2]);
-        }
-      }
-      resetAndInvokeSpawn(pickedId, opts?.payload, host);
-      return makeNodeHandle(pickedId, host);
-    },
-    release: (target) => {
-      const targetId = typeof target === "string" ? target : target?.id;
-      if (targetId) destroyOrReleaseNode(targetId, host);
-    },
-    stats: (templateOrPrefab) => {
-      if (templateOrPrefab) {
-        const key = resolvePoolKey(templateOrPrefab);
-        const b = key ? poolBuckets.get(key) : void 0;
-        const total2 = b ? b.all.length : 0;
-        const pooled2 = b ? b.idle.length : 0;
-        return { active: Math.max(0, total2 - pooled2), pooled: pooled2, total: total2 };
-      }
-      let total = 0;
-      let pooled = 0;
-      for (const b of poolBuckets.values()) {
-        total += b.all.length;
-        pooled += b.idle.length;
-      }
-      return { active: Math.max(0, total - pooled), pooled, total };
-    }
-  };
-  return {
-    get elapsedTime() {
-      return simElapsed;
-    },
-    findNodeById: (id) => makeNodeHandle(id, host),
-    findNodesByTag: (tag) => {
-      const all = world3.getNodes();
-      return Object.values(all).filter((n) => !isNodePooledInactive(n.id, all) && nodeHasTag(n, tag)).map((n) => makeNodeHandle(n.id, host)).filter(Boolean);
-    },
-    findNodesInRadius: (center, radius, tag) => {
-      const r2 = radius * radius;
-      const all = world3.getNodes();
-      return Object.values(all).filter((n) => {
-        if (isNodePooledInactive(n.id, all)) return false;
-        if (tag && !nodeHasTag(n, tag)) return false;
-        const p = host.resolveObject(n.id)?.position;
-        const x = p ? p.x : n.position[0];
-        const y = p ? p.y : n.position[1];
-        const z = p ? p.z : n.position[2];
-        const dx = x - center.x;
-        const dy = y - center.y;
-        const dz = z - center.z;
-        return dx * dx + dy * dy + dz * dz <= r2;
-      }).map((n) => makeNodeHandle(n.id, host)).filter(Boolean);
-    },
-    cloneNode: (templateOrName, opts) => {
-      const tpl = resolveTemplateNode(templateOrName, world3.getNodes());
-      if (!tpl) return null;
-      const spawnedId = cloneSceneSubtree(tpl, opts, host);
-      if (!spawnedId) return null;
-      const initMsg = typeof opts?.initMessage === "string" ? opts.initMessage : void 0;
-      if (initMsg) {
-        messageQueue.push({ targetNodeId: spawnedId, name: initMsg, payload: opts?.initPayload });
-      }
-      return makeNodeHandle(spawnedId, host);
-    },
-    spawnPrefab: (prefabId, opts) => {
-      const posVec = resolveVec3Input(opts?.position);
-      const pos = posVec ? [posVec.x, posVec.y, posVec.z] : [0, 0, 0];
-      const spawnedId = world3.instantiatePrefab?.(prefabId, { position: pos }) ?? null;
-      if (!spawnedId) return null;
-      const spawnedNode = world3.getNodes()[spawnedId];
-      if (spawnedNode && opts?.name) spawnedNode.name = opts.name;
-      return makeNodeHandle(spawnedId, host);
-    },
-    destroyNode: (target) => {
-      const targetId = typeof target === "string" ? target : target?.id;
-      if (targetId) destroyOrReleaseNode(targetId, host);
-    },
-    pool: poolHelpers,
-    broadcast: (name, payload) => {
-      messageQueue.push({ targetNodeId: null, name, payload });
-    },
-    after: (seconds, callback) => {
-      const id = nextTimerId++;
-      const delay = Math.max(0, Number(seconds) || 0);
-      scriptTimers.set(id, { id, nodeId: sysNodeId, scriptId: systemId, remaining: delay, interval: delay, repeat: false, callback });
-      return id;
-    },
-    every: (seconds, callback) => {
-      const id = nextTimerId++;
-      const interval = Math.max(0.016, Number(seconds) || 0.1);
-      scriptTimers.set(id, { id, nodeId: sysNodeId, scriptId: systemId, remaining: interval, interval, repeat: true, callback });
-      return id;
-    },
-    cancelTimer: (timerId) => {
-      scriptTimers.delete(timerId);
-    },
-    curve: buildCurveApi(),
-    crowd: {
-      moveTo: (targetNode, target, options) => {
-        const nodes = world3.getNodes();
-        const id = resolveTemplateNode(targetNode, nodes)?.id ?? (typeof targetNode === "string" ? targetNode : targetNode?.id);
-        const v = resolveVec3Input(target);
-        if (id && v) setCrowdTarget(id, v, options);
-      },
-      stop: (targetNode) => {
-        const nodes = world3.getNodes();
-        const id = resolveTemplateNode(targetNode, nodes)?.id ?? (typeof targetNode === "string" ? targetNode : targetNode?.id);
-        if (id) stopCrowdAgent(id);
-      },
-      formation: (units, center, options) => {
-        const c = resolveVec3Input(center);
-        if (!c) return;
-        const nodes = world3.getNodes();
-        const ids = units.map((u) => resolveTemplateNode(u, nodes)?.id ?? (typeof u === "string" ? u : u?.id)).filter((id) => Boolean(id));
-        setCrowdFormation(ids, c, options);
-      },
-      stats: () => getCrowdStats()
-    },
-    projectile: {
-      launch: (projNode, options) => {
-        const nodes = world3.getNodes();
-        const id = resolveTemplateNode(projNode, nodes)?.id ?? (typeof projNode === "string" ? projNode : projNode?.id);
-        if (!id) return;
-        const targetId = options?.target ? resolveTemplateNode(options.target, nodes)?.id ?? (typeof options.target === "string" ? options.target : options.target?.id) : null;
-        const ownerId = options?.owner ? resolveTemplateNode(options.owner, nodes)?.id ?? (typeof options.owner === "string" ? options.owner : options.owner?.id) : null;
-        launchProjectile(id, {
-          direction: options?.direction ? resolveVec3Input(options.direction) ?? void 0 : void 0,
-          targetId,
-          ownerId,
-          mode: options?.mode,
-          speed: options?.speed,
-          gravity: options?.gravity,
-          turnRate: options?.turnRate,
-          maxLifetime: options?.maxLifetime,
-          hitRadius: options?.hitRadius,
-          targetTag: options?.targetTag,
-          damage: options?.damage,
-          destroyOnHit: options?.destroyOnHit,
-          onHit: options?.onHit ? (hitNodeId, pos) => {
-            options.onHit(makeNodeHandle(hitNodeId, host), pos);
-          } : void 0
-        });
-      },
-      reset: (projNode) => {
-        const nodes = world3.getNodes();
-        const id = resolveTemplateNode(projNode, nodes)?.id ?? (typeof projNode === "string" ? projNode : projNode?.id);
-        if (id) resetProjectileState(id);
-      }
-    },
-    input: {
-      isPressed: (actionOrKey) => isActionPressed(actionOrKey) || isKeyHeld(actionOrKey) || isKeyHeld(`Key${actionOrKey.toUpperCase()}`),
-      justPressed: (actionOrKey) => wasActionTapped(actionOrKey) || wasKeyTapped(actionOrKey) || wasKeyTapped(`Key${actionOrKey.toUpperCase()}`),
-      isKeyPressed: (code) => isKeyHeld(code) || isKeyHeld(`Key${code.toUpperCase()}`),
-      justReleased: () => false,
-      axis1D: (action) => isActionPressed(action) ? 1 : 0,
-      axis2D: (action) => getActionAxis2D(action),
-      moveDirection: (action = "Move") => viewRelativeMove(action, host),
-      pointerDelta: () => ({ ...framePointerDelta }),
-      pointerPosition: () => ({ ...framePointerPos }),
-      wheelDelta: () => frameWheelDelta,
-      isMouseButtonPressed: (button) => (currMouseButtons & mouseButtonMask(button)) !== 0,
-      justPressedMouseButton: (button) => (currMouseButtons & mouseButtonMask(button)) !== 0 && (prevMouseButtons & mouseButtonMask(button)) === 0,
-      justReleasedMouseButton: (button) => (currMouseButtons & mouseButtonMask(button)) === 0 && (prevMouseButtons & mouseButtonMask(button)) !== 0
-    },
-    ui: {
-      getVar: (key) => uiValues().variables[key],
-      setVar: (key, value) => writeUiVariable(key, value),
-      onEvent: (eventName, handler) => {
-        ensureUiClickBridge();
-        const instKey = `sys:${systemId}`;
-        let byEvent = uiEventHandlers.get(instKey);
-        if (!byEvent) {
-          byEvent = /* @__PURE__ */ new Map();
-          uiEventHandlers.set(instKey, byEvent);
-        }
-        let set = byEvent.get(eventName);
-        if (!set) {
-          set = /* @__PURE__ */ new Set();
-          byEvent.set(eventName, set);
-        }
-        set.add(handler);
-        return () => {
-          set?.delete(handler);
-        };
-      },
-      showScreen: (screenIdOrName) => {
-        const sid = resolveScreenNodeId(screenIdOrName);
-        if (sid) setScreenVisible(sid, true);
-      },
-      hideScreen: (screenIdOrName) => {
-        const sid = resolveScreenNodeId(screenIdOrName);
-        if (sid) setScreenVisible(sid, false);
-      },
-      toggleScreen: (screenIdOrName) => {
-        const sid = resolveScreenNodeId(screenIdOrName);
-        if (!sid) return;
-        const nodeTarget = world3.getNodes()[sid];
-        const curMap = uiValues().screens;
-        const cur = sid in curMap ? curMap[sid] : Boolean(nodeTarget?.screen?.visibleOnPlay ?? true);
-        setScreenVisible(sid, !cur);
-      },
-      isScreenVisible: (screenIdOrName) => {
-        const sid = resolveScreenNodeId(screenIdOrName);
-        if (!sid) return false;
-        const nodeTarget = world3.getNodes()[sid];
-        const curMap = uiValues().screens;
-        return sid in curMap ? curMap[sid] : Boolean(nodeTarget?.screen?.visibleOnPlay ?? true);
-      },
-      worldToScreen: (position) => {
-        const vec = resolveVec3Input(position);
-        if (!vec || !host.worldToScreen) return null;
-        return host.worldToScreen([vec.x, vec.y, vec.z]);
-      }
-    },
-    scene: {
-      currentId: () => world3.getActiveSceneId(),
-      load: (sceneId, options) => {
-        if (typeof window !== "undefined") {
-          window.dispatchEvent(new CustomEvent("t3d:load-scene", { detail: { sceneId, spawnPoint: options?.spawnPoint } }));
-        }
-      }
-    },
-    global: {
-      get: (key) => globalMemory.get(key),
-      set: (key, value) => {
-        globalMemory.set(key, value);
-      },
-      remove: (key) => {
-        globalMemory.delete(key);
-      }
-    },
-    storage: {
-      get: (key) => persistentMemory.get(key),
-      set: (key, value) => {
-        persistentMemory.set(key, value);
-      },
-      remove: (key) => {
-        persistentMemory.delete(key);
-      }
-    },
-    tables: {
-      getRow: (tableId, rowId) => findRow(world3.getGameDatabase(), tableId, rowId)?.fields ?? null
-    },
-    log: (...args) => world3.log("info", args.map(String).join(" ")),
-    warn: (...args) => world3.log("warn", args.map(String).join(" "))
-  };
-}
-function createRuntimeSdk() {
-  return {
-    defineBehavior: (def) => ({ __t3dKind: "behavior", ...def }),
-    defineSystem: (def) => ({ __t3dKind: "system", ...def })
-  };
-}
-function compileAndRegisterScript(id, fileName, source) {
-  const transpiled = checkAndTranspileTs(fileName, source);
-  if (!transpiled.ok || !transpiled.jsCode) {
-    return { ok: false, diagnostics: transpiled.diagnostics };
-  }
-  const evaluated = evaluateTranspiledModule(fileName, transpiled.jsCode, {
-    "t3d/runtime": createRuntimeSdk()
-  });
-  if (!evaluated.ok || !evaluated.exports) {
-    return { ok: false, diagnostics: evaluated.diagnostics };
-  }
-  const exp3 = evaluated.exports;
-  if (exp3.__t3dKind === "system") {
-    const def2 = exp3;
-    const prev = compiledSystems.get(id);
-    prev?.unregister();
-    const baseOrder = def2.stage === "preRender" ? RUNTIME_STAGE.PRE_RENDER - 1 : def2.stage === "postAnimation" ? RUNTIME_STAGE.POST_ANIMATION : def2.stage === "postPhysics" ? RUNTIME_STAGE.PHYSICS_NAV + 5 : RUNTIME_STAGE.PRE_PHYSICS + 1;
-    const sysEntry = {
-      def: def2,
-      mounted: false,
-      state: def2.createState ? { ...def2.createState() } : def2.state ? { ...def2.state() } : {},
-      unregister: () => {
-      }
-    };
-    const unregister4 = registerRuntimeSystem(
-      `script.${id}`,
-      baseOrder + (def2.order ?? 0),
-      (dt, host) => {
-        if (getRuntimeWorld().getPlayState() !== "playing") return;
-        const api = buildSystemWorldApi(id, host);
-        try {
-          if (!sysEntry.mounted) {
-            sysEntry.mounted = true;
-            sysEntry.state = def2.createState ? { ...def2.createState() } : def2.state ? { ...def2.state() } : {};
-            def2.onMount?.(api, sysEntry.state);
-            def2.onInit?.(api, sysEntry.state);
-          }
-          def2.onStep?.(api, sysEntry.state, dt);
-          def2.onUpdate?.(api, sysEntry.state, dt);
-        } catch (error) {
-          getRuntimeWorld().log("error", `\u7CFB\u7EDF "${def2.name}" \u8FD0\u884C\u9519\u8BEF: ${error instanceof Error ? error.message : String(error)}`);
-        }
-      }
-    );
-    sysEntry.unregister = unregister4;
-    compiledSystems.set(id, sysEntry);
-    return {
-      ok: true,
-      diagnostics: transpiled.diagnostics,
-      jsCode: transpiled.jsCode,
-      exports: { id, file: fileName, kind: "system", system: def2 }
-    };
-  }
-  const def = exp3;
-  if (exp3.__t3dKind !== "behavior" || typeof def.name !== "string" || !def.name.trim()) {
-    return {
-      ok: false,
-      diagnostics: [
-        {
-          file: fileName,
-          line: 1,
-          column: 1,
-          severity: "error",
-          message: "\u811A\u672C\u5FC5\u987B\u901A\u8FC7 export default defineBehavior({ name, description, params, onUpdate }) \u6216 defineSystem(...) \u5BFC\u51FA",
-          hint: '\u8BF7\u4ECE "t3d/runtime" \u5BFC\u5165 defineBehavior\uFF0C\u5E76\u63D0\u4F9B name\uFF08\u4E2D\u6587\u6807\u9898\uFF09\u3001description\uFF08\u4F5C\u7528\u8BF4\u660E\uFF09\u548C onUpdate(self, dt) \u56DE\u8C03\uFF1B\u4FEE\u6539\u4F4D\u7F6E\u8BF7\u6574\u4F53\u8D4B\u503C self.position = { x, y, z }'
-        }
-      ]
-    };
-  }
-  compiledBehaviors.set(id, def);
-  return {
-    ok: true,
-    diagnostics: transpiled.diagnostics,
-    jsCode: transpiled.jsCode,
-    exports: { id, file: fileName, kind: "behavior", behavior: def }
-  };
-}
-function viewRelativeMove(action, host) {
-  const axis = getActionAxis2D(action);
-  const length4 = Math.hypot(axis.x, axis.y);
-  if (length4 < 1e-4) return { x: 0, y: 0, z: 0 };
-  const scale = length4 > 1 ? 1 / length4 : 1;
-  const yaw = host.yaw?.() ?? 0;
-  const sin3 = Math.sin(yaw);
-  const cos3 = Math.cos(yaw);
-  return {
-    x: (axis.x * cos3 - axis.y * sin3) * scale,
-    y: 0,
-    z: (-axis.x * sin3 - axis.y * cos3) * scale
-  };
-}
-function snapshotStateValue(value, depth) {
-  if (value === null || value === void 0) return value ?? null;
-  if (typeof value === "number") return Number.isFinite(value) ? Number(value.toFixed(4)) : String(value);
-  if (typeof value === "boolean") return value;
-  if (typeof value === "string") return value.length > 200 ? `${value.slice(0, 200)}\u2026` : value;
-  if (typeof value === "function") return "[function]";
-  if (depth <= 0) return Array.isArray(value) ? `[array ${value.length}]` : "[object]";
-  if (Array.isArray(value)) {
-    const head = value.slice(0, 12).map((item) => snapshotStateValue(item, depth - 1));
-    if (value.length > 12) head.push(`\u2026\u5171 ${value.length} \u9879`);
-    return head;
-  }
-  if (value instanceof Map) return `[Map ${value.size}]`;
-  if (value instanceof Set) return `[Set ${value.size}]`;
-  const out = {};
-  let count = 0;
-  for (const [key, item] of Object.entries(value)) {
-    if (count >= 24) {
-      out["\u2026"] = "\u5B57\u6BB5\u8FC7\u591A\u5DF2\u7701\u7565";
-      break;
-    }
-    out[key] = snapshotStateValue(item, depth - 1);
-    count += 1;
-  }
-  return out;
-}
-function readScriptStateSnapshot(nodeId) {
-  let out = null;
-  for (const rec of instanceStates.values()) {
-    if (rec.nodeId !== nodeId) continue;
-    out ??= {};
-    out[rec.scriptId] = snapshotStateValue(rec.state, 3);
-  }
-  return out;
-}
-function clearScriptRuntimeState() {
-  for (const [sysId, sys] of compiledSystems.entries()) {
-    if (sys.mounted) {
-      sys.mounted = false;
-      const noopHost = { ready: false, resolveObject: () => null, updateAnimations: () => {
-      } };
-      const api = buildSystemWorldApi(sysId, noopHost);
-      try {
-        sys.def.onDispose?.(api, sys.state);
-        sys.def.onDestroy?.(api, sys.state);
-      } catch {
-      }
-      sys.state = {};
-    }
-  }
-  instanceStates.clear();
-  messageQueue.length = 0;
-  uiEventHandlers.clear();
-  uiEventQueue.length = 0;
-  globalMemory.clear();
-  navAgents.clear();
-  pooledInactive.clear();
-  nodePoolKey.clear();
-  poolBuckets.clear();
-  scriptTimers.clear();
-  splineFollowAgents.clear();
-  activeTweens.clear();
-  sfxCooldownAt.clear();
-  nextTimerId = 1;
-  nextTweenId = 1;
-  simElapsed = 0;
-  framePointerDelta = { x: 0, y: 0 };
-  framePointerPos = { x: 0, y: 0 };
-  frameWheelDelta = 0;
-  prevMouseButtons = 0;
-  currMouseButtons = 0;
-}
-function stepProjectScripts(dt, host) {
-  const world3 = getRuntimeWorld();
-  if (world3.getPlayState() !== "playing") {
-    clearScriptRuntimeState();
-    return;
-  }
-  ensureUiClickBridge();
-  bindProjectileRuntimeHooks({
-    onHit: ({ projectileId, targetId, ownerId, damage, position }) => {
-      messageQueue.push({
-        targetNodeId: targetId,
-        name: "onProjectileHit",
-        payload: { projectileId, targetId, ownerId, damage, position },
-        senderId: projectileId
-      });
-      messageQueue.push({
-        targetNodeId: projectileId,
-        name: "onProjectileHit",
-        payload: { projectileId, targetId, ownerId, damage, position },
-        senderId: projectileId
-      });
-    },
-    onRecycle: (nodeId, runtimeHost) => {
-      destroyOrReleaseNode(nodeId, runtimeHost);
-    },
-    isNodeInactive: (nodeId, nodes2) => isNodePooledInactive(nodeId, nodes2)
-  });
-  simElapsed += Math.max(0, dt);
-  framePointerDelta = host.peekPointerDelta?.() ?? host.pointerDelta?.() ?? { x: 0, y: 0 };
-  framePointerPos = host.pointerNormalized?.() ?? { x: 0, y: 0 };
-  frameWheelDelta = host.peekWheel?.() ?? host.wheel?.() ?? 0;
-  prevMouseButtons = currMouseButtons;
-  currMouseButtons = host.mouseButtons ? host.mouseButtons() : host.rightHeld?.() ? 2 : 0;
-  const nodes = world3.getNodes();
-  const activeKeys = /* @__PURE__ */ new Set();
-  for (const sysId of compiledSystems.keys()) {
-    activeKeys.add(`sys:${sysId}`);
-  }
-  if (navAgents.size > 0 && dt > 0) {
-    for (const [agentId, agent] of navAgents) {
-      const obj = host.resolveObject(agentId);
-      const n = nodes[agentId];
-      if (!obj && !n) {
-        navAgents.delete(agentId);
-        continue;
-      }
-      const targetPt = agent.path[agent.index];
-      if (!targetPt) {
-        navAgents.delete(agentId);
-        continue;
-      }
-      const curX = obj ? obj.position.x : n.position[0];
-      const curY = obj ? obj.position.y : n.position[1];
-      const curZ = obj ? obj.position.z : n.position[2];
-      const dx = targetPt[0] - curX;
-      const dy = targetPt[1] - curY;
-      const dz = targetPt[2] - curZ;
-      const dist = Math.hypot(dx, dy, dz);
-      const stepDist = agent.speed * dt;
-      if (dist <= Math.max(0.05, stepDist)) {
-        if (obj) obj.position.set(targetPt[0], targetPt[1], targetPt[2]);
-        agent.index += 1;
-        if (agent.index >= agent.path.length) navAgents.delete(agentId);
-      } else {
-        const inv = stepDist / dist;
-        if (obj) {
-          obj.position.set(curX + dx * inv, curY + dy * inv, curZ + dz * inv);
-          obj.rotation.y = Math.atan2(dx, dz);
-        }
-      }
-    }
-  }
-  for (const node of Object.values(nodes)) {
-    if (isNodePooledInactive(node.id, nodes)) continue;
-    const projectScripts = node.gameplay?.packs?.__project__;
-    if (!projectScripts || typeof projectScripts !== "object") continue;
-    for (const [scriptId, rawParams] of Object.entries(projectScripts)) {
-      if (rawParams && typeof rawParams === "object" && rawParams.__enabled === false) {
-        continue;
-      }
-      const def = compiledBehaviors.get(scriptId);
-      if (!def) continue;
-      const key = instanceKey2(node.id, scriptId);
-      activeKeys.add(key);
-      let rec = instanceStates.get(key);
-      if (!rec) {
-        rec = {
-          nodeId: node.id,
-          scriptId,
-          started: false,
-          state: def.state ? { ...def.state() } : {}
-        };
-        instanceStates.set(key, rec);
-      }
-      const ctx = buildScriptContext(node, scriptId, rawParams, rec.state, host);
-      measureCost(`script:${scriptId}`, () => {
-        try {
-          if (!rec.started) {
-            rec.started = true;
-            def.onStart?.(ctx);
-          }
-          def.onUpdate?.(ctx, dt);
-        } catch (error) {
-          world3.log("error", `\u811A\u672C "${def.name}" \u8FD0\u884C\u9519\u8BEF: ${error instanceof Error ? error.message : String(error)}`);
-        }
-      });
-    }
-  }
-  if (splineFollowAgents.size > 0 && dt > 0) {
-    for (const [agentId, ag] of Array.from(splineFollowAgents.entries())) {
-      const n = nodes[agentId];
-      const h = makeNodeHandle(agentId, host);
-      if (!n || !h || isNodePooledInactive(agentId, nodes)) {
-        splineFollowAgents.delete(agentId);
-        continue;
-      }
-      const totalLen = ag.spline.length;
-      if (totalLen <= 1e-6) {
-        splineFollowAgents.delete(agentId);
-        ag.onArrive?.();
-        continue;
-      }
-      let nextDist = ag.distance + ag.speed * dt * ag.direction;
-      let arrived = false;
-      if (ag.loop) {
-        nextDist = (nextDist % totalLen + totalLen) % totalLen;
-      } else if (ag.pingPong) {
-        if (nextDist >= totalLen) {
-          nextDist = totalLen - (nextDist - totalLen);
-          ag.direction = -1;
-        } else if (nextDist <= 0) {
-          nextDist = -nextDist;
-          ag.direction = 1;
-        }
-      } else {
-        if (nextDist >= totalLen) {
-          nextDist = totalLen;
-          arrived = true;
-        } else if (nextDist <= 0) {
-          nextDist = 0;
-          arrived = true;
-        }
-      }
-      ag.distance = nextDist;
-      const pt = ag.spline.pointAtDistance(nextDist);
-      const cur = h.position;
-      h.position = { x: pt.x, y: ag.planeXZ ? cur.y : pt.y, z: pt.z };
-      if (ag.faceDirection) {
-        const tan2 = ag.spline.tangentAtDistance(nextDist);
-        const tx = tan2.x * ag.direction;
-        const tz = tan2.z * ag.direction;
-        if (Math.abs(tx) > 1e-5 || Math.abs(tz) > 1e-5) {
-          const r = h.rotation;
-          h.rotation = { x: r.x, y: Math.atan2(tx, tz), z: r.z };
-        }
-      }
-      if (arrived) {
-        splineFollowAgents.delete(agentId);
-        try {
-          ag.onArrive?.();
-        } catch (error) {
-          world3.log("error", `Spline \u5230\u8FBE\u56DE\u8C03\u9519\u8BEF: ${error instanceof Error ? error.message : String(error)}`);
-        }
-      }
-    }
-  }
-  if (activeTweens.size > 0 && dt > 0) {
-    for (const tw of Array.from(activeTweens.values())) {
-      if (!activeTweens.has(tw.id)) continue;
-      const ownerExists = tw.ownerNodeId.startsWith("__system__:") || Boolean(nodes[tw.ownerNodeId]) && !isNodePooledInactive(tw.ownerNodeId, nodes);
-      if (!ownerExists) {
-        activeTweens.delete(tw.id);
-        continue;
-      }
-      if (tw.delayRemaining > 0) {
-        tw.delayRemaining -= dt;
-        if (tw.delayRemaining > 0) continue;
-        tw.elapsed += -tw.delayRemaining;
-        tw.delayRemaining = 0;
-      } else {
-        tw.elapsed += dt;
-      }
-      const rawT = Math.min(1, tw.elapsed / tw.duration);
-      const progress = tw.reversed ? 1 - rawT : rawT;
-      const eased = evalEasing(tw.ease, progress);
-      try {
-        tw.apply(eased);
-        tw.onUpdate?.(eased);
-      } catch (error) {
-        world3.log("error", `Tween \u66F4\u65B0\u9519\u8BEF: ${error instanceof Error ? error.message : String(error)}`);
-        activeTweens.delete(tw.id);
-        continue;
-      }
-      if (rawT >= 1) {
-        if (tw.completedCount < tw.repeat) {
-          tw.completedCount += 1;
-          tw.elapsed = 0;
-          if (tw.yoyo) tw.reversed = !tw.reversed;
-        } else {
-          activeTweens.delete(tw.id);
-          try {
-            tw.onComplete?.();
-          } catch (error) {
-            world3.log("error", `Tween \u5B8C\u6210\u56DE\u8C03\u9519\u8BEF: ${error instanceof Error ? error.message : String(error)}`);
-          }
-        }
-      }
-    }
-  }
-  if (scriptTimers.size > 0 && dt > 0) {
-    const timerSnapshot = Array.from(scriptTimers.values());
-    for (const timer of timerSnapshot) {
-      if (!scriptTimers.has(timer.id)) continue;
-      const isSystemTimer = timer.nodeId.startsWith("__system__:");
-      const tNode = isSystemTimer ? null : nodes[timer.nodeId];
-      if (!isSystemTimer && (!tNode || isNodePooledInactive(timer.nodeId, nodes))) {
-        scriptTimers.delete(timer.id);
-        continue;
-      }
-      timer.remaining -= dt;
-      if (timer.remaining <= 0) {
-        if (timer.repeat) {
-          timer.remaining += timer.interval;
-          if (timer.remaining <= 0) timer.remaining = timer.interval;
-        } else {
-          scriptTimers.delete(timer.id);
-        }
-        try {
-          timer.callback();
-        } catch (error) {
-          world3.log("error", `\u811A\u672C\u5B9A\u65F6\u5668\u56DE\u8C03\u9519\u8BEF: ${error instanceof Error ? error.message : String(error)}`);
-        }
-      }
-    }
-  }
-  if (messageQueue.length > 0) {
-    const batch = messageQueue.splice(0, messageQueue.length);
-    for (const msg of batch) {
-      for (const rec of instanceStates.values()) {
-        if (msg.targetNodeId && msg.targetNodeId !== rec.nodeId) continue;
-        const def = compiledBehaviors.get(rec.scriptId);
-        const node = nodes[rec.nodeId];
-        if (!def?.onMessage || !node) continue;
-        const rawParams = node.gameplay?.packs?.__project__?.[rec.scriptId];
-        if (rawParams && typeof rawParams === "object" && rawParams.__enabled === false) continue;
-        const ctx = buildScriptContext(node, rec.scriptId, rawParams, rec.state, host);
-        const sender = msg.senderId ? makeNodeHandle(msg.senderId, host) : void 0;
-        try {
-          def.onMessage(ctx, { name: msg.name, payload: msg.payload, sender });
-        } catch (error) {
-          world3.log("error", `\u811A\u672C "${def.name}" \u6D88\u606F\u5904\u7406\u9519\u8BEF: ${error instanceof Error ? error.message : String(error)}`);
-        }
-      }
-    }
-  }
-  if (uiEventQueue.length > 0) {
-    const uiBatch = uiEventQueue.splice(0, uiEventQueue.length);
-    for (const evt of uiBatch) {
-      for (const [instKey, byEvent] of uiEventHandlers.entries()) {
-        if (!activeKeys.has(instKey)) continue;
-        const handlers = byEvent.get(evt.eventName);
-        if (!handlers || handlers.size === 0) continue;
-        for (const fn of [...handlers]) {
-          try {
-            fn(evt.payload);
-          } catch (error) {
-            world3.log("error", `UI \u4E8B\u4EF6 "${evt.eventName}" \u5904\u7406\u9519\u8BEF: ${error instanceof Error ? error.message : String(error)}`);
-          }
-        }
-      }
-    }
-  }
-  for (const [key, rec] of instanceStates.entries()) {
-    if (activeKeys.has(key)) continue;
-    uiEventHandlers.delete(key);
-    const def = compiledBehaviors.get(rec.scriptId);
-    const node = nodes[rec.nodeId];
-    if (def?.onDestroy && node) {
-      const ctx = buildScriptContext(node, rec.scriptId, {}, rec.state, host);
-      try {
-        def.onDestroy(ctx);
-      } catch {
-      }
-    }
-    instanceStates.delete(key);
-  }
-}
-registerRuntimeSystem("core.projectScripts", RUNTIME_STAGE.PRE_PHYSICS + 2, stepProjectScripts);
-
-// tests/ai-observability.test.ts
-init_actionMap();
-
-// src/gameplay/coreComponents.ts
-init_sceneRuntime();
-var asRecord = (value) => value;
-var CORE_COMPONENTS = [
-  {
-    id: "character",
-    label: "\u89D2\u8272\u63A7\u5236\u5668",
-    description: "\u5F15\u64CE\u5185\u7F6E\u7684\u89D2\u8272\u79FB\u52A8\uFF1A\u8BFB\u53D6 Move/Jump/Sprint/Dash \u8F93\u5165\u52A8\u4F5C\uFF0C\u5904\u7406\u884C\u8D70\u3001\u51B2\u523A\u3001\u591A\u6BB5\u8DF3\u3001\u95EA\u907F\u3001\u6E38\u6CF3\u4E0E\u8D34\u5730\uFF0C\u5E76\u6309\u8FD0\u52A8\u72B6\u6001\u81EA\u52A8\u5207\u6362 idle/walk/run/jump/air/land/dodge/swim \u52A8\u753B\u3002\u6302\u4E0A\u5373\u53EF\u64CD\u63A7\uFF0C\u65E0\u9700\u81EA\u5DF1\u5199\u79FB\u52A8\u811A\u672C\u3002",
-    defaults: () => asRecord(defaultCharacter()),
-    enums: {
-      driver: ["capsule", "nav", "hybrid"],
-      mode: ["adventure", "strafe", "lockOn", "pointAndClick", "topDown", "side25d", "firstPerson"],
-      clickButton: ["left", "right"]
-    },
-    notes: [
-      "xxxClip \u586B\u52A8\u753B\u7247\u6BB5\u540D\uFF0CxxxClipAssetId \u586B\u7247\u6BB5\u6240\u5728\u7684\u6A21\u578B/\u52A8\u753B\u8D44\u4EA7 ID\uFF08\u7247\u6BB5\u5C31\u5728\u8282\u70B9\u81EA\u8EAB\u6A21\u578B\u91CC\u65F6\u7559\u7A7A\uFF09\uFF1B\u7247\u6BB5\u540D\u53EF\u7528 query__asset_search \u67E5\u770B\u6A21\u578B\u7684 clips\u3002",
-      "\u7559\u7A7A\u7684\u7247\u6BB5\u69FD\u4F4D\u4E0D\u4F1A\u64AD\u653E\u52A8\u753B\uFF1B\u53EA\u586B idleClip/walkClip/runClip \u4E09\u4E2A\u5C31\u80FD\u5F97\u5230\u57FA\u672C\u7684\u7AD9\u7ACB/\u8D70/\u8DD1\u3002",
-      "\u8BBE\u7F6E character \u65F6\u4F1A\u81EA\u52A8\u6309 mode \u914D\u597D\u540C\u8282\u70B9\u7684 cameraFollow\uFF1B\u540C\u4E00\u573A\u666F\u53EA\u5E94\u6709\u4E00\u4E2A\u542F\u7528\u7684 character\u3002",
-      "\u89D2\u8272\u5DF2\u7531\u5185\u7F6E\u63A7\u5236\u5668\u9A71\u52A8\u65F6\uFF0C\u4E0D\u8981\u518D\u6302\u4E00\u4E2A\u81EA\u5DF1\u6539 position \u7684\u79FB\u52A8\u811A\u672C\uFF0C\u4E24\u8005\u4F1A\u4E92\u76F8\u8986\u76D6\u3002",
-      "\u6302\u8F7D\u540E\u5373\u751F\u6548\uFF1A\u91CD\u529B\u3001\u8D34\u5730\u3001\u76F8\u5BF9\u76F8\u673A\u7684\u79FB\u52A8\u65B9\u5411\u3001\u8F6C\u8EAB\u671D\u5411\u3001\u52A8\u753B\u5207\u6362\u90FD\u7531\u5F15\u64CE\u5B8C\u6210\u3002\u9A8C\u6536\u7528 playtest__run_smoke \u6CE8\u5165 Move \u8F74\u5E76\u65AD\u8A00 nodeMoved\u3002"
-    ]
-  },
-  {
-    id: "cameraFollow",
-    label: "\u8DDF\u968F\u76F8\u673A",
-    description: "\u5F15\u64CE\u5185\u7F6E\u7684\u8DDF\u968F\u955C\u5934\uFF1A\u6309 offset/pivot \u8DDF\u968F\u76EE\u6807\uFF0C\u652F\u6301\u9F20\u6807\u73AF\u7ED5\u3001\u6EDA\u8F6E\u7F29\u653E\u4E0E\u9632\u7A7F\u5899\u3002\u6302\u5728\u89D2\u8272\u8282\u70B9\u4E0A\u8868\u793A\u8DDF\u968F\u81EA\u5DF1\u3002",
-    defaults: () => asRecord(defaultCameraFollow()),
-    extraFields: {
-      preset: "\u6700\u8FD1\u5957\u7528\u7684\u673A\u4F4D\uFF08\u540C character.mode \u53D6\u503C\uFF09",
-      orbitYaw: "\u5F00\u5C40\u6C34\u5E73\u73AF\u7ED5\u89D2\uFF08\u5EA6\uFF09",
-      orbitPitch: "\u5F00\u5C40\u4FEF\u4EF0\u89D2\uFF08\u5EA6\uFF09"
-    },
-    enums: { orbit: ["none", "rightDrag", "mouse"] },
-    notes: ["\u8282\u70B9\u4E0A\u5DF2\u6709 character \u65F6\uFF0C\u673A\u4F4D\u4F1A\u88AB character.mode \u7EA6\u675F\uFF08\u5982\u4FEF\u89C6\u89D2\u5F3A\u5236 orbit=none\uFF09\u3002"]
-  },
-  {
-    id: "interact",
-    label: "\u53EF\u4EA4\u4E92\u7269",
-    description: "\u73A9\u5BB6\u8FDB\u5165 radius \u8303\u56F4\u5E76\u6309\u4E0B key \u65F6\uFF0C\u5411\u672C\u8282\u70B9\u53D1\u9001 message \u6D88\u606F\uFF08\u811A\u672C\u5728 onMessage \u91CC\u63A5\u6536\uFF09\u3002",
-    defaults: () => asRecord(defaultInteract())
-  },
-  {
-    id: "trigger",
-    label: "\u89E6\u53D1\u533A\u57DF",
-    description: "\u73A9\u5BB6\u8FDB\u5165/\u79BB\u5F00 radius \u8303\u56F4\u65F6\u5206\u522B\u53D1\u9001 enterMessage / exitMessage \u6D88\u606F\u3002",
-    defaults: () => asRecord(defaultTrigger())
-  },
-  {
-    id: "mover",
-    label: "\u79FB\u52A8\u5E73\u53F0",
-    description: "\u8BA9\u8282\u70B9\u6CBF offset \u5F80\u8FD4\u79FB\u52A8\uFF08duration \u5355\u7A0B\u79D2\u6570\uFF0Cpause \u7AEF\u70B9\u505C\u7559\uFF09\uFF0C\u53EF\u642D\u8F7D\u7AD9\u5728\u4E0A\u9762\u7684\u89D2\u8272\u3002autoPlay=false \u65F6\u6536\u5230 startMessage \u624D\u542F\u52A8\u3002",
-    defaults: () => asRecord(defaultMover())
-  },
-  {
-    id: "checkpoint",
-    label: "\u5B58\u6863\u70B9 / \u51FA\u751F\u70B9",
-    description: "\u89D2\u8272\u8FDB\u5165 radius \u540E\u8BB0\u4E3A\u91CD\u751F\u70B9\uFF1B\u89D2\u8272\u6389\u5230 abyssY \u4EE5\u4E0B\u65F6\u5728\u6700\u8FD1\u7684\u5B58\u6863\u70B9\u91CD\u751F\u5E76\u53D1\u9001 message\u3002spawn=true \u8868\u793A\u5F00\u5C40\u51FA\u751F\u70B9\u3002",
-    defaults: () => asRecord(defaultCheckpoint())
-  },
-  {
-    id: "score",
-    label: "\u5173\u5361\u8BA1\u5206",
-    description: "\u5185\u7F6E\u7684\u76EE\u6807\u5206\u6570/\u9650\u65F6\u5173\u5361\u89C4\u5219\uFF1A\u8FBE\u5230 target \u53D1\u9001 victoryMessage\uFF0C\u8D85\u8FC7 timeLimit\uFF08\u79D2\uFF0C0 \u4E3A\u4E0D\u9650\u65F6\uFF09\u53D1\u9001 defeatMessage\u3002",
-    defaults: () => asRecord(defaultScore())
-  },
-  {
-    id: "soundSource",
-    label: "\u7A7A\u95F4\u97F3\u6E90",
-    description: "\u8BD5\u73A9\u5F00\u59CB\u540E\u5728\u8282\u70B9\u4F4D\u7F6E\u64AD\u653E assetId \u6307\u5411\u7684\u97F3\u9891\uFF0C\u97F3\u91CF\u968F\u8DDD\u79BB\u8870\u51CF\u3002",
-    defaults: () => asRecord(defaultSoundSource())
-  },
-  {
-    id: "locomotion",
-    label: "\u8FD0\u52A8\u52A8\u753B",
-    description: "\u6309\u8282\u70B9\u7684\u5B9E\u9645\u79FB\u52A8\u901F\u5EA6\u81EA\u52A8\u5207\u6362\u52A8\u753B\uFF1A\u6C34\u5E73\u901F\u5EA6 \u2265 walkSpeed \u64AD walkClip\uFF0C\u2265 runSpeed \u64AD runClip\uFF0C\u5426\u5219\u64AD idleClip\uFF1B\u79BB\u5730\u65F6\u4FDD\u6301\u5F53\u524D\u7247\u6BB5\u3002\u5B83\u53EA\u770B\u4F4D\u79FB\u7ED3\u679C\uFF0C\u4E0D\u5173\u5FC3\u8C01\u5728\u79FB\u52A8\u8282\u70B9\uFF0C\u9002\u5408\u7531\u811A\u672C\u3001\u5BFC\u822A\u6216\u5F39\u9053\u9A71\u52A8\u7684\u654C\u4EBA / NPC / \u81EA\u5199\u63A7\u5236\u5668\u7684\u89D2\u8272\u2014\u2014\u811A\u672C\u53EA\u7BA1\u79FB\u52A8\uFF0C\u4E0D\u7528\u5199\u52A8\u753B\u5207\u6362\u3002",
-    defaults: () => asRecord(defaultLocomotion()),
-    notes: [
-      "xxxClip \u586B\u7247\u6BB5\u540D\uFF0CxxxClipAssetId \u586B\u7247\u6BB5\u6240\u5728\u7684\u6A21\u578B/\u52A8\u753B\u8D44\u4EA7 ID\uFF08\u7247\u6BB5\u5C31\u5728\u8282\u70B9\u81EA\u8EAB\u6A21\u578B\u91CC\u65F6\u7559\u7A7A\uFF09\u3002",
-      "\u8282\u70B9\u4E0A\u542F\u7528\u4E86 character \u65F6\u672C\u7EC4\u4EF6\u4E0D\u751F\u6548\uFF08character \u81EA\u5E26\u542B\u8DF3\u8DC3\u3001\u95EA\u907F\u7684\u5B8C\u6574\u5207\u6362\uFF09\u3002",
-      "\u811A\u672C\u91CC\u4ECD\u53EF\u7528 self.anim.playUpper \u53E0\u52A0\u4E0A\u534A\u8EAB\u52A8\u4F5C\uFF08\u653B\u51FB\u3001\u53D7\u51FB\uFF09\uFF1B\u4E0D\u8981\u540C\u65F6\u5728\u811A\u672C\u91CC\u5BF9\u540C\u4E00\u8282\u70B9\u8C03 playBody \u5207\u8D70\u8DD1\uFF0C\u4F1A\u548C\u672C\u7EC4\u4EF6\u4E92\u76F8\u62A2\u3002"
-    ]
-  }
-];
-function findCoreComponent(id) {
-  return CORE_COMPONENTS.find((item) => item.id === id) ?? null;
-}
-function coreComponentFieldNames(manifest) {
-  return [...Object.keys(manifest.defaults()), ...Object.keys(manifest.extraFields ?? {})];
-}
-function describeCoreComponents(id) {
-  return CORE_COMPONENTS.filter((item) => !id || item.id === id).map((item) => ({
-    id: item.id,
-    label: item.label,
-    description: item.description,
-    dataPath: `node.gameplay.${item.id}`,
-    writeWith: "gameplay__setCoreComponent",
-    defaults: item.defaults(),
-    ...item.extraFields ? { extraFields: item.extraFields } : {},
-    ...item.enums ? { enums: item.enums } : {},
-    ...item.notes ? { notes: item.notes } : {}
-  }));
-}
-function applyCoreComponentPatch(prev, componentId, patch) {
-  const manifest = findCoreComponent(componentId);
-  if (!manifest) {
-    return {
-      ok: false,
-      message: `\u672A\u77E5\u7684\u5185\u7F6E\u7EC4\u4EF6 "${componentId}"`,
-      hint: `\u53EF\u7528\u7684\u5185\u7F6E\u7EC4\u4EF6\uFF1A${CORE_COMPONENTS.map((item) => item.id).join(", ")}`
-    };
-  }
-  const gameplay = { ...prev ?? {} };
-  if (patch === null) {
-    delete gameplay[manifest.id];
-    if (manifest.id === "character") delete gameplay.cameraFollow;
-    return { ok: true, gameplay: Object.keys(gameplay).length > 0 ? gameplay : null, data: null };
-  }
-  const allowed = coreComponentFieldNames(manifest);
-  const unknown = Object.keys(patch).filter((key) => !allowed.includes(key));
-  if (unknown.length > 0) {
-    return {
-      ok: false,
-      message: `\u5185\u7F6E\u7EC4\u4EF6 ${manifest.id} \u4E0D\u8BA4\u8BC6\u5B57\u6BB5\uFF1A${unknown.join(", ")}`,
-      hint: `\u53EF\u7528\u5B57\u6BB5\uFF1A${allowed.join(", ")}`
-    };
-  }
-  for (const [key, options] of Object.entries(manifest.enums ?? {})) {
-    if (key in patch && !options.includes(String(patch[key]))) {
-      return {
-        ok: false,
-        message: `\u5185\u7F6E\u7EC4\u4EF6 ${manifest.id}.${key} \u7684\u53D6\u503C "${String(patch[key])}" \u65E0\u6548`,
-        hint: `\u53EF\u9009\u503C\uFF1A${options.join(", ")}`
-      };
-    }
-  }
-  const current = gameplay[manifest.id] ?? manifest.defaults();
-  const next = { ...manifest.defaults(), ...current, ...patch };
-  gameplay[manifest.id] = next;
-  if (manifest.id === "character") {
-    const character = next;
-    const baseCam = gameplay.cameraFollow ?? defaultCameraFollow();
-    gameplay.cameraFollow = "mode" in patch ? resolveCharacterCamera(character, { ...baseCam, ...cameraPresetForMode(character.mode) }) : resolveCharacterCamera(character, baseCam);
-  } else if (manifest.id === "cameraFollow" && gameplay.character) {
-    const character = { ...defaultCharacter(), ...gameplay.character };
-    if (character.enabled) {
-      gameplay.cameraFollow = resolveCharacterCamera(character, next);
-    }
-  }
-  return { ok: true, gameplay, data: gameplay[manifest.id] };
-}
-
-// src/playtest/session.ts
-init_actionMap();
-import { Group } from "three";
-
-// src/core/query/diagnose.ts
-init_registry2();
-
-// src/editor/assets/library.ts
-import { create as create2 } from "zustand";
-
-// src/editor/assets/folders.ts
-var ASSETS_ROOT = "Assets";
-function normalizeDir(path) {
-  const parts = path.split(/[\\/]+/).map((part) => part.trim()).filter((part) => part && part !== "." && part !== "..");
-  if (parts[0] !== ASSETS_ROOT) parts.unshift(ASSETS_ROOT);
-  return parts.join("/");
-}
-function parentDir(path) {
-  const dir = normalizeDir(path);
-  if (dir === ASSETS_ROOT) return null;
-  const index = dir.lastIndexOf("/");
-  return index < 0 ? ASSETS_ROOT : dir.slice(0, index);
-}
-function joinDir(parent, name) {
-  return `${normalizeDir(parent)}/${name.trim()}`;
-}
-function isWithin(path, root) {
-  const dir = normalizeDir(path);
-  const base = normalizeDir(root);
-  return dir === base || dir.startsWith(`${base}/`);
-}
-function relocateDir(path, from, to) {
-  const dir = normalizeDir(path);
-  const source = normalizeDir(from);
-  const target = normalizeDir(to);
-  if (dir === source) return target;
-  if (dir.startsWith(`${source}/`)) return `${target}${dir.slice(source.length)}`;
-  return dir;
-}
-function directoryTree(folders, assetDirs) {
-  const root = { name: ASSETS_ROOT, path: ASSETS_ROOT, children: [] };
-  const nodes = /* @__PURE__ */ new Map([[ASSETS_ROOT, root]]);
-  const paths = /* @__PURE__ */ new Set([ASSETS_ROOT]);
-  for (const folder of folders) paths.add(normalizeDir(folder));
-  for (const dir of Object.values(assetDirs)) paths.add(normalizeDir(dir));
-  for (const path of paths) {
-    const parts = path.split("/");
-    let current = parts[0] || ASSETS_ROOT;
-    for (let index = 1; index < parts.length; index += 1) {
-      const parent = current;
-      current = `${current}/${parts[index]}`;
-      if (nodes.has(current)) continue;
-      const node = { name: parts[index] ?? current, path: current, children: [] };
-      nodes.set(current, node);
-      nodes.get(parent)?.children.push(node);
-    }
-  }
-  const sort = (node) => {
-    node.children.sort((a, b) => a.name.localeCompare(b.name, "zh"));
-    node.children.forEach(sort);
-  };
-  sort(root);
-  return root;
-}
-function findDir(node, path) {
-  if (node.path === path) return node;
-  for (const child of node.children) {
-    const found = findDir(child, path);
-    if (found) return found;
-  }
-  return null;
-}
-function directoryExists(path, folders, assetDirs) {
-  const target = normalizeDir(path);
-  if (target === ASSETS_ROOT) return true;
-  return [...folders.map(normalizeDir), ...Object.values(assetDirs).map(normalizeDir)].some((dir) => dir === target || dir.startsWith(`${target}/`));
-}
-function uniqueFolderName(parent, folders, assetDirs) {
-  const node = findDir(directoryTree(folders, assetDirs), normalizeDir(parent));
-  const names = new Set(node?.children.map((child) => child.name) ?? []);
-  let name = "\u65B0\u5EFA\u6587\u4EF6\u5939";
-  let index = 2;
-  while (names.has(name)) {
-    name = `\u65B0\u5EFA\u6587\u4EF6\u5939 ${index}`;
-    index += 1;
-  }
-  return name;
-}
-
-// src/editor/assets/library.ts
-function assetDirectory(id, assetDirs) {
-  return normalizeDir(assetDirs[id] ?? ASSETS_ROOT);
-}
-var useAssetStore = create2((set, get) => ({
-  assets: {},
-  folders: [],
-  assetDirs: {},
-  browseDir: ASSETS_ROOT,
-  expanded: { [ASSETS_ROOT]: true },
-  revision: 0,
-  add: (asset) => set((state) => ({ assets: { ...state.assets, [asset.id]: asset }, revision: state.revision + 1 })),
-  addMany: (list) => set((state) => {
-    if (list.length === 0) return {};
-    const assets = { ...state.assets };
-    for (const asset of list) assets[asset.id] = asset;
-    return { assets, revision: state.revision + 1 };
-  }),
-  remove: (id) => set((state) => {
-    const assets = { ...state.assets };
-    const assetDirs = { ...state.assetDirs };
-    delete assets[id];
-    delete assetDirs[id];
-    return { assets, assetDirs, revision: state.revision + 1 };
-  }),
-  rename: (id, name) => set((state) => {
-    const asset = state.assets[id];
-    if (!asset) return {};
-    return { assets: { ...state.assets, [id]: { ...asset, name } }, revision: state.revision + 1 };
-  }),
-  patch: (id, patch) => set((state) => {
-    const asset = state.assets[id];
-    if (!asset || !("url" in asset)) return {};
-    return { assets: { ...state.assets, [id]: { ...asset, ...patch } }, revision: state.revision + 1 };
-  }),
-  writeScene: (id, nodes, picture, editorView) => set((state) => {
-    const asset = state.assets[id];
-    if (!asset || asset.kind !== "scene") return {};
-    const view = editorView === void 0 ? asset.editorView ?? null : editorView;
-    if (JSON.stringify(asset.nodes) === JSON.stringify(nodes) && JSON.stringify(asset.picture) === JSON.stringify(picture) && JSON.stringify(asset.editorView ?? null) === JSON.stringify(view)) return {};
-    return { assets: { ...state.assets, [id]: { ...asset, nodes, picture, editorView: view } }, revision: state.revision + 1 };
-  }),
-  updateMaterial: (id, slot) => set((state) => {
-    const asset = state.assets[id];
-    if (!asset || asset.kind !== "material") return {};
-    return { assets: { ...state.assets, [id]: { ...asset, slot: { ...asset.slot, ...slot } } }, revision: state.revision + 1 };
-  }),
-  replaceMaterial: (id, slot) => set((state) => {
-    const asset = state.assets[id];
-    if (!asset || asset.kind !== "material") return {};
-    if (JSON.stringify(asset.slot) === JSON.stringify(slot)) return {};
-    return { assets: { ...state.assets, [id]: { ...asset, slot } }, revision: state.revision + 1 };
-  }),
-  updateEffect: (id, patch) => set((state) => {
-    const asset = state.assets[id];
-    if (!asset || asset.kind !== "effect") return {};
-    return { assets: { ...state.assets, [id]: { ...asset, ...patch } }, revision: state.revision + 1 };
-  }),
-  updateUi: (id, document2) => set((state) => {
-    const asset = state.assets[id];
-    if (!asset || asset.kind !== "ui") return {};
-    return { assets: { ...state.assets, [id]: { ...asset, document: document2 } }, revision: state.revision + 1 };
-  }),
-  bump: () => set((state) => ({ revision: state.revision + 1 })),
-  loadCatalog: (folders, assetDirs) => set({
-    folders: [...new Set(folders.map(normalizeDir).filter((path) => path !== ASSETS_ROOT))],
-    assetDirs: Object.fromEntries(Object.entries(assetDirs).map(([id, dir]) => [id, normalizeDir(dir)]))
-  }),
-  loadSession: (assets, folders, assetDirs, browseDir, expanded) => set((state) => ({
-    assets,
-    folders: [...new Set(folders.map(normalizeDir).filter((path) => path !== ASSETS_ROOT))],
-    assetDirs: Object.fromEntries(Object.entries(assetDirs).map(([id, dir]) => [id, normalizeDir(dir)])),
-    browseDir: normalizeDir(browseDir || ASSETS_ROOT),
-    expanded: expanded ?? { [ASSETS_ROOT]: true },
-    revision: state.revision + 1
-  })),
-  setBrowseDir: (dir) => set({ browseDir: normalizeDir(dir) }),
-  setExpanded: (expanded) => set({ expanded }),
-  writePrefab: (id, rootId, nodes) => set((state) => {
-    const asset = state.assets[id];
-    if (!asset || asset.kind !== "prefab") return {};
-    return {
-      assets: { ...state.assets, [id]: { ...asset, rootId, nodes } },
-      revision: state.revision + 1
-    };
-  }),
-  place: (id, dir) => set((state) => ({
-    assetDirs: { ...state.assetDirs, [id]: normalizeDir(dir ?? state.browseDir) },
-    revision: state.revision + 1
-  })),
-  createFolder: (parent) => {
-    const state = get();
-    const base = normalizeDir(parent ?? state.browseDir);
-    const path = joinDir(base, uniqueFolderName(base, state.folders, state.assetDirs));
-    set({ folders: [...state.folders, path], browseDir: path, revision: state.revision + 1 });
-    return path;
-  },
-  renameFolder: (path, name) => {
-    const clean = name.trim().replace(/[\\/]/g, "");
-    const source = normalizeDir(path);
-    const parent = parentDir(source);
-    if (!clean || !parent) return;
-    const next = joinDir(parent, clean);
-    if (next === source) return;
-    const state = get();
-    if (directoryExists(next, state.folders, state.assetDirs)) return;
-    const expanded = {};
-    for (const [dir, open] of Object.entries(state.expanded)) expanded[relocateDir(dir, source, next)] = open;
-    set({
-      folders: [...new Set(state.folders.map((folder) => relocateDir(folder, source, next)).filter((folder) => folder !== ASSETS_ROOT))],
-      assetDirs: Object.fromEntries(Object.entries(state.assetDirs).map(([id, dir]) => [id, relocateDir(dir, source, next)])),
-      browseDir: relocateDir(state.browseDir, source, next),
-      expanded,
-      revision: state.revision + 1
-    });
-  },
-  deleteFolder: (path) => {
-    const source = normalizeDir(path);
-    const parent = parentDir(source);
-    if (!parent) return;
-    const state = get();
-    const remains = Object.keys(state.assets).some((id) => isWithin(assetDirectory(id, state.assetDirs), source));
-    if (remains) return;
-    const expanded = { ...state.expanded };
-    for (const dir of Object.keys(expanded)) {
-      if (dir === source || dir.startsWith(`${source}/`)) delete expanded[dir];
-    }
-    set({
-      folders: state.folders.filter((folder) => {
-        const dir = normalizeDir(folder);
-        return dir !== source && !dir.startsWith(`${source}/`);
-      }),
-      browseDir: isWithin(state.browseDir, source) ? parent : state.browseDir,
-      expanded,
-      revision: state.revision + 1
-    });
-  }
-}));
-
-// src/editor/scene/store.ts
-import { Quaternion as Quaternion7, Vector3 as Vector312 } from "three";
-import { create as create6 } from "zustand";
-
-// src/editor/scene/spawn.ts
-var provider = () => [0, 0, 0];
-function getSpawn() {
-  return provider();
-}
-
-// src/editor/scene/seed.ts
-import { Euler as Euler2, Quaternion as Quaternion5, Vector3 as Vector310 } from "three";
-
-// src/capabilities/physics/defaults.ts
-var SHARED = {
-  trigger: false,
-  mass: 1,
-  friction: 0.7,
-  restitution: 0.05,
-  linearDamping: 0.1,
-  angularDamping: 0.1,
-  gravityScale: 1
-};
-function defaultNodePhysics(kind) {
-  if (kind === "plane") {
-    return { ...SHARED, body: "static", shape: "box", size: [1, 1, 0.05] };
-  }
-  if (kind === "sphere") {
-    return { ...SHARED, body: "dynamic", shape: "sphere", size: [0.5, 0.5, 0.5] };
-  }
-  if (kind === "capsule") {
-    return { ...SHARED, body: "dynamic", shape: "capsule", size: [0.3, 1.1, 0.3] };
-  }
-  if (kind === "cylinder") {
-    return { ...SHARED, body: "dynamic", shape: "cylinder", size: [0.5, 1, 0.5] };
-  }
-  if (kind === "cone") {
-    return { ...SHARED, body: "dynamic", shape: "cone", size: [0.5, 1, 0.5] };
-  }
-  if (kind === "model") {
-    return { ...SHARED, body: "static", shape: "convex", size: [1, 1, 1] };
-  }
-  return { ...SHARED, body: "dynamic", shape: "box", size: [1, 1, 1] };
-}
-
-// src/capabilities/particles/defaults.ts
-var QUARKS_VERSION = "0.17.1";
-var DEFAULT_SIMULATION = {
-  format: "system",
-  body: {
-    version: "3.0",
-    autoDestroy: false,
-    looping: true,
-    prewarm: false,
-    duration: 1.2,
-    shape: { type: "cone", radius: 0.05, arc: 6.283185307179586, thickness: 1, angle: 0.35, mode: 0, spread: 0, speed: { type: "ConstantValue", value: 1 } },
-    startLife: { type: "IntervalValue", a: 0.4, b: 0.9 },
-    startSpeed: { type: "IntervalValue", a: 0.6, b: 1.8 },
-    startRotation: { type: "ConstantValue", value: 0 },
-    startSize: { type: "IntervalValue", a: 0.08, b: 0.22 },
-    startColor: { type: "ConstantColor", color: { r: 1, g: 0.55, b: 0.15, a: 1 } },
-    emissionOverTime: { type: "ConstantValue", value: 36 },
-    emissionOverDistance: { type: "ConstantValue", value: 0 },
-    emissionBursts: [],
-    onlyUsedByOther: false,
-    renderOrder: 0,
-    renderMode: 0,
-    rendererEmitterSettings: {},
-    layers: 1,
-    startTileIndex: { type: "ConstantValue", value: 0 },
-    uTileCount: 1,
-    vTileCount: 1,
-    blendTiles: false,
-    softParticles: false,
-    softFarFade: 0,
-    softNearFade: 0,
-    behaviors: [
-      {
-        type: "ColorOverLife",
-        color: {
-          type: "Gradient",
-          color: { type: "CLinearFunction", subType: "Color", keys: [{ value: { r: 1, g: 0.7, b: 0.2 }, pos: 0 }, { value: { r: 1, g: 0.2, b: 0 }, pos: 1 }] },
-          alpha: { type: "CLinearFunction", subType: "Number", keys: [{ value: 1, pos: 0 }, { value: 0, pos: 1 }] }
-        }
-      },
-      { type: "SizeOverLife", size: { type: "PiecewiseBezier", functions: [{ function: { p0: 0.4, p1: 0.7, p2: 1, p3: 0 }, start: 0 }] } }
-    ],
-    worldSpace: false
-  }
-};
-function defaultNodeEffect() {
-  return {
-    assetId: null,
-    quarksVersion: QUARKS_VERSION,
-    simulation: structuredClone(DEFAULT_SIMULATION),
-    materialAssetId: null,
-    playing: true
-  };
-}
-
-// src/editor/scene/kinds.ts
-init_schema();
-
-// src/runtime/ui/spec.ts
-function defaultNodeScreen() {
-  return { documentId: null, layer: "hud", visibleOnPlay: true };
-}
-
-// src/editor/scene/kinds.ts
-var MESH_KINDS = ["box", "sphere", "plane", "capsule", "cylinder", "cone"];
-function isMesh(kind) {
-  return MESH_KINDS.includes(kind);
-}
-function defaultColor(kind) {
-  switch (kind) {
-    case "plane":
-      return "#6c757e";
-    case "directional-light":
-      return "#fff4d6";
-    case "point-light":
-      return "#ffd2a8";
-    case "spot-light":
-      return "#ffffff";
-    case "hemisphere-light":
-      return "#d7e4f5";
-    case "camera":
-      return "#9ecbff";
-    case "empty":
-      return "#b0b0b0";
-    case "screen":
-      return "#4a9eff";
-    case "spline":
-      return "#34d399";
-    default:
-      return "#d5dde6";
-  }
-}
-function defaultIntensity(kind) {
-  switch (kind) {
-    case "directional-light":
-      return 3.2;
-    case "point-light":
-      return 24;
-    case "spot-light":
-      return 30;
-    case "hemisphere-light":
-      return 0.7;
-    default:
-      return 1;
-  }
-}
-function restHeight(kind) {
-  switch (kind) {
-    case "box":
-    case "sphere":
-    case "cylinder":
-    case "cone":
-      return 0.5;
-    case "capsule":
-      return 0.55;
-    case "camera":
-      return 1.5;
-    case "model":
-    case "plane":
-    case "empty":
-    case "spline":
-      return 0;
-    case "effect":
-    case "screen":
-      return 1;
-    default:
-      return 2;
-  }
-}
-function makeNode(partial) {
-  const kind = partial.kind;
-  return {
-    parentId: null,
-    order: 0,
-    visible: true,
-    locked: false,
-    position: [0, 0, 0],
-    rotation: [0, 0, 0],
-    scale: [1, 1, 1],
-    color: defaultColor(kind),
-    intensity: defaultIntensity(kind),
-    fov: 50,
-    spotAngle: 32,
-    assetId: null,
-    clip: "",
-    clipAssetId: null,
-    clipTime: 0,
-    clipPlaying: false,
-    clipLoop: true,
-    clipEnd: "hold",
-    clipSpeed: 1,
-    clipFade: 0.15,
-    clipInPlace: false,
-    clipMask: "full",
-    animator: null,
-    metalness: kind === "plane" ? 0 : 0.04,
-    roughness: kind === "plane" ? 0.92 : 0.58,
-    emissive: "#000000",
-    emissiveIntensity: 0,
-    opacity: 1,
-    ao: 1,
-    mapAssetId: null,
-    normalAssetId: null,
-    metallicRoughnessAssetId: null,
-    emissiveAssetId: null,
-    aoAssetId: null,
-    materialAssetId: null,
-    shader: "lit",
-    normalScale: 1,
-    alphaMode: "opaque",
-    alphaCutoff: 0.5,
-    cull: "back",
-    depthWrite: true,
-    wireframe: false,
-    effect: kind === "effect" ? defaultNodeEffect() : null,
-    screen: kind === "screen" ? defaultNodeScreen() : null,
-    capabilities: kind === "spline" ? { [SPLINE_PATH_CAPABILITY_ID]: defaultSplinePath(), ...partial.capabilities ?? {} } : partial.capabilities,
-    slots: [],
-    castShadow: kind === "directional-light" || kind === "spot-light" || (isMesh(kind) || kind === "model") && kind !== "plane",
-    receiveShadow: isMesh(kind) || kind === "model",
-    shadowBias: kind === "directional-light" ? -2e-4 : 5e-4,
-    shadowNormalBias: 0.02,
-    range: kind === "spot-light" ? 40 : 12,
-    decay: 2,
-    penumbra: 0.15,
-    groundColor: "#2c261f",
-    near: 0.1,
-    far: kind === "camera" ? 200 : 40,
-    ...partial
-  };
-}
-function childrenOf(nodes, parentId) {
-  return Object.values(nodes).filter((node) => node.parentId === parentId).sort((a, b) => a.order - b.order || a.name.localeCompare(b.name, "zh"));
-}
-function nextOrder(nodes, parentId, exceptId) {
-  let max4 = 0;
-  for (const node of Object.values(nodes)) {
-    if (node.id === exceptId || node.parentId !== parentId) continue;
-    if (node.order >= max4) max4 = node.order + 1;
-  }
-  return max4;
-}
-function uniqueName(nodes, base) {
-  const names = new Set(Object.values(nodes).map((node) => node.name));
-  const stripped = base.replace(/ \d+$/, "");
-  if (!names.has(stripped)) return stripped;
-  let index = 2;
-  while (names.has(`${stripped} ${index}`)) index += 1;
-  return `${stripped} ${index}`;
-}
-function subtreeIds(nodes, rootId) {
-  const out = [];
-  const walk = (id) => {
-    out.push(id);
-    for (const child of childrenOf(nodes, id)) walk(child.id);
-  };
-  if (nodes[rootId]) walk(rootId);
-  return out;
-}
-function spawnPosition(kind, parentId, spawn2) {
-  if (parentId) return [0, restHeight(kind), 0];
-  return [spawn2[0], restHeight(kind), spawn2[2]];
-}
-
-// src/editor/scene/types.ts
-var DEFAULT_NAV = {
-  cellSize: 0.2,
-  cellHeight: 0.2,
-  walkableSlopeAngle: 45,
-  agentRadius: 0.35,
-  agentHeight: 1.8,
-  maxObstacles: 32
-};
-var TONE_MAPS = ["none", "linear", "reinhard", "cineon", "aces", "agx", "neutral"];
-function toneMapOf(value) {
-  return typeof value === "string" && TONE_MAPS.includes(value) ? value : "aces";
-}
-var DEFAULT_PICTURE_AUDIO = { master: 1, music: 0.8, sfx: 1 };
-var DEFAULT_PICTURE = {
-  background: "#141414",
-  exposure: 1.05,
-  toneMapping: "aces",
-  fog: false,
-  fogColor: "#141414",
-  fogNear: 12,
-  fogFar: 80,
-  bloom: false,
-  bloomStrength: 0.35,
-  bloomRadius: 0.4,
-  bloomThreshold: 0.85,
-  ssr: false,
-  ssrQuality: 0.5,
-  ssrDistance: 5,
-  ssrThickness: 0.05,
-  ssrIntensity: 1,
-  ssgi: false,
-  ssgiSlices: 2,
-  ssgiSteps: 8,
-  ssgiRadius: 8,
-  ssgiIntensity: 4,
-  ssgiOcclusion: 1,
-  ssgiDenoise: false,
-  volume: false,
-  volumeDensity: 0.25,
-  volumeSteps: 24,
-  volumeSize: 40,
-  volumeHeight: 16,
-  volumeColor: "#d7e6ff",
-  aa: true,
-  ao: false,
-  dof: false,
-  dofFocus: 8,
-  dofFocal: 2,
-  dofBokeh: 2,
-  hue: 0,
-  saturation: 1,
-  envAssetId: null,
-  gravity: [0, -9.81, 0],
-  audio: { ...DEFAULT_PICTURE_AUDIO },
-  navigation: { ...DEFAULT_NAV }
-};
-function normalizePicture(picture) {
-  const gravity = picture?.gravity;
-  const legacyAudio = picture?.capabilities && typeof picture.capabilities === "object" ? picture.capabilities.audio : void 0;
-  const capabilities = picture?.capabilities && typeof picture.capabilities === "object" ? { ...picture.capabilities } : void 0;
-  if (capabilities) delete capabilities.audio;
-  return {
-    ...DEFAULT_PICTURE,
-    ...picture,
-    toneMapping: toneMapOf(picture?.toneMapping),
-    ssgiDenoise: picture?.ssgiDenoise === true,
-    gravity: gravity?.length === 3 ? gravity : DEFAULT_PICTURE.gravity,
-    audio: { ...DEFAULT_PICTURE_AUDIO, ...pictureAudio(picture?.audio), ...pictureAudio(legacyAudio) },
-    navigation: { ...DEFAULT_NAV, ...picture?.navigation },
-    ...capabilities && Object.keys(capabilities).length > 0 ? { capabilities } : {}
-  };
-}
-function pictureAudio(value) {
-  if (!value || typeof value !== "object") return {};
-  const row = value;
-  const next = {};
-  if (typeof row.master === "number") next.master = row.master;
-  if (typeof row.music === "number") next.music = row.music;
-  if (typeof row.sfx === "number") next.sfx = row.sfx;
-  return next;
-}
-var EDITOR_VIEWS = ["persp", "top", "bottom", "front", "back", "left", "right"];
-function normalizeEditorView(value) {
-  if (!value || typeof value !== "object") return null;
-  const view = value;
-  if (!view.view || !EDITOR_VIEWS.includes(view.view)) return null;
-  if (!view.pivot || view.pivot.length !== 3) return null;
-  if (typeof view.orbitDistance !== "number" || typeof view.yaw !== "number" || typeof view.pitch !== "number" || typeof view.orthoSize !== "number") return null;
-  return {
-    view: view.view,
-    pivot: [view.pivot[0], view.pivot[1], view.pivot[2]],
-    orbitDistance: view.orbitDistance,
-    yaw: view.yaw,
-    pitch: view.pitch,
-    orthoSize: view.orthoSize
-  };
-}
-
-// src/editor/scene/seed.ts
-function aimDownY(from, to) {
-  const direction = to.clone().sub(from).normalize();
-  const quaternion = new Quaternion5().setFromUnitVectors(new Vector310(0, -1, 0), direction);
-  const euler = new Euler2().setFromQuaternion(quaternion, "XYZ");
-  return [euler.x * 180 / Math.PI, euler.y * 180 / Math.PI, euler.z * 180 / Math.PI];
-}
-function createSeed() {
-  const sunPosition = [6, 10, 5];
-  const nodes = {
-    "seed-sun": makeNode({
-      id: "seed-sun",
-      name: "\u65B9\u5411\u5149",
-      kind: "directional-light",
-      order: 0,
-      position: sunPosition,
-      rotation: aimDownY(new Vector310(...sunPosition), new Vector310(0, 0.5, 0))
-    }),
-    "seed-sky": makeNode({
-      id: "seed-sky",
-      name: "\u73AF\u5883\u5149",
-      kind: "hemisphere-light",
-      order: 1,
-      position: [-5, 3, -4]
-    }),
-    "seed-ground": makeNode({
-      id: "seed-ground",
-      name: "\u5730\u9762",
-      kind: "plane",
-      order: 2,
-      position: [0, 0, 0],
-      rotation: [-90, 0, 0],
-      scale: [40, 40, 1],
-      physics: defaultNodePhysics("plane")
-    }),
-    "seed-cube": makeNode({
-      id: "seed-cube",
-      name: "\u65B9\u5757",
-      kind: "box",
-      order: 3,
-      position: [0, 0.5, 0]
-    })
-  };
-  return { nodes, selectedId: "seed-cube" };
-}
-function createFreshScene(name) {
-  const seed2 = createSeed();
-  const map = /* @__PURE__ */ new Map();
-  for (const id of Object.keys(seed2.nodes)) map.set(id, crypto.randomUUID());
-  const nodes = {};
-  for (const node of Object.values(seed2.nodes)) {
-    const copy = structuredClone(node);
-    copy.id = map.get(node.id) ?? copy.id;
-    copy.parentId = node.parentId ? map.get(node.parentId) ?? null : null;
-    nodes[copy.id] = copy;
-  }
-  return {
-    id: crypto.randomUUID(),
-    name,
-    nodes,
-    picture: structuredClone(DEFAULT_PICTURE),
-    selectedId: map.get(seed2.selectedId) ?? Object.keys(nodes)[0]
-  };
-}
-
-// src/core/codeAssets/workspace.ts
-import { create as create4 } from "zustand";
-
-// src/editor/project/disk.ts
-import { create as create3 } from "zustand";
-var CACHE_ROOT = ".cache/t3d";
-var IMPORT_ARTIFACTS = `${CACHE_ROOT}/import-artifacts`;
-var TEXTURE_ARTIFACTS = `${CACHE_ROOT}/texture-artifacts`;
-var TEXTURE_ORIGINALS = `${CACHE_ROOT}/texture-originals`;
-var CACHE_INDEX_PATH = `${CACHE_ROOT}/editor-library/v1/cache-index.json`;
-var CACHE_INDEX_VERSION = 1;
-var useProjectDirectory = create3(() => ({
-  active: false,
-  name: "",
-  epoch: 0
-}));
-var cacheIndex = emptyIndex();
-var ioChain = Promise.resolve();
-function emptyIndex() {
-  return { schemaVersion: CACHE_INDEX_VERSION, generatedAt: Date.now(), artifacts: {} };
-}
-
-// src/core/codeAssets/shaderRuntime.ts
-init_fieldSchema();
-import { Color as Color5, DataTexture as DataTexture2, RGBAFormat as RGBAFormat2 } from "three";
-import * as tsl from "three/tsl";
-import { MeshBasicNodeMaterial as MeshBasicNodeMaterial3, MeshStandardNodeMaterial } from "three/webgpu";
-
-// src/core/codeAssets/workspace.ts
-var useCodeAssetStore = create4((set) => ({
-  assets: {},
-  selectedId: null,
-  revision: 0,
-  selectAsset: (id) => set({ selectedId: id }),
-  upsertAsset: (record) => set((state) => ({ assets: { ...state.assets, [record.id]: record }, revision: state.revision + 1 })),
-  removeAsset: (id) => set((state) => {
-    const next = { ...state.assets };
-    delete next[id];
-    return {
-      assets: next,
-      selectedId: state.selectedId === id ? null : state.selectedId,
-      revision: state.revision + 1
-    };
-  }),
-  clear: () => set((state) => ({ assets: {}, selectedId: null, revision: state.revision + 1 }))
-}));
-
-// src/editor/assets/prefab.ts
-var PLACEMENT = ["position", "rotation", "scale"];
-var SKIP = /* @__PURE__ */ new Set([
-  "id",
-  "parentId",
-  "order",
-  "prefabAssetId",
-  "prefabInstanceId",
-  "prefabTemplateId",
-  "prefabHostTemplateId",
-  "prefabOverrides",
-  "prefabRemoved",
-  "nestedPrefabId"
-]);
-function readPrefab(asset) {
-  if (!Array.isArray(asset.nodes)) {
-    const nodes2 = asset.nodes;
-    const rootId2 = asset.rootId && nodes2[asset.rootId] ? asset.rootId : Object.values(nodes2).find((node) => !node.parentId)?.id ?? "";
-    return { rootId: rootId2, nodes: nodes2 };
-  }
-  const nodes = {};
-  for (const node of asset.nodes) nodes[node.id] = node;
-  const roots = Object.values(nodes).filter((node) => !node.parentId || !nodes[node.parentId]);
-  if (roots.length === 1) return { rootId: roots[0].id, nodes };
-  if (roots.length === 0) return { rootId: "", nodes };
-  const rootId = crypto.randomUUID();
-  nodes[rootId] = makeNode({ id: rootId, name: "\u9884\u5236\u4F53", kind: "empty" });
-  roots.forEach((node, order) => {
-    node.parentId = rootId;
-    node.order = order;
-  });
-  return { rootId, nodes };
-}
-function isPrefabRoot(node) {
-  return !!node && !!node.prefabAssetId && node.prefabInstanceId === node.id;
-}
-function captureTemplate(scene2, rootId) {
-  const nodes = {};
-  const map = /* @__PURE__ */ new Map();
-  const walk = (id, parentTemplate) => {
-    const source = scene2[id];
-    if (!source) return;
-    if (isPrefabRoot(source) && id !== rootId) {
-      const templateId2 = crypto.randomUUID();
-      map.set(id, templateId2);
-      const copy2 = strip(source);
-      copy2.id = templateId2;
-      copy2.parentId = parentTemplate;
-      copy2.nestedPrefabId = source.prefabAssetId;
-      nodes[templateId2] = copy2;
-      return;
-    }
-    const templateId = crypto.randomUUID();
-    map.set(id, templateId);
-    const copy = strip(source);
-    copy.id = templateId;
-    copy.parentId = parentTemplate;
-    nodes[templateId] = copy;
-    for (const child of childrenOf(scene2, id)) walk(child.id, templateId);
-  };
-  walk(rootId, null);
-  const root = nodes[map.get(rootId) ?? ""];
-  if (root) {
-    root.position = [0, 0, 0];
-    root.rotation = [0, 0, 0];
-    root.scale = [1, 1, 1];
-  }
-  return { rootId: map.get(rootId) ?? "", nodes };
-}
-function instantiatePrefab(scene2, doc, assetId, parentId, position, lookup, visiting = /* @__PURE__ */ new Set()) {
-  if (!doc.rootId || visiting.has(assetId)) return null;
-  visiting.add(assetId);
-  const root = doc.nodes[doc.rootId];
-  if (!root) return null;
-  const sceneRoot = crypto.randomUUID();
-  const copy = strip(root);
-  copy.id = sceneRoot;
-  copy.parentId = parentId;
-  copy.order = nextOrder2(scene2, parentId);
-  copy.name = uniqueName2(scene2, copy.name);
-  if (position) copy.position = [position[0], position[1], position[2]];
-  copy.prefabAssetId = assetId;
-  copy.prefabInstanceId = sceneRoot;
-  copy.prefabTemplateId = root.id;
-  copy.prefabOverrides = position ? [...PLACEMENT] : [];
-  scene2[sceneRoot] = copy;
-  expand(scene2, doc, assetId, root.id, sceneRoot, sceneRoot, lookup, visiting);
-  visiting.delete(assetId);
-  return sceneRoot;
-}
-function reconcilePrefab(scene2, assetId, doc, lookup) {
-  const roots = Object.values(scene2).filter((node) => node.prefabAssetId === assetId && node.prefabInstanceId === node.id);
-  for (const root of roots) syncInstance(scene2, root.id, doc, assetId, lookup);
-}
-function applyInstance(scene2, instanceId, doc) {
-  const next = structuredClone(doc);
-  const removed = new Set(scene2[instanceId]?.prefabRemoved ?? []);
-  for (const id of removed) deleteTemplate(next.nodes, id);
-  for (const node of Object.values(scene2)) {
-    if (node.prefabInstanceId !== instanceId || !node.prefabTemplateId) continue;
-    const template = next.nodes[node.prefabTemplateId];
-    if (!template) continue;
-    for (const key of node.prefabOverrides ?? []) {
-      if (SKIP.has(key) || node.id === instanceId && PLACEMENT.includes(key)) continue;
-      copyKey(template, node, key);
-    }
-    node.prefabOverrides = node.id === instanceId ? [...PLACEMENT] : [];
-  }
-  for (const node of [...Object.values(scene2)]) {
-    if (node.prefabInstanceId !== instanceId || node.prefabTemplateId) continue;
-    const parent = node.parentId ? scene2[node.parentId] : void 0;
-    const parentTemplate = parent?.prefabTemplateId;
-    if (!parentTemplate || !next.nodes[parentTemplate]) continue;
-    if (isPrefabRoot(node)) {
-      const templateId = crypto.randomUUID();
-      const placeholder = strip(node);
-      placeholder.id = templateId;
-      placeholder.parentId = parentTemplate;
-      placeholder.nestedPrefabId = node.prefabAssetId;
-      placeholder.order = nextOrder2(next.nodes, parentTemplate);
-      next.nodes[templateId] = placeholder;
-      node.prefabHostTemplateId = templateId;
-      continue;
-    }
-    graftAdded(scene2, next.nodes, node.id, parentTemplate);
-  }
-  if (scene2[instanceId]) scene2[instanceId].prefabRemoved = [];
-  return next;
-}
-function revertInstance(scene2, instanceId, doc, assetId, lookup) {
-  const root = scene2[instanceId];
-  if (!root) return;
-  for (const node of Object.values(scene2)) {
-    if (node.prefabInstanceId !== instanceId) continue;
-    if (!node.prefabTemplateId && node.id !== instanceId) delete scene2[node.id];
-    else node.prefabOverrides = node.id === instanceId ? [...PLACEMENT] : [];
-  }
-  root.prefabRemoved = [];
-  syncInstance(scene2, instanceId, doc, assetId, lookup);
-}
-function unpackInstance(scene2, instanceId) {
-  for (const node of Object.values(scene2)) {
-    if (node.prefabInstanceId !== instanceId) continue;
-    delete node.prefabAssetId;
-    delete node.prefabInstanceId;
-    delete node.prefabTemplateId;
-    delete node.prefabHostTemplateId;
-    delete node.prefabOverrides;
-    delete node.prefabRemoved;
-  }
-}
-function rememberRemoval(scene2, id) {
-  const node = scene2[id];
-  if (!node?.prefabTemplateId || !node.prefabInstanceId || node.id === node.prefabInstanceId) return;
-  const root = scene2[node.prefabInstanceId];
-  if (!root) return;
-  root.prefabRemoved = [.../* @__PURE__ */ new Set([...root.prefabRemoved ?? [], node.prefabTemplateId])];
-}
-function detachIfReparented(scene2, id) {
-  const node = scene2[id];
-  if (!node?.prefabInstanceId || node.id === node.prefabInstanceId || !node.prefabTemplateId) return;
-  const rootId = node.prefabInstanceId;
-  if (contains(scene2, rootId, id)) {
-    rememberRemoval(scene2, id);
-    delete node.prefabTemplateId;
-    delete node.prefabOverrides;
-    return;
-  }
-  const templateIds = [node.prefabTemplateId];
-  const walk = (current) => {
-    for (const child of childrenOf(scene2, current)) {
-      if (child.prefabInstanceId === rootId && child.prefabTemplateId) templateIds.push(child.prefabTemplateId);
-      if (child.prefabInstanceId === rootId) walk(child.id);
-    }
-  };
-  walk(id);
-  const root = scene2[rootId];
-  if (root) root.prefabRemoved = [.../* @__PURE__ */ new Set([...root.prefabRemoved ?? [], ...templateIds])];
-  const clear = (current) => {
-    const item = scene2[current];
-    if (!item || item.prefabInstanceId !== rootId) return;
-    delete item.prefabAssetId;
-    delete item.prefabInstanceId;
-    delete item.prefabTemplateId;
-    delete item.prefabHostTemplateId;
-    delete item.prefabOverrides;
-    delete item.prefabRemoved;
-    for (const child of childrenOf(scene2, current)) clear(child.id);
-  };
-  clear(id);
-}
-function tagAddedChild(scene2, id) {
-  const node = scene2[id];
-  const parent = node?.parentId ? scene2[node.parentId] : void 0;
-  if (!node || !parent?.prefabInstanceId || node.prefabAssetId) return;
-  node.prefabAssetId = parent.prefabAssetId;
-  node.prefabInstanceId = parent.prefabInstanceId;
-}
-function retargetInstance(scene2, oldRoot, newRoot) {
-  const walk = (id) => {
-    const node = scene2[id];
-    if (!node) return;
-    if (node.prefabInstanceId === oldRoot) node.prefabInstanceId = newRoot;
-    for (const child of childrenOf(scene2, id)) walk(child.id);
-  };
-  walk(newRoot);
-}
-function markOverrides(node, patch) {
-  if (!node.prefabAssetId) return;
-  const keys = Object.keys(patch).filter((key) => !SKIP.has(key) && key !== "clipTime" && key !== "clipPlaying");
-  if (keys.length === 0) return;
-  node.prefabOverrides = [.../* @__PURE__ */ new Set([...node.prefabOverrides ?? [], ...keys])];
-}
-function syncInstance(scene2, instanceId, doc, assetId, lookup) {
-  const root = scene2[instanceId];
-  const templateRoot = doc.nodes[doc.rootId];
-  if (!root || !templateRoot) return;
-  const removed = new Set(root.prefabRemoved ?? []);
-  const byTemplate = /* @__PURE__ */ new Map();
-  for (const node of Object.values(scene2)) {
-    if (node.prefabInstanceId === instanceId && node.prefabTemplateId) byTemplate.set(node.prefabTemplateId, node);
-    if (node.prefabHostTemplateId) byTemplate.set(node.prefabHostTemplateId, node);
-  }
-  const keep = /* @__PURE__ */ new Set([instanceId]);
-  const visit = (templateId, parentSceneId) => {
-    if (removed.has(templateId)) return;
-    const template = doc.nodes[templateId];
-    if (!template) return;
-    if (template.nestedPrefabId) {
-      let nested = byTemplate.get(templateId);
-      if (!nested || !isPrefabRoot(nested)) {
-        const nestedDoc = lookup(template.nestedPrefabId);
-        const created = nestedDoc ? instantiatePrefab(scene2, nestedDoc, template.nestedPrefabId, parentSceneId, null, lookup) : null;
-        nested = created ? scene2[created] : void 0;
-        if (nested) {
-          nested.prefabHostTemplateId = templateId;
-          nested.position = [...template.position];
-          nested.rotation = [...template.rotation];
-          nested.scale = [...template.scale];
-          nested.prefabOverrides = (nested.prefabOverrides ?? []).filter((key) => !PLACEMENT.includes(key));
-        }
-      } else if (nested.parentId !== parentSceneId) nested.parentId = parentSceneId;
-      if (nested) {
-        applyProps(nested, template, new Set(nested.prefabOverrides ?? []));
-        keep.add(nested.id);
-      }
-      return;
-    }
-    let node = templateId === doc.rootId ? root : byTemplate.get(templateId);
-    if (!node) {
-      const id = crypto.randomUUID();
-      node = strip(template);
-      node.id = id;
-      node.parentId = parentSceneId;
-      node.order = template.order;
-      node.prefabAssetId = assetId;
-      node.prefabInstanceId = instanceId;
-      node.prefabTemplateId = templateId;
-      node.prefabOverrides = [];
-      scene2[id] = node;
-    } else if (node.id !== instanceId) node.parentId = parentSceneId;
-    const overrides = new Set(node.prefabOverrides ?? []);
-    if (node.id === instanceId) PLACEMENT.forEach((key) => overrides.add(key));
-    applyProps(node, template, overrides);
-    keep.add(node.id);
-    for (const child of childrenOf(doc.nodes, templateId)) visit(child.id, node.id);
-  };
-  visit(doc.rootId, root.parentId);
-  for (const node of Object.values(scene2)) {
-    if (node.prefabInstanceId !== instanceId || !node.prefabTemplateId) continue;
-    if (!keep.has(node.id)) deleteSubtree(scene2, node.id);
-  }
-}
-function expand(scene2, doc, assetId, templateParent, sceneParent, instanceId, lookup, visiting) {
-  for (const template of childrenOf(doc.nodes, templateParent)) {
-    if (template.nestedPrefabId) {
-      const nestedDoc = lookup(template.nestedPrefabId);
-      const nestedId = nestedDoc ? instantiatePrefab(scene2, nestedDoc, template.nestedPrefabId, sceneParent, null, lookup, visiting) : null;
-      const nested = nestedId ? scene2[nestedId] : void 0;
-      if (!nested) continue;
-      nested.prefabHostTemplateId = template.id;
-      nested.position = [...template.position];
-      nested.rotation = [...template.rotation];
-      nested.scale = [...template.scale];
-      nested.order = template.order;
-      nested.prefabOverrides = [];
-      continue;
-    }
-    const id = crypto.randomUUID();
-    const node = strip(template);
-    node.id = id;
-    node.parentId = sceneParent;
-    node.order = template.order;
-    node.prefabAssetId = assetId;
-    node.prefabInstanceId = instanceId;
-    node.prefabTemplateId = template.id;
-    node.prefabOverrides = [];
-    scene2[id] = node;
-    expand(scene2, doc, assetId, template.id, id, instanceId, lookup, visiting);
-  }
-}
-function graftAdded(scene2, templateNodes, id, parentTemplate) {
-  const map = /* @__PURE__ */ new Map();
-  const walk = (current, parent) => {
-    const source = scene2[current];
-    if (!source || isPrefabRoot(source)) return;
-    const templateId = crypto.randomUUID();
-    map.set(current, templateId);
-    const copy = strip(source);
-    copy.id = templateId;
-    copy.parentId = parent;
-    copy.order = source.order;
-    templateNodes[templateId] = copy;
-    source.prefabTemplateId = templateId;
-    source.prefabOverrides = [];
-    for (const child of childrenOf(scene2, current)) walk(child.id, templateId);
-  };
-  walk(id, parentTemplate);
-}
-function deleteTemplate(nodes, id) {
-  for (const child of childrenOf(nodes, id)) deleteTemplate(nodes, child.id);
-  delete nodes[id];
-}
-function deleteSubtree(nodes, id) {
-  for (const child of childrenOf(nodes, id)) deleteSubtree(nodes, child.id);
-  delete nodes[id];
-}
-function applyProps(target, source, overrides) {
-  for (const key of Object.keys(source)) {
-    if (SKIP.has(key) || overrides.has(key)) continue;
-    copyKey(target, source, key);
-  }
-}
-function copyKey(target, source, key) {
-  const value = source[key];
-  target[key] = structuredClone(value);
-}
-function strip(node) {
-  const copy = structuredClone(node);
-  delete copy.prefabAssetId;
-  delete copy.prefabInstanceId;
-  delete copy.prefabTemplateId;
-  delete copy.prefabHostTemplateId;
-  delete copy.prefabOverrides;
-  delete copy.prefabRemoved;
-  return copy;
-}
-function contains(nodes, ancestor, id) {
-  let current = nodes[id]?.parentId;
-  const seen = /* @__PURE__ */ new Set();
-  while (current && !seen.has(current)) {
-    if (current === ancestor) return true;
-    seen.add(current);
-    current = nodes[current]?.parentId ?? null;
-  }
-  return false;
-}
-function nextOrder2(nodes, parentId) {
-  let max4 = -1;
-  for (const node of Object.values(nodes)) if (node.parentId === parentId) max4 = Math.max(max4, node.order);
-  return max4 + 1;
-}
-function uniqueName2(nodes, base) {
-  const names = new Set(Object.values(nodes).map((node) => node.name));
-  if (!names.has(base)) return base;
-  let index = 2;
-  while (names.has(`${base} ${index}`)) index += 1;
-  return `${base} ${index}`;
-}
-
-// src/editor/i18n/index.ts
-import { useMemo } from "react";
-
-// src/editor/prefs/store.ts
-import { create as create5 } from "zustand";
-var KEY = "t3d-editor-prefs";
-function readPrefs() {
-  const fallback = { language: "system", autoSave: true, openLastProject: true, uiScale: 1 };
-  try {
-    const raw = localStorage.getItem(KEY);
-    if (!raw) return fallback;
-    const parsed = JSON.parse(raw);
-    const language = parsed.language === "zh" || parsed.language === "en" || parsed.language === "system" ? parsed.language : "system";
-    const uiScale = parsed.uiScale === 1.25 || parsed.uiScale === 1.5 ? parsed.uiScale : 1;
-    return { language, autoSave: parsed.autoSave !== false, openLastProject: parsed.openLastProject !== false, uiScale };
-  } catch {
-    return fallback;
-  }
-}
-function persist(state) {
-  localStorage.setItem(KEY, JSON.stringify(state));
-  document.documentElement.style.zoom = String(state.uiScale);
-}
-function dataOf(state, patch) {
-  return { ...state, ...patch };
-}
-var initial = readPrefs();
-persist(initial);
-var usePrefsStore = create5((set) => ({
-  ...initial,
-  settingsOpen: false,
-  setLanguage: (language) => set((state) => {
-    const next = dataOf(state, { language });
-    persist(next);
-    return next;
-  }),
-  setAutoSave: (autoSave) => set((state) => {
-    const next = dataOf(state, { autoSave });
-    persist(next);
-    return next;
-  }),
-  setOpenLastProject: (openLastProject) => set((state) => {
-    const next = dataOf(state, { openLastProject });
-    persist(next);
-    return next;
-  }),
-  setUiScale: (uiScale) => set((state) => {
-    const next = dataOf(state, { uiScale });
-    persist(next);
-    return next;
-  }),
-  openSettings: () => set({ settingsOpen: true }),
-  closeSettings: () => set({ settingsOpen: false })
-}));
-function resolveLanguage(setting) {
-  if (setting === "zh" || setting === "en") return setting;
-  return navigator.language.toLowerCase().startsWith("zh") ? "zh" : "en";
-}
-
-// src/editor/i18n/messages.ts
-var zh = {
-  "menu.file": "\u6587\u4EF6",
-  "menu.edit": "\u7F16\u8F91",
-  "menu.create": "\u521B\u5EFA",
-  "menu.view": "\u89C6\u56FE",
-  "menu.newProject": "\u65B0\u5EFA\u5DE5\u7A0B\u2026",
-  "menu.openProject": "\u6253\u5F00\u5DE5\u7A0B\u2026",
-  "menu.recentProjects": "\u6700\u8FD1\u5DE5\u7A0B",
-  "menu.newScene": "\u65B0\u5EFA\u573A\u666F",
-  "menu.save": "\u4FDD\u5B58",
-  "menu.saveAsProject": "\u53E6\u5B58\u4E3A\u5DE5\u7A0B\u2026",
-  "menu.projectSettings": "\u5DE5\u7A0B\u8BBE\u7F6E\u2026",
-  "menu.database": "\u6E38\u620F\u6570\u636E\u2026",
-  "menu.library": "\u5B98\u65B9\u5E93\u2026",
-  "menu.tags": "\u6807\u7B7E\u2026",
-  "menu.layers": "\u5C42\u2026",
-  "hub.title": "\u6E38\u620F\u6570\u636E",
-  "hub.count": "{tables} \u5F20\u6570\u636E\u8868",
-  "hub.database": "\u6E38\u620F\u6570\u636E\uFF08{count} \u5F20\u8868\uFF09",
-  "hub.packs": "\u73A9\u6CD5\u5305",
-  "hub.search": "\u641C\u7D22{name}",
-  "hub.reset": "\u91CD\u7F6E\u9ED8\u8BA4",
-  "hub.add": "\u65B0\u589E\u6761\u76EE",
-  "hub.catalog": "\u6570\u636E\u8868\u76EE\u5F55",
-  "hub.corePack": "\u6838\u5FC3\u5305",
-  "hub.rowCount": "{count} \u6761",
-  "hub.showing": "\u663E\u793A {shown} / {total} \u6761",
-  "hub.empty": "\u6CA1\u6709\u5339\u914D\u7684\u8BB0\u5F55\u3002\u53EF\u4EE5\u65B0\u589E\u4E00\u6761\u3002",
-  "hub.id": "\u6807\u8BC6",
-  "hub.name": "\u540D\u79F0",
-  "hub.category": "\u5206\u7EC4",
-  "hub.note": "\u5907\u6CE8",
-  "hub.delete": "\u5220\u9664",
-  "hub.enabled": "\u5DF2\u542F\u7528",
-  "hub.disabled": "\u5DF2\u5173\u95ED",
-  "hub.packHint": "\u5173\u6389\u7684\u5305\u4F1A\u4ECE\u8FD9\u5F20\u76EE\u5F55\u6D88\u5931\uFF0C\u5DF2\u7ECF\u5199\u8FC7\u7684\u884C\u7559\u5728\u5DE5\u7A0B\u91CC\u3002\u5C5E\u6027\u3001\u7269\u54C1\u8FD9\u4E9B\u8868\u7B49\u5BF9\u5E94\u7684\u5305\u505A\u4E86\u518D\u51FA\u73B0\u3002",
-  "library.title": "\u5B98\u65B9\u5E93",
-  "library.lead": "\u7F16\u8F91\u5668\u81EA\u5E26\u7684\u80FD\u529B\u3001\u73A9\u6CD5\u3001\u4E13\u9879\u548C\u7D20\u6750\u3002\u5F00\u5173\u8BB0\u5728\u5F53\u524D\u5DE5\u7A0B\u91CC\u3002",
-  "library.search": "\u641C\u7D22\u540D\u79F0",
-  "library.empty": "\u6CA1\u6709\u5339\u914D\u7684\u6761\u76EE",
-  "library.on": "\u5DF2\u5F00\u542F",
-  "library.off": "\u5DF2\u5173\u95ED",
-  "library.soon": "\u5F00\u53D1\u4E2D",
-  "library.official": "\u5B98\u65B9",
-  "library.includes": "\u8FD9\u4E00\u5305\u63D0\u4F9B",
-  "library.switch": "\u5DE5\u7A0B\u5F00\u5173",
-  "library.soonNote": "\u968F\u7F16\u8F91\u5668\u5F00\u53D1\u3002\u767B\u8BB0\u5B8C\u6210\u524D\u4E0D\u80FD\u5F00\u5173\u3002",
-  "library.assetNote": "\u7D20\u6750\u662F\u76EE\u5F55\uFF0C\u7528\u5230\u65F6\u518D\u5BFC\u5165\u5DE5\u7A0B\u3002\u73B0\u5728\u8FD8\u4E0D\u80FD\u5B89\u88C5\u3002",
-  "library.shelf.capability": "\u80FD\u529B",
-  "library.shelf.gameplay": "\u73A9\u6CD5",
-  "library.shelf.genre": "\u4E13\u9879",
-  "library.shelf.asset": "\u7D20\u6750",
-  "library.shelfHint.capability": "\u6A21\u62DF\u548C\u753B\u9762\u8FD0\u884C\u65F6\u3002\u6C34\u4F53\u3001\u5929\u6C14\u4E5F\u5F52\u5728\u8FD9\u91CC\u3002",
-  "library.shelfHint.gameplay": "\u6838\u5FC3\u5305\u4EE5\u5916\u7684\u9886\u57DF\u5305\u3002\u6838\u5FC3\u5305\u59CB\u7EC8\u5F00\u542F\uFF0C\u4E0D\u5728\u5E93\u91CC\u3002",
-  "library.shelfHint.genre": "\u67D0\u4E00\u7C7B\u6E38\u620F\u7684\u4E13\u5C5E\u5305\u3002\u6A21\u677F\u4EE5\u540E\u5355\u72EC\u6807\u660E\u3002",
-  "library.shelfHint.asset": "\u73B0\u6210\u7684\u6A21\u578B\u3001\u52A8\u753B\u548C\u7C92\u5B50\u9884\u8BBE\u3002",
-  "library.item.physics": "\u7269\u7406",
-  "library.item.physicsDetail": "\u78B0\u649E\u4F53\u3001\u521A\u4F53\u548C\u8BD5\u73A9\u65F6\u7684\u7269\u7406\u6A21\u62DF\u3002",
-  "library.item.physicsPoints": "\u521A\u4F53\u4E0E\u78B0\u649E\u4F53\n\u573A\u666F\u91CD\u529B\u4E0B\u7684\u6A21\u62DF",
-  "library.item.buoyancy": "\u6D6E\u529B",
-  "library.item.buoyancyDetail": "\u57FA\u4E8E\u5F53\u524D\u6C34\u4F53\u6CE2\u6D6A\u7684\u7269\u7406\u6D6E\u529B\u4E0E\u6C34\u963B\u5C3C\uFF08\u4F9D\u8D56\u7269\u7406\u7CFB\u7EDF\uFF09\u3002",
-  "library.item.buoyancyPoints": "\u591A\u70B9\u6D6E\u529B\u91C7\u6837\n\u6C34\u963B\u5C3C\u4E0E\u6CE2\u6D6A\u8DDF\u968F",
-  "library.item.navigation": "\u5BFC\u822A",
-  "library.item.navigationDetail": "\u4ECE\u9759\u6001\u8868\u9762\u70D8\u7119\u5BFC\u822A\u7F51\u683C\u3002\u8BD5\u73A9\u65F6\u969C\u788D\u53EF\u4EE5\u6316\u5F00\u7F51\u683C\u3002",
-  "library.item.navigationPoints": "\u5BFC\u822A\u7F51\u683C\u70D8\u7119\n\u5BFB\u8DEF\u4E0E\u969C\u788D",
-  "library.item.spline": "Spline \u8DEF\u5F84\u8FD0\u52A8",
-  "library.item.splineDetail": "\u914D\u5408 3D \u89C6\u53E3\u53EF\u7F16\u8F91 Spline \u66F2\u7EBF\u8282\u70B9\uFF0C\u6309\u5F27\u957F\u5300\u901F\u5DE1\u903B\u6216\u8F68\u9053\u79FB\u52A8\u3002",
-  "library.item.splinePoints": "3D \u89C6\u53E3\u66F2\u8FB9\u7F16\u8F91\u5668\n\u5F27\u957F\u5300\u901F\u8FD0\u52A8\n\u5355\u6B21 / \u5FAA\u73AF / \u5F80\u8FD4",
-  "library.item.tween": "Tween \u8865\u95F4\u52A8\u6548",
-  "library.item.tweenDetail": "\u4E3A\u7269\u4F53\u63D0\u4F9B\u4F4D\u7F6E\u3001\u65CB\u8F6C\u3001\u7F29\u653E\u4E0E\u60AC\u6D6E\u6D6E\u52A8\u7B49\u7F13\u52A8\u5FAA\u73AF\u52A8\u6548\u3002",
-  "library.item.tweenPoints": "12 \u79CD\u5E38\u7528\u7F13\u52A8\u66F2\u7EBF\n\u5FAA\u73AF\u4E0E Yoyo \u5F80\u8FD4\n\u811A\u672C self.tween \u94FE\u5F0F\u9A71\u52A8",
-  "library.item.crowd": "\u7FA4\u4F53\u907F\u8BA9 (Crowd)",
-  "library.item.crowdDetail": "\u4E3A\u591A\u5355\u4F4D\u63D0\u4F9B\u5C40\u90E8\u907F\u8BA9\u5206\u79BB\u3001\u51DD\u805A\u5BF9\u9F50\u4E0E\u6A2A\u6392/\u65B9\u9635/\u6954\u5F62/\u73AF\u5F62\u7F16\u961F\u79FB\u52A8\u3002",
-  "library.item.crowdPoints": "\u7A7A\u95F4\u7F51\u683C\u5C40\u90E8\u907F\u8BA9\n\u6A2A\u6392 / \u65B9\u9635 / \u6954\u5F62 / \u73AF\u5F62\u7F16\u961F\n\u811A\u672C self.crowd / world.crowd",
-  "library.item.projectile": "\u901A\u7528\u5F39\u9053 (Projectile)",
-  "library.item.projectileDetail": "\u652F\u6301\u76F4\u7EBF\u3001\u8FFD\u8E2A\u4E0E\u629B\u7269\u7EBF\u5F39\u9053\u98DE\u884C\uFF0C\u81EA\u52A8\u68C0\u6D4B\u76EE\u6807\u6807\u7B7E\u547D\u4E2D\u5E76\u56DE\u6C60\u6216\u9500\u6BC1\u3002",
-  "library.item.projectilePoints": "\u76F4\u7EBF / \u8FFD\u8E2A / \u629B\u7269\u7EBF\n\u76EE\u6807\u6807\u7B7E\u547D\u4E2D\u4E0E\u56DE\u6C60\n\u81EA\u52A8\u6D3E\u53D1 onProjectileHit",
-  "library.item.particles": "\u7C92\u5B50",
-  "library.item.particlesDetail": "\u7C92\u5B50\u8FD0\u884C\u65F6\u3002\u5173\u6389\u540E\u8D44\u6E90\u548C\u7269\u4F53\u4E0A\u7684\u6570\u636E\u8FD8\u5728\uFF0C\u53EA\u662F\u4E0D\u518D\u64AD\u653E\u3002",
-  "library.item.particlesPoints": "\u7C92\u5B50\u6A21\u62DF\n\u73B0\u6210\u9884\u8BBE\u5728\u7D20\u6750\u680F",
-  "library.item.sky": "\u5929\u7A7A",
-  "library.item.skyDetail": "\u65F6\u523B\u3001\u5927\u6C14\u6563\u5C04\u548C\u8DDF\u7740\u592A\u9633\u8D70\u7684\u73AF\u5883\u5149\u7167\u3002\u5173\u6389\u540E\u53C2\u6570\u7559\u5728\u753B\u9762\u4E0A\uFF0C\u53EA\u662F\u4E0D\u518D\u7ED8\u5236\u3002",
-  "library.item.skyPoints": "\u65F6\u523B\u4E0E\u5927\u6C14\n\u73AF\u5883\u5149\u7167\n\u9AD8\u5EA6\u96FE\u3001\u661F\u7A7A\u4E0E\u6708\u4EAE",
-  "library.item.water": "\u6C34\u4F53",
-  "library.item.waterDetail": "TSL \u6C34\u9762\u3001\u53CC\u5C42\u6D41\u52A8\u6CD5\u7EBF\u3001\u5E73\u9762\u53CD\u5C04\u3001\u6C34\u6DF1\u5438\u6536\u4E0E\u5CB8\u8FB9\u6CE1\u6CAB\u3002\u5173\u6389\u540E\u53C2\u6570\u4FDD\u7559\uFF0C\u6062\u590D\u539F\u6750\u8D28\u3002",
-  "library.item.waterPoints": "\u5E73\u9762\u53CD\u5C04\u4E0E\u6C34\u6DF1\u5438\u6536\n\u5CB8\u8FB9\u6CE1\u6CAB\u4E0E\u6CE2\u6D6A\n5 \u5957\u9884\u8BBE\u4E0E 3 \u6863\u753B\u8D28",
-  "buoyancy.title": "\u6D6E\u529B",
-  "buoyancy.enable": "\u542F\u7528\u6D6E\u529B",
-  "buoyancy.sampleMode": "\u91C7\u6837\u5206\u5E03",
-  "buoyancy.sample.box4": "\u5E95\u9762\u56DB\u70B9\uFF08\u8239\u53EA/\u7BB1\u5B50\uFF09",
-  "buoyancy.sample.box8": "\u516B\u89D2\u70B9\uFF08\u53EF\u7FFB\u6EDA/\u5168\u6D78\uFF09",
-  "buoyancy.sample.center": "\u4E2D\u5FC3\u70B9\uFF08\u7403\u4F53/\u6D6E\u6807\uFF09",
-  "buoyancy.force": "\u6D6E\u529B\u500D\u7387",
-  "buoyancy.waterDrag": "\u6C34\u4E2D\u963B\u529B",
-  "buoyancy.angularDrag": "\u6447\u6643\u963B\u5C3C",
-  "buoyancy.draftDepth": "\u5403\u6C34\u6DF1\u5EA6\uFF080 \u81EA\u52A8\uFF09",
-  "buoyancy.needsDynamic": "\u9700\u8981\u52A8\u6001\u521A\u4F53\u624D\u80FD\u53D7\u529B\u6F02\u6D6E",
-  "buoyancy.makeDynamic": "\u8BBE\u4E3A\u52A8\u6001\u521A\u4F53",
-  "projectSettings.buoyancyDetail": "\u57FA\u4E8E\u5F53\u524D\u6C34\u4F53\u6CE2\u6D6A\u7684\u7269\u7406\u6D6E\u529B\u4E0E\u6C34\u963B\u5C3C\uFF08\u4F9D\u8D56\u7269\u7406\u7CFB\u7EDF\uFF09\u3002",
-  "spline.title": "Spline \u8DEF\u5F84\u8FD0\u52A8",
-  "projectSettings.splineDetail": "\u6CBF\u8DEF\u5F84\u7236\u8282\u70B9\u7684\u6709\u5E8F\u5B50\u8282\u70B9\u4F5C\u5E73\u6ED1\u6837\u6761\u66F2\u7EBF\u5300\u901F\u8FD0\u52A8\u3002",
-  "tween.title": "Tween \u8865\u95F4\u52A8\u6548",
-  "projectSettings.tweenDetail": "\u4E3A\u7269\u4F53\u63D0\u4F9B\u4F4D\u7F6E\u3001\u65CB\u8F6C\u3001\u7F29\u653E\u4E0E\u60AC\u6D6E\u6D6E\u52A8\u7B49\u7F13\u52A8\u5FAA\u73AF\u52A8\u6548\u3002",
-  "crowd.title": "\u7FA4\u4F53\u907F\u8BA9 (Crowd)",
-  "projectSettings.crowdDetail": "\u4E3A\u591A\u5355\u4F4D\u63D0\u4F9B\u5C40\u90E8\u907F\u8BA9\u5206\u79BB\u3001\u51DD\u805A\u5BF9\u9F50\u4E0E\u6A2A\u6392/\u65B9\u9635/\u6954\u5F62/\u73AF\u5F62\u7F16\u961F\u79FB\u52A8\u3002",
-  "projectile.title": "\u901A\u7528\u5F39\u9053 (Projectile)",
-  "projectSettings.projectileDetail": "\u652F\u6301\u76F4\u7EBF\u3001\u8FFD\u8E2A\u4E0E\u629B\u7269\u7EBF\u5F39\u9053\u98DE\u884C\uFF0C\u81EA\u52A8\u68C0\u6D4B\u76EE\u6807\u6807\u7B7E\u547D\u4E2D\u5E76\u56DE\u6C60\u6216\u9500\u6BC1\u3002",
-  "water.title": "\u6C34\u4F53",
-  "water.enable": "\u542F\u7528\u6C34\u4F53",
-  "water.groupColor": "\u6C34\u8272\u4E0E\u5438\u6536",
-  "water.groupWaves": "\u6CE2\u7EB9\u4E0E\u6D77\u6D6A",
-  "water.groupOptics": "\u5149\u5B66\u4E0E\u6CE1\u6CAB",
-  "water.on": "\u5F00\u542F",
-  "water.off": "\u5173\u95ED",
-  "water.add": "\u8BBE\u4E3A\u6C34\u4F53",
-  "water.style": "\u98CE\u683C\u9884\u8BBE",
-  "water.quality": "\u753B\u8D28\u6863\u4F4D",
-  "water.preset.tropical": "\u70ED\u5E26\u6D45\u6D77",
-  "water.preset.ocean": "\u6DF1\u6D77\u5927\u6D0B",
-  "water.preset.lake": "\u9759\u8C27\u6E56\u6CCA",
-  "water.preset.pool": "\u6E05\u6F88\u6CF3\u6C60",
-  "water.preset.stylized": "\u98CE\u683C\u5316\u5361\u901A\u6C34",
-  "water.quality.fast": "\u8F7B\u91CF\uFF08\u65E0\u53CD\u5C04\uFF09",
-  "water.quality.balanced": "\u5747\u8861\uFF080.5x \u53CD\u5C04\uFF09",
-  "water.quality.ultra": "\u6781\u81F4\uFF080.75x + \u5927\u6D6A\uFF09",
-  "water.shallow": "\u6D45\u6C34\u8272",
-  "water.deep": "\u6DF1\u6C34\u8272",
-  "water.absorption": "\u6C34\u6DF1\u5438\u6536 (m)",
-  "water.opacity": "\u57FA\u7840\u4E0D\u900F\u660E",
-  "water.waveScale": "\u6CE2\u7EB9\u5C3A\u5EA6",
-  "water.flowSpeed": "\u6D41\u901F",
-  "water.normalScale": "\u6CD5\u7EBF\u5F3A\u5EA6",
-  "water.reflectivity": "\u53CD\u5C04\u5F3A\u5EA6",
-  "water.specular": "\u592A\u9633\u9AD8\u5149",
-  "water.specularSize": "\u9AD8\u5149\u5927\u5C0F",
-  "water.sss": "\u6B21\u8868\u9762\u6563\u5C04",
-  "water.foamWidth": "\u6CE1\u6CAB\u8303\u56F4",
-  "water.foamIntensity": "\u6CE1\u6CAB\u5F3A\u5EA6",
-  "water.foamScale": "\u6CE1\u6CAB\u5C3A\u5EA6",
-  "water.crestFoam": "\u6CE2\u5CF0\u6D6A\u82B1",
-  "water.crestThreshold": "\u6D6A\u82B1\u9608\u503C",
-  "water.foamTrail": "\u6CE1\u6CAB\u62D6\u5C3E",
-  "water.debugView": "\u8C03\u8BD5\u89C6\u56FE",
-  "water.debug.off": "\u5173\u95ED",
-  "water.debug.height": "\u6CE2\u9AD8",
-  "water.debug.squeeze": "\u6324\u538B\u503C",
-  "water.debug.foam": "\u6CE1\u6CAB\u906E\u7F69",
-  "water.waveHeight": "\u6CE2\u6D6A\u9AD8\u5EA6",
-  "water.waveSpeed": "\u6CE2\u6D6A\u901F\u5EA6",
-  "water.waveSteepness": "\u6CE2\u5CF0\u805A\u62E2",
-  "water.waveBend": "\u6D6A\u7EBF\u873F\u8712",
-  "water.swellRate": "\u8D77\u843D\u9891\u7387",
-  "water.waveLean": "\u6D6A\u5C16\u5377\u66F2",
-  "water.crestSharpness": "\u6D6A\u5C16\u9510\u5EA6",
-  "water.groupSwitches": "\u6548\u679C\u4E0E\u6027\u80FD\u5F00\u5173",
-  "water.planar": "\u5E73\u9762\u53CD\u5C04",
-  "water.refraction": "\u6C34\u4E0B\u6298\u5C04",
-  "water.caustics": "\u6C34\u5E95\u7126\u6563",
-  "water.shoreFoam": "\u5CB8\u8FB9\u6CE1\u6CAB",
-  "water.underwaterEffect": "\u6C34\u4E0B\u6548\u679C",
-  "water.underwaterColor": "\u6C34\u4E0B\u96FE\u8272",
-  "water.underwaterFogDensity": "\u6C34\u4E0B\u96FE\u6D53\u5EA6",
-  "water.underwaterFogStart": "\u8D77\u96FE\u8DDD\u79BB (m)",
-  "water.underwaterTint": "\u6C34\u4E0B\u67D3\u8272",
-  "water.underwaterSurfaceBrightness": "\u6C34\u4E0B\u6C34\u9762\u4EAE\u5EA6",
-  "water.softEdge": "\u5CB8\u8FB9\u7FBD\u5316 (m)",
-  "water.flowDir": "\u6D41\u5411\u89D2\u5EA6",
-  "water.fresnel": "\u83F2\u6D85\u5C14\u6307\u6570",
-  "water.causticsStrength": "\u7126\u6563\u5F3A\u5EA6",
-  "water.causticsScale": "\u7126\u6563\u5C3A\u5EA6",
-  "water.foamColor": "\u6CE1\u6CAB\u8272",
-  "water.sunColor": "\u9AD8\u5149\u8272",
-  "water.normalMap": "\u6CD5\u7EBF\u8D34\u56FE",
-  "water.foamMap": "\u6CE1\u6CAB\u8D34\u56FE",
-  "library.item.stats": "\u5C5E\u6027",
-  "library.item.statsDetail": "\u751F\u547D\u3001\u653B\u51FB\u3001\u9632\u5FA1\u3001\u72B6\u6001\u6548\u679C\u548C\u7B49\u7EA7\u8868\u3002",
-  "library.item.statsPoints": "\u5C5E\u6027\u8868\n\u72B6\u6001\u6548\u679C\n\u7B49\u7EA7",
-  "library.item.combat": "\u6218\u6597",
-  "library.item.combatDetail": "\u8FD1\u6218\u3001\u5C04\u51FB\u3001\u6B66\u5668\u548C\u8FDE\u62DB\u3002\u4F9D\u8D56\u5C5E\u6027\u5305\u3002",
-  "library.item.combatPoints": "\u6B66\u5668\u4E0E\u62DB\u5F0F\n\u8FD1\u6218\u548C\u5C04\u51FB\u7EC4\u4EF6",
-  "library.item.perception": "\u611F\u77E5",
-  "library.item.perceptionDetail": "\u7D22\u654C\u548C\u5237\u602A\u3002",
-  "library.item.perceptionPoints": "\u7D22\u654C\n\u5237\u602A",
-  "library.item.inventory": "\u80CC\u5305",
-  "library.item.inventoryDetail": "\u7269\u54C1\u3001\u5BB9\u5668\u548C\u5730\u4E0A\u7684\u6389\u843D\u7269\u3002",
-  "library.item.inventoryPoints": "\u7269\u54C1\u8868\n\u5BB9\u5668\u4E0E\u6389\u843D",
-  "library.item.dialogue": "\u5BF9\u8BDD",
-  "library.item.dialogueDetail": "\u5BF9\u8BDD\u548C\u4EFB\u52A1\u8FFD\u8E2A\u3002",
-  "library.item.dialoguePoints": "\u5BF9\u8BDD\n\u4EFB\u52A1",
-  "library.item.rts": "\u5373\u65F6\u7B56\u7565",
-  "library.item.rtsDetail": "\u6846\u9009\u3001\u7F16\u7EC4\u548C\u5355\u4F4D\u6307\u4EE4\u3002\u4E13\u5C5E\u5305\uFF0C\u4E0D\u662F\u793A\u4F8B\u5DE5\u7A0B\u3002",
-  "library.item.rtsPoints": "\u6846\u9009\u4E0E\u7F16\u7EC4\n\u5355\u4F4D\u6307\u4EE4",
-  "library.item.rpg": "\u89D2\u8272\u626E\u6F14",
-  "library.item.rpgDetail": "\u628A\u5C5E\u6027\u3001\u80CC\u5305\u3001\u5BF9\u8BDD\u548C\u4EFB\u52A1\u6536\u6210\u4E00\u5957\u89D2\u8272\u626E\u6F14\u89C4\u5219\u3002",
-  "library.item.rpgPoints": "\u89D2\u8272\u6210\u957F\n\u4EFB\u52A1\u6D41\u7A0B",
-  "library.item.characters": "\u89D2\u8272\u4E0E\u52A8\u753B",
-  "library.item.charactersDetail": "\u5B98\u65B9\u4EBA\u5F62\u548C\u5E38\u7528\u52A8\u4F5C\u3002\u5BFC\u5165\u540E\u8FDB\u5165\u5DE5\u7A0B\u8D44\u6E90\u3002",
-  "library.item.charactersPoints": "\u4EBA\u5F62\u6A21\u578B\n\u8D70\u8DD1\u8DF3\u52A8\u4F5C",
-  "library.item.environments": "\u573A\u666F\u5957\u4EF6",
-  "library.item.environmentsDetail": "\u5730\u9762\u3001\u5CA9\u77F3\u548C\u5E38\u7528\u6446\u4EF6\u3002",
-  "library.item.environmentsPoints": "\u6A21\u5757\u5316\u573A\u666F\n\u6446\u4EF6",
-  "library.item.vfx": "\u7C92\u5B50\u9884\u8BBE",
-  "library.item.vfxDetail": "\u505A\u597D\u7684\u7206\u70B8\u3001\u62D6\u5C3E\u548C\u547D\u4E2D\u6548\u679C\u3002\u64AD\u653E\u4ECD\u8981\u6253\u5F00\u7C92\u5B50\u80FD\u529B\u3002",
-  "library.item.vfxPoints": "\u547D\u4E2D\u4E0E\u7206\u70B8\n\u62D6\u5C3E",
-  "hub.noBlock": "\u4E0D\u963B\u65AD",
-  "menu.projectMenu": "\u5DE5\u7A0B",
-  "menu.views": "\u89C6\u56FE",
-  "menu.display": "\u663E\u793A",
-  "menu.savedDirectory": "\u5DF2\u4FDD\u5B58\u5230 {name}",
-  "menu.import": "\u5BFC\u5165\u8D44\u6E90",
-  "menu.extractPackage": "\u63D0\u53D6\u7D20\u6750\u5305\u2026",
-  "menu.undo": "\u64A4\u9500",
-  "menu.redo": "\u91CD\u505A",
-  "menu.duplicate": "\u5C31\u5730\u590D\u5236",
-  "menu.copy": "\u62F7\u8D1D",
-  "menu.paste": "\u7C98\u8D34",
-  "menu.group": "\u6210\u7EC4",
-  "menu.ground": "\u8D34\u5730",
-  "menu.delete": "\u5220\u9664",
-  "menu.selectAll": "\u5168\u9009",
-  "menu.empty": "\u7A7A\u7269\u4F53",
-  "menu.meshes": "\u51E0\u4F55\u4F53",
-  "menu.lights": "\u706F\u5149",
-  "menu.devices": "\u73A9\u6CD5\u88C5\u7F6E",
-  "menu.camera": "\u76F8\u673A",
-  "menu.effect": "\u7279\u6548",
-  "menu.screen": "\u754C\u9762",
-  "menu.spline": "Spline \u66F2\u7EBF",
-  "component.add": "\u6DFB\u52A0\u7EC4\u4EF6",
-  "component.search": "\u641C\u7D22\u7EC4\u4EF6\u2026",
-  "component.remove": "\u79FB\u9664\u7EC4\u4EF6",
-  "component.reset": "\u91CD\u7F6E\u4E3A\u9ED8\u8BA4",
-  "component.added": "\u5DF2\u6DFB\u52A0",
-  "component.empty": "\u6CA1\u6709\u5339\u914D\u7684\u7EC4\u4EF6",
-  "component.group.character": "\u89D2\u8272\u4E0E\u955C\u5934",
-  "component.group.devices": "\u573A\u666F\u88C5\u7F6E",
-  "component.group.world": "\u7269\u7406\u4E0E\u5BFC\u822A",
-  "component.group.pack": "\u73A9\u6CD5\u4E0E\u9886\u57DF\u5305",
-  "menu.focus": "\u805A\u7126\u9009\u4E2D",
-  "menu.alignCamera": "\u5BF9\u9F50\u5230\u5F53\u524D\u89C6\u56FE",
-  "menu.alignView": "\u8DF3\u8F6C\u5230\u8BE5\u955C\u5934\u89C6\u89D2",
-  "menu.focusAll": "\u805A\u7126\u5168\u90E8",
-  "menu.viewTop": "\u9876\u89C6\u56FE",
-  "menu.viewFront": "\u524D\u89C6\u56FE",
-  "menu.viewRight": "\u4FA7\u89C6\u56FE",
-  "menu.viewPersp": "\u900F\u89C6",
-  "menu.viewBottom": "\u5E95\u89C6\u56FE",
-  "menu.viewBack": "\u540E\u89C6\u56FE",
-  "menu.viewLeft": "\u5DE6\u89C6\u56FE",
-  "menu.grid": "\u663E\u793A\u7F51\u683C",
-  "menu.snap": "\u7F51\u683C\u5438\u9644",
-  "menu.resetLayout": "\u91CD\u7F6E\u5E03\u5C40",
-  "menu.settings": "\u8BBE\u7F6E",
-  "menu.saved": "\u5DF2\u4FDD\u5B58\u5230\u672C\u5730\u7F13\u5B58",
-  "kind.empty": "\u7A7A\u7269\u4F53",
-  "kind.box": "\u6B63\u65B9\u4F53",
-  "kind.sphere": "\u7403\u4F53",
-  "kind.plane": "\u5E73\u9762",
-  "kind.capsule": "\u80F6\u56CA",
-  "kind.cylinder": "\u5706\u67F1\u4F53",
-  "kind.cone": "\u5706\u9525\u4F53",
-  "kind.model": "\u6A21\u578B",
-  "kind.directional-light": "\u65B9\u5411\u5149",
-  "kind.point-light": "\u70B9\u5149\u6E90",
-  "kind.spot-light": "\u805A\u5149\u706F",
-  "kind.hemisphere-light": "\u534A\u7403\u5149",
-  "kind.camera": "\u76F8\u673A",
-  "kind.effect": "\u7279\u6548",
-  "kind.screen": "\u754C\u9762",
-  "kind.spline": "Spline \u66F2\u7EBF",
-  "tool.newScene": "\u65B0\u5EFA\u573A\u666F",
-  "tool.save": "\u4FDD\u5B58\u5230\u672C\u5730\u7F13\u5B58",
-  "tool.undo": "\u64A4\u9500",
-  "tool.redo": "\u91CD\u505A",
-  "tool.move": "\u79FB\u52A8 (W)",
-  "tool.rotate": "\u65CB\u8F6C (E)",
-  "tool.scale": "\u7F29\u653E (R)",
-  "tool.world": "\u4E16\u754C",
-  "tool.local": "\u5C40\u90E8",
-  "tool.snap": "\u7F51\u683C\u5438\u9644",
-  "tool.grid": "\u663E\u793A\u7F51\u683C",
-  "tool.ground": "\u8D34\u5730",
-  "tool.originCenter": "\u624B\u67C4\u5728\u5305\u56F4\u76D2\u4E2D\u5FC3",
-  "tool.originPivot": "\u624B\u67C4\u5728\u8F74\u5FC3",
-  "tool.center": "\u4E2D\u5FC3",
-  "tool.pivot": "\u8F74\u5FC3",
-  "tool.play": "\u8BD5\u73A9 (Ctrl+P)",
-  "tool.pause": "\u6682\u505C (Ctrl+P)",
-  "tool.playLabel": "\u8BD5\u73A9",
-  "tool.pauseLabel": "\u6682\u505C",
-  "tool.stop": "\u505C\u6B62 (Ctrl+Shift+P)",
-  "tool.history": "\u5386\u53F2",
-  "status.unnamed": "\u672A\u547D\u540D\u573A\u666F",
-  "status.playing": "\u8BD5\u73A9\u4E2D",
-  "status.paused": "\u5DF2\u6682\u505C",
-  "status.ready": "\u5C31\u7EEA",
-  "status.objects": "\u7269\u4F53",
-  "status.none": "\u672A\u9009\u62E9",
-  "status.selected": "\u5DF2\u9009 {count} \u4E2A",
-  "status.move": "\u79FB\u52A8",
-  "status.rotate": "\u65CB\u8F6C",
-  "status.scale": "\u7F29\u653E",
-  "status.world": "\u4E16\u754C",
-  "status.local": "\u5C40\u90E8",
-  "status.center": "\u4E2D\u5FC3",
-  "status.pivot": "\u8F74\u5FC3",
-  "status.snapOn": "\u5438\u9644 {step}",
-  "status.snapOff": "\u5438\u9644\u5173",
-  "status.warming": "\u6B63\u5728\u52A0\u8F7D\u8D44\u6E90 {completed}/{total}",
-  "panel.project": "\u8D44\u6E90",
-  "panel.viewport": "3D \u89C6\u53E3",
-  "panel.console": "\u63A7\u5236\u53F0",
-  "panel.scene": "\u573A\u666F",
-  "panel.inspector": "\u5C5E\u6027",
-  "panel.history": "\u5386\u53F2",
-  "panel.unknown": "\u672A\u77E5\u9762\u677F",
-  "settings.title": "\u7F16\u8F91\u5668\u8BBE\u7F6E",
-  "settings.general": "\u5E38\u89C4",
-  "settings.language": "\u8BED\u8A00",
-  "settings.languageSystem": "\u8DDF\u968F\u7CFB\u7EDF",
-  "settings.languageZh": "\u4E2D\u6587",
-  "settings.languageEn": "English",
-  "settings.autoSave": "\u81EA\u52A8\u4FDD\u5B58",
-  "settings.autoSaveNote": "\u7F16\u8F91\u540E\u5199\u5165\u672C\u5730\u7F13\u5B58\u3002\u5173\u95ED\u540E\u4ECD\u4F1A\u5728\u79BB\u5F00\u9875\u9762\u524D\u4FDD\u5B58\u3002",
-  "settings.openLastProject": "\u542F\u52A8\u65F6\u6253\u5F00\u4E0A\u6B21\u5DE5\u7A0B",
-  "settings.openLastProjectNote": "\u542F\u52A8\u65F6\u6253\u5F00\u6700\u8FD1\u4E00\u6B21\u7684\u5DE5\u7A0B\u76EE\u5F55\u3002",
-  "settings.uiScale": "\u754C\u9762\u7F29\u653E",
-  "settings.close": "\u5173\u95ED",
-  "inspector.modelRenderer": "\u6A21\u578B\u6E32\u67D3",
-  "inspector.castShadow": "\u6295\u5C04\u9634\u5F71",
-  "inspector.receiveShadow": "\u63A5\u6536\u9634\u5F71",
-  "inspector.materialSlots": "\u6750\u8D28\u69FD",
-  "inspector.parts": "\u90E8\u4F4D",
-  "inspector.hierarchy": "\u5C42\u7EA7",
-  "inspector.partHint": "\u8FD9\u91CC\u53EA\u5F00\u5173\u663E\u793A\uFF0C\u90E8\u4F4D\u4ECD\u7559\u5728\u6A21\u578B\u91CC\u3002",
-  "inspector.sockets": "\u9AA8\u9ABC\u6302\u70B9",
-  "inspector.socketHint": "\u6302\u70B9\u662F\u89D2\u8272\u7684\u5B50\u7269\u4F53\uFF0C\u6BCF\u5E27\u8D34\u7740\u8FD9\u6839\u9AA8\u5934\u3002\u6B66\u5668\u518D\u4F5C\u4E3A\u6302\u70B9\u7684\u5B50\u7269\u4F53\uFF0C\u7528\u5B83\u81EA\u5DF1\u7684\u4F4D\u7F6E\u8C03\u63E1\u6301\u3002",
-  "inspector.extractSocket": "\u63D0\u51FA\u6302\u70B9",
-  "inspector.socketReady": "\u5DF2\u63D0\u51FA",
-  "inspector.searchBones": "\u641C\u7D22\u9AA8\u9ABC",
-  "inspector.backToModel": "\u8FD4\u56DE\u6A21\u578B",
-  "inspector.partVisible": "\u663E\u793A\u90E8\u4F4D",
-  "inspector.showAllSlots": "\u5168\u90E8 ({count})",
-  "inspector.partSlotsOnly": "\u4EC5\u6B64\u90E8\u4F4D",
-  "inspector.sharedSlotHint": "\u6B64\u6750\u8D28\u4E5F\u88AB\u5176\u4ED6\u90E8\u4F4D\u5171\u7528\uFF0C\u4FEE\u6539\u4F1A\u540C\u6B65\u751F\u6548\u3002",
-  "inspector.bonePath": "\u8DEF\u5F84",
-  "inspector.jumpSocket": "\u9009\u4E2D\u6302\u70B9",
-  "inspector.followModel": "\u8DDF\u968F\u6A21\u578B",
-  "inspector.on": "\u5F00\u542F",
-  "inspector.off": "\u5173\u95ED",
-  "inspector.partMaterial": "\u5355\u72EC\u6750\u8D28",
-  "inspector.followSlot": "\u8DDF\u968F\u6750\u8D28\u69FD",
-  "inspector.searchSlots": "\u641C\u7D22\u6750\u8D28\u69FD",
-  "inspector.slot": "\u69FD {index}",
-  "inspector.inline": "\u5185\u5D4C",
-  "inspector.extract": "\u63D0\u53D6\u4E3A\u6750\u8D28\u8D44\u6E90",
-  "inspector.reveal": "\u5728\u8D44\u6E90\u91CC\u6253\u5F00",
-  "inspector.clear": "\u6E05\u9664\u5F15\u7528\uFF0C\u6062\u590D\u5185\u5D4C\u6750\u8D28",
-  "inspector.expandSlot": "\u5C55\u5F00\u6750\u8D28\u69FD",
-  "inspector.collapseSlot": "\u6298\u53E0\u6750\u8D28\u69FD",
-  "inspector.linkedNote": "\u8FD9\u4E2A\u69FD\u5F15\u7528\u6750\u8D28\u8D44\u6E90\u3002\u8FD9\u91CC\u7684\u4FEE\u6539\u4F1A\u4F5C\u7528\u5230\u6240\u6709\u4F7F\u7528\u5B83\u7684\u7269\u4F53\u3002",
-  "material.shader": "\u7740\u8272\u5668",
-  "material.lit": "\u6807\u51C6\u5149\u7167",
-  "material.unityStandard": "Unity \u6807\u51C6 (R\u91D1\u5C5E / A\u5149\u6ED1)",
-  "material.unityMetallicGloss": "\u91D1\u5C5E\u5149\u6ED1",
-  "material.unityMetallicGlossHint": "Unity \u8D34\u56FE\u7EA6\u5B9A\uFF1A\u7EA2\u901A\u9053\u91D1\u5C5E\uFF0CAlpha \u901A\u9053\u5149\u6ED1\u5EA6\uFF081-\u7C97\u7CD9\uFF09\uFF0C\u7EFF\u901A\u9053\u906E\u853D",
-  "material.particle": "\u7C92\u5B50\u65E0\u5149",
-  "material.particleBlend": "\u6DF7\u5408",
-  "material.blendAlpha": "\u900F\u660E",
-  "material.blendPremultiply": "\u9884\u4E58",
-  "material.blendAdditive": "\u53E0\u52A0",
-  "material.blendMultiply": "\u76F8\u4E58",
-  "material.unlitColor": "\u65E0\u5149\u7167\u989C\u8272",
-  "material.unlitTexture": "\u65E0\u5149\u7167\u8D34\u56FE",
-  "material.surface": "\u8868\u9762",
-  "material.color": "\u989C\u8272",
-  "material.baseMap": "\u5E95\u8272",
-  "material.metalness": "\u91D1\u5C5E",
-  "material.roughness": "\u7C97\u7CD9",
-  "material.metallicRoughness": "\u91D1\u5C5E\u7C97\u7CD9",
-  "material.metallicRoughnessHint": "\u7EFF\u901A\u9053\u7C97\u7CD9\uFF0C\u84DD\u901A\u9053\u91D1\u5C5E\uFF0C\u7EA2\u901A\u9053\u906E\u853D",
-  "material.normal": "\u6CD5\u7EBF",
-  "material.normalScale": "\u6CD5\u7EBF\u5F3A\u5EA6",
-  "material.ao": "\u906E\u6321",
-  "material.aoMap": "\u906E\u6321\u56FE",
-  "material.aoMapHint": "\u7559\u7A7A\u65F6\u4F7F\u7528\u91D1\u5C5E\u7C97\u7CD9\u56FE\u7684\u7EA2\u901A\u9053",
-  "material.emission": "\u53D1\u5149",
-  "material.emissionColor": "\u53D1\u5149",
-  "material.emissionIntensity": "\u53D1\u5149\u5F3A\u5EA6",
-  "material.emissionMap": "\u53D1\u5149\u56FE",
-  "material.transparency": "\u900F\u660E",
-  "material.mode": "\u6A21\u5F0F",
-  "material.opaque": "\u4E0D\u900F\u660E",
-  "material.blend": "\u6DF7\u5408",
-  "material.clip": "\u88C1\u526A",
-  "material.opacity": "\u4E0D\u900F\u660E\u5EA6",
-  "material.cutoff": "\u88C1\u526A\u9608\u503C",
-  "material.render": "\u6E32\u67D3",
-  "material.cull": "\u5254\u9664",
-  "material.cullBack": "\u80CC\u9762",
-  "material.cullFront": "\u6B63\u9762",
-  "material.cullOff": "\u5173\u95ED",
-  "material.depthWrite": "\u6DF1\u5EA6\u5199\u5165",
-  "material.wireframe": "\u7EBF\u6846",
-  "material.none": "\u65E0",
-  "inspector.playBanner": "\u8BD5\u73A9\u4E2D\u53EF\u4EE5\u6539\u53C2\u6570\u3002\u505C\u6B62\u540E\u4F1A\u56DE\u5230\u8BD5\u73A9\u524D\u3002",
-  "inspector.keepPlayChanges": "\u4FDD\u7559\u4FEE\u6539",
-  "tool.keepPlayChanges": "\u4FDD\u7559\u8BD5\u73A9\u671F\u95F4\u4FEE\u6539\u7684\u7EC4\u4EF6\u3001\u6750\u8D28\u3001\u706F\u5149\u3001\u753B\u9762\uFF0C\u4EE5\u53CA\u955C\u5934\u6EDA\u8F6E\u8DDD\u79BB\u548C\u53F3\u952E\u89D2\u5EA6\uFF08\u4E0D\u8986\u76D6\u8DD1\u52A8\u540E\u7684\u5750\u6807\uFF09",
-  "log.keptPlayChanges": "\u5DF2\u4FDD\u7559\u8BD5\u73A9\u671F\u95F4\u4FEE\u6539\u7684\u53C2\u6570",
-  "inspector.multi": "\u5DF2\u9009\u62E9 {count} \u4E2A\u7269\u4F53\u3002\u8FD9\u91CC\u6539\u7684\u662F\u4E3B\u9009\u4E2D\u9879\uFF0C\u624B\u67C4\u4F1A\u4F5C\u7528\u5230\u5168\u90E8\u672A\u9501\u5B9A\u7269\u4F53\u3002",
-  "inspector.locked": "\u5DF2\u9501\u5B9A",
-  "inspector.visible": "\u663E\u793A",
-  "inspector.unlock": "\u89E3\u9501",
-  "inspector.lockHint": "\u9501\u5B9A\u540E\u89C6\u53E3\u70B9\u9009\u7A7F\u900F",
-  "inspector.sceneSettings": "\u573A\u666F\u8BBE\u7F6E",
-  "inspector.transform": "\u53D8\u6362",
-  "inspector.position": "\u4F4D\u7F6E",
-  "inspector.rotation": "\u65CB\u8F6C",
-  "inspector.scale": "\u7F29\u653E",
-  "inspector.resetPosition": "\u91CD\u7F6E\u4F4D\u7F6E",
-  "inspector.resetRotation": "\u91CD\u7F6E\u65CB\u8F6C",
-  "inspector.resetScale": "\u91CD\u7F6E\u7F29\u653E",
-  "inspector.model": "\u6A21\u578B\u52A8\u753B",
-  "character.title": "\u89D2\u8272",
-  "character.enable": "\u8BD5\u73A9\u65F6\u53EF\u64CD\u63A7",
-  "character.driver": "\u79FB\u52A8\u9A71\u52A8",
-  "character.driver.capsule": "\u80F6\u56CA",
-  "character.driver.nav": "\u5BFC\u822A",
-  "character.driver.hybrid": "\u6DF7\u5408",
-  "character.mode": "\u671D\u5411",
-  "character.mode.adventure": "\u7B2C\u4E09\u4EBA\u79F0\u81EA\u7531",
-  "character.mode.strafe": "\u8D8A\u80A9\u6A2A\u79FB",
-  "character.mode.lockOn": "\u9501\u5B9A\u73AF\u7ED5",
-  "character.mode.pointAndClick": "\u70B9\u51FB\u5730\u9762",
-  "character.mode.topDown": "\u4FEF\u89C6\u5168\u5411",
-  "character.mode.side25d": "\u6A2A\u7248",
-  "character.mode.firstPerson": "\u7B2C\u4E00\u4EBA\u79F0",
-  "character.click": "\u70B9\u51FB\u952E",
-  "character.clickRight": "\u53F3\u952E",
-  "character.clickLeft": "\u5DE6\u952E",
-  "character.walk": "\u884C\u8D70\u901F\u5EA6",
-  "character.turn": "\u8F6C\u8EAB\u901F\u5EA6 (\xB0/s)",
-  "character.sprint": "\u75BE\u8DD1\u500D\u7387",
-  "character.jump": "\u8D77\u8DF3\u901F\u5EA6",
-  "character.jumps": "\u8DF3\u8DC3\u6BB5\u6570",
-  "character.coyote": "\u79BB\u5730\u5BBD\u9650",
-  "character.buffer": "\u8DF3\u8DC3\u9884\u8F93\u5165",
-  "character.dash": "\u95EA\u907F",
-  "character.dashKey": "\u95EA\u907F\u952E",
-  "character.dashDistance": "\u95EA\u907F\u8DDD\u79BB",
-  "character.radius": "\u80F6\u56CA\u534A\u5F84",
-  "character.height": "\u80F6\u56CA\u9AD8\u5EA6",
-  "character.capsuleOffset": "\u504F\u79FB",
-  "character.physicsInteract": "\u7269\u7406\u4EA4\u4E92",
-  "character.mass": "\u4F53\u91CD (kg)",
-  "character.pushStrength": "\u63A8\u529B\u500D\u7387",
-  "character.swim": "\u9047\u6C34\u6E38\u6CF3",
-  "character.swimSpeed": "\u6C34\u4E2D\u79FB\u901F\u500D\u7387",
-  "character.swimHeightOffset": "\u6C34\u4E2D\u9AD8\u5EA6\u504F\u79FB",
-  "character.gravity": "\u91CD\u529B",
-  "character.clickStop": "\u5230\u8FBE\u534A\u5F84",
-  "character.footstep": "\u811A\u6B65\u95F4\u9694",
-  "character.footstepJuice": "\u811A\u6B65\u6253\u51FB\u611F",
-  "character.dashDuration": "\u95EA\u907F\u65F6\u957F",
-  "character.dashInvincible": "\u65E0\u654C\u65F6\u95F4",
-  "character.dashCooldown": "\u95EA\u907F\u51B7\u5374",
-  "character.section.control": "\u63A7\u5236",
-  "character.section.move": "\u79FB\u52A8",
-  "character.section.body": "\u4F53\u578B",
-  "character.section.clips": "\u5E95\u52A8\u753B",
-  "character.lock": "\u9501\u5B9A\u76EE\u6807",
-  "character.pickLock": "\u9009\u62E9\u9501\u5B9A\u76EE\u6807",
-  "character.idle": "\u5F85\u673A\u7247\u6BB5",
-  "character.walkClip": "\u884C\u8D70\u7247\u6BB5",
-  "character.runClip": "\u75BE\u8DD1\u7247\u6BB5",
-  "character.jumpClip": "\u8D77\u8DF3",
-  "character.airClip": "\u6EDE\u7A7A",
-  "character.landClip": "\u843D\u5730",
-  "character.dodgeClip": "\u95EA\u907F\u7247\u6BB5",
-  "character.swimIdleClip": "\u6C34\u4E2D\u5F85\u673A",
-  "character.swimClip": "\u6E38\u6CF3\u7247\u6BB5",
-  "character.hint": "WASD \u79FB\u52A8\uFF0CShift \u75BE\u8DD1\uFF0C\u7A7A\u683C\u8DF3\uFF0C\u95EA\u907F\u952E\u9ED8\u8BA4 C\u3002\u70B9\u51FB\u6A21\u5F0F\u7528\u6240\u9009\u9F20\u6807\u952E\u70B9\u5730\u9762\u3002\u955C\u5934\u7531\u8DDF\u968F\u955C\u5934\u7EC4\u4EF6\u63A7\u5236\u3002",
-  "camera.title": "\u8DDF\u968F\u955C\u5934",
-  "camera.enable": "\u8BD5\u73A9\u65F6\u8DDF\u968F",
-  "camera.hint": "\u955C\u5934\u770B\u5411\u89C2\u5BDF\u70B9\uFF0C\u5E76\u4FDD\u6301\u8FD9\u6BB5\u504F\u79FB\u3002\u53F3\u952E\u6216\u9F20\u6807\u73AF\u7ED5\u53EF\u4EE5\u8F6C\u89C6\u89D2\uFF0C\u9632\u7A7F\u5899\u4F1A\u5728\u78B0\u5230\u969C\u788D\u524D\u628A\u955C\u5934\u62C9\u8FD1\u3002",
-  "camera.preset": "\u673A\u4F4D\u9884\u8BBE",
-  "camera.presetPick": "\u5957\u7528\u4E00\u79CD\u673A\u4F4D",
-  "camera.target": "\u8DDF\u968F\u76EE\u6807",
-  "camera.targetSelf": "\u81EA\u5DF1",
-  "camera.pickTarget": "\u9009\u62E9\u8DDF\u968F\u76EE\u6807",
-  "camera.orbit": "\u73AF\u7ED5",
-  "camera.orbit.rightDrag": "\u6309\u4F4F\u53F3\u952E",
-  "camera.orbit.mouse": "\u9F20\u6807\u81EA\u7531\u8F6C",
-  "camera.orbit.none": "\u56FA\u5B9A\u89D2\u5EA6",
-  "camera.fov": "\u89C6\u91CE",
-  "camera.damping": "\u8DDF\u968F\u963B\u5C3C",
-  "camera.collision": "\u9632\u7A7F\u5899",
-  "camera.zoom": "\u6EDA\u8F6E\u7F29\u653E",
-  "camera.zoomSpeed": "\u7F29\u653E\u901F\u5EA6",
-  "camera.minDistance": "\u6700\u8FD1\u8DDD\u79BB",
-  "camera.maxDistance": "\u6700\u8FDC\u8DDD\u79BB",
-  "camera.offset": "\u504F\u79FB",
-  "camera.pivot": "\u89C2\u5BDF\u70B9",
-  "camera.sensitivity": "\u73AF\u7ED5\u7075\u654F\u5EA6",
-  "camera.minPitch": "\u6700\u4F4E\u4FEF\u4EF0",
-  "camera.maxPitch": "\u6700\u9AD8\u4FEF\u4EF0",
-  "camera.local": "\u8DDF\u968F\u671D\u5411",
-  "camera.look": "\u770B\u5411\u76EE\u6807",
-  "camera.collisionRadius": "\u63A2\u6D4B\u534A\u5F84",
-  "rule.title": "\u5F8B\u4EE4",
-  "rule.hint": "\u68C0\u67E5\u5668\u91CC\u53EA\u770B\u6458\u8981\u3002\u89E6\u53D1\u3001\u6761\u4EF6\u548C\u52A8\u4F5C\u6D41\u5728\u5DE5\u4F5C\u53F0\u91CC\u7F16\u6392\u3002\u6761\u4EF6\u4E0D\u6210\u7ACB\u65F6\uFF0C\u91CC\u9762\u7684\u7B49\u5F85\u4E0D\u4F1A\u6267\u884C\u3002",
-  "rule.add": "\u65B0\u589E\u89C4\u5219\u5E76\u7F16\u8F91",
-  "rule.addStep": "\u6DFB\u52A0\u52A8\u4F5C",
-  "rule.remove": "\u5220\u9664",
-  "rule.limit": "\u6700\u591A\u5D4C\u5957 3 \u5C42\u3002",
-  "rule.cond": "\u6761\u4EF6",
-  "rule.message": "\u6D88\u606F",
-  "rule.key": "\u6309\u952E",
-  "rule.keyHint": "\u70B9\u8FD9\u91CC\u540E\u6309\u4E0B\u6309\u952E",
-  "key.hint": "\u70B9\u51FB\u540E\u6309\u4E0B\u6309\u952E",
-  "key.listening": "\u8BF7\u6309\u952E\u2026",
-  "rule.tag": "\u6807\u7B7E",
-  "rule.left": "\u5DE6\u503C",
-  "rule.op": "\u6BD4\u8F83",
-  "rule.right": "\u53F3\u503C",
-  "rule.var": "\u53D8\u91CF",
-  "rule.value": "\u6570\u503C",
-  "rule.seconds": "\u79D2",
-  "rule.clip": "\u7247\u6BB5",
-  "rule.trigger.playStart": "\u8BD5\u73A9\u5F00\u59CB",
-  "rule.trigger.interact": "\u4EA4\u4E92",
-  "rule.trigger.key": "\u6309\u952E",
-  "rule.trigger.message": "\u6536\u5230\u6D88\u606F",
-  "rule.trigger.enter": "\u8FDB\u5165\u533A\u57DF",
-  "rule.trigger.exit": "\u79BB\u5F00\u533A\u57DF",
-  "rule.trigger.hit": "\u53D7\u5230\u547D\u4E2D",
-  "rule.cond.always": "\u59CB\u7EC8\u6210\u7ACB",
-  "rule.cond.hasTag": "\u6301\u6709\u6807\u7B7E",
-  "rule.cond.missingTag": "\u6CA1\u6709\u6807\u7B7E",
-  "rule.cond.compare": "\u53D8\u91CF\u6BD4\u8F83",
-  "rule.cond.formula": "\u516C\u5F0F\u4E3A\u771F",
-  "rule.step.message": "\u53D1\u9001\u6D88\u606F",
-  "rule.step.setVar": "\u5199\u53D8\u91CF",
-  "rule.step.addTag": "\u6DFB\u52A0\u6807\u7B7E",
-  "rule.step.removeTag": "\u79FB\u9664\u6807\u7B7E",
-  "rule.step.wait": "\u7B49\u5F85\u79D2\u6570",
-  "rule.step.waitFrame": "\u7B49\u5F85\u4E00\u5E27",
-  "rule.step.waitUpper": "\u7B49\u5230\u8986\u76D6\u7ED3\u675F",
-  "rule.step.waitMark": "\u7B49\u5230\u8FDB\u5EA6",
-  "rule.step.playClip": "\u64AD\u653E\u7247\u6BB5",
-  "rule.step.playUpper": "\u64AD\u653E\u8986\u76D6",
-  "rule.step.stance": "\u4FDD\u6301\u59FF\u6001",
-  "rule.step.if": "\u5982\u679C",
-  "rule.step.gather": "\u6536\u96C6\u5468\u56F4",
-  "rule.step.each": "\u904D\u5386\u76EE\u6807",
-  "rule.step.switchState": "\u5207\u6362\u72B6\u6001",
-  "rule.step.showUi": "\u663E\u793A\u754C\u9762",
-  "rule.step.hideUi": "\u9690\u85CF\u754C\u9762",
-  "rule.step.lock": "\u9501\u5B9A\u76EE\u6807",
-  "rule.step.camera": "\u5207\u6362\u955C\u5934",
-  "rule.step.moveTo": "\u8D70\u5230",
-  "rule.step.spawn": "\u751F\u6210\u9884\u5236\u4F53",
-  "rule.step.hide": "\u9500\u6BC1\u81EA\u8EAB",
-  "rule.step.score": "\u52A0\u5206",
-  "rule.step.juice": "\u64AD\u653E\u6253\u51FB\u611F",
-  "rule.step.sound": "\u64AD\u653E\u58F0\u97F3",
-  "rule.sound.sfx": "\u97F3\u6548",
-  "rule.sound.music": "\u97F3\u4E50",
-  "rule.step.log": "\u8F93\u51FA\u5230\u63A7\u5236\u53F0",
-  "rule.formula": "\u516C\u5F0F\uFF0C\u5927\u4E8E 0 \u6210\u7ACB\u3002\u53EF\u7528 clamp(\u503C, \u6700\u5C0F, \u6700\u5927) \u548C msg.\u5B57\u6BB5",
-  "rule.mark": "\u8FDB\u5EA6 0 \u5230 1",
-  "rule.target": "\u540D\u79F0",
-  "rule.offset": "\u504F\u79FB x,y,z",
-  "rule.amount": "\u5206\u6570\u6216\u516C\u5F0F",
-  "rule.radius": "\u534A\u5F84",
-  "rule.angle": "\u5939\u89D2\uFF0C0 \u4E3A\u4EFB\u610F",
-  "rule.pickTag": "\u9009\u62E9\u73A9\u6CD5\u6807\u7B7E",
-  "rule.pickJuice": "\u9009\u62E9\u6253\u51FB\u611F",
-  "rule.pickNode": "\u9009\u62E9\u7269\u4F53",
-  "rule.pickCamera": "\u9009\u62E9\u955C\u5934",
-  "rule.pickScreen": "\u9009\u62E9\u754C\u9762",
-  "rule.pickPrefab": "\u9009\u62E9\u9884\u5236\u4F53",
-  "rule.pickEmpty": "\u6CA1\u6709\u53EF\u9009\u9879",
-  "rule.packMissing": "\u7F3A\u5931\uFF08{kind}\uFF09",
-  "rule.packDisabledHint": "\u6240\u5C5E\u73A9\u6CD5\u5305\u672A\u5F00\u542F\uFF0C\u8BD5\u73A9\u65F6\u8DF3\u8FC7",
-  "rule.logText": "\u8981\u8F93\u51FA\u7684\u6587\u672C",
-  "rule.open": "\u6253\u5F00\u5F8B\u4EE4\u5DE5\u4F5C\u53F0\uFF08{count} \u6761\uFF09",
-  "rule.note": "\u4EA4\u4E92\u3001\u8FDB\u51FA\u533A\u57DF\u3001\u547D\u4E2D\u548C\u6D88\u606F\u90FD\u4F1A\u9001\u5230\u8FD9\u91CC\u3002\u70B9\u4E00\u6761\u89C4\u5219\uFF0C\u6216\u6253\u5F00\u5DE5\u4F5C\u53F0\u7F16\u6392\u3002",
-  "rule.unnamed": "\u672A\u547D\u540D\u89C4\u5219",
-  "rule.enabled": "\u542F\u7528\u6B64\u6761\u5F8B\u4EE4",
-  "rule.duplicate": "\u590D\u5236\u5F53\u524D\u89C4\u5219",
-  "rule.when": "\u5F53\u53D1\u751F\u4EE5\u4E0B\u4E8B\u4EF6\u65F6",
-  "rule.ifTitle": "\u4E14\u540C\u65F6\u6EE1\u8DB3\u4EE5\u4E0B\u6761\u4EF6",
-  "rule.doTitle": "\u6309\u987A\u5E8F\u6267\u884C",
-  "rule.addCond": "\u6DFB\u52A0\u6761\u4EF6",
-  "rule.noCond": "\u6CA1\u6709\u989D\u5916\u6761\u4EF6\uFF0C\u89E6\u53D1\u540E\u76F4\u63A5\u6267\u884C\u4E0B\u9762\u7684\u52A8\u4F5C\u3002",
-  "rule.noStep": "\u8FD8\u6CA1\u6709\u52A8\u4F5C\u3002",
-  "rule.addChild": "\u6DFB\u52A0\u5B50\u6B65\u9AA4",
-  "rule.rules": "\u89C4\u5219",
-  "rule.states": "\u72B6\u6001\u6811",
-  "rule.done": "\u5B8C\u6210\u5E76\u5173\u95ED",
-  "rule.workbench": "\u884C\u4E3A\u5F8B\u4EE4\u5DE5\u4F5C\u53F0",
-  "rule.count": "\u5171 {count} \u6761",
-  "rule.list": "\u5F8B\u4EE4\u89C4\u5219",
-  "rule.empty": "\u8FD8\u6CA1\u6709\u89C4\u5219\u3002\u70B9\u5DE6\u4E0A\u89D2\u65B0\u589E\u3002",
-  "rule.name": "\u89C4\u5219\u540D\u79F0",
-  "rule.triggerKind": "\u89E6\u53D1\u65F6\u673A",
-  "rule.alwaysPass": "\u59CB\u7EC8\u901A\u8FC7",
-  "rule.stateName": "\u72B6\u6001\u540D\u79F0",
-  "rule.enterCond": "\u8FDB\u5165\u6761\u4EF6",
-  "rule.enterHint": "\u53EA\u5728\u4F5C\u4E3A\u5B50\u72B6\u6001\u65F6\u5224\u65AD\u3002\u7559\u7A7A\u8868\u793A\u53EF\u4EE5\u8FDB\u5165\u3002",
-  "rule.jump": "\u8DF3\u8F6C\u5230\u522B\u7684\u72B6\u6001",
-  "rule.noJump": "\u6CA1\u6709\u8DF3\u8F6C\u65F6\u4F1A\u7559\u5728\u8FD9\u91CC\u3002",
-  "rule.addJump": "\u6DFB\u52A0\u8DF3\u8F6C",
-  "rule.pickState": "\u9009\u62E9\u76EE\u6807",
-  "rule.addState": "\u6DFB\u52A0\u72B6\u6001",
-  "rule.addChildState": "\u6DFB\u52A0\u5B50\u72B6\u6001",
-  "rule.noState": "\u8FD8\u6CA1\u6709\u72B6\u6001\u3002\u8D70\u8DEF\u4ECD\u7531\u89D2\u8272\u8D1F\u8D23\uFF0C\u8FD9\u91CC\u5199\u63A2\u7D22\u3001\u6218\u6597\u3001\u786C\u76F4\u8FD9\u7C7B\u72B6\u6001\u3002",
-  "rule.lane.enter": "\u8FDB\u5165",
-  "rule.lane.tick": "\u6BCF\u5E27",
-  "rule.lane.exit": "\u9000\u51FA",
-  "rule.lane.enterHint": "\u521A\u8FDB\u5165\u8FD9\u4E2A\u72B6\u6001\u65F6\u6267\u884C\u4E00\u6B21\u3002",
-  "rule.lane.tickHint": "\u7559\u5728\u8FD9\u4E2A\u72B6\u6001\u65F6\u53CD\u590D\u6267\u884C\u3002\u6301\u7EED\u6548\u679C\u8BF7\u52A0\u7B49\u5F85\uFF0C\u907F\u514D\u6BCF\u5E27\u90FD\u89E6\u53D1\u3002",
-  "rule.lane.exitHint": "\u79BB\u5F00\u8FD9\u4E2A\u72B6\u6001\u65F6\u6267\u884C\u4E00\u6B21\u3002",
-  "rule.live": "\u6B63\u5728\u6267\u884C",
-  "rule.waiting": "\u6B63\u5728\u7B49\u5F85",
-  "rule.footer": "\u4FEE\u6539\u4F1A\u8BB0\u5165\u64A4\u9500\u3002\u6761\u4EF6\u662F\u6807\u7B7E\u6216\u53D8\u91CF\u6BD4\u8F83\uFF0C\u5168\u90E8\u6210\u7ACB\u624D\u7EE7\u7EED\u3002",
-  "interact.title": "\u667A\u80FD\u4EA4\u4E92\u70B9",
-  "interact.enable": "\u53EF\u4EA4\u4E92",
-  "interact.prompt": "\u63D0\u793A\u6587\u6848",
-  "interact.key": "\u4EA4\u4E92\u952E",
-  "interact.radius": "\u534A\u5F84",
-  "interact.tag": "\u4EA4\u4E92\u8005\u6807\u7B7E",
-  "interact.any": "\u4EFB\u610F\u89D2\u8272",
-  "mover.title": "\u79FB\u52A8\u5E73\u53F0",
-  "mover.enable": "\u542F\u7528",
-  "mover.offset": "\u4F4D\u79FB",
-  "mover.duration": "\u5355\u7A0B\u79D2\u6570",
-  "mover.pause": "\u7AEF\u70B9\u505C\u987F",
-  "mover.carry": "\u8F7D\u4EBA\u534A\u5F84",
-  "mover.ping": "\u5F80\u8FD4",
-  "mover.auto": "\u8FDB\u573A\u5373\u52A8",
-  "mover.message": "\u542F\u52A8\u6D88\u606F",
-  "checkpoint.title": "\u68C0\u67E5\u70B9",
-  "checkpoint.enable": "\u542F\u7528",
-  "checkpoint.spawn": "\u521D\u59CB\u51FA\u751F\u70B9",
-  "checkpoint.radius": "\u6FC0\u6D3B\u534A\u5F84",
-  "checkpoint.delay": "\u91CD\u751F\u5EF6\u8FDF",
-  "checkpoint.abyss": "\u5760\u843D\u9AD8\u5EA6",
-  "checkpoint.message": "\u91CD\u751F\u6D88\u606F",
-  "score.title": "\u8BA1\u5206",
-  "score.enable": "\u542F\u7528",
-  "score.hint": "\u754C\u9762\u6587\u5B57\u7ED1\u5B9A\u53D8\u91CF objective\u3001score\u3001timeLeft",
-  "score.objective": "\u76EE\u6807\u6807\u9898",
-  "score.target": "\u76EE\u6807\u5206\u6570",
-  "score.interact": "\u6BCF\u6B21\u4EA4\u4E92",
-  "score.time": "\u9650\u65F6\u79D2\u6570",
-  "interact.message": "\u4EA4\u4E92\u6D88\u606F",
-  "interact.once": "\u53EA\u4EA4\u4E92\u4E00\u6B21",
-  "trigger.title": "\u89E6\u53D1\u533A",
-  "trigger.enable": "\u542F\u7528",
-  "trigger.radius": "\u534A\u5F84",
-  "trigger.tag": "\u5BF9\u8C61\u6807\u7B7E",
-  "trigger.enter": "\u8FDB\u5165\u6D88\u606F",
-  "trigger.exit": "\u79BB\u5F00\u6D88\u606F",
-  "trigger.once": "\u53EA\u89E6\u53D1\u4E00\u6B21",
-  "inspector.savePrefab": "\u5B58\u4E3A\u9884\u5236\u4F53",
-  "inspector.shortSavePrefab": "\u5B58\u9884\u5236",
-  "inspector.shortPreview": "\u9884\u89C8",
-  "prefab.edit": "\u6253\u5F00\u7269\u4F53\u6A21\u677F",
-  "prefab.shortEdit": "\u6253\u5F00",
-  "prefab.shortReveal": "\u5B9A\u4F4D",
-  "prefab.shortApply": "\u8986\u76D6",
-  "prefab.shortRevert": "\u8FD8\u539F",
-  "prefab.shortUnpack": "\u8131\u79BB",
-  "prefab.instance": "\u7269\u4F53\u6A21\u677F\u5B9E\u4F8B",
-  "prefab.apply": "\u8986\u76D6\u6A21\u677F",
-  "prefab.revert": "\u8FD8\u539F\u9884\u5236\u4F53",
-  "prefab.unpack": "\u8131\u79BB\u6A21\u677F",
-  "prefab.saveAs": "\u5B58\u4E3A\u7269\u4F53\u6A21\u677F\u2026",
-  "prefab.saveHint": "\u540D\u79F0\u7559\u7A7A\u5219\u4F7F\u7528\u300C{name}\u300D\u3002",
-  "prefab.reveal": "\u5B9A\u4F4D\u7269\u4F53\u6A21\u677F",
-  "prefab.openHint": "\u5355\u51FB\u6253\u5F00\u7269\u4F53\u6A21\u677F",
-  "prefab.cancel": "\u53D6\u6D88",
-  "prefab.confirm": "\u786E\u5B9A",
-  "prefab.discard": "\u4E0D\u4FDD\u5B58\u8FD4\u56DE",
-  "prefab.unpackTitle": "\u8131\u79BB\u7269\u4F53\u6A21\u677F",
-  "prefab.unpackMessage": "\u8131\u79BB\u540E\uFF0C\u8FD9\u4E2A\u5B9E\u4F8B\u4F1A\u53D8\u6210\u666E\u901A\u7269\u4F53\uFF0C\u4E0D\u518D\u8DDF\u968F\u6A21\u677F\u66F4\u65B0\u3002",
-  "prefab.alreadyInstance": "\u8FD9\u5DF2\u7ECF\u662F\u7269\u4F53\u6A21\u677F\u5B9E\u4F8B\u3002\u8BF7\u5148\u8131\u79BB\u6A21\u677F\uFF0C\u518D\u5B58\u6210\u65B0\u6A21\u677F\u3002",
-  "prefab.rebind": "\u91CD\u7ED1\u6A21\u677F",
-  "prefab.rebindPick": "\u9009\u62E9\u76EE\u6807\u6A21\u677F\u2026",
-  "prefab.rebound": "\u5DF2\u628A\u7F3A\u5931\u6A21\u677F\u7684\u5B9E\u4F8B\u6539\u7ED1\u5230\u65B0\u6A21\u677F",
-  "prefab.editing": "\u6B63\u5728\u7F16\u8F91\u9884\u5236\u4F53 {name}",
-  "prefab.saveBack": "\u4FDD\u5B58\u5E76\u8FD4\u56DE",
-  "prefab.saved": "\u9884\u5236\u4F53\u5DF2\u4FDD\u5B58\uFF0C\u5B9E\u4F8B\u5DF2\u66F4\u65B0",
-  "prefab.closed": "\u5DF2\u8FD4\u56DE\u573A\u666F",
-  "prefab.applied": "\u5DF2\u628A\u5B9E\u4F8B\u4FEE\u6539\u5199\u56DE\u9884\u5236\u4F53",
-  "prefab.reverted": "\u5DF2\u8FD8\u539F\u4E3A\u9884\u5236\u4F53",
-  "prefab.unpacked": "\u5DF2\u89E3\u5F00\u9884\u5236\u4F53",
-  "prefab.place": "\u653E\u7F6E {name}",
-  "prefab.create": "\u521B\u5EFA\u9884\u5236\u4F53 {name}",
-  "prefab.needOne": "\u8BF7\u53EA\u9009\u62E9\u4E00\u4E2A\u7269\u4F53\u6216\u5176\u5B50\u6811\u6765\u521B\u5EFA\u9884\u5236\u4F53",
-  "prefab.exitFirst": "\u5148\u9000\u51FA\u9884\u5236\u4F53\u7F16\u8F91",
-  "prefab.noPlay": "\u9884\u5236\u4F53\u7F16\u8F91\u4E2D\u4E0D\u80FD\u8BD5\u73A9",
-  "prefab.keepRoot": "\u9884\u5236\u4F53\u6839\u7269\u4F53\u4E0D\u80FD\u5220\u9664",
-  "prefab.rootLocked": "\u9884\u5236\u4F53\u6839\u7269\u4F53\u7684\u53D8\u6362\u56FA\u5B9A\u5728\u539F\u70B9",
-  "prefab.missing": "\u627E\u4E0D\u5230\u9884\u5236\u4F53",
-  "prefab.dirty": "\u6709\u672A\u5199\u56DE\u7684\u4FEE\u6539",
-  "inspector.previewModel": "\u9884\u89C8\u6A21\u578B",
-  "inspector.light": "\u5149\u6E90",
-  "inspector.color": "\u989C\u8272",
-  "inspector.intensity": "\u5F3A\u5EA6",
-  "inspector.angle": "\u89D2\u5EA6",
-  "inspector.ground": "\u5730\u9762",
-  "inspector.range": "\u8303\u56F4",
-  "inspector.decay": "\u8870\u51CF",
-  "inspector.penumbra": "\u534A\u5F71",
-  "inspector.shadow": "\u9634\u5F71",
-  "inspector.bias": "\u504F\u79FB",
-  "inspector.normalBias": "\u6CD5\u7EBF\u504F\u79FB",
-  "inspector.camera": "\u76F8\u673A",
-  "inspector.fov": "\u89C6\u91CE",
-  "inspector.near": "\u8FD1\u88C1",
-  "inspector.far": "\u8FDC\u88C1",
-  "inspector.material": "\u6750\u8D28",
-  "inspector.asset": "\u8D44\u6E90",
-  "inspector.type": "\u7C7B\u578B",
-  "inspector.file": "\u6587\u4EF6",
-  "inspector.objects": "\u7269\u4F53",
-  "inspector.clips": "\u7247\u6BB5",
-  "inspector.preview": "\u9884\u89C8",
-  "inspector.place": "\u653E\u5165\u573A\u666F",
-  "inspector.unnamedScene": "\u672A\u547D\u540D\u573A\u666F",
-  "inspector.scene": "\u573A\u666F",
-  "physics.enable": "\u7269\u7406",
-  "particles.enable": "\u7279\u6548",
-  "particles.title": "\u7279\u6548",
-  "particles.playing": "\u64AD\u653E",
-  "particles.material": "\u6750\u8D28",
-  "particles.materialEmpty": "\u9ED8\u8BA4\u53E0\u52A0",
-  "particles.clearMaterial": "\u6E05\u9664\u6750\u8D28",
-  "particles.saveAsset": "\u5B58\u6210\u8D44\u6E90",
-  "particles.saved": "\u5DF2\u628A {name} \u5B58\u6210\u7279\u6548\u8D44\u6E90",
-  "particles.missing": "\u7279\u6548\u80FD\u529B\u672A\u5F00\u542F\uFF0C\u8FD9\u4E2A\u7269\u4F53\u4E0D\u4F1A\u64AD\u653E\u3002",
-  "particles.missingAsset": "\u7F3A\u5C11\u7279\u6548\u8D44\u6E90\u3002",
-  "particles.badMaterial": "\u8FD9\u5F20\u6750\u8D28\u4E0D\u662F\u7C92\u5B50\u65E0\u5149\uFF0C\u5916\u89C2\u4E0D\u4F1A\u7528\u5230\u5B83\u3002",
-  "particles.version": "\u8FD9\u4EFD\u7279\u6548\u7531 quarks {version} \u5199\u6210\uFF0C\u5F53\u524D\u8FD0\u884C\u5E93\u662F {current}\u3002",
-  "particles.loadFail": "\u8FD9\u4EFD\u7279\u6548\u8BFB\u4E0D\u51FA\u6765\uFF1A{message}",
-  "particles.imported": "\u5DF2\u5BFC\u5165\u7279\u6548 {name}",
-  "particles.notQuarks": "{name} \u4E0D\u662F Quarks \u7279\u6548",
-  "particles.noEmitter": "\u8FD9\u4EFD\u7279\u6548\u91CC\u6CA1\u6709\u53EF\u7F16\u8F91\u7684\u53D1\u5C04\u5668\u3002",
-  "particles.emitter": "\u53D1\u5C04\u5668",
-  "particles.main": "\u4E3B\u6A21\u5757",
-  "particles.duration": "\u65F6\u957F",
-  "particles.looping": "\u5FAA\u73AF",
-  "particles.prewarm": "\u9884\u70ED",
-  "particles.worldSpace": "\u4E16\u754C\u7A7A\u95F4",
-  "particles.renderMode": "\u6E32\u67D3",
-  "particles.billboard": "\u516C\u544A\u677F",
-  "particles.stretched": "\u62C9\u4F38\u516C\u544A\u677F",
-  "particles.horizontal": "\u6C34\u5E73\u516C\u544A\u677F",
-  "particles.vertical": "\u5782\u76F4\u516C\u544A\u677F",
-  "particles.mesh": "\u7F51\u683C",
-  "particles.trail": "\u62D6\u5C3E",
-  "particles.emission": "\u53D1\u5C04",
-  "particles.rate": "\u6BCF\u79D2",
-  "particles.burst": "\u7206\u53D1",
-  "particles.burstsLocked": "\u6709\u591A\u6B21\u7206\u53D1\uFF0C\u68C0\u67E5\u5668\u91CC\u4E0D\u6539\u3002",
-  "particles.start": "\u521D\u59CB",
-  "particles.life": "\u751F\u547D",
-  "particles.speed": "\u901F\u5EA6",
-  "particles.size": "\u5927\u5C0F",
-  "particles.rotation": "\u65CB\u8F6C",
-  "particles.color": "\u989C\u8272",
-  "particles.tint": "\u67D3\u8272",
-  "particles.alpha": "\u900F\u660E",
-  "particles.shape": "\u5F62\u72B6",
-  "particles.shapeType": "\u7C7B\u578B",
-  "particles.shapePoint": "\u70B9",
-  "particles.shapeCone": "\u9525\u4F53",
-  "particles.shapeSphere": "\u7403\u4F53",
-  "particles.shapeHemisphere": "\u534A\u7403",
-  "particles.shapeCircle": "\u5706",
-  "particles.shapeDonut": "\u5706\u73AF",
-  "particles.shapeRectangle": "\u77E9\u5F62",
-  "particles.radius": "\u534A\u5F84",
-  "particles.angle": "\u89D2\u5EA6",
-  "particles.arc": "\u5F20\u89D2",
-  "particles.thickness": "\u539A\u5EA6",
-  "particles.width": "\u5BBD",
-  "particles.height": "\u9AD8",
-  "particles.sheet": "\u5E8F\u5217\u5E27",
-  "particles.tilesX": "\u5217",
-  "particles.tilesY": "\u884C",
-  "particles.force": "\u529B",
-  "particles.gravity": "\u91CD\u529B",
-  "particles.gravityLocked": "\u5DF2\u6709\u659C\u5411\u7684\u529B\uFF0C\u91CD\u529B\u4E0D\u5728\u8FD9\u91CC\u6539\u3002",
-  "particles.speedFactor": "\u901F\u5EA6\u62C9\u4F38",
-  "particles.lengthFactor": "\u957F\u5EA6",
-  "particles.trailLength": "\u62D6\u5C3E\u8282\u6570",
-  "particles.modules": "\u66F2\u7EBF\u6A21\u5757",
-  "particles.moduleColor": "\u989C\u8272\u968F\u751F\u547D",
-  "particles.moduleSize": "\u5927\u5C0F\u968F\u751F\u547D",
-  "particles.moduleNoise": "\u566A\u58F0",
-  "particles.moduleOther": "{name}",
-  "particles.min": "\u6700\u5C0F",
-  "particles.max": "\u6700\u5927",
-  "particles.curve": "\u8FD9\u6761\u662F\u66F2\u7EBF\uFF0C\u68C0\u67E5\u5668\u91CC\u4E0D\u6539\u3002",
-  "particles.shared": "\u6B63\u5728\u6539\u8D44\u6E90\u300C{name}\u300D\uFF0C\u5F15\u7528\u5B83\u7684\u7269\u4F53\u90FD\u4F1A\u53D8\u3002",
-  "particles.createMaterial": "\u521B\u5EFA\u7C92\u5B50\u6750\u8D28",
-  "physics.title": "\u7269\u7406",
-  "physics.participate": "\u53C2\u4E0E\u7269\u7406",
-  "physics.body": "\u521A\u4F53",
-  "physics.static": "\u9759\u6001",
-  "physics.dynamic": "\u52A8\u6001",
-  "physics.kinematic": "\u8FD0\u52A8\u5B66",
-  "physics.shape": "\u5F62\u72B6",
-  "physics.box": "\u76D2\u5B50",
-  "physics.sphere": "\u7403\u4F53",
-  "physics.capsule": "\u80F6\u56CA",
-  "physics.cylinder": "\u5706\u67F1",
-  "physics.cone": "\u5706\u9525",
-  "physics.convex": "\u51F8\u5305",
-  "physics.trimesh": "\u4E09\u89D2\u7F51\u683C",
-  "physics.convexHint": "\u7528\u7269\u4F53\u7F51\u683C\u7684\u51F8\u5305\u3002\u53EF\u4EE5\u662F\u52A8\u6001\u521A\u4F53\uFF0C\u51F9\u8FDB\u53BB\u7684\u90E8\u5206\u4E0D\u4F1A\u6321\u4F4F\u3002",
-  "physics.trimeshHint": "\u7528\u7269\u4F53\u7F51\u683C\u7684\u4E09\u89D2\u9762\uFF0C\u53EF\u4EE5\u662F\u51F9\u7684\u3002\u9002\u5408\u9759\u6001\u548C\u8FD0\u52A8\u5B66\uFF1B\u52A8\u6001\u7269\u4F53\u66F4\u7A33\u7684\u662F\u51F8\u5305\u3002",
-  "physics.radius": "\u534A\u5F84",
-  "physics.height": "\u9AD8\u5EA6",
-  "physics.size": "\u5C3A\u5BF8",
-  "physics.trigger": "\u89E6\u53D1\u5668",
-  "physics.mass": "\u8D28\u91CF",
-  "physics.friction": "\u6469\u64E6",
-  "physics.restitution": "\u5F39\u6027",
-  "physics.linearDamping": "\u7EBF\u963B\u5C3C",
-  "physics.angularDamping": "\u89D2\u963B\u5C3C",
-  "physics.gravityScale": "\u91CD\u529B\u7F29\u653E",
-  "physics.gravity": "\u91CD\u529B",
-  "audio.title": "\u97F3\u6548",
-  "audio.master": "\u603B\u97F3\u91CF",
-  "audio.music": "\u97F3\u4E50",
-  "audio.sfx": "\u97F3\u6548",
-  "audio.volume": "\u97F3\u91CF",
-  "audio.pick": "\u9009\u62E9\u97F3\u6548",
-  "audio.hint": "\u7F51\u9875\u7248\u5728\u7B2C\u4E00\u6B21\u70B9\u51FB\u9875\u9762\u4E4B\u540E\u624D\u80FD\u51FA\u58F0\u3002\u684C\u9762\u7248\u6253\u5F00\u5C31\u80FD\u64AD\u3002",
-  "soundSource.title": "\u58F0\u6E90",
-  "soundSource.enable": "\u542F\u7528",
-  "soundSource.clip": "\u58F0\u97F3",
-  "soundSource.loop": "\u5FAA\u73AF",
-  "soundSource.distance": "\u6E05\u6670\u8DDD\u79BB",
-  "soundSource.rolloff": "\u8870\u51CF",
-  "soundSource.hint": "\u8BD5\u73A9\u65F6\u5728\u8FD9\u4E2A\u7269\u4F53\u4E0A\u64AD\u653E\uFF0C\u4F4D\u7F6E\u8DDF\u7740\u7269\u4F53\u8D70\u3002\u5173\u6389\u5FAA\u73AF\u5C31\u53EA\u64AD\u4E00\u904D\u3002",
-  "physics.disabledHint": "\u7269\u7406\u80FD\u529B\u5305\u5DF2\u5173\u95ED\u3002\u78B0\u649E\u6570\u636E\u4ECD\u7559\u5728\u7269\u4F53\u4E0A\u3002",
-  "navigation.enable": "\u5BFC\u822A",
-  "navigation.title": "\u5BFC\u822A",
-  "navigation.participate": "\u53C2\u4E0E\u5BFC\u822A",
-  "navigation.role": "\u7528\u9014",
-  "navigation.surface": "\u8868\u9762",
-  "navigation.obstacle": "\u969C\u788D",
-  "navigation.radius": "\u534A\u5F84",
-  "navigation.height": "\u9AD8\u5EA6",
-  "navigation.cellSize": "\u683C\u5B50\u5927\u5C0F",
-  "navigation.cellHeight": "\u683C\u5B50\u9AD8\u5EA6",
-  "navigation.slope": "\u6700\u5927\u5761\u5EA6",
-  "navigation.agentRadius": "\u4EE3\u7406\u534A\u5F84",
-  "navigation.agentHeight": "\u4EE3\u7406\u9AD8\u5EA6",
-  "navigation.maxObstacles": "\u969C\u788D\u5BB9\u91CF",
-  "navigation.show": "\u663E\u793A\u7F51\u683C",
-  "navigation.bake": "\u70D8\u7119",
-  "navigation.rebake": "\u91CD\u65B0\u70D8\u7119",
-  "navigation.clear": "\u6E05\u7A7A",
-  "navigation.cleared": "\u5DF2\u6E05\u7A7A\u5BFC\u822A\u7F51\u683C",
-  "navigation.cancel": "\u53D6\u6D88\u70D8\u7119",
-  "navigation.baking": "\u6B63\u5728\u70D8\u7119\u2026",
-  "navigation.ready": "\u53EF\u884C\u8D70\u9762\u5DF2\u751F\u6210",
-  "navigation.noSurface": "\u6CA1\u6709\u53EF\u70D8\u7119\u7684\u5BFC\u822A\u8868\u9762\u3002",
-  "navigation.disabledHint": "\u5BFC\u822A\u80FD\u529B\u5305\u5DF2\u5173\u95ED\u3002\u8868\u9762\u548C\u969C\u788D\u6570\u636E\u4ECD\u7559\u5728\u7269\u4F53\u4E0A\u3002",
-  "navigation.stale": "\u53C2\u6570\u5DF2\u53D8\u5316\uFF0C\u9700\u8981\u91CD\u65B0\u70D8\u7119\u3002",
-  "navigation.triangles": "\u8868\u9762\u4E09\u89D2\u5F62",
-  "navigation.obstacleHint": "\u969C\u788D\u5BB9\u91CF\u5927\u4E8E 0 \u65F6\uFF0C\u8BD5\u73A9\u4F1A\u7528\u7AD6\u76F4\u5706\u67F1\u628A\u969C\u788D\u4ECE\u5BFC\u822A\u7F51\u683C\u4E0A\u6316\u5F00\u3002",
-  "projectSettings.title": "\u5DE5\u7A0B\u8BBE\u7F6E",
-  "projectSettings.modules": "\u80FD\u529B\u5305",
-  "projectSettings.note": "\u5F00\u5173\u4FDD\u5B58\u5728\u5F53\u524D\u5DE5\u7A0B\u91CC\u3002\u5173\u95ED\u540E\u4E0D\u518D\u52A0\u8F7D\u5BF9\u5E94\u6A21\u5757\uFF0C\u5DF2\u586B\u5199\u7684\u6570\u636E\u4E0D\u4F1A\u5220\u9664\u3002",
-  "projectSettings.physicsDetail": "\u78B0\u649E\u4F53\u3001\u521A\u4F53\u548C\u8BD5\u73A9\u65F6\u7684\u7269\u7406\u6A21\u62DF\u3002",
-  "projectSettings.particlesDetail": "\u7C92\u5B50\u7279\u6548\u3002\u5173\u6389\u540E\u8D44\u6E90\u548C\u7269\u4F53\u4E0A\u7684\u6570\u636E\u8FD8\u5728\uFF0C\u53EA\u662F\u4E0D\u518D\u64AD\u653E\u3002",
-  "sky.enable": "\u5929\u7A7A",
-  "sky.title": "\u5929\u7A7A",
-  "sky.time": "\u65F6\u523B",
-  "sky.latitude": "\u7EAC\u5EA6",
-  "sky.day": "\u5E74\u79EF\u65E5",
-  "sky.north": "\u5317\u5411",
-  "sky.northPosZ": "+Z \u4E3A\u5317",
-  "sky.northNegZ": "-Z \u4E3A\u5317",
-  "sky.northPosX": "+X \u4E3A\u5317",
-  "sky.northNegX": "-X \u4E3A\u5317",
-  "sky.atmosphere": "\u5927\u6C14",
-  "sky.exposure": "\u5929\u7A7A\u66DD\u5149",
-  "sky.turbidity": "\u6D51\u6D4A\u5EA6",
-  "sky.albedo": "\u5730\u9762\u53CD\u7167\u7387",
-  "sky.mirror": "\u5730\u5E73\u7EBF\u4EE5\u4E0B\u955C\u50CF",
-  "sky.sun": "\u592A\u9633",
-  "sky.sunDisc": "\u592A\u9633\u76D8",
-  "sky.angularSize": "\u89D2\u76F4\u5F84 \xB0",
-  "sky.sunIntensity": "\u592A\u9633\u5F3A\u5EA6",
-  "sky.sunShadow": "\u592A\u9633\u9634\u5F71",
-  "sky.haze": "\u7A7A\u6C14\u900F\u89C6",
-  "sky.hazeStrength": "\u5F3A\u5EA6",
-  "sky.hazeNear": "\u8FD1\u8DDD",
-  "sky.fog": "\u9AD8\u5EA6\u96FE",
-  "sky.fogColor": "\u989C\u8272",
-  "sky.fogSkyColor": "\u8DDF\u968F\u5929\u7A7A",
-  "sky.fogDensity": "\u5BC6\u5EA6",
-  "sky.fogFalloff": "\u9AD8\u5EA6\u8870\u51CF",
-  "sky.fogBase": "\u57FA\u51C6\u9AD8\u5EA6",
-  "sky.fogOpacity": "\u6700\u5927\u4E0D\u900F\u660E\u5EA6",
-  "sky.night": "\u591C\u665A",
-  "sky.stars": "\u661F\u661F",
-  "sky.starIntensity": "\u661F\u5149",
-  "sky.starSize": "\u661F\u70B9",
-  "sky.milkyWay": "\u94F6\u6CB3",
-  "sky.moon": "\u6708\u4EAE",
-  "sky.moonPhase": "\u6708\u76F8",
-  "sky.moonLight": "\u6708\u5149",
-  "projectSettings.skyDetail": "\u7A0B\u5E8F\u5316\u5927\u6C14\u548C\u65F6\u523B\u3002\u5F00\u542F\u540E\u53D6\u4EE3\u80CC\u666F\u4E0E\u73AF\u5883\u8D34\u56FE\uFF0C\u91D1\u5C5E\u53CD\u5C04\u8DDF\u7740\u592A\u9633\u53D8\u3002\u5173\u6389\u540E\u53C2\u6570\u7559\u5728\u753B\u9762\u4E0A\u3002",
-  "projectSettings.navigationDetail": "\u4ECE\u9759\u6001\u8868\u9762\u70D8\u7119\u5BFC\u822A\u7F51\u683C\u3002\u8BD5\u73A9\u65F6\u969C\u788D\u53EF\u4EE5\u6316\u5F00\u7F51\u683C\uFF0C\u5BFB\u8DEF\u8BFB\u53D6\u8FD9\u4EFD\u7F51\u683C\u3002",
-  "projectSettings.catalogs": "\u9879\u76EE\u76EE\u5F55",
-  "projectSettings.manage": "\u7BA1\u7406\u2026",
-  "tags.title": "\u6807\u7B7E",
-  "tags.subtitle": "\u548C Unity \u7684 Tag \u4E00\u6837\uFF1A\u6BCF\u4E2A\u7269\u4F53\u6709\u4E00\u4E2A\u4E3B\u6807\u7B7E\uFF0C\u53E6\u5916\u53EF\u4EE5\u52A0\u591A\u5C42\u6807\u7B7E\uFF0C\u7528\u6765\u7B5B\u9009\u548C\u4EE5\u540E\u7684\u903B\u8F91\u67E5\u627E\u3002",
-  "tags.name": "\u540D\u79F0",
-  "tags.id": "Id",
-  "tags.add": "\u6DFB\u52A0\u6807\u7B7E",
-  "tags.addDefault": "\u65B0\u6807\u7B7E",
-  "tags.remove": "\u5220\u9664",
-  "tags.done": "\u5B8C\u6210",
-  "tags.card": "\u6807\u7B7E",
-  "tags.none": "\u65E0\u6807\u7B7E",
-  "tags.orphan": "\u7F3A\u5931\u7684\u6807\u7B7E {id}",
-  "tags.extraPlaceholder": "+ \u8F93\u5165\u5C42\u7EA7\u6807\u7B7E\uFF08\u5982 Team.Enemy\uFF09\u56DE\u8F66\u6DFB\u52A0",
-  "tags.gameplay": "\u73A9\u6CD5\u6807\u7B7E",
-  "tags.addGameplay": "\u6DFB\u52A0\u73A9\u6CD5\u6807\u7B7E\u2026",
-  "tags.runtime": "\u8BD5\u73A9\u4E2D\u7684\u9650\u65F6\u6807\u7B7E",
-  "tags.openDatabase": "\u6253\u5F00\u6E38\u620F\u6570\u636E",
-  "tags.filter": "\u6309\u6807\u7B7E\u7B5B\u9009",
-  "tags.filterAll": "\u5168\u90E8",
-  "tags.filterUntagged": "\u4EC5\u65E0\u6807\u7B7E",
-  "layers.title": "\u5C42",
-  "layers.subtitle": "\u5C42\u540C\u65F6\u7528\u4E8E\u89C6\u53E3\u5254\u9664\u548C\u7269\u7406\u78B0\u649E\u3002\u4F4D 31 \u7559\u7ED9\u7F16\u8F91\u5668\u624B\u67C4\uFF0C\u4E0D\u80FD\u5206\u914D\u3002",
-  "layers.tabLayers": "\u5C42\u5217\u8868",
-  "layers.tabPhysics": "\u7269\u7406\u78B0\u649E\u77E9\u9635",
-  "layers.bit": "\u4F4D",
-  "layers.name": "\u540D\u79F0",
-  "layers.id": "Id",
-  "layers.builtIn": "\u5185\u7F6E",
-  "layers.visible": "\u89C6\u53E3",
-  "layers.add": "\u6DFB\u52A0\u5C42",
-  "layers.addDefault": "\u65B0\u5C42",
-  "layers.remove": "\u5220\u9664",
-  "layers.done": "\u5B8C\u6210",
-  "layers.show": "\u5728\u7F16\u8F91\u89C6\u53E3\u663E\u793A\u8BE5\u5C42",
-  "layers.hide": "\u5728\u7F16\u8F91\u89C6\u53E3\u9690\u85CF\u8BE5\u5C42",
-  "layers.card": "\u5C42",
-  "layers.option": "{name} \xB7 \u4F4D {bit}",
-  "layers.matrixEnable": "\u542F\u7528\u78B0\u649E\u77E9\u9635",
-  "layers.matrixHint": "\u6BCF\u4E00\u884C\u662F\u4E00\u5BF9\u5C42\u3002\u52FE\u4E0A\u624D\u4F1A\u76F8\u649E\uFF0C\u5DE6\u53F3\u5BF9\u79F0\u3002\u5173\u95ED\u65F6\u6240\u6709\u5C42\u4E92\u76F8\u78B0\u649E\u3002Rapier \u53EA\u4F7F\u7528\u524D 16 \u4F4D\u3002",
-  "layers.matrixEmpty": "\u81F3\u5C11\u8981\u6709\u4E24\u5C42\uFF0C\u624D\u4F1A\u51FA\u73B0\u53EF\u52FE\u9009\u7684\u78B0\u649E\u5173\u7CFB\u3002",
-  "inspector.column.system": "\u7CFB\u7EDF",
-  "inspector.column.packs": "\u6269\u5C55\u5305",
-  "inspector.sky": "\u5929\u7A7A",
-  "inspector.background": "\u80CC\u666F",
-  "inspector.exposure": "\u66DD\u5149",
-  "inspector.toneMapping": "\u8272\u8C03\u6620\u5C04",
-  "tone.none": "\u65E0",
-  "tone.linear": "\u7EBF\u6027",
-  "tone.reinhard": "Reinhard",
-  "tone.cineon": "Cineon",
-  "tone.aces": "ACES",
-  "tone.agx": "AgX",
-  "tone.neutral": "Neutral",
-  "inspector.fog": "\u96FE",
-  "inspector.enabled": "\u542F\u7528",
-  "inspector.fogColor": "\u96FE\u8272",
-  "inspector.fogStart": "\u8D77\u59CB",
-  "inspector.fogEnd": "\u7ED3\u675F",
-  "inspector.environment": "\u73AF\u5883\u5149\u7167",
-  "inspector.env": "\u73AF\u5883",
-  "inspector.bloom": "\u6CDB\u5149",
-  "inspector.aa": "\u6297\u952F\u9F7F",
-  "inspector.ssr": "\u5C4F\u5E55\u53CD\u5C04",
-  "inspector.ssrQuality": "\u8D28\u91CF",
-  "inspector.ssrDistance": "\u8DDD\u79BB",
-  "inspector.ssrThickness": "\u539A\u5EA6",
-  "inspector.volume": "\u4F53\u79EF\u5149",
-  "inspector.volumeDensity": "\u5BC6\u5EA6",
-  "inspector.volumeSteps": "\u6B65\u8FDB",
-  "inspector.volumeSize": "\u8303\u56F4",
-  "inspector.volumeHeight": "\u9AD8\u5EA6",
-  "inspector.ssgi": "\u5168\u5C40\u5149\u7167",
-  "inspector.ssgiIndirect": "\u95F4\u63A5\u5149",
-  "inspector.ssgiOcclusion": "\u906E\u853D",
-  "inspector.ssgiRadius": "\u534A\u5F84",
-  "inspector.ssgiSlices": "\u5207\u7247",
-  "inspector.ssgiSteps": "\u6B65\u8FDB",
-  "inspector.ssgiDenoise": "\u964D\u566A",
-  "inspector.radius": "\u534A\u5F84",
-  "inspector.threshold": "\u9608\u503C",
-  "inspector.dof": "\u666F\u6DF1",
-  "inspector.focus": "\u5BF9\u7126",
-  "inspector.focal": "\u7126\u6BB5",
-  "inspector.bokeh": "\u6563\u666F",
-  "inspector.occlusion": "\u906E\u853D",
-  "inspector.grade": "\u8C03\u8272",
-  "inspector.hue": "\u8272\u76F8",
-  "inspector.saturation": "\u9971\u548C",
-  "inspector.clip": "\u7247\u6BB5",
-  "inspector.play": "\u64AD\u653E",
-  "inspector.pause": "\u6682\u505C",
-  "inspector.time": "\u65F6\u95F4",
-  "inspector.animFile": "\u52A8\u753B\u6587\u4EF6",
-  "inspector.modelClips": "\u6A21\u578B\u7247\u6BB5",
-  "inspector.fileClips": "\u6587\u4EF6\u7247\u6BB5",
-  "humanoid.summary": "\u4EBA\u5F62\u53EF\u7528 \xB7 {skins} \u5957\u8499\u76AE \xB7 {bind} \xB7 {motion}",
-  "humanoid.noHips": "\u8FD9\u5957\u9AA8\u67B6\u8FD8\u8BA4\u4E0D\u51FA\u76C6\u9AA8\uFF0C\u8DE8\u6A21\u578B\u52A8\u4F5C\u4E0D\u4F1A\u81EA\u52A8\u5957\u7528\u3002",
-  "humanoid.missing": "\u7F3A {names}",
-  "humanoid.coreOk": "{count} \u4E2A\u6838\u5FC3\u69FD\u5DF2\u9F50",
-  "humanoid.restConflict": "\u8FD9\u4E9B\u9AA8\u5934\u5728\u591A\u5957\u8499\u76AE\u91CC\u7684\u9759\u606F\u59FF\u6001\u4E0D\u4E00\u81F4\uFF1A{names}",
-  "humanoid.bind": "\u6709\u7ED1\u5B9A\u59FF\u6001",
-  "humanoid.noBind": "\u65E0\u7ED1\u5B9A\u59FF\u6001",
-  "humanoid.inPlace": "\u539F\u5730",
-  "humanoid.rootMotion": "\u6839\u8FD0\u52A8",
-  "humanoid.motionUnknown": "\u4F4D\u79FB\u672A\u5224\u65AD",
-  "humanoid.slots": "\u9AA8\u9ABC\u69FD\u4F4D",
-  "humanoid.slotsHint": "\u81EA\u52A8\u8BA4\u9519\u65F6\u53EA\u6539\u5BF9\u5E94\u7684\u4E00\u6839\u9AA8\u5934\u3002\u6539\u5B8C\u540E\u91CD\u65B0\u64AD\u653E\u3002",
-  "humanoid.auto": "\u81EA\u52A8",
-  "humanoid.slotHips": "\u76C6\u9AA8",
-  "humanoid.slotSpine": "\u810A\u67F1",
-  "humanoid.slotHead": "\u5934",
-  "humanoid.slotLeftUpperArm": "\u5DE6\u5927\u81C2",
-  "humanoid.slotLeftLowerArm": "\u5DE6\u5C0F\u81C2",
-  "humanoid.slotRightUpperArm": "\u53F3\u5927\u81C2",
-  "humanoid.slotRightLowerArm": "\u53F3\u5C0F\u81C2",
-  "humanoid.slotLeftUpperLeg": "\u5DE6\u5927\u817F",
-  "humanoid.slotLeftLowerLeg": "\u5DE6\u5C0F\u817F",
-  "humanoid.slotRightUpperLeg": "\u53F3\u5927\u817F",
-  "humanoid.slotRightLowerLeg": "\u53F3\u5C0F\u817F",
-  "humanoid.adjust": "\u91CD\u5B9A\u5411\u5FAE\u8C03",
-  "humanoid.adjustHint": "\u81EA\u52A8\u7ED3\u679C\u4E0D\u5BF9\u65F6\u518D\u62C9\u3002\u6B63\u503C\u5206\u522B\u662F\u80A9\u66F4\u5BBD\u3001\u80A9\u5411\u5916\u65CB\u3001\u624B\u81C2\u66F4\u5F00\u3001\u8098\u66F4\u5F2F\u3001\u80EF\u66F4\u5BBD\u3001\u819D\u66F4\u5F2F\u3001\u811A\u5C16\u5411\u4E0B\u3001\u4EBA\u66F4\u9AD8\u3001\u6B65\u5E45\u66F4\u5927\u3002\u53EA\u4F5C\u7528\u4E8E\u522B\u7684\u9AA8\u67B6\u5957\u5230\u8FD9\u4E2A\u89D2\u8272\u4E0A\u7684\u52A8\u753B\u3002",
-  "humanoid.reset": "\u91CD\u7F6E\u4E3A\u81EA\u52A8",
-  "humanoid.shoulderWidth": "\u80A9\u5BBD",
-  "humanoid.shoulderRotate": "\u80A9\u8180\u65CB\u8F6C",
-  "humanoid.armSpread": "\u624B\u81C2\u5F20\u5F00",
-  "humanoid.elbowBend": "\u8098\u89D2",
-  "humanoid.hipSpread": "\u80EF\u5BBD",
-  "humanoid.kneeBend": "\u819D\u89D2",
-  "humanoid.footPitch": "\u811A\u9762",
-  "humanoid.hipsHeight": "\u76C6\u9AA8\u9AD8\u4F4E",
-  "humanoid.stride": "\u6B65\u5E45",
-  "project.clips": "\u7247\u6BB5",
-  "anim.loop": "\u5FAA\u73AF",
-  "anim.speed": "\u901F\u5EA6",
-  "anim.fade": "\u6DE1\u5165",
-  "anim.inPlace": "\u539F\u5730",
-  "anim.animator": "\u72B6\u6001\u673A",
-  "anim.enabled": "\u542F\u7528",
-  "anim.current": "\u5F53\u524D {name}",
-  "anim.addState": "\u52A0\u72B6\u6001",
-  "anim.addParam": "\u52A0\u53C2\u6570",
-  "anim.addTransition": "\u52A0\u8FC7\u6E21",
-  "anim.transitions": "\u8FC7\u6E21",
-  "anim.state": "\u72B6\u6001",
-  "anim.param": "\u53C2\u6570",
-  "anim.remove": "\u5220\u9664",
-  "anim.bool": "\u5F00\u5173",
-  "anim.number": "\u6570\u503C",
-  "anim.trigger": "\u89E6\u53D1",
-  "anim.fire": "\u89E6\u53D1",
-  "anim.equals": "\u7B49\u4E8E",
-  "anim.greater": "\u5927\u4E8E",
-  "anim.less": "\u5C0F\u4E8E",
-  "anim.simple": "\u57FA\u7840\u64AD\u653E",
-  "anim.machine": "\u72B6\u6001\u673A",
-  "anim.simpleHint": "\u53EA\u64AD\u4E00\u6BB5\u3002\u8981\u591A\u4E2A\u72B6\u6001\u3001\u53C2\u6570\u548C\u81EA\u52A8\u5207\u6362\u65F6\uFF0C\u518D\u5207\u5230\u72B6\u6001\u673A\u3002",
-  "anim.machineHint": "\u72B6\u6001\u673A\u51B3\u5B9A\u64AD\u54EA\u4E00\u6BB5\u3002\u906E\u7F69\u8DDF\u7740\u6BCF\u4E2A\u72B6\u6001\u8D70\u3002",
-  "anim.end": "\u64AD\u5B8C\u540E",
-  "anim.hold": "\u505C\u5728\u6700\u540E\u4E00\u5E27",
-  "anim.stop": "\u505C\u6B62\u64AD\u653E",
-  "anim.backToDefault": "\u56DE\u5230\u9ED8\u8BA4\u72B6\u6001",
-  "anim.default": "\u9ED8\u8BA4",
-  "anim.setDefault": "\u8BBE\u4E3A\u9ED8\u8BA4",
-  "anim.fromClips": "\u6309\u7247\u6BB5\u751F\u6210\u72B6\u6001",
-  "anim.seedParams": "\u6DFB\u52A0\u5E38\u7528\u53C2\u6570",
-  "anim.mask": "\u9AA8\u9ABC\u906E\u7F69",
-  "anim.overlay": "\u4E0A\u534A\u8EAB",
-  "anim.overlayStop": "\u505C\u6389\u8986\u76D6",
-  "anim.maskFull": "\u5168\u8EAB\u9AA8\u9ABC",
-  "anim.maskUpper": "\u4EC5\u4E0A\u534A\u8EAB",
-  "anim.maskLower": "\u4EC5\u4E0B\u534A\u8EAB",
-  "anim.exit": "\u7B49\u5230\u8FDB\u5EA6",
-  "anim.embedded": "\u5185\u5D4C {count} \u6BB5",
-  "asset.scene": "\u573A\u666F",
-  "asset.model": "\u6A21\u578B",
-  "asset.texture": "\u8D34\u56FE",
-  "asset.environment": "\u73AF\u5883",
-  "asset.material": "\u6750\u8D28",
-  "asset.effect": "\u7279\u6548",
-  "asset.ui": "\u754C\u9762",
-  "project.createUi": "\u754C\u9762",
-  "project.newUiName": "\u8BA1\u5206\u754C\u9762",
-  "ui.open": "\u7F16\u8F91\u754C\u9762",
-  "ui.add": "\u6DFB\u52A0",
-  "ui.delete": "\u5220\u9664",
-  "ui.up": "\u4E0A\u79FB",
-  "ui.down": "\u4E0B\u79FB",
-  "ui.close": "\u5173\u95ED",
-  "ui.undo": "\u64A4\u9500",
-  "ui.redo": "\u91CD\u505A",
-  "ui.zoom": "\u7F29\u653E",
-  "ui.name": "\u540D\u79F0",
-  "ui.text": "\u6587\u5B57",
-  "ui.image": "\u56FE\u7247",
-  "ui.layout": "\u5E03\u5C40",
-  "ui.anchor": "\u951A\u70B9",
-  "ui.flex": "\u6392\u5217",
-  "ui.anchorPreset": "\u951A\u70B9\u4F4D\u7F6E",
-  "ui.custom": "\u4FDD\u6301\u73B0\u72B6",
-  "ui.direction": "\u65B9\u5411",
-  "ui.column": "\u7AD6\u6392",
-  "ui.row": "\u6A2A\u6392",
-  "ui.gap": "\u95F4\u8DDD",
-  "ui.width": "\u5BBD",
-  "ui.height": "\u9AD8",
-  "ui.style": "\u6837\u5F0F",
-  "ui.state": "\u72B6\u6001",
-  "ui.color": "\u989C\u8272",
-  "ui.align": "\u5BF9\u9F50",
-  "ui.align.left": "\u5DE6",
-  "ui.align.center": "\u4E2D",
-  "ui.align.right": "\u53F3",
-  "ui.border": "\u8FB9\u6846",
-  "ui.borderWidth": "\u8FB9\u6846\u7C97\u7EC6",
-  "ui.fontSize": "\u5B57\u53F7",
-  "ui.background": "\u80CC\u666F",
-  "ui.opacity": "\u900F\u660E\u5EA6",
-  "ui.radius": "\u5706\u89D2",
-  "ui.tint": "\u586B\u5145",
-  "ui.binding": "\u7ED1\u5B9A",
-  "ui.source": "\u6765\u6E90",
-  "ui.variable": "\u53D8\u91CF",
-  "ui.component": "\u7EC4\u4EF6",
-  "ui.node": "\u7269\u4F53",
-  "ui.field": "\u5B57\u6BB5",
-  "ui.value": "\u503C",
-  "ui.min": "\u6700\u5C0F",
-  "ui.max": "\u6700\u5927",
-  "ui.click": "\u70B9\u51FB",
-  "ui.none": "\u65E0",
-  "ui.sendMessage": "\u53D1\u9001\u6D88\u606F",
-  "ui.setVariable": "\u5199\u53D8\u91CF",
-  "ui.message": "\u6D88\u606F",
-  "ui.fake": "\u9884\u89C8\u6570\u503C",
-  "ui.previewClick": "{name}\uFF1A{detail}",
-  "ui.document": "\u754C\u9762",
-  "ui.layer": "\u5C42",
-  "ui.visibleOnPlay": "\u8BD5\u73A9\u5F00\u59CB\u65F6\u53EF\u89C1",
-  "ui.addScreen": "\u6DFB\u52A0\u5C4F\u5E55\u754C\u9762",
-  "ui.removeScreen": "\u79FB\u9664",
-  "ui.missing": "\u7F3A\u5C11\u754C\u9762\u6587\u6863",
-  "ui.mount": "\u6302\u4E0A\u754C\u9762",
-  "ui.type.panel": "\u9762\u677F",
-  "ui.type.stack": "\u6392\u5217",
-  "ui.type.text": "\u6587\u5B57",
-  "ui.type.image": "\u56FE\u7247",
-  "ui.type.button": "\u6309\u94AE",
-  "ui.type.progress": "\u8FDB\u5EA6\u6761",
-  "ui.state.normal": "\u901A\u5E38",
-  "ui.state.hover": "\u60AC\u505C",
-  "ui.state.pressed": "\u6309\u4E0B",
-  "ui.state.disabled": "\u7981\u7528",
-  "ui.target.text": "\u6587\u5B57",
-  "ui.target.visible": "\u53EF\u89C1",
-  "ui.target.enabled": "\u53EF\u7528",
-  "ui.target.progress": "\u8FDB\u5EA6",
-  "ui.target.opacity": "\u900F\u660E\u5EA6",
-  "ui.anchor.top": "\u4E0A",
-  "ui.anchor.center": "\u4E2D",
-  "ui.anchor.bottom": "\u4E0B",
-  "ui.anchor.left": "\u5DE6",
-  "ui.anchor.right": "\u53F3",
-  "ui.layer.hud": "\u62AC\u5934",
-  "ui.layer.menu": "\u83DC\u5355",
-  "ui.layer.popup": "\u5F39\u51FA",
-  "ui.layer.modal": "\u6A21\u6001",
-  "log.createdUi": "\u5DF2\u521B\u5EFA\u754C\u9762 {name}",
-  "log.mountedUi": "\u5DF2\u6302\u4E0A\u754C\u9762 {name}",
-  "log.uiMessage": "\u754C\u9762\u53D1\u51FA\u6D88\u606F {message}",
-  "asset.animation": "\u52A8\u753B",
-  "asset.audio": "\u97F3\u9891",
-  "asset.prefab": "\u9884\u5236\u4F53",
-  "project.all": "\u5168\u90E8",
-  "project.model": "\u6A21\u578B",
-  "project.image": "\u6750\u8D28/\u8D34\u56FE",
-  "project.audio": "\u97F3\u9891",
-  "project.animation": "\u52A8\u753B",
-  "project.scene": "\u573A\u666F",
-  "project.used": "\u672C\u573A\u666F",
-  "project.unused": "\u672A\u5F15\u7528",
-  "project.newFolder": "\u5728\u5F53\u524D\u76EE\u5F55\u65B0\u5EFA\u6587\u4EF6\u5939",
-  "project.search": "\u641C\u7D22\u8D44\u6E90",
-  "project.clear": "\u6E05\u9664",
-  "project.import": "\u5BFC\u5165",
-  "project.extractPackage": "\u63D0\u53D6\u7D20\u6750\u5305",
-  "pkg.title": "\u63D0\u53D6\u7D20\u6750\u5305",
-  "pkg.noFile": "\u672A\u9009\u62E9\u6587\u4EF6",
-  "pkg.close": "\u5173\u95ED",
-  "pkg.scanning": "\u6B63\u5728\u626B\u63CF\u53EF\u63D0\u53D6\u8D44\u6E90\u2026",
-  "pkg.scanningSlow": "\u8D44\u6E90\u5305\u8F83\u5927\uFF0C\u6B63\u5728\u89E3\u538B\u548C\u5EFA\u7ACB\u7D22\u5F15\u3002\u7A97\u53E3\u6CA1\u6709\u5361\u6B7B\uFF0C\u5B8C\u6210\u540E\u4F1A\u663E\u793A\u53EF\u63D0\u53D6\u8D44\u6E90\u3002",
-  "pkg.scanFailed": "\u626B\u63CF\u5931\u8D25\uFF1A{detail}",
-  "pkg.empty": "\u6CA1\u6709\u627E\u5230\u53EF\u63D0\u53D6\u7684\u6A21\u578B\u3001\u8D34\u56FE\u3001\u52A8\u753B\u6216\u6750\u8D28\u3002",
-  "pkg.models": "\u6A21\u578B",
-  "pkg.textures": "\u8D34\u56FE",
-  "pkg.animations": "\u52A8\u753B",
-  "pkg.materials": "\u6750\u8D28",
-  "pkg.hidden": "\u5DF2\u9690\u85CF",
-  "pkg.unsupported": "\u4E0D\u652F\u6301",
-  "pkg.previewOnly": "\u63D0\u53D6\u6A21\u578B\u3001\u8D34\u56FE\u3001\u52A8\u753B\u548C\u6750\u8D28\u3002FBX \u7528 ufbx \u5BFC\u5165\uFF1B\u52FE\u9009\u5408\u5E76\u540E\uFF0C\u52A8\u753B\u4F1A\u6309\u73B0\u6709\u4EBA\u5F62\u91CD\u5B9A\u5411\u5199\u8FDB\u672C\u4F53\u6A21\u578B\u3002",
-  "pkg.selectedSummary": "\u5DF2\u9009\u62E9 {count} \u9879",
-  "pkg.selectAll": "\u5168\u9009",
-  "pkg.selectNone": "\u5168\u4E0D\u9009",
-  "pkg.selectModels": "\u53EA\u9009\u6A21\u578B",
-  "pkg.selectTextures": "\u53EA\u9009\u8D34\u56FE",
-  "pkg.selectAnimations": "\u53EA\u9009\u52A8\u753B",
-  "pkg.selectMaterials": "\u53EA\u9009\u6750\u8D28",
-  "pkg.filterPlaceholder": "\u6309\u6587\u4EF6\u540D\u8FC7\u6EE4",
-  "pkg.filterEmpty": "\u6CA1\u6709\u5339\u914D\u7684\u6587\u4EF6",
-  "pkg.targetDirectory": "\u76EE\u6807\u76EE\u5F55",
-  "pkg.directoryMode": "\u76EE\u5F55\u65B9\u5F0F",
-  "pkg.directoryModeFlat": "\u72EC\u7ACB\u76EE\u5F55\uFF08Textures / Materials / Animations\uFF09",
-  "pkg.directoryModePreserve": "\u4FDD\u7559\u5305\u5185\u76EE\u5F55",
-  "pkg.showDiagnostics": "\u663E\u793A\u8BCA\u65AD",
-  "pkg.hideDiagnostics": "\u9690\u85CF\u8BCA\u65AD",
-  "pkg.extracting": "\u6B63\u5728\u63D0\u53D6\u2026",
-  "pkg.extractingTitle": "\u6B63\u5728\u63D0\u53D6\u7D20\u6750",
-  "pkg.extractingProgress": "\u5DF2\u5904\u7406 {completed} / {total} \u9879",
-  "pkg.extractSelected": "\u63D0\u53D6\u5DF2\u9009\uFF08{count}\uFF09",
-  "pkg.extractSuccess": "\u5DF2\u63D0\u53D6 {count} \u4E2A\u8D44\u6E90\u3002",
-  "pkg.extractFailed": "{count} \u4E2A\u8D44\u6E90\u63D0\u53D6\u5931\u8D25\u3002",
-  "pkg.companions": "{count} \u4E2A\u4F34\u968F\u6587\u4EF6",
-  "pkg.warnings": "{count} \u4E2A\u63D0\u793A",
-  "pkg.kind.model": "\u6A21\u578B",
-  "pkg.kind.texture": "\u8D34\u56FE",
-  "pkg.kind.animation": "\u52A8\u753B",
-  "pkg.kind.material": "\u6750\u8D28",
-  "pkg.role.modelBody": "\u672C\u4F53\u6A21\u578B",
-  "pkg.role.animationCarrier": "\u52A8\u753B",
-  "pkg.role.ordinaryModel": "\u666E\u901A\u6A21\u578B",
-  "pkg.role.unknownModel": "\u5F85\u786E\u8BA4",
-  "pkg.confidence.high": "\u9AD8\u7F6E\u4FE1",
-  "pkg.confidence.medium": "\u4E2D\u7F6E\u4FE1",
-  "pkg.confidence.low": "\u4F4E\u7F6E\u4FE1",
-  "pkg.roleOverrideFor": "\u8BBE\u7F6E {name} \u7684\u5BFC\u5165\u89D2\u8272",
-  "pkg.carrierBodyFor": "\u8BBE\u7F6E {name} \u5173\u8054\u7684\u672C\u4F53\u6A21\u578B",
-  "pkg.noCarrierBody": "\u672A\u5173\u8054\u672C\u4F53",
-  "pkg.mergePreview.title": "\u52A8\u753B\u5408\u5E76\u9884\u89C8",
-  "pkg.mergePreview.summary": "{bodies} \u4E2A\u672C\u4F53\uFF0C{carriers} \u4E2A\u52A8\u753B",
-  "pkg.phase.textures": "\u8D34\u56FE",
-  "pkg.phase.models": "\u6A21\u578B",
-  "pkg.phase.animations": "\u52A8\u753B",
-  "pkg.phase.materials": "\u6750\u8D28",
-  "pkg.phase.retarget": "\u91CD\u5B9A\u5411",
-  "pkg.diag.hidden": "\u5DF2\u9690\u85CF",
-  "pkg.diag.unsupported": "\u4E0D\u652F\u6301",
-  "pkg.diag.missingPathname": "\u7F3A\u5C11\u8DEF\u5F84",
-  "pkg.diag.missingAssetBytes": "\u7F3A\u5C11\u8D44\u4EA7\u6570\u636E",
-  "pkg.diag.scan": "\u626B\u63CF\u8BCA\u65AD",
-  "project.newScene": "\u5728\u5F53\u524D\u76EE\u5F55\u65B0\u5EFA\u573A\u666F",
-  "project.count": "{count} \u9879",
-  "project.list": "\u5217\u8868",
-  "project.details": "\u8BE6\u60C5",
-  "project.grid": "\u7F29\u7565\u56FE",
-  "project.name": "\u540D\u79F0",
-  "project.type": "\u7C7B\u578B",
-  "project.detail": "\u8BF4\u660E",
-  "project.drop": "\u677E\u5F00\u5373\u53EF\u5BFC\u5165",
-  "project.empty": "\u8FD9\u4E2A\u76EE\u5F55\u91CC\u8FD8\u6CA1\u6709\u8D44\u6E90\u3002",
-  "project.deleteScene": "\u5220\u9664\u573A\u666F\u300C{name}\u300D\uFF1F\u91CC\u9762\u7684\u7269\u4F53\u4E5F\u4F1A\u53BB\u6389\u3002",
-  "project.deleteAsset": "\u5220\u9664\u8D44\u6E90\u300C{name}\u300D\uFF1F\u5220\u9664\u540E\u4E0D\u80FD\u64A4\u9500\u3002",
-  "project.cancel": "\u53D6\u6D88",
-  "project.open": "\u6253\u5F00",
-  "project.reveal": "\u6253\u5F00\u6240\u5728\u76EE\u5F55\u2026",
-  "project.revealMissing": "\u8FD9\u4E2A\u8D44\u6E90\u8FD8\u6CA1\u6709\u5199\u5230\u78C1\u76D8\u76EE\u5F55\u3002\u5148\u628A\u5DE5\u7A0B\u53E6\u5B58\u4E3A\u76EE\u5F55\u5DE5\u7A0B\u3002",
-  "project.revealFailed": "\u6253\u4E0D\u5F00\u6240\u5728\u76EE\u5F55\uFF1A{message}",
-  "project.place": "\u653E\u5165\u573A\u666F",
-  "project.rename": "\u91CD\u547D\u540D",
-  "project.delete": "\u5220\u9664",
-  "project.resizeTextures": "\u6279\u91CF\u8C03\u6574\u8D34\u56FE\u5C3A\u5BF8\u2026",
-  "texResize.title": "\u6279\u91CF\u8C03\u6574\u8D34\u56FE\u5C3A\u5BF8",
-  "texResize.maxEdge": "\u6700\u5927\u8FB9\u957F",
-  "texResize.search": "\u641C\u7D22\u8D34\u56FE\u540D\u79F0\u2026",
-  "texResize.scopeCurrent": "\u4EC5\u5F53\u524D\u8303\u56F4",
-  "texResize.scopeAll": "\u663E\u793A\u5168\u90E8\u8D34\u56FE ({count})",
-  "texResize.selectAll": "\u5168\u9009",
-  "texResize.selectLarge": "\u4EC5\u9009 > {size}px",
-  "texResize.selectBackedUp": "\u4EC5\u9009\u5DF2\u5907\u4EFD\u539F\u56FE",
-  "texResize.clear": "\u6E05\u7A7A",
-  "texResize.empty": "\u6CA1\u6709\u5339\u914D\u7684\u8D34\u56FE\u8D44\u4EA7",
-  "texResize.unsupported": "\u683C\u5F0F\u4E0D\u652F\u6301\u8C03\u6574",
-  "texResize.backedUp": "\u5DF2\u5907\u4EFD\u539F\u56FE",
-  "texResize.skipFormat": "\u8DF3\u8FC7\u8BE5\u683C\u5F0F",
-  "texResize.restoreOrSkip": "\u5C06\u8FD8\u539F\u539F\u56FE",
-  "texResize.alreadySmall": "\u5DF2\u6EE1\u8DB3\uFF0C\u8DF3\u8FC7",
-  "texResize.backupHint": "\u8986\u76D6\u524D\u4F1A\u81EA\u52A8\u4FDD\u7559\u539F\u56FE\u5907\u4EFD\uFF0C\u53EF\u968F\u65F6\u4E00\u952E\u8FD8\u539F",
-  "texResize.progress": "\u6B63\u5728\u5904\u7406 {done} / {total}\u2026",
-  "texResize.restore": "\u8FD8\u539F\u539F\u56FE ({count})",
-  "texResize.apply": "\u5E94\u7528\u7F29\u653E ({count})",
-  "texResize.done": "\u8D34\u56FE\u7F29\u653E\u5B8C\u6210\uFF1A\u66F4\u65B0 {updated} \u5F20\uFF0C\u8DF3\u8FC7 {skipped} \u5F20\uFF0C\u5931\u8D25 {failed} \u5F20",
-  "texResize.restored": "\u8D34\u56FE\u5DF2\u8FD8\u539F\u539F\u56FE\uFF1A{updated} \u5F20\uFF0C\u5931\u8D25 {failed} \u5F20",
-  "project.newFolderMenu": "\u65B0\u5EFA\u6587\u4EF6\u5939",
-  "project.deleteFolder": "\u5220\u9664\u6587\u4EF6\u5939\u300C{name}\u300D\uFF1F\u91CC\u9762\u7684\u8D44\u6E90\u548C\u5B50\u6587\u4EF6\u5939\u4F1A\u4E00\u8D77\u5220\u9664\uFF0C\u4E0D\u80FD\u64A4\u9500\u3002",
-  "project.objects": "{count} \u4E2A\u7269\u4F53",
-  "project.inUse": "\u4F7F\u7528\u4E2D",
-  "project.sceneHint": "\u5355\u51FB\u6253\u5F00\u3002\u518D\u5355\u51FB\u5F53\u524D\u573A\u666F\u53EF\u6539\u540D",
-  "project.modelHint": "\u53CC\u51FB\u9884\u89C8\uFF0C\u62D6\u8FDB\u89C6\u53E3\u653E\u5165\u573A\u666F",
-  "project.envHint": "\u53CC\u51FB\u9884\u89C8\u73AF\u5883\u8D34\u56FE",
-  "project.textureHint": "\u53CC\u51FB\u9884\u89C8\uFF0C\u4E5F\u53EF\u4EE5\u62D6\u5230\u7269\u4F53\u4E0A",
-  "project.animHint": "\u62D6\u5230\u6A21\u578B\u4E0A\u64AD\u653E",
-  "project.audioHint": "\u53CC\u51FB\u8BD5\u542C",
-  "project.openFolder": "\u53CC\u51FB\u6253\u5F00\u76EE\u5F55",
-  "project.folder": "\u76EE\u5F55",
-  "hierarchy.search": "\u641C\u7D22\u7269\u4F53",
-  "hierarchy.expand": "\u5168\u90E8\u5C55\u5F00",
-  "hierarchy.collapse": "\u5168\u90E8\u6298\u53E0",
-  "hierarchy.create": "\u521B\u5EFA",
-  "hierarchy.empty": "\u573A\u666F\u662F\u7A7A\u7684\u3002\u7528\u52A0\u53F7\u6216\u300C\u521B\u5EFA\u300D\u83DC\u5355\u6DFB\u52A0\u7269\u4F53\u3002",
-  "hierarchy.hint": "\u5355\u51FB\u9009\u62E9\uFF0C\u518D\u5355\u51FB\u6539\u540D\uFF0C\u53CC\u51FB\u805A\u7126",
-  "hierarchy.hide": "\u9690\u85CF",
-  "hierarchy.show": "\u663E\u793A",
-  "hierarchy.locked": "\u5DF2\u9501\u5B9A\uFF1A\u89C6\u53E3\u70B9\u9009\u4F1A\u7A7F\u900F\uFF0C\u624B\u67C4\u4E5F\u4E0D\u4F5C\u7528",
-  "hierarchy.lock": "\u9501\u5B9A\u540E\u89C6\u53E3\u70B9\u9009\u7A7F\u900F\uFF0C\u624B\u67C4\u4E0D\u4F5C\u7528",
-  "hierarchy.createChild": "\u521B\u5EFA\u5B50\u7269\u4F53",
-  "hierarchy.unparent": "\u89E3\u9664\u7236\u5B50",
-  "hierarchy.pasteChild": "\u7C98\u8D34\u4E3A\u5B50\u7EA7",
-  "hierarchy.moveUp": "\u4E0A\u79FB",
-  "hierarchy.moveDown": "\u4E0B\u79FB",
-  "view.persp": "\u900F\u89C6",
-  "view.top": "\u9876",
-  "view.bottom": "\u5E95",
-  "view.front": "\u524D",
-  "view.back": "\u540E",
-  "view.left": "\u5DE6",
-  "view.right": "\u53F3",
-  "view.up": "\u4E0A",
-  "view.down": "\u4E0B",
-  "view.world": "\u4E16\u754C\u5750\u6807",
-  "view.local": "\u5C40\u90E8\u5750\u6807",
-  "view.helpers": "\u8F85\u52A9\u663E\u793A",
-  "view.grid": "\u7F51\u683C",
-  "view.lights": "\u706F\u5149\u548C\u76F8\u673A",
-  "view.gizmoCenter": "\u624B\u67C4\u5728\u4E2D\u5FC3",
-  "view.snap": "\u5438\u9644",
-  "view.step": "\u6B65\u957F",
-  "view.focus": "\u805A\u7126\u9009\u4E2D (F)",
-  "view.fullscreen": "\u89C6\u53E3\u5168\u5C4F",
-  "view.stats": "{objects} \u7269\u4F53 \xB7 {triangles} \u4E09\u89D2",
-  "view.statsOpen": "\u7EDF\u8BA1",
-  "view.statsTitle": "\u7EDF\u8BA1",
-  "view.statsRender": "\u6E32\u67D3",
-  "view.statsPhysics": "\u7269\u7406",
-  "view.statsCamera": "\u76F8\u673A\u4E0E\u9009\u4E2D",
-  "view.statsBackend": "\u56FE\u5F62\u540E\u7AEF",
-  "view.statsCalls": "\u7ED8\u5236\u8C03\u7528",
-  "view.statsTris": "\u6E32\u67D3\u4E09\u89D2",
-  "view.statsMeshes": "\u7F51\u683C / \u9876\u70B9",
-  "view.statsMats": "\u6750\u8D28 / \u8D34\u56FE",
-  "view.statsNodes": "\u573A\u666F\u7269\u4F53",
-  "view.statsAssets": "\u8D44\u6E90",
-  "view.statsBodies": "\u521A\u4F53 \u52A8 / \u8FD0 / \u9759",
-  "view.statsTriggers": "\u89E6\u53D1\u5668",
-  "view.statsPlay": "\u8FD0\u884C",
-  "view.statsCamMode": "\u76F8\u673A",
-  "view.statsCamPos": "\u5750\u6807",
-  "view.statsSelected": "\u9009\u4E2D",
-  "view.statsNone": "\u672A\u9009\u4E2D",
-  "view.statsPlaying": "\u8FD0\u884C\u4E2D",
-  "view.statsEditing": "\u7F16\u8F91",
-  "view.statsReady": "\u5DF2\u542F\u52A8",
-  "view.statsIdle": "\u672A\u8FD0\u884C",
-  "view.statsCollapse": "\u6536\u8D77\u8BE6\u60C5",
-  "view.statsExpand": "\u5C55\u5F00\u8BE6\u60C5",
-  "view.statsVertices": "\u9876\u70B9",
-  "view.statsCallsShort": "\u7ED8\u5236",
-  "view.statsTrisShort": "\u4E09\u89D2",
-  "view.costTitle": "\u8017\u65F6\u524D 8",
-  "view.costHint": "\u6700\u8FD1\u534A\u79D2\u6BCF\u5E27\u5E73\u5747",
-  "view.cost.core.character": "\u89D2\u8272",
-  "view.cost.core.camera": "\u8DDF\u968F\u955C\u5934",
-  "view.cost.core.rules": "\u5F8B\u4EE4",
-  "view.cost.core.devices": "\u4EA4\u4E92\u4E0E\u89E6\u53D1",
-  "view.cost.core.movers": "\u79FB\u52A8\u673A\u5173",
-  "view.cost.core.round": "\u8BA1\u5206\u4E0E\u56DE\u5408",
-  "view.cost.physics": "\u7269\u7406",
-  "view.cost.navigation": "\u5BFC\u822A",
-  "view.cost.animation": "\u9AA8\u9ABC\u52A8\u753B",
-  "view.cost.particles": "\u7C92\u5B50",
-  "view.cost.render": "\u4E3B\u573A\u666F\u7ED8\u5236",
-  "view.cost.picture": "\u753B\u9762\u4E0E\u7ED8\u5236\u524D",
-  "view.cost.rig": "\u7F16\u8F91\u955C\u5934",
-  "view.create": "\u521B\u5EFA",
-  "view.createChild": "\u521B\u5EFA\u5B50\u7269\u4F53",
-  "view.paste": "\u7C98\u8D34",
-  "console.info": "\u4FE1\u606F",
-  "console.warn": "\u8B66\u544A",
-  "console.error": "\u9519\u8BEF",
-  "console.filter": "\u7B5B\u9009",
-  "console.clear": "\u6E05\u7A7A",
-  "history.empty": "\u8FD8\u6CA1\u6709\u53EF\u64A4\u9500\u7684\u64CD\u4F5C\u3002\u79FB\u52A8\u3001\u521B\u5EFA\u548C\u5220\u9664\u90FD\u4F1A\u8BB0\u5728\u8FD9\u91CC\u3002",
-  "history.current": "\u5F53\u524D",
-  "preview.pendingMaterial": "\u6750\u8D28\u8FD8\u6CA1\u5C31\u7EEA",
-  "preview.sphere": "\u7403\u4F53",
-  "preview.box": "\u7ACB\u65B9\u4F53",
-  "preview.torus": "\u5706\u73AF",
-  "preview.plane": "\u5E73\u9762",
-  "preview.studio": "\u6444\u5F71\u68DA",
-  "preview.bright": "\u660E\u4EAE",
-  "preview.dark": "\u6697\u8C03",
-  "preview.turn": "\u65CB\u8F6C",
-  "preview.popout": "\u72EC\u7ACB\u7A97\u53E3",
-  "preview.title": "\u9884\u89C8",
-  "preview.pendingModel": "\u6A21\u578B\u8FD8\u5728\u8BFB\u53D6",
-  "preview.lit": "\u5149\u7167",
-  "preview.wire": "\u7EBF\u6846",
-  "preview.unlit": "\u65E0\u5149",
-  "preview.bounds": "\u5305\u56F4\u76D2",
-  "preview.reset": "\u590D\u4F4D",
-  "preview.light": "\u706F\u5149",
-  "preview.faces": "{count} \u9762",
-  "preview.tabOverview": "\u6982\u89C8",
-  "preview.tabMesh": "\u7F51\u683C",
-  "preview.tabAnim": "\u52A8\u753B",
-  "preview.tabMaterial": "\u6750\u8D28",
-  "preview.tabSocket": "\u6302\u70B9",
-  "preview.tabImport": "\u5BFC\u5165",
-  "preview.importScale": "\u5BFC\u5165\u7F29\u653E",
-  "preview.reimport": "\u91CD\u65B0\u5BFC\u5165",
-  "preview.reimportDone": "\u5DF2\u91CD\u65B0\u5BFC\u5165\uFF1A{name}",
-  "preview.reimportFailed": "\u91CD\u65B0\u5BFC\u5165\u5931\u8D25\u3002\u6E90\u6587\u4EF6\u4E0D\u5728\u7F13\u5B58\u91CC\u3002",
-  "preview.reimportFailedDetail": "\u91CD\u65B0\u5BFC\u5165\u5931\u8D25\uFF1A{message}",
-  "preview.reimportUnavailable": "\u8FD9\u4E2A\u8D44\u6E90\u4E0D\u80FD\u91CD\u65B0\u5BFC\u5165\u3002",
-  "preview.source": "\u6765\u6E90",
-  "preview.scaleHint": "\u5F53\u524D\u9AD8\u5EA6 {height} m\u3002\u5EFA\u8BAE\u628A\u5BFC\u5165\u7F29\u653E\u8BBE\u4E3A {scale}x\u3002",
-  "preview.useScale": "\u8BBE\u4E3A {scale}x",
-  "preview.noMesh": "\u8FD8\u6CA1\u6709\u7F51\u683C\u7EDF\u8BA1\u3002\u91CD\u65B0\u5BFC\u5165\u540E\u53EF\u4EE5\u770B\u6BCF\u4E2A\u5B50\u7F51\u683C\u3002",
-  "preview.noBone": "\u8FD9\u4E2A\u6A21\u578B\u6CA1\u6709\u9AA8\u9ABC\u3002",
-  "preview.noClip": "\u6CA1\u6709\u5185\u5D4C\u52A8\u753B\u3002",
-  "preview.socketEmpty": "\u8FD8\u6CA1\u6709\u6302\u70B9\u3002\u5728\u9AA8\u9ABC\u65C1\u8FB9\u70B9\u52A0\u53F7\uFF0C\u9884\u89C8\u91CC\u4F1A\u663E\u793A\u5750\u6807\u8F74\u3002",
-  "preview.addSocket": "\u52A0\u6302\u70B9",
-  "preview.triangles": "\u4E09\u89D2\u9762",
-  "preview.vertices": "\u9876\u70B9",
-  "preview.meshes": "\u7F51\u683C",
-  "preview.slots": "\u6750\u8D28\u69FD",
-  "preview.bones": "\u9AA8\u9ABC",
-  "preview.sourceSize": "\u539F\u56FE {size}",
-  "preview.textureHint": "\u6EDA\u8F6E\u7F29\u653E\uFF0C\u62D6\u52A8\u5E73\u79FB\u3002\u4FDD\u5B58\u4F1A\u751F\u6210\u65B0\u8D34\u56FE\uFF0C\u4E0D\u80FD\u64A4\u9500\u3002",
-  "preview.flipX": "\u5DE6\u53F3\u7FFB\u8F6C",
-  "preview.flipY": "\u4E0A\u4E0B\u7FFB\u8F6C",
-  "preview.flipNormalY": "\u7FFB\u8F6C\u6CD5\u7EBF Y",
-  "preview.width": "\u5BBD",
-  "preview.height": "\u9AD8",
-  "preview.lockAspect": "\u9501\u5B9A\u6BD4\u4F8B",
-  "preview.saveTexture": "\u4FDD\u5B58\u4E3A\u65B0\u8D34\u56FE",
-  "preview.overwriteTexture": "\u8986\u76D6\u539F\u56FE",
-  "preview.saving": "\u4FDD\u5B58\u4E2D\u2026",
-  "preview.savedTexture": "\u5DF2\u4FDD\u5B58\u65B0\u8D34\u56FE\u300C{name}\u300D",
-  "preview.overwroteTexture": "\u5DF2\u8986\u76D6\u539F\u56FE\u300C{name}\u300D\uFF08\u539F\u56FE\u5DF2\u5907\u4EFD\uFF09",
-  "preview.actor": "\u8BD5\u6F14\u6A21\u578B",
-  "preview.noActor": "\u8BF7\u5148\u5BFC\u5165\u4E00\u4E2A\u6A21\u578B\u6765\u8BD5\u6F14\u8FD9\u6BB5\u52A8\u753B",
-  "preview.loading": "\u6B63\u5728\u52A0\u8F7D\u2026",
-  "preview.saveTextureFail": "\u4FDD\u5B58\u8D34\u56FE\u5931\u8D25\uFF1A{message}",
-  "preview.envHint": "\u62D6\u52A8\u65CB\u8F6C\uFF0C\u6EDA\u8F6E\u62C9\u8FD1",
-  "gesture.create": "\u521B\u5EFA {name}",
-  "gesture.rename": "\u91CD\u547D\u540D",
-  "gesture.move": "\u4FEE\u6539\u4F4D\u79FB",
-  "gesture.rotate": "\u4FEE\u6539\u65CB\u8F6C",
-  "gesture.scale": "\u4FEE\u6539\u7F29\u653E",
-  "gesture.light": "\u4FEE\u6539\u5149\u6E90",
-  "gesture.camera": "\u4FEE\u6539\u76F8\u673A",
-  "gesture.alignCamera": "\u5BF9\u9F50\u955C\u5934",
-  "gesture.picture": "\u4FEE\u6539\u753B\u9762",
-  "gesture.shadow": "\u4FEE\u6539\u9634\u5F71",
-  "gesture.material": "\u4FEE\u6539\u6750\u8D28",
-  "gesture.map": "\u8BBE\u7F6E\u8D34\u56FE",
-  "gesture.mapClear": "\u6E05\u9664\u8D34\u56FE",
-  "gesture.anim": "\u9884\u89C8\u52A8\u753B",
-  "gesture.reset": "\u91CD\u7F6E\u53D8\u6362",
-  "gesture.color": "\u4FEE\u6539\u989C\u8272",
-  "error.panel": "{name} \u51FA\u9519\uFF1A{message}",
-  "log.cacheOpenFail": "\u672C\u5730\u9879\u76EE\u7F13\u5B58\u6CA1\u80FD\u6253\u5F00\uFF0C\u4F7F\u7528\u7A7A\u767D\u573A\u666F",
-  "log.projectCreated": "\u5DF2\u521B\u5EFA\u5DE5\u7A0B\u300C{name}\u300D\u3002\u6E90\u6587\u4EF6\u5728 Assets/\uFF0C\u7F13\u5B58\u5728 .cache/t3d/",
-  "log.projectSavedAs": "\u5DF2\u628A\u5F53\u524D\u9879\u76EE\u53E6\u5B58\u4E3A\u5DE5\u7A0B\u300C{name}\u300D",
-  "log.projectSaveAsOccupied": "\u300C{name}\u300D\u91CC\u5DF2\u7ECF\u6709\u5DE5\u7A0B\uFF0C\u8BF7\u53E6\u9009\u4E00\u4E2A\u7A7A\u6587\u4EF6\u5939",
-  "log.projectOpened": "\u5DF2\u6253\u5F00\u5DE5\u7A0B\u300C{name}\u300D",
-  "log.projectExists": "\u8FD9\u4E2A\u6587\u4EF6\u5939\u5DF2\u6709\u5DE5\u7A0B\uFF0C\u5DF2\u6253\u5F00\u300C{name}\u300D",
-  "log.projectMissing": "\u8FD9\u4E2A\u6587\u4EF6\u5939\u91CC\u6CA1\u6709 project.t3d",
-  "log.projectInvalid": "project.t3d \u65E0\u6CD5\u8BFB\u53D6",
-  "log.projectFailed": "\u5DE5\u7A0B\u64CD\u4F5C\u5931\u8D25\uFF1A{message}",
-  "log.projectBrowser": "\u5F53\u524D\u6D4F\u89C8\u5668\u4E0D\u80FD\u9009\u62E9\u672C\u5730\u5DE5\u7A0B\u76EE\u5F55",
-  "log.projectPermission": "\u4E0A\u6B21\u7684\u5DE5\u7A0B\u9700\u8981\u91CD\u65B0\u6388\u6743\u3002\u8BF7\u4ECE\u300C\u6587\u4EF6 \u2192 \u6700\u8FD1\u5DE5\u7A0B\u300D\u6253\u5F00\uFF0C\u6216\u4F7F\u7528\u300C\u6253\u5F00\u5DE5\u7A0B\u300D\u3002",
-  "log.projectLoose": "\u5DF2\u4ECE Assets \u76EE\u5F55\u7EB3\u5165 {count} \u4E2A\u6587\u4EF6",
-  "status.localProject": "\u672C\u5730\u7F13\u5B58",
-  "log.opened": "\u9879\u76EE\u5DF2\u6253\u5F00\uFF0C\u573A\u666F {ms}ms",
-  "log.openedDetail": "\u9879\u76EE\u5DF2\u6253\u5F00 {total}ms\uFF08\u573A\u666F {scene}ms \xB7 \u6A21\u578B\u7D2F\u8BA1 {model}ms \xB7 \u8D34\u56FE\u7D2F\u8BA1 {texture}ms\uFF09\uFF0C\u6210\u54C1\u547D\u4E2D {hits}\uFF0C\u6E90\u6587\u4EF6\u89E3\u6790 {parsed}\uFF0C\u5931\u8D25 {failed}",
-  "log.openProfile": "\u6253\u5F00\u5256\u6790\uFF08\u8D44\u6E90\u5230\u9F50\u540E\u5230\u753B\u9762\u7A33\u5B9A\uFF0C\u542B\u9884\u7F16\u8BD1\uFF09\uFF1A\u4E3B\u7EBF\u7A0B\u5404\u73AF\u8282 {costs} \xB7 \u65B0\u5EFA\u7740\u8272\u5668 {shaders} \u4E2A \xB7 \u73B0\u7F16\u8BD1\u7BA1\u7EBF {pipelines} \u6761 \xB7 \u9884\u7F16\u8BD1\u7BA1\u7EBF {asyncPipelines} \u6761\uFF08\u7D2F\u8BA1 {asyncMs}ms\uFF0C\u6700\u957F {asyncWorst}ms\uFF09\xB7 \u8D44\u6E90\u5230\u9F50\u524D\u5DF2\u5EFA\u7740\u8272\u5668 {earlyShaders} \u4E2A\u3001\u7BA1\u7EBF {earlyPipelines} \u6761",
-  "log.openTimeline": "\u6253\u5F00\u65F6\u95F4\u7EBF\uFF08\u5B9E\u9645\u8017\u65F6\uFF09\uFF1A\u8BFB\u5DE5\u7A0B\u6587\u4EF6 {read}ms \xB7 \u5EFA\u7ACB\u4F1A\u8BDD {session}ms \xB7 \u626B\u63CF\u76EE\u5F55 {scan}ms \xB7 \u4FDD\u5B58 {save}ms \xB7 \u8D44\u6E90\u6062\u590D {warm}ms\uFF08\u6A21\u578B {model}ms \xB7 \u8D34\u56FE {texture}ms\uFF09\xB7 \u6E32\u67D3\u5668\u521D\u59CB\u5316 {init}ms\uFF08\u8D44\u6E90\u5230\u9F50\u540E\u53C8\u7B49\u4E86\u5B83 {wait}ms\uFF09\xB7 \u7740\u8272\u5668\u9884\u7F16\u8BD1 {compile}ms\uFF08\u671F\u95F4\u754C\u9762\u53EF\u64CD\u4F5C\uFF09\xB7 \u9884\u7F16\u8BD1\u540E\u5230\u753B\u9762\u7A33\u5B9A {settle}ms\uFF08{frames} \u5E27\uFF0C\u5176\u4E2D {slow} \u5E27\u5361\u987F\uFF0C\u6700\u957F\u4E00\u5E27 {worst}ms\uFF09\xB7 \u4E3B\u7EBF\u7A0B\u957F\u4EFB\u52A1 {tasks} \u4E2A\u5171 {busy}ms\uFF0C\u6700\u957F {longest}ms",
-  "log.backend": "\u6E32\u67D3\u540E\u7AEF\uFF1A{label}",
-  "log.webgpu": "WebGPU",
-  "log.webgl2": "WebGL2 \u56DE\u9000",
-  "log.playCameraMany": "\u6709\u591A\u53F0 MainCamera\uFF0C\u8BD5\u73A9\u4F7F\u7528\u300C{name}\u300D",
-  "log.rendererFail": "\u6E32\u67D3\u5668\u521D\u59CB\u5316\u5931\u8D25\uFF1A{message}",
-  "log.unknownFile": "\u4E0D\u8BA4\u8BC6\u7684\u6587\u4EF6\uFF1A{name}",
-  "log.already": "\u8D44\u6E90\u5DF2\u5728\u5E93\u4E2D\uFF1A{name}",
-  "log.importFail": "{name} \u5BFC\u5165\u5931\u8D25\uFF1A{message}",
-  "log.importedAnim": "\u5DF2\u5BFC\u5165\u52A8\u753B {name}",
-  "log.importedModel": "\u5DF2\u5BFC\u5165\u6A21\u578B {name}\uFF0C{count} \u4E2A\u7247\u6BB5",
-  "log.importedTexture": "\u5DF2\u5BFC\u5165\u8D34\u56FE {name}",
-  "log.importedEnv": "\u5DF2\u5BFC\u5165\u73AF\u5883\u8D34\u56FE {name}",
-  "log.importedAudio": "\u5DF2\u5BFC\u5165\u97F3\u9891 {name}",
-  "log.cacheFail": "\u7F13\u5B58\u8D44\u6E90 {name} \u6CA1\u80FD\u6062\u590D\uFF1A{message}",
-  "log.referenced": "\u8FD8\u88AB\u8FD9\u4E9B\u7269\u4F53\u5F15\u7528\uFF1A",
-  "log.folderKept": "\u6587\u4EF6\u5939\u91CC\u8FD8\u6709\u6B63\u5728\u4F7F\u7528\u7684\u8D44\u6E90\uFF0C\u8FD9\u4E9B\u548C\u6587\u4EF6\u5939\u90FD\u7559\u7740\uFF1A",
-  "log.modelLoading": "\u6A21\u578B\u8FD8\u5728\u8BFB\u53D6",
-  "log.envSet": "\u5DF2\u7528 {name} \u4F5C\u4E3A\u73AF\u5883",
-  "log.dragAnim": "\u628A\u52A8\u753B\u62D6\u5230\u6A21\u578B\u4E0A",
-  "log.dragAsset": "\u628A\u8D44\u6E90\u62D6\u5230\u7269\u4F53\u4E0A",
-  "log.animOnModel": "\u52A8\u753B\u8981\u62D6\u5230\u6A21\u578B\u4E0A",
-  "log.needMesh": "\u5148\u9009\u4E2D\u4E00\u4E2A\u7F51\u683C\u6216\u6A21\u578B",
-  "log.savedMaterial": "\u5DF2\u4FDD\u5B58\u6750\u8D28 {name}",
-  "log.needSelection": "\u5148\u9009\u4E2D\u8981\u4FDD\u5B58\u7684\u7269\u4F53",
-  "log.savedPrefab": "\u5DF2\u4FDD\u5B58\u9884\u5236\u4F53 {name}",
-  "log.created": "\u5DF2\u521B\u5EFA {name}",
-  "log.skippedLocked": "\u5DF2\u8DF3\u8FC7\u9501\u5B9A\u7684\u7269\u4F53\uFF1A{names}",
-  "log.deleted": "\u5DF2\u5220\u9664 {count} \u4E2A\u7269\u4F53",
-  "log.duplicated": "\u5DF2\u590D\u5236 {count} \u4E2A\u7269\u4F53",
-  "log.nothingCopy": "\u6CA1\u6709\u53EF\u62F7\u8D1D\u7684\u7269\u4F53",
-  "log.copied": "\u5DF2\u62F7\u8D1D {count} \u4E2A\u7269\u4F53",
-  "log.clipboardEmpty": "\u526A\u8D34\u677F\u662F\u7A7A\u7684",
-  "log.pasted": "\u5DF2\u7C98\u8D34 {count} \u4E2A\u7269\u4F53",
-  "log.groupNeedTwo": "\u6210\u7EC4\u81F3\u5C11\u8981\u9009\u4E2D\u4E24\u4E2A\u7269\u4F53",
-  "log.grouped": "\u5DF2\u6210\u7EC4",
-  "log.needGround": "\u5148\u9009\u62E9\u8981\u8D34\u5730\u7684\u7269\u4F53",
-  "log.alreadyGround": "\u7269\u4F53\u5DF2\u7ECF\u8D34\u5728\u5730\u9762\u4E0A",
-  "log.grounded": "\u5DF2\u8D34\u5730 {count} \u4E2A\u7269\u4F53",
-  "log.locked": "{name} \u5DF2\u9501\u5B9A",
-  "log.cycle": "\u4E0D\u80FD\u628A\u7269\u4F53\u62D6\u6210\u81EA\u5DF1\u7684\u5B50\u7EA7",
-  "log.noUndoPlay": "\u8BD5\u73A9\u4E2D\u4E0D\u80FD\u64A4\u9500",
-  "log.noRedoPlay": "\u8BD5\u73A9\u4E2D\u4E0D\u80FD\u91CD\u505A",
-  "log.resumePlay": "\u7EE7\u7EED\u8BD5\u73A9",
-  "log.startPlay": "\u5F00\u59CB\u8BD5\u73A9\u3002\u505C\u6B62\u540E\u573A\u666F\u4F1A\u56DE\u5230\u8BD5\u73A9\u524D\u3002",
-  "log.stopPlay": "\u5DF2\u505C\u6B62\u8BD5\u73A9\uFF0C\u573A\u666F\u5DF2\u6062\u590D",
-  "log.stopBeforeNew": "\u5148\u505C\u6B62\u8BD5\u73A9\uFF0C\u518D\u65B0\u5EFA\u573A\u666F",
-  "log.createdScene": "\u5DF2\u65B0\u5EFA\u5E76\u6253\u5F00\u573A\u666F {name}",
-  "log.stopBeforeOpen": "\u5148\u505C\u6B62\u8BD5\u73A9\uFF0C\u518D\u6253\u5F00\u573A\u666F",
-  "log.openedScene": "\u5DF2\u6253\u5F00\u573A\u666F {name}",
-  "log.keepScene": "\u81F3\u5C11\u4FDD\u7559\u4E00\u4E2A\u573A\u666F",
-  "log.stopBeforeDelete": "\u5148\u505C\u6B62\u8BD5\u73A9\uFF0C\u518D\u5220\u9664\u573A\u666F",
-  "log.deletedScene": "\u5DF2\u5220\u9664\u573A\u666F",
-  "log.placed": "\u5DF2\u653E\u5165\u573A\u666F {name}",
-  "log.assignedMaterial": "\u5DF2\u6307\u5B9A\u6750\u8D28 {name}",
-  "log.noStructure": "\u8BD5\u73A9\u4E2D\u4E0D\u80FD\u6539\u573A\u666F\u7ED3\u6784\uFF0C\u505C\u6B62\u540E\u518D\u7F16\u8F91",
-  "picker.search": "\u641C\u7D22",
-  "clip.pick": "\u9009\u62E9\u52A8\u753B",
-  "picker.empty": "\u6CA1\u6709\u5339\u914D\u7684\u8D44\u6E90",
-  "picker.texture": "\u9009\u62E9\u8D34\u56FE",
-  "picker.material": "\u9009\u62E9\u6750\u8D28",
-  "picker.environment": "\u9009\u62E9\u73AF\u5883",
-  "picker.none": "\u65E0",
-  "picker.unset": "\u672A\u8BBE\u7F6E",
-  "picker.select": "\u9009\u62E9",
-  "picker.clear": "\u6E05\u9664",
-  "picker.missing": "\u7F3A\u5931",
-  "picker.textureHint": "\u5355\u51FB\u5728\u8D44\u6E90\u7A97\u53E3\u5B9A\u4F4D\uFF0C\u53CC\u51FB\u9884\u89C8",
-  "picker.textureLocate": "\u5728\u8D44\u6E90\u7A97\u53E3\u4E2D\u5B9A\u4F4D",
-  "picker.textureReplace": "\u9009\u62E9\u6216\u66FF\u6362\u8D34\u56FE",
-  "picker.textureDrop": "\u62D6\u653E\u8D34\u56FE\u5230\u8FD9\u91CC",
-  "picker.thumbs": "\u5927\u7F29\u7565\u56FE",
-  "picker.list": "\u5217\u8868",
-  "project.create": "\u521B\u5EFA",
-  "project.createScene": "\u573A\u666F",
-  "project.createMaterial": "\u6750\u8D28",
-  "project.createPrefab": "\u9884\u5236\u4F53",
-  "project.newMaterialName": "\u65B0\u6750\u8D28",
-  "project.copySuffix": "\u526F\u672C",
-  "project.duplicate": "\u590D\u5236",
-  "project.findRefs": "\u67E5\u627E\u5F15\u7528",
-  "project.noRefs": "\u6CA1\u6709\u7269\u4F53\u5F15\u7528\u8FD9\u4E2A\u8D44\u6E90",
-  "project.refs": "\u88AB\u8FD9\u4E9B\u8D44\u6E90\u6216\u7269\u4F53\u4F7F\u7528\uFF1A{names}"
-};
-var en = {
-  "menu.file": "File",
-  "menu.edit": "Edit",
-  "menu.create": "Create",
-  "menu.view": "View",
-  "menu.newProject": "New Project\u2026",
-  "menu.openProject": "Open Project\u2026",
-  "menu.recentProjects": "Recent Projects",
-  "menu.newScene": "New Scene",
-  "menu.save": "Save",
-  "menu.saveAsProject": "Save as Project\u2026",
-  "menu.projectSettings": "Project Settings\u2026",
-  "menu.database": "Game Database\u2026",
-  "menu.library": "Official Library\u2026",
-  "menu.tags": "Tags\u2026",
-  "menu.layers": "Layers\u2026",
-  "hub.title": "Game data",
-  "hub.count": "{tables} tables",
-  "hub.database": "Database ({count} tables)",
-  "hub.packs": "Packs",
-  "hub.search": "Search {name}",
-  "hub.reset": "Reset defaults",
-  "hub.add": "Add row",
-  "hub.catalog": "Tables",
-  "hub.corePack": "Core",
-  "hub.rowCount": "{count} rows",
-  "hub.showing": "Showing {shown} / {total}",
-  "hub.empty": "No matching rows. Add one.",
-  "hub.id": "Id",
-  "hub.name": "Name",
-  "hub.category": "Category",
-  "hub.note": "Note",
-  "hub.delete": "Delete",
-  "hub.enabled": "On",
-  "hub.disabled": "Off",
-  "hub.packHint": "A disabled pack leaves this catalog. Rows already written stay in the project. Stats and items appear when those packs exist.",
-  "library.title": "Official Library",
-  "library.lead": "Capabilities, gameplay, genres, and assets that ship with the editor. Switches belong to this project.",
-  "library.search": "Search",
-  "library.empty": "Nothing matches",
-  "library.on": "On",
-  "library.off": "Off",
-  "library.soon": "In development",
-  "library.official": "Official",
-  "library.includes": "Includes",
-  "library.switch": "Project switch",
-  "library.soonNote": "Still being built into the editor. The switch opens when the pack is registered.",
-  "library.assetNote": "Assets are a catalog. Import them into the project when you use them. Install is not available yet.",
-  "library.shelf.capability": "Capabilities",
-  "library.shelf.gameplay": "Gameplay",
-  "library.shelf.genre": "Genres",
-  "library.shelf.asset": "Assets",
-  "library.shelfHint.capability": "Simulation and rendering runtimes. Water and weather belong here.",
-  "library.shelfHint.gameplay": "Domain packs besides the core. The core pack stays on and is not listed.",
-  "library.shelfHint.genre": "Packs for one kind of game. Templates will be marked separately.",
-  "library.shelfHint.asset": "Ready-made models, animation, and particle presets.",
-  "library.item.physics": "Physics",
-  "library.item.physicsDetail": "Colliders, rigidbodies, and simulation while playing.",
-  "library.item.physicsPoints": "Rigidbodies and colliders\nSimulation under scene gravity",
-  "library.item.buoyancy": "Buoyancy",
-  "library.item.buoyancyDetail": "Wave-driven physical buoyancy and water drag (requires Physics).",
-  "library.item.buoyancyPoints": "Multi-point buoyancy sampling\nWater drag & wave following",
-  "library.item.navigation": "Navigation",
-  "library.item.navigationDetail": "Bakes a navmesh from static surfaces. Obstacles can carve it during play.",
-  "library.item.navigationPoints": "Navmesh baking\nPaths and obstacles",
-  "library.item.spline": "Spline Motion",
-  "library.item.splineDetail": "Constant-speed arc-length movement along editable 3D viewport Spline curves.",
-  "library.item.splinePoints": "3D viewport curve editor\nArc-length uniform speed\nOnce / Loop / Ping-Pong",
-  "library.item.tween": "Tween Motion",
-  "library.item.tweenDetail": "Drive looping or one-shot eased position, rotation, scale, and float animations.",
-  "library.item.tweenPoints": "12 built-in easing curves\nLoop & Yoyo repeat\nScript self.tween API",
-  "library.item.crowd": "Crowd Avoidance",
-  "library.item.crowdDetail": "Local separation steering and line/grid/wedge/circle formation movement for multiple units.",
-  "library.item.crowdPoints": "Spatial hash local avoidance\nLine / Grid / Wedge / Circle formations\nScript self.crowd / world.crowd",
-  "library.item.projectile": "Projectile",
-  "library.item.projectileDetail": "Linear, homing, and ballistic projectile flight with tag-based hit detection and auto-recycle.",
-  "library.item.projectilePoints": "Linear / Homing / Ballistic\nTag hit detection & pooling\nEmits onProjectileHit",
-  "library.item.particles": "Particles",
-  "library.item.particlesDetail": "Particle runtime. Turning this off keeps the data and stops playback.",
-  "library.item.particlesPoints": "Particle simulation\nPresets live in Assets",
-  "library.item.sky": "Sky",
-  "library.item.skyDetail": "Time of day, atmospheric scattering and image lighting that follows the sun. Turning this off keeps the settings and stops drawing it.",
-  "library.item.skyPoints": "Time and atmosphere\nImage-based lighting\nHeight fog, stars and moon",
-  "library.item.water": "Water",
-  "library.item.waterDetail": "TSL water surface with dual scrolling normals, planar reflection, depth absorption and shoreline foam.",
-  "library.item.waterPoints": "Planar reflection & depth\nShoreline foam & waves\n5 style & 3 quality presets",
-  "buoyancy.title": "Buoyancy",
-  "buoyancy.enable": "Enable buoyancy",
-  "buoyancy.sampleMode": "Sample points",
-  "buoyancy.sample.box4": "Bottom 4 corners (boat/crate)",
-  "buoyancy.sample.box8": "8 corners (full roll)",
-  "buoyancy.sample.center": "Center point (sphere/buoy)",
-  "buoyancy.force": "Buoyancy force",
-  "buoyancy.waterDrag": "Water drag",
-  "buoyancy.angularDrag": "Angular drag",
-  "buoyancy.draftDepth": "Draft depth (0 = auto)",
-  "buoyancy.needsDynamic": "Requires a dynamic rigid body to float",
-  "buoyancy.makeDynamic": "Set dynamic",
-  "projectSettings.buoyancyDetail": "Wave-driven physics buoyancy and water drag (requires physics).",
-  "spline.title": "Spline Path",
-  "projectSettings.splineDetail": "Move objects smoothly along ordered child waypoints of a path node.",
-  "tween.title": "Tween Motion",
-  "projectSettings.tweenDetail": "Drive looping or one-shot eased position, rotation, scale, and float animations.",
-  "crowd.title": "Crowd Avoidance",
-  "projectSettings.crowdDetail": "Local separation steering and line/grid/wedge/circle formation movement for multiple units.",
-  "projectile.title": "Projectile",
-  "projectSettings.projectileDetail": "Linear, homing, and ballistic projectile flight with tag-based hit detection and auto-recycle.",
-  "water.title": "Water",
-  "water.enable": "Enable water",
-  "water.groupColor": "Color & absorption",
-  "water.groupWaves": "Ripples & waves",
-  "water.groupOptics": "Optics & foam",
-  "water.on": "On",
-  "water.off": "Off",
-  "water.add": "Make Water",
-  "water.style": "Style preset",
-  "water.quality": "Quality",
-  "water.preset.tropical": "Tropical shallow",
-  "water.preset.ocean": "Deep ocean",
-  "water.preset.lake": "Calm lake",
-  "water.preset.pool": "Clear pool",
-  "water.preset.stylized": "Stylized toon",
-  "water.quality.fast": "Fast (no reflection)",
-  "water.quality.balanced": "Balanced (0.5x)",
-  "water.quality.ultra": "Ultra (0.75x + waves)",
-  "water.shallow": "Shallow color",
-  "water.deep": "Deep color",
-  "water.absorption": "Absorption (m)",
-  "water.opacity": "Base opacity",
-  "water.waveScale": "Wave scale",
-  "water.flowSpeed": "Flow speed",
-  "water.normalScale": "Normal scale",
-  "water.reflectivity": "Reflectivity",
-  "water.specular": "Sun specular",
-  "water.specularSize": "Sparkle size",
-  "water.sss": "Subsurface",
-  "water.foamWidth": "Foam range",
-  "water.foamIntensity": "Foam intensity",
-  "water.foamScale": "Foam scale",
-  "water.crestFoam": "Crest foam",
-  "water.crestThreshold": "Crest threshold",
-  "water.foamTrail": "Foam trail",
-  "water.debugView": "Debug view",
-  "water.debug.off": "Off",
-  "water.debug.height": "Wave height",
-  "water.debug.squeeze": "Squeeze",
-  "water.debug.foam": "Foam mask",
-  "water.waveHeight": "Wave height",
-  "water.waveSpeed": "Wave speed",
-  "water.waveSteepness": "Wave steepness",
-  "water.waveBend": "Crest meander",
-  "water.swellRate": "Swell rate",
-  "water.waveLean": "Crest curl",
-  "water.crestSharpness": "Crest sharpness",
-  "water.groupSwitches": "Features & Performance",
-  "water.planar": "Planar reflect",
-  "water.refraction": "Refraction",
-  "water.caustics": "Caustics",
-  "water.shoreFoam": "Shore foam",
-  "water.underwaterEffect": "Underwater effect",
-  "water.underwaterColor": "Underwater fog color",
-  "water.underwaterFogDensity": "Underwater fog density",
-  "water.underwaterFogStart": "Underwater fog start (m)",
-  "water.underwaterTint": "Underwater tint",
-  "water.underwaterSurfaceBrightness": "Underwater surface brightness",
-  "water.softEdge": "Soft edge (m)",
-  "water.flowDir": "Flow angle",
-  "water.fresnel": "Fresnel power",
-  "water.causticsStrength": "Caustics strength",
-  "water.causticsScale": "Caustics scale",
-  "water.foamColor": "Foam color",
-  "water.sunColor": "Sun color",
-  "water.normalMap": "Normal map",
-  "water.foamMap": "Foam map",
-  "library.item.stats": "Stats",
-  "library.item.statsDetail": "Health, attack, defense, status effects, and levels.",
-  "library.item.statsPoints": "Attributes\nStatus effects\nLevels",
-  "library.item.combat": "Combat",
-  "library.item.combatDetail": "Melee, shooting, weapons, and combos. Depends on Stats.",
-  "library.item.combatPoints": "Weapons and moves\nMelee and shooting",
-  "library.item.perception": "Perception",
-  "library.item.perceptionDetail": "Targeting and spawning.",
-  "library.item.perceptionPoints": "Targeting\nSpawning",
-  "library.item.inventory": "Inventory",
-  "library.item.inventoryDetail": "Items, containers, and pickups.",
-  "library.item.inventoryPoints": "Item table\nContainers and drops",
-  "library.item.dialogue": "Dialogue",
-  "library.item.dialogueDetail": "Dialogue and quest tracking.",
-  "library.item.dialoguePoints": "Dialogue\nQuests",
-  "library.item.rts": "Real-time strategy",
-  "library.item.rtsDetail": "Selection, groups, and unit orders. A genre pack, not a sample project.",
-  "library.item.rtsPoints": "Selection and groups\nUnit orders",
-  "library.item.rpg": "Role-playing",
-  "library.item.rpgDetail": "Stats, inventory, dialogue, and quests gathered as one ruleset.",
-  "library.item.rpgPoints": "Character growth\nQuest flow",
-  "library.item.characters": "Characters and animation",
-  "library.item.charactersDetail": "Official humanoids and common clips. Import adds them to the project.",
-  "library.item.charactersPoints": "Humanoid models\nWalk, run, and jump",
-  "library.item.environments": "Environment kit",
-  "library.item.environmentsDetail": "Ground, rock, and common props.",
-  "library.item.environmentsPoints": "Modular scenes\nProps",
-  "library.item.vfx": "Particle presets",
-  "library.item.vfxDetail": "Finished impacts, trails, and bursts. Playback still needs the particle capability.",
-  "library.item.vfxPoints": "Impacts and bursts\nTrails",
-  "hub.noBlock": "No block",
-  "menu.projectMenu": "Project",
-  "menu.views": "Views",
-  "menu.display": "Display",
-  "menu.savedDirectory": "Saved to {name}",
-  "menu.import": "Import Assets",
-  "menu.extractPackage": "Extract Package\u2026",
-  "menu.undo": "Undo",
-  "menu.redo": "Redo",
-  "menu.duplicate": "Duplicate",
-  "menu.copy": "Copy",
-  "menu.paste": "Paste",
-  "menu.group": "Group",
-  "menu.ground": "Snap to Ground",
-  "menu.delete": "Delete",
-  "menu.selectAll": "Select All",
-  "menu.empty": "Empty",
-  "menu.meshes": "Geometry",
-  "menu.lights": "Lights",
-  "menu.devices": "Gameplay Devices",
-  "menu.camera": "Camera",
-  "menu.effect": "Effect",
-  "menu.screen": "UI",
-  "menu.spline": "Spline Curve",
-  "component.add": "Add Component",
-  "component.search": "Search components\u2026",
-  "component.remove": "Remove Component",
-  "component.reset": "Reset to defaults",
-  "component.added": "Added",
-  "component.empty": "No matching components",
-  "component.group.character": "Character & Camera",
-  "component.group.devices": "Scene Devices",
-  "component.group.world": "Physics & Navigation",
-  "component.group.pack": "Gameplay & Domain Packs",
-  "menu.focus": "Focus Selection",
-  "menu.alignCamera": "Align to Current View",
-  "menu.alignView": "Jump to This Camera",
-  "menu.focusAll": "Focus All",
-  "menu.viewTop": "Top",
-  "menu.viewFront": "Front",
-  "menu.viewRight": "Right",
-  "menu.viewPersp": "Perspective",
-  "menu.viewBottom": "Bottom",
-  "menu.viewBack": "Back",
-  "menu.viewLeft": "Left",
-  "menu.grid": "Show Grid",
-  "menu.snap": "Grid Snap",
-  "menu.resetLayout": "Reset Layout",
-  "menu.settings": "Settings",
-  "menu.saved": "Saved to local cache",
-  "kind.empty": "Empty",
-  "kind.box": "Cube",
-  "kind.sphere": "Sphere",
-  "kind.plane": "Plane",
-  "kind.capsule": "Capsule",
-  "kind.cylinder": "Cylinder",
-  "kind.cone": "Cone",
-  "kind.model": "Model",
-  "kind.directional-light": "Directional Light",
-  "kind.point-light": "Point Light",
-  "kind.spot-light": "Spot Light",
-  "kind.hemisphere-light": "Hemisphere Light",
-  "kind.camera": "Camera",
-  "kind.effect": "Effect",
-  "kind.screen": "UI",
-  "kind.spline": "Spline Curve",
-  "tool.newScene": "New Scene",
-  "tool.save": "Save to local cache",
-  "tool.undo": "Undo",
-  "tool.redo": "Redo",
-  "tool.move": "Move (W)",
-  "tool.rotate": "Rotate (E)",
-  "tool.scale": "Scale (R)",
-  "tool.world": "World",
-  "tool.local": "Local",
-  "tool.snap": "Grid Snap",
-  "tool.grid": "Show Grid",
-  "tool.ground": "Snap to Ground",
-  "tool.originCenter": "Gizmo at bounds center",
-  "tool.originPivot": "Gizmo at pivot",
-  "tool.center": "Center",
-  "tool.pivot": "Pivot",
-  "tool.play": "Play (Ctrl+P)",
-  "tool.pause": "Pause (Ctrl+P)",
-  "tool.playLabel": "Play",
-  "tool.pauseLabel": "Pause",
-  "tool.stop": "Stop (Ctrl+Shift+P)",
-  "tool.history": "History",
-  "status.unnamed": "Untitled Scene",
-  "status.playing": "Playing",
-  "status.paused": "Paused",
-  "status.ready": "Ready",
-  "status.objects": "Objects",
-  "status.none": "Nothing selected",
-  "status.selected": "{count} selected",
-  "status.move": "Move",
-  "status.rotate": "Rotate",
-  "status.scale": "Scale",
-  "status.world": "World",
-  "status.local": "Local",
-  "status.center": "Center",
-  "status.pivot": "Pivot",
-  "status.snapOn": "Snap {step}",
-  "status.snapOff": "Snap off",
-  "status.warming": "Loading assets {completed}/{total}",
-  "panel.project": "Assets",
-  "panel.viewport": "3D Viewport",
-  "panel.console": "Console",
-  "panel.scene": "Scene",
-  "panel.inspector": "Inspector",
-  "panel.history": "History",
-  "panel.unknown": "Unknown panel",
-  "settings.title": "Editor Settings",
-  "settings.general": "General",
-  "settings.language": "Language",
-  "settings.languageSystem": "Follow System",
-  "settings.languageZh": "\u4E2D\u6587",
-  "settings.languageEn": "English",
-  "settings.autoSave": "Auto Save",
-  "settings.autoSaveNote": "Writes to the local cache after edits. Closing the page still saves when this is off.",
-  "settings.openLastProject": "Open last project on startup",
-  "settings.openLastProjectNote": "Opens the most recent project folder when the page loads.",
-  "settings.uiScale": "UI Scale",
-  "settings.close": "Close",
-  "inspector.modelRenderer": "Model Renderer",
-  "inspector.castShadow": "Cast Shadows",
-  "inspector.receiveShadow": "Receive Shadows",
-  "inspector.materialSlots": "Material Slots",
-  "inspector.parts": "Parts",
-  "inspector.hierarchy": "Hierarchy",
-  "inspector.partHint": "Toggles visibility only. The part stays inside the model.",
-  "inspector.sockets": "Bone sockets",
-  "inspector.socketHint": "A socket is a child of the character and sticks to this bone. Parent the weapon under the socket and use the weapon\u2019s own position for the grip.",
-  "inspector.extractSocket": "Extract socket",
-  "inspector.socketReady": "Extracted",
-  "inspector.searchBones": "Search bones",
-  "inspector.backToModel": "Back to model",
-  "inspector.partVisible": "Show part",
-  "inspector.showAllSlots": "All ({count})",
-  "inspector.partSlotsOnly": "Part only",
-  "inspector.sharedSlotHint": "Shared with other parts. Edits affect all of them.",
-  "inspector.bonePath": "Path",
-  "inspector.jumpSocket": "Select socket",
-  "inspector.followModel": "Follow model",
-  "inspector.on": "On",
-  "inspector.off": "Off",
-  "inspector.partMaterial": "Part material",
-  "inspector.followSlot": "Follow slot",
-  "inspector.searchSlots": "Search material slots",
-  "inspector.slot": "Slot {index}",
-  "inspector.inline": "Inline",
-  "inspector.extract": "Extract as material asset",
-  "inspector.reveal": "Show in assets",
-  "inspector.clear": "Clear reference and restore inline material",
-  "inspector.expandSlot": "Expand material slot",
-  "inspector.collapseSlot": "Collapse material slot",
-  "inspector.linkedNote": "This slot references a material asset. Edits apply to every object using it.",
-  "material.shader": "Shader",
-  "material.lit": "Lit",
-  "material.unityStandard": "Unity Standard (R Metallic / A Smoothness)",
-  "material.unityMetallicGloss": "Metallic Smoothness",
-  "material.unityMetallicGlossHint": "Unity convention: Red is metallic, Alpha is smoothness (1-roughness), Green is occlusion",
-  "material.particle": "Particle Unlit",
-  "material.particleBlend": "Blending",
-  "material.blendAlpha": "Alpha",
-  "material.blendPremultiply": "Premultiply",
-  "material.blendAdditive": "Additive",
-  "material.blendMultiply": "Multiply",
-  "material.unlitColor": "Unlit Color",
-  "material.unlitTexture": "Unlit Texture",
-  "material.surface": "Surface",
-  "material.color": "Color",
-  "material.baseMap": "Base Map",
-  "material.metalness": "Metallic",
-  "material.roughness": "Roughness",
-  "material.metallicRoughness": "Metallic Roughness",
-  "material.metallicRoughnessHint": "Green is roughness, blue is metallic, red is occlusion",
-  "material.normal": "Normal",
-  "material.normalScale": "Normal Scale",
-  "material.ao": "Occlusion",
-  "material.aoMap": "Occlusion Map",
-  "material.aoMapHint": "When empty, the red channel of the metallic-roughness map is used",
-  "material.emission": "Emission",
-  "material.emissionColor": "Emission",
-  "material.emissionIntensity": "Emission Intensity",
-  "material.emissionMap": "Emission Map",
-  "material.transparency": "Transparency",
-  "material.mode": "Mode",
-  "material.opaque": "Opaque",
-  "material.blend": "Blend",
-  "material.clip": "Clip",
-  "material.opacity": "Opacity",
-  "material.cutoff": "Alpha Cutoff",
-  "material.render": "Rendering",
-  "material.cull": "Cull",
-  "material.cullBack": "Back",
-  "material.cullFront": "Front",
-  "material.cullOff": "Off",
-  "material.depthWrite": "Depth Write",
-  "material.wireframe": "Wireframe",
-  "material.none": "None",
-  "inspector.playBanner": "Values can change while playing. Stop to restore the scene.",
-  "inspector.keepPlayChanges": "Keep Changes",
-  "tool.keepPlayChanges": "Keep component, material, light, and picture changes made during Play, including scroll distance and right-drag angle (without overwriting runtime positions)",
-  "log.keptPlayChanges": "Kept parameter changes made during Play",
-  "inspector.multi": "{count} objects selected. Fields edit the primary one. The gizmo moves every unlocked object.",
-  "inspector.locked": "Locked",
-  "inspector.visible": "Visible",
-  "inspector.unlock": "Unlock",
-  "inspector.lockHint": "Lock so viewport picking passes through",
-  "inspector.sceneSettings": "Scene Settings",
-  "inspector.transform": "Transform",
-  "inspector.position": "Position",
-  "inspector.rotation": "Rotation",
-  "inspector.scale": "Scale",
-  "inspector.resetPosition": "Reset Position",
-  "inspector.resetRotation": "Reset Rotation",
-  "inspector.resetScale": "Reset Scale",
-  "inspector.model": "Model Animation",
-  "character.title": "Character",
-  "character.enable": "Control during play",
-  "character.driver": "Driver",
-  "character.driver.capsule": "Capsule",
-  "character.driver.nav": "Navigation",
-  "character.driver.hybrid": "Hybrid",
-  "character.mode": "Facing",
-  "character.mode.adventure": "Third-person free",
-  "character.mode.strafe": "Shoulder strafe",
-  "character.mode.lockOn": "Lock-on orbit",
-  "character.mode.pointAndClick": "Click to move",
-  "character.mode.topDown": "Top-down",
-  "character.mode.side25d": "Side scroller",
-  "character.mode.firstPerson": "First person",
-  "character.click": "Click button",
-  "character.clickRight": "Right",
-  "character.clickLeft": "Left",
-  "character.walk": "Walk speed",
-  "character.turn": "Turn speed (\xB0/s)",
-  "character.sprint": "Sprint multiplier",
-  "character.jump": "Jump speed",
-  "character.jumps": "Jump count",
-  "character.coyote": "Coyote time",
-  "character.buffer": "Jump buffer",
-  "character.dash": "Dodge",
-  "character.dashKey": "Dodge key",
-  "character.dashDistance": "Dodge distance",
-  "character.radius": "Capsule radius",
-  "character.height": "Capsule height",
-  "character.capsuleOffset": "Offset",
-  "character.physicsInteract": "Physics interaction",
-  "character.mass": "Mass (kg)",
-  "character.pushStrength": "Push strength",
-  "character.swim": "Swim in water",
-  "character.swimSpeed": "Swim speed scale",
-  "character.swimHeightOffset": "Swim height offset",
-  "character.gravity": "Gravity",
-  "character.clickStop": "Stop radius",
-  "character.footstep": "Footstep distance",
-  "character.footstepJuice": "Footstep feel",
-  "character.dashDuration": "Dodge duration",
-  "character.dashInvincible": "Invincible time",
-  "character.dashCooldown": "Dodge cooldown",
-  "character.section.control": "Control",
-  "character.section.move": "Movement",
-  "character.section.body": "Body",
-  "character.section.clips": "Locomotion clips",
-  "character.lock": "Lock target",
-  "character.pickLock": "Choose lock target",
-  "character.idle": "Idle clip",
-  "character.walkClip": "Walk clip",
-  "character.runClip": "Run clip",
-  "character.jumpClip": "Takeoff",
-  "character.airClip": "In air",
-  "character.landClip": "Landing",
-  "character.dodgeClip": "Dodge clip",
-  "character.swimIdleClip": "Swim idle clip",
-  "character.swimClip": "Swim clip",
-  "character.hint": "WASD moves, Shift sprints, Space jumps. Dodge defaults to C. Click-to-move uses the chosen mouse button. The follow camera owns the view.",
-  "camera.title": "Follow camera",
-  "camera.enable": "Follow during play",
-  "camera.hint": "The camera looks at the pivot and keeps the offset. Right-drag or mouse orbit turns it. Collision pulls it in before a wall.",
-  "camera.preset": "Framing preset",
-  "camera.presetPick": "Apply a framing",
-  "camera.target": "Follow target",
-  "camera.targetSelf": "Self",
-  "camera.pickTarget": "Choose follow target",
-  "camera.orbit": "Orbit",
-  "camera.orbit.rightDrag": "Hold right button",
-  "camera.orbit.mouse": "Mouse look",
-  "camera.orbit.none": "Fixed angle",
-  "camera.fov": "Field of view",
-  "camera.damping": "Damping",
-  "camera.collision": "Avoid walls",
-  "camera.zoom": "Scroll zoom",
-  "camera.zoomSpeed": "Zoom speed",
-  "camera.minDistance": "Min distance",
-  "camera.maxDistance": "Max distance",
-  "camera.offset": "Offset",
-  "camera.pivot": "Look pivot",
-  "camera.sensitivity": "Orbit sensitivity",
-  "camera.minPitch": "Min pitch",
-  "camera.maxPitch": "Max pitch",
-  "camera.local": "Follow facing",
-  "camera.look": "Look at target",
-  "camera.collisionRadius": "Probe radius",
-  "rule.title": "Rules",
-  "rule.hint": "The inspector shows a summary. Triggers, conditions, and the action flow are edited in the workbench. A failed If skips the waits inside it.",
-  "rule.add": "Add rule and edit",
-  "rule.addStep": "Add action",
-  "rule.remove": "Remove",
-  "rule.limit": "Three levels of nesting is the limit.",
-  "rule.cond": "Condition",
-  "rule.message": "Message",
-  "rule.key": "Key",
-  "rule.keyHint": "Click, then press a key",
-  "key.hint": "Click, then press a key",
-  "key.listening": "Press a key\u2026",
-  "rule.tag": "Tag",
-  "rule.left": "Left",
-  "rule.op": "Compare",
-  "rule.right": "Right",
-  "rule.var": "Variable",
-  "rule.value": "Value",
-  "rule.seconds": "Seconds",
-  "rule.clip": "Clip",
-  "rule.trigger.playStart": "Play starts",
-  "rule.trigger.interact": "Interact",
-  "rule.trigger.key": "Key",
-  "rule.trigger.message": "Message received",
-  "rule.trigger.enter": "Enter zone",
-  "rule.trigger.exit": "Exit zone",
-  "rule.trigger.hit": "Hit",
-  "rule.cond.always": "Always",
-  "rule.cond.hasTag": "Has tag",
-  "rule.cond.missingTag": "Missing tag",
-  "rule.cond.compare": "Compare",
-  "rule.cond.formula": "Formula",
-  "rule.step.message": "Send message",
-  "rule.step.setVar": "Set variable",
-  "rule.step.addTag": "Add tag",
-  "rule.step.removeTag": "Remove tag",
-  "rule.step.wait": "Wait seconds",
-  "rule.step.waitFrame": "Wait one frame",
-  "rule.step.waitUpper": "Wait for overlay",
-  "rule.step.waitMark": "Wait for progress",
-  "rule.step.playClip": "Play clip",
-  "rule.step.playUpper": "Play overlay",
-  "rule.step.stance": "Hold stance",
-  "rule.step.if": "If",
-  "rule.step.gather": "Gather nearby",
-  "rule.step.each": "For each",
-  "rule.step.switchState": "Switch state",
-  "rule.step.showUi": "Show UI",
-  "rule.step.hideUi": "Hide UI",
-  "rule.step.lock": "Lock target",
-  "rule.step.camera": "Switch camera",
-  "rule.step.moveTo": "Move to",
-  "rule.step.spawn": "Spawn prefab",
-  "rule.step.hide": "Destroy self",
-  "rule.step.score": "Add score",
-  "rule.step.juice": "Play hit feel",
-  "rule.step.sound": "Play sound",
-  "rule.sound.sfx": "Effect",
-  "rule.sound.music": "Music",
-  "rule.step.log": "Print to console",
-  "rule.formula": "Formula, true when > 0. clamp(value, min, max) and msg.field work",
-  "rule.mark": "Progress 0 to 1",
-  "rule.target": "Name",
-  "rule.offset": "Offset x,y,z",
-  "rule.amount": "Score or formula",
-  "rule.radius": "Radius",
-  "rule.angle": "Angle, 0 for any",
-  "rule.pickTag": "Select gameplay tag",
-  "rule.pickJuice": "Select hit feel",
-  "rule.pickNode": "Select object",
-  "rule.pickCamera": "Select camera",
-  "rule.pickScreen": "Select UI",
-  "rule.pickPrefab": "Select prefab",
-  "rule.pickEmpty": "Nothing to pick",
-  "rule.packMissing": "Missing ({kind})",
-  "rule.packDisabledHint": "Pack disabled, skipped during play",
-  "rule.logText": "Text to print",
-  "rule.open": "Open rules workbench ({count})",
-  "rule.note": "Interact, zones, hits, and messages arrive here. Pick a rule, or open the workbench.",
-  "rule.unnamed": "Untitled rule",
-  "rule.enabled": "Enable this rule",
-  "rule.duplicate": "Duplicate rule",
-  "rule.when": "When this happens",
-  "rule.ifTitle": "And these conditions hold",
-  "rule.doTitle": "Then do, in order",
-  "rule.addCond": "Add condition",
-  "rule.noCond": "No extra conditions. The actions run as soon as this triggers.",
-  "rule.noStep": "No actions yet.",
-  "rule.addChild": "Add child step",
-  "rule.rules": "Rules",
-  "rule.states": "State tree",
-  "rule.done": "Done",
-  "rule.workbench": "Rules workbench",
-  "rule.count": "{count} rules",
-  "rule.list": "Rules",
-  "rule.empty": "No rules yet. Add one from the toolbar.",
-  "rule.name": "Name",
-  "rule.triggerKind": "Trigger",
-  "rule.alwaysPass": "Always passes",
-  "rule.stateName": "State name",
-  "rule.enterCond": "Enter condition",
-  "rule.enterHint": "Used only for child states. Empty means the state can be entered.",
-  "rule.jump": "Jump to another state",
-  "rule.noJump": "With no jump, the state stays active.",
-  "rule.addJump": "Add jump",
-  "rule.pickState": "Choose target",
-  "rule.addState": "Add state",
-  "rule.addChildState": "Add child state",
-  "rule.noState": "No states yet. Locomotion stays on the character. Use states for explore, combat, or stun.",
-  "rule.lane.enter": "Enter",
-  "rule.lane.tick": "Each frame",
-  "rule.lane.exit": "Exit",
-  "rule.lane.enterHint": "Runs once when this state is entered.",
-  "rule.lane.tickHint": "Repeats while this state is active. Add a wait for effects that should not fire every frame.",
-  "rule.lane.exitHint": "Runs once when leaving this state.",
-  "rule.live": "Running",
-  "rule.waiting": "Waiting",
-  "rule.footer": "Edits are undoable. Every tag or variable condition must pass.",
-  "interact.title": "Smart object",
-  "interact.enable": "Interactable",
-  "interact.prompt": "Prompt",
-  "interact.key": "Interact key",
-  "interact.radius": "Radius",
-  "interact.tag": "Interactor tag",
-  "interact.any": "Any character",
-  "mover.title": "Mover",
-  "mover.enable": "Enable",
-  "mover.offset": "Offset",
-  "mover.duration": "Leg seconds",
-  "mover.pause": "Pause",
-  "mover.carry": "Carry radius",
-  "mover.ping": "Ping pong",
-  "mover.auto": "Play on start",
-  "mover.message": "Start message",
-  "checkpoint.title": "Checkpoint",
-  "checkpoint.enable": "Enable",
-  "checkpoint.spawn": "Initial spawn",
-  "checkpoint.radius": "Radius",
-  "checkpoint.delay": "Respawn delay",
-  "checkpoint.abyss": "Abyss height",
-  "checkpoint.message": "Respawn message",
-  "score.title": "Score",
-  "score.enable": "Enable",
-  "score.hint": "Bind UI text to objective, score, timeLeft",
-  "score.objective": "Objective",
-  "score.target": "Target",
-  "score.interact": "Per interact",
-  "score.time": "Time limit",
-  "interact.message": "Interact message",
-  "interact.once": "Only once",
-  "trigger.title": "Trigger zone",
-  "trigger.enable": "Enabled",
-  "trigger.radius": "Radius",
-  "trigger.tag": "Subject tag",
-  "trigger.enter": "Enter message",
-  "trigger.exit": "Exit message",
-  "trigger.once": "Only once",
-  "inspector.savePrefab": "Save as Prefab",
-  "inspector.shortSavePrefab": "Prefab",
-  "inspector.shortPreview": "Preview",
-  "prefab.edit": "Open Prefab",
-  "prefab.shortEdit": "Open",
-  "prefab.shortReveal": "Reveal",
-  "prefab.shortApply": "Apply",
-  "prefab.shortRevert": "Revert",
-  "prefab.shortUnpack": "Unpack",
-  "prefab.instance": "Prefab Instance",
-  "prefab.apply": "Apply to Prefab",
-  "prefab.revert": "Revert Prefab",
-  "prefab.unpack": "Unpack",
-  "prefab.saveAs": "Save as Prefab\u2026",
-  "prefab.saveHint": "Leave blank to use \u201C{name}\u201D.",
-  "prefab.reveal": "Reveal Prefab",
-  "prefab.openHint": "Click to edit this prefab",
-  "prefab.cancel": "Cancel",
-  "prefab.confirm": "OK",
-  "prefab.discard": "Discard and Return",
-  "prefab.unpackTitle": "Unpack Prefab",
-  "prefab.unpackMessage": "This instance becomes a normal object and will no longer follow the prefab.",
-  "prefab.alreadyInstance": "This is already a prefab instance. Unpack it before saving a new prefab.",
-  "prefab.rebind": "Rebind",
-  "prefab.rebindPick": "Choose a prefab\u2026",
-  "prefab.rebound": "Rebound instances to the new prefab",
-  "prefab.editing": "Editing prefab {name}",
-  "prefab.saveBack": "Save and Return",
-  "prefab.saved": "Prefab saved and instances updated",
-  "prefab.closed": "Returned to the scene",
-  "prefab.applied": "Instance changes were written to the prefab",
-  "prefab.reverted": "Reverted to the prefab",
-  "prefab.unpacked": "Prefab unpacked",
-  "prefab.place": "Place {name}",
-  "prefab.create": "Create prefab {name}",
-  "prefab.needOne": "Select a single object to create a prefab",
-  "prefab.exitFirst": "Exit prefab editing first",
-  "prefab.noPlay": "Cannot play while editing a prefab",
-  "prefab.keepRoot": "The prefab root cannot be deleted",
-  "prefab.rootLocked": "The prefab root transform stays at the origin",
-  "prefab.missing": "Missing prefab",
-  "prefab.dirty": "Unapplied changes",
-  "inspector.previewModel": "Preview Model",
-  "inspector.light": "Light",
-  "inspector.color": "Color",
-  "inspector.intensity": "Intensity",
-  "inspector.angle": "Angle",
-  "inspector.ground": "Ground",
-  "inspector.range": "Range",
-  "inspector.decay": "Decay",
-  "inspector.penumbra": "Penumbra",
-  "inspector.shadow": "Shadow",
-  "inspector.bias": "Bias",
-  "inspector.normalBias": "Normal Bias",
-  "inspector.camera": "Camera",
-  "inspector.fov": "Field of View",
-  "inspector.near": "Near",
-  "inspector.far": "Far",
-  "inspector.material": "Material",
-  "inspector.asset": "Asset",
-  "inspector.type": "Type",
-  "inspector.file": "File",
-  "inspector.objects": "Objects",
-  "inspector.clips": "Clips",
-  "inspector.preview": "Preview",
-  "inspector.place": "Place in Scene",
-  "inspector.unnamedScene": "Untitled Scene",
-  "inspector.scene": "Scene",
-  "physics.enable": "Physics",
-  "particles.enable": "Effects",
-  "particles.title": "Effect",
-  "particles.playing": "Playing",
-  "particles.material": "Material",
-  "particles.materialEmpty": "Default additive",
-  "particles.clearMaterial": "Clear material",
-  "particles.saveAsset": "Save as asset",
-  "particles.saved": "Saved {name} as an effect asset",
-  "particles.missing": "The effect capability is off, so this object does not play.",
-  "particles.missingAsset": "The effect asset is missing.",
-  "particles.badMaterial": "This material is not Particle Unlit, so its look is not used.",
-  "particles.version": "This effect was written by quarks {version}. The runtime is {current}.",
-  "particles.loadFail": "This effect could not be read: {message}",
-  "particles.imported": "Imported effect {name}",
-  "particles.notQuarks": "{name} is not a Quarks effect",
-  "particles.noEmitter": "This effect has no editable emitter.",
-  "particles.emitter": "Emitter",
-  "particles.main": "Main",
-  "particles.duration": "Duration",
-  "particles.looping": "Looping",
-  "particles.prewarm": "Prewarm",
-  "particles.worldSpace": "World space",
-  "particles.renderMode": "Render mode",
-  "particles.billboard": "Billboard",
-  "particles.stretched": "Stretched billboard",
-  "particles.horizontal": "Horizontal billboard",
-  "particles.vertical": "Vertical billboard",
-  "particles.mesh": "Mesh",
-  "particles.trail": "Trail",
-  "particles.emission": "Emission",
-  "particles.rate": "Rate",
-  "particles.burst": "Burst",
-  "particles.burstsLocked": "Several bursts are stored; the inspector leaves them alone.",
-  "particles.start": "Start",
-  "particles.life": "Lifetime",
-  "particles.speed": "Speed",
-  "particles.size": "Size",
-  "particles.rotation": "Rotation",
-  "particles.color": "Color",
-  "particles.tint": "Tint",
-  "particles.alpha": "Alpha",
-  "particles.shape": "Shape",
-  "particles.shapeType": "Type",
-  "particles.shapePoint": "Point",
-  "particles.shapeCone": "Cone",
-  "particles.shapeSphere": "Sphere",
-  "particles.shapeHemisphere": "Hemisphere",
-  "particles.shapeCircle": "Circle",
-  "particles.shapeDonut": "Donut",
-  "particles.shapeRectangle": "Rectangle",
-  "particles.radius": "Radius",
-  "particles.angle": "Angle",
-  "particles.arc": "Arc",
-  "particles.thickness": "Thickness",
-  "particles.width": "Width",
-  "particles.height": "Height",
-  "particles.sheet": "Texture sheet",
-  "particles.tilesX": "Columns",
-  "particles.tilesY": "Rows",
-  "particles.force": "Forces",
-  "particles.gravity": "Gravity",
-  "particles.gravityLocked": "A sideways force is already stored. Gravity is left unchanged.",
-  "particles.speedFactor": "Speed stretch",
-  "particles.lengthFactor": "Length",
-  "particles.trailLength": "Trail segments",
-  "particles.modules": "Curve modules",
-  "particles.moduleColor": "Color over lifetime",
-  "particles.moduleSize": "Size over lifetime",
-  "particles.moduleNoise": "Noise",
-  "particles.moduleOther": "{name}",
-  "particles.min": "min",
-  "particles.max": "max",
-  "particles.curve": "This value is a curve. The inspector does not edit it.",
-  "particles.shared": "Editing asset \u201C{name}\u201D. Every object that uses it changes.",
-  "particles.createMaterial": "Create particle material",
-  "physics.title": "Physics",
-  "physics.participate": "Simulate",
-  "physics.body": "Body",
-  "physics.static": "Static",
-  "physics.dynamic": "Dynamic",
-  "physics.kinematic": "Kinematic",
-  "physics.shape": "Shape",
-  "physics.box": "Box",
-  "physics.sphere": "Sphere",
-  "physics.capsule": "Capsule",
-  "physics.cylinder": "Cylinder",
-  "physics.cone": "Cone",
-  "physics.convex": "Convex hull",
-  "physics.trimesh": "Triangle mesh",
-  "physics.convexHint": "Uses the convex hull of this object\u2019s mesh. Dynamic bodies are fine. Concave gaps are not solid.",
-  "physics.trimeshHint": "Uses the mesh triangles and can be concave. Best as static or kinematic. Dynamic bodies are steadier with a convex hull.",
-  "physics.radius": "Radius",
-  "physics.height": "Height",
-  "physics.size": "Size",
-  "physics.trigger": "Trigger",
-  "physics.mass": "Mass",
-  "physics.friction": "Friction",
-  "physics.restitution": "Restitution",
-  "physics.linearDamping": "Linear damping",
-  "physics.angularDamping": "Angular damping",
-  "physics.gravityScale": "Gravity scale",
-  "physics.gravity": "Gravity",
-  "audio.title": "Audio",
-  "audio.master": "Master",
-  "audio.music": "Music",
-  "audio.sfx": "Effects",
-  "audio.volume": "Volume",
-  "audio.pick": "Choose sound",
-  "audio.hint": "In the browser, sound starts after the first click. The desktop app can play immediately.",
-  "soundSource.title": "Sound source",
-  "soundSource.enable": "Enable",
-  "soundSource.clip": "Sound",
-  "soundSource.loop": "Loop",
-  "soundSource.distance": "Full volume distance",
-  "soundSource.rolloff": "Falloff",
-  "soundSource.hint": "Plays on this object during play and follows it. Turn loop off to play once.",
-  "physics.disabledHint": "The physics pack is off. Collider data stays on the objects.",
-  "navigation.enable": "Navigation",
-  "navigation.title": "Navigation",
-  "navigation.participate": "Navigate",
-  "navigation.role": "Use",
-  "navigation.surface": "Surface",
-  "navigation.obstacle": "Obstacle",
-  "navigation.radius": "Radius",
-  "navigation.height": "Height",
-  "navigation.cellSize": "Cell size",
-  "navigation.cellHeight": "Cell height",
-  "navigation.slope": "Max slope",
-  "navigation.agentRadius": "Agent radius",
-  "navigation.agentHeight": "Agent height",
-  "navigation.maxObstacles": "Obstacle capacity",
-  "navigation.show": "Show mesh",
-  "navigation.bake": "Bake",
-  "navigation.rebake": "Bake again",
-  "navigation.clear": "Clear",
-  "navigation.cleared": "Cleared the navigation mesh.",
-  "navigation.cancel": "Cancel bake",
-  "navigation.baking": "Baking\u2026",
-  "navigation.ready": "Walkable surface is ready",
-  "navigation.noSurface": "There is no navigation surface to bake.",
-  "navigation.disabledHint": "The navigation pack is off. Surface and obstacle data stays on the objects.",
-  "navigation.stale": "Parameters changed. Bake again.",
-  "navigation.triangles": "Source triangles",
-  "navigation.obstacleHint": "When obstacle capacity is above 0, play mode carves vertical cylinders out of the navmesh.",
-  "projectSettings.title": "Project Settings",
-  "projectSettings.modules": "Capability packs",
-  "projectSettings.note": "Switches are saved with this project. Turning one off stops loading that module and keeps data already authored.",
-  "projectSettings.physicsDetail": "Colliders, rigidbodies, and simulation while playing.",
-  "projectSettings.particlesDetail": "Particle effects. Turning this off keeps the data and stops playback.",
-  "sky.enable": "Sky",
-  "sky.title": "Sky",
-  "sky.time": "Time",
-  "sky.latitude": "Latitude",
-  "sky.day": "Day of year",
-  "sky.north": "North",
-  "sky.northPosZ": "+Z is north",
-  "sky.northNegZ": "-Z is north",
-  "sky.northPosX": "+X is north",
-  "sky.northNegX": "-X is north",
-  "sky.atmosphere": "Atmosphere",
-  "sky.exposure": "Sky exposure",
-  "sky.turbidity": "Turbidity",
-  "sky.albedo": "Ground albedo",
-  "sky.mirror": "Mirror below horizon",
-  "sky.sun": "Sun",
-  "sky.sunDisc": "Sun disc",
-  "sky.angularSize": "Angular size \xB0",
-  "sky.sunIntensity": "Sun intensity",
-  "sky.sunShadow": "Sun shadows",
-  "sky.haze": "Aerial haze",
-  "sky.hazeStrength": "Strength",
-  "sky.hazeNear": "Near range",
-  "sky.fog": "Height fog",
-  "sky.fogColor": "Color",
-  "sky.fogSkyColor": "Match the sky",
-  "sky.fogDensity": "Density",
-  "sky.fogFalloff": "Height falloff",
-  "sky.fogBase": "Base height",
-  "sky.fogOpacity": "Max opacity",
-  "sky.night": "Night",
-  "sky.stars": "Stars",
-  "sky.starIntensity": "Starlight",
-  "sky.starSize": "Star size",
-  "sky.milkyWay": "Milky Way",
-  "sky.moon": "Moon",
-  "sky.moonPhase": "Moon phase",
-  "sky.moonLight": "Moonlight",
-  "projectSettings.skyDetail": "Procedural atmosphere and time of day. While on, it replaces the background and environment image so metal reflections follow the sun. Turning it off keeps the settings.",
-  "projectSettings.navigationDetail": "Bakes a navmesh from static surfaces. Obstacles can carve it during play, and path queries read that mesh.",
-  "projectSettings.catalogs": "Project catalogs",
-  "projectSettings.manage": "Manage\u2026",
-  "tags.title": "Tags",
-  "tags.subtitle": "Like Unity tags: each object has one primary tag, plus extra hierarchical tags for filtering and later gameplay queries.",
-  "tags.name": "Name",
-  "tags.id": "Id",
-  "tags.add": "Add Tag",
-  "tags.addDefault": "New Tag",
-  "tags.remove": "Delete",
-  "tags.done": "Done",
-  "tags.card": "Tag",
-  "tags.none": "Untagged",
-  "tags.orphan": "Missing tag {id}",
-  "tags.extraPlaceholder": "+ Type a tag such as Team.Enemy and press Enter",
-  "tags.gameplay": "Gameplay tags",
-  "tags.addGameplay": "Add gameplay tag\u2026",
-  "tags.runtime": "Timed tag while playing",
-  "tags.openDatabase": "Open game database",
-  "tags.filter": "Filter by tag",
-  "tags.filterAll": "All",
-  "tags.filterUntagged": "Untagged only",
-  "layers.title": "Layers",
-  "layers.subtitle": "Layers drive viewport visibility and physics collision. Bit 31 is reserved for editor helpers.",
-  "layers.tabLayers": "Layers",
-  "layers.tabPhysics": "Physics matrix",
-  "layers.bit": "Bit",
-  "layers.name": "Name",
-  "layers.id": "Id",
-  "layers.builtIn": "Built-in",
-  "layers.visible": "View",
-  "layers.add": "Add Layer",
-  "layers.addDefault": "New Layer",
-  "layers.remove": "Delete",
-  "layers.done": "Done",
-  "layers.show": "Show this layer in the viewport",
-  "layers.hide": "Hide this layer in the viewport",
-  "layers.card": "Layer",
-  "layers.option": "{name} \xB7 bit {bit}",
-  "layers.matrixEnable": "Use collision matrix",
-  "layers.matrixHint": "Each row is one pair of layers. Checked pairs collide, and the relationship is symmetric. While off, every layer collides. Rapier uses the first 16 bits.",
-  "layers.matrixEmpty": "Add at least two layers to choose collision pairs.",
-  "inspector.column.system": "System",
-  "inspector.column.packs": "Extension packs",
-  "inspector.sky": "Sky",
-  "inspector.background": "Background",
-  "inspector.exposure": "Exposure",
-  "inspector.toneMapping": "Tone Mapping",
-  "tone.none": "None",
-  "tone.linear": "Linear",
-  "tone.reinhard": "Reinhard",
-  "tone.cineon": "Cineon",
-  "tone.aces": "ACES",
-  "tone.agx": "AgX",
-  "tone.neutral": "Neutral",
-  "inspector.fog": "Fog",
-  "inspector.enabled": "Enabled",
-  "inspector.fogColor": "Fog Color",
-  "inspector.fogStart": "Start",
-  "inspector.fogEnd": "End",
-  "inspector.environment": "Environment Lighting",
-  "inspector.env": "Environment",
-  "inspector.bloom": "Bloom",
-  "inspector.aa": "Antialiasing",
-  "inspector.ssr": "Screen Reflections",
-  "inspector.ssrQuality": "Quality",
-  "inspector.ssrDistance": "Distance",
-  "inspector.ssrThickness": "Thickness",
-  "inspector.volume": "Volumetric Light",
-  "inspector.volumeDensity": "Density",
-  "inspector.volumeSteps": "Steps",
-  "inspector.volumeSize": "Extent",
-  "inspector.volumeHeight": "Height",
-  "inspector.ssgi": "Global Illumination",
-  "inspector.ssgiIndirect": "Indirect",
-  "inspector.ssgiOcclusion": "Occlusion",
-  "inspector.ssgiRadius": "Radius",
-  "inspector.ssgiSlices": "Slices",
-  "inspector.ssgiSteps": "Steps",
-  "inspector.ssgiDenoise": "Denoise",
-  "inspector.radius": "Radius",
-  "inspector.threshold": "Threshold",
-  "inspector.dof": "Depth of Field",
-  "inspector.focus": "Focus",
-  "inspector.focal": "Focal Length",
-  "inspector.bokeh": "Bokeh",
-  "inspector.occlusion": "Ambient Occlusion",
-  "inspector.grade": "Color Grade",
-  "inspector.hue": "Hue",
-  "inspector.saturation": "Saturation",
-  "inspector.clip": "Clip",
-  "inspector.play": "Play",
-  "inspector.pause": "Pause",
-  "inspector.time": "Time",
-  "inspector.animFile": "Animation",
-  "inspector.modelClips": "Model clips",
-  "inspector.fileClips": "File clips",
-  "humanoid.summary": "Humanoid \xB7 {skins} skins \xB7 {bind} \xB7 {motion}",
-  "humanoid.noHips": "No hips bone was recognized, so clips will not retarget onto this model.",
-  "humanoid.missing": "Missing {names}",
-  "humanoid.coreOk": "{count} core slots found",
-  "humanoid.restConflict": "These bones disagree across skins: {names}",
-  "humanoid.bind": "bind pose",
-  "humanoid.noBind": "no bind pose",
-  "humanoid.inPlace": "in place",
-  "humanoid.rootMotion": "root motion",
-  "humanoid.motionUnknown": "motion unknown",
-  "humanoid.slots": "Bone slots",
-  "humanoid.slotsHint": "Correct one bone when the automatic slot is wrong. Play the clip again afterwards.",
-  "humanoid.auto": "Auto",
-  "humanoid.slotHips": "Hips",
-  "humanoid.slotSpine": "Spine",
-  "humanoid.slotHead": "Head",
-  "humanoid.slotLeftUpperArm": "Left upper arm",
-  "humanoid.slotLeftLowerArm": "Left lower arm",
-  "humanoid.slotRightUpperArm": "Right upper arm",
-  "humanoid.slotRightLowerArm": "Right lower arm",
-  "humanoid.slotLeftUpperLeg": "Left upper leg",
-  "humanoid.slotLeftLowerLeg": "Left lower leg",
-  "humanoid.slotRightUpperLeg": "Right upper leg",
-  "humanoid.slotRightLowerLeg": "Right lower leg",
-  "humanoid.adjust": "Retarget adjust",
-  "humanoid.adjustHint": "Leave this closed unless the automatic result is off. Positive values widen the shoulders, rotate them outward, spread the arms, bend the elbows, widen the hips, bend the knees, point the toes down, raise the hips, and lengthen the stride. Applied only when another skeleton plays on this character.",
-  "humanoid.reset": "Reset to automatic",
-  "humanoid.shoulderWidth": "Shoulder width",
-  "humanoid.shoulderRotate": "Shoulder rotate",
-  "humanoid.armSpread": "Arm spread",
-  "humanoid.elbowBend": "Elbow",
-  "humanoid.hipSpread": "Hip spread",
-  "humanoid.kneeBend": "Knee",
-  "humanoid.footPitch": "Foot pitch",
-  "humanoid.hipsHeight": "Hips height",
-  "humanoid.stride": "Stride",
-  "project.clips": "Clips",
-  "anim.loop": "Loop",
-  "anim.speed": "Speed",
-  "anim.fade": "Fade",
-  "anim.inPlace": "In place",
-  "anim.animator": "State machine",
-  "anim.enabled": "Enabled",
-  "anim.current": "Current {name}",
-  "anim.addState": "Add state",
-  "anim.addParam": "Add parameter",
-  "anim.addTransition": "Add transition",
-  "anim.transitions": "Transitions",
-  "anim.state": "State",
-  "anim.param": "Parameter",
-  "anim.remove": "Remove",
-  "anim.bool": "Bool",
-  "anim.number": "Number",
-  "anim.trigger": "Trigger",
-  "anim.fire": "Fire",
-  "anim.equals": "Equals",
-  "anim.greater": "Greater",
-  "anim.less": "Less",
-  "anim.simple": "Simple",
-  "anim.machine": "State machine",
-  "anim.simpleHint": "Play one clip. Switch to the state machine for parameters and automatic changes.",
-  "anim.machineHint": "The state machine picks the clip. Each state has its own mask.",
-  "anim.end": "When finished",
-  "anim.hold": "Hold last frame",
-  "anim.stop": "Stop",
-  "anim.backToDefault": "Return to default",
-  "anim.default": "Default",
-  "anim.setDefault": "Set default",
-  "anim.fromClips": "Create states from clips",
-  "anim.seedParams": "Add common parameters",
-  "anim.mask": "Bone mask",
-  "anim.overlay": "Upper body",
-  "anim.overlayStop": "Stop overlay",
-  "anim.maskFull": "Full body",
-  "anim.maskUpper": "Upper body only",
-  "anim.maskLower": "Lower body only",
-  "anim.exit": "Wait until",
-  "anim.embedded": "{count} embedded clips",
-  "asset.scene": "Scene",
-  "asset.model": "Model",
-  "asset.texture": "Texture",
-  "asset.environment": "Environment",
-  "asset.material": "Material",
-  "asset.effect": "Effect",
-  "asset.ui": "UI",
-  "project.createUi": "UI",
-  "project.newUiName": "Score UI",
-  "ui.open": "Edit UI",
-  "ui.add": "Add",
-  "ui.delete": "Delete",
-  "ui.up": "Up",
-  "ui.down": "Down",
-  "ui.close": "Close",
-  "ui.undo": "Undo",
-  "ui.redo": "Redo",
-  "ui.zoom": "Zoom",
-  "ui.name": "Name",
-  "ui.text": "Text",
-  "ui.image": "Image",
-  "ui.layout": "Layout",
-  "ui.anchor": "Anchor",
-  "ui.flex": "Stack",
-  "ui.anchorPreset": "Anchor",
-  "ui.custom": "Keep",
-  "ui.direction": "Direction",
-  "ui.column": "Column",
-  "ui.row": "Row",
-  "ui.gap": "Gap",
-  "ui.width": "Width",
-  "ui.height": "Height",
-  "ui.style": "Style",
-  "ui.state": "State",
-  "ui.color": "Color",
-  "ui.align": "Align",
-  "ui.align.left": "Left",
-  "ui.align.center": "Center",
-  "ui.align.right": "Right",
-  "ui.border": "Border",
-  "ui.borderWidth": "Border width",
-  "ui.fontSize": "Font size",
-  "ui.background": "Background",
-  "ui.opacity": "Opacity",
-  "ui.radius": "Radius",
-  "ui.tint": "Fill",
-  "ui.binding": "Binding",
-  "ui.source": "Source",
-  "ui.variable": "Variable",
-  "ui.component": "Component",
-  "ui.node": "Object",
-  "ui.field": "Field",
-  "ui.value": "Value",
-  "ui.min": "Min",
-  "ui.max": "Max",
-  "ui.click": "Click",
-  "ui.none": "None",
-  "ui.sendMessage": "Send message",
-  "ui.setVariable": "Set variable",
-  "ui.message": "Message",
-  "ui.fake": "Preview values",
-  "ui.previewClick": "{name}: {detail}",
-  "ui.document": "UI",
-  "ui.layer": "Layer",
-  "ui.visibleOnPlay": "Visible when play starts",
-  "ui.addScreen": "Add screen UI",
-  "ui.removeScreen": "Remove",
-  "ui.missing": "Missing UI document",
-  "ui.mount": "Mount UI",
-  "ui.type.panel": "Panel",
-  "ui.type.stack": "Stack",
-  "ui.type.text": "Text",
-  "ui.type.image": "Image",
-  "ui.type.button": "Button",
-  "ui.type.progress": "Progress",
-  "ui.state.normal": "Normal",
-  "ui.state.hover": "Hover",
-  "ui.state.pressed": "Pressed",
-  "ui.state.disabled": "Disabled",
-  "ui.target.text": "Text",
-  "ui.target.visible": "Visible",
-  "ui.target.enabled": "Enabled",
-  "ui.target.progress": "Progress",
-  "ui.target.opacity": "Opacity",
-  "ui.anchor.top": "Top",
-  "ui.anchor.center": "Center",
-  "ui.anchor.bottom": "Bottom",
-  "ui.anchor.left": "Left",
-  "ui.anchor.right": "Right",
-  "ui.layer.hud": "HUD",
-  "ui.layer.menu": "Menu",
-  "ui.layer.popup": "Popup",
-  "ui.layer.modal": "Modal",
-  "log.createdUi": "Created UI {name}",
-  "log.mountedUi": "Mounted UI {name}",
-  "log.uiMessage": "UI sent message {message}",
-  "asset.animation": "Animation",
-  "asset.audio": "Audio",
-  "asset.prefab": "Prefab",
-  "project.all": "All",
-  "project.model": "Models",
-  "project.image": "Materials/Textures",
-  "project.audio": "Audio",
-  "project.animation": "Animations",
-  "project.scene": "Scenes",
-  "project.used": "Used Here",
-  "project.unused": "Unused",
-  "project.newFolder": "New folder in the current directory",
-  "project.search": "Search assets",
-  "project.clear": "Clear",
-  "project.import": "Import",
-  "project.extractPackage": "Extract Unity Package",
-  "pkg.title": "Extract Package",
-  "pkg.noFile": "No file selected",
-  "pkg.close": "Close",
-  "pkg.scanning": "Scanning extractable assets\u2026",
-  "pkg.scanningSlow": "This package is large. The window is still working.",
-  "pkg.scanFailed": "Scan failed: {detail}",
-  "pkg.empty": "No extractable models, textures, animations, or materials.",
-  "pkg.models": "Models",
-  "pkg.textures": "Textures",
-  "pkg.animations": "Animations",
-  "pkg.materials": "Materials",
-  "pkg.hidden": "Hidden",
-  "pkg.unsupported": "Unsupported",
-  "pkg.previewOnly": "Extracts models, textures, animations, and materials. FBX uses ufbx. Merged animations are retargeted onto the body model.",
-  "pkg.selectedSummary": "{count} selected",
-  "pkg.selectAll": "All",
-  "pkg.selectNone": "None",
-  "pkg.selectModels": "Models only",
-  "pkg.selectTextures": "Textures only",
-  "pkg.selectAnimations": "Animations only",
-  "pkg.selectMaterials": "Materials only",
-  "pkg.filterPlaceholder": "Filter by file name",
-  "pkg.filterEmpty": "No matching files",
-  "pkg.targetDirectory": "Target folder",
-  "pkg.directoryMode": "Folders",
-  "pkg.directoryModeFlat": "Split folders (Textures / Materials / Animations)",
-  "pkg.directoryModePreserve": "Keep package folders",
-  "pkg.showDiagnostics": "Show diagnostics",
-  "pkg.hideDiagnostics": "Hide diagnostics",
-  "pkg.extracting": "Extracting\u2026",
-  "pkg.extractingTitle": "Extracting assets",
-  "pkg.extractingProgress": "{completed} / {total}",
-  "pkg.extractSelected": "Extract selected ({count})",
-  "pkg.extractSuccess": "Extracted {count} assets.",
-  "pkg.extractFailed": "{count} assets failed.",
-  "pkg.companions": "{count} companion files",
-  "pkg.warnings": "{count} warnings",
-  "pkg.kind.model": "Model",
-  "pkg.kind.texture": "Texture",
-  "pkg.kind.animation": "Animation",
-  "pkg.kind.material": "Material",
-  "pkg.role.modelBody": "Body",
-  "pkg.role.animationCarrier": "Animation",
-  "pkg.role.ordinaryModel": "Ordinary",
-  "pkg.role.unknownModel": "Unreviewed",
-  "pkg.confidence.high": "High",
-  "pkg.confidence.medium": "Medium",
-  "pkg.confidence.low": "Low",
-  "pkg.roleOverrideFor": "Role for {name}",
-  "pkg.carrierBodyFor": "Body for {name}",
-  "pkg.noCarrierBody": "No body",
-  "pkg.mergePreview.title": "Animation merge preview",
-  "pkg.mergePreview.summary": "{bodies} bodies, {carriers} animations",
-  "pkg.phase.textures": "Textures",
-  "pkg.phase.models": "Models",
-  "pkg.phase.animations": "Animations",
-  "pkg.phase.materials": "Materials",
-  "pkg.phase.retarget": "Retarget",
-  "pkg.diag.hidden": "Hidden",
-  "pkg.diag.unsupported": "Unsupported",
-  "pkg.diag.missingPathname": "Missing path",
-  "pkg.diag.missingAssetBytes": "Missing bytes",
-  "pkg.diag.scan": "Scan diagnostics",
-  "project.newScene": "New scene in the current directory",
-  "project.count": "{count} items",
-  "project.list": "List",
-  "project.details": "Details",
-  "project.grid": "Grid",
-  "project.name": "Name",
-  "project.type": "Type",
-  "project.detail": "Details",
-  "project.drop": "Drop to import",
-  "project.empty": "This folder is empty.",
-  "project.deleteScene": "Delete scene \u201C{name}\u201D? Its objects will be removed.",
-  "project.deleteAsset": "Delete \u201C{name}\u201D? This cannot be undone.",
-  "project.cancel": "Cancel",
-  "project.open": "Open",
-  "project.reveal": "Show in Explorer\u2026",
-  "project.revealMissing": "This item is not on disk yet. Save the project as a folder first.",
-  "project.revealFailed": "Could not open the folder: {message}",
-  "project.place": "Place in Scene",
-  "project.rename": "Rename",
-  "project.delete": "Delete",
-  "project.resizeTextures": "Batch resize textures\u2026",
-  "texResize.title": "Batch Resize Textures",
-  "texResize.maxEdge": "Max edge",
-  "texResize.search": "Search textures\u2026",
-  "texResize.scopeCurrent": "Current scope only",
-  "texResize.scopeAll": "Show all textures ({count})",
-  "texResize.selectAll": "Select all",
-  "texResize.selectLarge": "Only > {size}px",
-  "texResize.selectBackedUp": "Only backed up",
-  "texResize.clear": "Clear",
-  "texResize.empty": "No matching texture assets",
-  "texResize.unsupported": "Unsupported format",
-  "texResize.backedUp": "Original backed up",
-  "texResize.skipFormat": "Format skipped",
-  "texResize.restoreOrSkip": "Will restore original",
-  "texResize.alreadySmall": "Already fits, skip",
-  "texResize.backupHint": "Originals are backed up automatically before overwriting and can be restored anytime",
-  "texResize.progress": "Processing {done} / {total}\u2026",
-  "texResize.restore": "Restore original ({count})",
-  "texResize.apply": "Apply resize ({count})",
-  "texResize.done": "Textures resized: {updated} updated, {skipped} skipped, {failed} failed",
-  "texResize.restored": "Textures restored: {updated} restored, {failed} failed",
-  "project.newFolderMenu": "New Folder",
-  "project.deleteFolder": "Delete folder \u201C{name}\u201D? Assets and subfolders inside are deleted too. This cannot be undone.",
-  "project.objects": "{count} objects",
-  "project.inUse": "In use",
-  "project.sceneHint": "Click to open. Click the current scene again to rename.",
-  "project.modelHint": "Double-click to preview. Drag into the viewport to place.",
-  "project.envHint": "Double-click to preview the environment map",
-  "project.textureHint": "Double-click to preview. Drag onto an object.",
-  "project.animHint": "Drag onto a model to play",
-  "project.audioHint": "Double-click to listen",
-  "project.openFolder": "Double-click to open the folder",
-  "project.folder": "Folder",
-  "hierarchy.search": "Search objects",
-  "hierarchy.expand": "Expand all",
-  "hierarchy.collapse": "Collapse all",
-  "hierarchy.create": "Create",
-  "hierarchy.empty": "The scene is empty. Use + or the Create menu to add objects.",
-  "hierarchy.hint": "Click to select, click again to rename, double-click to focus",
-  "hierarchy.hide": "Hide",
-  "hierarchy.show": "Show",
-  "hierarchy.locked": "Locked: viewport picking and the gizmo pass through",
-  "hierarchy.lock": "Lock so viewport picking and the gizmo pass through",
-  "hierarchy.createChild": "Create Child",
-  "hierarchy.unparent": "Unparent",
-  "hierarchy.pasteChild": "Paste as Child",
-  "hierarchy.moveUp": "Move Up",
-  "hierarchy.moveDown": "Move Down",
-  "view.persp": "Persp",
-  "view.top": "Top",
-  "view.bottom": "Bottom",
-  "view.front": "Front",
-  "view.back": "Back",
-  "view.left": "Left",
-  "view.right": "Right",
-  "view.up": "Up",
-  "view.down": "Down",
-  "view.world": "World space",
-  "view.local": "Local space",
-  "view.helpers": "Helpers",
-  "view.grid": "Grid",
-  "view.lights": "Lights and cameras",
-  "view.gizmoCenter": "Gizmo at center",
-  "view.snap": "Snap",
-  "view.step": "Step",
-  "view.focus": "Focus selection (F)",
-  "view.fullscreen": "Maximize viewport",
-  "view.stats": "{objects} objects \xB7 {triangles} tris",
-  "view.statsOpen": "Stats",
-  "view.statsTitle": "Stats",
-  "view.statsRender": "Rendering",
-  "view.statsPhysics": "Physics",
-  "view.statsCamera": "Camera and selection",
-  "view.statsBackend": "Backend",
-  "view.statsCalls": "Draw calls",
-  "view.statsTris": "Rendered triangles",
-  "view.statsMeshes": "Meshes / vertices",
-  "view.statsMats": "Materials / textures",
-  "view.statsNodes": "Scene objects",
-  "view.statsAssets": "Assets",
-  "view.statsBodies": "Bodies dyn / kin / static",
-  "view.statsTriggers": "Triggers",
-  "view.statsPlay": "Play",
-  "view.statsCamMode": "Camera",
-  "view.statsCamPos": "Position",
-  "view.statsSelected": "Selection",
-  "view.statsNone": "None",
-  "view.statsPlaying": "Playing",
-  "view.statsEditing": "Editing",
-  "view.statsReady": "Running",
-  "view.statsIdle": "Idle",
-  "view.statsCollapse": "Collapse details",
-  "view.statsExpand": "Expand details",
-  "view.statsVertices": "Vertices",
-  "view.statsCallsShort": "Calls",
-  "view.statsTrisShort": "Tris",
-  "view.costTitle": "Top 8 costs",
-  "view.costHint": "Average per frame, last half second",
-  "view.cost.core.character": "Character",
-  "view.cost.core.camera": "Follow camera",
-  "view.cost.core.rules": "Rules",
-  "view.cost.core.devices": "Interact and triggers",
-  "view.cost.core.movers": "Movers",
-  "view.cost.core.round": "Score and round",
-  "view.cost.physics": "Physics",
-  "view.cost.navigation": "Navigation",
-  "view.cost.animation": "Skeletal animation",
-  "view.cost.particles": "Particles",
-  "view.cost.render": "Scene render",
-  "view.cost.picture": "Picture and pre-draw",
-  "view.cost.rig": "Editor camera",
-  "view.create": "Create",
-  "view.createChild": "Create Child",
-  "view.paste": "Paste",
-  "console.info": "Info",
-  "console.warn": "Warning",
-  "console.error": "Error",
-  "console.filter": "Filter",
-  "console.clear": "Clear",
-  "history.empty": "Nothing to undo yet. Moves, creates, and deletes are recorded here.",
-  "history.current": "Current",
-  "preview.pendingMaterial": "Material is not ready",
-  "preview.sphere": "Sphere",
-  "preview.box": "Box",
-  "preview.torus": "Torus",
-  "preview.plane": "Plane",
-  "preview.studio": "Studio",
-  "preview.bright": "Bright",
-  "preview.dark": "Dark",
-  "preview.turn": "Turn",
-  "preview.popout": "Pop out",
-  "preview.title": "Preview",
-  "preview.pendingModel": "Model is still loading",
-  "preview.lit": "Lit",
-  "preview.wire": "Wire",
-  "preview.unlit": "Unlit",
-  "preview.bounds": "Bounds",
-  "preview.reset": "Reset",
-  "preview.light": "Light",
-  "preview.faces": "{count} faces",
-  "preview.tabOverview": "Overview",
-  "preview.tabMesh": "Meshes",
-  "preview.tabAnim": "Animation",
-  "preview.tabMaterial": "Materials",
-  "preview.tabSocket": "Sockets",
-  "preview.tabImport": "Import",
-  "preview.importScale": "Import scale",
-  "preview.reimport": "Reimport",
-  "preview.reimportDone": "Reimported {name}",
-  "preview.reimportFailed": "Reimport failed. The source file is not in the cache.",
-  "preview.reimportFailedDetail": "Reimport failed: {message}",
-  "preview.reimportUnavailable": "This asset cannot be reimported.",
-  "preview.source": "Source",
-  "preview.scaleHint": "Height is {height} m. Suggested import scale is {scale}x.",
-  "preview.useScale": "Set {scale}x",
-  "preview.noMesh": "No mesh stats yet. Reimport to list each mesh.",
-  "preview.noBone": "This model has no skeleton.",
-  "preview.noClip": "No embedded clips.",
-  "preview.socketEmpty": "No sockets yet. Add one from a bone to show its axis in the preview.",
-  "preview.addSocket": "Add socket",
-  "preview.triangles": "Triangles",
-  "preview.vertices": "Vertices",
-  "preview.meshes": "Meshes",
-  "preview.slots": "Slots",
-  "preview.bones": "Bones",
-  "preview.sourceSize": "Source {size}",
-  "preview.textureHint": "Scroll to zoom, drag to pan. Saving creates a new texture and cannot be undone.",
-  "preview.flipX": "Flip horizontally",
-  "preview.flipY": "Flip vertically",
-  "preview.flipNormalY": "Flip normal Y",
-  "preview.width": "W",
-  "preview.height": "H",
-  "preview.lockAspect": "Lock aspect",
-  "preview.saveTexture": "Save as new texture",
-  "preview.overwriteTexture": "Overwrite original",
-  "preview.saving": "Saving\u2026",
-  "preview.savedTexture": "Saved new texture \u201C{name}\u201D",
-  "preview.overwroteTexture": "Overwrote original \u201C{name}\u201D (original backed up)",
-  "preview.actor": "Actor",
-  "preview.noActor": "Import a model first to preview this animation",
-  "preview.loading": "Loading\u2026",
-  "preview.saveTextureFail": "Failed to save texture: {message}",
-  "preview.envHint": "Drag to rotate, scroll to zoom",
-  "gesture.create": "Create {name}",
-  "gesture.rename": "Rename",
-  "gesture.move": "Move",
-  "gesture.rotate": "Rotate",
-  "gesture.scale": "Scale",
-  "gesture.light": "Edit Light",
-  "gesture.camera": "Edit Camera",
-  "gesture.alignCamera": "Align Camera",
-  "gesture.picture": "Edit Picture",
-  "gesture.shadow": "Edit Shadows",
-  "gesture.material": "Edit Material",
-  "gesture.map": "Set Texture",
-  "gesture.mapClear": "Clear Texture",
-  "gesture.anim": "Preview Animation",
-  "gesture.reset": "Reset Transform",
-  "gesture.color": "Edit Color",
-  "error.panel": "{name} failed: {message}",
-  "log.cacheOpenFail": "Could not open the local project cache. Starting with an empty scene.",
-  "log.projectCreated": 'Created project "{name}". Sources are in Assets/, cache is in .cache/t3d/',
-  "log.projectSavedAs": 'Saved the current project as "{name}"',
-  "log.projectSaveAsOccupied": '"{name}" already contains a project. Choose an empty folder',
-  "log.projectOpened": 'Opened project "{name}"',
-  "log.projectExists": 'This folder already has a project. Opened "{name}"',
-  "log.projectMissing": "This folder has no project.t3d",
-  "log.projectInvalid": "Could not read project.t3d",
-  "log.projectFailed": "Project action failed: {message}",
-  "log.projectBrowser": "This browser cannot pick a local project folder",
-  "log.projectPermission": "The last project needs permission again. Open it from File \u2192 Recent Projects, or use Open Project.",
-  "log.projectLoose": "Added {count} file(s) from the Assets folder",
-  "status.localProject": "Local cache",
-  "log.opened": "Project opened, scene {ms}ms",
-  "log.openedDetail": "Project opened in {total}ms (scene {scene}ms \xB7 models {model}ms \xB7 textures {texture}ms), artifact hits {hits}, source parses {parsed}, failed {failed}",
-  "log.openProfile": "Open profile (assets ready to steady frames): main thread {costs} \xB7 new shaders {shaders} \xB7 pipelines compiled on draw {pipelines} \xB7 precompiled pipelines {asyncPipelines} ({asyncMs}ms total, worst {asyncWorst}ms) \xB7 before assets were ready: shaders {earlyShaders}, pipelines {earlyPipelines}",
-  "log.openTimeline": "Open timeline (wall clock): read project {read}ms \xB7 session {session}ms \xB7 scan folders {scan}ms \xB7 save {save}ms \xB7 asset restore {warm}ms (models {model}ms \xB7 textures {texture}ms) \xB7 renderer init {init}ms (assets waited {wait}ms for it) \xB7 shader precompile {compile}ms (UI stays responsive) \xB7 precompile to steady frames {settle}ms ({frames} frames, {slow} slow, worst {worst}ms) \xB7 main-thread long tasks {tasks} totalling {busy}ms, longest {longest}ms",
-  "log.backend": "Renderer: {label}",
-  "log.webgpu": "WebGPU",
-  "log.webgl2": "WebGL2 fallback",
-  "log.playCameraMany": 'Several MainCamera tags; play uses "{name}"',
-  "log.rendererFail": "Renderer failed to start: {message}",
-  "log.unknownFile": "Unrecognized file: {name}",
-  "log.importFail": "{name} failed to import: {message}",
-  "log.already": "Asset is already in the library: {name}",
-  "log.importedAnim": "Imported animation {name}",
-  "log.importedModel": "Imported model {name}, {count} clips",
-  "log.importedTexture": "Imported texture {name}",
-  "log.importedEnv": "Imported environment {name}",
-  "log.importedAudio": "Imported audio {name}",
-  "log.cacheFail": "Cached asset {name} could not be restored: {message}",
-  "log.referenced": "Still used by: ",
-  "log.folderKept": "Kept the folder. These assets are still in use: ",
-  "log.modelLoading": "The model is still loading",
-  "log.envSet": "Using {name} as the environment",
-  "log.dragAnim": "Drop the animation on a model",
-  "log.dragAsset": "Drop the asset on an object",
-  "log.animOnModel": "Animations belong on models",
-  "log.needMesh": "Select a mesh or model first",
-  "log.savedMaterial": "Saved material {name}",
-  "log.needSelection": "Select objects to save first",
-  "log.savedPrefab": "Saved prefab {name}",
-  "log.created": "Created {name}",
-  "log.skippedLocked": "Skipped locked objects: {names}",
-  "log.deleted": "Deleted {count} objects",
-  "log.duplicated": "Duplicated {count} objects",
-  "log.nothingCopy": "Nothing to copy",
-  "log.copied": "Copied {count} objects",
-  "log.clipboardEmpty": "The clipboard is empty",
-  "log.pasted": "Pasted {count} objects",
-  "log.groupNeedTwo": "Select at least two objects to group",
-  "log.grouped": "Grouped",
-  "log.needGround": "Select objects to snap to the ground",
-  "log.alreadyGround": "The objects are already on the ground",
-  "log.grounded": "Snapped {count} objects to the ground",
-  "log.locked": "{name} is locked",
-  "log.cycle": "An object cannot become its own child",
-  "log.noUndoPlay": "Stop playing before undoing",
-  "log.noRedoPlay": "Stop playing before redoing",
-  "log.resumePlay": "Resumed play",
-  "log.startPlay": "Playing. Stop to restore the scene.",
-  "log.stopPlay": "Stopped. The scene is restored.",
-  "log.stopBeforeNew": "Stop playing before creating a scene",
-  "log.createdScene": "Created and opened {name}",
-  "log.stopBeforeOpen": "Stop playing before opening a scene",
-  "log.openedScene": "Opened {name}",
-  "log.keepScene": "Keep at least one scene",
-  "log.stopBeforeDelete": "Stop playing before deleting a scene",
-  "log.deletedScene": "Deleted the scene",
-  "log.placed": "Placed {name}",
-  "log.assignedMaterial": "Assigned material {name}",
-  "log.noStructure": "Stop playing before changing the scene structure",
-  "picker.search": "Search",
-  "clip.pick": "Choose clip",
-  "picker.empty": "No matching assets",
-  "picker.texture": "Select Texture",
-  "picker.material": "Select Material",
-  "picker.environment": "Select Environment",
-  "picker.none": "None",
-  "picker.unset": "None",
-  "picker.select": "Select",
-  "picker.clear": "Clear",
-  "picker.missing": "Missing",
-  "picker.textureHint": "Click to reveal in assets, double-click to preview",
-  "picker.textureLocate": "Reveal in assets",
-  "picker.textureReplace": "Select or replace texture",
-  "picker.textureDrop": "Drop a texture here",
-  "picker.thumbs": "Large thumbnails",
-  "picker.list": "List",
-  "project.create": "Create",
-  "project.createScene": "Scene",
-  "project.createMaterial": "Material",
-  "project.createPrefab": "Prefab",
-  "project.newMaterialName": "New Material",
-  "project.copySuffix": "Copy",
-  "project.duplicate": "Duplicate",
-  "project.findRefs": "Find References",
-  "project.noRefs": "Nothing references this asset",
-  "project.refs": "Used by: {names}"
-};
-
-// src/editor/i18n/index.ts
-function translate(key, vars2) {
-  const lang = resolveLanguage(usePrefsStore.getState().language);
-  const text = (lang === "en" ? en : zh)[key];
-  if (!vars2) return text;
-  return text.replace(/\{(\w+)\}/g, (_, name) => String(vars2[name] ?? ""));
-}
-
-// src/editor/scene/store.ts
-init_registry2();
-
-// src/gameplay/corePack.ts
-init_registry();
-init_types();
-var tags = [
-  { id: "Team.Player", name: "\u73A9\u5BB6\u9635\u8425", category: "Team", description: "\u4E3B\u89D2\u4E0E\u53CB\u519B", fields: { color: "#3b82f6", defaultDurationSec: 0, blockPrefix: "" } },
-  { id: "Team.Enemy", name: "\u654C\u4EBA\u9635\u8425", category: "Team", description: "\u654C\u65B9\u5355\u4F4D", fields: { color: "#ef4444", defaultDurationSec: 0, blockPrefix: "" } },
-  { id: "State.Dead", name: "\u6B7B\u4EA1", category: "State", description: "\u751F\u547D\u5F52\u96F6\u540E\u7684\u7EC8\u6001", fields: { color: "#6b7280", defaultDurationSec: 0, blockPrefix: "Action" } },
-  { id: "State.CrowdControl.Stunned", name: "\u7729\u6655\u786C\u76F4", category: "State/Control", description: "\u6E05\u6389\u5E76\u7981\u6B62 Action \u4E0B\u7684\u52A8\u4F5C", fields: { color: "#f59e0b", defaultDurationSec: 1.5, blockPrefix: "Action" } },
-  { id: "State.Invincible", name: "\u65E0\u654C", category: "State", description: "\u95EA\u907F\u6216\u53D7\u51FB\u540E\u7684\u514D\u75AB", fields: { color: "#fbbf24", defaultDurationSec: 0.4, blockPrefix: "" } },
-  { id: "Action.Attacking", name: "\u653B\u51FB\u4E2D", category: "Action", description: "\u6B63\u5728\u6325\u780D\u6216\u51FA\u624B", fields: { color: "#ec4899", defaultDurationSec: 0.8, blockPrefix: "" } },
-  { id: "Interactive.Chest", name: "\u53EF\u5F00\u542F", category: "Interactive", description: "\u7BB1\u5B50\u6216\u673A\u5173", fields: { color: "#10b981", defaultDurationSec: 0, blockPrefix: "" } }
-];
-var juice = [
-  { id: "juice_light_hit", name: "\u8F7B\u51FB", category: "Combat", description: "\u77ED\u987F\u5E27\u3001\u8F7B\u9707\u548C\u77ED\u51FB\u9000", fields: { hitStopSec: 0.04, cameraShake: 0.2, rimFlashColor: "#ffffff", knockbackMeters: 0.45 } },
-  { id: "juice_heavy_hit", name: "\u91CD\u51FB", category: "Combat", description: "\u66F4\u957F\u7684\u987F\u5E27\u3001\u9707\u5C4F\u548C\u51FB\u9000", fields: { hitStopSec: 0.09, cameraShake: 0.65, rimFlashColor: "#fde047", knockbackMeters: 0.9 } },
-  { id: "juice_pickup", name: "\u62FE\u53D6", category: "Interact", description: "\u6253\u5F00\u6216\u62FE\u53D6\u65F6\u7684\u8F7B\u53CD\u9988", fields: { hitStopSec: 0.02, cameraShake: 0.1, rimFlashColor: "#34d399", knockbackMeters: 0 } }
-];
-registerGameplayPack({
-  id: CORE_GAMEPLAY_PACK_ID,
-  name: "\u6838\u5FC3\u5305",
-  description: "\u89D2\u8272\u3001\u5F8B\u4EE4\u3001\u73A9\u6CD5\u6807\u7B7E\u548C\u6253\u51FB\u611F\u3002\u59CB\u7EC8\u5F00\u542F\u3002\u9886\u57DF\u5305\u4EE5\u540E\u53EA\u5F80\u8FD9\u91CC\u8FFD\u52A0\u8868\u548C\u52A8\u4F5C\u3002",
-  builtIn: true,
-  core: true,
-  tables: [
-    {
-      tableId: "tags",
-      title: "\u73A9\u6CD5\u6807\u7B7E",
-      packId: CORE_GAMEPLAY_PACK_ID,
-      description: "\u70B9\u5206\u540D\u5B57\uFF0C\u5982 State.CrowdControl.Stunned\u3002\u67E5\u8BE2\u524D\u7F00\u4F1A\u547D\u4E2D\u5B83\u4E0B\u9762\u7684\u6807\u7B7E\u3002\u963B\u65AD\u524D\u7F00\u4F1A\u6E05\u6389\u5E76\u7981\u6B62\u8FD9\u4E00\u652F\u3002",
-      columns: [
-        { key: "color", label: "\u989C\u8272", type: "color", defaultValue: "#3b82f6" },
-        { key: "defaultDurationSec", label: "\u9ED8\u8BA4\u6301\u7EED\u79D2\u6570\uFF0C0 \u4E3A\u5E38\u9A7B", type: "number", defaultValue: 0 },
-        { key: "blockPrefix", label: "\u963B\u65AD\u524D\u7F00", type: "string", defaultValue: "" }
-      ],
-      defaultRows: tags
-    },
-    {
-      tableId: "juice",
-      title: "\u6253\u51FB\u611F",
-      packId: CORE_GAMEPLAY_PACK_ID,
-      description: "\u5F8B\u4EE4\u53EA\u5F15\u7528\u9884\u8BBE\u540D\u3002\u987F\u5E27\u3001\u955C\u5934\u9707\u52A8\u3001\u53D7\u51FB\u95EA\u5149\u548C\u51FB\u9000\u5199\u5728\u8FD9\u4E00\u884C\u3002",
-      columns: [
-        { key: "hitStopSec", label: "\u987F\u5E27\u79D2\u6570", type: "number", defaultValue: 0.05 },
-        { key: "cameraShake", label: "\u955C\u5934\u9707\u52A8", type: "number", defaultValue: 0.3 },
-        { key: "rimFlashColor", label: "\u53D7\u51FB\u95EA\u5149", type: "color", defaultValue: "#ffffff" },
-        { key: "knockbackMeters", label: "\u51FB\u9000\u7C73\u6570", type: "number", defaultValue: 0.45 },
-        { key: "sound", label: "\u97F3\u6548", type: "string", defaultValue: "" },
-        { key: "soundVolume", label: "\u97F3\u91CF", type: "number", defaultValue: 1 }
-      ],
-      defaultRows: juice
-    }
-  ]
-});
-
-// src/editor/scene/store.ts
-init_registry();
-init_sceneRuntime();
-
-// src/runtime/camera.ts
-init_juiceClock();
-init_sceneRuntime();
-init_world();
-var arms = /* @__PURE__ */ new Map();
-function stepCameras(dt, host) {
-  const world3 = getRuntimeWorld();
-  const playState = world3.getPlayState();
-  if (playState === "stopped") {
-    arms.clear();
-    return;
-  }
-  if (playState !== "playing") return;
-  const nodes = world3.getNodes();
-  const wheel = host.wheel?.() ?? 0;
-  const active = Object.values(nodes).find((node) => node.gameplay?.character?.enabled && node.gameplay.cameraFollow?.enabled !== false) ?? Object.values(nodes).find((node) => node.gameplay?.cameraFollow?.enabled);
-  if (!active) return;
-  const character = active.gameplay?.character?.enabled ? { ...defaultCharacter(), ...active.gameplay.character } : null;
-  const spec = character ? resolveCharacterCamera(character, active.gameplay?.cameraFollow) : { ...defaultCameraFollow(), ...active.gameplay?.cameraFollow };
-  if (!spec.enabled) return;
-  const target = character ? active : resolveTarget(spec, active.id, nodes);
-  const targetObject = target ? host.resolveObject(target.id) : null;
-  if (!targetObject) return;
-  const lockNode = character?.mode === "lockOn" ? resolveLock(character, active.id, nodes) : void 0;
-  const lockObject = lockNode ? host.resolveObject(lockNode.id) : null;
-  const focus = [
-    targetObject.position.x + spec.pivot[0],
-    targetObject.position.y + spec.pivot[1],
-    targetObject.position.z + spec.pivot[2]
-  ];
-  const lookAt = lockObject ? [
-    (focus[0] + lockObject.position.x) * 0.5,
-    (focus[1] + lockObject.position.y + spec.pivot[1] * 0.6) * 0.5,
-    (focus[2] + lockObject.position.z) * 0.5
-  ] : focus;
-  const arm2 = arms.get(active.id) ?? freshArm(spec, host);
-  if (arm2.local !== spec.localOffset) {
-    arm2.local = spec.localOffset;
-    arm2.yaw = spec.localOffset ? 0 : host.yaw?.() ?? arm2.yaw;
-    arm2.position = null;
-  }
-  const q = targetObject.quaternion;
-  const targetYaw = lockObject ? Math.atan2(lockObject.position.x - targetObject.position.x, lockObject.position.z - targetObject.position.z) : Math.atan2(2 * (q.w * q.y + q.x * q.z), 1 - 2 * (q.y * q.y + q.z * q.z));
-  steer(spec, arm2, host);
-  arm2.pitch = clampPitch(arm2.pitch, spec);
-  if (character?.mode === "firstPerson") {
-    poseFirstPerson(active.id, spec, arm2, focus, host);
-    return;
-  }
-  const scale = dolly(spec, arm2, wheel);
-  const yaw = lockObject ? targetYaw + Math.PI : spec.orbit === "none" ? targetYaw : spec.localOffset ? targetYaw + arm2.yaw : arm2.yaw;
-  const offset = orbitOffset(spec, yaw, arm2.pitch, scale);
-  let desired = [focus[0] + offset[0], focus[1] + offset[1], focus[2] + offset[2]];
-  if (spec.collision) desired = spring(host, focus, desired, target.id, spec.collisionRadius);
-  const alpha = spec.damping > 0 && dt > 0 ? 1 - Math.exp(-spec.damping * dt) : 1;
-  const from = arm2.position ?? desired;
-  const next = [
-    from[0] + (desired[0] - from[0]) * alpha,
-    from[1] + (desired[1] - from[1]) * alpha,
-    from[2] + (desired[2] - from[2]) * alpha
-  ];
-  const shake = juiceShake();
-  const shaken = [next[0] + shake.x, next[1] + shake.y, next[2]];
-  arm2.position = next;
-  arms.set(active.id, arm2);
-  if (!arm2.noted && armChanged(arm2)) {
-    arm2.noted = true;
-    getRuntimeWorld().markPlayDirty();
-  }
-  host.poseCamera?.(shaken, lookPoint(shaken, lookAt, spec.lookAtTarget), spec.fov);
-}
-function poseFirstPerson(id, spec, arm2, focus, host) {
-  const yaw = arm2.yaw;
-  const pitch = arm2.pitch;
-  const flat = Math.cos(pitch);
-  const forward = [-Math.sin(yaw) * flat, Math.sin(pitch), -Math.cos(yaw) * flat];
-  const right = [Math.cos(yaw), 0, -Math.sin(yaw)];
-  const eye = [
-    focus[0] + right[0] * spec.offset[0] + forward[0] * spec.offset[2],
-    focus[1] + spec.offset[1] + forward[1] * spec.offset[2],
-    focus[2] + right[2] * spec.offset[0] + forward[2] * spec.offset[2]
-  ];
-  const look = [eye[0] + forward[0], eye[1] + forward[1], eye[2] + forward[2]];
-  arm2.position = eye;
-  arms.set(id, arm2);
-  if (!arm2.noted && armChanged(arm2)) {
-    arm2.noted = true;
-    getRuntimeWorld().markPlayDirty();
-  }
-  const shake = juiceShake();
-  host.poseCamera?.(
-    [eye[0] + shake.x, eye[1] + shake.y, eye[2]],
-    [look[0] + shake.x, look[1] + shake.y, look[2]],
-    spec.fov
-  );
-}
-function freshArm(spec, host) {
-  const yaw = typeof spec.orbitYaw === "number" ? spec.orbitYaw * Math.PI / 180 : spec.localOffset ? 0 : host.yaw?.() ?? 0;
-  const pitch = clampPitch(
-    typeof spec.orbitPitch === "number" ? spec.orbitPitch * Math.PI / 180 : host.pitch?.() ?? 0,
-    spec
-  );
-  return { yaw, pitch, zoom: 1, startYaw: yaw, startPitch: pitch, position: null, local: spec.localOffset, noted: false };
-}
-function armChanged(arm2) {
-  return Math.abs(arm2.zoom - 1) > 1e-3 || Math.abs(angleDelta(arm2.yaw, arm2.startYaw)) > 1e-3 || Math.abs(angleDelta(arm2.pitch, arm2.startPitch)) > 1e-3;
-}
-function angleDelta(current, start2) {
-  let delta = current - start2;
-  if (delta > Math.PI) delta -= Math.PI * 2;
-  if (delta < -Math.PI) delta += Math.PI * 2;
-  return delta;
-}
-function cameraArmOf(id) {
-  const arm2 = arms.get(id);
-  if (!arm2) return null;
-  return { zoom: arm2.zoom, yaw: arm2.yaw, pitch: arm2.pitch, changed: armChanged(arm2) };
-}
-function settleCameraArm(id) {
-  const arm2 = arms.get(id);
-  if (!arm2) return;
-  arm2.zoom = 1;
-  arm2.startYaw = arm2.yaw;
-  arm2.startPitch = arm2.pitch;
-  arm2.noted = false;
-}
-function resolveLock(character, selfId, nodes) {
-  if (character.lockTargetId && character.lockTargetId !== selfId && nodes[character.lockTargetId]) return nodes[character.lockTargetId];
-  if (!character.lockTargetId && character.lockTargetName) {
-    return Object.values(nodes).find((item) => item.id !== selfId && item.name === character.lockTargetName);
-  }
-  return void 0;
-}
-function resolveTarget(spec, selfId, nodes) {
-  if (spec.targetId && nodes[spec.targetId]) return nodes[spec.targetId];
-  if (!spec.targetId && spec.targetName) return Object.values(nodes).find((node) => node.name === spec.targetName) ?? nodes[selfId];
-  return nodes[selfId];
-}
-function steer(spec, arm2, host) {
-  const delta = host.pointerDelta?.() ?? { x: 0, y: 0 };
-  if (spec.orbit === "none") return;
-  const drag = spec.orbit === "mouse" || host.rightHeld?.() === true;
-  if (!drag) return;
-  const sens = Math.max(0.01, spec.sensitivity) * 0.02;
-  arm2.yaw -= delta.x * sens;
-  arm2.pitch = clampPitch(arm2.pitch - delta.y * sens, spec);
-}
-function dolly(spec, arm2, wheel) {
-  if (!spec.zoom) {
-    arm2.zoom = 1;
-    return 1;
-  }
-  const base = Math.max(0.05, Math.hypot(spec.offset[0], spec.offset[1], spec.offset[2]));
-  const minScale = Math.max(0.05, spec.minDistance) / base;
-  const maxScale = Math.max(minScale, spec.maxDistance) / base;
-  if (wheel) {
-    const steps = Math.sign(wheel) * Math.min(Math.abs(wheel), 400) / 100;
-    arm2.zoom *= Math.exp(steps * Math.max(0.01, spec.zoomSpeed));
-  }
-  arm2.zoom = Math.min(maxScale, Math.max(minScale, arm2.zoom));
-  return arm2.zoom;
-}
-function orbitOffset(spec, yaw, pitch, scale = 1) {
-  const scaled = [spec.offset[0] * scale, spec.offset[1] * scale, spec.offset[2] * scale];
-  if (spec.orbit === "none" && !spec.localOffset) return scaled;
-  const pitchNow = spec.orbit === "none" ? 0 : pitch;
-  const [x, y, z] = scaled;
-  const behind = -z;
-  const cp = Math.cos(pitchNow);
-  const sp = Math.sin(pitchNow);
-  const y1 = y * cp - behind * sp;
-  const z1 = y * sp + behind * cp;
-  const sy = Math.sin(yaw);
-  const cy = Math.cos(yaw);
-  return [x * cy + z1 * sy, y1, -x * sy + z1 * cy];
-}
-function lookPoint(eye, focus, lookAtTarget) {
-  if (lookAtTarget) return focus;
-  const dx = eye[0] - focus[0];
-  const dy = eye[1] - focus[1];
-  const dz = eye[2] - focus[2];
-  const len = Math.hypot(dx, dy, dz);
-  if (len < 1e-4) return [eye[0], eye[1], eye[2] - 1];
-  return [eye[0] + dx / len, eye[1] + dy / len, eye[2] + dz / len];
-}
-function clampPitch(pitch, spec) {
-  let min3 = spec.minPitch * Math.PI / 180;
-  let max4 = spec.maxPitch * Math.PI / 180;
-  if (min3 > max4) [min3, max4] = [max4, min3];
-  return Math.min(max4, Math.max(min3, pitch));
-}
-function spring(host, focus, desired, ignoreId, radius) {
-  const dx = desired[0] - focus[0];
-  const dy = desired[1] - focus[1];
-  const dz = desired[2] - focus[2];
-  const dist = Math.hypot(dx, dy, dz);
-  if (dist < 0.25 || !host.probe) return desired;
-  const hit = host.probe(focus, [dx / dist, dy / dist, dz / dist], dist, ignoreId);
-  if (hit === null || hit >= dist) return desired;
-  const safe = Math.max(0.2, hit - radius);
-  return [focus[0] + dx / dist * safe, focus[1] + dy / dist * safe, focus[2] + dz / dist * safe];
-}
-registerRuntimeSystem("core.camera", 75, stepCameras);
-
-// src/editor/project/taxonomy.ts
-var TAG_ID_MAIN_CAMERA = "tag_main_camera";
-var TAG_NAME_MAIN_CAMERA = "MainCamera";
-var LAYER_ID_DEFAULT = "layer_default";
-var ALL_LAYERS_VISIBLE_MASK = 4294967295 >>> 0;
-var DEFAULT_LAYERS = [
-  { id: LAYER_ID_DEFAULT, name: "Default", bitIndex: 0, builtIn: true }
-];
-function defaultTags() {
-  return [{ id: TAG_ID_MAIN_CAMERA, name: TAG_NAME_MAIN_CAMERA }];
-}
-function defaultLayers() {
-  return DEFAULT_LAYERS.map((layer) => ({ ...layer }));
-}
-function ensureTags(tags2) {
-  const list = (tags2 ?? []).map((tag) => ({ id: tag.id, name: tag.name }));
-  if (list.some((tag) => tag.id === TAG_ID_MAIN_CAMERA || tag.name === TAG_NAME_MAIN_CAMERA)) return list;
-  return [{ id: TAG_ID_MAIN_CAMERA, name: TAG_NAME_MAIN_CAMERA }, ...list];
-}
-function ensureLayers(layers) {
-  const list = layers && layers.length > 0 ? layers.map((layer) => ({ ...layer })) : defaultLayers();
-  if (!list.some((layer) => layer.id === LAYER_ID_DEFAULT)) {
-    list.unshift({ id: LAYER_ID_DEFAULT, name: "Default", bitIndex: 0, builtIn: true });
-  }
-  return list;
-}
-
-// src/editor/scene/transform.ts
-import { Euler as Euler3, Matrix4 as Matrix42, Quaternion as Quaternion6, Vector3 as Vector311 } from "three";
-var DEG2 = Math.PI / 180;
-var RAD = 180 / Math.PI;
-function eulerQuaternion2(rotation) {
-  return new Quaternion6().setFromEuler(new Euler3(rotation[0] * DEG2, rotation[1] * DEG2, rotation[2] * DEG2, "XYZ"));
-}
-function quaternionEuler(quaternion) {
-  const euler = new Euler3().setFromQuaternion(quaternion, "XYZ");
-  return [euler.x * RAD, euler.y * RAD, euler.z * RAD];
-}
-function worldPose2(nodes, id) {
-  const chain = [];
-  const seen = /* @__PURE__ */ new Set();
-  let current = nodes[id];
-  while (current && !seen.has(current.id)) {
-    seen.add(current.id);
-    chain.push(current);
-    current = current.parentId ? nodes[current.parentId] : void 0;
-  }
-  chain.reverse();
-  const position = new Vector311();
-  const quaternion = new Quaternion6();
-  const scale = new Vector311(1, 1, 1);
-  const localPosition = new Vector311();
-  const localScale = new Vector311();
-  for (const node of chain) {
-    localPosition.set(node.position[0], node.position[1], node.position[2]).multiply(scale).applyQuaternion(quaternion);
-    position.add(localPosition);
-    quaternion.multiply(eulerQuaternion2(node.rotation));
-    localScale.set(node.scale[0], node.scale[1], node.scale[2]);
-    scale.multiply(localScale);
-  }
-  return { position, quaternion, scale };
-}
-function safeDiv(value, scale) {
-  return Math.abs(scale) > 1e-8 ? value / scale : value;
-}
-function worldPointToLocal(parent, point2) {
-  const delta = point2.clone().sub(parent.position).applyQuaternion(parent.quaternion.clone().invert());
-  return new Vector311(
-    safeDiv(delta.x, parent.scale.x),
-    safeDiv(delta.y, parent.scale.y),
-    safeDiv(delta.z, parent.scale.z)
-  );
-}
-function localPoseFromWorld(parent, world3) {
-  if (!parent) {
-    return {
-      position: world3.position.clone(),
-      quaternion: world3.quaternion.clone(),
-      scale: world3.scale.clone()
-    };
-  }
-  return {
-    position: worldPointToLocal(parent, world3.position),
-    quaternion: parent.quaternion.clone().invert().multiply(world3.quaternion),
-    scale: new Vector311(
-      safeDiv(world3.scale.x, parent.scale.x),
-      safeDiv(world3.scale.y, parent.scale.y),
-      safeDiv(world3.scale.z, parent.scale.z)
-    )
-  };
-}
-function poseComponents(pose) {
-  return {
-    position: [pose.position.x, pose.position.y, pose.position.z],
-    rotation: quaternionEuler(pose.quaternion),
-    scale: [pose.scale.x, pose.scale.y, pose.scale.z]
-  };
-}
-function writePose2(node, pose) {
-  const parts = poseComponents(pose);
-  node.position = parts.position;
-  node.rotation = parts.rotation;
-  node.scale = parts.scale;
-}
-function isUnder(nodes, nodeId, ancestorId) {
-  const seen = /* @__PURE__ */ new Set();
-  let current = nodes[nodeId]?.parentId;
-  while (current && !seen.has(current)) {
-    if (current === ancestorId) return true;
-    seen.add(current);
-    current = nodes[current]?.parentId ?? null;
-  }
-  return false;
-}
-
-// src/editor/scene/viewportBridge.ts
-var snapper = null;
-var readViewport = null;
-var placeViewport = null;
-function measureGroundSnap(ids) {
-  return snapper?.(ids) ?? [];
-}
-var readEditorView = null;
-function readEditorViewPose() {
-  return readEditorView?.() ?? null;
-}
-function readViewportPose() {
-  return readViewport?.() ?? null;
-}
-function placeViewportAt(position, quaternion) {
-  placeViewport?.(position, quaternion);
-}
-
-// src/editor/scene/store.ts
-init_archive();
-init_session10();
-var seed = createSeed();
-function bakeFollow(node) {
-  const arm2 = cameraArmOf(node.id);
-  if (!arm2?.changed) return null;
-  const character = node.gameplay?.character?.enabled ? { ...defaultCharacter(), ...node.gameplay.character } : null;
-  if (!character && !node.gameplay?.cameraFollow?.enabled) return null;
-  const spec = character ? resolveCharacterCamera(character, node.gameplay?.cameraFollow) : { ...defaultCameraFollow(), ...node.gameplay?.cameraFollow };
-  if (!spec.enabled) return null;
-  const zoom = arm2.zoom;
-  return {
-    ...spec,
-    offset: [spec.offset[0] * zoom, spec.offset[1] * zoom, spec.offset[2] * zoom],
-    orbitYaw: arm2.yaw * 180 / Math.PI,
-    orbitPitch: arm2.pitch * 180 / Math.PI
-  };
-}
-function cloneNodes(nodes) {
-  return structuredClone(nodes);
-}
-function sameNodes(a, b) {
-  if (a === b) return true;
-  const keysA = Object.keys(a);
-  const keysB = Object.keys(b);
-  if (keysA.length !== keysB.length) return false;
-  for (let i = 0; i < keysA.length; i += 1) {
-    const key = keysA[i];
-    const nodeA = a[key];
-    const nodeB = b[key];
-    if (!nodeB) return false;
-    if (nodeA === nodeB) continue;
-    if (JSON.stringify(nodeA) !== JSON.stringify(nodeB)) return false;
-  }
-  return true;
-}
-function sameJson(a, b) {
-  if (a === b) return true;
-  return JSON.stringify(a) === JSON.stringify(b);
-}
-function sameSelection(a, b) {
-  return a.length === b.length && a.every((id, index) => id === b[index]);
-}
-function pushHistory(set, entry) {
-  set((state) => ({
-    past: [...state.past, entry].slice(-80),
-    future: []
-  }));
-}
-var useEditorStore = create6((set, get) => ({
-  nodes: seed.nodes,
-  selection: [seed.selectedId],
-  gizmoMode: "translate",
-  gizmoSpace: "world",
-  gizmoOrigin: "pivot",
-  snap: false,
-  gridVisible: true,
-  playState: "stopped",
-  playSnapshot: null,
-  playSelection: [],
-  playDirty: false,
-  past: [],
-  future: [],
-  gesture: null,
-  logs: [
-    { id: "boot", level: "info", message: "\u7F16\u8F91\u5668\u5DF2\u5C31\u7EEA", time: Date.now() },
-    {
-      id: "boot-help",
-      level: "info",
-      message: "\u89C6\u53E3\uFF1A\u53F3\u952E\u73AF\u987E\uFF0C\u6309\u4F4F\u53F3\u952E\u7528 WASD \u6216\u65B9\u5411\u952E\u98DE\u884C\uFF0C\u4E2D\u952E\u5E73\u79FB\uFF0C\u6EDA\u8F6E\u7F29\u653E\uFF0CAlt+\u5DE6\u952E\u7ED5\u76EE\u6807\u65CB\u8F6C\u3002",
-      time: Date.now()
-    }
-  ],
-  notice: null,
-  gameplayHubOpen: false,
-  setGameplayHubOpen: (open) => set({ gameplayHubOpen: open }),
-  libraryOpen: false,
-  setLibraryOpen: (open) => set({ libraryOpen: open }),
-  projectionLabel: "\u900F\u89C6",
-  sidePanel: "inspector",
-  cameraNonce: 0,
-  cameraAction: "focus",
-  cameraView: "persp",
-  picture: structuredClone(DEFAULT_PICTURE),
-  editorView: null,
-  editorViewNonce: 0,
-  capabilities: defaultCapabilities(),
-  tags: defaultTags(),
-  gameplayPacks: [...resolveEnabledPackIds()],
-  gameDatabase: createDefaultGameDatabase(),
-  layers: defaultLayers(),
-  editorCullingMask: ALL_LAYERS_VISIBLE_MASK,
-  physicsCollisionMatrixEnabled: false,
-  physicsCollisionRowMasks: {},
-  activeSceneId: "",
-  inspectedAssetId: null,
-  assetPing: null,
-  pendingRenameId: null,
-  renderBackend: "\u6B63\u5728\u521D\u59CB\u5316",
-  helpersVisible: true,
-  navMeshVisible: true,
-  snapStep: 1,
-  canPaste: false,
-  viewportStats: { objects: 0, triangles: 0, vertices: 0, materials: 0, textures: 0, calls: 0, fps: 0, frameMs: 0, costs: [], camera: [0, 0, 0], orbit: 0 },
-  playPicture: null,
-  prefabSession: null,
-  setSelection: (ids) => {
-    const selection = ids.filter((id) => get().nodes[id]);
-    set({
-      selection,
-      inspectedAssetId: selection.length > 0 ? null : get().inspectedAssetId
-    });
-  },
-  inspectAsset: (id) => set({ inspectedAssetId: id, selection: id ? [] : get().selection }),
-  pingAsset: (id) => {
-    const library = useAssetStore.getState();
-    if (id.startsWith("code:")) {
-      const parts = id.split(":");
-      const codeKind = parts[1] === "shader" ? "shader" : "script";
-      const codeId = parts.slice(2).join(":");
-      const codeAssets = useCodeAssetStore.getState().assets;
-      const record = codeAssets[codeId];
-      if (!record) return;
-      const storedDir = library.assetDirs[id];
-      const fallbackDir = record.relativePath.startsWith("Assets/") && record.relativePath.includes("/") ? record.relativePath.slice(0, record.relativePath.lastIndexOf("/")) : codeKind === "shader" ? "Assets/Shaders" : "Assets/Scripts";
-      library.setBrowseDir(storedDir || fallbackDir);
-      useCodeAssetStore.getState().selectAsset(codeId);
-      set({ inspectedAssetId: null, selection: [], assetPing: { id, nonce: Date.now() } });
-      return;
-    }
-    if (!library.assets[id]) return;
-    library.setBrowseDir(assetDirectory(id, library.assetDirs));
-    set({ assetPing: { id, nonce: Date.now() } });
-  },
-  setGizmoMode: (mode) => {
-    if (get().gizmoMode !== mode) set({ gizmoMode: mode });
-  },
-  setGizmoSpace: (space) => {
-    if (get().gizmoSpace !== space) set({ gizmoSpace: space });
-  },
-  setGizmoOrigin: (origin) => {
-    if (get().gizmoOrigin !== origin) set({ gizmoOrigin: origin });
-  },
-  toggleSnap: () => set((state) => ({ snap: !state.snap })),
-  toggleGrid: () => set((state) => ({ gridVisible: !state.gridVisible })),
-  setSidePanel: (panel) => {
-    if (get().sidePanel !== panel) set({ sidePanel: panel });
-  },
-  setProjectionLabel: (label) => {
-    if (get().projectionLabel !== label) set({ projectionLabel: label });
-  },
-  requestFocus: () => set((state) => ({ cameraNonce: state.cameraNonce + 1, cameraAction: "focus" })),
-  requestFocusAll: () => set((state) => ({ cameraNonce: state.cameraNonce + 1, cameraAction: "focus-all" })),
-  requestView: (view) => set((state) => ({
-    cameraNonce: state.cameraNonce + 1,
-    cameraAction: "view",
-    cameraView: view
-  })),
-  alignCameraToView: () => {
-    if (get().playState !== "stopped") return;
-    const id = selectedCameraId(get(), true);
-    const view = readViewportPose();
-    if (!id || !view) return;
-    const nodes = get().nodes;
-    const node = nodes[id];
-    const parent = node.parentId ? worldPose2(nodes, node.parentId) : null;
-    const current = worldPose2(nodes, id);
-    const local = poseComponents(localPoseFromWorld(parent, {
-      position: new Vector312(view.position[0], view.position[1], view.position[2]),
-      quaternion: new Quaternion7(view.quaternion[0], view.quaternion[1], view.quaternion[2], view.quaternion[3]),
-      scale: current.scale
-    }));
-    get().beginGesture(translate("gesture.alignCamera"));
-    get().updateNode(id, { position: local.position, rotation: local.rotation });
-    get().endGesture();
-  },
-  alignViewToCamera: () => {
-    if (get().playState !== "stopped") return;
-    const id = selectedCameraId(get(), false);
-    if (!id) return;
-    const pose = worldPose2(get().nodes, id);
-    placeViewportAt(
-      [pose.position.x, pose.position.y, pose.position.z],
-      [pose.quaternion.x, pose.quaternion.y, pose.quaternion.z, pose.quaternion.w]
-    );
-  },
-  beginGesture: (label) => {
-    if (get().gesture) get().endGesture();
-    set({
-      gesture: {
-        label,
-        before: cloneNodes(get().nodes),
-        beforeSelection: get().selection.slice(),
-        beforePicture: structuredClone(get().picture)
-      }
-    });
-  },
-  endGesture: () => {
-    const gesture = get().gesture;
-    if (!gesture) return;
-    const after = cloneNodes(get().nodes);
-    const afterSelection = get().selection.slice();
-    set({ gesture: null });
-    if (get().playState !== "stopped") return;
-    if (sameNodes(gesture.before, after) && sameSelection(gesture.beforeSelection, afterSelection) && sameJson(gesture.beforePicture, get().picture)) return;
-    pushHistory(set, {
-      label: gesture.label,
-      before: gesture.before,
-      after,
-      beforeSelection: gesture.beforeSelection,
-      afterSelection,
-      beforePicture: gesture.beforePicture,
-      afterPicture: structuredClone(get().picture)
-    });
-  },
-  updateNode: (id, patch) => {
-    const node = get().nodes[id];
-    if (!node) return;
-    const touchesTransform = patch.position !== void 0 || patch.rotation !== void 0 || patch.scale !== void 0;
-    if (node.locked && touchesTransform) return;
-    if (get().prefabSession && !node.parentId && touchesTransform) return;
-    const next = { ...node, ...patch, id: node.id, kind: node.kind };
-    if (!get().prefabSession) markOverrides(next, patch);
-    const keys = Object.keys(patch);
-    const onlyRuntimeClock = keys.every((key) => key === "clipTime" || key === "overlayTime");
-    const markPlayDirty = get().playState !== "stopped" && !onlyRuntimeClock;
-    set((state) => ({
-      nodes: { ...state.nodes, [id]: next },
-      ...markPlayDirty ? { playDirty: true } : {}
-    }));
-  },
-  createNode: (kind, parentId = null) => {
-    let created = "";
-    const label = translate(`kind.${kind}`);
-    const ok = mutate(set, get, translate("gesture.create", { name: label }), (draft) => {
-      let parent = parentId && draft.nodes[parentId] ? parentId : null;
-      if (get().prefabSession && !parent) parent = Object.values(draft.nodes).find((node) => !node.parentId)?.id ?? null;
-      const id = crypto.randomUUID();
-      const name = uniqueName(draft.nodes, label);
-      const shaped = kind === "box" || kind === "sphere" || kind === "capsule" || kind === "cylinder" || kind === "cone" || kind === "plane";
-      draft.nodes[id] = makeNode({
-        id,
-        name,
-        kind,
-        parentId: parent,
-        order: nextOrder(draft.nodes, parent),
-        position: spawnPosition(kind, parent, getSpawn()),
-        rotation: kind === "plane" ? [-90, 0, 0] : [0, 0, 0],
-        ...shaped ? { physics: defaultNodePhysics(kind) } : {}
-      });
-      tagAddedChild(draft.nodes, id);
-      draft.selection = [id];
-      created = name;
-    });
-    if (ok && created) get().log("info", translate("log.created", { name: created }));
-  },
-  extractSocket: (modelId, bone, name, select2 = true) => {
-    if (get().playState !== "stopped") return null;
-    const parent = get().nodes[modelId];
-    if (!parent || parent.kind !== "model") return null;
-    const existing = Object.values(get().nodes).find((node) => node.parentId === modelId && node.socketBone === bone);
-    if (existing) {
-      if (select2) get().setSelection([existing.id]);
-      return existing.id;
-    }
-    let createdId = null;
-    mutate(set, get, translate("inspector.extractSocket"), (draft) => {
-      const id = crypto.randomUUID();
-      createdId = id;
-      draft.nodes[id] = makeNode({
-        id,
-        name: uniqueName(draft.nodes, name || bone),
-        kind: "empty",
-        parentId: modelId,
-        order: nextOrder(draft.nodes, modelId),
-        socketBone: bone
-      });
-      tagAddedChild(draft.nodes, id);
-      if (select2) draft.selection = [id];
-    });
-    return createdId;
-  },
-  createDevice: (device, parentId = null) => {
-    let created = "";
-    const labelKey = {
-      interact: "interact.title",
-      trigger: "trigger.title",
-      mover: "mover.title",
-      checkpoint: "checkpoint.title",
-      score: "score.title",
-      sound: "soundSource.title"
-    };
-    const label = translate(labelKey[device]);
-    const ok = mutate(set, get, translate("gesture.create", { name: label }), (draft) => {
-      let parent = parentId && draft.nodes[parentId] ? parentId : null;
-      if (get().prefabSession && !parent) parent = Object.values(draft.nodes).find((node) => !node.parentId)?.id ?? null;
-      const id = crypto.randomUUID();
-      const name = uniqueName(draft.nodes, label);
-      const isMover = device === "mover";
-      const kind = isMover ? "box" : "empty";
-      const gameplay = {};
-      if (device === "interact") gameplay.interact = defaultInteract();
-      else if (device === "trigger") gameplay.trigger = defaultTrigger();
-      else if (device === "mover") gameplay.mover = defaultMover();
-      else if (device === "checkpoint") gameplay.checkpoint = defaultCheckpoint();
-      else if (device === "score") gameplay.score = defaultScore();
-      else if (device === "sound") gameplay.soundSource = defaultSoundSource();
-      draft.nodes[id] = makeNode({
-        id,
-        name,
-        kind,
-        parentId: parent,
-        order: nextOrder(draft.nodes, parent),
-        position: spawnPosition(kind, parent, getSpawn()),
-        scale: isMover ? [2.4, 0.3, 2.4] : [1, 1, 1],
-        gameplay,
-        ...isMover ? { physics: { ...defaultNodePhysics("box"), body: "kinematic" } } : {}
-      });
-      tagAddedChild(draft.nodes, id);
-      draft.selection = [id];
-      created = name;
-    });
-    if (ok && created) get().log("info", translate("log.created", { name: created }));
-  },
-  spawnEffect: (assetId, point2) => {
-    const asset = useAssetStore.getState().assets[assetId];
-    if (!asset || asset.kind !== "effect") return;
-    let created = "";
-    const ok = mutate(set, get, translate("gesture.create", { name: asset.name }), (draft) => {
-      const id = crypto.randomUUID();
-      const name = uniqueName(draft.nodes, asset.name);
-      draft.nodes[id] = makeNode({
-        id,
-        name,
-        kind: "effect",
-        parentId: null,
-        order: nextOrder(draft.nodes, null),
-        position: point2,
-        effect: {
-          assetId: asset.id,
-          quarksVersion: asset.quarksVersion,
-          simulation: null,
-          materialAssetId: null,
-          playing: true
-        }
-      });
-      tagAddedChild(draft.nodes, id);
-      draft.selection = [id];
-      created = name;
-    });
-    if (ok && created) get().log("info", translate("log.created", { name: created }));
-  },
-  mountScreen: (assetId, point2) => {
-    const asset = useAssetStore.getState().assets[assetId];
-    if (!asset || asset.kind !== "ui") return;
-    let created = "";
-    const ok = mutate(set, get, translate("gesture.create", { name: asset.name }), (draft) => {
-      const id = crypto.randomUUID();
-      const name = uniqueName(draft.nodes, asset.name);
-      draft.nodes[id] = makeNode({
-        id,
-        name,
-        kind: "screen",
-        parentId: null,
-        order: nextOrder(draft.nodes, null),
-        position: point2,
-        screen: { documentId: asset.id, layer: "hud", visibleOnPlay: true }
-      });
-      tagAddedChild(draft.nodes, id);
-      draft.selection = [id];
-      created = name;
-    });
-    if (ok && created) get().log("info", translate("log.created", { name: created }));
-  },
-  deleteSelection: () => {
-    const state = get();
-    const selected = new Set(state.selection);
-    const roots = state.selection.filter((id) => {
-      let parent = state.nodes[id]?.parentId;
-      while (parent) {
-        if (selected.has(parent)) return false;
-        parent = state.nodes[parent]?.parentId ?? null;
-      }
-      return Boolean(state.nodes[id]);
-    });
-    const remove = /* @__PURE__ */ new Set();
-    const blocked2 = [];
-    for (const id of roots) {
-      const sub = subtreeIds(state.nodes, id);
-      if (sub.some((childId) => state.nodes[childId]?.locked)) blocked2.push(state.nodes[id].name);
-      else sub.forEach((childId) => remove.add(childId));
-    }
-    if (get().prefabSession) {
-      const root = Object.values(state.nodes).find((node) => !node.parentId);
-      if (root && remove.has(root.id)) {
-        remove.delete(root.id);
-        get().log("warn", translate("prefab.keepRoot"));
-      }
-    }
-    if (blocked2.length) get().log("warn", translate("log.skippedLocked", { names: blocked2.join("\u3001") }));
-    if (remove.size === 0) return;
-    const ok = mutate(set, get, "\u5220\u9664", (draft) => {
-      for (const id of remove) rememberRemoval(draft.nodes, id);
-      for (const id of remove) delete draft.nodes[id];
-      draft.selection = [];
-    });
-    if (ok) get().log("info", translate("log.deleted", { count: remove.size }));
-  },
-  duplicateSelection: () => {
-    let count = 0;
-    const ok = mutate(set, get, "\u590D\u5236", (draft) => {
-      const selected = new Set(draft.selection);
-      const roots = draft.selection.filter((id) => {
-        let parent = draft.nodes[id]?.parentId;
-        while (parent) {
-          if (selected.has(parent)) return false;
-          parent = draft.nodes[parent]?.parentId ?? null;
-        }
-        return Boolean(draft.nodes[id]);
-      });
-      const created = [];
-      const cloneSubtree = (id, parentId, isRoot) => {
-        const source = draft.nodes[id];
-        const childIds = childrenOf(draft.nodes, id).map((child) => child.id);
-        const nextId2 = crypto.randomUUID();
-        const copy = structuredClone(source);
-        copy.id = nextId2;
-        copy.parentId = parentId;
-        copy.name = uniqueName(draft.nodes, source.name);
-        copy.order = nextOrder(draft.nodes, parentId);
-        copy.locked = false;
-        if (isRoot) copy.position = [copy.position[0] + 1, copy.position[1], copy.position[2]];
-        draft.nodes[nextId2] = copy;
-        for (const childId of childIds) cloneSubtree(childId, nextId2, false);
-        return nextId2;
-      };
-      for (const id of roots) {
-        const createdId = cloneSubtree(id, draft.nodes[id].parentId, true);
-        if (draft.nodes[id]?.prefabInstanceId === id) retargetInstance(draft.nodes, id, createdId);
-        created.push(createdId);
-      }
-      draft.selection = created;
-      count = created.length;
-    });
-    if (ok && count) get().log("info", translate("log.duplicated", { count }));
-  },
-  copySelection: () => {
-    const state = get();
-    const roots = selectionRoots(state.nodes, state.selection);
-    if (roots.length === 0) {
-      state.log("warn", translate("log.nothingCopy"));
-      return;
-    }
-    const nodes = [];
-    const walk = (id, parentId) => {
-      const source = state.nodes[id];
-      const copy = structuredClone(source);
-      copy.parentId = parentId;
-      nodes.push(copy);
-      for (const child of childrenOf(state.nodes, id)) walk(child.id, id);
-    };
-    for (const id of roots) walk(id, null);
-    clipboard = nodes;
-    set({ canPaste: true });
-    state.log("info", translate("log.copied", { count: roots.length }));
-  },
-  pasteClipboard: (parentId = null) => {
-    if (!clipboard || clipboard.length === 0) {
-      get().log("warn", translate("log.clipboardEmpty"));
-      return;
-    }
-    let count = 0;
-    const ok = mutate(set, get, "\u7C98\u8D34", (draft) => {
-      const created = pasteNodes(draft, parentId);
-      draft.selection = created;
-      count = created.length;
-    });
-    if (ok && count) get().log("info", translate("log.pasted", { count }));
-  },
-  groupSelection: () => {
-    const roots = selectionRoots(get().nodes, get().selection);
-    if (roots.length < 2) {
-      get().log("warn", translate("log.groupNeedTwo"));
-      return;
-    }
-    const ok = mutate(set, get, "\u6210\u7EC4", (draft) => {
-      const live = selectionRoots(draft.nodes, draft.selection);
-      if (live.length < 2) return;
-      const sharedParent = draft.nodes[live[0]].parentId;
-      const parentId = live.every((id) => draft.nodes[id].parentId === sharedParent) ? sharedParent : null;
-      const worlds = new Map(live.map((id) => [id, worldPose2(draft.nodes, id)]));
-      const center = new Vector312();
-      for (const id of live) center.add(worlds.get(id).position);
-      center.multiplyScalar(1 / live.length);
-      const parentPose = parentId ? worldPose2(draft.nodes, parentId) : null;
-      const localCenter = parentPose ? worldPointToLocal(parentPose, center) : center;
-      const group = makeNode({
-        id: crypto.randomUUID(),
-        name: uniqueName(draft.nodes, "\u7EC4"),
-        kind: "empty",
-        parentId,
-        order: nextOrder(draft.nodes, parentId),
-        position: [localCenter.x, localCenter.y, localCenter.z]
-      });
-      draft.nodes[group.id] = group;
-      const groupPose = worldPose2(draft.nodes, group.id);
-      for (const id of live) {
-        const world3 = worlds.get(id);
-        if (!world3) continue;
-        draft.nodes[id].parentId = group.id;
-        draft.nodes[id].order = nextOrder(draft.nodes, group.id, id);
-        writePose2(draft.nodes[id], localPoseFromWorld(groupPose, world3));
-      }
-      draft.selection = [group.id];
-    });
-    if (ok) get().log("info", translate("log.grouped"));
-  },
-  snapSelectionToGround: () => {
-    const state = get();
-    const ids = selectionRoots(state.nodes, state.selection).filter((id) => !state.nodes[id]?.locked);
-    if (ids.length === 0) {
-      state.log("warn", translate("log.needGround"));
-      return;
-    }
-    const moves = measureGroundSnap(ids);
-    if (moves.length === 0) {
-      state.log("info", translate("log.alreadyGround"));
-      return;
-    }
-    const ok = mutate(set, get, "\u8D34\u5730", (draft) => {
-      for (const move of moves) {
-        const node = draft.nodes[move.id];
-        if (node) node.position = move.position;
-      }
-    });
-    if (ok) get().log("info", translate("log.grounded", { count: moves.length }));
-  },
-  reparent: (id, parentId) => {
-    get().placeNodes([id], parentId, "end");
-  },
-  attachToBone: (id, modelId, bonePath) => {
-    const nodes = get().nodes;
-    const node = nodes[id];
-    const model = nodes[modelId];
-    if (!node || !model || model.kind !== "model" || node.locked) return;
-    if (id === modelId || isUnder(nodes, modelId, id)) {
-      get().log("warn", translate("log.cycle"));
-      return;
-    }
-    mutate(set, get, translate("inspector.extractSocket"), (draft) => {
-      const current = draft.nodes[id];
-      if (!current) return;
-      current.parentId = modelId;
-      current.socketBone = bonePath;
-      current.position = [0, 0, 0];
-      current.rotation = [0, 0, 0];
-      current.order = nextOrder(draft.nodes, modelId, id);
-      detachIfReparented(draft.nodes, id);
-      draft.selection = [id];
-    });
-  },
-  placeNodes: (ids, parentId, zone, anchorId = null) => {
-    const nodes = get().nodes;
-    const moving = selectionRoots(nodes, ids).filter((id) => nodes[id] && !nodes[id].locked);
-    if (moving.length === 0) return;
-    if (parentId && moving.some((id) => id === parentId || isUnder(nodes, parentId, id))) {
-      get().log("warn", translate("log.cycle"));
-      return;
-    }
-    const anchor = anchorId ? nodes[anchorId] : null;
-    const nextParent = zone === "into" || zone === "end" ? parentId : anchor?.parentId ?? parentId;
-    if (nextParent && moving.some((id) => id === nextParent || isUnder(nodes, nextParent, id))) {
-      get().log("warn", translate("log.cycle"));
-      return;
-    }
-    mutate(set, get, "\u66F4\u6539\u7236\u5B50", (draft) => {
-      const worlds = new Map(moving.map((id) => [id, worldPose2(draft.nodes, id)]));
-      const parentPose = nextParent ? worldPose2(draft.nodes, nextParent) : null;
-      for (const id of moving) {
-        const current = draft.nodes[id];
-        if (!current || current.parentId === nextParent) continue;
-        const world3 = worlds.get(id);
-        if (!world3) continue;
-        current.parentId = nextParent;
-        delete current.socketBone;
-        writePose2(current, localPoseFromWorld(parentPose, world3));
-        detachIfReparented(draft.nodes, id);
-      }
-      const siblings = childrenOf(draft.nodes, nextParent).filter((node) => !moving.includes(node.id));
-      let index = siblings.length;
-      if (anchor && (zone === "before" || zone === "after")) {
-        const at = siblings.findIndex((node) => node.id === anchor.id);
-        index = at < 0 ? siblings.length : zone === "before" ? at : at + 1;
-      }
-      const ordered = [...siblings];
-      ordered.splice(index, 0, ...moving.map((id) => draft.nodes[id]).filter(Boolean));
-      ordered.forEach((node, order) => {
-        node.order = order;
-      });
-    });
-  },
-  toggleVisible: (id) => {
-    const node = get().nodes[id];
-    if (!node) return;
-    mutate(set, get, node.visible ? "\u9690\u85CF" : "\u663E\u793A", (draft) => {
-      draft.nodes[id].visible = !draft.nodes[id].visible;
-    });
-  },
-  toggleLocked: (id) => {
-    const node = get().nodes[id];
-    if (!node) return;
-    mutate(set, get, node.locked ? "\u89E3\u9501" : "\u9501\u5B9A", (draft) => {
-      draft.nodes[id].locked = !draft.nodes[id].locked;
-    });
-  },
-  selectAll: () => set({ selection: Object.keys(get().nodes) }),
-  undo: () => {
-    if (get().playState !== "stopped") {
-      get().log("warn", translate("log.noUndoPlay"));
-      return;
-    }
-    if (get().gesture) get().endGesture();
-    const past = get().past;
-    const entry = past[past.length - 1];
-    if (!entry) return;
-    if (entry.databaseOnly && entry.beforeDatabase) {
-      set({
-        past: past.slice(0, -1),
-        future: [...get().future, entry],
-        gameDatabase: structuredClone(entry.beforeDatabase),
-        gameplayPacks: [...entry.beforePacks ?? get().gameplayPacks]
-      });
-      return;
-    }
-    if (entry.materialsOnly) {
-      set({
-        past: past.slice(0, -1),
-        future: [...get().future, entry]
-      });
-      restoreMaterials(entry.beforeMaterials);
-      return;
-    }
-    set({
-      nodes: cloneNodes(entry.before),
-      selection: entry.beforeSelection.filter((id) => entry.before[id]),
-      past: past.slice(0, -1),
-      future: [...get().future, entry],
-      picture: structuredClone(entry.beforePicture)
-    });
-    restoreMaterials(entry.beforeMaterials);
-  },
-  redo: () => {
-    if (get().playState !== "stopped") {
-      get().log("warn", translate("log.noRedoPlay"));
-      return;
-    }
-    if (get().gesture) {
-      get().endGesture();
-      return;
-    }
-    const future = get().future;
-    const entry = future[future.length - 1];
-    if (!entry) return;
-    if (entry.databaseOnly && entry.afterDatabase) {
-      set({
-        future: future.slice(0, -1),
-        past: [...get().past, entry],
-        gameDatabase: structuredClone(entry.afterDatabase),
-        gameplayPacks: [...entry.afterPacks ?? get().gameplayPacks]
-      });
-      return;
-    }
-    if (entry.materialsOnly) {
-      set({
-        future: future.slice(0, -1),
-        past: [...get().past, entry]
-      });
-      restoreMaterials(entry.afterMaterials);
-      return;
-    }
-    set({
-      nodes: cloneNodes(entry.after),
-      selection: entry.afterSelection.filter((id) => entry.after[id]),
-      future: future.slice(0, -1),
-      past: [...get().past, entry],
-      picture: structuredClone(entry.afterPicture)
-    });
-    restoreMaterials(entry.afterMaterials);
-  },
-  play: () => {
-    if (get().prefabSession) {
-      get().log("warn", translate("prefab.noPlay"));
-      return;
-    }
-    if (get().gesture) get().endGesture();
-    const state = get().playState;
-    if (state === "paused") {
-      set({ playState: "playing" });
-      get().log("info", translate("log.resumePlay"));
-      return;
-    }
-    if (state === "playing") return;
-    resetUiValues();
-    const snapshot2 = cloneNodes(get().nodes);
-    const nodes = cloneNodes(snapshot2);
-    for (const node of Object.values(nodes)) {
-      if (node.kind !== "model") continue;
-      const animator = node.animator?.enabled ? node.animator : null;
-      if (animator) {
-        const start2 = animator.states.find((state2) => state2.id === (animator.defaultStateId || animator.stateId)) ?? animator.states[0];
-        if (!start2?.clip) continue;
-        nodes[node.id] = { ...node, clipPlaying: true, clipTime: 0, animator: { ...animator, stateId: start2.id } };
-        continue;
-      }
-      if (!node.clip) continue;
-      nodes[node.id] = { ...node, clipPlaying: true, clipTime: 0 };
-    }
-    set({
-      playState: "playing",
-      playSnapshot: snapshot2,
-      nodes,
-      playSelection: get().selection.slice(),
-      playPicture: structuredClone(get().picture),
-      playDirty: false
-    });
-    get().log("info", translate("log.startPlay"));
-  },
-  pause: () => {
-    const state = get().playState;
-    if (state === "playing") set({ playState: "paused" });
-    else if (state === "paused") set({ playState: "playing" });
-  },
-  stop: () => {
-    const snapshot2 = get().playSnapshot;
-    const picture = get().playPicture;
-    if (get().playState === "stopped" || !snapshot2) return;
-    set({
-      gesture: null,
-      playState: "stopped",
-      nodes: cloneNodes(snapshot2),
-      selection: get().playSelection.filter((id) => snapshot2[id]),
-      playSnapshot: null,
-      picture: picture ? structuredClone(picture) : get().picture,
-      playPicture: null,
-      playDirty: false
-    });
-    resetUiValues();
-    get().log("info", translate("log.stopPlay"));
-  },
-  keepPlayChanges: () => {
-    const snapshot2 = get().playSnapshot;
-    if (get().playState === "stopped" || !snapshot2) return;
-    const beforeNodes = cloneNodes(snapshot2);
-    const beforePicture = get().playPicture ? structuredClone(get().playPicture) : structuredClone(get().picture);
-    const currentNodes = get().nodes;
-    const nextSnapshot = {};
-    const liveNodes = { ...currentNodes };
-    let cameraKept = false;
-    for (const [id, snapNode] of Object.entries(snapshot2)) {
-      const liveNode = currentNodes[id];
-      if (!liveNode) {
-        nextSnapshot[id] = structuredClone(snapNode);
-        continue;
-      }
-      const merged = structuredClone(liveNode);
-      merged.position = [...snapNode.position];
-      merged.rotation = [...snapNode.rotation];
-      merged.scale = [...snapNode.scale];
-      merged.clipPlaying = snapNode.clipPlaying;
-      merged.clipTime = snapNode.clipTime;
-      merged.overlayPlaying = snapNode.overlayPlaying;
-      merged.overlayTime = snapNode.overlayTime;
-      if (merged.animator && snapNode.animator) {
-        merged.animator = {
-          ...merged.animator,
-          stateId: snapNode.animator.stateId
-        };
-      }
-      const followed = bakeFollow(liveNode);
-      if (followed) {
-        const gameplay = { ...liveNode.gameplay, cameraFollow: followed };
-        merged.gameplay = gameplay;
-        liveNodes[id] = { ...liveNode, gameplay };
-        cameraKept = true;
-        settleCameraArm(id);
-      }
-      nextSnapshot[id] = merged;
-    }
-    const nextPicture = structuredClone(get().picture);
-    if (!sameNodes(beforeNodes, nextSnapshot) || !sameJson(beforePicture, nextPicture)) {
-      pushHistory(set, {
-        label: translate("inspector.keepPlayChanges"),
-        before: beforeNodes,
-        after: cloneNodes(nextSnapshot),
-        beforeSelection: get().playSelection.slice(),
-        afterSelection: get().playSelection.slice(),
-        beforePicture,
-        afterPicture: structuredClone(nextPicture)
-      });
-    }
-    set({
-      nodes: cameraKept ? liveNodes : currentNodes,
-      playSnapshot: nextSnapshot,
-      playPicture: nextPicture,
-      playDirty: false
-    });
-    get().notify(translate("log.keptPlayChanges"));
-    get().log("info", translate("log.keptPlayChanges"));
-  },
-  newScene: () => {
-    get().createScene();
-  },
-  createScene: () => {
-    if (get().playState !== "stopped") {
-      get().log("warn", translate("log.stopBeforeNew"));
-      return;
-    }
-    if (get().gesture) get().endGesture();
-    get().flushActiveScene();
-    const existing = Object.values(useAssetStore.getState().assets).filter((asset) => asset.kind === "scene");
-    const fresh = createFreshScene(uniqueSceneName(existing.map((scene2) => scene2.name)));
-    useAssetStore.getState().add({
-      id: fresh.id,
-      name: fresh.name,
-      kind: "scene",
-      nodes: fresh.nodes,
-      picture: fresh.picture
-    });
-    useAssetStore.getState().place(fresh.id);
-    set({
-      activeSceneId: fresh.id,
-      nodes: fresh.nodes,
-      selection: [fresh.selectedId],
-      past: [],
-      future: [],
-      gesture: null,
-      playSnapshot: null,
-      playPicture: null,
-      picture: fresh.picture
-    });
-    get().log("info", translate("log.createdScene", { name: fresh.name }));
-  },
-  openScene: (id) => {
-    const asset = useAssetStore.getState().assets[id];
-    if (!asset || asset.kind !== "scene") return;
-    if (get().playState !== "stopped") {
-      get().log("warn", translate("log.stopBeforeOpen"));
-      return;
-    }
-    if (get().activeSceneId === id && !get().prefabSession) return;
-    if (get().prefabSession) get().closePrefab(true);
-    if (get().activeSceneId === id) return;
-    if (get().gesture) get().endGesture();
-    get().flushActiveScene();
-    set({
-      activeSceneId: id,
-      nodes: structuredClone(asset.nodes),
-      picture: normalizePicture(asset.picture),
-      editorView: normalizeEditorView(asset.editorView),
-      editorViewNonce: get().editorViewNonce + 1,
-      selection: [],
-      past: [],
-      future: [],
-      gesture: null,
-      playSnapshot: null,
-      playPicture: null
-    });
-    get().log("info", translate("log.openedScene", { name: asset.name }));
-  },
-  deleteScene: (id) => {
-    const scenes = Object.values(useAssetStore.getState().assets).filter((asset) => asset.kind === "scene");
-    if (!scenes.some((scene2) => scene2.id === id)) return;
-    if (scenes.length <= 1) {
-      get().log("warn", translate("log.keepScene"));
-      return;
-    }
-    if (get().playState !== "stopped") {
-      get().log("warn", translate("log.stopBeforeDelete"));
-      return;
-    }
-    if (get().activeSceneId === id) {
-      const next = scenes.find((scene2) => scene2.id !== id);
-      if (!next) return;
-      set({
-        activeSceneId: next.id,
-        nodes: structuredClone(next.nodes),
-        picture: normalizePicture(next.picture),
-        editorView: normalizeEditorView(next.editorView),
-        editorViewNonce: get().editorViewNonce + 1,
-        selection: [],
-        past: [],
-        future: [],
-        gesture: null,
-        playSnapshot: null,
-        playPicture: null
-      });
-    }
-    useAssetStore.getState().remove(id);
-    forgetNavMesh(id);
-    get().log("info", translate("log.deletedScene"));
-  },
-  flushActiveScene: () => {
-    const id = get().activeSceneId;
-    if (!id) return;
-    const session = get().prefabSession;
-    if (session) {
-      const editing = structuredClone(get().nodes);
-      const root = Object.values(editing).find((node) => !node.parentId);
-      if (root) {
-        root.position = [0, 0, 0];
-        root.rotation = [0, 0, 0];
-        root.scale = [1, 1, 1];
-      }
-      useAssetStore.getState().writePrefab(session.assetId, root?.id ?? "", editing);
-      reconcilePrefab(session.sceneNodes, session.assetId, readPrefab({ rootId: root?.id ?? "", nodes: editing }), lookupPrefab);
-    }
-    const nodes = session ? session.sceneNodes : get().nodes;
-    const liveView = get().prefabSession ? get().editorView : readEditorViewPose();
-    useAssetStore.getState().writeScene(id, structuredClone(nodes), structuredClone(get().picture), liveView ?? void 0);
-  },
-  ensureSceneAsset: () => {
-    const scenes = Object.values(useAssetStore.getState().assets).filter((asset) => asset.kind === "scene");
-    if (scenes.length === 0) {
-      const id = crypto.randomUUID();
-      useAssetStore.getState().add({
-        id,
-        name: "\u672A\u547D\u540D\u573A\u666F",
-        kind: "scene",
-        nodes: structuredClone(get().nodes),
-        picture: structuredClone(get().picture)
-      });
-      useAssetStore.getState().place(id, "Assets");
-      set({ activeSceneId: id });
-      return;
-    }
-    if (!scenes.some((scene2) => scene2.id === get().activeSceneId)) {
-      const first = scenes[0];
-      set({
-        activeSceneId: first.id,
-        nodes: structuredClone(first.nodes),
-        picture: structuredClone(first.picture),
-        selection: []
-      });
-    }
-  },
-  requestRename: (id) => {
-    if (!get().nodes[id]) return;
-    set({ pendingRenameId: id, selection: [id] });
-  },
-  loadDocument: (document2) => {
-    if (get().gesture) get().endGesture();
-    const nodes = document2.nodes;
-    set({
-      nodes,
-      selection: document2.selection.filter((id) => nodes[id]),
-      past: [],
-      future: [],
-      gesture: null,
-      playState: "stopped",
-      playSnapshot: null,
-      playSelection: [],
-      playPicture: null,
-      picture: normalizePicture(document2.picture),
-      editorView: savedEditorView(document2),
-      editorViewNonce: get().editorViewNonce + 1,
-      capabilities: normalizeCapabilities(document2.capabilities),
-      tags: ensureTags(document2.tags),
-      gameplayPacks: [...resolveEnabledPackIds(document2.gameplayPacks)],
-      gameDatabase: ensureGameDatabase(document2.gameDatabase, document2.gameplayPacks),
-      layers: ensureLayers(document2.layers),
-      editorCullingMask: typeof document2.editorCullingMask === "number" ? document2.editorCullingMask >>> 0 : ALL_LAYERS_VISIBLE_MASK,
-      physicsCollisionMatrixEnabled: document2.physicsCollisionMatrixEnabled === true,
-      physicsCollisionRowMasks: document2.physicsCollisionRowMasks ?? {},
-      activeSceneId: document2.activeSceneId,
-      prefabSession: null,
-      inspectedAssetId: typeof document2.workspace?.inspectedAssetId === "string" ? document2.workspace.inspectedAssetId : null
-    });
-    hydrateNavigation(document2.navMeshes);
-  },
-  clearLogs: () => set({ logs: [] }),
-  log: (level, message, parts) => {
-    const entry = { id: crypto.randomUUID(), level, message, time: Date.now(), parts };
-    set((state) => ({ logs: [...state.logs, entry].slice(-300) }));
-    if (level !== "info") get().notify(message);
-  },
-  notify: (message) => {
-    set({ notice: message });
-    window.setTimeout(() => {
-      if (get().notice === message) set({ notice: null });
-    }, 2600);
-  },
-  setPicture: (patch) => set((state) => ({
-    picture: normalizePicture({ ...state.picture, ...patch }),
-    ...state.playState !== "stopped" ? { playDirty: true } : {}
-  })),
-  rememberEditorView: (view) => {
-    if (get().prefabSession || get().playState !== "stopped") return;
-    if (JSON.stringify(get().editorView) === JSON.stringify(view)) return;
-    set({ editorView: view });
-  },
-  setCapability: (id, enabled) => set((state) => ({
-    capabilities: { ...state.capabilities, [id]: enabled }
-  })),
-  commitGameplay: (packs2, database, label) => {
-    const beforePacks = [...get().gameplayPacks];
-    const beforeDatabase = structuredClone(get().gameDatabase);
-    const nextPacks = [...resolveEnabledPackIds(packs2)];
-    const nextDatabase = ensureGameDatabase(database, nextPacks);
-    if (JSON.stringify(beforePacks) === JSON.stringify(nextPacks) && JSON.stringify(beforeDatabase) === JSON.stringify(nextDatabase)) return;
-    pushHistory(set, {
-      label,
-      before: {},
-      after: {},
-      beforeSelection: [],
-      afterSelection: [],
-      beforePicture: get().picture,
-      afterPicture: get().picture,
-      databaseOnly: true,
-      beforeDatabase,
-      afterDatabase: structuredClone(nextDatabase),
-      beforePacks,
-      afterPacks: nextPacks
-    });
-    set({ gameplayPacks: nextPacks, gameDatabase: nextDatabase });
-  },
-  setTags: (tags2) => {
-    const next = ensureTags(tags2);
-    const ids = new Set(next.map((tag) => tag.id));
-    const previous = new Set(get().tags.map((tag) => tag.id));
-    set((state) => {
-      const nodes = { ...state.nodes };
-      for (const [id, node] of Object.entries(nodes)) {
-        const tagId = node.tagId && ids.has(node.tagId) ? node.tagId : null;
-        const tagIds = (node.tagIds ?? []).filter((tag) => !previous.has(tag) || ids.has(tag));
-        const samePrimary = (node.tagId ?? null) === tagId;
-        const sameExtra = (node.tagIds ?? []).join("|") === tagIds.join("|");
-        if (!samePrimary || !sameExtra) nodes[id] = { ...node, tagId, tagIds };
-      }
-      return { tags: next, nodes };
-    });
-  },
-  setLayers: (layers) => {
-    const next = ensureLayers(layers);
-    const ids = new Set(next.map((layer) => layer.id));
-    set((state) => {
-      const nodes = { ...state.nodes };
-      for (const [id, node] of Object.entries(nodes)) {
-        if (node.renderLayerId && !ids.has(node.renderLayerId)) {
-          nodes[id] = { ...node, renderLayerId: LAYER_ID_DEFAULT };
-        }
-      }
-      return { layers: next, nodes };
-    });
-  },
-  setEditorCullingMask: (mask) => set({ editorCullingMask: mask >>> 0 }),
-  setPhysicsCollisionMatrix: (enabled, rows) => set({
-    physicsCollisionMatrixEnabled: enabled,
-    physicsCollisionRowMasks: rows
-  }),
-  applySimulation: (poses) => {
-    if (get().playState !== "playing" || poses.length === 0) return;
-    const depthOf = (id) => {
-      let depth = 0;
-      let parent = get().nodes[id]?.parentId;
-      const seen = /* @__PURE__ */ new Set();
-      while (parent && !seen.has(parent)) {
-        seen.add(parent);
-        depth += 1;
-        parent = get().nodes[parent]?.parentId;
-      }
-      return depth;
-    };
-    const ordered = [...poses].sort((a, b) => depthOf(a.id) - depthOf(b.id));
-    set((state) => {
-      const nodes = { ...state.nodes };
-      for (const pose of ordered) {
-        const node = nodes[pose.id];
-        if (!node) continue;
-        const parent = node.parentId ? worldPose2(nodes, node.parentId) : null;
-        const local = localPoseFromWorld(parent, {
-          position: new Vector312(pose.position[0], pose.position[1], pose.position[2]),
-          quaternion: new Quaternion7(pose.rotation[0], pose.rotation[1], pose.rotation[2], pose.rotation[3]),
-          scale: new Vector312(node.scale[0], node.scale[1], node.scale[2])
-        });
-        const parts = poseComponents(local);
-        nodes[pose.id] = { ...node, position: parts.position, rotation: parts.rotation };
-      }
-      return { nodes };
-    });
-  },
-  setRenderBackend: (label) => {
-    if (get().renderBackend !== label) set({ renderBackend: label });
-  },
-  setHelpersVisible: (visible) => set({ helpersVisible: visible }),
-  setNavMeshVisible: (visible) => set({ navMeshVisible: visible }),
-  setSnapStep: (step2) => set({ snapStep: Math.max(0.01, step2) }),
-  setViewportStats: (stats) => {
-    set({ viewportStats: stats });
-  },
-  spawnModel: (assetId, name, slots, point2) => {
-    let created = "";
-    const ok = mutate(set, get, `\u653E\u7F6E${name}`, (draft) => {
-      const id = crypto.randomUUID();
-      created = uniqueName(draft.nodes, name);
-      draft.nodes[id] = makeNode({
-        id,
-        name: created,
-        kind: "model",
-        assetId,
-        slots: structuredClone(slots),
-        position: [point2[0], point2[1], point2[2]]
-      });
-      draft.selection = [id];
-    });
-    if (ok && created) get().log("info", translate("log.placed", { name: created }));
-  },
-  spawnPrefab: (assetId, point2, parentId = null) => {
-    if (get().prefabSession) {
-      get().log("warn", translate("prefab.exitFirst"));
-      return;
-    }
-    const asset = useAssetStore.getState().assets[assetId];
-    const doc = asset?.kind === "prefab" ? readPrefab(asset) : null;
-    if (!doc?.rootId) return;
-    let created = "";
-    const ok = mutate(set, get, translate("prefab.place", { name: asset?.name ?? "" }), (draft) => {
-      const id = instantiatePrefab(draft.nodes, doc, assetId, parentId, parentId ? null : point2, lookupPrefab);
-      if (!id) return;
-      created = draft.nodes[id]?.name ?? "";
-      draft.selection = [id];
-    });
-    if (ok && created) get().log("info", translate("log.placed", { name: created }));
-  },
-  createPrefabFromSelection: (name, nodeId, dir) => {
-    if (get().playState !== "stopped") return;
-    if (get().prefabSession) {
-      get().log("warn", translate("prefab.exitFirst"));
-      return;
-    }
-    const roots = nodeId ? [nodeId] : selectionRoots(get().nodes, get().selection);
-    if (roots.length !== 1 || !get().nodes[roots[0]]) {
-      get().log("warn", translate("prefab.needOne"));
-      return;
-    }
-    if (get().nodes[roots[0]].prefabInstanceId === roots[0]) {
-      get().log("warn", translate("prefab.alreadyInstance"));
-      return;
-    }
-    const source = get().nodes[roots[0]];
-    const doc = captureTemplate(get().nodes, roots[0]);
-    if (!doc.rootId) return;
-    const id = crypto.randomUUID();
-    const assetName = uniqueAssetName(name?.trim() || source.name);
-    useAssetStore.getState().add({ id, name: assetName, kind: "prefab", rootId: doc.rootId, nodes: doc.nodes });
-    useAssetStore.getState().place(id, dir);
-    const ok = mutate(set, get, translate("prefab.create", { name: assetName }), (draft) => {
-      const current = draft.nodes[roots[0]];
-      if (!current) return;
-      const parentId = current.parentId;
-      const position = current.position;
-      const rotation = current.rotation;
-      const scale = current.scale;
-      const order = current.order;
-      const name2 = current.name;
-      deleteSubtree2(draft.nodes, roots[0]);
-      const instanceId = instantiatePrefab(draft.nodes, doc, id, parentId, position, lookupPrefab);
-      const instance2 = instanceId ? draft.nodes[instanceId] : void 0;
-      if (!instance2) return;
-      instance2.name = name2;
-      instance2.rotation = rotation;
-      instance2.scale = scale;
-      instance2.order = order;
-      instance2.prefabOverrides = ["position", "rotation", "scale"];
-      draft.selection = [instance2.id];
-    });
-    if (ok) get().log("info", translate("log.savedPrefab", { name: assetName }));
-  },
-  rebindPrefab: (fromId, toId) => {
-    const doc = lookupPrefab(toId);
-    if (!doc?.rootId || fromId === toId) return;
-    const ok = mutate(set, get, translate("prefab.rebind"), (draft) => {
-      const roots = Object.values(draft.nodes).filter((node) => node.prefabAssetId === fromId && node.prefabInstanceId === node.id);
-      for (const root of roots) {
-        for (const node of Object.values(draft.nodes)) {
-          if (node.prefabInstanceId === root.id && node.id !== root.id) delete draft.nodes[node.id];
-        }
-        root.prefabAssetId = toId;
-        root.prefabTemplateId = doc.rootId;
-        root.prefabRemoved = [];
-        root.prefabOverrides = ["position", "rotation", "scale"];
-      }
-      reconcilePrefab(draft.nodes, toId, doc, lookupPrefab);
-    });
-    if (ok) get().log("info", translate("prefab.rebound"));
-  },
-  openPrefab: (assetId) => {
-    if (get().playState !== "stopped") {
-      get().log("warn", translate("prefab.noPlay"));
-      return;
-    }
-    if (get().prefabSession?.assetId === assetId) return;
-    if (get().prefabSession) get().closePrefab(true);
-    const asset = useAssetStore.getState().assets[assetId];
-    const doc = asset?.kind === "prefab" ? readPrefab(asset) : null;
-    if (!doc?.rootId) return;
-    if (get().gesture) get().endGesture();
-    set({
-      prefabSession: {
-        assetId,
-        sceneNodes: structuredClone(get().nodes),
-        sceneSelection: get().selection.slice(),
-        scenePast: get().past,
-        sceneFuture: get().future,
-        sceneView: readEditorViewPose() ?? get().editorView
-      },
-      nodes: structuredClone(doc.nodes),
-      selection: [doc.rootId],
-      past: [],
-      future: [],
-      inspectedAssetId: null
-    });
-    get().log("info", translate("prefab.editing", { name: asset?.name ?? "" }));
-  },
-  closePrefab: (save) => {
-    const session = get().prefabSession;
-    if (!session) return;
-    if (get().gesture) get().endGesture();
-    const sceneNodes = session.sceneNodes;
-    if (save) {
-      const nodes = structuredClone(get().nodes);
-      const root = Object.values(nodes).find((node) => !node.parentId);
-      if (root) {
-        root.position = [0, 0, 0];
-        root.rotation = [0, 0, 0];
-        root.scale = [1, 1, 1];
-      }
-      useAssetStore.getState().writePrefab(session.assetId, root?.id ?? "", nodes);
-      const doc = readPrefab({ rootId: root?.id ?? "", nodes });
-      reconcilePrefab(sceneNodes, session.assetId, doc, lookupPrefab);
-    }
-    set({
-      prefabSession: null,
-      nodes: sceneNodes,
-      selection: session.sceneSelection.filter((id) => sceneNodes[id]),
-      past: session.scenePast,
-      future: session.sceneFuture,
-      editorView: session.sceneView,
-      editorViewNonce: session.sceneView ? get().editorViewNonce + 1 : get().editorViewNonce
-    });
-    get().log("info", translate(save ? "prefab.saved" : "prefab.closed"));
-  },
-  applyPrefabInstance: (id) => {
-    const root = get().nodes[id];
-    const asset = root?.prefabAssetId ? useAssetStore.getState().assets[root.prefabAssetId] : void 0;
-    if (!root || root.prefabInstanceId !== root.id || asset?.kind !== "prefab") return;
-    const ok = mutate(set, get, translate("prefab.apply"), (draft) => {
-      const doc = applyInstance(draft.nodes, id, readPrefab(asset));
-      useAssetStore.getState().writePrefab(asset.id, doc.rootId, doc.nodes);
-      reconcilePrefab(draft.nodes, asset.id, doc, lookupPrefab);
-    });
-    if (ok) get().log("info", translate("prefab.applied"));
-  },
-  revertPrefabInstance: (id) => {
-    const root = get().nodes[id];
-    const asset = root?.prefabAssetId ? useAssetStore.getState().assets[root.prefabAssetId] : void 0;
-    if (!root || root.prefabInstanceId !== root.id || asset?.kind !== "prefab") return;
-    const ok = mutate(set, get, translate("prefab.revert"), (draft) => {
-      revertInstance(draft.nodes, id, readPrefab(asset), asset.id, lookupPrefab);
-    });
-    if (ok) get().log("info", translate("prefab.reverted"));
-  },
-  unpackPrefabInstance: (id) => {
-    if (!get().nodes[id] || get().nodes[id].prefabInstanceId !== id) return;
-    const ok = mutate(set, get, translate("prefab.unpack"), (draft) => {
-      unpackInstance(draft.nodes, id);
-    });
-    if (ok) get().log("info", translate("prefab.unpacked"));
-  },
-  assignMap: (id, assetId) => {
-    const node = get().nodes[id];
-    if (!node) return;
-    const label = translate(assetId ? "gesture.map" : "gesture.mapClear");
-    if (node.kind === "model" && node.slots.length > 0) {
-      const linked = node.slots[0].materialAssetId;
-      if (linked) {
-        get().commitMaterial(linked, { mapAssetId: assetId }, label);
-        return;
-      }
-      get().beginGesture(label);
-      get().updateNode(id, {
-        slots: node.slots.map((slot, index) => index === 0 ? { ...slot, mapAssetId: assetId } : slot)
-      });
-      get().endGesture();
-      return;
-    }
-    if (node.materialAssetId) {
-      get().commitMaterial(node.materialAssetId, { mapAssetId: assetId }, label);
-      return;
-    }
-    get().beginGesture(label);
-    get().updateNode(id, { mapAssetId: assetId });
-    get().endGesture();
-  },
-  commitMaterial: (id, patch, label) => {
-    const asset = useAssetStore.getState().assets[id];
-    if (!asset || asset.kind !== "material") return;
-    const beforeSlot = structuredClone(asset.slot);
-    const afterSlot = { ...beforeSlot, ...patch };
-    if (sameJson(beforeSlot, afterSlot)) return;
-    if (get().gesture) get().endGesture();
-    useAssetStore.getState().replaceMaterial(id, afterSlot);
-    const nodes = cloneNodes(get().nodes);
-    const selection = get().selection.slice();
-    const picture = structuredClone(get().picture);
-    pushHistory(set, {
-      label,
-      before: nodes,
-      after: cloneNodes(nodes),
-      beforeSelection: selection,
-      afterSelection: selection.slice(),
-      beforePicture: picture,
-      afterPicture: picture,
-      materialsOnly: true,
-      beforeMaterials: { [id]: beforeSlot },
-      afterMaterials: { [id]: structuredClone(afterSlot) }
-    });
-  },
-  assignMaterial: (id, materialId) => {
-    const asset = useAssetStore.getState().assets[materialId];
-    const node = get().nodes[id];
-    if (!node || asset?.kind !== "material") return;
-    get().beginGesture("\u6307\u5B9A\u6750\u8D28");
-    if (node.kind === "model" && node.slots.length > 0) {
-      get().updateNode(id, {
-        slots: node.slots.map((item) => ({ ...item, materialAssetId: materialId }))
-      });
-    } else {
-      get().updateNode(id, { materialAssetId: materialId });
-    }
-    get().endGesture();
-    get().log("info", translate("log.assignedMaterial", { name: asset.name }));
-  }
-}));
-function savedEditorView(document2) {
-  const scene2 = document2.library.find((item) => item.kind === "scene" && item.id === document2.activeSceneId);
-  return normalizeEditorView(scene2?.editorView);
-}
-function selectionRoots(nodes, selection) {
-  const selected = new Set(selection);
-  return selection.filter((id) => {
-    let parent = nodes[id]?.parentId;
-    while (parent) {
-      if (selected.has(parent)) return false;
-      parent = nodes[parent]?.parentId ?? null;
-    }
-    return Boolean(nodes[id]);
-  });
-}
-var clipboard = null;
-function pasteNodes(draft, parentId) {
-  if (!clipboard) return [];
-  const map = /* @__PURE__ */ new Map();
-  for (const node of clipboard) map.set(node.id, crypto.randomUUID());
-  const roots = [];
-  for (const source of clipboard) {
-    const copy = structuredClone(source);
-    const nextId2 = map.get(source.id);
-    if (!nextId2) continue;
-    copy.id = nextId2;
-    copy.locked = false;
-    const mappedParent = source.parentId ? map.get(source.parentId) ?? null : null;
-    copy.parentId = mappedParent ?? parentId;
-    if (!source.parentId) {
-      copy.name = uniqueName(draft.nodes, source.name);
-      copy.order = nextOrder(draft.nodes, copy.parentId);
-      if (!parentId) copy.position = [copy.position[0] + 1, copy.position[1], copy.position[2]];
-      roots.push(nextId2);
-    }
-    draft.nodes[nextId2] = copy;
-  }
-  return roots;
-}
-function mutate(set, get, label, fn) {
-  if (get().playState !== "stopped") {
-    get().log("warn", translate("log.noStructure"));
-    return false;
-  }
-  if (get().gesture) get().endGesture();
-  const before = cloneNodes(get().nodes);
-  const beforeSelection = get().selection.slice();
-  const draft = { nodes: cloneNodes(before), selection: beforeSelection.slice() };
-  fn(draft);
-  draft.selection = draft.selection.filter((id) => draft.nodes[id]);
-  set({ nodes: draft.nodes, selection: draft.selection });
-  if (sameNodes(before, draft.nodes) && sameSelection(beforeSelection, draft.selection)) return true;
-  const picture = structuredClone(get().picture);
-  pushHistory(set, {
-    label,
-    before,
-    after: cloneNodes(draft.nodes),
-    beforeSelection,
-    afterSelection: draft.selection.slice(),
-    beforePicture: picture,
-    afterPicture: picture
-  });
-  return true;
-}
-function restoreMaterials(slots) {
-  if (!slots) return;
-  for (const [id, slot] of Object.entries(slots)) {
-    useAssetStore.getState().replaceMaterial(id, structuredClone(slot));
-  }
-}
-function lookupPrefab(assetId) {
-  const asset = useAssetStore.getState().assets[assetId];
-  return asset?.kind === "prefab" ? readPrefab(asset) : null;
-}
-function deleteSubtree2(nodes, id) {
-  for (const child of childrenOf(nodes, id)) deleteSubtree2(nodes, child.id);
-  delete nodes[id];
-}
-function uniqueAssetName(base) {
-  const names = new Set(Object.values(useAssetStore.getState().assets).map((asset) => asset.name));
-  if (!names.has(base)) return base;
-  let index = 2;
-  while (names.has(`${base} ${index}`)) index += 1;
-  return `${base} ${index}`;
-}
-function uniqueSceneName(names) {
-  if (!names.includes("\u65B0\u573A\u666F")) return "\u65B0\u573A\u666F";
-  let index = 2;
-  while (names.includes(`\u65B0\u573A\u666F ${index}`)) index += 1;
-  return `\u65B0\u573A\u666F ${index}`;
-}
-function primaryId(state) {
-  return state.selection[state.selection.length - 1] ?? null;
-}
-function selectedCameraId(state, editable) {
-  const id = primaryId(state);
-  const node = id ? state.nodes[id] : void 0;
-  if (!node || node.kind !== "camera") return null;
-  if (editable && node.locked) return null;
-  return id;
-}
-if (typeof window !== "undefined") {
-  window.addEventListener("t3d:load-scene", (ev) => {
-    const detail = ev.detail;
-    if (!detail?.sceneId) return;
-    const st = useEditorStore.getState();
-    if (st.playState === "playing") {
-      st.openScene(detail.sceneId);
-    }
-  });
-}
-
-// src/core/query/diagnose.ts
-init_actionMap();
-var DEFAULT_PERFORMANCE_BUDGET = {
-  maxDrawCalls: 600,
-  maxTriangles: 35e4,
-  maxShadowLights: 3,
-  maxAssetBytes: 120 * 1024 * 1024
-};
-
-// src/playtest/session.ts
-init_sceneRuntime();
-init_world();
-function summarizeRuntimeLogs(logs, maxEach = 8) {
-  const collect = (level) => {
-    const counts = /* @__PURE__ */ new Map();
-    for (const item of logs) {
-      if (item.level !== level) continue;
-      counts.set(item.message, (counts.get(item.message) ?? 0) + 1);
-    }
-    const total = Array.from(counts.values()).reduce((sum, n) => sum + n, 0);
-    const lines = Array.from(counts.entries()).slice(0, maxEach).map(([message, n]) => n > 1 ? `${message}\uFF08\u91CD\u590D ${n} \u6B21\uFF09` : message);
-    if (counts.size > maxEach) lines.push(`\u2026\u53E6\u6709 ${counts.size - maxEach} \u79CD\u4E0D\u540C\u6D88\u606F\u672A\u5217\u51FA`);
-    return { total, lines };
-  };
-  const errors = collect("error");
-  const warnings = collect("warn");
-  return { errorCount: errors.total, warningCount: warnings.total, errors: errors.lines, warnings: warnings.lines };
-}
-function summarizeInfoLogs(logs, maxLines = 40) {
-  const counts = /* @__PURE__ */ new Map();
-  for (const item of logs) {
-    if (item.level === "error" || item.level === "warn") continue;
-    counts.set(item.message, (counts.get(item.message) ?? 0) + 1);
-  }
-  const lines = Array.from(counts.entries()).slice(0, maxLines).map(([message, n]) => {
-    const text = message.length > 300 ? `${message.slice(0, 300)}\u2026` : message;
-    return n > 1 ? `${text}\uFF08\u91CD\u590D ${n} \u6B21\uFF09` : text;
-  });
-  if (counts.size > maxLines) lines.push(`\u2026\u53E6\u6709 ${counts.size - maxLines} \u79CD\u4E0D\u540C\u65E5\u5FD7\u672A\u5217\u51FA`);
-  return lines;
-}
-
 // src/runtime/character.ts
 init_session10();
 init_session();
@@ -15451,12 +6823,30 @@ init_runtimeTags();
 init_juiceClock();
 
 // src/runtime/signals.ts
-var footstepListener = null;
+var footstepListeners = /* @__PURE__ */ new Set();
+var characterEventListeners = /* @__PURE__ */ new Set();
 function onFootstep(listener2) {
-  footstepListener = listener2;
+  footstepListeners.add(listener2);
+  return () => {
+    footstepListeners.delete(listener2);
+  };
 }
 function emitFootstep(nodeId) {
-  footstepListener?.(nodeId);
+  for (const listener2 of footstepListeners) {
+    listener2(nodeId);
+  }
+  emitCharacterEvent(nodeId, "onFootstep");
+}
+function onCharacterEvent(listener2) {
+  characterEventListeners.add(listener2);
+  return () => {
+    characterEventListeners.delete(listener2);
+  };
+}
+function emitCharacterEvent(nodeId, event, payload) {
+  for (const listener2 of characterEventListeners) {
+    listener2(nodeId, event, payload);
+  }
 }
 
 // src/gameplay/juice.ts
@@ -15504,6 +6894,48 @@ init_sceneRuntime();
 // src/runtime/rules.ts
 init_registry();
 init_runtimeTags();
+
+// src/runtime/ui/bindings.ts
+var EMPTY_UI_VALUES = { variables: {}, components: {}, screens: {} };
+
+// src/runtime/ui/values.ts
+var variables = {};
+var components = {};
+var screens = {};
+var snapshot = EMPTY_UI_VALUES;
+var listeners = /* @__PURE__ */ new Set();
+var clickListeners = /* @__PURE__ */ new Set();
+function publish() {
+  snapshot = {
+    variables: { ...variables },
+    components: Object.fromEntries(Object.entries(components).map(([id, fields]) => [id, { ...fields }])),
+    screens: { ...screens }
+  };
+  for (const listener2 of listeners) listener2();
+}
+function uiValues() {
+  return snapshot;
+}
+function writeUiVariable(varId, value) {
+  variables = { ...variables, [varId]: value };
+  publish();
+}
+function setScreenVisible(nodeId, visible) {
+  screens = { ...screens, [nodeId]: visible };
+  publish();
+}
+function resetUiValues() {
+  variables = {};
+  components = {};
+  screens = {};
+  publish();
+}
+function onUiClick(listener2) {
+  clickListeners.add(listener2);
+  return () => clickListeners.delete(listener2);
+}
+
+// src/runtime/rules.ts
 init_world();
 init_sceneRuntime();
 var jobs = [];
@@ -16519,6 +7951,17 @@ function takeRelocation(id) {
   if (next) relocations.delete(id);
   return next;
 }
+var runtimeModifiers = /* @__PURE__ */ new Map();
+function setCharacterModifiers(nodeId, patch) {
+  const prev = runtimeModifiers.get(nodeId) ?? {};
+  runtimeModifiers.set(nodeId, { ...prev, ...patch });
+}
+function getCharacterModifiers(nodeId) {
+  return { ...runtimeModifiers.get(nodeId) ?? {} };
+}
+function clearCharacterModifiers(nodeId) {
+  runtimeModifiers.delete(nodeId);
+}
 var simClock = 0;
 function stepCharacters(dt, host) {
   ensureKeys2();
@@ -16527,6 +7970,7 @@ function stepCharacters(dt, host) {
     simClock = 0;
     motion.clear();
     orders.clear();
+    runtimeModifiers.clear();
     consumeTaps();
     clearJuice();
     return;
@@ -16555,12 +7999,17 @@ function stepCharacters(dt, host) {
       live.vy = 0;
       live.grounded = true;
     }
-    const wish = wishInput(spec);
-    const sprint = isActionPressed("Sprint") || held("ShiftLeft") || held("ShiftRight");
-    const speed = spec.moveSpeed * (sprint && wish.amount > 0 ? spec.sprintMultiplier : 1);
+    const mods = runtimeModifiers.get(node.id);
+    const inputLocked = Boolean(mods?.inputLock);
+    const moveSpeedMul = typeof mods?.moveSpeedMul === "number" && Number.isFinite(mods.moveSpeedMul) ? Math.max(0, mods.moveSpeedMul) : 1;
+    const gravityMul = typeof mods?.gravityMul === "number" && Number.isFinite(mods.gravityMul) ? Math.max(0, mods.gravityMul) : 1;
+    const effectiveGravity = spec.gravity * gravityMul;
+    const wish = inputLocked ? { x: 0, z: 0, amount: 0 } : wishInput(spec);
+    const sprint = !inputLocked && (isActionPressed("Sprint") || held("ShiftLeft") || held("ShiftRight"));
+    const speed = spec.moveSpeed * moveSpeedMul * (sprint && wish.amount > 0 ? spec.sprintMultiplier : 1);
     const basis = facingBasis(spec, node.id, nodes, object.position.x, object.position.z, yaw, host);
     const world3 = rotate(wish.x, wish.z, basis.moveYaw);
-    const dashPressed = spec.dash && (wasActionTapped("Dash") || tapped(spec.dashKey || "KeyC"));
+    const dashPressed = !inputLocked && spec.dash && (wasActionTapped("Dash") || tapped(spec.dashKey || "KeyC"));
     if (dashPressed && now >= live.dashReady) {
       const dir = wish.amount > 0.1 ? world3 : { x: Math.sin(live.yaw), z: Math.cos(live.yaw) };
       const len = Math.hypot(dir.x, dir.z) || 1;
@@ -16589,7 +8038,7 @@ function stepCharacters(dt, host) {
       moveX = world3.x * speed;
       moveZ = world3.z * speed;
     } else if (spec.driver === "nav" && wish.amount > 0.1) {
-      const steered = steer2([object.position.x, object.position.y, object.position.z], {
+      const steered = steer([object.position.x, object.position.y, object.position.z], {
         x: object.position.x + world3.x * 2,
         y: object.position.y,
         z: object.position.z + world3.z * 2
@@ -16615,26 +8064,29 @@ function stepCharacters(dt, host) {
     const ground = useCapsule && live.grounded ? feet : groundUnder(host, useCapsule ? footX : object.position.x, useCapsule ? feet : object.position.y, useCapsule ? footZ : object.position.z, node.id, spec);
     const touchingFloor = ground !== null && feet <= ground + 0.12;
     const swimJumping = now <= live.swimJumpUntil;
+    const wasGrounded = live.grounded;
     if (water && submerged >= enterDepth) {
       if (!live.swimming) {
         live.swimming = true;
         live.jumpsUsed = 0;
         live.jumpPhase = "none";
         live.clip = "";
+        emitCharacterEvent(node.id, "onEnterWater", { waterHeight: water.height });
       }
     } else if (!water || submerged < exitDepth && (touchingFloor || swimJumping || submerged < -0.2)) {
       if (live.swimming) {
         live.swimming = false;
         live.clip = "";
         if (!swimJumping) live.lastGrounded = now;
+        emitCharacterEvent(node.id, "onExitWater");
       }
     }
     const onGround = !live.swimming && (live.grounded || ground !== null && feet <= ground + 0.08 && live.vy <= 0.1);
     if (onGround) live.lastGrounded = now;
     const coyote = now - live.lastGrounded <= spec.coyoteTime;
-    if (wasActionTapped("Jump") || tapped("Space")) live.jumpBufferUntil = now + spec.jumpBuffer;
+    if (!inputLocked && (wasActionTapped("Jump") || tapped("Space"))) live.jumpBufferUntil = now + spec.jumpBuffer;
     if (onGround && live.vy <= 0) live.jumpsUsed = 0;
-    const canJump = live.swimming || coyote && live.jumpsUsed === 0 || !onGround && live.jumpsUsed > 0 && live.jumpsUsed < spec.maxJumps || onGround && live.jumpsUsed < spec.maxJumps;
+    const canJump = !inputLocked && (live.swimming || coyote && live.jumpsUsed === 0 || !onGround && live.jumpsUsed > 0 && live.jumpsUsed < spec.maxJumps || onGround && live.jumpsUsed < spec.maxJumps);
     let jumped = false;
     if (now <= live.jumpBufferUntil && canJump && !dodging) {
       if (live.swimming) {
@@ -16647,6 +8099,7 @@ function stepCharacters(dt, host) {
       live.jumpBufferUntil = 0;
       live.lastGrounded = -999;
       jumped = true;
+      emitCharacterEvent(node.id, "onJump", { swimming: live.swimming, jumpIndex: live.jumpsUsed });
     }
     if (live.swimming && water) {
       const swimScale = Math.max(0.1, spec.swimSpeedMultiplier ?? 0.65);
@@ -16655,7 +8108,7 @@ function stepCharacters(dt, host) {
         moveZ *= swimScale;
       }
       if (now <= live.swimJumpUntil) {
-        live.vy -= spec.gravity * dt;
+        live.vy -= effectiveGravity * dt;
       } else {
         const targetFeetY = water.height - targetSubmerged;
         live.vy += ((targetFeetY - feet) * 18 - live.vy * 6) * dt;
@@ -16664,7 +8117,7 @@ function stepCharacters(dt, host) {
       }
     } else {
       const supported = onGround || live.grounded;
-      if (!(supported && live.vy <= 0)) live.vy -= spec.gravity * dt;
+      if (!(supported && live.vy <= 0)) live.vy -= effectiveGravity * dt;
     }
     const damp = Math.exp(-(live.grounded ? 10 : 2.5) * dt);
     live.extVx *= damp;
@@ -16722,6 +8175,7 @@ function stepCharacters(dt, host) {
       live.grounded = true;
       live.lastGrounded = now;
       if (!jumped) live.jumpsUsed = 0;
+      if (!wasGrounded) emitCharacterEvent(node.id, "onLand");
     } else {
       live.grounded = false;
     }
@@ -16866,7 +8320,7 @@ function followPath(x, z, live, stop) {
   const point2 = live.path[live.pathIndex];
   return steerPoint(x, z, point2[0], point2[2]);
 }
-function steer2(from, to, stop) {
+function steer(from, to, stop) {
   const path = findNavigationPath(from, [to.x, to.y, to.z]);
   const next = path && path.length > 1 ? path[1] : [to.x, to.y, to.z];
   if (Math.hypot(next[0] - from[0], next[2] - from[2]) <= stop) return { x: 0, z: 0 };
@@ -16951,6 +8405,10225 @@ function slide(host, x, y, z, nextX, nextZ, id, radius) {
   return { x: x + dx / length4 * allowed, z: z + dz / length4 * allowed };
 }
 registerRuntimeSystem("core.character", RUNTIME_STAGE.POST_PHYSICS, stepCharacters);
+
+// src/core/codeAssets/shaderRuntime.ts
+init_fieldSchema();
+import {
+  AdditiveBlending as AdditiveBlending2,
+  BackSide,
+  Color as Color5,
+  DataTexture as DataTexture2,
+  DoubleSide as DoubleSide3,
+  FrontSide,
+  MultiplyBlending as MultiplyBlending2,
+  NoBlending,
+  NormalBlending as NormalBlending2,
+  RGBAFormat as RGBAFormat2,
+  SubtractiveBlending,
+  Vector2 as Vector23,
+  Vector3 as Vector39,
+  Vector4
+} from "three";
+import * as tsl from "three/tsl";
+import {
+  MeshBasicNodeMaterial as MeshBasicNodeMaterial3,
+  MeshPhysicalNodeMaterial,
+  MeshSSSNodeMaterial,
+  MeshStandardNodeMaterial,
+  MeshToonNodeMaterial,
+  PhysicalLightingModel
+} from "three/webgpu";
+
+// src/core/codeAssets/compiler.ts
+import ts from "typescript";
+
+// src/core/codeAssets/typeDefs.ts
+var CORE_ES_LIB_DTS = `
+declare type PropertyKey = string | number | symbol;
+declare type Partial<T> = { [P in keyof T]?: T[P] };
+declare type Required<T> = { [P in keyof T]-?: T[P] };
+declare type Readonly<T> = { readonly [P in keyof T]: T[P] };
+declare type Pick<T, K extends keyof T> = { [P in K]: T[P] };
+declare type Record<K extends keyof any, T> = { [P in K]: T };
+declare type Exclude<T, U> = T extends U ? never : T;
+declare type Extract<T, U> = T extends U ? T : never;
+declare type Omit<T, K extends keyof any> = Pick<T, Exclude<keyof T, K>>;
+declare type NonNullable<T> = T & {};
+declare type Parameters<T extends (...args: any) => any> = T extends (...args: infer P) => any ? P : never;
+declare type ReturnType<T extends (...args: any) => any> = T extends (...args: any) => infer R ? R : any;
+declare type Awaited<T> = T extends null | undefined ? T : T extends object & { then(onfulfilled: infer F, ...args: any): any } ? F extends (value: infer V, ...args: any) => any ? Awaited<V> : never : T;
+
+interface Symbol { readonly description: string | undefined; toString(): string }
+interface SymbolConstructor { readonly iterator: unique symbol; readonly toStringTag: unique symbol }
+declare var Symbol: SymbolConstructor;
+
+interface IteratorResult<T, TReturn = any> { done?: boolean; value: T }
+interface Iterator<T, TReturn = any, TNext = undefined> { next(...args: [] | [TNext]): IteratorResult<T, TReturn> }
+interface Iterable<T> { [Symbol.iterator](): Iterator<T> }
+interface IterableIterator<T> extends Iterable<T>, Iterator<T> {}
+
+interface Function { apply(this: Function, thisArg: any, argArray?: any): any; call(this: Function, thisArg: any, ...argArray: any[]): any; bind(this: Function, thisArg: any, ...argArray: any[]): any; readonly length: number; readonly name: string }
+interface CallableFunction extends Function {}
+interface NewableFunction extends Function {}
+interface IArguments { [index: number]: any; length: number }
+
+interface Object { constructor: Function; toString(): string; valueOf(): Object; hasOwnProperty(v: PropertyKey): boolean }
+interface ObjectConstructor {
+  keys(o: object): string[];
+  values<T>(o: { [s: string]: T } | ArrayLike<T>): T[];
+  values(o: {}): any[];
+  entries<T>(o: { [s: string]: T } | ArrayLike<T>): [string, T][];
+  entries(o: {}): [string, any][];
+  assign<T extends {}, U>(target: T, source: U): T & U;
+  assign<T extends {}, U, V>(target: T, source1: U, source2: V): T & U & V;
+  assign(target: object, ...sources: any[]): any;
+  fromEntries<T = any>(entries: Iterable<readonly [PropertyKey, T]>): { [k: string]: T };
+  freeze<T>(o: T): Readonly<T>;
+  is(value1: unknown, value2: unknown): boolean;
+}
+declare var Object: ObjectConstructor;
+
+interface ArrayLike<T> { readonly length: number; readonly [n: number]: T }
+
+interface ReadonlyArray<T> {
+  readonly length: number;
+  readonly [n: number]: T;
+  [Symbol.iterator](): IterableIterator<T>;
+  concat(...items: (T | ConcatArray<T>)[]): T[];
+  join(separator?: string): string;
+  slice(start?: number, end?: number): T[];
+  indexOf(searchElement: T, fromIndex?: number): number;
+  lastIndexOf(searchElement: T, fromIndex?: number): number;
+  every(predicate: (value: T, index: number, array: readonly T[]) => unknown, thisArg?: any): boolean;
+  some(predicate: (value: T, index: number, array: readonly T[]) => unknown, thisArg?: any): boolean;
+  forEach(callbackfn: (value: T, index: number, array: readonly T[]) => void, thisArg?: any): void;
+  map<U>(callbackfn: (value: T, index: number, array: readonly T[]) => U, thisArg?: any): U[];
+  filter<S extends T>(predicate: (value: T, index: number, array: readonly T[]) => value is S, thisArg?: any): S[];
+  filter(predicate: (value: T, index: number, array: readonly T[]) => unknown, thisArg?: any): T[];
+  reduce<U = T>(callbackfn: (previousValue: U, currentValue: T, currentIndex: number, array: readonly T[]) => U, initialValue?: U): U;
+  find<S extends T>(predicate: (value: T, index: number, obj: readonly T[]) => value is S, thisArg?: any): S | undefined;
+  find(predicate: (value: T, index: number, obj: readonly T[]) => unknown, thisArg?: any): T | undefined;
+  findIndex(predicate: (value: T, index: number, obj: readonly T[]) => unknown, thisArg?: any): number;
+  includes(searchElement: T, fromIndex?: number): boolean;
+  flat<D extends number = 1>(depth?: D): any[];
+  flatMap<U>(callback: (value: T, index: number, array: readonly T[]) => U | readonly U[]): U[];
+  at(index: number): T | undefined;
+}
+interface ConcatArray<T> { readonly length: number; readonly [n: number]: T; join(separator?: string): string; slice(start?: number, end?: number): T[] }
+
+interface Array<T> {
+  length: number;
+  [n: number]: T;
+  [Symbol.iterator](): IterableIterator<T>;
+  push(...items: T[]): number;
+  pop(): T | undefined;
+  shift(): T | undefined;
+  unshift(...items: T[]): number;
+  splice(start: number, deleteCount?: number, ...items: T[]): T[];
+  slice(start?: number, end?: number): T[];
+  concat(...items: (T | ConcatArray<T>)[]): T[];
+  join(separator?: string): string;
+  reverse(): T[];
+  sort(compareFn?: (a: T, b: T) => number): this;
+  indexOf(searchElement: T, fromIndex?: number): number;
+  lastIndexOf(searchElement: T, fromIndex?: number): number;
+  every(predicate: (value: T, index: number, array: T[]) => unknown, thisArg?: any): boolean;
+  some(predicate: (value: T, index: number, array: T[]) => unknown, thisArg?: any): boolean;
+  forEach(callbackfn: (value: T, index: number, array: T[]) => void, thisArg?: any): void;
+  map<U>(callbackfn: (value: T, index: number, array: T[]) => U, thisArg?: any): U[];
+  filter<S extends T>(predicate: (value: T, index: number, array: T[]) => value is S, thisArg?: any): S[];
+  filter(predicate: (value: T, index: number, array: T[]) => unknown, thisArg?: any): T[];
+  reduce<U = T>(callbackfn: (previousValue: U, currentValue: T, currentIndex: number, array: T[]) => U, initialValue?: U): U;
+  find<S extends T>(predicate: (value: T, index: number, obj: T[]) => value is S, thisArg?: any): S | undefined;
+  find(predicate: (value: T, index: number, obj: T[]) => unknown, thisArg?: any): T | undefined;
+  findIndex(predicate: (value: T, index: number, obj: T[]) => unknown, thisArg?: any): number;
+  includes(searchElement: T, fromIndex?: number): boolean;
+  fill(value: T, start?: number, end?: number): this;
+  flat<D extends number = 1>(depth?: D): any[];
+  flatMap<U>(callback: (value: T, index: number, array: T[]) => U | readonly U[]): U[];
+  at(index: number): T | undefined;
+}
+interface ArrayConstructor {
+  new <T>(...items: T[]): T[];
+  from<T>(iterable: Iterable<T> | ArrayLike<T>): T[];
+  from<T, U>(iterable: Iterable<T> | ArrayLike<T>, mapfn: (v: T, k: number) => U): U[];
+  isArray(arg: any): arg is any[];
+}
+declare var Array: ArrayConstructor;
+
+interface String {
+  readonly length: number;
+  charAt(pos: number): string;
+  charCodeAt(index: number): number;
+  concat(...strings: string[]): string;
+  indexOf(searchString: string, position?: number): number;
+  lastIndexOf(searchString: string, position?: number): number;
+  localeCompare(that: string): number;
+  match(regexp: string | RegExp): RegExpMatchArray | null;
+  replace(searchValue: string | RegExp, replaceValue: string | ((substring: string, ...args: any[]) => string)): string;
+  replaceAll(searchValue: string | RegExp, replaceValue: string | ((substring: string, ...args: any[]) => string)): string;
+  search(regexp: string | RegExp): number;
+  slice(start?: number, end?: number): string;
+  split(separator: string | RegExp, limit?: number): string[];
+  substring(start: number, end?: number): string;
+  toLowerCase(): string;
+  toUpperCase(): string;
+  trim(): string;
+  trimStart(): string;
+  trimEnd(): string;
+  padStart(maxLength: number, fillString?: string): string;
+  padEnd(maxLength: number, fillString?: string): string;
+  startsWith(searchString: string, position?: number): boolean;
+  endsWith(searchString: string, endPosition?: number): boolean;
+  includes(searchString: string, position?: number): boolean;
+  repeat(count: number): string;
+}
+interface StringConstructor { (value?: any): string; fromCharCode(...codes: number[]): string }
+declare var String: StringConstructor;
+
+interface Number { toFixed(fractionDigits?: number): string; toString(radix?: number): string; valueOf(): number }
+interface NumberConstructor { (value?: any): number; isFinite(number: unknown): boolean; isNaN(number: unknown): boolean; isInteger(number: unknown): boolean; parseFloat(string: string): number; parseInt(string: string, radix?: number): number; readonly MAX_VALUE: number; readonly MIN_VALUE: number; readonly NaN: number }
+declare var Number: NumberConstructor;
+
+interface Boolean { valueOf(): boolean }
+interface BooleanConstructor { <T>(value?: T): boolean }
+declare var Boolean: BooleanConstructor;
+
+interface RegExpMatchArray extends Array<string> { index?: number; input?: string }
+interface RegExpExecArray extends Array<string> { index: number; input: string }
+interface RegExp { test(string: string): boolean; exec(string: string): RegExpExecArray | null; readonly source: string; readonly flags: string }
+interface RegExpConstructor { new (pattern: RegExp | string, flags?: string): RegExp; (pattern: RegExp | string, flags?: string): RegExp }
+declare var RegExp: RegExpConstructor;
+
+interface Error { name: string; message: string; stack?: string }
+interface ErrorConstructor { new (message?: string): Error; (message?: string): Error }
+declare var Error: ErrorConstructor;
+
+interface Date { getTime(): number; toISOString(): string; valueOf(): number }
+interface DateConstructor { new (): Date; new (value: number | string): Date; now(): number }
+declare var Date: DateConstructor;
+
+interface Map<K, V> {
+  clear(): void; delete(key: K): boolean; forEach(callbackfn: (value: V, key: K, map: Map<K, V>) => void): void;
+  get(key: K): V | undefined; has(key: K): boolean; set(key: K, value: V): this; readonly size: number;
+  entries(): IterableIterator<[K, V]>; keys(): IterableIterator<K>; values(): IterableIterator<V>; [Symbol.iterator](): IterableIterator<[K, V]>;
+}
+interface MapConstructor { new <K = any, V = any>(entries?: readonly (readonly [K, V])[] | null): Map<K, V> }
+declare var Map: MapConstructor;
+
+interface Set<T> {
+  add(value: T): this; clear(): void; delete(value: T): boolean; forEach(callbackfn: (value: T, value2: T, set: Set<T>) => void): void;
+  has(value: T): boolean; readonly size: number;
+  entries(): IterableIterator<[T, T]>; keys(): IterableIterator<T>; values(): IterableIterator<T>; [Symbol.iterator](): IterableIterator<T>;
+}
+interface SetConstructor { new <T = any>(values?: readonly T[] | null): Set<T> }
+declare var Set: SetConstructor;
+
+interface Promise<T> {
+  then<TResult1 = T, TResult2 = never>(onfulfilled?: ((value: T) => TResult1 | PromiseLike<TResult1>) | null, onrejected?: ((reason: any) => TResult2 | PromiseLike<TResult2>) | null): Promise<TResult1 | TResult2>;
+  catch<TResult = never>(onrejected?: ((reason: any) => TResult | PromiseLike<TResult>) | null): Promise<T | TResult>;
+  finally(onfinally?: (() => void) | null): Promise<T>;
+}
+interface PromiseLike<T> { then<TResult1 = T, TResult2 = never>(onfulfilled?: ((value: T) => TResult1 | PromiseLike<TResult1>) | null, onrejected?: ((reason: any) => TResult2 | PromiseLike<TResult2>) | null): PromiseLike<TResult1 | TResult2> }
+interface PromiseConstructor { new <T>(executor: (resolve: (value: T | PromiseLike<T>) => void, reject: (reason?: any) => void) => void): Promise<T>; resolve<T>(value: T | PromiseLike<T>): Promise<T>; reject<T = never>(reason?: any): Promise<T>; all<T extends readonly unknown[]>(values: T): Promise<{ -readonly [P in keyof T]: Awaited<T[P]> }> }
+declare var Promise: PromiseConstructor;
+
+interface Math {
+  readonly E: number; readonly LN10: number; readonly LN2: number; readonly LOG2E: number; readonly LOG10E: number; readonly PI: number; readonly SQRT1_2: number; readonly SQRT2: number;
+  abs(x: number): number; acos(x: number): number; asin(x: number): number; atan(x: number): number; atan2(y: number, x: number): number;
+  ceil(x: number): number; cos(x: number): number; exp(x: number): number; floor(x: number): number; hypot(...values: number[]): number;
+  log(x: number): number; max(...values: number[]): number; min(...values: number[]): number; pow(x: number, y: number): number;
+  random(): number; round(x: number): number; sign(x: number): number; sin(x: number): number; sqrt(x: number): number; tan(x: number): number; trunc(x: number): number;
+}
+declare var Math: Math;
+
+interface JSON { parse(text: string): any; stringify(value: any, replacer?: any, space?: string | number): string }
+declare var JSON: JSON;
+
+declare var console: { log(...data: any[]): void; warn(...data: any[]): void; error(...data: any[]): void; info(...data: any[]): void };
+declare var performance: { now(): number };
+declare function parseInt(string: string, radix?: number): number;
+declare function parseFloat(string: string): number;
+declare function isNaN(number: number): boolean;
+declare function isFinite(number: number): boolean;
+declare function structuredClone<T>(value: T): T;
+declare var undefined: undefined;
+declare var NaN: number;
+declare var Infinity: number;
+`;
+var RUNTIME_DTS_SUMMARY = `export interface Vec2 { x: number; y: number }
+export interface Vec3 { x: number; y: number; z: number }
+export interface Vec4 { x: number; y: number; z: number; w: number }
+export type ScriptParamSchema =
+  | { type: 'number'; default: number; min?: number; max?: number; step?: number; label: string; description?: string }
+  | { type: 'boolean'; default: boolean; label: string; description?: string }
+  | { type: 'string'; default: string; label: string; description?: string }
+  | { type: 'color'; default: string; label: string; description?: string }
+  | { type: 'vec2'; default: readonly [number, number]; label: string; description?: string }
+  | { type: 'vec3'; default: readonly [number, number, number]; label: string; description?: string }
+  | { type: 'enum'; options: ReadonlyArray<{ value: string; label: string }>; default: string; label: string; description?: string }
+  | { type: 'texture'; default?: string | null; label: string; description?: string }
+  | { type: 'ref'; target: 'node' | 'asset' | 'clip' | 'tableRow'; kinds?: readonly string[]; tableId?: string; default?: string | null; label: string; description?: string }
+  | Record<string, unknown>
+export type ScriptParamMap = Record<string, ScriptParamSchema>
+export interface NodeHandle {
+  readonly id: string; readonly name: string; readonly tags: readonly string[]; readonly parent: NodeHandle | null
+  position: Vec3; rotation: Vec3; scale: Vec3; visible: boolean
+  hasTag(tag: string): boolean
+  addTag(tag: string): void
+  removeTag(tag: string): void
+  getChildren(): readonly NodeHandle[]
+  sendMessage(name: string, payload?: unknown): void
+  getBehavior<T = Record<string, (...args: unknown[]) => unknown>>(behavior: unknown): T | null
+  destroy(): void
+}
+export interface ScriptContext<P = Record<string, unknown>, S = Record<string, unknown>> {
+  readonly node: NodeHandle; readonly params: P; readonly state: S; readonly elapsedTime: number
+  position: Vec3; rotation: Vec3; scale: Vec3; visible: boolean
+  readonly forward: Vec3; readonly right: Vec3
+  distanceTo(target: Vec3 | NodeHandle): number
+  hasTag(tag: string): boolean
+  addTag(tag: string): void
+  removeTag(tag: string): void
+  directionTo(target: Vec3 | NodeHandle, options?: { planeXZ?: boolean }): Vec3
+  translate(delta: Vec3, space?: 'local' | 'world'): void
+  rotateY(radians: number): void
+  moveToward(target: Vec3 | NodeHandle, maxDistance: number, options?: { faceTarget?: boolean; planeXZ?: boolean }): boolean
+  lookAt(target: Vec3 | NodeHandle, options?: { yOnly?: boolean }): void
+  sendMessage(name: string, payload?: unknown): void
+  broadcast(name: string, payload?: unknown): void
+  getBehavior<T = Record<string, (...args: unknown[]) => unknown>>(behavior: unknown): T | null
+  findNodeById(id: string): NodeHandle | null
+  findNodesByTag(tag: string): readonly NodeHandle[]
+  findNodesInRadius(center: Vec3, radius: number, tag?: string): readonly NodeHandle[]
+  cloneNode(templateOrName: string | NodeHandle, options?: { position?: Vec3; rotation?: Vec3; scale?: Vec3; parent?: NodeHandle | string | null; visible?: boolean; name?: string; initMessage?: string; initPayload?: unknown }): NodeHandle | null
+  spawnPrefab(prefabId: string, options?: { position?: Vec3; rotation?: Vec3; name?: string }): NodeHandle | null
+  destroyNode(node: NodeHandle): void
+  readonly pool: {
+    preload(templateOrPrefab: string | NodeHandle, count: number): void
+    acquire(templateOrPrefab: string | NodeHandle, options?: { position?: Vec3; rotation?: Vec3; scale?: Vec3; payload?: unknown }): NodeHandle | null
+    release(node: NodeHandle): void
+    stats(templateOrPrefab?: string | NodeHandle): { active: number; pooled: number; total: number }
+  }
+  after(seconds: number, callback: () => void): number
+  every(seconds: number, callback: () => void): number
+  cancelTimer(timerId: number): void
+  readonly physics: {
+    raycast(origin: Vec3, dir: Vec3, maxDistance: number): { node: NodeHandle; point: Vec3; normal: Vec3; distance: number } | null
+    sphereCast(center: Vec3, radius: number, options?: { tag?: string }): readonly NodeHandle[]
+    applyImpulse(impulse: Vec3): void
+    applyForce(force: Vec3): void
+  }
+  readonly nav: {
+    moveTo(target: Vec3, speed?: number): boolean
+    stop(): void
+    readonly isMoving: boolean
+  }
+  readonly spline: {
+    create(pointsOrParent: string | NodeHandle | ReadonlyArray<Vec3 | NodeHandle>, options?: { closed?: boolean; tension?: number }): {
+      readonly length: number; readonly closed: boolean; readonly points: readonly Vec3[]
+      pointAt(t: number): Vec3; tangentAt(t: number): Vec3
+      pointAtDistance(distance: number): Vec3; tangentAtDistance(distance: number): Vec3
+    }
+    follow(pointsOrParent: string | NodeHandle | ReadonlyArray<Vec3 | NodeHandle>, options?: {
+      speed?: number; closed?: boolean; tension?: number; loop?: boolean; pingPong?: boolean
+      faceDirection?: boolean; planeXZ?: boolean; startProgress?: number; onArrive?: () => void
+    }): boolean
+    stop(): void
+    readonly isFollowing: boolean
+    readonly progress: number
+  }
+  readonly tween: {
+    to(target: NodeHandle | { position?: Vec3; rotation?: Vec3; scale?: Vec3 }, props: { position?: Vec3; rotation?: Vec3; scale?: Vec3 }, duration: number, options?: { ease?: string; delay?: number; repeat?: number; yoyo?: boolean; onUpdate?: (p: number) => void; onComplete?: () => void }): number
+    value(from: number, to: number, duration: number, onUpdate: (val: number) => void, options?: { ease?: string; delay?: number; repeat?: number; yoyo?: boolean; onComplete?: () => void }): number
+    punchScale(strength?: number, duration?: number): number
+    shakePosition(intensity?: number, duration?: number): number
+    cancel(tweenId: number): void
+    cancelAll(): void
+  }
+  readonly curve: {
+    create(keys: ReadonlyArray<readonly [number, number] | { t: number; v: number; mode?: 'linear' | 'smooth' | 'step' }>, options?: { wrap?: 'clamp' | 'loop' | 'pingPong' }): { eval(t: number): number }
+    eval(keys: ReadonlyArray<readonly [number, number] | { t: number; v: number; mode?: 'linear' | 'smooth' | 'step' }>, t: number, options?: { wrap?: 'clamp' | 'loop' | 'pingPong' }): number
+    ease(name: string, t: number): number
+    parabola(t: number, height?: number): number
+    pulse(t: number): number
+  }
+  readonly crowd: {
+    moveTo(target: Vec3 | readonly [number, number, number], options?: { speed?: number; arriveDist?: number; onArrive?: () => void }): void
+    stop(): void
+    readonly isMoving: boolean
+    formation(units: ReadonlyArray<string | NodeHandle>, center: Vec3 | readonly [number, number, number], options?: { formation?: string; spacing?: number; facingYaw?: number; speed?: number; arriveDist?: number }): void
+    stats(): { active: number; total: number }
+  }
+  readonly projectile: {
+    launch(options?: {
+      direction?: Vec3 | readonly [number, number, number]
+      target?: string | NodeHandle | null
+      owner?: string | NodeHandle | null
+      mode?: 'linear' | 'ballistic' | 'homing'
+      speed?: number; gravity?: number; turnRate?: number; maxLifetime?: number
+      hitRadius?: number; targetTag?: string; damage?: number; destroyOnHit?: boolean
+      onHit?: (hitNode: NodeHandle | null, pos: Vec3) => void
+    }): void
+    reset(): void
+  }
+  readonly anim: {
+    playBody(clipName: string, opts?: { loop?: boolean; fade?: number; speed?: number }): void
+    playUpper(clipName: string, opts?: { loop?: boolean; fade?: number; speed?: number }): void
+    stopUpper(fade?: number): void
+  }
+  readonly character: {
+    setModifiers(patch: { moveSpeedMul?: number; gravityMul?: number; inputLock?: boolean }): void
+    getModifiers(): { moveSpeedMul?: number; gravityMul?: number; inputLock?: boolean }
+    clearModifiers(): void
+  }
+  readonly input: {
+    isPressed(a: string): boolean
+    justPressed(a: string): boolean
+    isKeyPressed(code: string): boolean
+    axis2D(a: string): Vec2
+    /** \u76F8\u5BF9\u5F53\u524D\u76F8\u673A\u7684\u4E16\u754C\u6C34\u5E73\u79FB\u52A8\u65B9\u5411\uFF08y=0\uFF0C\u957F\u5EA6\u4E3A\u8F93\u5165\u5F3A\u5EA6 0~1\uFF09 */
+    moveDirection(a?: string): Vec3
+    pointerDelta(): Vec2
+    pointerPosition(): Vec2
+    wheelDelta(): number
+    isMouseButtonPressed(button: 0 | 1 | 2): boolean
+    justPressedMouseButton(button: 0 | 1 | 2): boolean
+    justReleasedMouseButton(button: 0 | 1 | 2): boolean
+  }
+  readonly audio: {
+    playSfx(id: string, opts?: { volume?: number; pitch?: number }): void
+    playBgm(id: string, opts?: { volume?: number; loop?: boolean }): void
+    stopBgm(): void
+  }
+  readonly fx: {
+    spawn(effectId: string, position: Vec3, options?: { scale?: number; autoDestroySec?: number }): NodeHandle | null
+  }
+  readonly ui: {
+    getVar(k: string): unknown
+    setVar(k: string, v: unknown): void
+    onEvent(eventName: string, handler: (payload?: unknown) => void): () => void
+    showScreen(screenIdOrName: string): void
+    hideScreen(screenIdOrName: string): void
+    toggleScreen(screenIdOrName: string): void
+    isScreenVisible(screenIdOrName: string): boolean
+    worldToScreen(position: Vec3 | NodeHandle): { x: number; y: number; ndcX: number; ndcY: number; visible: boolean } | null
+  }
+  readonly scene: {
+    currentId(): string
+    load(sceneId: string, options?: { spawnPoint?: string }): void
+  }
+  readonly shader: {
+    setParam(shaderId: string, paramName: string, value: unknown): boolean
+    getParam(shaderId: string, paramName: string): unknown
+  }
+  readonly global: {
+    get(key: string): unknown
+    set(key: string, value: unknown): void
+    remove(key: string): void
+  }
+  readonly storage: {
+    get(key: string): unknown
+    set(key: string, value: unknown): void
+    remove(key: string): void
+  }
+  readonly tables: {
+    getRow(tableId: string, rowId: string): Record<string, unknown> | null
+  }
+  log(...args: unknown[]): void
+  warn(...args: unknown[]): void
+}
+export interface GizmosApi {
+  readonly isSelected: boolean
+  line(from: Vec3 | NodeHandle, to: Vec3 | NodeHandle, opts?: { color?: string }): void
+  arrow(from: Vec3 | NodeHandle, dir: Vec3, length?: number, opts?: { color?: string }): void
+  wireSphere(center: Vec3 | NodeHandle, radius: number, opts?: { color?: string }): void
+  wireBox(center: Vec3 | NodeHandle, size: Vec3, opts?: { color?: string }): void
+  disc(center: Vec3 | NodeHandle, radius: number, opts?: { normal?: Vec3; color?: string }): void
+  radiusHandle(paramKey: string, opts?: { center?: Vec3 | NodeHandle; axis?: 'x' | 'y' | 'z'; color?: string }): void
+  positionHandle(paramKey: string, opts?: { color?: string }): void
+}
+export function defineBehavior<P extends ScriptParamMap, S extends Record<string, unknown>>(def: {
+  name: string; description?: string; params?: P; state?: () => S
+  methods?: Record<string, (self: ScriptContext<Record<string, any>, S>, ...args: any[]) => unknown>
+  onStart?: (self: ScriptContext<Record<string, any>, S>) => void
+  onSpawn?: (self: ScriptContext<Record<string, any>, S>, payload?: unknown) => void
+  onUpdate?: (self: ScriptContext<Record<string, any>, S>, dt: number) => void
+  onDestroy?: (self: ScriptContext<Record<string, any>, S>) => void
+  onMessage?: (self: ScriptContext<Record<string, any>, S>, msg: { name: string; payload?: unknown; sender?: NodeHandle }) => void
+  onDrawGizmos?: (self: ScriptContext<Record<string, any>, S>, gizmos: GizmosApi) => void
+}): unknown
+export function defineSystem<S extends Record<string, unknown>>(def: {
+  name: string; description?: string; stage?: 'prePhysics' | 'postPhysics' | 'postAnimation' | 'preRender'; order?: number
+  state?: () => S; createState?: () => S
+  onMount?: (world: Omit<ScriptContext<Record<string, any>, S>, 'node' | 'params' | 'state' | 'position' | 'rotation' | 'scale' | 'visible'>, state: S) => void
+  onInit?: (world: Omit<ScriptContext<Record<string, any>, S>, 'node' | 'params' | 'state' | 'position' | 'rotation' | 'scale' | 'visible'>, state: S) => void
+  onStep?: (world: Omit<ScriptContext<Record<string, any>, S>, 'node' | 'params' | 'state' | 'position' | 'rotation' | 'scale' | 'visible'>, state: S, dt: number) => void
+  onUpdate?: (world: Omit<ScriptContext<Record<string, any>, S>, 'node' | 'params' | 'state' | 'position' | 'rotation' | 'scale' | 'visible'>, state: S, dt: number) => void
+  onDispose?: (world: Omit<ScriptContext<Record<string, any>, S>, 'node' | 'params' | 'state' | 'position' | 'rotation' | 'scale' | 'visible'>, state: S) => void
+  onDestroy?: (world: Omit<ScriptContext<Record<string, any>, S>, 'node' | 'params' | 'state' | 'position' | 'rotation' | 'scale' | 'visible'>, state: S) => void
+}): unknown
+`;
+var SHADER_DTS_SUMMARY = `export interface ShaderNode {
+  add(other: unknown): ShaderNode; sub(other: unknown): ShaderNode; mul(other: unknown): ShaderNode; div(other: unknown): ShaderNode
+  min(other: unknown): ShaderNode; max(other: unknown): ShaderNode; pow(other: unknown): ShaderNode; mod(other: unknown): ShaderNode
+  clamp(min?: unknown, max?: unknown): ShaderNode; mix(b: unknown, t: unknown): ShaderNode; abs(): ShaderNode; fract(): ShaderNode; floor(): ShaderNode; ceil(): ShaderNode; round(): ShaderNode
+  sin(): ShaderNode; cos(): ShaderNode; tan(): ShaderNode; sqrt(): ShaderNode; exp(): ShaderNode; log(): ShaderNode
+  negate(): ShaderNode; oneMinus(): ShaderNode; saturate(): ShaderNode; normalize(): ShaderNode; length(): ShaderNode
+  dot(other: unknown): ShaderNode; cross(other: unknown): ShaderNode; reflect(normal: unknown): ShaderNode; distance(other: unknown): ShaderNode
+  equal(other: unknown): ShaderNode; notEqual(other: unknown): ShaderNode; lessThan(other: unknown): ShaderNode; greaterThan(other: unknown): ShaderNode
+  lessThanEqual(other: unknown): ShaderNode; greaterThanEqual(other: unknown): ShaderNode; and(other: unknown): ShaderNode; or(other: unknown): ShaderNode; not(): ShaderNode
+  select(a: unknown, b: unknown): ShaderNode; toVar(name?: string): ShaderNode; assign(val: unknown): ShaderNode
+  addAssign(val: unknown): ShaderNode; subAssign(val: unknown): ShaderNode; mulAssign(val: unknown): ShaderNode
+  readonly x: ShaderNode; readonly y: ShaderNode; readonly z: ShaderNode; readonly w: ShaderNode
+  readonly r: ShaderNode; readonly g: ShaderNode; readonly b: ShaderNode; readonly a: ShaderNode
+  readonly xy: ShaderNode; readonly xz: ShaderNode; readonly yz: ShaderNode; readonly xyz: ShaderNode; readonly rgb: ShaderNode; readonly rgba: ShaderNode
+}
+export type ShaderMode = 'lit' | 'unlit' | 'physical' | 'toon' | 'sss'
+export interface ShaderLightingDirectContext {
+  lightDirection: ShaderNode
+  lightColor: ShaderNode
+  normal: ShaderNode
+  viewDirection: ShaderNode
+  diffuseColor: ShaderNode
+  params: Record<string, any>
+}
+export interface ShaderLightingIndirectContext {
+  normal: ShaderNode
+  viewDirection: ShaderNode
+  diffuseColor: ShaderNode
+  params: Record<string, any>
+}
+export interface PostEffectContext {
+  color: ShaderNode
+  depth: ShaderNode
+  normal: ShaderNode
+  uv: ShaderNode
+  time: ShaderNode
+  deltaTime: ShaderNode
+  params: Record<string, any>
+}
+export function defineShader(def: {
+  name: string; description?: string; mode?: ShaderMode; transparent?: boolean; doubleSided?: boolean
+  side?: 'front' | 'back' | 'double'; depthWrite?: boolean; depthTest?: boolean
+  blending?: 'normal' | 'additive' | 'subtractive' | 'multiply' | 'none'; alphaTest?: number; wireframe?: boolean
+  params?: Record<string, unknown>
+  surface: (params: Record<string, any>) => {
+    baseColor?: unknown; normal?: unknown; roughness?: unknown; metalness?: unknown
+    emissive?: unknown; opacity?: unknown; vertexOffset?: unknown
+    clearcoat?: unknown; clearcoatRoughness?: unknown; clearcoatNormal?: unknown
+    transmission?: unknown; ior?: unknown; thickness?: unknown; attenuationColor?: unknown; attenuationDistance?: unknown
+    sheen?: unknown; sheenRoughness?: unknown; iridescence?: unknown; iridescenceIOR?: unknown; iridescenceThickness?: unknown
+    anisotropy?: unknown; dispersion?: unknown; specularIntensity?: unknown; specularColor?: unknown
+  }
+  lighting?: {
+    direct?: (ctx: ShaderLightingDirectContext) => ShaderNode | { diffuse?: unknown; specular?: unknown }
+    indirect?: (ctx: ShaderLightingIndirectContext) => ShaderNode | { diffuse?: unknown; specular?: unknown }
+  }
+}): unknown
+export function definePostEffect(def: {
+  name: string; description?: string; params?: Record<string, unknown>
+  apply: (ctx: PostEffectContext) => unknown
+}): unknown
+export function float(x?: number): ShaderNode
+export function int(x?: number): ShaderNode
+export function uint(x?: number): ShaderNode
+export function vec2(x?: unknown, y?: unknown): ShaderNode
+export function vec3(x?: unknown, y?: unknown, z?: unknown): ShaderNode
+export function vec4(x?: unknown, y?: unknown, z?: unknown, w?: unknown): ShaderNode
+export function ivec2(x?: unknown, y?: unknown): ShaderNode
+export function ivec3(x?: unknown, y?: unknown, z?: unknown): ShaderNode
+export function ivec4(x?: unknown, y?: unknown, z?: unknown, w?: unknown): ShaderNode
+export function uvec2(x?: unknown, y?: unknown): ShaderNode
+export function uvec3(x?: unknown, y?: unknown, z?: unknown): ShaderNode
+export function uvec4(x?: unknown, y?: unknown, z?: unknown, w?: unknown): ShaderNode
+export function mat3(...args: unknown[]): ShaderNode
+export function mat4(...args: unknown[]): ShaderNode
+export function uniform(val: unknown): ShaderNode
+export function varying(node: unknown, name?: string): ShaderNode
+export function Fn<T extends (...args: any[]) => any>(fn: T): T
+export function If(cond: unknown, cb: () => void): { ElseIf: (c: unknown, cb: () => void) => any; Else: (cb: () => void) => void }
+export function Loop(countOrOpts: unknown, cb: (i: { i: ShaderNode }) => void): void
+export function Break(): void
+export function Continue(): void
+export function select(cond: unknown, a: unknown, b: unknown): ShaderNode
+export function color(hexOrR: string | number, g?: number, b?: number): ShaderNode
+export function mix(a: unknown, b: unknown, t: unknown): ShaderNode
+export function clamp(x: unknown, min?: unknown, max?: unknown): ShaderNode
+export function smoothstep(edge0: unknown, edge1: unknown, x: unknown): ShaderNode
+export function step(edge: unknown, x: unknown): ShaderNode
+export function sin(x: unknown): ShaderNode
+export function cos(x: unknown): ShaderNode
+export function tan(x: unknown): ShaderNode
+export function asin(x: unknown): ShaderNode
+export function acos(x: unknown): ShaderNode
+export function atan(x: unknown): ShaderNode
+export function atan2(y: unknown, x: unknown): ShaderNode
+export function radians(deg: unknown): ShaderNode
+export function degrees(rad: unknown): ShaderNode
+export function abs(x: unknown): ShaderNode
+export function sign(x: unknown): ShaderNode
+export function floor(x: unknown): ShaderNode
+export function ceil(x: unknown): ShaderNode
+export function round(x: unknown): ShaderNode
+export function trunc(x: unknown): ShaderNode
+export function fract(x: unknown): ShaderNode
+export function mod(a: unknown, b: unknown): ShaderNode
+export function pow(x: unknown, y: unknown): ShaderNode
+export function sqrt(x: unknown): ShaderNode
+export function exp(x: unknown): ShaderNode
+export function log(x: unknown): ShaderNode
+export function saturate(x: unknown): ShaderNode
+export function min(a: unknown, b: unknown): ShaderNode
+export function max(a: unknown, b: unknown): ShaderNode
+export function dot(a: unknown, b: unknown): ShaderNode
+export function cross(a: unknown, b: unknown): ShaderNode
+export function normalize(v: unknown): ShaderNode
+export function length(v: unknown): ShaderNode
+export function distance(a: unknown, b: unknown): ShaderNode
+export function reflect(incident: unknown, normal: unknown): ShaderNode
+export function refract(incident: unknown, normal: unknown, eta: unknown): ShaderNode
+export function faceforward(n: unknown, i: unknown, nref: unknown): ShaderNode
+export function fwidth(x: unknown): ShaderNode
+export function dFdx(x: unknown): ShaderNode
+export function dFdy(x: unknown): ShaderNode
+export function hash(x: unknown): ShaderNode
+export function fresnel(normal: unknown, viewDir: unknown, power?: unknown): ShaderNode
+export function texture(texRef: unknown, uv?: unknown): ShaderNode
+export function uv(index?: number): ShaderNode
+export const time: ShaderNode
+export const deltaTime: ShaderNode
+export const normalView: ShaderNode
+export const normalWorld: ShaderNode
+export const normalLocal: ShaderNode
+export const tangentLocal: ShaderNode
+export const tangentView: ShaderNode
+export const tangentWorld: ShaderNode
+export const positionGeometry: ShaderNode
+export const positionWorld: ShaderNode
+export const positionLocal: ShaderNode
+export const positionView: ShaderNode
+export const viewDirection: ShaderNode
+export const positionViewDirection: ShaderNode
+export const cameraPosition: ShaderNode
+export const cameraNear: ShaderNode
+export const cameraFar: ShaderNode
+export const cameraViewMatrix: ShaderNode
+export const cameraProjectionMatrix: ShaderNode
+export const modelWorldMatrix: ShaderNode
+export const modelViewMatrix: ShaderNode
+export const frontFacing: ShaderNode
+export const screenUV: ShaderNode
+export const screenCoordinate: ShaderNode
+export const screenSize: ShaderNode
+export const viewportCoordinate: ShaderNode
+export const viewportSize: ShaderNode
+export function linearDepth(depthNode?: unknown): ShaderNode
+export const viewportLinearDepth: ShaderNode
+export function viewportDepthTexture(uvNode?: unknown): ShaderNode
+export function viewportSharedTexture(uvNode?: unknown): ShaderNode
+export function vertexColor(): ShaderNode
+`;
+
+// src/core/codeAssets/compiler.ts
+function diagnosticHint(code, message) {
+  if (message.includes("t3d/shader") || message.includes("t3d/runtime")) {
+    return '\u8BF7\u786E\u4FDD\u4ECE "t3d/shader" \u6216 "t3d/runtime" \u5BFC\u5165\u767D\u540D\u5355 API';
+  }
+  if (code === 2304) return "\u5B58\u5728\u672A\u5B9A\u4E49\u7684\u6807\u8BC6\u7B26\uFF0C\u8BF7\u68C0\u67E5\u62FC\u5199\u6216\u4ECE t3d/runtime / t3d/shader \u5BFC\u5165";
+  if (code === 2339) return "\u8BBF\u95EE\u4E86\u5BF9\u8C61\u4E0A\u4E0D\u5B58\u5728\u7684\u5C5E\u6027\u6216\u65B9\u6CD5\uFF0C\u8BF7\u5BF9\u7167 .t3d/runtime.d.ts / .t3d/shader.d.ts \u68C0\u67E5 API \u540D\u79F0";
+  if (code === 2322 || code === 2345) return "\u7C7B\u578B\u4E0D\u5339\u914D\uFF0C\u8BF7\u68C0\u67E5\u53C2\u6570\u6216\u8FD4\u56DE\u503C\u7C7B\u578B\u662F\u5426\u7B26\u5408\u5951\u7EA6";
+  if (code === 2554 || code === 2555) return "\u51FD\u6570\u8C03\u7528\u53C2\u6570\u6570\u91CF\u4E0D\u5339\u914D\uFF0C\u8BF7\u68C0\u67E5\u5FC5\u586B\u53C2\u6570";
+  return "\u8BF7\u6839\u636E\u62A5\u9519\u884C\u53F7\u4FEE\u6B63\u8BED\u6CD5\u6216\u7C7B\u578B\u9519\u8BEF";
+}
+var LIB_PATH = "/__lib.d.ts";
+var RUNTIME_DTS_PATH = "/node_modules/t3d/runtime.d.ts";
+var SHADER_DTS_PATH = "/node_modules/t3d/shader.d.ts";
+function toCodeDiagnostic(diag, fileName) {
+  const start2 = diag.start ?? 0;
+  const pos = diag.file ? diag.file.getLineAndCharacterOfPosition(start2) : { line: 0, character: 0 };
+  const msg = ts.flattenDiagnosticMessageText(diag.messageText, "\n");
+  return {
+    file: fileName,
+    line: pos.line + 1,
+    column: pos.character + 1,
+    severity: diag.category === ts.DiagnosticCategory.Warning ? "warning" : "error",
+    message: msg,
+    hint: diagnosticHint(diag.code, msg)
+  };
+}
+function runSemanticTypeCheck(fileName, source) {
+  const entryPath = `/__user__/${fileName.replace(/^\/+/, "")}`;
+  const virtualFiles = /* @__PURE__ */ new Map([
+    [LIB_PATH, CORE_ES_LIB_DTS],
+    [RUNTIME_DTS_PATH, RUNTIME_DTS_SUMMARY],
+    [SHADER_DTS_PATH, SHADER_DTS_SUMMARY],
+    [entryPath, source]
+  ]);
+  const compilerOptions = {
+    target: ts.ScriptTarget.ES2022,
+    module: ts.ModuleKind.ESNext,
+    moduleResolution: ts.ModuleResolutionKind.Bundler,
+    strict: true,
+    noImplicitAny: false,
+    skipLibCheck: true,
+    noEmit: true,
+    baseUrl: "/",
+    paths: {
+      "t3d/runtime": [RUNTIME_DTS_PATH],
+      "t3d/shader": [SHADER_DTS_PATH]
+    }
+  };
+  const host = {
+    getSourceFile: (name, languageVersion) => {
+      const content = virtualFiles.get(name);
+      if (content === void 0) return void 0;
+      return ts.createSourceFile(name, content, languageVersion, true);
+    },
+    getDefaultLibFileName: () => LIB_PATH,
+    writeFile: () => {
+    },
+    getCurrentDirectory: () => "/",
+    getDirectories: () => [],
+    fileExists: (name) => virtualFiles.has(name),
+    readFile: (name) => virtualFiles.get(name),
+    getCanonicalFileName: (name) => name,
+    useCaseSensitiveFileNames: () => true,
+    getNewLine: () => "\n",
+    resolveModuleNames: (moduleNames) => moduleNames.map((mod2) => {
+      if (mod2 === "t3d/runtime") return { resolvedFileName: RUNTIME_DTS_PATH, isExternalLibraryImport: true };
+      if (mod2 === "t3d/shader") return { resolvedFileName: SHADER_DTS_PATH, isExternalLibraryImport: true };
+      return void 0;
+    })
+  };
+  const program = ts.createProgram([entryPath], compilerOptions, host);
+  const sourceFile = program.getSourceFile(entryPath);
+  if (!sourceFile) return [];
+  const rawDiags = [
+    ...program.getSyntacticDiagnostics(sourceFile),
+    ...program.getSemanticDiagnostics(sourceFile)
+  ];
+  return rawDiags.map((d) => toCodeDiagnostic(d, fileName));
+}
+function checkAndTranspileTs(fileName, source) {
+  const semanticDiagnostics = runSemanticTypeCheck(fileName, source);
+  const compilerOptions = {
+    target: ts.ScriptTarget.ES2022,
+    module: ts.ModuleKind.CommonJS,
+    esModuleInterop: true,
+    strict: true,
+    skipLibCheck: true,
+    isolatedModules: true
+  };
+  const output = ts.transpileModule(source, {
+    fileName,
+    reportDiagnostics: true,
+    compilerOptions
+  });
+  const transpileDiags = (output.diagnostics ?? []).map((diag) => toCodeDiagnostic(diag, fileName));
+  const seen = /* @__PURE__ */ new Set();
+  const diagnostics = [];
+  for (const d of [...semanticDiagnostics, ...transpileDiags]) {
+    const key = `${d.line}:${d.column}:${d.message}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    diagnostics.push(d);
+  }
+  const hasError = diagnostics.some((d) => d.severity === "error");
+  if (hasError) {
+    return { ok: false, diagnostics };
+  }
+  return {
+    ok: true,
+    diagnostics,
+    jsCode: output.outputText
+  };
+}
+function evaluateTranspiledModule(fileName, jsCode, injectedModules) {
+  const moduleObj = { exports: {} };
+  const customRequire = (specifier) => {
+    if (specifier in injectedModules) {
+      return injectedModules[specifier];
+    }
+    throw new Error(`\u4E0D\u5141\u8BB8\u5BFC\u5165\u672A\u6388\u6743\u6A21\u5757 "${specifier}"\uFF08\u4EC5\u5141\u8BB8 ${Object.keys(injectedModules).join(", ")}\uFF09`);
+  };
+  try {
+    const safeUrl = fileName.replace(/[\r\n]/g, "_");
+    const fn = new Function("require", "module", "exports", `${jsCode}
+//# sourceURL=t3d:///${safeUrl}`);
+    fn(customRequire, moduleObj, moduleObj.exports);
+    const exported = moduleObj.exports.default ?? moduleObj.exports;
+    return {
+      ok: true,
+      diagnostics: [],
+      jsCode,
+      exports: exported
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return {
+      ok: false,
+      diagnostics: [
+        {
+          file: fileName,
+          line: 1,
+          column: 1,
+          severity: "error",
+          message: `\u6A21\u5757\u6267\u884C\u5931\u8D25\uFF1A${message}`,
+          hint: "\u8BF7\u68C0\u67E5\u9876\u5C42\u4EE3\u7801\u662F\u5426\u5B58\u5728\u8FD0\u884C\u65F6\u5F02\u5E38\u6216\u975E\u6CD5\u6A21\u5757\u5BFC\u5165"
+        }
+      ]
+    };
+  }
+}
+
+// src/core/codeAssets/shaderRuntime.ts
+var textureResolver = null;
+var cachedFallbackTex = null;
+function fallbackWhiteTexture() {
+  if (!cachedFallbackTex) {
+    cachedFallbackTex = new DataTexture2(new Uint8Array([255, 255, 255, 255]), 1, 1, RGBAFormat2);
+    cachedFallbackTex.needsUpdate = true;
+  }
+  return cachedFallbackTex;
+}
+function resolveTextureAsset(raw) {
+  if (typeof raw === "string" && raw.trim() && textureResolver) {
+    const tex = textureResolver(raw.trim());
+    if (tex) return tex;
+  }
+  if (raw && typeof raw === "object" && "isTexture" in raw) {
+    return raw;
+  }
+  if (raw && typeof raw === "object" && "value" in raw) {
+    const val = raw.value;
+    if (val && typeof val === "object" && "isTexture" in val) return val;
+  }
+  return fallbackWhiteTexture();
+}
+function coerceUniformValue(schema, raw) {
+  const value = raw !== void 0 ? raw : defaultForSchema(schema);
+  if (schema.type === "number") return Number(value) || 0;
+  if (schema.type === "boolean") return value ? 1 : 0;
+  if (schema.type === "color") return new Color5(typeof value === "string" ? value : "#ffffff");
+  if (schema.type === "vec2") {
+    const arr = Array.isArray(value) ? value : [0, 0];
+    return new Vector23(Number(arr[0]) || 0, Number(arr[1]) || 0);
+  }
+  if (schema.type === "vec3") {
+    const arr = Array.isArray(value) ? value : [0, 0, 0];
+    return new Vector39(Number(arr[0]) || 0, Number(arr[1]) || 0, Number(arr[2]) || 0);
+  }
+  if (schema.type === "vec4") {
+    const arr = Array.isArray(value) ? value : [0, 0, 0, 1];
+    return new Vector4(Number(arr[0]) || 0, Number(arr[1]) || 0, Number(arr[2]) || 0, Number(arr[3]) ?? 1);
+  }
+  if (schema.type === "texture" || schema.type === "ref" && schema.target === "asset") {
+    return resolveTextureAsset(value);
+  }
+  return value;
+}
+var PHYSICAL_SURFACE_KEYS = /* @__PURE__ */ new Set([
+  "clearcoat",
+  "clearcoatRoughness",
+  "clearcoatNormal",
+  "transmission",
+  "ior",
+  "thickness",
+  "attenuationColor",
+  "attenuationDistance",
+  "sheen",
+  "sheenRoughness",
+  "iridescence",
+  "iridescenceIOR",
+  "iridescenceThickness",
+  "anisotropy",
+  "dispersion",
+  "specularIntensity",
+  "specularColor"
+]);
+var VALID_SURFACE_KEYS = /* @__PURE__ */ new Set([
+  "baseColor",
+  "normal",
+  "roughness",
+  "metalness",
+  "emissive",
+  "opacity",
+  "vertexOffset",
+  ...PHYSICAL_SURFACE_KEYS
+]);
+var compiledShaders = /* @__PURE__ */ new Map();
+function updateCompiledShaderParam(compiled, paramName, value) {
+  const entry = compiled.uniforms[paramName];
+  if (!entry) return false;
+  entry.node.value = coerceUniformValue(entry.schema, value);
+  compiled.paramValues[paramName] = value;
+  return true;
+}
+function setCompiledShaderParam(shaderId, paramName, value) {
+  const compiled = compiledShaders.get(shaderId);
+  if (!compiled) return false;
+  return updateCompiledShaderParam(compiled, paramName, value);
+}
+function getCompiledShaderParam(shaderId, paramName) {
+  return compiledShaders.get(shaderId)?.paramValues[paramName];
+}
+
+// src/core/codeAssets/scriptRuntime.ts
+init_frameProfile();
+init_motion();
+init_sceneRuntime();
+init_world();
+init_actionMap();
+init_fieldSchema();
+var compiledBehaviors = /* @__PURE__ */ new Map();
+var compiledSystems = /* @__PURE__ */ new Map();
+var instanceStates = /* @__PURE__ */ new Map();
+var runtimeErrorCounts = /* @__PURE__ */ new Map();
+function extractShortStack(error) {
+  if (!(error instanceof Error) || !error.stack) return "";
+  const lines = error.stack.split("\n").slice(1).map((line) => line.trim()).filter((line) => line.length > 0);
+  if (lines.length === 0) return "";
+  const scriptFrames = lines.filter((line) => line.includes("t3d:///"));
+  const picked = (scriptFrames.length > 0 ? scriptFrames : lines).slice(0, 3);
+  return `
+  at ${picked.join("\n  at ")}`;
+}
+function reportRuntimeError(phase, scriptId, label, error, nodeId) {
+  const world3 = getRuntimeWorld();
+  const message = error instanceof Error ? error.message : String(error);
+  const key = `${phase}|${scriptId}|${nodeId ?? ""}|${message}`;
+  const count = (runtimeErrorCounts.get(key) ?? 0) + 1;
+  runtimeErrorCounts.set(key, count);
+  const nodeName = nodeId ? world3.getNodes()[nodeId]?.name : void 0;
+  const nodeDesc = nodeId ? ` \u8282\u70B9=${nodeName ? `"${nodeName}"(${nodeId})` : nodeId}` : "";
+  if (count === 1) {
+    const stack = extractShortStack(error);
+    world3.log("error", `[${phase}] ${label} (${scriptId})${nodeDesc}: ${message}${stack}`);
+  } else if (count === 10 || count === 100 || count === 1e3) {
+    world3.log("error", `[${phase}] ${label} (${scriptId})${nodeDesc} \u5DF2\u91CD\u590D\u62A5\u9519 ${count} \u6B21: ${message}`);
+  }
+}
+var messageQueue = [];
+var uiEventHandlers = /* @__PURE__ */ new Map();
+var uiEventQueue = [];
+var uiClickSubscribed = false;
+var characterEventSubscribed = false;
+var globalMemory = /* @__PURE__ */ new Map();
+var persistentMemory = /* @__PURE__ */ new Map();
+var navAgents = /* @__PURE__ */ new Map();
+var pooledInactive = /* @__PURE__ */ new Set();
+var nodePoolKey = /* @__PURE__ */ new Map();
+var poolBuckets = /* @__PURE__ */ new Map();
+var scriptTimers = /* @__PURE__ */ new Map();
+var splineFollowAgents = /* @__PURE__ */ new Map();
+var activeTweens = /* @__PURE__ */ new Map();
+var sfxCooldownAt = /* @__PURE__ */ new Map();
+var nextTimerId = 1;
+var nextTweenId = 1;
+function ensureCharacterEventBridge() {
+  if (characterEventSubscribed) return;
+  characterEventSubscribed = true;
+  onCharacterEvent((nodeId, event, payload) => {
+    if (getRuntimeWorld().getPlayState() !== "playing") return;
+    messageQueue.push({ targetNodeId: nodeId, name: event, payload, senderId: nodeId });
+  });
+}
+function ensureUiClickBridge() {
+  if (uiClickSubscribed) return;
+  uiClickSubscribed = true;
+  onUiClick((action, uiNodeId) => {
+    if (getRuntimeWorld().getPlayState() !== "playing") return;
+    if (action.kind === "sendMessage" && action.message) {
+      const payload = { nodeId: uiNodeId, kind: action.kind };
+      uiEventQueue.push({
+        eventName: action.message,
+        payload
+      });
+      messageQueue.push({
+        targetNodeId: null,
+        name: action.message,
+        payload
+      });
+    } else if (action.kind === "setVariable" && action.varId) {
+      uiEventQueue.push({
+        eventName: `var:${action.varId}`,
+        payload: { nodeId: uiNodeId, kind: action.kind, varId: action.varId, value: action.value }
+      });
+    }
+  });
+}
+function resolveScreenNodeId(screenIdOrName) {
+  const nodes = getRuntimeWorld().getNodes();
+  if (nodes[screenIdOrName]?.kind === "screen") return screenIdOrName;
+  const hit = Object.values(nodes).find((n) => n.kind === "screen" && n.name === screenIdOrName);
+  return hit ? hit.id : null;
+}
+var simElapsed = 0;
+var framePointerDelta = { x: 0, y: 0 };
+var framePointerPos = { x: 0, y: 0 };
+var frameWheelDelta = 0;
+var prevMouseButtons = 0;
+var currMouseButtons = 0;
+function mouseButtonMask(button) {
+  if (button === 0) return 1;
+  if (button === 1) return 4;
+  if (button === 2) return 2;
+  return 0;
+}
+function instanceKey2(nodeId, scriptId) {
+  return `${nodeId}::${scriptId}`;
+}
+function resolveVec3Input(target) {
+  if (!target || typeof target !== "object") return null;
+  const rec = target;
+  if (typeof rec.x === "number" && typeof rec.y === "number" && typeof rec.z === "number") {
+    return { x: rec.x, y: rec.y, z: rec.z };
+  }
+  if (rec.position && typeof rec.position === "object") {
+    const pos = rec.position;
+    if (typeof pos.x === "number" && typeof pos.y === "number" && typeof pos.z === "number") {
+      return { x: pos.x, y: pos.y, z: pos.z };
+    }
+  }
+  return null;
+}
+function toVec3Obj(tuple) {
+  return { x: tuple[0], y: tuple[1], z: tuple[2] };
+}
+function makeNodeHandle(nodeId, host) {
+  const world3 = getRuntimeWorld();
+  const node = world3.getNodes()[nodeId];
+  if (!node) return null;
+  const obj = host.resolveObject(nodeId);
+  const collectTags = () => {
+    const out = [];
+    if (node.tagId && !out.includes(node.tagId)) out.push(node.tagId);
+    if (Array.isArray(node.tagIds)) {
+      for (const t of node.tagIds) {
+        if (t && !out.includes(t)) out.push(t);
+      }
+    }
+    for (const rt of listRuntimeTags(node.id)) {
+      if (rt.tag && !out.includes(rt.tag)) out.push(rt.tag);
+    }
+    return out;
+  };
+  return {
+    get id() {
+      return node.id;
+    },
+    get name() {
+      return node.name;
+    },
+    get tags() {
+      return collectTags();
+    },
+    get parent() {
+      return node.parentId ? makeNodeHandle(node.parentId, host) : null;
+    },
+    get position() {
+      return obj ? { x: obj.position.x, y: obj.position.y, z: obj.position.z } : toVec3Obj(node.position);
+    },
+    set position(val) {
+      if (obj) obj.position.set(val.x, val.y, val.z);
+      node.position[0] = val.x;
+      node.position[1] = val.y;
+      node.position[2] = val.z;
+    },
+    get rotation() {
+      return obj ? { x: obj.rotation.x, y: obj.rotation.y, z: obj.rotation.z } : {
+        x: node.rotation[0] * Math.PI / 180,
+        y: node.rotation[1] * Math.PI / 180,
+        z: node.rotation[2] * Math.PI / 180
+      };
+    },
+    set rotation(val) {
+      if (obj) obj.rotation.set(val.x, val.y, val.z);
+      node.rotation[0] = val.x * 180 / Math.PI;
+      node.rotation[1] = val.y * 180 / Math.PI;
+      node.rotation[2] = val.z * 180 / Math.PI;
+    },
+    get scale() {
+      return obj ? { x: obj.scale.x, y: obj.scale.y, z: obj.scale.z } : toVec3Obj(node.scale);
+    },
+    set scale(val) {
+      if (obj) obj.scale.set(val.x, val.y, val.z);
+      node.scale[0] = val.x;
+      node.scale[1] = val.y;
+      node.scale[2] = val.z;
+    },
+    get visible() {
+      if (pooledInactive.has(nodeId)) return false;
+      return obj ? obj.visible : node.visible;
+    },
+    set visible(val) {
+      if (obj) obj.visible = val;
+      node.visible = val;
+      if (!nodePoolKey.has(nodeId)) {
+        world3.updateNode(nodeId, { visible: val });
+      }
+    },
+    hasTag: (tag) => nodeHasTag(node, String(tag ?? "")),
+    addTag: (tag) => {
+      const t = String(tag ?? "").trim();
+      if (!t) return;
+      const list = Array.isArray(node.tagIds) ? [...node.tagIds] : [];
+      if (!list.includes(t)) {
+        list.push(t);
+        node.tagIds = list;
+      }
+    },
+    removeTag: (tag) => {
+      const t = String(tag ?? "").trim();
+      if (!t) return;
+      if (node.tagId === t) node.tagId = void 0;
+      if (Array.isArray(node.tagIds)) {
+        node.tagIds = node.tagIds.filter((x) => x !== t);
+      }
+    },
+    getChildren: () => {
+      const all = world3.getNodes();
+      return Object.values(all).filter((c) => c.parentId === node.id && !isNodePooledInactive(c.id, all)).sort((a, b) => (a.order ?? 0) - (b.order ?? 0)).map((c) => makeNodeHandle(c.id, host)).filter(Boolean);
+    },
+    sendMessage: (name, payload) => {
+      messageQueue.push({ targetNodeId: nodeId, name, payload });
+    },
+    getBehavior: (behavior) => {
+      const targetEntry = Object.entries(node.gameplay?.packs?.__project__ ?? {}).find(
+        ([sid2]) => compiledBehaviors.get(sid2) === behavior || compiledBehaviors.get(sid2)?.name === behavior?.name
+      );
+      if (!targetEntry) return null;
+      const [sid, rawParams] = targetEntry;
+      const rec = instanceStates.get(instanceKey2(nodeId, sid));
+      if (!rec) return null;
+      const ctx = buildScriptContext(node, sid, rawParams, rec.state, host);
+      const wrapped = {};
+      for (const [mName, fn] of Object.entries(behavior.methods ?? {})) {
+        wrapped[mName] = (...args) => fn(ctx, ...args);
+      }
+      return wrapped;
+    },
+    destroy: () => {
+      destroyOrReleaseNode(nodeId, host);
+    }
+  };
+}
+function cancelTimersForNode(nodeId) {
+  for (const [tid, t] of scriptTimers.entries()) {
+    if (t.nodeId === nodeId) scriptTimers.delete(tid);
+  }
+  splineFollowAgents.delete(nodeId);
+  for (const [twId, tw] of activeTweens.entries()) {
+    if (tw.ownerNodeId === nodeId) activeTweens.delete(twId);
+  }
+}
+function resolveSplinePointsInput(input, host) {
+  const world3 = getRuntimeWorld();
+  const nodes = world3.getNodes();
+  if (Array.isArray(input)) {
+    const pts = [];
+    for (const item of input) {
+      const v = resolveVec3Input(item);
+      if (v) pts.push(v);
+    }
+    return { points: pts };
+  }
+  const parentNode = resolveTemplateNode(input, nodes);
+  if (!parentNode) return { points: [] };
+  const rawSplinePath = parentNode.capabilities?.splinePath;
+  if (parentNode.kind === "spline" || rawSplinePath) {
+    const pathObj = host.resolveObject(parentNode.id);
+    if (pathObj) pathObj.updateMatrixWorld();
+    const rawPts = Array.isArray(rawSplinePath?.points) ? rawSplinePath.points : [];
+    const pts = [];
+    for (const p of rawPts) {
+      if (!Array.isArray(p) || p.length < 3) continue;
+      const lx = Number(p[0]) || 0;
+      const ly = Number(p[1]) || 0;
+      const lz = Number(p[2]) || 0;
+      if (pathObj) {
+        const v = new Vector310(lx, ly, lz).applyMatrix4(pathObj.matrixWorld);
+        pts.push({ x: v.x, y: v.y, z: v.z });
+      } else {
+        pts.push({
+          x: parentNode.position[0] + lx,
+          y: parentNode.position[1] + ly,
+          z: parentNode.position[2] + lz
+        });
+      }
+    }
+    return {
+      points: pts,
+      closed: typeof rawSplinePath?.closed === "boolean" ? rawSplinePath.closed : void 0,
+      tension: typeof rawSplinePath?.tension === "number" ? rawSplinePath.tension : void 0
+    };
+  }
+  const children = Object.values(nodes).filter((n) => n.parentId === parentNode.id && !isNodePooledInactive(n.id, nodes)).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  const targets = children.length > 0 ? children : [parentNode];
+  return {
+    points: targets.map((n) => {
+      const obj = host.resolveObject(n.id);
+      return obj ? { x: obj.position.x, y: obj.position.y, z: obj.position.z } : toVec3Obj(n.position);
+    })
+  };
+}
+function buildCurveApi() {
+  return {
+    create: (keys, options) => createAnimationCurve(keys, options),
+    eval: (keys, t, options) => createAnimationCurve(keys, options).eval(t),
+    ease: (name, t) => evalEasing(name, t),
+    parabola: (t, height = 1) => {
+      const u = Math.max(0, Math.min(1, Number.isFinite(t) ? t : 0));
+      return 4 * u * (1 - u) * height;
+    },
+    pulse: (t) => {
+      const u = Math.max(0, Math.min(1, Number.isFinite(t) ? t : 0));
+      return Math.sin(u * Math.PI);
+    }
+  };
+}
+function isNodePooledInactive(nodeId, nodes) {
+  let cur = nodeId;
+  let guard = 0;
+  while (cur && guard < 16) {
+    if (pooledInactive.has(cur)) return true;
+    cur = nodes[cur]?.parentId ?? null;
+    guard += 1;
+  }
+  return false;
+}
+function resolveTemplateNode(templateOrName, nodes) {
+  if (!templateOrName) return null;
+  if (typeof templateOrName === "object" && typeof templateOrName.id === "string") {
+    return nodes[templateOrName.id] ?? null;
+  }
+  if (typeof templateOrName === "string") {
+    const key = templateOrName.trim();
+    if (!key) return null;
+    if (nodes[key]) return nodes[key];
+    return Object.values(nodes).find((n) => n.name === key) ?? null;
+  }
+  return null;
+}
+function cloneSceneSubtree(templateNode, options, host) {
+  const world3 = getRuntimeWorld();
+  const allNodes = world3.getNodes();
+  const clonedMap = {};
+  const idMap = /* @__PURE__ */ new Map();
+  const collect = (srcId) => {
+    const src = allNodes[srcId];
+    if (!src) return;
+    const nextId2 = typeof crypto !== "undefined" && typeof crypto.randomUUID === "function" ? crypto.randomUUID() : `rt_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    idMap.set(srcId, nextId2);
+    for (const child of Object.values(allNodes)) {
+      if (child.parentId === srcId) collect(child.id);
+    }
+  };
+  collect(templateNode.id);
+  if (idMap.size === 0) return null;
+  const rootNewId = idMap.get(templateNode.id);
+  const parentOpt = options?.parent;
+  const resolvedParentId = parentOpt === void 0 ? templateNode.parentId : parentOpt === null ? null : typeof parentOpt === "string" ? allNodes[parentOpt]?.id ?? Object.values(allNodes).find((n) => n.name === parentOpt)?.id ?? null : parentOpt.id ?? null;
+  for (const [oldId, newId] of idMap.entries()) {
+    const src = allNodes[oldId];
+    const copy = structuredClone(src);
+    copy.id = newId;
+    if (oldId === templateNode.id) {
+      copy.parentId = resolvedParentId;
+      copy.visible = options?.visible !== void 0 ? options.visible : true;
+      if (options?.name) copy.name = options.name;
+      else copy.name = `${src.name}_${newId.slice(0, 4)}`;
+      const posVec = resolveVec3Input(options?.position);
+      if (posVec) copy.position = [posVec.x, posVec.y, posVec.z];
+      const rotVec = resolveVec3Input(options?.rotation);
+      if (rotVec) {
+        copy.rotation = [
+          rotVec.x * 180 / Math.PI,
+          rotVec.y * 180 / Math.PI,
+          rotVec.z * 180 / Math.PI
+        ];
+      }
+      const scaleVec = resolveVec3Input(options?.scale);
+      if (scaleVec) copy.scale = [scaleVec.x, scaleVec.y, scaleVec.z];
+    } else {
+      copy.parentId = src.parentId ? idMap.get(src.parentId) ?? null : null;
+    }
+    delete copy.prefabAssetId;
+    delete copy.prefabInstanceId;
+    delete copy.prefabTemplateId;
+    delete copy.prefabHostTemplateId;
+    clonedMap[newId] = copy;
+  }
+  world3.setNodes({ ...allNodes, ...clonedMap });
+  const spawnedObj = host.resolveObject(rootNewId);
+  if (spawnedObj) {
+    const rootNode = clonedMap[rootNewId];
+    spawnedObj.visible = rootNode.visible;
+    spawnedObj.position.set(rootNode.position[0], rootNode.position[1], rootNode.position[2]);
+    spawnedObj.rotation.set(
+      rootNode.rotation[0] * Math.PI / 180,
+      rootNode.rotation[1] * Math.PI / 180,
+      rootNode.rotation[2] * Math.PI / 180
+    );
+    spawnedObj.scale.set(rootNode.scale[0], rootNode.scale[1], rootNode.scale[2]);
+  }
+  return rootNewId;
+}
+function spawnFromTemplateOrPrefab(templateOrPrefab, options, host) {
+  const world3 = getRuntimeWorld();
+  const nodes = world3.getNodes();
+  const tplNode = resolveTemplateNode(templateOrPrefab, nodes);
+  if (tplNode) {
+    const rootId = cloneSceneSubtree(tplNode, options, host);
+    if (!rootId) return null;
+    return {
+      rootId,
+      templatePos: [...tplNode.position],
+      templateRotDeg: [...tplNode.rotation],
+      templateScale: [...tplNode.scale],
+      templateTagId: tplNode.tagId,
+      templateTagIds: tplNode.tagIds ? [...tplNode.tagIds] : void 0
+    };
+  }
+  if (typeof templateOrPrefab === "string" && templateOrPrefab.trim()) {
+    const posVec = resolveVec3Input(options?.position);
+    const pos = posVec ? [posVec.x, posVec.y, posVec.z] : [0, 0, 0];
+    const parentOpt = options?.parent;
+    const parentId = typeof parentOpt === "string" ? parentOpt : parentOpt && "id" in parentOpt ? parentOpt.id ?? null : null;
+    const rootId = world3.instantiatePrefab?.(templateOrPrefab.trim(), { parentId, position: pos }) ?? null;
+    if (!rootId) return null;
+    const spawned = world3.getNodes()[rootId];
+    if (spawned) {
+      if (options?.visible !== void 0) spawned.visible = options.visible;
+      if (options?.name) spawned.name = options.name;
+      const rotVec = resolveVec3Input(optsOrRot(options?.rotation));
+      if (rotVec) {
+        spawned.rotation = [rotVec.x * 180 / Math.PI, rotVec.y * 180 / Math.PI, rotVec.z * 180 / Math.PI];
+      }
+      const scaleVec = resolveVec3Input(options?.scale);
+      if (scaleVec) spawned.scale = [scaleVec.x, scaleVec.y, scaleVec.z];
+      const spawnedObj = host.resolveObject(rootId);
+      if (spawnedObj) {
+        spawnedObj.visible = spawned.visible;
+        spawnedObj.position.set(spawned.position[0], spawned.position[1], spawned.position[2]);
+        spawnedObj.rotation.set(
+          spawned.rotation[0] * Math.PI / 180,
+          spawned.rotation[1] * Math.PI / 180,
+          spawned.rotation[2] * Math.PI / 180
+        );
+        spawnedObj.scale.set(spawned.scale[0], spawned.scale[1], spawned.scale[2]);
+      }
+      return {
+        rootId,
+        templatePos: [0, 0, 0],
+        templateRotDeg: [...spawned.rotation],
+        templateScale: [...spawned.scale],
+        templateTagId: spawned.tagId,
+        templateTagIds: spawned.tagIds ? [...spawned.tagIds] : void 0
+      };
+    }
+    return { rootId };
+  }
+  return null;
+}
+function optsOrRot(rot) {
+  return rot;
+}
+function resetAndInvokeSpawn(nodeId, payload, host) {
+  const nodes = getRuntimeWorld().getNodes();
+  const targetNode = nodes[nodeId];
+  if (!targetNode) return;
+  const subtreeIds2 = [];
+  const collectSubtree = (id) => {
+    subtreeIds2.push(id);
+    for (const candidate of Object.values(nodes)) {
+      if (candidate.parentId === id) collectSubtree(candidate.id);
+    }
+  };
+  collectSubtree(nodeId);
+  for (const subId of subtreeIds2) {
+    const subNode = nodes[subId];
+    if (!subNode) continue;
+    const projectScripts = subNode.gameplay?.packs?.__project__;
+    if (!projectScripts || typeof projectScripts !== "object") continue;
+    for (const [sid, rawParams] of Object.entries(projectScripts)) {
+      if (rawParams && typeof rawParams === "object" && rawParams.__enabled === false) continue;
+      const def = compiledBehaviors.get(sid);
+      if (!def) continue;
+      const key = instanceKey2(subId, sid);
+      const rec = {
+        nodeId: subId,
+        scriptId: sid,
+        started: true,
+        state: def.state ? { ...def.state() } : {}
+      };
+      instanceStates.set(key, rec);
+      const ctx = buildScriptContext(subNode, sid, rawParams, rec.state, host);
+      try {
+        def.onStart?.(ctx);
+        def.onSpawn?.(ctx, payload);
+      } catch (error) {
+        reportRuntimeError("onSpawn", sid, `\u811A\u672C "${def.name}"`, error, subId);
+      }
+    }
+  }
+}
+function releaseToPool(nodeId, host) {
+  const pKey = nodePoolKey.get(nodeId);
+  if (!pKey) return false;
+  const bucket = poolBuckets.get(pKey);
+  if (!bucket) return false;
+  if (pooledInactive.has(nodeId)) return true;
+  pooledInactive.add(nodeId);
+  const nodes = getRuntimeWorld().getNodes();
+  const resetSubtree = (id) => {
+    cancelTimersForNode(id);
+    navAgents.delete(id);
+    resetProjectileState(id);
+    stopCrowdAgent(id);
+    splineFollowAgents.delete(id);
+    for (const [tid, tw] of activeTweens.entries()) {
+      if (tw.ownerNodeId === id) activeTweens.delete(tid);
+    }
+    if (nodes[id]?.physics) {
+      setPhysicsVelocity(id, [0, 0, 0]);
+    }
+    for (const child of Object.values(nodes)) {
+      if (child.parentId === id) resetSubtree(child.id);
+    }
+  };
+  resetSubtree(nodeId);
+  const obj = host.resolveObject(nodeId);
+  if (obj) obj.visible = false;
+  const n = nodes[nodeId];
+  if (n) n.visible = false;
+  if (!bucket.idle.includes(nodeId)) {
+    bucket.idle.push(nodeId);
+  }
+  return true;
+}
+function destroyOrReleaseNode(nodeId, host) {
+  if (releaseToPool(nodeId, host)) return;
+  cancelTimersForNode(nodeId);
+  navAgents.delete(nodeId);
+  const world3 = getRuntimeWorld();
+  const prev = world3.getNodes();
+  if (!prev[nodeId]) return;
+  const next = { ...prev };
+  const removeTree = (id) => {
+    delete next[id];
+    cancelTimersForNode(id);
+    for (const child of Object.values(prev)) {
+      if (child.parentId === id) removeTree(child.id);
+    }
+  };
+  removeTree(nodeId);
+  world3.setNodes(next);
+}
+function resolvePoolKey(templateOrPrefab) {
+  if (!templateOrPrefab) return null;
+  if (typeof templateOrPrefab === "object" && typeof templateOrPrefab.id === "string") {
+    return `node:${templateOrPrefab.id}`;
+  }
+  if (typeof templateOrPrefab === "string" && templateOrPrefab.trim()) {
+    return `ref:${templateOrPrefab.trim()}`;
+  }
+  return null;
+}
+function buildScriptContext(node, scriptId, rawParams, stateObj, host) {
+  const world3 = getRuntimeWorld();
+  const def = compiledBehaviors.get(scriptId);
+  const resolvedParams = {};
+  const inputRecord = rawParams && typeof rawParams === "object" ? rawParams : {};
+  for (const [k, schema] of Object.entries(def?.params ?? {})) {
+    const val = k in inputRecord ? inputRecord[k] : defaultForSchema(schema);
+    if (schema.type === "vec2" && Array.isArray(val)) resolvedParams[k] = { x: Number(val[0]) || 0, y: Number(val[1]) || 0 };
+    else if (schema.type === "vec3" && Array.isArray(val)) resolvedParams[k] = { x: Number(val[0]) || 0, y: Number(val[1]) || 0, z: Number(val[2]) || 0 };
+    else if (schema.type === "ref" && schema.target === "node" && typeof val === "string") resolvedParams[k] = makeNodeHandle(val, host);
+    else resolvedParams[k] = val;
+  }
+  const handle = makeNodeHandle(node.id, host);
+  const obj = host.resolveObject(node.id);
+  return {
+    node: handle,
+    params: resolvedParams,
+    state: stateObj,
+    elapsedTime: simElapsed,
+    get position() {
+      return handle.position;
+    },
+    set position(v) {
+      handle.position = v;
+    },
+    get rotation() {
+      return handle.rotation;
+    },
+    set rotation(v) {
+      handle.rotation = v;
+    },
+    get scale() {
+      return handle.scale;
+    },
+    set scale(v) {
+      handle.scale = v;
+    },
+    get visible() {
+      return handle.visible;
+    },
+    set visible(v) {
+      handle.visible = v;
+    },
+    hasTag: (tag) => handle.hasTag(tag),
+    addTag: (tag) => handle.addTag(tag),
+    removeTag: (tag) => handle.removeTag(tag),
+    get forward() {
+      const yaw = handle.rotation.y;
+      return { x: Math.sin(yaw), y: 0, z: Math.cos(yaw) };
+    },
+    get right() {
+      const yaw = handle.rotation.y;
+      return { x: Math.cos(yaw), y: 0, z: -Math.sin(yaw) };
+    },
+    distanceTo(target) {
+      const vec = resolveVec3Input(target);
+      if (!vec) return Number.POSITIVE_INFINITY;
+      const cur = handle.position;
+      return Math.hypot(vec.x - cur.x, vec.y - cur.y, vec.z - cur.z);
+    },
+    directionTo(target, options) {
+      const vec = resolveVec3Input(target);
+      if (!vec) return { x: 0, y: 0, z: 1 };
+      const cur = handle.position;
+      const dx = vec.x - cur.x;
+      const dy = options?.planeXZ ? 0 : vec.y - cur.y;
+      const dz = vec.z - cur.z;
+      const len = Math.hypot(dx, dy, dz);
+      if (len <= 1e-6) return { x: 0, y: 0, z: 1 };
+      return { x: dx / len, y: dy / len, z: dz / len };
+    },
+    translate(delta, space = "world") {
+      const cur = handle.position;
+      if (space === "local") {
+        const yaw = handle.rotation.y;
+        const sinY = Math.sin(yaw);
+        const cosY = Math.cos(yaw);
+        const wx = delta.x * cosY + delta.z * sinY;
+        const wz = -delta.x * sinY + delta.z * cosY;
+        handle.position = { x: cur.x + wx, y: cur.y + delta.y, z: cur.z + wz };
+      } else {
+        handle.position = { x: cur.x + delta.x, y: cur.y + delta.y, z: cur.z + delta.z };
+      }
+    },
+    rotateY(radians) {
+      const rot = handle.rotation;
+      handle.rotation = { x: rot.x, y: rot.y + radians, z: rot.z };
+    },
+    moveToward(target, maxDistance, options) {
+      const vec = resolveVec3Input(target);
+      if (!vec) return false;
+      const cur = handle.position;
+      const dx = vec.x - cur.x;
+      const dy = options?.planeXZ ? 0 : vec.y - cur.y;
+      const dz = vec.z - cur.z;
+      const dist = Math.hypot(dx, dy, dz);
+      if (options?.faceTarget && (Math.abs(dx) > 1e-5 || Math.abs(dz) > 1e-5)) {
+        const yaw = Math.atan2(dx, dz);
+        const r = handle.rotation;
+        handle.rotation = { x: r.x, y: yaw, z: r.z };
+      }
+      if (dist <= 1e-4 || dist <= maxDistance) {
+        handle.position = { x: vec.x, y: options?.planeXZ ? cur.y : vec.y, z: vec.z };
+        return true;
+      }
+      const ratio = maxDistance / dist;
+      handle.position = {
+        x: cur.x + dx * ratio,
+        y: cur.y + dy * ratio,
+        z: cur.z + dz * ratio
+      };
+      return false;
+    },
+    lookAt(target, options) {
+      const vec = resolveVec3Input(target);
+      if (!vec || !Number.isFinite(vec.x) || !Number.isFinite(vec.y) || !Number.isFinite(vec.z)) return;
+      const cur = handle.position;
+      if (options?.yOnly) {
+        const dx = vec.x - cur.x;
+        const dz = vec.z - cur.z;
+        if (Math.abs(dx) > 1e-5 || Math.abs(dz) > 1e-5) {
+          const r = handle.rotation;
+          handle.rotation = { x: r.x, y: Math.atan2(dx, dz), z: r.z };
+        }
+        return;
+      }
+      if (!obj) {
+        const dx = vec.x - cur.x;
+        const dz = vec.z - cur.z;
+        const dy = vec.y - cur.y;
+        const horiz = Math.hypot(dx, dz);
+        const yaw = Math.atan2(dx, dz);
+        const pitch = -Math.atan2(dy, Math.max(1e-5, horiz));
+        handle.rotation = { x: pitch, y: yaw, z: 0 };
+        return;
+      }
+      if (node.kind === "camera") {
+        const p = obj.position;
+        obj.lookAt(2 * p.x - vec.x, 2 * p.y - vec.y, 2 * p.z - vec.z);
+      } else {
+        obj.lookAt(vec.x, vec.y, vec.z);
+      }
+      node.rotation[0] = obj.rotation.x * 180 / Math.PI;
+      node.rotation[1] = obj.rotation.y * 180 / Math.PI;
+      node.rotation[2] = obj.rotation.z * 180 / Math.PI;
+    },
+    sendMessage(name, payload) {
+      messageQueue.push({ targetNodeId: node.id, name, payload, senderId: node.id });
+    },
+    broadcast(name, payload) {
+      messageQueue.push({ targetNodeId: null, name, payload, senderId: node.id });
+    },
+    getBehavior: (behavior) => handle.getBehavior(behavior),
+    findNodeById: (id) => makeNodeHandle(id, host),
+    findNodesByTag: (tag) => {
+      const all = world3.getNodes();
+      return Object.values(all).filter((n) => !isNodePooledInactive(n.id, all) && nodeHasTag(n, tag)).map((n) => makeNodeHandle(n.id, host)).filter(Boolean);
+    },
+    findNodesInRadius: (center, radius, tag) => {
+      const r2 = radius * radius;
+      const all = world3.getNodes();
+      return Object.values(all).filter((n) => {
+        if (isNodePooledInactive(n.id, all)) return false;
+        if (tag && !nodeHasTag(n, tag)) return false;
+        const p = host.resolveObject(n.id)?.position;
+        const x = p ? p.x : n.position[0];
+        const y = p ? p.y : n.position[1];
+        const z = p ? p.z : n.position[2];
+        const dx = x - center.x;
+        const dy = y - center.y;
+        const dz = z - center.z;
+        return dx * dx + dy * dy + dz * dz <= r2;
+      }).map((n) => makeNodeHandle(n.id, host)).filter(Boolean);
+    },
+    cloneNode: (templateOrName, opts) => {
+      const tpl = resolveTemplateNode(templateOrName, world3.getNodes());
+      if (!tpl) return null;
+      const spawnedId = cloneSceneSubtree(tpl, opts, host);
+      if (!spawnedId) return null;
+      if (opts?.initMessage) {
+        messageQueue.push({ targetNodeId: spawnedId, name: opts.initMessage, payload: opts.initPayload, senderId: node.id });
+      }
+      return makeNodeHandle(spawnedId, host);
+    },
+    spawnPrefab: (prefabId, opts) => {
+      const posVec = resolveVec3Input(opts?.position);
+      const pos = posVec ? [posVec.x, posVec.y, posVec.z] : [0, 0, 0];
+      const parentId = typeof opts?.parent === "string" ? opts.parent : opts?.parent && typeof opts.parent === "object" ? opts.parent.id ?? null : null;
+      const spawnedId = world3.instantiatePrefab?.(prefabId, { parentId, position: pos }) ?? null;
+      if (!spawnedId) return null;
+      const spawnedNode = world3.getNodes()[spawnedId];
+      if (spawnedNode) {
+        if (opts?.name) spawnedNode.name = opts.name;
+        const rotVec = resolveVec3Input(opts?.rotation);
+        if (rotVec) {
+          spawnedNode.rotation = [rotVec.x * 180 / Math.PI, rotVec.y * 180 / Math.PI, rotVec.z * 180 / Math.PI];
+        }
+        const scaleVec = resolveVec3Input(opts?.scale);
+        if (scaleVec) spawnedNode.scale = [scaleVec.x, scaleVec.y, scaleVec.z];
+      }
+      return makeNodeHandle(spawnedId, host);
+    },
+    destroyNode: (target) => {
+      const targetId = typeof target === "string" ? target : target?.id;
+      if (targetId) destroyOrReleaseNode(targetId, host);
+    },
+    pool: {
+      preload: (templateOrPrefab, count) => {
+        const key = resolvePoolKey(templateOrPrefab);
+        if (!key) return;
+        const targetCount = Math.max(0, Math.min(200, Math.floor(count)));
+        let bucket = poolBuckets.get(key);
+        if (!bucket) {
+          bucket = { all: [], idle: [] };
+          poolBuckets.set(key, bucket);
+        }
+        while (bucket.all.length < targetCount) {
+          const spawned = spawnFromTemplateOrPrefab(templateOrPrefab, { visible: false }, host);
+          if (!spawned) break;
+          if (!bucket.templatePos && spawned.templatePos) bucket.templatePos = spawned.templatePos;
+          if (!bucket.templateRotDeg && spawned.templateRotDeg) bucket.templateRotDeg = spawned.templateRotDeg;
+          if (!bucket.templateScale && spawned.templateScale) bucket.templateScale = spawned.templateScale;
+          if (bucket.templateTagId === void 0 && spawned.templateTagId !== void 0) bucket.templateTagId = spawned.templateTagId;
+          if (bucket.templateTagIds === void 0 && spawned.templateTagIds !== void 0) bucket.templateTagIds = spawned.templateTagIds;
+          pooledInactive.add(spawned.rootId);
+          nodePoolKey.set(spawned.rootId, key);
+          bucket.all.push(spawned.rootId);
+          bucket.idle.push(spawned.rootId);
+        }
+      },
+      acquire: (templateOrPrefab, opts) => {
+        const key = resolvePoolKey(templateOrPrefab);
+        if (!key) return null;
+        let bucket = poolBuckets.get(key);
+        if (!bucket) {
+          bucket = { all: [], idle: [] };
+          poolBuckets.set(key, bucket);
+        }
+        const allNodes = world3.getNodes();
+        let pickedId = null;
+        while (bucket.idle.length > 0) {
+          const cand = bucket.idle.pop();
+          if (allNodes[cand]) {
+            pickedId = cand;
+            break;
+          }
+        }
+        if (!pickedId) {
+          const spawned = spawnFromTemplateOrPrefab(templateOrPrefab, {
+            position: opts?.position,
+            rotation: opts?.rotation,
+            scale: opts?.scale,
+            visible: true
+          }, host);
+          if (!spawned) return null;
+          if (!bucket.templatePos && spawned.templatePos) bucket.templatePos = spawned.templatePos;
+          if (!bucket.templateRotDeg && spawned.templateRotDeg) bucket.templateRotDeg = spawned.templateRotDeg;
+          if (!bucket.templateScale && spawned.templateScale) bucket.templateScale = spawned.templateScale;
+          if (bucket.templateTagId === void 0 && spawned.templateTagId !== void 0) bucket.templateTagId = spawned.templateTagId;
+          if (bucket.templateTagIds === void 0 && spawned.templateTagIds !== void 0) bucket.templateTagIds = spawned.templateTagIds;
+          pickedId = spawned.rootId;
+          nodePoolKey.set(pickedId, key);
+          bucket.all.push(pickedId);
+        } else {
+          pooledInactive.delete(pickedId);
+          const n = world3.getNodes()[pickedId];
+          const objTarget = host.resolveObject(pickedId);
+          const posVec = resolveVec3Input(opts?.position);
+          const rotVec = resolveVec3Input(opts?.rotation);
+          const scaleVec = resolveVec3Input(opts?.scale);
+          if (n) {
+            n.visible = true;
+            n.tagId = bucket.templateTagId;
+            n.tagIds = bucket.templateTagIds ? [...bucket.templateTagIds] : void 0;
+            if (posVec) n.position = [posVec.x, posVec.y, posVec.z];
+            else if (bucket.templatePos) n.position = [...bucket.templatePos];
+            if (rotVec) n.rotation = [rotVec.x * 180 / Math.PI, rotVec.y * 180 / Math.PI, rotVec.z * 180 / Math.PI];
+            else if (bucket.templateRotDeg) n.rotation = [...bucket.templateRotDeg];
+            if (scaleVec) n.scale = [scaleVec.x, scaleVec.y, scaleVec.z];
+            else if (bucket.templateScale) n.scale = [...bucket.templateScale];
+          }
+          if (objTarget && n) {
+            objTarget.visible = true;
+            objTarget.position.set(n.position[0], n.position[1], n.position[2]);
+            objTarget.rotation.set(
+              n.rotation[0] * Math.PI / 180,
+              n.rotation[1] * Math.PI / 180,
+              n.rotation[2] * Math.PI / 180
+            );
+            objTarget.scale.set(n.scale[0], n.scale[1], n.scale[2]);
+          }
+        }
+        resetAndInvokeSpawn(pickedId, opts?.payload, host);
+        return makeNodeHandle(pickedId, host);
+      },
+      release: (target) => {
+        const targetId = typeof target === "string" ? target : target?.id;
+        if (targetId) destroyOrReleaseNode(targetId, host);
+      },
+      stats: (templateOrPrefab) => {
+        if (templateOrPrefab) {
+          const key = resolvePoolKey(templateOrPrefab);
+          const b = key ? poolBuckets.get(key) : void 0;
+          const total2 = b ? b.all.length : 0;
+          const pooled2 = b ? b.idle.length : 0;
+          return { active: Math.max(0, total2 - pooled2), pooled: pooled2, total: total2 };
+        }
+        let total = 0;
+        let pooled = 0;
+        for (const b of poolBuckets.values()) {
+          total += b.all.length;
+          pooled += b.idle.length;
+        }
+        return { active: Math.max(0, total - pooled), pooled, total };
+      }
+    },
+    after: (seconds, callback) => {
+      const id = nextTimerId++;
+      const delay = Math.max(0, Number(seconds) || 0);
+      scriptTimers.set(id, { id, nodeId: node.id, scriptId, remaining: delay, interval: delay, repeat: false, callback });
+      return id;
+    },
+    every: (seconds, callback) => {
+      const id = nextTimerId++;
+      const interval = Math.max(0.016, Number(seconds) || 0.1);
+      scriptTimers.set(id, { id, nodeId: node.id, scriptId, remaining: interval, interval, repeat: true, callback });
+      return id;
+    },
+    cancelTimer: (timerId) => {
+      scriptTimers.delete(timerId);
+    },
+    physics: {
+      raycast: (origin, dir, maxDistance) => {
+        const dist = host.probe?.(
+          [origin.x, origin.y, origin.z],
+          [dir.x, dir.y, dir.z],
+          maxDistance,
+          node.id
+        );
+        if (dist === null || dist === void 0) return null;
+        return {
+          node: handle,
+          point: {
+            x: origin.x + dir.x * dist,
+            y: origin.y + dir.y * dist,
+            z: origin.z + dir.z * dist
+          },
+          normal: { x: 0, y: 1, z: 0 },
+          distance: dist
+        };
+      },
+      sphereCast: (center, radius, options) => {
+        const nodes = world3.getNodes();
+        const r2 = radius * radius;
+        const hits = [];
+        for (const n of Object.values(nodes)) {
+          if (!n.visible || n.id === node.id || isNodePooledInactive(n.id, nodes)) continue;
+          if (options?.tag && n.tagId !== options.tag && !n.tagIds?.includes(options.tag)) continue;
+          const o = host.resolveObject(n.id);
+          const px = o ? o.position.x : n.position[0];
+          const py = o ? o.position.y : n.position[1];
+          const pz = o ? o.position.z : n.position[2];
+          const dx = px - center.x;
+          const dy = py - center.y;
+          const dz = pz - center.z;
+          if (dx * dx + dy * dy + dz * dz <= r2) {
+            const h = makeNodeHandle(n.id, host);
+            if (h) hits.push(h);
+          }
+        }
+        return hits;
+      },
+      getVelocity: () => {
+        const st = getPhysicsBodyState(node.id);
+        if (!st) return { x: 0, y: 0, z: 0 };
+        return { x: st.linvel[0], y: st.linvel[1], z: st.linvel[2] };
+      },
+      setVelocity: (velocity) => {
+        setPhysicsVelocity(node.id, [velocity.x, velocity.y, velocity.z]);
+      },
+      applyImpulse: (impulse) => {
+        applyPhysicsImpulse(node.id, [impulse.x, impulse.y, impulse.z]);
+      },
+      applyForce: (force) => {
+        applyPhysicsForce(node.id, [force.x, force.y, force.z]);
+      }
+    },
+    nav: {
+      moveTo: (target, speed = 3.5) => {
+        const cur = handle.position;
+        const path = findNavigationPath([cur.x, cur.y, cur.z], [target.x, target.y, target.z]);
+        if (!path || path.length === 0) {
+          navAgents.delete(node.id);
+          return false;
+        }
+        navAgents.set(node.id, { path, index: 0, speed: Math.max(0.1, speed) });
+        return true;
+      },
+      stop: () => {
+        navAgents.delete(node.id);
+      },
+      get isMoving() {
+        return navAgents.has(node.id);
+      }
+    },
+    spline: {
+      create: (pointsOrParent, options) => {
+        const resolved = resolveSplinePointsInput(pointsOrParent, host);
+        return createSplinePath(resolved.points, {
+          closed: options?.closed ?? resolved.closed,
+          tension: options?.tension ?? resolved.tension
+        });
+      },
+      follow: (pointsOrParent, options) => {
+        let spline;
+        if (pointsOrParent && typeof pointsOrParent === "object" && "pointAtDistance" in pointsOrParent) {
+          spline = pointsOrParent;
+        } else {
+          const resolved = resolveSplinePointsInput(pointsOrParent, host);
+          spline = createSplinePath(resolved.points, {
+            closed: options?.closed ?? options?.loop ?? resolved.closed,
+            tension: options?.tension ?? resolved.tension
+          });
+        }
+        if (spline.points.length === 0) {
+          splineFollowAgents.delete(node.id);
+          return false;
+        }
+        const startT = Math.max(0, Math.min(1, Number(options?.startProgress ?? 0)));
+        const startDist = startT * spline.length;
+        const startPos = spline.pointAtDistance(startDist);
+        handle.position = {
+          x: startPos.x,
+          y: options?.planeXZ ? handle.position.y : startPos.y,
+          z: startPos.z
+        };
+        splineFollowAgents.set(node.id, {
+          nodeId: node.id,
+          spline,
+          distance: startDist,
+          speed: Math.max(0.01, Number(options?.speed ?? 4)),
+          direction: 1,
+          loop: Boolean(options?.loop),
+          pingPong: Boolean(options?.pingPong),
+          faceDirection: options?.faceDirection !== false,
+          planeXZ: Boolean(options?.planeXZ),
+          onArrive: options?.onArrive
+        });
+        return true;
+      },
+      stop: () => {
+        splineFollowAgents.delete(node.id);
+      },
+      get isFollowing() {
+        return splineFollowAgents.has(node.id);
+      },
+      get progress() {
+        const ag = splineFollowAgents.get(node.id);
+        if (!ag || ag.spline.length <= 1e-6) return 0;
+        return Math.max(0, Math.min(1, ag.distance / ag.spline.length));
+      }
+    },
+    tween: {
+      to: (target, props, duration, options) => {
+        const targetHandle = target && typeof target === "object" && "id" in target && typeof target.id === "string" ? makeNodeHandle(target.id, host) ?? target : target;
+        if (!targetHandle) return -1;
+        const startPos = props.position && targetHandle.position ? { ...targetHandle.position } : null;
+        const startRot = props.rotation && targetHandle.rotation ? { ...targetHandle.rotation } : null;
+        const startScale = props.scale && targetHandle.scale ? { ...targetHandle.scale } : null;
+        const endPos = resolveVec3Input(props.position);
+        const endRot = resolveVec3Input(props.rotation);
+        const endScale = resolveVec3Input(props.scale);
+        const id = nextTweenId++;
+        const dur = Math.max(1e-3, Number(duration) || 1e-3);
+        activeTweens.set(id, {
+          id,
+          ownerNodeId: node.id,
+          delayRemaining: Math.max(0, Number(options?.delay ?? 0)),
+          elapsed: 0,
+          duration: dur,
+          ease: options?.ease ?? "outQuad",
+          repeat: Math.max(0, Math.floor(options?.repeat ?? 0)),
+          yoyo: Boolean(options?.yoyo),
+          reversed: false,
+          completedCount: 0,
+          apply: (t) => {
+            if (startPos && endPos) {
+              targetHandle.position = {
+                x: startPos.x + (endPos.x - startPos.x) * t,
+                y: startPos.y + (endPos.y - startPos.y) * t,
+                z: startPos.z + (endPos.z - startPos.z) * t
+              };
+            }
+            if (startRot && endRot) {
+              targetHandle.rotation = {
+                x: startRot.x + (endRot.x - startRot.x) * t,
+                y: startRot.y + (endRot.y - startRot.y) * t,
+                z: startRot.z + (endRot.z - startRot.z) * t
+              };
+            }
+            if (startScale && endScale) {
+              targetHandle.scale = {
+                x: startScale.x + (endScale.x - startScale.x) * t,
+                y: startScale.y + (endScale.y - startScale.y) * t,
+                z: startScale.z + (endScale.z - startScale.z) * t
+              };
+            }
+          },
+          onUpdate: options?.onUpdate,
+          onComplete: options?.onComplete
+        });
+        return id;
+      },
+      value: (from, to, duration, onUpdate, options) => {
+        const id = nextTweenId++;
+        const dur = Math.max(1e-3, Number(duration) || 1e-3);
+        activeTweens.set(id, {
+          id,
+          ownerNodeId: node.id,
+          delayRemaining: Math.max(0, Number(options?.delay ?? 0)),
+          elapsed: 0,
+          duration: dur,
+          ease: options?.ease ?? "outQuad",
+          repeat: Math.max(0, Math.floor(options?.repeat ?? 0)),
+          yoyo: Boolean(options?.yoyo),
+          reversed: false,
+          completedCount: 0,
+          apply: (t) => {
+            onUpdate(from + (to - from) * t);
+          },
+          onComplete: options?.onComplete
+        });
+        return id;
+      },
+      punchScale: (strength = 0.25, duration = 0.22) => {
+        const base = { ...handle.scale };
+        const id = nextTweenId++;
+        const dur = Math.max(0.05, Number(duration) || 0.22);
+        activeTweens.set(id, {
+          id,
+          ownerNodeId: node.id,
+          delayRemaining: 0,
+          elapsed: 0,
+          duration: dur,
+          ease: "linear",
+          repeat: 0,
+          yoyo: false,
+          reversed: false,
+          completedCount: 0,
+          apply: (t) => {
+            const pulse = Math.sin(t * Math.PI) * strength;
+            handle.scale = {
+              x: base.x * (1 + pulse),
+              y: base.y * (1 + pulse),
+              z: base.z * (1 + pulse)
+            };
+          },
+          onComplete: () => {
+            handle.scale = base;
+          }
+        });
+        return id;
+      },
+      shakePosition: (intensity = 0.18, duration = 0.25) => {
+        const base = { ...handle.position };
+        const id = nextTweenId++;
+        const dur = Math.max(0.05, Number(duration) || 0.25);
+        activeTweens.set(id, {
+          id,
+          ownerNodeId: node.id,
+          delayRemaining: 0,
+          elapsed: 0,
+          duration: dur,
+          ease: "linear",
+          repeat: 0,
+          yoyo: false,
+          reversed: false,
+          completedCount: 0,
+          apply: (t) => {
+            const decay = 1 - t;
+            const amp = intensity * decay;
+            handle.position = {
+              x: base.x + (Math.random() * 2 - 1) * amp,
+              y: base.y + (Math.random() * 2 - 1) * amp,
+              z: base.z + (Math.random() * 2 - 1) * amp
+            };
+          },
+          onComplete: () => {
+            handle.position = base;
+          }
+        });
+        return id;
+      },
+      cancel: (tweenId) => {
+        activeTweens.delete(tweenId);
+      },
+      cancelAll: () => {
+        for (const [twId, tw] of activeTweens.entries()) {
+          if (tw.ownerNodeId === node.id) activeTweens.delete(twId);
+        }
+      }
+    },
+    curve: buildCurveApi(),
+    crowd: {
+      moveTo: (target, options) => {
+        const v = resolveVec3Input(target);
+        if (!v) return;
+        setCrowdTarget(node.id, v, options);
+      },
+      stop: () => stopCrowdAgent(node.id),
+      get isMoving() {
+        return isCrowdMoving(node.id);
+      },
+      formation: (units, center, options) => {
+        const c = resolveVec3Input(center);
+        if (!c) return;
+        const nodes = world3.getNodes();
+        const ids = units.map((u) => resolveTemplateNode(u, nodes)?.id ?? (typeof u === "string" ? u : u?.id)).filter((id) => Boolean(id));
+        setCrowdFormation(ids, c, options);
+      },
+      stats: () => getCrowdStats()
+    },
+    projectile: {
+      launch: (options) => {
+        const nodes = world3.getNodes();
+        const targetId = options?.target ? resolveTemplateNode(options.target, nodes)?.id ?? (typeof options.target === "string" ? options.target : options.target?.id) : null;
+        const ownerId = options?.owner ? resolveTemplateNode(options.owner, nodes)?.id ?? (typeof options.owner === "string" ? options.owner : options.owner?.id) : node.id;
+        launchProjectile(node.id, {
+          direction: options?.direction ? resolveVec3Input(options.direction) ?? void 0 : void 0,
+          targetId,
+          ownerId,
+          mode: options?.mode,
+          speed: options?.speed,
+          gravity: options?.gravity,
+          turnRate: options?.turnRate,
+          maxLifetime: options?.maxLifetime,
+          hitRadius: options?.hitRadius,
+          targetTag: options?.targetTag,
+          damage: options?.damage,
+          destroyOnHit: options?.destroyOnHit,
+          onHit: options?.onHit ? (hitNodeId, pos) => {
+            options.onHit(makeNodeHandle(hitNodeId, host), pos);
+          } : void 0
+        });
+      },
+      reset: () => resetProjectileState(node.id)
+    },
+    anim: {
+      playBody: (clipName, opts) => {
+        world3.playBody?.(node.id, clipName, opts);
+      },
+      playUpper: (clipName, opts) => {
+        world3.playUpper?.(node.id, clipName, opts);
+      },
+      stopUpper: (fade2) => world3.stopUpper?.(node.id, fade2)
+    },
+    character: {
+      setModifiers: (patch) => setCharacterModifiers(node.id, patch),
+      getModifiers: () => getCharacterModifiers(node.id),
+      clearModifiers: () => clearCharacterModifiers(node.id)
+    },
+    audio: {
+      playSfx: (assetId, opts) => {
+        const now = typeof performance !== "undefined" ? performance.now() : Date.now();
+        const last = sfxCooldownAt.get(assetId) ?? 0;
+        if (now - last < 40) return;
+        sfxCooldownAt.set(assetId, now);
+        playSound({ assetId, bus: "sfx", volume: opts?.volume, playbackRate: opts?.pitch, parent: obj ?? void 0 });
+      },
+      playBgm: (assetId, opts) => {
+        playSound({ assetId, bus: "music", volume: opts?.volume, loop: opts?.loop ?? true });
+      },
+      stopBgm: () => stopMusic()
+    },
+    fx: {
+      spawn: (effectId, position, options) => {
+        const nodes = world3.getNodes();
+        const id = `fx_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+        const s = options?.scale ?? 1;
+        const fxNode = {
+          ...node,
+          id,
+          name: `FX_${effectId.slice(0, 8)}`,
+          kind: "effect",
+          parentId: null,
+          visible: true,
+          locked: false,
+          position: [position.x, position.y, position.z],
+          rotation: [0, 0, 0],
+          scale: [s, s, s],
+          castShadow: false,
+          receiveShadow: false,
+          assetId: effectId,
+          slots: [],
+          gameplay: {},
+          physics: void 0,
+          effect: {
+            assetId: effectId,
+            quarksVersion: "1.0",
+            playing: true,
+            materialAssetId: null,
+            simulation: null
+          }
+        };
+        world3.setNodes({ ...nodes, [id]: fxNode });
+        const ttl = options?.autoDestroySec !== void 0 ? options.autoDestroySec : 3;
+        if (ttl > 0) {
+          const tid = nextTimerId++;
+          scriptTimers.set(tid, {
+            id: tid,
+            nodeId: id,
+            scriptId,
+            remaining: ttl,
+            interval: ttl,
+            repeat: false,
+            callback: () => destroyOrReleaseNode(id, host)
+          });
+        }
+      }
+    },
+    input: {
+      isPressed: (actionOrKey) => isActionPressed(actionOrKey) || isKeyHeld(actionOrKey) || isKeyHeld(`Key${actionOrKey.toUpperCase()}`),
+      justPressed: (actionOrKey) => wasActionTapped(actionOrKey) || wasKeyTapped(actionOrKey) || wasKeyTapped(`Key${actionOrKey.toUpperCase()}`),
+      isKeyPressed: (code) => isKeyHeld(code) || isKeyHeld(`Key${code.toUpperCase()}`),
+      justReleased: () => false,
+      axis1D: (action) => isActionPressed(action) ? 1 : 0,
+      axis2D: (action) => getActionAxis2D(action),
+      moveDirection: (action = "Move") => viewRelativeMove(action, host),
+      pointerDelta: () => ({ ...framePointerDelta }),
+      pointerPosition: () => ({ ...framePointerPos }),
+      wheelDelta: () => frameWheelDelta,
+      isMouseButtonPressed: (button) => (currMouseButtons & mouseButtonMask(button)) !== 0,
+      justPressedMouseButton: (button) => (currMouseButtons & mouseButtonMask(button)) !== 0 && (prevMouseButtons & mouseButtonMask(button)) === 0,
+      justReleasedMouseButton: (button) => (currMouseButtons & mouseButtonMask(button)) === 0 && (prevMouseButtons & mouseButtonMask(button)) !== 0
+    },
+    ui: {
+      getVar: (key) => uiValues().variables[key],
+      setVar: (key, value) => writeUiVariable(key, value),
+      onEvent: (eventName, handler) => {
+        ensureUiClickBridge();
+        const instKey = instanceKey2(node.id, scriptId);
+        let byEvent = uiEventHandlers.get(instKey);
+        if (!byEvent) {
+          byEvent = /* @__PURE__ */ new Map();
+          uiEventHandlers.set(instKey, byEvent);
+        }
+        let set = byEvent.get(eventName);
+        if (!set) {
+          set = /* @__PURE__ */ new Set();
+          byEvent.set(eventName, set);
+        }
+        set.add(handler);
+        return () => {
+          set?.delete(handler);
+        };
+      },
+      showScreen: (screenIdOrName) => {
+        const sid = resolveScreenNodeId(screenIdOrName);
+        if (sid) setScreenVisible(sid, true);
+      },
+      hideScreen: (screenIdOrName) => {
+        const sid = resolveScreenNodeId(screenIdOrName);
+        if (sid) setScreenVisible(sid, false);
+      },
+      toggleScreen: (screenIdOrName) => {
+        const sid = resolveScreenNodeId(screenIdOrName);
+        if (!sid) return;
+        const nodeTarget = world3.getNodes()[sid];
+        const curMap = uiValues().screens;
+        const cur = sid in curMap ? curMap[sid] : Boolean(nodeTarget?.screen?.visibleOnPlay ?? true);
+        setScreenVisible(sid, !cur);
+      },
+      isScreenVisible: (screenIdOrName) => {
+        const sid = resolveScreenNodeId(screenIdOrName);
+        if (!sid) return false;
+        const nodeTarget = world3.getNodes()[sid];
+        const curMap = uiValues().screens;
+        return sid in curMap ? curMap[sid] : Boolean(nodeTarget?.screen?.visibleOnPlay ?? true);
+      },
+      worldToScreen: (position) => {
+        const vec = resolveVec3Input(position);
+        if (!vec || !host.worldToScreen) return null;
+        return host.worldToScreen([vec.x, vec.y, vec.z]);
+      }
+    },
+    scene: {
+      currentId: () => world3.getActiveSceneId(),
+      load: (sceneId, options) => {
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new CustomEvent("t3d:load-scene", { detail: { sceneId, spawnPoint: options?.spawnPoint } }));
+        }
+      }
+    },
+    shader: {
+      setParam: (shaderId, paramName, value) => setCompiledShaderParam(shaderId, paramName, value),
+      getParam: (shaderId, paramName) => getCompiledShaderParam(shaderId, paramName)
+    },
+    global: {
+      get: (key) => globalMemory.get(key),
+      set: (key, value) => {
+        globalMemory.set(key, value);
+      },
+      remove: (key) => {
+        globalMemory.delete(key);
+      }
+    },
+    storage: {
+      get: (key) => persistentMemory.get(key),
+      set: (key, value) => {
+        persistentMemory.set(key, value);
+      },
+      remove: (key) => {
+        persistentMemory.delete(key);
+      }
+    },
+    tables: {
+      getRow: (tableId, rowId) => findRow(world3.getGameDatabase(), tableId, rowId)?.fields ?? null
+    },
+    log: (...args) => world3.log("info", args.map(String).join(" ")),
+    warn: (...args) => world3.log("warn", args.map(String).join(" "))
+  };
+}
+function buildSystemWorldApi(systemId, host) {
+  const world3 = getRuntimeWorld();
+  const sysNodeId = `__system__:${systemId}`;
+  const poolHelpers = {
+    preload: (templateOrPrefab, count) => {
+      const key = resolvePoolKey(templateOrPrefab);
+      if (!key) return;
+      const targetCount = Math.max(0, Math.min(200, Math.floor(count)));
+      let bucket = poolBuckets.get(key);
+      if (!bucket) {
+        bucket = { all: [], idle: [] };
+        poolBuckets.set(key, bucket);
+      }
+      while (bucket.all.length < targetCount) {
+        const spawned = spawnFromTemplateOrPrefab(templateOrPrefab, { visible: false }, host);
+        if (!spawned) break;
+        if (!bucket.templatePos && spawned.templatePos) bucket.templatePos = spawned.templatePos;
+        if (!bucket.templateRotDeg && spawned.templateRotDeg) bucket.templateRotDeg = spawned.templateRotDeg;
+        if (!bucket.templateScale && spawned.templateScale) bucket.templateScale = spawned.templateScale;
+        if (bucket.templateTagId === void 0 && spawned.templateTagId !== void 0) bucket.templateTagId = spawned.templateTagId;
+        if (bucket.templateTagIds === void 0 && spawned.templateTagIds !== void 0) bucket.templateTagIds = spawned.templateTagIds;
+        pooledInactive.add(spawned.rootId);
+        nodePoolKey.set(spawned.rootId, key);
+        bucket.all.push(spawned.rootId);
+        bucket.idle.push(spawned.rootId);
+      }
+    },
+    acquire: (templateOrPrefab, opts) => {
+      const key = resolvePoolKey(templateOrPrefab);
+      if (!key) return null;
+      let bucket = poolBuckets.get(key);
+      if (!bucket) {
+        bucket = { all: [], idle: [] };
+        poolBuckets.set(key, bucket);
+      }
+      const allNodes = world3.getNodes();
+      let pickedId = null;
+      while (bucket.idle.length > 0) {
+        const cand = bucket.idle.pop();
+        if (allNodes[cand]) {
+          pickedId = cand;
+          break;
+        }
+      }
+      if (!pickedId) {
+        const spawned = spawnFromTemplateOrPrefab(templateOrPrefab, {
+          position: opts?.position,
+          rotation: opts?.rotation,
+          scale: opts?.scale,
+          visible: true
+        }, host);
+        if (!spawned) return null;
+        if (!bucket.templatePos && spawned.templatePos) bucket.templatePos = spawned.templatePos;
+        if (!bucket.templateRotDeg && spawned.templateRotDeg) bucket.templateRotDeg = spawned.templateRotDeg;
+        if (!bucket.templateScale && spawned.templateScale) bucket.templateScale = spawned.templateScale;
+        if (bucket.templateTagId === void 0 && spawned.templateTagId !== void 0) bucket.templateTagId = spawned.templateTagId;
+        if (bucket.templateTagIds === void 0 && spawned.templateTagIds !== void 0) bucket.templateTagIds = spawned.templateTagIds;
+        pickedId = spawned.rootId;
+        nodePoolKey.set(pickedId, key);
+        bucket.all.push(pickedId);
+      } else {
+        pooledInactive.delete(pickedId);
+        const n = world3.getNodes()[pickedId];
+        const objTarget = host.resolveObject(pickedId);
+        const posVec = resolveVec3Input(opts?.position);
+        const rotVec = resolveVec3Input(opts?.rotation);
+        const scaleVec = resolveVec3Input(opts?.scale);
+        if (n) {
+          n.visible = true;
+          n.tagId = bucket.templateTagId;
+          n.tagIds = bucket.templateTagIds ? [...bucket.templateTagIds] : void 0;
+          if (posVec) n.position = [posVec.x, posVec.y, posVec.z];
+          else if (bucket.templatePos) n.position = [...bucket.templatePos];
+          if (rotVec) n.rotation = [rotVec.x * 180 / Math.PI, rotVec.y * 180 / Math.PI, rotVec.z * 180 / Math.PI];
+          else if (bucket.templateRotDeg) n.rotation = [...bucket.templateRotDeg];
+          if (scaleVec) n.scale = [scaleVec.x, scaleVec.y, scaleVec.z];
+          else if (bucket.templateScale) n.scale = [...bucket.templateScale];
+        }
+        if (objTarget && n) {
+          objTarget.visible = true;
+          objTarget.position.set(n.position[0], n.position[1], n.position[2]);
+          objTarget.rotation.set(
+            n.rotation[0] * Math.PI / 180,
+            n.rotation[1] * Math.PI / 180,
+            n.rotation[2] * Math.PI / 180
+          );
+          objTarget.scale.set(n.scale[0], n.scale[1], n.scale[2]);
+        }
+      }
+      resetAndInvokeSpawn(pickedId, opts?.payload, host);
+      return makeNodeHandle(pickedId, host);
+    },
+    release: (target) => {
+      const targetId = typeof target === "string" ? target : target?.id;
+      if (targetId) destroyOrReleaseNode(targetId, host);
+    },
+    stats: (templateOrPrefab) => {
+      if (templateOrPrefab) {
+        const key = resolvePoolKey(templateOrPrefab);
+        const b = key ? poolBuckets.get(key) : void 0;
+        const total2 = b ? b.all.length : 0;
+        const pooled2 = b ? b.idle.length : 0;
+        return { active: Math.max(0, total2 - pooled2), pooled: pooled2, total: total2 };
+      }
+      let total = 0;
+      let pooled = 0;
+      for (const b of poolBuckets.values()) {
+        total += b.all.length;
+        pooled += b.idle.length;
+      }
+      return { active: Math.max(0, total - pooled), pooled, total };
+    }
+  };
+  return {
+    get elapsedTime() {
+      return simElapsed;
+    },
+    findNodeById: (id) => makeNodeHandle(id, host),
+    findNodesByTag: (tag) => {
+      const all = world3.getNodes();
+      return Object.values(all).filter((n) => !isNodePooledInactive(n.id, all) && nodeHasTag(n, tag)).map((n) => makeNodeHandle(n.id, host)).filter(Boolean);
+    },
+    findNodesInRadius: (center, radius, tag) => {
+      const r2 = radius * radius;
+      const all = world3.getNodes();
+      return Object.values(all).filter((n) => {
+        if (isNodePooledInactive(n.id, all)) return false;
+        if (tag && !nodeHasTag(n, tag)) return false;
+        const p = host.resolveObject(n.id)?.position;
+        const x = p ? p.x : n.position[0];
+        const y = p ? p.y : n.position[1];
+        const z = p ? p.z : n.position[2];
+        const dx = x - center.x;
+        const dy = y - center.y;
+        const dz = z - center.z;
+        return dx * dx + dy * dy + dz * dz <= r2;
+      }).map((n) => makeNodeHandle(n.id, host)).filter(Boolean);
+    },
+    cloneNode: (templateOrName, opts) => {
+      const tpl = resolveTemplateNode(templateOrName, world3.getNodes());
+      if (!tpl) return null;
+      const spawnedId = cloneSceneSubtree(tpl, opts, host);
+      if (!spawnedId) return null;
+      const initMsg = typeof opts?.initMessage === "string" ? opts.initMessage : void 0;
+      if (initMsg) {
+        messageQueue.push({ targetNodeId: spawnedId, name: initMsg, payload: opts?.initPayload });
+      }
+      return makeNodeHandle(spawnedId, host);
+    },
+    spawnPrefab: (prefabId, opts) => {
+      const posVec = resolveVec3Input(opts?.position);
+      const pos = posVec ? [posVec.x, posVec.y, posVec.z] : [0, 0, 0];
+      const spawnedId = world3.instantiatePrefab?.(prefabId, { position: pos }) ?? null;
+      if (!spawnedId) return null;
+      const spawnedNode = world3.getNodes()[spawnedId];
+      if (spawnedNode && opts?.name) spawnedNode.name = opts.name;
+      return makeNodeHandle(spawnedId, host);
+    },
+    destroyNode: (target) => {
+      const targetId = typeof target === "string" ? target : target?.id;
+      if (targetId) destroyOrReleaseNode(targetId, host);
+    },
+    pool: poolHelpers,
+    broadcast: (name, payload) => {
+      messageQueue.push({ targetNodeId: null, name, payload });
+    },
+    after: (seconds, callback) => {
+      const id = nextTimerId++;
+      const delay = Math.max(0, Number(seconds) || 0);
+      scriptTimers.set(id, { id, nodeId: sysNodeId, scriptId: systemId, remaining: delay, interval: delay, repeat: false, callback });
+      return id;
+    },
+    every: (seconds, callback) => {
+      const id = nextTimerId++;
+      const interval = Math.max(0.016, Number(seconds) || 0.1);
+      scriptTimers.set(id, { id, nodeId: sysNodeId, scriptId: systemId, remaining: interval, interval, repeat: true, callback });
+      return id;
+    },
+    cancelTimer: (timerId) => {
+      scriptTimers.delete(timerId);
+    },
+    curve: buildCurveApi(),
+    crowd: {
+      moveTo: (targetNode, target, options) => {
+        const nodes = world3.getNodes();
+        const id = resolveTemplateNode(targetNode, nodes)?.id ?? (typeof targetNode === "string" ? targetNode : targetNode?.id);
+        const v = resolveVec3Input(target);
+        if (id && v) setCrowdTarget(id, v, options);
+      },
+      stop: (targetNode) => {
+        const nodes = world3.getNodes();
+        const id = resolveTemplateNode(targetNode, nodes)?.id ?? (typeof targetNode === "string" ? targetNode : targetNode?.id);
+        if (id) stopCrowdAgent(id);
+      },
+      formation: (units, center, options) => {
+        const c = resolveVec3Input(center);
+        if (!c) return;
+        const nodes = world3.getNodes();
+        const ids = units.map((u) => resolveTemplateNode(u, nodes)?.id ?? (typeof u === "string" ? u : u?.id)).filter((id) => Boolean(id));
+        setCrowdFormation(ids, c, options);
+      },
+      stats: () => getCrowdStats()
+    },
+    projectile: {
+      launch: (projNode, options) => {
+        const nodes = world3.getNodes();
+        const id = resolveTemplateNode(projNode, nodes)?.id ?? (typeof projNode === "string" ? projNode : projNode?.id);
+        if (!id) return;
+        const targetId = options?.target ? resolveTemplateNode(options.target, nodes)?.id ?? (typeof options.target === "string" ? options.target : options.target?.id) : null;
+        const ownerId = options?.owner ? resolveTemplateNode(options.owner, nodes)?.id ?? (typeof options.owner === "string" ? options.owner : options.owner?.id) : null;
+        launchProjectile(id, {
+          direction: options?.direction ? resolveVec3Input(options.direction) ?? void 0 : void 0,
+          targetId,
+          ownerId,
+          mode: options?.mode,
+          speed: options?.speed,
+          gravity: options?.gravity,
+          turnRate: options?.turnRate,
+          maxLifetime: options?.maxLifetime,
+          hitRadius: options?.hitRadius,
+          targetTag: options?.targetTag,
+          damage: options?.damage,
+          destroyOnHit: options?.destroyOnHit,
+          onHit: options?.onHit ? (hitNodeId, pos) => {
+            options.onHit(makeNodeHandle(hitNodeId, host), pos);
+          } : void 0
+        });
+      },
+      reset: (projNode) => {
+        const nodes = world3.getNodes();
+        const id = resolveTemplateNode(projNode, nodes)?.id ?? (typeof projNode === "string" ? projNode : projNode?.id);
+        if (id) resetProjectileState(id);
+      }
+    },
+    input: {
+      isPressed: (actionOrKey) => isActionPressed(actionOrKey) || isKeyHeld(actionOrKey) || isKeyHeld(`Key${actionOrKey.toUpperCase()}`),
+      justPressed: (actionOrKey) => wasActionTapped(actionOrKey) || wasKeyTapped(actionOrKey) || wasKeyTapped(`Key${actionOrKey.toUpperCase()}`),
+      isKeyPressed: (code) => isKeyHeld(code) || isKeyHeld(`Key${code.toUpperCase()}`),
+      justReleased: () => false,
+      axis1D: (action) => isActionPressed(action) ? 1 : 0,
+      axis2D: (action) => getActionAxis2D(action),
+      moveDirection: (action = "Move") => viewRelativeMove(action, host),
+      pointerDelta: () => ({ ...framePointerDelta }),
+      pointerPosition: () => ({ ...framePointerPos }),
+      wheelDelta: () => frameWheelDelta,
+      isMouseButtonPressed: (button) => (currMouseButtons & mouseButtonMask(button)) !== 0,
+      justPressedMouseButton: (button) => (currMouseButtons & mouseButtonMask(button)) !== 0 && (prevMouseButtons & mouseButtonMask(button)) === 0,
+      justReleasedMouseButton: (button) => (currMouseButtons & mouseButtonMask(button)) === 0 && (prevMouseButtons & mouseButtonMask(button)) !== 0
+    },
+    ui: {
+      getVar: (key) => uiValues().variables[key],
+      setVar: (key, value) => writeUiVariable(key, value),
+      onEvent: (eventName, handler) => {
+        ensureUiClickBridge();
+        const instKey = `sys:${systemId}`;
+        let byEvent = uiEventHandlers.get(instKey);
+        if (!byEvent) {
+          byEvent = /* @__PURE__ */ new Map();
+          uiEventHandlers.set(instKey, byEvent);
+        }
+        let set = byEvent.get(eventName);
+        if (!set) {
+          set = /* @__PURE__ */ new Set();
+          byEvent.set(eventName, set);
+        }
+        set.add(handler);
+        return () => {
+          set?.delete(handler);
+        };
+      },
+      showScreen: (screenIdOrName) => {
+        const sid = resolveScreenNodeId(screenIdOrName);
+        if (sid) setScreenVisible(sid, true);
+      },
+      hideScreen: (screenIdOrName) => {
+        const sid = resolveScreenNodeId(screenIdOrName);
+        if (sid) setScreenVisible(sid, false);
+      },
+      toggleScreen: (screenIdOrName) => {
+        const sid = resolveScreenNodeId(screenIdOrName);
+        if (!sid) return;
+        const nodeTarget = world3.getNodes()[sid];
+        const curMap = uiValues().screens;
+        const cur = sid in curMap ? curMap[sid] : Boolean(nodeTarget?.screen?.visibleOnPlay ?? true);
+        setScreenVisible(sid, !cur);
+      },
+      isScreenVisible: (screenIdOrName) => {
+        const sid = resolveScreenNodeId(screenIdOrName);
+        if (!sid) return false;
+        const nodeTarget = world3.getNodes()[sid];
+        const curMap = uiValues().screens;
+        return sid in curMap ? curMap[sid] : Boolean(nodeTarget?.screen?.visibleOnPlay ?? true);
+      },
+      worldToScreen: (position) => {
+        const vec = resolveVec3Input(position);
+        if (!vec || !host.worldToScreen) return null;
+        return host.worldToScreen([vec.x, vec.y, vec.z]);
+      }
+    },
+    scene: {
+      currentId: () => world3.getActiveSceneId(),
+      load: (sceneId, options) => {
+        if (typeof window !== "undefined") {
+          window.dispatchEvent(new CustomEvent("t3d:load-scene", { detail: { sceneId, spawnPoint: options?.spawnPoint } }));
+        }
+      }
+    },
+    shader: {
+      setParam: (shaderId, paramName, value) => setCompiledShaderParam(shaderId, paramName, value),
+      getParam: (shaderId, paramName) => getCompiledShaderParam(shaderId, paramName)
+    },
+    global: {
+      get: (key) => globalMemory.get(key),
+      set: (key, value) => {
+        globalMemory.set(key, value);
+      },
+      remove: (key) => {
+        globalMemory.delete(key);
+      }
+    },
+    storage: {
+      get: (key) => persistentMemory.get(key),
+      set: (key, value) => {
+        persistentMemory.set(key, value);
+      },
+      remove: (key) => {
+        persistentMemory.delete(key);
+      }
+    },
+    tables: {
+      getRow: (tableId, rowId) => findRow(world3.getGameDatabase(), tableId, rowId)?.fields ?? null
+    },
+    log: (...args) => world3.log("info", args.map(String).join(" ")),
+    warn: (...args) => world3.log("warn", args.map(String).join(" "))
+  };
+}
+function createRuntimeSdk() {
+  return {
+    defineBehavior: (def) => ({ __t3dKind: "behavior", ...def }),
+    defineSystem: (def) => ({ __t3dKind: "system", ...def })
+  };
+}
+function compileAndRegisterScript(id, fileName, source) {
+  const transpiled = checkAndTranspileTs(fileName, source);
+  if (!transpiled.ok || !transpiled.jsCode) {
+    return { ok: false, diagnostics: transpiled.diagnostics };
+  }
+  const evaluated = evaluateTranspiledModule(fileName, transpiled.jsCode, {
+    "t3d/runtime": createRuntimeSdk()
+  });
+  if (!evaluated.ok || !evaluated.exports) {
+    return { ok: false, diagnostics: evaluated.diagnostics };
+  }
+  const exp3 = evaluated.exports;
+  if (exp3.__t3dKind === "system") {
+    const def2 = exp3;
+    const prev = compiledSystems.get(id);
+    prev?.unregister();
+    const baseOrder = def2.stage === "preRender" ? RUNTIME_STAGE.PRE_RENDER - 1 : def2.stage === "postAnimation" ? RUNTIME_STAGE.POST_ANIMATION : def2.stage === "postPhysics" ? RUNTIME_STAGE.PHYSICS_NAV + 5 : RUNTIME_STAGE.PRE_PHYSICS + 1;
+    const sysEntry = {
+      def: def2,
+      mounted: false,
+      state: def2.createState ? { ...def2.createState() } : def2.state ? { ...def2.state() } : {},
+      unregister: () => {
+      }
+    };
+    const unregister4 = registerRuntimeSystem(
+      `script.${id}`,
+      baseOrder + (def2.order ?? 0),
+      (dt, host) => {
+        if (getRuntimeWorld().getPlayState() !== "playing") return;
+        const api = buildSystemWorldApi(id, host);
+        try {
+          if (!sysEntry.mounted) {
+            sysEntry.mounted = true;
+            sysEntry.state = def2.createState ? { ...def2.createState() } : def2.state ? { ...def2.state() } : {};
+            def2.onMount?.(api, sysEntry.state);
+            def2.onInit?.(api, sysEntry.state);
+          }
+          def2.onStep?.(api, sysEntry.state, dt);
+          def2.onUpdate?.(api, sysEntry.state, dt);
+        } catch (error) {
+          reportRuntimeError("system", id, `\u7CFB\u7EDF "${def2.name}"`, error);
+        }
+      }
+    );
+    sysEntry.unregister = unregister4;
+    compiledSystems.set(id, sysEntry);
+    return {
+      ok: true,
+      diagnostics: transpiled.diagnostics,
+      jsCode: transpiled.jsCode,
+      exports: { id, file: fileName, kind: "system", system: def2 }
+    };
+  }
+  const def = exp3;
+  if (exp3.__t3dKind !== "behavior" || typeof def.name !== "string" || !def.name.trim()) {
+    return {
+      ok: false,
+      diagnostics: [
+        {
+          file: fileName,
+          line: 1,
+          column: 1,
+          severity: "error",
+          message: "\u811A\u672C\u5FC5\u987B\u901A\u8FC7 export default defineBehavior({ name, description, params, onUpdate }) \u6216 defineSystem(...) \u5BFC\u51FA",
+          hint: '\u8BF7\u4ECE "t3d/runtime" \u5BFC\u5165 defineBehavior\uFF0C\u5E76\u63D0\u4F9B name\uFF08\u4E2D\u6587\u6807\u9898\uFF09\u3001description\uFF08\u4F5C\u7528\u8BF4\u660E\uFF09\u548C onUpdate(self, dt) \u56DE\u8C03\uFF1B\u4FEE\u6539\u4F4D\u7F6E\u8BF7\u6574\u4F53\u8D4B\u503C self.position = { x, y, z }'
+        }
+      ]
+    };
+  }
+  compiledBehaviors.set(id, def);
+  return {
+    ok: true,
+    diagnostics: transpiled.diagnostics,
+    jsCode: transpiled.jsCode,
+    exports: { id, file: fileName, kind: "behavior", behavior: def }
+  };
+}
+function viewRelativeMove(action, host) {
+  const axis = getActionAxis2D(action);
+  const length4 = Math.hypot(axis.x, axis.y);
+  if (length4 < 1e-4) return { x: 0, y: 0, z: 0 };
+  const scale = length4 > 1 ? 1 / length4 : 1;
+  const yaw = host.yaw?.() ?? 0;
+  const sin3 = Math.sin(yaw);
+  const cos3 = Math.cos(yaw);
+  return {
+    x: (axis.x * cos3 - axis.y * sin3) * scale,
+    y: 0,
+    z: (-axis.x * sin3 - axis.y * cos3) * scale
+  };
+}
+function snapshotStateValue(value, depth) {
+  if (value === null || value === void 0) return value ?? null;
+  if (typeof value === "number") return Number.isFinite(value) ? Number(value.toFixed(4)) : String(value);
+  if (typeof value === "boolean") return value;
+  if (typeof value === "string") return value.length > 200 ? `${value.slice(0, 200)}\u2026` : value;
+  if (typeof value === "function") return "[function]";
+  if (depth <= 0) return Array.isArray(value) ? `[array ${value.length}]` : "[object]";
+  if (Array.isArray(value)) {
+    const head = value.slice(0, 12).map((item) => snapshotStateValue(item, depth - 1));
+    if (value.length > 12) head.push(`\u2026\u5171 ${value.length} \u9879`);
+    return head;
+  }
+  if (value instanceof Map) return `[Map ${value.size}]`;
+  if (value instanceof Set) return `[Set ${value.size}]`;
+  const out = {};
+  let count = 0;
+  for (const [key, item] of Object.entries(value)) {
+    if (count >= 24) {
+      out["\u2026"] = "\u5B57\u6BB5\u8FC7\u591A\u5DF2\u7701\u7565";
+      break;
+    }
+    out[key] = snapshotStateValue(item, depth - 1);
+    count += 1;
+  }
+  return out;
+}
+function readScriptStateSnapshot(nodeId) {
+  let out = null;
+  for (const rec of instanceStates.values()) {
+    if (rec.nodeId !== nodeId) continue;
+    out ??= {};
+    out[rec.scriptId] = snapshotStateValue(rec.state, 3);
+  }
+  return out;
+}
+function clearScriptRuntimeState() {
+  for (const [sysId, sys] of compiledSystems.entries()) {
+    if (sys.mounted) {
+      sys.mounted = false;
+      const noopHost = { ready: false, resolveObject: () => null, updateAnimations: () => {
+      } };
+      const api = buildSystemWorldApi(sysId, noopHost);
+      try {
+        sys.def.onDispose?.(api, sys.state);
+        sys.def.onDestroy?.(api, sys.state);
+      } catch {
+      }
+      sys.state = {};
+    }
+  }
+  instanceStates.clear();
+  runtimeErrorCounts.clear();
+  messageQueue.length = 0;
+  uiEventHandlers.clear();
+  uiEventQueue.length = 0;
+  globalMemory.clear();
+  navAgents.clear();
+  pooledInactive.clear();
+  nodePoolKey.clear();
+  poolBuckets.clear();
+  scriptTimers.clear();
+  splineFollowAgents.clear();
+  activeTweens.clear();
+  sfxCooldownAt.clear();
+  nextTimerId = 1;
+  nextTweenId = 1;
+  simElapsed = 0;
+  framePointerDelta = { x: 0, y: 0 };
+  framePointerPos = { x: 0, y: 0 };
+  frameWheelDelta = 0;
+  prevMouseButtons = 0;
+  currMouseButtons = 0;
+}
+function stepProjectScripts(dt, host) {
+  const world3 = getRuntimeWorld();
+  if (world3.getPlayState() !== "playing") {
+    clearScriptRuntimeState();
+    return;
+  }
+  ensureUiClickBridge();
+  ensureCharacterEventBridge();
+  bindProjectileRuntimeHooks({
+    onHit: ({ projectileId, targetId, ownerId, damage, position }) => {
+      messageQueue.push({
+        targetNodeId: targetId,
+        name: "onProjectileHit",
+        payload: { projectileId, targetId, ownerId, damage, position },
+        senderId: projectileId
+      });
+      messageQueue.push({
+        targetNodeId: projectileId,
+        name: "onProjectileHit",
+        payload: { projectileId, targetId, ownerId, damage, position },
+        senderId: projectileId
+      });
+    },
+    onRecycle: (nodeId, runtimeHost) => {
+      destroyOrReleaseNode(nodeId, runtimeHost);
+    },
+    isNodeInactive: (nodeId, nodes2) => isNodePooledInactive(nodeId, nodes2)
+  });
+  simElapsed += Math.max(0, dt);
+  framePointerDelta = host.peekPointerDelta?.() ?? host.pointerDelta?.() ?? { x: 0, y: 0 };
+  framePointerPos = host.pointerNormalized?.() ?? { x: 0, y: 0 };
+  frameWheelDelta = host.peekWheel?.() ?? host.wheel?.() ?? 0;
+  prevMouseButtons = currMouseButtons;
+  currMouseButtons = host.mouseButtons ? host.mouseButtons() : host.rightHeld?.() ? 2 : 0;
+  const nodes = world3.getNodes();
+  const activeKeys = /* @__PURE__ */ new Set();
+  for (const sysId of compiledSystems.keys()) {
+    activeKeys.add(`sys:${sysId}`);
+  }
+  if (navAgents.size > 0 && dt > 0) {
+    for (const [agentId, agent] of navAgents) {
+      const obj = host.resolveObject(agentId);
+      const n = nodes[agentId];
+      if (!obj && !n) {
+        navAgents.delete(agentId);
+        continue;
+      }
+      const targetPt = agent.path[agent.index];
+      if (!targetPt) {
+        navAgents.delete(agentId);
+        continue;
+      }
+      const curX = obj ? obj.position.x : n.position[0];
+      const curY = obj ? obj.position.y : n.position[1];
+      const curZ = obj ? obj.position.z : n.position[2];
+      const dx = targetPt[0] - curX;
+      const dy = targetPt[1] - curY;
+      const dz = targetPt[2] - curZ;
+      const dist = Math.hypot(dx, dy, dz);
+      const stepDist = agent.speed * dt;
+      if (dist <= Math.max(0.05, stepDist)) {
+        if (obj) obj.position.set(targetPt[0], targetPt[1], targetPt[2]);
+        agent.index += 1;
+        if (agent.index >= agent.path.length) navAgents.delete(agentId);
+      } else {
+        const inv = stepDist / dist;
+        if (obj) {
+          obj.position.set(curX + dx * inv, curY + dy * inv, curZ + dz * inv);
+          obj.rotation.y = Math.atan2(dx, dz);
+        }
+      }
+    }
+  }
+  for (const node of Object.values(nodes)) {
+    if (isNodePooledInactive(node.id, nodes)) continue;
+    const projectScripts = node.gameplay?.packs?.__project__;
+    if (!projectScripts || typeof projectScripts !== "object") continue;
+    for (const [scriptId, rawParams] of Object.entries(projectScripts)) {
+      if (rawParams && typeof rawParams === "object" && rawParams.__enabled === false) {
+        continue;
+      }
+      const def = compiledBehaviors.get(scriptId);
+      if (!def) continue;
+      const key = instanceKey2(node.id, scriptId);
+      activeKeys.add(key);
+      let rec = instanceStates.get(key);
+      if (!rec) {
+        rec = {
+          nodeId: node.id,
+          scriptId,
+          started: false,
+          state: def.state ? { ...def.state() } : {}
+        };
+        instanceStates.set(key, rec);
+      }
+      const ctx = buildScriptContext(node, scriptId, rawParams, rec.state, host);
+      measureCost(`script:${scriptId}`, () => {
+        let phase = "onUpdate";
+        try {
+          if (!rec.started) {
+            rec.started = true;
+            phase = "onStart";
+            def.onStart?.(ctx);
+            phase = "onUpdate";
+          }
+          def.onUpdate?.(ctx, dt);
+        } catch (error) {
+          reportRuntimeError(phase, scriptId, `\u811A\u672C "${def.name}"`, error, node.id);
+        }
+      });
+    }
+  }
+  if (splineFollowAgents.size > 0 && dt > 0) {
+    for (const [agentId, ag] of Array.from(splineFollowAgents.entries())) {
+      const n = nodes[agentId];
+      const h = makeNodeHandle(agentId, host);
+      if (!n || !h || isNodePooledInactive(agentId, nodes)) {
+        splineFollowAgents.delete(agentId);
+        continue;
+      }
+      const totalLen = ag.spline.length;
+      if (totalLen <= 1e-6) {
+        splineFollowAgents.delete(agentId);
+        ag.onArrive?.();
+        continue;
+      }
+      let nextDist = ag.distance + ag.speed * dt * ag.direction;
+      let arrived = false;
+      if (ag.loop) {
+        nextDist = (nextDist % totalLen + totalLen) % totalLen;
+      } else if (ag.pingPong) {
+        if (nextDist >= totalLen) {
+          nextDist = totalLen - (nextDist - totalLen);
+          ag.direction = -1;
+        } else if (nextDist <= 0) {
+          nextDist = -nextDist;
+          ag.direction = 1;
+        }
+      } else {
+        if (nextDist >= totalLen) {
+          nextDist = totalLen;
+          arrived = true;
+        } else if (nextDist <= 0) {
+          nextDist = 0;
+          arrived = true;
+        }
+      }
+      ag.distance = nextDist;
+      const pt = ag.spline.pointAtDistance(nextDist);
+      const cur = h.position;
+      h.position = { x: pt.x, y: ag.planeXZ ? cur.y : pt.y, z: pt.z };
+      if (ag.faceDirection) {
+        const tan2 = ag.spline.tangentAtDistance(nextDist);
+        const tx = tan2.x * ag.direction;
+        const tz = tan2.z * ag.direction;
+        if (Math.abs(tx) > 1e-5 || Math.abs(tz) > 1e-5) {
+          const r = h.rotation;
+          h.rotation = { x: r.x, y: Math.atan2(tx, tz), z: r.z };
+        }
+      }
+      if (arrived) {
+        splineFollowAgents.delete(agentId);
+        try {
+          ag.onArrive?.();
+        } catch (error) {
+          reportRuntimeError("spline.onArrive", "spline", "Spline \u5230\u8FBE\u56DE\u8C03", error, ag.nodeId);
+        }
+      }
+    }
+  }
+  if (activeTweens.size > 0 && dt > 0) {
+    for (const tw of Array.from(activeTweens.values())) {
+      if (!activeTweens.has(tw.id)) continue;
+      const ownerExists = tw.ownerNodeId.startsWith("__system__:") || Boolean(nodes[tw.ownerNodeId]) && !isNodePooledInactive(tw.ownerNodeId, nodes);
+      if (!ownerExists) {
+        activeTweens.delete(tw.id);
+        continue;
+      }
+      if (tw.delayRemaining > 0) {
+        tw.delayRemaining -= dt;
+        if (tw.delayRemaining > 0) continue;
+        tw.elapsed += -tw.delayRemaining;
+        tw.delayRemaining = 0;
+      } else {
+        tw.elapsed += dt;
+      }
+      const rawT = Math.min(1, tw.elapsed / tw.duration);
+      const progress = tw.reversed ? 1 - rawT : rawT;
+      const eased = evalEasing(tw.ease, progress);
+      try {
+        tw.apply(eased);
+        tw.onUpdate?.(eased);
+      } catch (error) {
+        reportRuntimeError("tween.onUpdate", "tween", "Tween \u66F4\u65B0\u56DE\u8C03", error, tw.ownerNodeId);
+        activeTweens.delete(tw.id);
+        continue;
+      }
+      if (rawT >= 1) {
+        if (tw.completedCount < tw.repeat) {
+          tw.completedCount += 1;
+          tw.elapsed = 0;
+          if (tw.yoyo) tw.reversed = !tw.reversed;
+        } else {
+          activeTweens.delete(tw.id);
+          try {
+            tw.onComplete?.();
+          } catch (error) {
+            reportRuntimeError("tween.onComplete", "tween", "Tween \u5B8C\u6210\u56DE\u8C03", error, tw.ownerNodeId);
+          }
+        }
+      }
+    }
+  }
+  if (scriptTimers.size > 0 && dt > 0) {
+    const timerSnapshot = Array.from(scriptTimers.values());
+    for (const timer of timerSnapshot) {
+      if (!scriptTimers.has(timer.id)) continue;
+      const isSystemTimer = timer.nodeId.startsWith("__system__:");
+      const tNode = isSystemTimer ? null : nodes[timer.nodeId];
+      if (!isSystemTimer && (!tNode || isNodePooledInactive(timer.nodeId, nodes))) {
+        scriptTimers.delete(timer.id);
+        continue;
+      }
+      timer.remaining -= dt;
+      if (timer.remaining <= 0) {
+        if (timer.repeat) {
+          timer.remaining += timer.interval;
+          if (timer.remaining <= 0) timer.remaining = timer.interval;
+        } else {
+          scriptTimers.delete(timer.id);
+        }
+        try {
+          timer.callback();
+        } catch (error) {
+          reportRuntimeError("timer", "timer", "\u811A\u672C\u5B9A\u65F6\u5668\u56DE\u8C03", error, timer.nodeId);
+        }
+      }
+    }
+  }
+  if (messageQueue.length > 0) {
+    const batch = messageQueue.splice(0, messageQueue.length);
+    for (const msg of batch) {
+      for (const rec of instanceStates.values()) {
+        if (msg.targetNodeId && msg.targetNodeId !== rec.nodeId) continue;
+        const def = compiledBehaviors.get(rec.scriptId);
+        const node = nodes[rec.nodeId];
+        if (!def?.onMessage || !node) continue;
+        const rawParams = node.gameplay?.packs?.__project__?.[rec.scriptId];
+        if (rawParams && typeof rawParams === "object" && rawParams.__enabled === false) continue;
+        const ctx = buildScriptContext(node, rec.scriptId, rawParams, rec.state, host);
+        const sender = msg.senderId ? makeNodeHandle(msg.senderId, host) : void 0;
+        try {
+          def.onMessage(ctx, { name: msg.name, payload: msg.payload, sender });
+        } catch (error) {
+          reportRuntimeError(`onMessage:${msg.name}`, rec.scriptId, `\u811A\u672C "${def.name}"`, error, rec.nodeId);
+        }
+      }
+    }
+  }
+  if (uiEventQueue.length > 0) {
+    const uiBatch = uiEventQueue.splice(0, uiEventQueue.length);
+    for (const evt of uiBatch) {
+      for (const [instKey, byEvent] of uiEventHandlers.entries()) {
+        if (!activeKeys.has(instKey)) continue;
+        const handlers = byEvent.get(evt.eventName);
+        if (!handlers || handlers.size === 0) continue;
+        for (const fn of [...handlers]) {
+          try {
+            fn(evt.payload);
+          } catch (error) {
+            reportRuntimeError(`uiEvent:${evt.eventName}`, instKey, `UI \u4E8B\u4EF6 "${evt.eventName}"`, error, evt.payload.nodeId);
+          }
+        }
+      }
+    }
+  }
+  for (const [key, rec] of instanceStates.entries()) {
+    if (activeKeys.has(key)) continue;
+    uiEventHandlers.delete(key);
+    const def = compiledBehaviors.get(rec.scriptId);
+    const node = nodes[rec.nodeId];
+    if (def?.onDestroy && node) {
+      const ctx = buildScriptContext(node, rec.scriptId, {}, rec.state, host);
+      try {
+        def.onDestroy(ctx);
+      } catch {
+      }
+    }
+    instanceStates.delete(key);
+  }
+}
+registerRuntimeSystem("core.projectScripts", RUNTIME_STAGE.PRE_PHYSICS + 2, stepProjectScripts);
+
+// tests/ai-observability.test.ts
+init_actionMap();
+
+// src/gameplay/coreComponents.ts
+init_sceneRuntime();
+var asRecord = (value) => value;
+var CORE_COMPONENTS = [
+  {
+    id: "character",
+    label: "\u89D2\u8272\u63A7\u5236\u5668",
+    description: "\u5F15\u64CE\u5185\u7F6E\u7684\u89D2\u8272\u79FB\u52A8\uFF1A\u8BFB\u53D6 Move/Jump/Sprint/Dash \u8F93\u5165\u52A8\u4F5C\uFF0C\u5904\u7406\u884C\u8D70\u3001\u51B2\u523A\u3001\u591A\u6BB5\u8DF3\u3001\u95EA\u907F\u3001\u6E38\u6CF3\u4E0E\u8D34\u5730\uFF0C\u5E76\u6309\u8FD0\u52A8\u72B6\u6001\u81EA\u52A8\u5207\u6362 idle/walk/run/jump/air/land/dodge/swim \u52A8\u753B\u3002\u6302\u4E0A\u5373\u53EF\u64CD\u63A7\uFF0C\u65E0\u9700\u81EA\u5DF1\u5199\u79FB\u52A8\u811A\u672C\u3002",
+    defaults: () => asRecord(defaultCharacter()),
+    enums: {
+      driver: ["capsule", "nav", "hybrid"],
+      mode: ["adventure", "strafe", "lockOn", "pointAndClick", "topDown", "side25d", "firstPerson"],
+      clickButton: ["left", "right"]
+    },
+    notes: [
+      "xxxClip \u586B\u52A8\u753B\u7247\u6BB5\u540D\uFF0CxxxClipAssetId \u586B\u7247\u6BB5\u6240\u5728\u7684\u6A21\u578B/\u52A8\u753B\u8D44\u4EA7 ID\uFF08\u7247\u6BB5\u5C31\u5728\u8282\u70B9\u81EA\u8EAB\u6A21\u578B\u91CC\u65F6\u7559\u7A7A\uFF09\uFF1B\u7247\u6BB5\u540D\u53EF\u7528 query__asset_search \u67E5\u770B\u6A21\u578B\u7684 clips\u3002",
+      "\u7559\u7A7A\u7684\u7247\u6BB5\u69FD\u4F4D\u4E0D\u4F1A\u64AD\u653E\u52A8\u753B\uFF1B\u53EA\u586B idleClip/walkClip/runClip \u4E09\u4E2A\u5C31\u80FD\u5F97\u5230\u57FA\u672C\u7684\u7AD9\u7ACB/\u8D70/\u8DD1\u3002",
+      "\u8BBE\u7F6E character \u65F6\u4F1A\u81EA\u52A8\u6309 mode \u914D\u597D\u540C\u8282\u70B9\u7684 cameraFollow\uFF1B\u540C\u4E00\u573A\u666F\u53EA\u5E94\u6709\u4E00\u4E2A\u542F\u7528\u7684 character\u3002",
+      "\u89D2\u8272\u5DF2\u7531\u5185\u7F6E\u63A7\u5236\u5668\u9A71\u52A8\u65F6\uFF0C\u4E0D\u8981\u518D\u6302\u4E00\u4E2A\u81EA\u5DF1\u6539 position \u7684\u79FB\u52A8\u811A\u672C\uFF0C\u4E24\u8005\u4F1A\u4E92\u76F8\u8986\u76D6\u3002",
+      "\u6302\u8F7D\u540E\u5373\u751F\u6548\uFF1A\u91CD\u529B\u3001\u8D34\u5730\u3001\u76F8\u5BF9\u76F8\u673A\u7684\u79FB\u52A8\u65B9\u5411\u3001\u8F6C\u8EAB\u671D\u5411\u3001\u52A8\u753B\u5207\u6362\u90FD\u7531\u5F15\u64CE\u5B8C\u6210\u3002\u9A8C\u6536\u7528 playtest__run_smoke \u6CE8\u5165 Move \u8F74\u5E76\u65AD\u8A00 nodeMoved\u3002"
+    ]
+  },
+  {
+    id: "cameraFollow",
+    label: "\u8DDF\u968F\u76F8\u673A",
+    description: "\u5F15\u64CE\u5185\u7F6E\u7684\u8DDF\u968F\u955C\u5934\uFF1A\u6309 offset/pivot \u8DDF\u968F\u76EE\u6807\uFF0C\u652F\u6301\u9F20\u6807\u73AF\u7ED5\u3001\u6EDA\u8F6E\u7F29\u653E\u4E0E\u9632\u7A7F\u5899\u3002\u6302\u5728\u89D2\u8272\u8282\u70B9\u4E0A\u8868\u793A\u8DDF\u968F\u81EA\u5DF1\u3002",
+    defaults: () => asRecord(defaultCameraFollow()),
+    extraFields: {
+      preset: "\u6700\u8FD1\u5957\u7528\u7684\u673A\u4F4D\uFF08\u540C character.mode \u53D6\u503C\uFF09",
+      orbitYaw: "\u5F00\u5C40\u6C34\u5E73\u73AF\u7ED5\u89D2\uFF08\u5EA6\uFF09",
+      orbitPitch: "\u5F00\u5C40\u4FEF\u4EF0\u89D2\uFF08\u5EA6\uFF09"
+    },
+    enums: { orbit: ["none", "rightDrag", "mouse"] },
+    notes: ["\u8282\u70B9\u4E0A\u5DF2\u6709 character \u65F6\uFF0C\u673A\u4F4D\u4F1A\u88AB character.mode \u7EA6\u675F\uFF08\u5982\u4FEF\u89C6\u89D2\u5F3A\u5236 orbit=none\uFF09\u3002"]
+  },
+  {
+    id: "interact",
+    label: "\u53EF\u4EA4\u4E92\u7269",
+    description: "\u73A9\u5BB6\u8FDB\u5165 radius \u8303\u56F4\u5E76\u6309\u4E0B key \u65F6\uFF0C\u5411\u672C\u8282\u70B9\u53D1\u9001 message \u6D88\u606F\uFF08\u811A\u672C\u5728 onMessage \u91CC\u63A5\u6536\uFF09\u3002",
+    defaults: () => asRecord(defaultInteract())
+  },
+  {
+    id: "trigger",
+    label: "\u89E6\u53D1\u533A\u57DF",
+    description: "\u73A9\u5BB6\u8FDB\u5165/\u79BB\u5F00 radius \u8303\u56F4\u65F6\u5206\u522B\u53D1\u9001 enterMessage / exitMessage \u6D88\u606F\u3002",
+    defaults: () => asRecord(defaultTrigger())
+  },
+  {
+    id: "mover",
+    label: "\u79FB\u52A8\u5E73\u53F0",
+    description: "\u8BA9\u8282\u70B9\u6CBF offset \u5F80\u8FD4\u79FB\u52A8\uFF08duration \u5355\u7A0B\u79D2\u6570\uFF0Cpause \u7AEF\u70B9\u505C\u7559\uFF09\uFF0C\u53EF\u642D\u8F7D\u7AD9\u5728\u4E0A\u9762\u7684\u89D2\u8272\u3002autoPlay=false \u65F6\u6536\u5230 startMessage \u624D\u542F\u52A8\u3002",
+    defaults: () => asRecord(defaultMover())
+  },
+  {
+    id: "checkpoint",
+    label: "\u5B58\u6863\u70B9 / \u51FA\u751F\u70B9",
+    description: "\u89D2\u8272\u8FDB\u5165 radius \u540E\u8BB0\u4E3A\u91CD\u751F\u70B9\uFF1B\u89D2\u8272\u6389\u5230 abyssY \u4EE5\u4E0B\u65F6\u5728\u6700\u8FD1\u7684\u5B58\u6863\u70B9\u91CD\u751F\u5E76\u53D1\u9001 message\u3002spawn=true \u8868\u793A\u5F00\u5C40\u51FA\u751F\u70B9\u3002",
+    defaults: () => asRecord(defaultCheckpoint())
+  },
+  {
+    id: "score",
+    label: "\u5173\u5361\u8BA1\u5206",
+    description: "\u5185\u7F6E\u7684\u76EE\u6807\u5206\u6570/\u9650\u65F6\u5173\u5361\u89C4\u5219\uFF1A\u8FBE\u5230 target \u53D1\u9001 victoryMessage\uFF0C\u8D85\u8FC7 timeLimit\uFF08\u79D2\uFF0C0 \u4E3A\u4E0D\u9650\u65F6\uFF09\u53D1\u9001 defeatMessage\u3002",
+    defaults: () => asRecord(defaultScore())
+  },
+  {
+    id: "soundSource",
+    label: "\u7A7A\u95F4\u97F3\u6E90",
+    description: "\u8BD5\u73A9\u5F00\u59CB\u540E\u5728\u8282\u70B9\u4F4D\u7F6E\u64AD\u653E assetId \u6307\u5411\u7684\u97F3\u9891\uFF0C\u97F3\u91CF\u968F\u8DDD\u79BB\u8870\u51CF\u3002",
+    defaults: () => asRecord(defaultSoundSource())
+  },
+  {
+    id: "locomotion",
+    label: "\u8FD0\u52A8\u52A8\u753B",
+    description: "\u6309\u8282\u70B9\u7684\u5B9E\u9645\u79FB\u52A8\u901F\u5EA6\u81EA\u52A8\u5207\u6362\u52A8\u753B\uFF1A\u6C34\u5E73\u901F\u5EA6 \u2265 walkSpeed \u64AD walkClip\uFF0C\u2265 runSpeed \u64AD runClip\uFF0C\u5426\u5219\u64AD idleClip\uFF1B\u79BB\u5730\u65F6\u4FDD\u6301\u5F53\u524D\u7247\u6BB5\u3002\u5B83\u53EA\u770B\u4F4D\u79FB\u7ED3\u679C\uFF0C\u4E0D\u5173\u5FC3\u8C01\u5728\u79FB\u52A8\u8282\u70B9\uFF0C\u9002\u5408\u7531\u811A\u672C\u3001\u5BFC\u822A\u6216\u5F39\u9053\u9A71\u52A8\u7684\u654C\u4EBA / NPC / \u81EA\u5199\u63A7\u5236\u5668\u7684\u89D2\u8272\u2014\u2014\u811A\u672C\u53EA\u7BA1\u79FB\u52A8\uFF0C\u4E0D\u7528\u5199\u52A8\u753B\u5207\u6362\u3002",
+    defaults: () => asRecord(defaultLocomotion()),
+    notes: [
+      "xxxClip \u586B\u7247\u6BB5\u540D\uFF0CxxxClipAssetId \u586B\u7247\u6BB5\u6240\u5728\u7684\u6A21\u578B/\u52A8\u753B\u8D44\u4EA7 ID\uFF08\u7247\u6BB5\u5C31\u5728\u8282\u70B9\u81EA\u8EAB\u6A21\u578B\u91CC\u65F6\u7559\u7A7A\uFF09\u3002",
+      "\u8282\u70B9\u4E0A\u542F\u7528\u4E86 character \u65F6\u672C\u7EC4\u4EF6\u4E0D\u751F\u6548\uFF08character \u81EA\u5E26\u542B\u8DF3\u8DC3\u3001\u95EA\u907F\u7684\u5B8C\u6574\u5207\u6362\uFF09\u3002",
+      "\u811A\u672C\u91CC\u4ECD\u53EF\u7528 self.anim.playUpper \u53E0\u52A0\u4E0A\u534A\u8EAB\u52A8\u4F5C\uFF08\u653B\u51FB\u3001\u53D7\u51FB\uFF09\uFF1B\u4E0D\u8981\u540C\u65F6\u5728\u811A\u672C\u91CC\u5BF9\u540C\u4E00\u8282\u70B9\u8C03 playBody \u5207\u8D70\u8DD1\uFF0C\u4F1A\u548C\u672C\u7EC4\u4EF6\u4E92\u76F8\u62A2\u3002"
+    ]
+  }
+];
+function findCoreComponent(id) {
+  return CORE_COMPONENTS.find((item) => item.id === id) ?? null;
+}
+function coreComponentFieldNames(manifest) {
+  return [...Object.keys(manifest.defaults()), ...Object.keys(manifest.extraFields ?? {})];
+}
+function describeCoreComponents(id) {
+  return CORE_COMPONENTS.filter((item) => !id || item.id === id).map((item) => ({
+    id: item.id,
+    label: item.label,
+    description: item.description,
+    dataPath: `node.gameplay.${item.id}`,
+    writeWith: "gameplay__setCoreComponent",
+    defaults: item.defaults(),
+    ...item.extraFields ? { extraFields: item.extraFields } : {},
+    ...item.enums ? { enums: item.enums } : {},
+    ...item.notes ? { notes: item.notes } : {}
+  }));
+}
+function applyCoreComponentPatch(prev, componentId, patch) {
+  const manifest = findCoreComponent(componentId);
+  if (!manifest) {
+    return {
+      ok: false,
+      message: `\u672A\u77E5\u7684\u5185\u7F6E\u7EC4\u4EF6 "${componentId}"`,
+      hint: `\u53EF\u7528\u7684\u5185\u7F6E\u7EC4\u4EF6\uFF1A${CORE_COMPONENTS.map((item) => item.id).join(", ")}`
+    };
+  }
+  const gameplay = { ...prev ?? {} };
+  if (patch === null) {
+    delete gameplay[manifest.id];
+    if (manifest.id === "character") delete gameplay.cameraFollow;
+    return { ok: true, gameplay: Object.keys(gameplay).length > 0 ? gameplay : null, data: null };
+  }
+  const allowed = coreComponentFieldNames(manifest);
+  const unknown = Object.keys(patch).filter((key) => !allowed.includes(key));
+  if (unknown.length > 0) {
+    return {
+      ok: false,
+      message: `\u5185\u7F6E\u7EC4\u4EF6 ${manifest.id} \u4E0D\u8BA4\u8BC6\u5B57\u6BB5\uFF1A${unknown.join(", ")}`,
+      hint: `\u53EF\u7528\u5B57\u6BB5\uFF1A${allowed.join(", ")}`
+    };
+  }
+  for (const [key, options] of Object.entries(manifest.enums ?? {})) {
+    if (key in patch && !options.includes(String(patch[key]))) {
+      return {
+        ok: false,
+        message: `\u5185\u7F6E\u7EC4\u4EF6 ${manifest.id}.${key} \u7684\u53D6\u503C "${String(patch[key])}" \u65E0\u6548`,
+        hint: `\u53EF\u9009\u503C\uFF1A${options.join(", ")}`
+      };
+    }
+  }
+  const current = gameplay[manifest.id] ?? manifest.defaults();
+  const next = { ...manifest.defaults(), ...current, ...patch };
+  gameplay[manifest.id] = next;
+  if (manifest.id === "character") {
+    const character = next;
+    const baseCam = gameplay.cameraFollow ?? defaultCameraFollow();
+    gameplay.cameraFollow = "mode" in patch ? resolveCharacterCamera(character, { ...baseCam, ...cameraPresetForMode(character.mode) }) : resolveCharacterCamera(character, baseCam);
+  } else if (manifest.id === "cameraFollow" && gameplay.character) {
+    const character = { ...defaultCharacter(), ...gameplay.character };
+    if (character.enabled) {
+      gameplay.cameraFollow = resolveCharacterCamera(character, next);
+    }
+  }
+  return { ok: true, gameplay, data: gameplay[manifest.id] };
+}
+
+// src/playtest/session.ts
+init_actionMap();
+import { Group } from "three";
+
+// src/core/query/diagnose.ts
+init_registry2();
+
+// src/editor/assets/library.ts
+import { create as create2 } from "zustand";
+
+// src/editor/assets/folders.ts
+var ASSETS_ROOT = "Assets";
+function normalizeDir(path) {
+  const parts = path.split(/[\\/]+/).map((part) => part.trim()).filter((part) => part && part !== "." && part !== "..");
+  if (parts[0] !== ASSETS_ROOT) parts.unshift(ASSETS_ROOT);
+  return parts.join("/");
+}
+function parentDir(path) {
+  const dir = normalizeDir(path);
+  if (dir === ASSETS_ROOT) return null;
+  const index = dir.lastIndexOf("/");
+  return index < 0 ? ASSETS_ROOT : dir.slice(0, index);
+}
+function joinDir(parent, name) {
+  return `${normalizeDir(parent)}/${name.trim()}`;
+}
+function isWithin(path, root) {
+  const dir = normalizeDir(path);
+  const base = normalizeDir(root);
+  return dir === base || dir.startsWith(`${base}/`);
+}
+function relocateDir(path, from, to) {
+  const dir = normalizeDir(path);
+  const source = normalizeDir(from);
+  const target = normalizeDir(to);
+  if (dir === source) return target;
+  if (dir.startsWith(`${source}/`)) return `${target}${dir.slice(source.length)}`;
+  return dir;
+}
+function directoryTree(folders, assetDirs) {
+  const root = { name: ASSETS_ROOT, path: ASSETS_ROOT, children: [] };
+  const nodes = /* @__PURE__ */ new Map([[ASSETS_ROOT, root]]);
+  const paths = /* @__PURE__ */ new Set([ASSETS_ROOT]);
+  for (const folder of folders) paths.add(normalizeDir(folder));
+  for (const dir of Object.values(assetDirs)) paths.add(normalizeDir(dir));
+  for (const path of paths) {
+    const parts = path.split("/");
+    let current = parts[0] || ASSETS_ROOT;
+    for (let index = 1; index < parts.length; index += 1) {
+      const parent = current;
+      current = `${current}/${parts[index]}`;
+      if (nodes.has(current)) continue;
+      const node = { name: parts[index] ?? current, path: current, children: [] };
+      nodes.set(current, node);
+      nodes.get(parent)?.children.push(node);
+    }
+  }
+  const sort = (node) => {
+    node.children.sort((a, b) => a.name.localeCompare(b.name, "zh"));
+    node.children.forEach(sort);
+  };
+  sort(root);
+  return root;
+}
+function findDir(node, path) {
+  if (node.path === path) return node;
+  for (const child of node.children) {
+    const found = findDir(child, path);
+    if (found) return found;
+  }
+  return null;
+}
+function directoryExists(path, folders, assetDirs) {
+  const target = normalizeDir(path);
+  if (target === ASSETS_ROOT) return true;
+  return [...folders.map(normalizeDir), ...Object.values(assetDirs).map(normalizeDir)].some((dir) => dir === target || dir.startsWith(`${target}/`));
+}
+function uniqueFolderName(parent, folders, assetDirs) {
+  const node = findDir(directoryTree(folders, assetDirs), normalizeDir(parent));
+  const names = new Set(node?.children.map((child) => child.name) ?? []);
+  let name = "\u65B0\u5EFA\u6587\u4EF6\u5939";
+  let index = 2;
+  while (names.has(name)) {
+    name = `\u65B0\u5EFA\u6587\u4EF6\u5939 ${index}`;
+    index += 1;
+  }
+  return name;
+}
+
+// src/editor/assets/library.ts
+function assetDirectory(id, assetDirs) {
+  return normalizeDir(assetDirs[id] ?? ASSETS_ROOT);
+}
+var useAssetStore = create2((set, get) => ({
+  assets: {},
+  folders: [],
+  assetDirs: {},
+  browseDir: ASSETS_ROOT,
+  expanded: { [ASSETS_ROOT]: true },
+  revision: 0,
+  add: (asset) => set((state) => ({ assets: { ...state.assets, [asset.id]: asset }, revision: state.revision + 1 })),
+  addMany: (list) => set((state) => {
+    if (list.length === 0) return {};
+    const assets = { ...state.assets };
+    for (const asset of list) assets[asset.id] = asset;
+    return { assets, revision: state.revision + 1 };
+  }),
+  remove: (id) => set((state) => {
+    const assets = { ...state.assets };
+    const assetDirs = { ...state.assetDirs };
+    delete assets[id];
+    delete assetDirs[id];
+    return { assets, assetDirs, revision: state.revision + 1 };
+  }),
+  rename: (id, name) => set((state) => {
+    const asset = state.assets[id];
+    if (!asset) return {};
+    return { assets: { ...state.assets, [id]: { ...asset, name } }, revision: state.revision + 1 };
+  }),
+  patch: (id, patch) => set((state) => {
+    const asset = state.assets[id];
+    if (!asset || !("url" in asset)) return {};
+    return { assets: { ...state.assets, [id]: { ...asset, ...patch } }, revision: state.revision + 1 };
+  }),
+  writeScene: (id, nodes, picture, editorView) => set((state) => {
+    const asset = state.assets[id];
+    if (!asset || asset.kind !== "scene") return {};
+    const view = editorView === void 0 ? asset.editorView ?? null : editorView;
+    if (JSON.stringify(asset.nodes) === JSON.stringify(nodes) && JSON.stringify(asset.picture) === JSON.stringify(picture) && JSON.stringify(asset.editorView ?? null) === JSON.stringify(view)) return {};
+    return { assets: { ...state.assets, [id]: { ...asset, nodes, picture, editorView: view } }, revision: state.revision + 1 };
+  }),
+  updateMaterial: (id, slot) => set((state) => {
+    const asset = state.assets[id];
+    if (!asset || asset.kind !== "material") return {};
+    return { assets: { ...state.assets, [id]: { ...asset, slot: { ...asset.slot, ...slot } } }, revision: state.revision + 1 };
+  }),
+  replaceMaterial: (id, slot) => set((state) => {
+    const asset = state.assets[id];
+    if (!asset || asset.kind !== "material") return {};
+    if (JSON.stringify(asset.slot) === JSON.stringify(slot)) return {};
+    return { assets: { ...state.assets, [id]: { ...asset, slot } }, revision: state.revision + 1 };
+  }),
+  updateEffect: (id, patch) => set((state) => {
+    const asset = state.assets[id];
+    if (!asset || asset.kind !== "effect") return {};
+    return { assets: { ...state.assets, [id]: { ...asset, ...patch } }, revision: state.revision + 1 };
+  }),
+  updateUi: (id, document2) => set((state) => {
+    const asset = state.assets[id];
+    if (!asset || asset.kind !== "ui") return {};
+    return { assets: { ...state.assets, [id]: { ...asset, document: document2 } }, revision: state.revision + 1 };
+  }),
+  bump: () => set((state) => ({ revision: state.revision + 1 })),
+  loadCatalog: (folders, assetDirs) => set({
+    folders: [...new Set(folders.map(normalizeDir).filter((path) => path !== ASSETS_ROOT))],
+    assetDirs: Object.fromEntries(Object.entries(assetDirs).map(([id, dir]) => [id, normalizeDir(dir)]))
+  }),
+  loadSession: (assets, folders, assetDirs, browseDir, expanded) => set((state) => ({
+    assets,
+    folders: [...new Set(folders.map(normalizeDir).filter((path) => path !== ASSETS_ROOT))],
+    assetDirs: Object.fromEntries(Object.entries(assetDirs).map(([id, dir]) => [id, normalizeDir(dir)])),
+    browseDir: normalizeDir(browseDir || ASSETS_ROOT),
+    expanded: expanded ?? { [ASSETS_ROOT]: true },
+    revision: state.revision + 1
+  })),
+  setBrowseDir: (dir) => set({ browseDir: normalizeDir(dir) }),
+  setExpanded: (expanded) => set({ expanded }),
+  writePrefab: (id, rootId, nodes) => set((state) => {
+    const asset = state.assets[id];
+    if (!asset || asset.kind !== "prefab") return {};
+    return {
+      assets: { ...state.assets, [id]: { ...asset, rootId, nodes } },
+      revision: state.revision + 1
+    };
+  }),
+  place: (id, dir) => set((state) => ({
+    assetDirs: { ...state.assetDirs, [id]: normalizeDir(dir ?? state.browseDir) },
+    revision: state.revision + 1
+  })),
+  createFolder: (parent) => {
+    const state = get();
+    const base = normalizeDir(parent ?? state.browseDir);
+    const path = joinDir(base, uniqueFolderName(base, state.folders, state.assetDirs));
+    set({ folders: [...state.folders, path], browseDir: path, revision: state.revision + 1 });
+    return path;
+  },
+  renameFolder: (path, name) => {
+    const clean = name.trim().replace(/[\\/]/g, "");
+    const source = normalizeDir(path);
+    const parent = parentDir(source);
+    if (!clean || !parent) return;
+    const next = joinDir(parent, clean);
+    if (next === source) return;
+    const state = get();
+    if (directoryExists(next, state.folders, state.assetDirs)) return;
+    const expanded = {};
+    for (const [dir, open] of Object.entries(state.expanded)) expanded[relocateDir(dir, source, next)] = open;
+    set({
+      folders: [...new Set(state.folders.map((folder) => relocateDir(folder, source, next)).filter((folder) => folder !== ASSETS_ROOT))],
+      assetDirs: Object.fromEntries(Object.entries(state.assetDirs).map(([id, dir]) => [id, relocateDir(dir, source, next)])),
+      browseDir: relocateDir(state.browseDir, source, next),
+      expanded,
+      revision: state.revision + 1
+    });
+  },
+  deleteFolder: (path) => {
+    const source = normalizeDir(path);
+    const parent = parentDir(source);
+    if (!parent) return;
+    const state = get();
+    const remains = Object.keys(state.assets).some((id) => isWithin(assetDirectory(id, state.assetDirs), source));
+    if (remains) return;
+    const expanded = { ...state.expanded };
+    for (const dir of Object.keys(expanded)) {
+      if (dir === source || dir.startsWith(`${source}/`)) delete expanded[dir];
+    }
+    set({
+      folders: state.folders.filter((folder) => {
+        const dir = normalizeDir(folder);
+        return dir !== source && !dir.startsWith(`${source}/`);
+      }),
+      browseDir: isWithin(state.browseDir, source) ? parent : state.browseDir,
+      expanded,
+      revision: state.revision + 1
+    });
+  }
+}));
+
+// src/editor/scene/store.ts
+import { Quaternion as Quaternion7, Vector3 as Vector313 } from "three";
+import { create as create6 } from "zustand";
+
+// src/editor/scene/spawn.ts
+var provider = () => [0, 0, 0];
+function getSpawn() {
+  return provider();
+}
+
+// src/editor/scene/seed.ts
+import { Euler as Euler2, Quaternion as Quaternion5, Vector3 as Vector311 } from "three";
+
+// src/capabilities/physics/defaults.ts
+var SHARED = {
+  trigger: false,
+  mass: 1,
+  friction: 0.7,
+  restitution: 0.05,
+  linearDamping: 0.1,
+  angularDamping: 0.1,
+  gravityScale: 1
+};
+function defaultNodePhysics(kind) {
+  if (kind === "plane") {
+    return { ...SHARED, body: "static", shape: "box", size: [1, 1, 0.05] };
+  }
+  if (kind === "sphere") {
+    return { ...SHARED, body: "dynamic", shape: "sphere", size: [0.5, 0.5, 0.5] };
+  }
+  if (kind === "capsule") {
+    return { ...SHARED, body: "dynamic", shape: "capsule", size: [0.3, 1.1, 0.3] };
+  }
+  if (kind === "cylinder") {
+    return { ...SHARED, body: "dynamic", shape: "cylinder", size: [0.5, 1, 0.5] };
+  }
+  if (kind === "cone") {
+    return { ...SHARED, body: "dynamic", shape: "cone", size: [0.5, 1, 0.5] };
+  }
+  if (kind === "model") {
+    return { ...SHARED, body: "static", shape: "convex", size: [1, 1, 1] };
+  }
+  return { ...SHARED, body: "dynamic", shape: "box", size: [1, 1, 1] };
+}
+
+// src/capabilities/particles/defaults.ts
+var QUARKS_VERSION = "0.17.1";
+var DEFAULT_SIMULATION = {
+  format: "system",
+  body: {
+    version: "3.0",
+    autoDestroy: false,
+    looping: true,
+    prewarm: false,
+    duration: 1.2,
+    shape: { type: "cone", radius: 0.05, arc: 6.283185307179586, thickness: 1, angle: 0.35, mode: 0, spread: 0, speed: { type: "ConstantValue", value: 1 } },
+    startLife: { type: "IntervalValue", a: 0.4, b: 0.9 },
+    startSpeed: { type: "IntervalValue", a: 0.6, b: 1.8 },
+    startRotation: { type: "ConstantValue", value: 0 },
+    startSize: { type: "IntervalValue", a: 0.08, b: 0.22 },
+    startColor: { type: "ConstantColor", color: { r: 1, g: 0.55, b: 0.15, a: 1 } },
+    emissionOverTime: { type: "ConstantValue", value: 36 },
+    emissionOverDistance: { type: "ConstantValue", value: 0 },
+    emissionBursts: [],
+    onlyUsedByOther: false,
+    renderOrder: 0,
+    renderMode: 0,
+    rendererEmitterSettings: {},
+    layers: 1,
+    startTileIndex: { type: "ConstantValue", value: 0 },
+    uTileCount: 1,
+    vTileCount: 1,
+    blendTiles: false,
+    softParticles: false,
+    softFarFade: 0,
+    softNearFade: 0,
+    behaviors: [
+      {
+        type: "ColorOverLife",
+        color: {
+          type: "Gradient",
+          color: { type: "CLinearFunction", subType: "Color", keys: [{ value: { r: 1, g: 0.7, b: 0.2 }, pos: 0 }, { value: { r: 1, g: 0.2, b: 0 }, pos: 1 }] },
+          alpha: { type: "CLinearFunction", subType: "Number", keys: [{ value: 1, pos: 0 }, { value: 0, pos: 1 }] }
+        }
+      },
+      { type: "SizeOverLife", size: { type: "PiecewiseBezier", functions: [{ function: { p0: 0.4, p1: 0.7, p2: 1, p3: 0 }, start: 0 }] } }
+    ],
+    worldSpace: false
+  }
+};
+function defaultNodeEffect() {
+  return {
+    assetId: null,
+    quarksVersion: QUARKS_VERSION,
+    simulation: structuredClone(DEFAULT_SIMULATION),
+    materialAssetId: null,
+    playing: true
+  };
+}
+
+// src/editor/scene/kinds.ts
+init_schema();
+
+// src/runtime/ui/spec.ts
+function defaultNodeScreen() {
+  return { documentId: null, layer: "hud", visibleOnPlay: true };
+}
+
+// src/editor/scene/kinds.ts
+var MESH_KINDS = ["box", "sphere", "plane", "capsule", "cylinder", "cone"];
+function isMesh(kind) {
+  return MESH_KINDS.includes(kind);
+}
+function defaultColor(kind) {
+  switch (kind) {
+    case "plane":
+      return "#6c757e";
+    case "directional-light":
+      return "#fff4d6";
+    case "point-light":
+      return "#ffd2a8";
+    case "spot-light":
+      return "#ffffff";
+    case "hemisphere-light":
+      return "#d7e4f5";
+    case "camera":
+      return "#9ecbff";
+    case "empty":
+      return "#b0b0b0";
+    case "screen":
+      return "#4a9eff";
+    case "spline":
+      return "#34d399";
+    default:
+      return "#d5dde6";
+  }
+}
+function defaultIntensity(kind) {
+  switch (kind) {
+    case "directional-light":
+      return 3.2;
+    case "point-light":
+      return 24;
+    case "spot-light":
+      return 30;
+    case "hemisphere-light":
+      return 0.7;
+    default:
+      return 1;
+  }
+}
+function restHeight(kind) {
+  switch (kind) {
+    case "box":
+    case "sphere":
+    case "cylinder":
+    case "cone":
+      return 0.5;
+    case "capsule":
+      return 0.55;
+    case "camera":
+      return 1.5;
+    case "model":
+    case "plane":
+    case "empty":
+    case "spline":
+      return 0;
+    case "effect":
+    case "screen":
+      return 1;
+    default:
+      return 2;
+  }
+}
+function makeNode(partial) {
+  const kind = partial.kind;
+  return {
+    parentId: null,
+    order: 0,
+    visible: true,
+    locked: false,
+    position: [0, 0, 0],
+    rotation: [0, 0, 0],
+    scale: [1, 1, 1],
+    color: defaultColor(kind),
+    intensity: defaultIntensity(kind),
+    fov: 50,
+    spotAngle: 32,
+    assetId: null,
+    clip: "",
+    clipAssetId: null,
+    clipTime: 0,
+    clipPlaying: false,
+    clipLoop: true,
+    clipEnd: "hold",
+    clipSpeed: 1,
+    clipFade: 0.15,
+    clipInPlace: false,
+    clipMask: "full",
+    animator: null,
+    metalness: kind === "plane" ? 0 : 0.04,
+    roughness: kind === "plane" ? 0.92 : 0.58,
+    emissive: "#000000",
+    emissiveIntensity: 0,
+    opacity: 1,
+    ao: 1,
+    mapAssetId: null,
+    normalAssetId: null,
+    metallicRoughnessAssetId: null,
+    emissiveAssetId: null,
+    aoAssetId: null,
+    materialAssetId: null,
+    shader: "lit",
+    normalScale: 1,
+    alphaMode: "opaque",
+    alphaCutoff: 0.5,
+    cull: "back",
+    depthWrite: true,
+    wireframe: false,
+    effect: kind === "effect" ? defaultNodeEffect() : null,
+    screen: kind === "screen" ? defaultNodeScreen() : null,
+    capabilities: kind === "spline" ? { [SPLINE_PATH_CAPABILITY_ID]: defaultSplinePath(), ...partial.capabilities ?? {} } : partial.capabilities,
+    slots: [],
+    castShadow: kind === "directional-light" || kind === "spot-light" || (isMesh(kind) || kind === "model") && kind !== "plane",
+    receiveShadow: isMesh(kind) || kind === "model",
+    shadowBias: kind === "directional-light" ? -2e-4 : 5e-4,
+    shadowNormalBias: 0.02,
+    range: kind === "spot-light" ? 40 : 12,
+    decay: 2,
+    penumbra: 0.15,
+    groundColor: "#2c261f",
+    near: 0.1,
+    far: kind === "camera" ? 200 : 40,
+    ...partial
+  };
+}
+function childrenOf(nodes, parentId) {
+  return Object.values(nodes).filter((node) => node.parentId === parentId).sort((a, b) => a.order - b.order || a.name.localeCompare(b.name, "zh"));
+}
+function nextOrder(nodes, parentId, exceptId) {
+  let max4 = 0;
+  for (const node of Object.values(nodes)) {
+    if (node.id === exceptId || node.parentId !== parentId) continue;
+    if (node.order >= max4) max4 = node.order + 1;
+  }
+  return max4;
+}
+function uniqueName(nodes, base) {
+  const names = new Set(Object.values(nodes).map((node) => node.name));
+  const stripped = base.replace(/ \d+$/, "");
+  if (!names.has(stripped)) return stripped;
+  let index = 2;
+  while (names.has(`${stripped} ${index}`)) index += 1;
+  return `${stripped} ${index}`;
+}
+function subtreeIds(nodes, rootId) {
+  const out = [];
+  const walk = (id) => {
+    out.push(id);
+    for (const child of childrenOf(nodes, id)) walk(child.id);
+  };
+  if (nodes[rootId]) walk(rootId);
+  return out;
+}
+function spawnPosition(kind, parentId, spawn2) {
+  if (parentId) return [0, restHeight(kind), 0];
+  return [spawn2[0], restHeight(kind), spawn2[2]];
+}
+
+// src/editor/scene/types.ts
+var DEFAULT_NAV = {
+  cellSize: 0.2,
+  cellHeight: 0.2,
+  walkableSlopeAngle: 45,
+  agentRadius: 0.35,
+  agentHeight: 1.8,
+  maxObstacles: 32
+};
+var TONE_MAPS = ["none", "linear", "reinhard", "cineon", "aces", "agx", "neutral"];
+function toneMapOf(value) {
+  return typeof value === "string" && TONE_MAPS.includes(value) ? value : "aces";
+}
+var DEFAULT_PICTURE_AUDIO = { master: 1, music: 0.8, sfx: 1 };
+var DEFAULT_PICTURE = {
+  background: "#141414",
+  exposure: 1.05,
+  toneMapping: "aces",
+  fog: false,
+  fogColor: "#141414",
+  fogNear: 12,
+  fogFar: 80,
+  bloom: false,
+  bloomStrength: 0.35,
+  bloomRadius: 0.4,
+  bloomThreshold: 0.85,
+  ssr: false,
+  ssrQuality: 0.5,
+  ssrDistance: 5,
+  ssrThickness: 0.05,
+  ssrIntensity: 1,
+  ssgi: false,
+  ssgiSlices: 2,
+  ssgiSteps: 8,
+  ssgiRadius: 8,
+  ssgiIntensity: 4,
+  ssgiOcclusion: 1,
+  ssgiDenoise: false,
+  volume: false,
+  volumeDensity: 0.25,
+  volumeSteps: 24,
+  volumeSize: 40,
+  volumeHeight: 16,
+  volumeColor: "#d7e6ff",
+  aa: true,
+  ao: false,
+  dof: false,
+  dofFocus: 8,
+  dofFocal: 2,
+  dofBokeh: 2,
+  hue: 0,
+  saturation: 1,
+  envAssetId: null,
+  gravity: [0, -9.81, 0],
+  audio: { ...DEFAULT_PICTURE_AUDIO },
+  navigation: { ...DEFAULT_NAV }
+};
+function normalizePicture(picture) {
+  const gravity = picture?.gravity;
+  const legacyAudio = picture?.capabilities && typeof picture.capabilities === "object" ? picture.capabilities.audio : void 0;
+  const capabilities = picture?.capabilities && typeof picture.capabilities === "object" ? { ...picture.capabilities } : void 0;
+  if (capabilities) delete capabilities.audio;
+  return {
+    ...DEFAULT_PICTURE,
+    ...picture,
+    toneMapping: toneMapOf(picture?.toneMapping),
+    ssgiDenoise: picture?.ssgiDenoise === true,
+    gravity: gravity?.length === 3 ? gravity : DEFAULT_PICTURE.gravity,
+    audio: { ...DEFAULT_PICTURE_AUDIO, ...pictureAudio(picture?.audio), ...pictureAudio(legacyAudio) },
+    navigation: { ...DEFAULT_NAV, ...picture?.navigation },
+    ...capabilities && Object.keys(capabilities).length > 0 ? { capabilities } : {}
+  };
+}
+function pictureAudio(value) {
+  if (!value || typeof value !== "object") return {};
+  const row = value;
+  const next = {};
+  if (typeof row.master === "number") next.master = row.master;
+  if (typeof row.music === "number") next.music = row.music;
+  if (typeof row.sfx === "number") next.sfx = row.sfx;
+  return next;
+}
+var EDITOR_VIEWS = ["persp", "top", "bottom", "front", "back", "left", "right"];
+function normalizeEditorView(value) {
+  if (!value || typeof value !== "object") return null;
+  const view = value;
+  if (!view.view || !EDITOR_VIEWS.includes(view.view)) return null;
+  if (!view.pivot || view.pivot.length !== 3) return null;
+  if (typeof view.orbitDistance !== "number" || typeof view.yaw !== "number" || typeof view.pitch !== "number" || typeof view.orthoSize !== "number") return null;
+  return {
+    view: view.view,
+    pivot: [view.pivot[0], view.pivot[1], view.pivot[2]],
+    orbitDistance: view.orbitDistance,
+    yaw: view.yaw,
+    pitch: view.pitch,
+    orthoSize: view.orthoSize
+  };
+}
+
+// src/editor/scene/seed.ts
+function aimDownY(from, to) {
+  const direction = to.clone().sub(from).normalize();
+  const quaternion = new Quaternion5().setFromUnitVectors(new Vector311(0, -1, 0), direction);
+  const euler = new Euler2().setFromQuaternion(quaternion, "XYZ");
+  return [euler.x * 180 / Math.PI, euler.y * 180 / Math.PI, euler.z * 180 / Math.PI];
+}
+function createSeed() {
+  const sunPosition = [6, 10, 5];
+  const nodes = {
+    "seed-sun": makeNode({
+      id: "seed-sun",
+      name: "\u65B9\u5411\u5149",
+      kind: "directional-light",
+      order: 0,
+      position: sunPosition,
+      rotation: aimDownY(new Vector311(...sunPosition), new Vector311(0, 0.5, 0))
+    }),
+    "seed-sky": makeNode({
+      id: "seed-sky",
+      name: "\u73AF\u5883\u5149",
+      kind: "hemisphere-light",
+      order: 1,
+      position: [-5, 3, -4]
+    }),
+    "seed-ground": makeNode({
+      id: "seed-ground",
+      name: "\u5730\u9762",
+      kind: "plane",
+      order: 2,
+      position: [0, 0, 0],
+      rotation: [-90, 0, 0],
+      scale: [40, 40, 1],
+      physics: defaultNodePhysics("plane")
+    }),
+    "seed-cube": makeNode({
+      id: "seed-cube",
+      name: "\u65B9\u5757",
+      kind: "box",
+      order: 3,
+      position: [0, 0.5, 0]
+    })
+  };
+  return { nodes, selectedId: "seed-cube" };
+}
+function createFreshScene(name) {
+  const seed2 = createSeed();
+  const map = /* @__PURE__ */ new Map();
+  for (const id of Object.keys(seed2.nodes)) map.set(id, crypto.randomUUID());
+  const nodes = {};
+  for (const node of Object.values(seed2.nodes)) {
+    const copy = structuredClone(node);
+    copy.id = map.get(node.id) ?? copy.id;
+    copy.parentId = node.parentId ? map.get(node.parentId) ?? null : null;
+    nodes[copy.id] = copy;
+  }
+  return {
+    id: crypto.randomUUID(),
+    name,
+    nodes,
+    picture: structuredClone(DEFAULT_PICTURE),
+    selectedId: map.get(seed2.selectedId) ?? Object.keys(nodes)[0]
+  };
+}
+
+// src/core/codeAssets/workspace.ts
+import { create as create4 } from "zustand";
+
+// src/editor/project/disk.ts
+import { create as create3 } from "zustand";
+var CACHE_ROOT = ".cache/t3d";
+var IMPORT_ARTIFACTS = `${CACHE_ROOT}/import-artifacts`;
+var TEXTURE_ARTIFACTS = `${CACHE_ROOT}/texture-artifacts`;
+var TEXTURE_ORIGINALS = `${CACHE_ROOT}/texture-originals`;
+var CACHE_INDEX_PATH = `${CACHE_ROOT}/editor-library/v1/cache-index.json`;
+var CACHE_INDEX_VERSION = 1;
+var useProjectDirectory = create3(() => ({
+  active: false,
+  name: "",
+  epoch: 0
+}));
+var cacheIndex = emptyIndex();
+var ioChain = Promise.resolve();
+function emptyIndex() {
+  return { schemaVersion: CACHE_INDEX_VERSION, generatedAt: Date.now(), artifacts: {} };
+}
+
+// src/core/codeAssets/workspace.ts
+var useCodeAssetStore = create4((set) => ({
+  assets: {},
+  selectedId: null,
+  revision: 0,
+  selectAsset: (id) => set({ selectedId: id }),
+  upsertAsset: (record) => set((state) => ({ assets: { ...state.assets, [record.id]: record }, revision: state.revision + 1 })),
+  removeAsset: (id) => set((state) => {
+    const next = { ...state.assets };
+    delete next[id];
+    return {
+      assets: next,
+      selectedId: state.selectedId === id ? null : state.selectedId,
+      revision: state.revision + 1
+    };
+  }),
+  clear: () => set((state) => ({ assets: {}, selectedId: null, revision: state.revision + 1 }))
+}));
+
+// src/editor/assets/prefab.ts
+var PLACEMENT = ["position", "rotation", "scale"];
+var SKIP = /* @__PURE__ */ new Set([
+  "id",
+  "parentId",
+  "order",
+  "prefabAssetId",
+  "prefabInstanceId",
+  "prefabTemplateId",
+  "prefabHostTemplateId",
+  "prefabOverrides",
+  "prefabRemoved",
+  "nestedPrefabId"
+]);
+function readPrefab(asset) {
+  if (!Array.isArray(asset.nodes)) {
+    const nodes2 = asset.nodes;
+    const rootId2 = asset.rootId && nodes2[asset.rootId] ? asset.rootId : Object.values(nodes2).find((node) => !node.parentId)?.id ?? "";
+    return { rootId: rootId2, nodes: nodes2 };
+  }
+  const nodes = {};
+  for (const node of asset.nodes) nodes[node.id] = node;
+  const roots = Object.values(nodes).filter((node) => !node.parentId || !nodes[node.parentId]);
+  if (roots.length === 1) return { rootId: roots[0].id, nodes };
+  if (roots.length === 0) return { rootId: "", nodes };
+  const rootId = crypto.randomUUID();
+  nodes[rootId] = makeNode({ id: rootId, name: "\u9884\u5236\u4F53", kind: "empty" });
+  roots.forEach((node, order) => {
+    node.parentId = rootId;
+    node.order = order;
+  });
+  return { rootId, nodes };
+}
+function isPrefabRoot(node) {
+  return !!node && !!node.prefabAssetId && node.prefabInstanceId === node.id;
+}
+function captureTemplate(scene2, rootId) {
+  const nodes = {};
+  const map = /* @__PURE__ */ new Map();
+  const walk = (id, parentTemplate) => {
+    const source = scene2[id];
+    if (!source) return;
+    if (isPrefabRoot(source) && id !== rootId) {
+      const templateId2 = crypto.randomUUID();
+      map.set(id, templateId2);
+      const copy2 = strip(source);
+      copy2.id = templateId2;
+      copy2.parentId = parentTemplate;
+      copy2.nestedPrefabId = source.prefabAssetId;
+      nodes[templateId2] = copy2;
+      return;
+    }
+    const templateId = crypto.randomUUID();
+    map.set(id, templateId);
+    const copy = strip(source);
+    copy.id = templateId;
+    copy.parentId = parentTemplate;
+    nodes[templateId] = copy;
+    for (const child of childrenOf(scene2, id)) walk(child.id, templateId);
+  };
+  walk(rootId, null);
+  const root = nodes[map.get(rootId) ?? ""];
+  if (root) {
+    root.position = [0, 0, 0];
+    root.rotation = [0, 0, 0];
+    root.scale = [1, 1, 1];
+  }
+  return { rootId: map.get(rootId) ?? "", nodes };
+}
+function instantiatePrefab(scene2, doc, assetId, parentId, position, lookup, visiting = /* @__PURE__ */ new Set()) {
+  if (!doc.rootId || visiting.has(assetId)) return null;
+  visiting.add(assetId);
+  const root = doc.nodes[doc.rootId];
+  if (!root) return null;
+  const sceneRoot = crypto.randomUUID();
+  const copy = strip(root);
+  copy.id = sceneRoot;
+  copy.parentId = parentId;
+  copy.order = nextOrder2(scene2, parentId);
+  copy.name = uniqueName2(scene2, copy.name);
+  if (position) copy.position = [position[0], position[1], position[2]];
+  copy.prefabAssetId = assetId;
+  copy.prefabInstanceId = sceneRoot;
+  copy.prefabTemplateId = root.id;
+  copy.prefabOverrides = position ? [...PLACEMENT] : [];
+  scene2[sceneRoot] = copy;
+  expand(scene2, doc, assetId, root.id, sceneRoot, sceneRoot, lookup, visiting);
+  visiting.delete(assetId);
+  return sceneRoot;
+}
+function reconcilePrefab(scene2, assetId, doc, lookup) {
+  const roots = Object.values(scene2).filter((node) => node.prefabAssetId === assetId && node.prefabInstanceId === node.id);
+  for (const root of roots) syncInstance(scene2, root.id, doc, assetId, lookup);
+}
+function applyInstance(scene2, instanceId, doc) {
+  const next = structuredClone(doc);
+  const removed = new Set(scene2[instanceId]?.prefabRemoved ?? []);
+  for (const id of removed) deleteTemplate(next.nodes, id);
+  for (const node of Object.values(scene2)) {
+    if (node.prefabInstanceId !== instanceId || !node.prefabTemplateId) continue;
+    const template = next.nodes[node.prefabTemplateId];
+    if (!template) continue;
+    for (const key of node.prefabOverrides ?? []) {
+      if (SKIP.has(key) || node.id === instanceId && PLACEMENT.includes(key)) continue;
+      copyKey(template, node, key);
+    }
+    node.prefabOverrides = node.id === instanceId ? [...PLACEMENT] : [];
+  }
+  for (const node of [...Object.values(scene2)]) {
+    if (node.prefabInstanceId !== instanceId || node.prefabTemplateId) continue;
+    const parent = node.parentId ? scene2[node.parentId] : void 0;
+    const parentTemplate = parent?.prefabTemplateId;
+    if (!parentTemplate || !next.nodes[parentTemplate]) continue;
+    if (isPrefabRoot(node)) {
+      const templateId = crypto.randomUUID();
+      const placeholder = strip(node);
+      placeholder.id = templateId;
+      placeholder.parentId = parentTemplate;
+      placeholder.nestedPrefabId = node.prefabAssetId;
+      placeholder.order = nextOrder2(next.nodes, parentTemplate);
+      next.nodes[templateId] = placeholder;
+      node.prefabHostTemplateId = templateId;
+      continue;
+    }
+    graftAdded(scene2, next.nodes, node.id, parentTemplate);
+  }
+  if (scene2[instanceId]) scene2[instanceId].prefabRemoved = [];
+  return next;
+}
+function revertInstance(scene2, instanceId, doc, assetId, lookup) {
+  const root = scene2[instanceId];
+  if (!root) return;
+  for (const node of Object.values(scene2)) {
+    if (node.prefabInstanceId !== instanceId) continue;
+    if (!node.prefabTemplateId && node.id !== instanceId) delete scene2[node.id];
+    else node.prefabOverrides = node.id === instanceId ? [...PLACEMENT] : [];
+  }
+  root.prefabRemoved = [];
+  syncInstance(scene2, instanceId, doc, assetId, lookup);
+}
+function unpackInstance(scene2, instanceId) {
+  for (const node of Object.values(scene2)) {
+    if (node.prefabInstanceId !== instanceId) continue;
+    delete node.prefabAssetId;
+    delete node.prefabInstanceId;
+    delete node.prefabTemplateId;
+    delete node.prefabHostTemplateId;
+    delete node.prefabOverrides;
+    delete node.prefabRemoved;
+  }
+}
+function rememberRemoval(scene2, id) {
+  const node = scene2[id];
+  if (!node?.prefabTemplateId || !node.prefabInstanceId || node.id === node.prefabInstanceId) return;
+  const root = scene2[node.prefabInstanceId];
+  if (!root) return;
+  root.prefabRemoved = [.../* @__PURE__ */ new Set([...root.prefabRemoved ?? [], node.prefabTemplateId])];
+}
+function detachIfReparented(scene2, id) {
+  const node = scene2[id];
+  if (!node?.prefabInstanceId || node.id === node.prefabInstanceId || !node.prefabTemplateId) return;
+  const rootId = node.prefabInstanceId;
+  if (contains(scene2, rootId, id)) {
+    rememberRemoval(scene2, id);
+    delete node.prefabTemplateId;
+    delete node.prefabOverrides;
+    return;
+  }
+  const templateIds = [node.prefabTemplateId];
+  const walk = (current) => {
+    for (const child of childrenOf(scene2, current)) {
+      if (child.prefabInstanceId === rootId && child.prefabTemplateId) templateIds.push(child.prefabTemplateId);
+      if (child.prefabInstanceId === rootId) walk(child.id);
+    }
+  };
+  walk(id);
+  const root = scene2[rootId];
+  if (root) root.prefabRemoved = [.../* @__PURE__ */ new Set([...root.prefabRemoved ?? [], ...templateIds])];
+  const clear = (current) => {
+    const item = scene2[current];
+    if (!item || item.prefabInstanceId !== rootId) return;
+    delete item.prefabAssetId;
+    delete item.prefabInstanceId;
+    delete item.prefabTemplateId;
+    delete item.prefabHostTemplateId;
+    delete item.prefabOverrides;
+    delete item.prefabRemoved;
+    for (const child of childrenOf(scene2, current)) clear(child.id);
+  };
+  clear(id);
+}
+function tagAddedChild(scene2, id) {
+  const node = scene2[id];
+  const parent = node?.parentId ? scene2[node.parentId] : void 0;
+  if (!node || !parent?.prefabInstanceId || node.prefabAssetId) return;
+  node.prefabAssetId = parent.prefabAssetId;
+  node.prefabInstanceId = parent.prefabInstanceId;
+}
+function retargetInstance(scene2, oldRoot, newRoot) {
+  const walk = (id) => {
+    const node = scene2[id];
+    if (!node) return;
+    if (node.prefabInstanceId === oldRoot) node.prefabInstanceId = newRoot;
+    for (const child of childrenOf(scene2, id)) walk(child.id);
+  };
+  walk(newRoot);
+}
+function markOverrides(node, patch) {
+  if (!node.prefabAssetId) return;
+  const keys = Object.keys(patch).filter((key) => !SKIP.has(key) && key !== "clipTime" && key !== "clipPlaying");
+  if (keys.length === 0) return;
+  node.prefabOverrides = [.../* @__PURE__ */ new Set([...node.prefabOverrides ?? [], ...keys])];
+}
+function syncInstance(scene2, instanceId, doc, assetId, lookup) {
+  const root = scene2[instanceId];
+  const templateRoot = doc.nodes[doc.rootId];
+  if (!root || !templateRoot) return;
+  const removed = new Set(root.prefabRemoved ?? []);
+  const byTemplate = /* @__PURE__ */ new Map();
+  for (const node of Object.values(scene2)) {
+    if (node.prefabInstanceId === instanceId && node.prefabTemplateId) byTemplate.set(node.prefabTemplateId, node);
+    if (node.prefabHostTemplateId) byTemplate.set(node.prefabHostTemplateId, node);
+  }
+  const keep = /* @__PURE__ */ new Set([instanceId]);
+  const visit = (templateId, parentSceneId) => {
+    if (removed.has(templateId)) return;
+    const template = doc.nodes[templateId];
+    if (!template) return;
+    if (template.nestedPrefabId) {
+      let nested = byTemplate.get(templateId);
+      if (!nested || !isPrefabRoot(nested)) {
+        const nestedDoc = lookup(template.nestedPrefabId);
+        const created = nestedDoc ? instantiatePrefab(scene2, nestedDoc, template.nestedPrefabId, parentSceneId, null, lookup) : null;
+        nested = created ? scene2[created] : void 0;
+        if (nested) {
+          nested.prefabHostTemplateId = templateId;
+          nested.position = [...template.position];
+          nested.rotation = [...template.rotation];
+          nested.scale = [...template.scale];
+          nested.prefabOverrides = (nested.prefabOverrides ?? []).filter((key) => !PLACEMENT.includes(key));
+        }
+      } else if (nested.parentId !== parentSceneId) nested.parentId = parentSceneId;
+      if (nested) {
+        applyProps(nested, template, new Set(nested.prefabOverrides ?? []));
+        keep.add(nested.id);
+      }
+      return;
+    }
+    let node = templateId === doc.rootId ? root : byTemplate.get(templateId);
+    if (!node) {
+      const id = crypto.randomUUID();
+      node = strip(template);
+      node.id = id;
+      node.parentId = parentSceneId;
+      node.order = template.order;
+      node.prefabAssetId = assetId;
+      node.prefabInstanceId = instanceId;
+      node.prefabTemplateId = templateId;
+      node.prefabOverrides = [];
+      scene2[id] = node;
+    } else if (node.id !== instanceId) node.parentId = parentSceneId;
+    const overrides = new Set(node.prefabOverrides ?? []);
+    if (node.id === instanceId) PLACEMENT.forEach((key) => overrides.add(key));
+    applyProps(node, template, overrides);
+    keep.add(node.id);
+    for (const child of childrenOf(doc.nodes, templateId)) visit(child.id, node.id);
+  };
+  visit(doc.rootId, root.parentId);
+  for (const node of Object.values(scene2)) {
+    if (node.prefabInstanceId !== instanceId || !node.prefabTemplateId) continue;
+    if (!keep.has(node.id)) deleteSubtree(scene2, node.id);
+  }
+}
+function expand(scene2, doc, assetId, templateParent, sceneParent, instanceId, lookup, visiting) {
+  for (const template of childrenOf(doc.nodes, templateParent)) {
+    if (template.nestedPrefabId) {
+      const nestedDoc = lookup(template.nestedPrefabId);
+      const nestedId = nestedDoc ? instantiatePrefab(scene2, nestedDoc, template.nestedPrefabId, sceneParent, null, lookup, visiting) : null;
+      const nested = nestedId ? scene2[nestedId] : void 0;
+      if (!nested) continue;
+      nested.prefabHostTemplateId = template.id;
+      nested.position = [...template.position];
+      nested.rotation = [...template.rotation];
+      nested.scale = [...template.scale];
+      nested.order = template.order;
+      nested.prefabOverrides = [];
+      continue;
+    }
+    const id = crypto.randomUUID();
+    const node = strip(template);
+    node.id = id;
+    node.parentId = sceneParent;
+    node.order = template.order;
+    node.prefabAssetId = assetId;
+    node.prefabInstanceId = instanceId;
+    node.prefabTemplateId = template.id;
+    node.prefabOverrides = [];
+    scene2[id] = node;
+    expand(scene2, doc, assetId, template.id, id, instanceId, lookup, visiting);
+  }
+}
+function graftAdded(scene2, templateNodes, id, parentTemplate) {
+  const map = /* @__PURE__ */ new Map();
+  const walk = (current, parent) => {
+    const source = scene2[current];
+    if (!source || isPrefabRoot(source)) return;
+    const templateId = crypto.randomUUID();
+    map.set(current, templateId);
+    const copy = strip(source);
+    copy.id = templateId;
+    copy.parentId = parent;
+    copy.order = source.order;
+    templateNodes[templateId] = copy;
+    source.prefabTemplateId = templateId;
+    source.prefabOverrides = [];
+    for (const child of childrenOf(scene2, current)) walk(child.id, templateId);
+  };
+  walk(id, parentTemplate);
+}
+function deleteTemplate(nodes, id) {
+  for (const child of childrenOf(nodes, id)) deleteTemplate(nodes, child.id);
+  delete nodes[id];
+}
+function deleteSubtree(nodes, id) {
+  for (const child of childrenOf(nodes, id)) deleteSubtree(nodes, child.id);
+  delete nodes[id];
+}
+function applyProps(target, source, overrides) {
+  for (const key of Object.keys(source)) {
+    if (SKIP.has(key) || overrides.has(key)) continue;
+    copyKey(target, source, key);
+  }
+}
+function copyKey(target, source, key) {
+  const value = source[key];
+  target[key] = structuredClone(value);
+}
+function strip(node) {
+  const copy = structuredClone(node);
+  delete copy.prefabAssetId;
+  delete copy.prefabInstanceId;
+  delete copy.prefabTemplateId;
+  delete copy.prefabHostTemplateId;
+  delete copy.prefabOverrides;
+  delete copy.prefabRemoved;
+  return copy;
+}
+function contains(nodes, ancestor, id) {
+  let current = nodes[id]?.parentId;
+  const seen = /* @__PURE__ */ new Set();
+  while (current && !seen.has(current)) {
+    if (current === ancestor) return true;
+    seen.add(current);
+    current = nodes[current]?.parentId ?? null;
+  }
+  return false;
+}
+function nextOrder2(nodes, parentId) {
+  let max4 = -1;
+  for (const node of Object.values(nodes)) if (node.parentId === parentId) max4 = Math.max(max4, node.order);
+  return max4 + 1;
+}
+function uniqueName2(nodes, base) {
+  const names = new Set(Object.values(nodes).map((node) => node.name));
+  if (!names.has(base)) return base;
+  let index = 2;
+  while (names.has(`${base} ${index}`)) index += 1;
+  return `${base} ${index}`;
+}
+
+// src/editor/i18n/index.ts
+import { useMemo } from "react";
+
+// src/editor/prefs/store.ts
+import { create as create5 } from "zustand";
+var KEY = "t3d-editor-prefs";
+function readPrefs() {
+  const fallback = { language: "system", autoSave: true, openLastProject: true, uiScale: 1 };
+  try {
+    const raw = localStorage.getItem(KEY);
+    if (!raw) return fallback;
+    const parsed = JSON.parse(raw);
+    const language = parsed.language === "zh" || parsed.language === "en" || parsed.language === "system" ? parsed.language : "system";
+    const uiScale = parsed.uiScale === 1.25 || parsed.uiScale === 1.5 ? parsed.uiScale : 1;
+    return { language, autoSave: parsed.autoSave !== false, openLastProject: parsed.openLastProject !== false, uiScale };
+  } catch {
+    return fallback;
+  }
+}
+function persist(state) {
+  localStorage.setItem(KEY, JSON.stringify(state));
+  document.documentElement.style.zoom = String(state.uiScale);
+}
+function dataOf(state, patch) {
+  return { ...state, ...patch };
+}
+var initial = readPrefs();
+persist(initial);
+var usePrefsStore = create5((set) => ({
+  ...initial,
+  settingsOpen: false,
+  setLanguage: (language) => set((state) => {
+    const next = dataOf(state, { language });
+    persist(next);
+    return next;
+  }),
+  setAutoSave: (autoSave) => set((state) => {
+    const next = dataOf(state, { autoSave });
+    persist(next);
+    return next;
+  }),
+  setOpenLastProject: (openLastProject) => set((state) => {
+    const next = dataOf(state, { openLastProject });
+    persist(next);
+    return next;
+  }),
+  setUiScale: (uiScale) => set((state) => {
+    const next = dataOf(state, { uiScale });
+    persist(next);
+    return next;
+  }),
+  openSettings: () => set({ settingsOpen: true }),
+  closeSettings: () => set({ settingsOpen: false })
+}));
+function resolveLanguage(setting) {
+  if (setting === "zh" || setting === "en") return setting;
+  return navigator.language.toLowerCase().startsWith("zh") ? "zh" : "en";
+}
+
+// src/editor/i18n/messages.ts
+var zh = {
+  "menu.file": "\u6587\u4EF6",
+  "menu.edit": "\u7F16\u8F91",
+  "menu.create": "\u521B\u5EFA",
+  "menu.view": "\u89C6\u56FE",
+  "menu.newProject": "\u65B0\u5EFA\u9879\u76EE\u2026",
+  "menu.openProject": "\u6253\u5F00\u9879\u76EE\u2026",
+  "menu.recentProjects": "\u6700\u8FD1\u9879\u76EE",
+  "menu.newScene": "\u65B0\u5EFA\u573A\u666F",
+  "menu.save": "\u4FDD\u5B58",
+  "menu.saveAsProject": "\u53E6\u5B58\u4E3A\u9879\u76EE\u2026",
+  "menu.projectSettings": "\u9879\u76EE\u8BBE\u7F6E\u2026",
+  "menu.database": "\u6E38\u620F\u6570\u636E\u2026",
+  "menu.library": "\u5B98\u65B9\u5E93\u2026",
+  "menu.tags": "\u6807\u7B7E\u2026",
+  "menu.layers": "\u5C42\u2026",
+  "hub.title": "\u6E38\u620F\u6570\u636E",
+  "hub.count": "{tables} \u5F20\u6570\u636E\u8868",
+  "hub.database": "\u6E38\u620F\u6570\u636E\uFF08{count} \u5F20\u8868\uFF09",
+  "hub.packs": "\u73A9\u6CD5\u5305",
+  "hub.search": "\u641C\u7D22{name}",
+  "hub.reset": "\u91CD\u7F6E\u9ED8\u8BA4",
+  "hub.add": "\u65B0\u589E\u6761\u76EE",
+  "hub.catalog": "\u6570\u636E\u8868\u76EE\u5F55",
+  "hub.corePack": "\u6838\u5FC3\u5305",
+  "hub.rowCount": "{count} \u6761",
+  "hub.showing": "\u663E\u793A {shown} / {total} \u6761",
+  "hub.empty": "\u6CA1\u6709\u5339\u914D\u7684\u8BB0\u5F55\u3002\u53EF\u4EE5\u65B0\u589E\u4E00\u6761\u3002",
+  "hub.id": "\u6807\u8BC6",
+  "hub.name": "\u540D\u79F0",
+  "hub.category": "\u5206\u7EC4",
+  "hub.note": "\u5907\u6CE8",
+  "hub.delete": "\u5220\u9664",
+  "hub.enabled": "\u5DF2\u542F\u7528",
+  "hub.disabled": "\u5DF2\u5173\u95ED",
+  "hub.packHint": "\u5173\u6389\u7684\u5305\u4F1A\u4ECE\u8FD9\u5F20\u76EE\u5F55\u6D88\u5931\uFF0C\u5DF2\u7ECF\u5199\u8FC7\u7684\u884C\u7559\u5728\u9879\u76EE\u91CC\u3002\u5C5E\u6027\u3001\u7269\u54C1\u8FD9\u4E9B\u8868\u7B49\u5BF9\u5E94\u7684\u5305\u505A\u4E86\u518D\u51FA\u73B0\u3002",
+  "library.title": "\u5B98\u65B9\u5E93",
+  "library.lead": "\u7F16\u8F91\u5668\u81EA\u5E26\u7684\u80FD\u529B\u3001\u73A9\u6CD5\u3001\u4E13\u9879\u548C\u7D20\u6750\u3002\u5F00\u5173\u8BB0\u5728\u5F53\u524D\u9879\u76EE\u91CC\u3002",
+  "library.search": "\u641C\u7D22\u540D\u79F0",
+  "library.empty": "\u6CA1\u6709\u5339\u914D\u7684\u6761\u76EE",
+  "library.on": "\u5DF2\u5F00\u542F",
+  "library.off": "\u5DF2\u5173\u95ED",
+  "library.soon": "\u5F00\u53D1\u4E2D",
+  "library.official": "\u5B98\u65B9",
+  "library.includes": "\u8FD9\u4E00\u5305\u63D0\u4F9B",
+  "library.switch": "\u9879\u76EE\u5F00\u5173",
+  "library.soonNote": "\u968F\u7F16\u8F91\u5668\u5F00\u53D1\u3002\u767B\u8BB0\u5B8C\u6210\u524D\u4E0D\u80FD\u5F00\u5173\u3002",
+  "library.assetNote": "\u7D20\u6750\u662F\u76EE\u5F55\uFF0C\u7528\u5230\u65F6\u518D\u5BFC\u5165\u9879\u76EE\u3002\u73B0\u5728\u8FD8\u4E0D\u80FD\u5B89\u88C5\u3002",
+  "library.shelf.capability": "\u80FD\u529B",
+  "library.shelf.gameplay": "\u73A9\u6CD5",
+  "library.shelf.genre": "\u4E13\u9879",
+  "library.shelf.asset": "\u7D20\u6750",
+  "library.shelfHint.capability": "\u6A21\u62DF\u548C\u753B\u9762\u8FD0\u884C\u65F6\u3002\u6C34\u4F53\u3001\u5929\u6C14\u4E5F\u5F52\u5728\u8FD9\u91CC\u3002",
+  "library.shelfHint.gameplay": "\u6838\u5FC3\u5305\u4EE5\u5916\u7684\u9886\u57DF\u5305\u3002\u6838\u5FC3\u5305\u59CB\u7EC8\u5F00\u542F\uFF0C\u4E0D\u5728\u5E93\u91CC\u3002",
+  "library.shelfHint.genre": "\u67D0\u4E00\u7C7B\u6E38\u620F\u7684\u4E13\u5C5E\u5305\u3002\u6A21\u677F\u4EE5\u540E\u5355\u72EC\u6807\u660E\u3002",
+  "library.shelfHint.asset": "\u73B0\u6210\u7684\u6A21\u578B\u3001\u52A8\u753B\u548C\u7C92\u5B50\u9884\u8BBE\u3002",
+  "library.item.physics": "\u7269\u7406",
+  "library.item.physicsDetail": "\u78B0\u649E\u4F53\u3001\u521A\u4F53\u548C\u8BD5\u73A9\u65F6\u7684\u7269\u7406\u6A21\u62DF\u3002",
+  "library.item.physicsPoints": "\u521A\u4F53\u4E0E\u78B0\u649E\u4F53\n\u573A\u666F\u91CD\u529B\u4E0B\u7684\u6A21\u62DF",
+  "library.item.buoyancy": "\u6D6E\u529B",
+  "library.item.buoyancyDetail": "\u57FA\u4E8E\u5F53\u524D\u6C34\u4F53\u6CE2\u6D6A\u7684\u7269\u7406\u6D6E\u529B\u4E0E\u6C34\u963B\u5C3C\uFF08\u4F9D\u8D56\u7269\u7406\u7CFB\u7EDF\uFF09\u3002",
+  "library.item.buoyancyPoints": "\u591A\u70B9\u6D6E\u529B\u91C7\u6837\n\u6C34\u963B\u5C3C\u4E0E\u6CE2\u6D6A\u8DDF\u968F",
+  "library.item.navigation": "\u5BFC\u822A",
+  "library.item.navigationDetail": "\u4ECE\u9759\u6001\u8868\u9762\u70D8\u7119\u5BFC\u822A\u7F51\u683C\u3002\u8BD5\u73A9\u65F6\u969C\u788D\u53EF\u4EE5\u6316\u5F00\u7F51\u683C\u3002",
+  "library.item.navigationPoints": "\u5BFC\u822A\u7F51\u683C\u70D8\u7119\n\u5BFB\u8DEF\u4E0E\u969C\u788D",
+  "library.item.spline": "Spline \u8DEF\u5F84\u8FD0\u52A8",
+  "library.item.splineDetail": "\u914D\u5408 3D \u89C6\u53E3\u53EF\u7F16\u8F91 Spline \u66F2\u7EBF\u8282\u70B9\uFF0C\u6309\u5F27\u957F\u5300\u901F\u5DE1\u903B\u6216\u8F68\u9053\u79FB\u52A8\u3002",
+  "library.item.splinePoints": "3D \u89C6\u53E3\u66F2\u8FB9\u7F16\u8F91\u5668\n\u5F27\u957F\u5300\u901F\u8FD0\u52A8\n\u5355\u6B21 / \u5FAA\u73AF / \u5F80\u8FD4",
+  "library.item.tween": "Tween \u8865\u95F4\u52A8\u6548",
+  "library.item.tweenDetail": "\u4E3A\u7269\u4F53\u63D0\u4F9B\u4F4D\u7F6E\u3001\u65CB\u8F6C\u3001\u7F29\u653E\u4E0E\u60AC\u6D6E\u6D6E\u52A8\u7B49\u7F13\u52A8\u5FAA\u73AF\u52A8\u6548\u3002",
+  "library.item.tweenPoints": "12 \u79CD\u5E38\u7528\u7F13\u52A8\u66F2\u7EBF\n\u5FAA\u73AF\u4E0E Yoyo \u5F80\u8FD4\n\u811A\u672C self.tween \u94FE\u5F0F\u9A71\u52A8",
+  "library.item.crowd": "\u7FA4\u4F53\u907F\u8BA9 (Crowd)",
+  "library.item.crowdDetail": "\u4E3A\u591A\u5355\u4F4D\u63D0\u4F9B\u5C40\u90E8\u907F\u8BA9\u5206\u79BB\u3001\u51DD\u805A\u5BF9\u9F50\u4E0E\u6A2A\u6392/\u65B9\u9635/\u6954\u5F62/\u73AF\u5F62\u7F16\u961F\u79FB\u52A8\u3002",
+  "library.item.crowdPoints": "\u7A7A\u95F4\u7F51\u683C\u5C40\u90E8\u907F\u8BA9\n\u6A2A\u6392 / \u65B9\u9635 / \u6954\u5F62 / \u73AF\u5F62\u7F16\u961F\n\u811A\u672C self.crowd / world.crowd",
+  "library.item.projectile": "\u901A\u7528\u5F39\u9053 (Projectile)",
+  "library.item.projectileDetail": "\u652F\u6301\u76F4\u7EBF\u3001\u8FFD\u8E2A\u4E0E\u629B\u7269\u7EBF\u5F39\u9053\u98DE\u884C\uFF0C\u81EA\u52A8\u68C0\u6D4B\u76EE\u6807\u6807\u7B7E\u547D\u4E2D\u5E76\u56DE\u6C60\u6216\u9500\u6BC1\u3002",
+  "library.item.projectilePoints": "\u76F4\u7EBF / \u8FFD\u8E2A / \u629B\u7269\u7EBF\n\u76EE\u6807\u6807\u7B7E\u547D\u4E2D\u4E0E\u56DE\u6C60\n\u81EA\u52A8\u6D3E\u53D1 onProjectileHit",
+  "library.item.particles": "\u7C92\u5B50",
+  "library.item.particlesDetail": "\u7C92\u5B50\u8FD0\u884C\u65F6\u3002\u5173\u6389\u540E\u8D44\u6E90\u548C\u7269\u4F53\u4E0A\u7684\u6570\u636E\u8FD8\u5728\uFF0C\u53EA\u662F\u4E0D\u518D\u64AD\u653E\u3002",
+  "library.item.particlesPoints": "\u7C92\u5B50\u6A21\u62DF\n\u73B0\u6210\u9884\u8BBE\u5728\u7D20\u6750\u680F",
+  "library.item.sky": "\u5929\u7A7A",
+  "library.item.skyDetail": "\u65F6\u523B\u3001\u5927\u6C14\u6563\u5C04\u548C\u8DDF\u7740\u592A\u9633\u8D70\u7684\u73AF\u5883\u5149\u7167\u3002\u5173\u6389\u540E\u53C2\u6570\u7559\u5728\u753B\u9762\u4E0A\uFF0C\u53EA\u662F\u4E0D\u518D\u7ED8\u5236\u3002",
+  "library.item.skyPoints": "\u65F6\u523B\u4E0E\u5927\u6C14\n\u73AF\u5883\u5149\u7167\n\u9AD8\u5EA6\u96FE\u3001\u661F\u7A7A\u4E0E\u6708\u4EAE",
+  "library.item.water": "\u6C34\u4F53",
+  "library.item.waterDetail": "TSL \u6C34\u9762\u3001\u53CC\u5C42\u6D41\u52A8\u6CD5\u7EBF\u3001\u5E73\u9762\u53CD\u5C04\u3001\u6C34\u6DF1\u5438\u6536\u4E0E\u5CB8\u8FB9\u6CE1\u6CAB\u3002\u5173\u6389\u540E\u53C2\u6570\u4FDD\u7559\uFF0C\u6062\u590D\u539F\u6750\u8D28\u3002",
+  "library.item.waterPoints": "\u5E73\u9762\u53CD\u5C04\u4E0E\u6C34\u6DF1\u5438\u6536\n\u5CB8\u8FB9\u6CE1\u6CAB\u4E0E\u6CE2\u6D6A\n5 \u5957\u9884\u8BBE\u4E0E 3 \u6863\u753B\u8D28",
+  "buoyancy.title": "\u6D6E\u529B",
+  "buoyancy.enable": "\u542F\u7528\u6D6E\u529B",
+  "buoyancy.sampleMode": "\u91C7\u6837\u5206\u5E03",
+  "buoyancy.sample.box4": "\u5E95\u9762\u56DB\u70B9\uFF08\u8239\u53EA/\u7BB1\u5B50\uFF09",
+  "buoyancy.sample.box8": "\u516B\u89D2\u70B9\uFF08\u53EF\u7FFB\u6EDA/\u5168\u6D78\uFF09",
+  "buoyancy.sample.center": "\u4E2D\u5FC3\u70B9\uFF08\u7403\u4F53/\u6D6E\u6807\uFF09",
+  "buoyancy.force": "\u6D6E\u529B\u500D\u7387",
+  "buoyancy.waterDrag": "\u6C34\u4E2D\u963B\u529B",
+  "buoyancy.angularDrag": "\u6447\u6643\u963B\u5C3C",
+  "buoyancy.draftDepth": "\u5403\u6C34\u6DF1\u5EA6\uFF080 \u81EA\u52A8\uFF09",
+  "buoyancy.needsDynamic": "\u9700\u8981\u52A8\u6001\u521A\u4F53\u624D\u80FD\u53D7\u529B\u6F02\u6D6E",
+  "buoyancy.makeDynamic": "\u8BBE\u4E3A\u52A8\u6001\u521A\u4F53",
+  "projectSettings.buoyancyDetail": "\u57FA\u4E8E\u5F53\u524D\u6C34\u4F53\u6CE2\u6D6A\u7684\u7269\u7406\u6D6E\u529B\u4E0E\u6C34\u963B\u5C3C\uFF08\u4F9D\u8D56\u7269\u7406\u7CFB\u7EDF\uFF09\u3002",
+  "spline.title": "Spline \u8DEF\u5F84\u8FD0\u52A8",
+  "projectSettings.splineDetail": "\u6CBF\u8DEF\u5F84\u7236\u8282\u70B9\u7684\u6709\u5E8F\u5B50\u8282\u70B9\u4F5C\u5E73\u6ED1\u6837\u6761\u66F2\u7EBF\u5300\u901F\u8FD0\u52A8\u3002",
+  "tween.title": "Tween \u8865\u95F4\u52A8\u6548",
+  "projectSettings.tweenDetail": "\u4E3A\u7269\u4F53\u63D0\u4F9B\u4F4D\u7F6E\u3001\u65CB\u8F6C\u3001\u7F29\u653E\u4E0E\u60AC\u6D6E\u6D6E\u52A8\u7B49\u7F13\u52A8\u5FAA\u73AF\u52A8\u6548\u3002",
+  "crowd.title": "\u7FA4\u4F53\u907F\u8BA9 (Crowd)",
+  "projectSettings.crowdDetail": "\u4E3A\u591A\u5355\u4F4D\u63D0\u4F9B\u5C40\u90E8\u907F\u8BA9\u5206\u79BB\u3001\u51DD\u805A\u5BF9\u9F50\u4E0E\u6A2A\u6392/\u65B9\u9635/\u6954\u5F62/\u73AF\u5F62\u7F16\u961F\u79FB\u52A8\u3002",
+  "projectile.title": "\u901A\u7528\u5F39\u9053 (Projectile)",
+  "projectSettings.projectileDetail": "\u652F\u6301\u76F4\u7EBF\u3001\u8FFD\u8E2A\u4E0E\u629B\u7269\u7EBF\u5F39\u9053\u98DE\u884C\uFF0C\u81EA\u52A8\u68C0\u6D4B\u76EE\u6807\u6807\u7B7E\u547D\u4E2D\u5E76\u56DE\u6C60\u6216\u9500\u6BC1\u3002",
+  "water.title": "\u6C34\u4F53",
+  "water.enable": "\u542F\u7528\u6C34\u4F53",
+  "water.groupColor": "\u6C34\u8272\u4E0E\u5438\u6536",
+  "water.groupWaves": "\u6CE2\u7EB9\u4E0E\u6D77\u6D6A",
+  "water.groupOptics": "\u5149\u5B66\u4E0E\u6CE1\u6CAB",
+  "water.on": "\u5F00\u542F",
+  "water.off": "\u5173\u95ED",
+  "water.add": "\u8BBE\u4E3A\u6C34\u4F53",
+  "water.style": "\u98CE\u683C\u9884\u8BBE",
+  "water.quality": "\u753B\u8D28\u6863\u4F4D",
+  "water.preset.tropical": "\u70ED\u5E26\u6D45\u6D77",
+  "water.preset.ocean": "\u6DF1\u6D77\u5927\u6D0B",
+  "water.preset.lake": "\u9759\u8C27\u6E56\u6CCA",
+  "water.preset.pool": "\u6E05\u6F88\u6CF3\u6C60",
+  "water.preset.stylized": "\u98CE\u683C\u5316\u5361\u901A\u6C34",
+  "water.quality.fast": "\u8F7B\u91CF\uFF08\u65E0\u53CD\u5C04\uFF09",
+  "water.quality.balanced": "\u5747\u8861\uFF080.5x \u53CD\u5C04\uFF09",
+  "water.quality.ultra": "\u6781\u81F4\uFF080.75x + \u5927\u6D6A\uFF09",
+  "water.shallow": "\u6D45\u6C34\u8272",
+  "water.deep": "\u6DF1\u6C34\u8272",
+  "water.absorption": "\u6C34\u6DF1\u5438\u6536 (m)",
+  "water.opacity": "\u57FA\u7840\u4E0D\u900F\u660E",
+  "water.waveScale": "\u6CE2\u7EB9\u5C3A\u5EA6",
+  "water.flowSpeed": "\u6D41\u901F",
+  "water.normalScale": "\u6CD5\u7EBF\u5F3A\u5EA6",
+  "water.reflectivity": "\u53CD\u5C04\u5F3A\u5EA6",
+  "water.specular": "\u592A\u9633\u9AD8\u5149",
+  "water.specularSize": "\u9AD8\u5149\u5927\u5C0F",
+  "water.sss": "\u6B21\u8868\u9762\u6563\u5C04",
+  "water.foamWidth": "\u6CE1\u6CAB\u8303\u56F4",
+  "water.foamIntensity": "\u6CE1\u6CAB\u5F3A\u5EA6",
+  "water.foamScale": "\u6CE1\u6CAB\u5C3A\u5EA6",
+  "water.crestFoam": "\u6CE2\u5CF0\u6D6A\u82B1",
+  "water.crestThreshold": "\u6D6A\u82B1\u9608\u503C",
+  "water.foamTrail": "\u6CE1\u6CAB\u62D6\u5C3E",
+  "water.debugView": "\u8C03\u8BD5\u89C6\u56FE",
+  "water.debug.off": "\u5173\u95ED",
+  "water.debug.height": "\u6CE2\u9AD8",
+  "water.debug.squeeze": "\u6324\u538B\u503C",
+  "water.debug.foam": "\u6CE1\u6CAB\u906E\u7F69",
+  "water.waveHeight": "\u6CE2\u6D6A\u9AD8\u5EA6",
+  "water.waveSpeed": "\u6CE2\u6D6A\u901F\u5EA6",
+  "water.waveSteepness": "\u6CE2\u5CF0\u805A\u62E2",
+  "water.waveBend": "\u6D6A\u7EBF\u873F\u8712",
+  "water.swellRate": "\u8D77\u843D\u9891\u7387",
+  "water.waveLean": "\u6D6A\u5C16\u5377\u66F2",
+  "water.crestSharpness": "\u6D6A\u5C16\u9510\u5EA6",
+  "water.groupSwitches": "\u6548\u679C\u4E0E\u6027\u80FD\u5F00\u5173",
+  "water.planar": "\u5E73\u9762\u53CD\u5C04",
+  "water.refraction": "\u6C34\u4E0B\u6298\u5C04",
+  "water.caustics": "\u6C34\u5E95\u7126\u6563",
+  "water.shoreFoam": "\u5CB8\u8FB9\u6CE1\u6CAB",
+  "water.underwaterEffect": "\u6C34\u4E0B\u6548\u679C",
+  "water.underwaterColor": "\u6C34\u4E0B\u96FE\u8272",
+  "water.underwaterFogDensity": "\u6C34\u4E0B\u96FE\u6D53\u5EA6",
+  "water.underwaterFogStart": "\u8D77\u96FE\u8DDD\u79BB (m)",
+  "water.underwaterTint": "\u6C34\u4E0B\u67D3\u8272",
+  "water.underwaterSurfaceBrightness": "\u6C34\u4E0B\u6C34\u9762\u4EAE\u5EA6",
+  "water.softEdge": "\u5CB8\u8FB9\u7FBD\u5316 (m)",
+  "water.flowDir": "\u6D41\u5411\u89D2\u5EA6",
+  "water.fresnel": "\u83F2\u6D85\u5C14\u6307\u6570",
+  "water.causticsStrength": "\u7126\u6563\u5F3A\u5EA6",
+  "water.causticsScale": "\u7126\u6563\u5C3A\u5EA6",
+  "water.foamColor": "\u6CE1\u6CAB\u8272",
+  "water.sunColor": "\u9AD8\u5149\u8272",
+  "water.normalMap": "\u6CD5\u7EBF\u8D34\u56FE",
+  "water.foamMap": "\u6CE1\u6CAB\u8D34\u56FE",
+  "library.item.stats": "\u5C5E\u6027",
+  "library.item.statsDetail": "\u751F\u547D\u3001\u653B\u51FB\u3001\u9632\u5FA1\u3001\u72B6\u6001\u6548\u679C\u548C\u7B49\u7EA7\u8868\u3002",
+  "library.item.statsPoints": "\u5C5E\u6027\u8868\n\u72B6\u6001\u6548\u679C\n\u7B49\u7EA7",
+  "library.item.combat": "\u6218\u6597",
+  "library.item.combatDetail": "\u8FD1\u6218\u3001\u5C04\u51FB\u3001\u6B66\u5668\u548C\u8FDE\u62DB\u3002\u4F9D\u8D56\u5C5E\u6027\u5305\u3002",
+  "library.item.combatPoints": "\u6B66\u5668\u4E0E\u62DB\u5F0F\n\u8FD1\u6218\u548C\u5C04\u51FB\u7EC4\u4EF6",
+  "library.item.perception": "\u611F\u77E5",
+  "library.item.perceptionDetail": "\u7D22\u654C\u548C\u5237\u602A\u3002",
+  "library.item.perceptionPoints": "\u7D22\u654C\n\u5237\u602A",
+  "library.item.inventory": "\u80CC\u5305",
+  "library.item.inventoryDetail": "\u7269\u54C1\u3001\u5BB9\u5668\u548C\u5730\u4E0A\u7684\u6389\u843D\u7269\u3002",
+  "library.item.inventoryPoints": "\u7269\u54C1\u8868\n\u5BB9\u5668\u4E0E\u6389\u843D",
+  "library.item.dialogue": "\u5BF9\u8BDD",
+  "library.item.dialogueDetail": "\u5BF9\u8BDD\u548C\u4EFB\u52A1\u8FFD\u8E2A\u3002",
+  "library.item.dialoguePoints": "\u5BF9\u8BDD\n\u4EFB\u52A1",
+  "library.item.rts": "\u5373\u65F6\u7B56\u7565",
+  "library.item.rtsDetail": "\u6846\u9009\u3001\u7F16\u7EC4\u548C\u5355\u4F4D\u6307\u4EE4\u3002\u4E13\u5C5E\u5305\uFF0C\u4E0D\u662F\u793A\u4F8B\u9879\u76EE\u3002",
+  "library.item.rtsPoints": "\u6846\u9009\u4E0E\u7F16\u7EC4\n\u5355\u4F4D\u6307\u4EE4",
+  "library.item.rpg": "\u89D2\u8272\u626E\u6F14",
+  "library.item.rpgDetail": "\u628A\u5C5E\u6027\u3001\u80CC\u5305\u3001\u5BF9\u8BDD\u548C\u4EFB\u52A1\u6536\u6210\u4E00\u5957\u89D2\u8272\u626E\u6F14\u89C4\u5219\u3002",
+  "library.item.rpgPoints": "\u89D2\u8272\u6210\u957F\n\u4EFB\u52A1\u6D41\u7A0B",
+  "library.item.characters": "\u89D2\u8272\u4E0E\u52A8\u753B",
+  "library.item.charactersDetail": "\u5B98\u65B9\u4EBA\u5F62\u548C\u5E38\u7528\u52A8\u4F5C\u3002\u5BFC\u5165\u540E\u8FDB\u5165\u9879\u76EE\u8D44\u6E90\u3002",
+  "library.item.charactersPoints": "\u4EBA\u5F62\u6A21\u578B\n\u8D70\u8DD1\u8DF3\u52A8\u4F5C",
+  "library.item.environments": "\u573A\u666F\u5957\u4EF6",
+  "library.item.environmentsDetail": "\u5730\u9762\u3001\u5CA9\u77F3\u548C\u5E38\u7528\u6446\u4EF6\u3002",
+  "library.item.environmentsPoints": "\u6A21\u5757\u5316\u573A\u666F\n\u6446\u4EF6",
+  "library.item.vfx": "\u7C92\u5B50\u9884\u8BBE",
+  "library.item.vfxDetail": "\u505A\u597D\u7684\u7206\u70B8\u3001\u62D6\u5C3E\u548C\u547D\u4E2D\u6548\u679C\u3002\u64AD\u653E\u4ECD\u8981\u6253\u5F00\u7C92\u5B50\u80FD\u529B\u3002",
+  "library.item.vfxPoints": "\u547D\u4E2D\u4E0E\u7206\u70B8\n\u62D6\u5C3E",
+  "hub.noBlock": "\u4E0D\u963B\u65AD",
+  "menu.projectMenu": "\u9879\u76EE",
+  "menu.hub": "\u7BA1\u7406\u4E2D\u5FC3",
+  "menu.help": "\u5E2E\u52A9",
+  "menu.helpSite": "\u5B98\u65B9\u7F51\u7AD9",
+  "menu.helpSupport": "\u6280\u672F\u652F\u6301",
+  "menu.about": "\u5173\u4E8E",
+  "menu.aboutBody": "AI\u667A\u80FD\u6E38\u620F\u5F00\u53D1\u5E73\u53F0",
+  "menu.views": "\u89C6\u56FE",
+  "menu.display": "\u663E\u793A",
+  "menu.savedDirectory": "\u5DF2\u4FDD\u5B58\u5230 {name}",
+  "menu.import": "\u5BFC\u5165\u8D44\u6E90",
+  "menu.extractPackage": "\u5BFC\u5165 UnityPackage\u2026",
+  "menu.undo": "\u64A4\u9500",
+  "menu.redo": "\u91CD\u505A",
+  "menu.duplicate": "\u5C31\u5730\u590D\u5236",
+  "menu.copy": "\u62F7\u8D1D",
+  "menu.paste": "\u7C98\u8D34",
+  "menu.group": "\u6210\u7EC4",
+  "menu.ground": "\u8D34\u5730",
+  "menu.delete": "\u5220\u9664",
+  "menu.selectAll": "\u5168\u9009",
+  "menu.empty": "\u7A7A\u7269\u4F53",
+  "menu.meshes": "\u51E0\u4F55\u4F53",
+  "menu.lights": "\u706F\u5149",
+  "menu.devices": "\u73A9\u6CD5\u88C5\u7F6E",
+  "menu.camera": "\u76F8\u673A",
+  "menu.effect": "\u7279\u6548",
+  "menu.screen": "\u754C\u9762",
+  "menu.spline": "Spline \u66F2\u7EBF",
+  "component.add": "\u6DFB\u52A0\u7EC4\u4EF6",
+  "component.search": "\u641C\u7D22\u7EC4\u4EF6\u2026",
+  "component.remove": "\u79FB\u9664\u7EC4\u4EF6",
+  "component.reset": "\u91CD\u7F6E\u4E3A\u9ED8\u8BA4",
+  "component.added": "\u5DF2\u6DFB\u52A0",
+  "component.empty": "\u6CA1\u6709\u5339\u914D\u7684\u7EC4\u4EF6",
+  "component.group.character": "\u89D2\u8272\u4E0E\u955C\u5934",
+  "component.group.devices": "\u573A\u666F\u88C5\u7F6E",
+  "component.group.world": "\u7269\u7406\u4E0E\u5BFC\u822A",
+  "component.group.pack": "\u73A9\u6CD5\u4E0E\u9886\u57DF\u5305",
+  "menu.focus": "\u805A\u7126\u9009\u4E2D",
+  "menu.alignCamera": "\u5BF9\u9F50\u5230\u5F53\u524D\u89C6\u56FE",
+  "menu.alignView": "\u8DF3\u8F6C\u5230\u8BE5\u955C\u5934\u89C6\u89D2",
+  "menu.focusAll": "\u805A\u7126\u5168\u90E8",
+  "menu.viewTop": "\u9876\u89C6\u56FE",
+  "menu.viewFront": "\u524D\u89C6\u56FE",
+  "menu.viewRight": "\u4FA7\u89C6\u56FE",
+  "menu.viewPersp": "\u900F\u89C6",
+  "menu.viewBottom": "\u5E95\u89C6\u56FE",
+  "menu.viewBack": "\u540E\u89C6\u56FE",
+  "menu.viewLeft": "\u5DE6\u89C6\u56FE",
+  "menu.grid": "\u663E\u793A\u7F51\u683C",
+  "menu.snap": "\u7F51\u683C\u5438\u9644",
+  "menu.resetLayout": "\u91CD\u7F6E\u5E03\u5C40",
+  "menu.settings": "\u8BBE\u7F6E",
+  "menu.saved": "\u5DF2\u4FDD\u5B58\u5230\u672C\u5730\u7F13\u5B58",
+  "kind.empty": "\u7A7A\u7269\u4F53",
+  "kind.box": "\u6B63\u65B9\u4F53",
+  "kind.sphere": "\u7403\u4F53",
+  "kind.plane": "\u5E73\u9762",
+  "kind.capsule": "\u80F6\u56CA",
+  "kind.cylinder": "\u5706\u67F1\u4F53",
+  "kind.cone": "\u5706\u9525\u4F53",
+  "kind.model": "\u6A21\u578B",
+  "kind.directional-light": "\u65B9\u5411\u5149",
+  "kind.point-light": "\u70B9\u5149\u6E90",
+  "kind.spot-light": "\u805A\u5149\u706F",
+  "kind.hemisphere-light": "\u534A\u7403\u5149",
+  "kind.camera": "\u76F8\u673A",
+  "kind.effect": "\u7279\u6548",
+  "kind.screen": "\u754C\u9762",
+  "kind.spline": "Spline \u66F2\u7EBF",
+  "tool.newScene": "\u65B0\u5EFA\u573A\u666F",
+  "tool.save": "\u4FDD\u5B58\u5230\u672C\u5730\u7F13\u5B58",
+  "tool.undo": "\u64A4\u9500",
+  "tool.redo": "\u91CD\u505A",
+  "tool.move": "\u79FB\u52A8 (W)",
+  "tool.rotate": "\u65CB\u8F6C (E)",
+  "tool.scale": "\u7F29\u653E (R)",
+  "tool.world": "\u4E16\u754C",
+  "tool.local": "\u5C40\u90E8",
+  "tool.snap": "\u7F51\u683C\u5438\u9644",
+  "tool.grid": "\u663E\u793A\u7F51\u683C",
+  "tool.ground": "\u8D34\u5730",
+  "tool.originCenter": "\u624B\u67C4\u5728\u5305\u56F4\u76D2\u4E2D\u5FC3",
+  "tool.originPivot": "\u624B\u67C4\u5728\u8F74\u5FC3",
+  "tool.center": "\u4E2D\u5FC3",
+  "tool.pivot": "\u8F74\u5FC3",
+  "tool.play": "\u8BD5\u73A9 (Ctrl+P)",
+  "tool.pause": "\u6682\u505C (Ctrl+P)",
+  "tool.playLabel": "\u8BD5\u73A9",
+  "tool.pauseLabel": "\u6682\u505C",
+  "tool.stop": "\u505C\u6B62 (Ctrl+Shift+P)",
+  "tool.history": "\u5386\u53F2",
+  "status.unnamed": "\u672A\u547D\u540D\u573A\u666F",
+  "status.playing": "\u8BD5\u73A9\u4E2D",
+  "status.paused": "\u5DF2\u6682\u505C",
+  "status.ready": "\u5C31\u7EEA",
+  "status.objects": "\u7269\u4F53",
+  "status.none": "\u672A\u9009\u62E9",
+  "status.selected": "\u5DF2\u9009 {count} \u4E2A",
+  "status.move": "\u79FB\u52A8",
+  "status.rotate": "\u65CB\u8F6C",
+  "status.scale": "\u7F29\u653E",
+  "status.world": "\u4E16\u754C",
+  "status.local": "\u5C40\u90E8",
+  "status.center": "\u4E2D\u5FC3",
+  "status.pivot": "\u8F74\u5FC3",
+  "status.snapOn": "\u5438\u9644 {step}",
+  "status.snapOff": "\u5438\u9644\u5173",
+  "status.warming": "\u6B63\u5728\u52A0\u8F7D\u8D44\u6E90 {completed}/{total}",
+  "panel.project": "\u8D44\u6E90",
+  "panel.viewport": "3D \u89C6\u53E3",
+  "panel.console": "\u63A7\u5236\u53F0",
+  "panel.scene": "\u573A\u666F",
+  "panel.inspector": "\u5C5E\u6027",
+  "panel.history": "\u5386\u53F2",
+  "panel.unknown": "\u672A\u77E5\u9762\u677F",
+  "settings.title": "\u7F16\u8F91\u5668\u8BBE\u7F6E",
+  "settings.general": "\u5E38\u89C4",
+  "settings.language": "\u8BED\u8A00",
+  "settings.languageSystem": "\u8DDF\u968F\u7CFB\u7EDF",
+  "settings.languageZh": "\u4E2D\u6587",
+  "settings.languageEn": "English",
+  "settings.autoSave": "\u81EA\u52A8\u4FDD\u5B58",
+  "settings.autoSaveNote": "\u7F16\u8F91\u540E\u5199\u5165\u672C\u5730\u7F13\u5B58\u3002\u5173\u95ED\u540E\u4ECD\u4F1A\u5728\u79BB\u5F00\u9875\u9762\u524D\u4FDD\u5B58\u3002",
+  "settings.openLastProject": "\u542F\u52A8\u65F6\u6253\u5F00\u4E0A\u6B21\u9879\u76EE",
+  "settings.openLastProjectNote": "\u542F\u52A8\u65F6\u6253\u5F00\u6700\u8FD1\u4E00\u6B21\u7684\u9879\u76EE\u76EE\u5F55\u3002",
+  "settings.uiScale": "\u754C\u9762\u7F29\u653E",
+  "settings.close": "\u5173\u95ED",
+  "inspector.modelRenderer": "\u6A21\u578B\u6E32\u67D3",
+  "inspector.castShadow": "\u6295\u5C04\u9634\u5F71",
+  "inspector.receiveShadow": "\u63A5\u6536\u9634\u5F71",
+  "inspector.materialSlots": "\u6750\u8D28\u69FD",
+  "inspector.parts": "\u90E8\u4F4D",
+  "inspector.hierarchy": "\u5C42\u7EA7",
+  "inspector.partHint": "\u8FD9\u91CC\u53EA\u5F00\u5173\u663E\u793A\uFF0C\u90E8\u4F4D\u4ECD\u7559\u5728\u6A21\u578B\u91CC\u3002",
+  "inspector.sockets": "\u9AA8\u9ABC\u6302\u70B9",
+  "inspector.socketHint": "\u6302\u70B9\u662F\u89D2\u8272\u7684\u5B50\u7269\u4F53\uFF0C\u6BCF\u5E27\u8D34\u7740\u8FD9\u6839\u9AA8\u5934\u3002\u6B66\u5668\u518D\u4F5C\u4E3A\u6302\u70B9\u7684\u5B50\u7269\u4F53\uFF0C\u7528\u5B83\u81EA\u5DF1\u7684\u4F4D\u7F6E\u8C03\u63E1\u6301\u3002",
+  "inspector.extractSocket": "\u63D0\u51FA\u6302\u70B9",
+  "inspector.socketReady": "\u5DF2\u63D0\u51FA",
+  "inspector.searchBones": "\u641C\u7D22\u9AA8\u9ABC",
+  "inspector.backToModel": "\u8FD4\u56DE\u6A21\u578B",
+  "inspector.partVisible": "\u663E\u793A\u90E8\u4F4D",
+  "inspector.showAllSlots": "\u5168\u90E8 ({count})",
+  "inspector.partSlotsOnly": "\u4EC5\u6B64\u90E8\u4F4D",
+  "inspector.sharedSlotHint": "\u6B64\u6750\u8D28\u4E5F\u88AB\u5176\u4ED6\u90E8\u4F4D\u5171\u7528\uFF0C\u4FEE\u6539\u4F1A\u540C\u6B65\u751F\u6548\u3002",
+  "inspector.bonePath": "\u8DEF\u5F84",
+  "inspector.jumpSocket": "\u9009\u4E2D\u6302\u70B9",
+  "inspector.followModel": "\u8DDF\u968F\u6A21\u578B",
+  "inspector.on": "\u5F00\u542F",
+  "inspector.off": "\u5173\u95ED",
+  "inspector.partMaterial": "\u5355\u72EC\u6750\u8D28",
+  "inspector.followSlot": "\u8DDF\u968F\u6750\u8D28\u69FD",
+  "inspector.searchSlots": "\u641C\u7D22\u6750\u8D28\u69FD",
+  "inspector.slot": "\u69FD {index}",
+  "inspector.inline": "\u5185\u5D4C",
+  "inspector.extract": "\u63D0\u53D6\u4E3A\u6750\u8D28\u8D44\u6E90",
+  "inspector.reveal": "\u5728\u8D44\u6E90\u91CC\u6253\u5F00",
+  "inspector.clear": "\u6E05\u9664\u5F15\u7528\uFF0C\u6062\u590D\u5185\u5D4C\u6750\u8D28",
+  "inspector.expandSlot": "\u5C55\u5F00\u6750\u8D28\u69FD",
+  "inspector.collapseSlot": "\u6298\u53E0\u6750\u8D28\u69FD",
+  "inspector.linkedNote": "\u8FD9\u4E2A\u69FD\u5F15\u7528\u6750\u8D28\u8D44\u6E90\u3002\u8FD9\u91CC\u7684\u4FEE\u6539\u4F1A\u4F5C\u7528\u5230\u6240\u6709\u4F7F\u7528\u5B83\u7684\u7269\u4F53\u3002",
+  "material.shader": "\u7740\u8272\u5668",
+  "material.lit": "\u6807\u51C6\u5149\u7167",
+  "material.unityStandard": "Unity \u6807\u51C6 (R\u91D1\u5C5E / A\u5149\u6ED1)",
+  "material.unityMetallicGloss": "\u91D1\u5C5E\u5149\u6ED1",
+  "material.unityMetallicGlossHint": "Unity \u8D34\u56FE\u7EA6\u5B9A\uFF1A\u7EA2\u901A\u9053\u91D1\u5C5E\uFF0CAlpha \u901A\u9053\u5149\u6ED1\u5EA6\uFF081-\u7C97\u7CD9\uFF09\uFF0C\u7EFF\u901A\u9053\u906E\u853D",
+  "material.particle": "\u7C92\u5B50\u65E0\u5149",
+  "material.particleBlend": "\u6DF7\u5408",
+  "material.blendAlpha": "\u900F\u660E",
+  "material.blendPremultiply": "\u9884\u4E58",
+  "material.blendAdditive": "\u53E0\u52A0",
+  "material.blendMultiply": "\u76F8\u4E58",
+  "material.unlitColor": "\u65E0\u5149\u7167\u989C\u8272",
+  "material.unlitTexture": "\u65E0\u5149\u7167\u8D34\u56FE",
+  "material.surface": "\u8868\u9762",
+  "material.color": "\u989C\u8272",
+  "material.baseMap": "\u5E95\u8272",
+  "material.metalness": "\u91D1\u5C5E",
+  "material.roughness": "\u7C97\u7CD9",
+  "material.metallicRoughness": "\u91D1\u5C5E\u7C97\u7CD9",
+  "material.metallicRoughnessHint": "\u7EFF\u901A\u9053\u7C97\u7CD9\uFF0C\u84DD\u901A\u9053\u91D1\u5C5E\uFF0C\u7EA2\u901A\u9053\u906E\u853D",
+  "material.normal": "\u6CD5\u7EBF",
+  "material.normalScale": "\u6CD5\u7EBF\u5F3A\u5EA6",
+  "material.ao": "\u906E\u6321",
+  "material.aoMap": "\u906E\u6321\u56FE",
+  "material.aoMapHint": "\u7559\u7A7A\u65F6\u4F7F\u7528\u91D1\u5C5E\u7C97\u7CD9\u56FE\u7684\u7EA2\u901A\u9053",
+  "material.emission": "\u53D1\u5149",
+  "material.emissionColor": "\u53D1\u5149",
+  "material.emissionIntensity": "\u53D1\u5149\u5F3A\u5EA6",
+  "material.emissionMap": "\u53D1\u5149\u56FE",
+  "material.transparency": "\u900F\u660E",
+  "material.mode": "\u6A21\u5F0F",
+  "material.opaque": "\u4E0D\u900F\u660E",
+  "material.blend": "\u6DF7\u5408",
+  "material.clip": "\u88C1\u526A",
+  "material.opacity": "\u4E0D\u900F\u660E\u5EA6",
+  "material.cutoff": "\u88C1\u526A\u9608\u503C",
+  "material.render": "\u6E32\u67D3",
+  "material.cull": "\u5254\u9664",
+  "material.cullBack": "\u80CC\u9762",
+  "material.cullFront": "\u6B63\u9762",
+  "material.cullOff": "\u5173\u95ED",
+  "material.depthWrite": "\u6DF1\u5EA6\u5199\u5165",
+  "material.wireframe": "\u7EBF\u6846",
+  "material.none": "\u65E0",
+  "inspector.playBanner": "\u8BD5\u73A9\u4E2D\u53EF\u4EE5\u6539\u53C2\u6570\u3002\u505C\u6B62\u540E\u4F1A\u56DE\u5230\u8BD5\u73A9\u524D\u3002",
+  "inspector.keepPlayChanges": "\u4FDD\u7559\u4FEE\u6539",
+  "tool.keepPlayChanges": "\u4FDD\u7559\u8BD5\u73A9\u671F\u95F4\u4FEE\u6539\u7684\u7EC4\u4EF6\u3001\u6750\u8D28\u3001\u706F\u5149\u3001\u753B\u9762\uFF0C\u4EE5\u53CA\u955C\u5934\u6EDA\u8F6E\u8DDD\u79BB\u548C\u53F3\u952E\u89D2\u5EA6\uFF08\u4E0D\u8986\u76D6\u8DD1\u52A8\u540E\u7684\u5750\u6807\uFF09",
+  "log.keptPlayChanges": "\u5DF2\u4FDD\u7559\u8BD5\u73A9\u671F\u95F4\u4FEE\u6539\u7684\u53C2\u6570",
+  "inspector.multi": "\u5DF2\u9009\u62E9 {count} \u4E2A\u7269\u4F53\u3002\u8FD9\u91CC\u6539\u7684\u662F\u4E3B\u9009\u4E2D\u9879\uFF0C\u624B\u67C4\u4F1A\u4F5C\u7528\u5230\u5168\u90E8\u672A\u9501\u5B9A\u7269\u4F53\u3002",
+  "inspector.locked": "\u5DF2\u9501\u5B9A",
+  "inspector.visible": "\u663E\u793A",
+  "inspector.unlock": "\u89E3\u9501",
+  "inspector.lockHint": "\u9501\u5B9A\u540E\u89C6\u53E3\u70B9\u9009\u7A7F\u900F",
+  "inspector.sceneSettings": "\u573A\u666F\u8BBE\u7F6E",
+  "inspector.transform": "\u53D8\u6362",
+  "inspector.position": "\u4F4D\u7F6E",
+  "inspector.rotation": "\u65CB\u8F6C",
+  "inspector.scale": "\u7F29\u653E",
+  "inspector.resetPosition": "\u91CD\u7F6E\u4F4D\u7F6E",
+  "inspector.resetRotation": "\u91CD\u7F6E\u65CB\u8F6C",
+  "inspector.resetScale": "\u91CD\u7F6E\u7F29\u653E",
+  "inspector.model": "\u6A21\u578B\u52A8\u753B",
+  "character.title": "\u89D2\u8272",
+  "character.enable": "\u8BD5\u73A9\u65F6\u53EF\u64CD\u63A7",
+  "character.driver": "\u79FB\u52A8\u9A71\u52A8",
+  "character.driver.capsule": "\u80F6\u56CA",
+  "character.driver.nav": "\u5BFC\u822A",
+  "character.driver.hybrid": "\u6DF7\u5408",
+  "character.mode": "\u671D\u5411",
+  "character.mode.adventure": "\u7B2C\u4E09\u4EBA\u79F0\u81EA\u7531",
+  "character.mode.strafe": "\u8D8A\u80A9\u6A2A\u79FB",
+  "character.mode.lockOn": "\u9501\u5B9A\u73AF\u7ED5",
+  "character.mode.pointAndClick": "\u70B9\u51FB\u5730\u9762",
+  "character.mode.topDown": "\u4FEF\u89C6\u5168\u5411",
+  "character.mode.side25d": "\u6A2A\u7248",
+  "character.mode.firstPerson": "\u7B2C\u4E00\u4EBA\u79F0",
+  "character.click": "\u70B9\u51FB\u952E",
+  "character.clickRight": "\u53F3\u952E",
+  "character.clickLeft": "\u5DE6\u952E",
+  "character.walk": "\u884C\u8D70\u901F\u5EA6",
+  "character.turn": "\u8F6C\u8EAB\u901F\u5EA6 (\xB0/s)",
+  "character.sprint": "\u75BE\u8DD1\u500D\u7387",
+  "character.jump": "\u8D77\u8DF3\u901F\u5EA6",
+  "character.jumps": "\u8DF3\u8DC3\u6BB5\u6570",
+  "character.coyote": "\u79BB\u5730\u5BBD\u9650",
+  "character.buffer": "\u8DF3\u8DC3\u9884\u8F93\u5165",
+  "character.dash": "\u95EA\u907F",
+  "character.dashKey": "\u95EA\u907F\u952E",
+  "character.dashDistance": "\u95EA\u907F\u8DDD\u79BB",
+  "character.radius": "\u80F6\u56CA\u534A\u5F84",
+  "character.height": "\u80F6\u56CA\u9AD8\u5EA6",
+  "character.capsuleOffset": "\u504F\u79FB",
+  "character.physicsInteract": "\u7269\u7406\u4EA4\u4E92",
+  "character.mass": "\u4F53\u91CD (kg)",
+  "character.pushStrength": "\u63A8\u529B\u500D\u7387",
+  "character.swim": "\u9047\u6C34\u6E38\u6CF3",
+  "character.swimSpeed": "\u6C34\u4E2D\u79FB\u901F\u500D\u7387",
+  "character.swimHeightOffset": "\u6C34\u4E2D\u9AD8\u5EA6\u504F\u79FB",
+  "character.gravity": "\u91CD\u529B",
+  "character.clickStop": "\u5230\u8FBE\u534A\u5F84",
+  "character.footstep": "\u811A\u6B65\u95F4\u9694",
+  "character.footstepJuice": "\u811A\u6B65\u6253\u51FB\u611F",
+  "character.dashDuration": "\u95EA\u907F\u65F6\u957F",
+  "character.dashInvincible": "\u65E0\u654C\u65F6\u95F4",
+  "character.dashCooldown": "\u95EA\u907F\u51B7\u5374",
+  "character.section.control": "\u63A7\u5236",
+  "character.section.move": "\u79FB\u52A8",
+  "character.section.body": "\u4F53\u578B",
+  "character.section.clips": "\u5E95\u52A8\u753B",
+  "character.lock": "\u9501\u5B9A\u76EE\u6807",
+  "character.pickLock": "\u9009\u62E9\u9501\u5B9A\u76EE\u6807",
+  "character.idle": "\u5F85\u673A\u7247\u6BB5",
+  "character.walkClip": "\u884C\u8D70\u7247\u6BB5",
+  "character.runClip": "\u75BE\u8DD1\u7247\u6BB5",
+  "character.jumpClip": "\u8D77\u8DF3",
+  "character.airClip": "\u6EDE\u7A7A",
+  "character.landClip": "\u843D\u5730",
+  "character.dodgeClip": "\u95EA\u907F\u7247\u6BB5",
+  "character.swimIdleClip": "\u6C34\u4E2D\u5F85\u673A",
+  "character.swimClip": "\u6E38\u6CF3\u7247\u6BB5",
+  "character.hint": "WASD \u79FB\u52A8\uFF0CShift \u75BE\u8DD1\uFF0C\u7A7A\u683C\u8DF3\uFF0C\u95EA\u907F\u952E\u9ED8\u8BA4 C\u3002\u70B9\u51FB\u6A21\u5F0F\u7528\u6240\u9009\u9F20\u6807\u952E\u70B9\u5730\u9762\u3002\u955C\u5934\u7531\u8DDF\u968F\u955C\u5934\u7EC4\u4EF6\u63A7\u5236\u3002",
+  "camera.title": "\u8DDF\u968F\u955C\u5934",
+  "camera.enable": "\u8BD5\u73A9\u65F6\u8DDF\u968F",
+  "camera.hint": "\u955C\u5934\u770B\u5411\u89C2\u5BDF\u70B9\uFF0C\u5E76\u4FDD\u6301\u8FD9\u6BB5\u504F\u79FB\u3002\u53F3\u952E\u6216\u9F20\u6807\u73AF\u7ED5\u53EF\u4EE5\u8F6C\u89C6\u89D2\uFF0C\u9632\u7A7F\u5899\u4F1A\u5728\u78B0\u5230\u969C\u788D\u524D\u628A\u955C\u5934\u62C9\u8FD1\u3002",
+  "camera.preset": "\u673A\u4F4D\u9884\u8BBE",
+  "camera.presetPick": "\u5957\u7528\u4E00\u79CD\u673A\u4F4D",
+  "camera.target": "\u8DDF\u968F\u76EE\u6807",
+  "camera.targetSelf": "\u81EA\u5DF1",
+  "camera.pickTarget": "\u9009\u62E9\u8DDF\u968F\u76EE\u6807",
+  "camera.orbit": "\u73AF\u7ED5",
+  "camera.orbit.rightDrag": "\u6309\u4F4F\u53F3\u952E",
+  "camera.orbit.mouse": "\u9F20\u6807\u81EA\u7531\u8F6C",
+  "camera.orbit.none": "\u56FA\u5B9A\u89D2\u5EA6",
+  "camera.fov": "\u89C6\u91CE",
+  "camera.damping": "\u8DDF\u968F\u963B\u5C3C",
+  "camera.collision": "\u9632\u7A7F\u5899",
+  "camera.zoom": "\u6EDA\u8F6E\u7F29\u653E",
+  "camera.zoomSpeed": "\u7F29\u653E\u901F\u5EA6",
+  "camera.minDistance": "\u6700\u8FD1\u8DDD\u79BB",
+  "camera.maxDistance": "\u6700\u8FDC\u8DDD\u79BB",
+  "camera.offset": "\u504F\u79FB",
+  "camera.pivot": "\u89C2\u5BDF\u70B9",
+  "camera.sensitivity": "\u73AF\u7ED5\u7075\u654F\u5EA6",
+  "camera.minPitch": "\u6700\u4F4E\u4FEF\u4EF0",
+  "camera.maxPitch": "\u6700\u9AD8\u4FEF\u4EF0",
+  "camera.local": "\u8DDF\u968F\u671D\u5411",
+  "camera.look": "\u770B\u5411\u76EE\u6807",
+  "camera.collisionRadius": "\u63A2\u6D4B\u534A\u5F84",
+  "rule.title": "\u5F8B\u4EE4",
+  "rule.hint": "\u68C0\u67E5\u5668\u91CC\u53EA\u770B\u6458\u8981\u3002\u89E6\u53D1\u3001\u6761\u4EF6\u548C\u52A8\u4F5C\u6D41\u5728\u5DE5\u4F5C\u53F0\u91CC\u7F16\u6392\u3002\u6761\u4EF6\u4E0D\u6210\u7ACB\u65F6\uFF0C\u91CC\u9762\u7684\u7B49\u5F85\u4E0D\u4F1A\u6267\u884C\u3002",
+  "rule.add": "\u65B0\u589E\u89C4\u5219\u5E76\u7F16\u8F91",
+  "rule.addStep": "\u6DFB\u52A0\u52A8\u4F5C",
+  "rule.remove": "\u5220\u9664",
+  "rule.limit": "\u6700\u591A\u5D4C\u5957 3 \u5C42\u3002",
+  "rule.cond": "\u6761\u4EF6",
+  "rule.message": "\u6D88\u606F",
+  "rule.key": "\u6309\u952E",
+  "rule.keyHint": "\u70B9\u8FD9\u91CC\u540E\u6309\u4E0B\u6309\u952E",
+  "key.hint": "\u70B9\u51FB\u540E\u6309\u4E0B\u6309\u952E",
+  "key.listening": "\u8BF7\u6309\u952E\u2026",
+  "rule.tag": "\u6807\u7B7E",
+  "rule.left": "\u5DE6\u503C",
+  "rule.op": "\u6BD4\u8F83",
+  "rule.right": "\u53F3\u503C",
+  "rule.var": "\u53D8\u91CF",
+  "rule.value": "\u6570\u503C",
+  "rule.seconds": "\u79D2",
+  "rule.clip": "\u7247\u6BB5",
+  "rule.trigger.playStart": "\u8BD5\u73A9\u5F00\u59CB",
+  "rule.trigger.interact": "\u4EA4\u4E92",
+  "rule.trigger.key": "\u6309\u952E",
+  "rule.trigger.message": "\u6536\u5230\u6D88\u606F",
+  "rule.trigger.enter": "\u8FDB\u5165\u533A\u57DF",
+  "rule.trigger.exit": "\u79BB\u5F00\u533A\u57DF",
+  "rule.trigger.hit": "\u53D7\u5230\u547D\u4E2D",
+  "rule.cond.always": "\u59CB\u7EC8\u6210\u7ACB",
+  "rule.cond.hasTag": "\u6301\u6709\u6807\u7B7E",
+  "rule.cond.missingTag": "\u6CA1\u6709\u6807\u7B7E",
+  "rule.cond.compare": "\u53D8\u91CF\u6BD4\u8F83",
+  "rule.cond.formula": "\u516C\u5F0F\u4E3A\u771F",
+  "rule.step.message": "\u53D1\u9001\u6D88\u606F",
+  "rule.step.setVar": "\u5199\u53D8\u91CF",
+  "rule.step.addTag": "\u6DFB\u52A0\u6807\u7B7E",
+  "rule.step.removeTag": "\u79FB\u9664\u6807\u7B7E",
+  "rule.step.wait": "\u7B49\u5F85\u79D2\u6570",
+  "rule.step.waitFrame": "\u7B49\u5F85\u4E00\u5E27",
+  "rule.step.waitUpper": "\u7B49\u5230\u8986\u76D6\u7ED3\u675F",
+  "rule.step.waitMark": "\u7B49\u5230\u8FDB\u5EA6",
+  "rule.step.playClip": "\u64AD\u653E\u7247\u6BB5",
+  "rule.step.playUpper": "\u64AD\u653E\u8986\u76D6",
+  "rule.step.stance": "\u4FDD\u6301\u59FF\u6001",
+  "rule.step.if": "\u5982\u679C",
+  "rule.step.gather": "\u6536\u96C6\u5468\u56F4",
+  "rule.step.each": "\u904D\u5386\u76EE\u6807",
+  "rule.step.switchState": "\u5207\u6362\u72B6\u6001",
+  "rule.step.showUi": "\u663E\u793A\u754C\u9762",
+  "rule.step.hideUi": "\u9690\u85CF\u754C\u9762",
+  "rule.step.lock": "\u9501\u5B9A\u76EE\u6807",
+  "rule.step.camera": "\u5207\u6362\u955C\u5934",
+  "rule.step.moveTo": "\u8D70\u5230",
+  "rule.step.spawn": "\u751F\u6210\u9884\u5236\u4F53",
+  "rule.step.hide": "\u9500\u6BC1\u81EA\u8EAB",
+  "rule.step.score": "\u52A0\u5206",
+  "rule.step.juice": "\u64AD\u653E\u6253\u51FB\u611F",
+  "rule.step.sound": "\u64AD\u653E\u58F0\u97F3",
+  "rule.sound.sfx": "\u97F3\u6548",
+  "rule.sound.music": "\u97F3\u4E50",
+  "rule.step.log": "\u8F93\u51FA\u5230\u63A7\u5236\u53F0",
+  "rule.formula": "\u516C\u5F0F\uFF0C\u5927\u4E8E 0 \u6210\u7ACB\u3002\u53EF\u7528 clamp(\u503C, \u6700\u5C0F, \u6700\u5927) \u548C msg.\u5B57\u6BB5",
+  "rule.mark": "\u8FDB\u5EA6 0 \u5230 1",
+  "rule.target": "\u540D\u79F0",
+  "rule.offset": "\u504F\u79FB x,y,z",
+  "rule.amount": "\u5206\u6570\u6216\u516C\u5F0F",
+  "rule.radius": "\u534A\u5F84",
+  "rule.angle": "\u5939\u89D2\uFF0C0 \u4E3A\u4EFB\u610F",
+  "rule.pickTag": "\u9009\u62E9\u73A9\u6CD5\u6807\u7B7E",
+  "rule.pickJuice": "\u9009\u62E9\u6253\u51FB\u611F",
+  "rule.pickNode": "\u9009\u62E9\u7269\u4F53",
+  "rule.pickCamera": "\u9009\u62E9\u955C\u5934",
+  "rule.pickScreen": "\u9009\u62E9\u754C\u9762",
+  "rule.pickPrefab": "\u9009\u62E9\u9884\u5236\u4F53",
+  "rule.pickEmpty": "\u6CA1\u6709\u53EF\u9009\u9879",
+  "rule.packMissing": "\u7F3A\u5931\uFF08{kind}\uFF09",
+  "rule.packDisabledHint": "\u6240\u5C5E\u73A9\u6CD5\u5305\u672A\u5F00\u542F\uFF0C\u8BD5\u73A9\u65F6\u8DF3\u8FC7",
+  "rule.logText": "\u8981\u8F93\u51FA\u7684\u6587\u672C",
+  "rule.open": "\u6253\u5F00\u5F8B\u4EE4\u5DE5\u4F5C\u53F0\uFF08{count} \u6761\uFF09",
+  "rule.note": "\u4EA4\u4E92\u3001\u8FDB\u51FA\u533A\u57DF\u3001\u547D\u4E2D\u548C\u6D88\u606F\u90FD\u4F1A\u9001\u5230\u8FD9\u91CC\u3002\u70B9\u4E00\u6761\u89C4\u5219\uFF0C\u6216\u6253\u5F00\u5DE5\u4F5C\u53F0\u7F16\u6392\u3002",
+  "rule.unnamed": "\u672A\u547D\u540D\u89C4\u5219",
+  "rule.enabled": "\u542F\u7528\u6B64\u6761\u5F8B\u4EE4",
+  "rule.duplicate": "\u590D\u5236\u5F53\u524D\u89C4\u5219",
+  "rule.when": "\u5F53\u53D1\u751F\u4EE5\u4E0B\u4E8B\u4EF6\u65F6",
+  "rule.ifTitle": "\u4E14\u540C\u65F6\u6EE1\u8DB3\u4EE5\u4E0B\u6761\u4EF6",
+  "rule.doTitle": "\u6309\u987A\u5E8F\u6267\u884C",
+  "rule.addCond": "\u6DFB\u52A0\u6761\u4EF6",
+  "rule.noCond": "\u6CA1\u6709\u989D\u5916\u6761\u4EF6\uFF0C\u89E6\u53D1\u540E\u76F4\u63A5\u6267\u884C\u4E0B\u9762\u7684\u52A8\u4F5C\u3002",
+  "rule.noStep": "\u8FD8\u6CA1\u6709\u52A8\u4F5C\u3002",
+  "rule.addChild": "\u6DFB\u52A0\u5B50\u6B65\u9AA4",
+  "rule.rules": "\u89C4\u5219",
+  "rule.states": "\u72B6\u6001\u6811",
+  "rule.done": "\u5B8C\u6210\u5E76\u5173\u95ED",
+  "rule.workbench": "\u884C\u4E3A\u5F8B\u4EE4\u5DE5\u4F5C\u53F0",
+  "rule.count": "\u5171 {count} \u6761",
+  "rule.list": "\u5F8B\u4EE4\u89C4\u5219",
+  "rule.empty": "\u8FD8\u6CA1\u6709\u89C4\u5219\u3002\u70B9\u5DE6\u4E0A\u89D2\u65B0\u589E\u3002",
+  "rule.name": "\u89C4\u5219\u540D\u79F0",
+  "rule.triggerKind": "\u89E6\u53D1\u65F6\u673A",
+  "rule.alwaysPass": "\u59CB\u7EC8\u901A\u8FC7",
+  "rule.stateName": "\u72B6\u6001\u540D\u79F0",
+  "rule.enterCond": "\u8FDB\u5165\u6761\u4EF6",
+  "rule.enterHint": "\u53EA\u5728\u4F5C\u4E3A\u5B50\u72B6\u6001\u65F6\u5224\u65AD\u3002\u7559\u7A7A\u8868\u793A\u53EF\u4EE5\u8FDB\u5165\u3002",
+  "rule.jump": "\u8DF3\u8F6C\u5230\u522B\u7684\u72B6\u6001",
+  "rule.noJump": "\u6CA1\u6709\u8DF3\u8F6C\u65F6\u4F1A\u7559\u5728\u8FD9\u91CC\u3002",
+  "rule.addJump": "\u6DFB\u52A0\u8DF3\u8F6C",
+  "rule.pickState": "\u9009\u62E9\u76EE\u6807",
+  "rule.addState": "\u6DFB\u52A0\u72B6\u6001",
+  "rule.addChildState": "\u6DFB\u52A0\u5B50\u72B6\u6001",
+  "rule.noState": "\u8FD8\u6CA1\u6709\u72B6\u6001\u3002\u8D70\u8DEF\u4ECD\u7531\u89D2\u8272\u8D1F\u8D23\uFF0C\u8FD9\u91CC\u5199\u63A2\u7D22\u3001\u6218\u6597\u3001\u786C\u76F4\u8FD9\u7C7B\u72B6\u6001\u3002",
+  "rule.lane.enter": "\u8FDB\u5165",
+  "rule.lane.tick": "\u6BCF\u5E27",
+  "rule.lane.exit": "\u9000\u51FA",
+  "rule.lane.enterHint": "\u521A\u8FDB\u5165\u8FD9\u4E2A\u72B6\u6001\u65F6\u6267\u884C\u4E00\u6B21\u3002",
+  "rule.lane.tickHint": "\u7559\u5728\u8FD9\u4E2A\u72B6\u6001\u65F6\u53CD\u590D\u6267\u884C\u3002\u6301\u7EED\u6548\u679C\u8BF7\u52A0\u7B49\u5F85\uFF0C\u907F\u514D\u6BCF\u5E27\u90FD\u89E6\u53D1\u3002",
+  "rule.lane.exitHint": "\u79BB\u5F00\u8FD9\u4E2A\u72B6\u6001\u65F6\u6267\u884C\u4E00\u6B21\u3002",
+  "rule.live": "\u6B63\u5728\u6267\u884C",
+  "rule.waiting": "\u6B63\u5728\u7B49\u5F85",
+  "rule.footer": "\u4FEE\u6539\u4F1A\u8BB0\u5165\u64A4\u9500\u3002\u6761\u4EF6\u662F\u6807\u7B7E\u6216\u53D8\u91CF\u6BD4\u8F83\uFF0C\u5168\u90E8\u6210\u7ACB\u624D\u7EE7\u7EED\u3002",
+  "interact.title": "\u667A\u80FD\u4EA4\u4E92\u70B9",
+  "interact.enable": "\u53EF\u4EA4\u4E92",
+  "interact.prompt": "\u63D0\u793A\u6587\u6848",
+  "interact.key": "\u4EA4\u4E92\u952E",
+  "interact.radius": "\u534A\u5F84",
+  "interact.tag": "\u4EA4\u4E92\u8005\u6807\u7B7E",
+  "interact.any": "\u4EFB\u610F\u89D2\u8272",
+  "mover.title": "\u79FB\u52A8\u5E73\u53F0",
+  "mover.enable": "\u542F\u7528",
+  "mover.offset": "\u4F4D\u79FB",
+  "mover.duration": "\u5355\u7A0B\u79D2\u6570",
+  "mover.pause": "\u7AEF\u70B9\u505C\u987F",
+  "mover.carry": "\u8F7D\u4EBA\u534A\u5F84",
+  "mover.ping": "\u5F80\u8FD4",
+  "mover.auto": "\u8FDB\u573A\u5373\u52A8",
+  "mover.message": "\u542F\u52A8\u6D88\u606F",
+  "checkpoint.title": "\u68C0\u67E5\u70B9",
+  "checkpoint.enable": "\u542F\u7528",
+  "checkpoint.spawn": "\u521D\u59CB\u51FA\u751F\u70B9",
+  "checkpoint.radius": "\u6FC0\u6D3B\u534A\u5F84",
+  "checkpoint.delay": "\u91CD\u751F\u5EF6\u8FDF",
+  "checkpoint.abyss": "\u5760\u843D\u9AD8\u5EA6",
+  "checkpoint.message": "\u91CD\u751F\u6D88\u606F",
+  "score.title": "\u8BA1\u5206",
+  "score.enable": "\u542F\u7528",
+  "score.hint": "\u754C\u9762\u6587\u5B57\u7ED1\u5B9A\u53D8\u91CF objective\u3001score\u3001timeLeft",
+  "score.objective": "\u76EE\u6807\u6807\u9898",
+  "score.target": "\u76EE\u6807\u5206\u6570",
+  "score.interact": "\u6BCF\u6B21\u4EA4\u4E92",
+  "score.time": "\u9650\u65F6\u79D2\u6570",
+  "interact.message": "\u4EA4\u4E92\u6D88\u606F",
+  "interact.once": "\u53EA\u4EA4\u4E92\u4E00\u6B21",
+  "trigger.title": "\u89E6\u53D1\u533A",
+  "trigger.enable": "\u542F\u7528",
+  "trigger.radius": "\u534A\u5F84",
+  "trigger.tag": "\u5BF9\u8C61\u6807\u7B7E",
+  "trigger.enter": "\u8FDB\u5165\u6D88\u606F",
+  "trigger.exit": "\u79BB\u5F00\u6D88\u606F",
+  "trigger.once": "\u53EA\u89E6\u53D1\u4E00\u6B21",
+  "inspector.savePrefab": "\u5B58\u4E3A\u9884\u5236\u4F53",
+  "inspector.shortSavePrefab": "\u5B58\u9884\u5236",
+  "inspector.shortPreview": "\u9884\u89C8",
+  "prefab.edit": "\u6253\u5F00\u7269\u4F53\u6A21\u677F",
+  "prefab.shortEdit": "\u6253\u5F00",
+  "prefab.shortReveal": "\u5B9A\u4F4D",
+  "prefab.shortApply": "\u8986\u76D6",
+  "prefab.shortRevert": "\u8FD8\u539F",
+  "prefab.shortUnpack": "\u8131\u79BB",
+  "prefab.instance": "\u7269\u4F53\u6A21\u677F\u5B9E\u4F8B",
+  "prefab.apply": "\u8986\u76D6\u6A21\u677F",
+  "prefab.revert": "\u8FD8\u539F\u9884\u5236\u4F53",
+  "prefab.unpack": "\u8131\u79BB\u6A21\u677F",
+  "prefab.saveAs": "\u5B58\u4E3A\u7269\u4F53\u6A21\u677F\u2026",
+  "prefab.saveHint": "\u540D\u79F0\u7559\u7A7A\u5219\u4F7F\u7528\u300C{name}\u300D\u3002",
+  "prefab.reveal": "\u5B9A\u4F4D\u7269\u4F53\u6A21\u677F",
+  "prefab.openHint": "\u5355\u51FB\u6253\u5F00\u7269\u4F53\u6A21\u677F",
+  "prefab.cancel": "\u53D6\u6D88",
+  "prefab.confirm": "\u786E\u5B9A",
+  "prefab.discard": "\u4E0D\u4FDD\u5B58\u8FD4\u56DE",
+  "prefab.unpackTitle": "\u8131\u79BB\u7269\u4F53\u6A21\u677F",
+  "prefab.unpackMessage": "\u8131\u79BB\u540E\uFF0C\u8FD9\u4E2A\u5B9E\u4F8B\u4F1A\u53D8\u6210\u666E\u901A\u7269\u4F53\uFF0C\u4E0D\u518D\u8DDF\u968F\u6A21\u677F\u66F4\u65B0\u3002",
+  "prefab.alreadyInstance": "\u8FD9\u5DF2\u7ECF\u662F\u7269\u4F53\u6A21\u677F\u5B9E\u4F8B\u3002\u8BF7\u5148\u8131\u79BB\u6A21\u677F\uFF0C\u518D\u5B58\u6210\u65B0\u6A21\u677F\u3002",
+  "prefab.rebind": "\u91CD\u7ED1\u6A21\u677F",
+  "prefab.rebindPick": "\u9009\u62E9\u76EE\u6807\u6A21\u677F\u2026",
+  "prefab.rebound": "\u5DF2\u628A\u7F3A\u5931\u6A21\u677F\u7684\u5B9E\u4F8B\u6539\u7ED1\u5230\u65B0\u6A21\u677F",
+  "prefab.editing": "\u6B63\u5728\u7F16\u8F91\u9884\u5236\u4F53 {name}",
+  "prefab.saveBack": "\u4FDD\u5B58\u5E76\u8FD4\u56DE",
+  "prefab.saved": "\u9884\u5236\u4F53\u5DF2\u4FDD\u5B58\uFF0C\u5B9E\u4F8B\u5DF2\u66F4\u65B0",
+  "prefab.closed": "\u5DF2\u8FD4\u56DE\u573A\u666F",
+  "prefab.applied": "\u5DF2\u628A\u5B9E\u4F8B\u4FEE\u6539\u5199\u56DE\u9884\u5236\u4F53",
+  "prefab.reverted": "\u5DF2\u8FD8\u539F\u4E3A\u9884\u5236\u4F53",
+  "prefab.unpacked": "\u5DF2\u89E3\u5F00\u9884\u5236\u4F53",
+  "prefab.place": "\u653E\u7F6E {name}",
+  "prefab.create": "\u521B\u5EFA\u9884\u5236\u4F53 {name}",
+  "prefab.needOne": "\u8BF7\u53EA\u9009\u62E9\u4E00\u4E2A\u7269\u4F53\u6216\u5176\u5B50\u6811\u6765\u521B\u5EFA\u9884\u5236\u4F53",
+  "prefab.exitFirst": "\u5148\u9000\u51FA\u9884\u5236\u4F53\u7F16\u8F91",
+  "prefab.noPlay": "\u9884\u5236\u4F53\u7F16\u8F91\u4E2D\u4E0D\u80FD\u8BD5\u73A9",
+  "prefab.keepRoot": "\u9884\u5236\u4F53\u6839\u7269\u4F53\u4E0D\u80FD\u5220\u9664",
+  "prefab.rootLocked": "\u9884\u5236\u4F53\u6839\u7269\u4F53\u7684\u53D8\u6362\u56FA\u5B9A\u5728\u539F\u70B9",
+  "prefab.missing": "\u627E\u4E0D\u5230\u9884\u5236\u4F53",
+  "prefab.dirty": "\u6709\u672A\u5199\u56DE\u7684\u4FEE\u6539",
+  "inspector.previewModel": "\u9884\u89C8\u6A21\u578B",
+  "inspector.light": "\u5149\u6E90",
+  "inspector.color": "\u989C\u8272",
+  "inspector.intensity": "\u5F3A\u5EA6",
+  "inspector.angle": "\u89D2\u5EA6",
+  "inspector.ground": "\u5730\u9762",
+  "inspector.range": "\u8303\u56F4",
+  "inspector.decay": "\u8870\u51CF",
+  "inspector.penumbra": "\u534A\u5F71",
+  "inspector.shadow": "\u9634\u5F71",
+  "inspector.bias": "\u504F\u79FB",
+  "inspector.normalBias": "\u6CD5\u7EBF\u504F\u79FB",
+  "inspector.camera": "\u76F8\u673A",
+  "inspector.fov": "\u89C6\u91CE",
+  "inspector.near": "\u8FD1\u88C1",
+  "inspector.far": "\u8FDC\u88C1",
+  "inspector.material": "\u6750\u8D28",
+  "inspector.asset": "\u8D44\u6E90",
+  "inspector.type": "\u7C7B\u578B",
+  "inspector.file": "\u6587\u4EF6",
+  "inspector.objects": "\u7269\u4F53",
+  "inspector.clips": "\u7247\u6BB5",
+  "inspector.preview": "\u9884\u89C8",
+  "inspector.place": "\u653E\u5165\u573A\u666F",
+  "inspector.unnamedScene": "\u672A\u547D\u540D\u573A\u666F",
+  "inspector.scene": "\u573A\u666F",
+  "physics.enable": "\u7269\u7406",
+  "particles.enable": "\u7279\u6548",
+  "particles.title": "\u7279\u6548",
+  "particles.playing": "\u64AD\u653E",
+  "particles.material": "\u6750\u8D28",
+  "particles.materialEmpty": "\u9ED8\u8BA4\u53E0\u52A0",
+  "particles.clearMaterial": "\u6E05\u9664\u6750\u8D28",
+  "particles.saveAsset": "\u5B58\u6210\u8D44\u6E90",
+  "particles.saved": "\u5DF2\u628A {name} \u5B58\u6210\u7279\u6548\u8D44\u6E90",
+  "particles.missing": "\u7279\u6548\u80FD\u529B\u672A\u5F00\u542F\uFF0C\u8FD9\u4E2A\u7269\u4F53\u4E0D\u4F1A\u64AD\u653E\u3002",
+  "particles.missingAsset": "\u7F3A\u5C11\u7279\u6548\u8D44\u6E90\u3002",
+  "particles.badMaterial": "\u8FD9\u5F20\u6750\u8D28\u4E0D\u662F\u7C92\u5B50\u65E0\u5149\uFF0C\u5916\u89C2\u4E0D\u4F1A\u7528\u5230\u5B83\u3002",
+  "particles.version": "\u8FD9\u4EFD\u7279\u6548\u7531 quarks {version} \u5199\u6210\uFF0C\u5F53\u524D\u8FD0\u884C\u5E93\u662F {current}\u3002",
+  "particles.loadFail": "\u8FD9\u4EFD\u7279\u6548\u8BFB\u4E0D\u51FA\u6765\uFF1A{message}",
+  "particles.imported": "\u5DF2\u5BFC\u5165\u7279\u6548 {name}",
+  "particles.notQuarks": "{name} \u4E0D\u662F Quarks \u7279\u6548",
+  "particles.noEmitter": "\u8FD9\u4EFD\u7279\u6548\u91CC\u6CA1\u6709\u53EF\u7F16\u8F91\u7684\u53D1\u5C04\u5668\u3002",
+  "particles.emitter": "\u53D1\u5C04\u5668",
+  "particles.main": "\u4E3B\u6A21\u5757",
+  "particles.duration": "\u65F6\u957F",
+  "particles.looping": "\u5FAA\u73AF",
+  "particles.prewarm": "\u9884\u70ED",
+  "particles.worldSpace": "\u4E16\u754C\u7A7A\u95F4",
+  "particles.renderMode": "\u6E32\u67D3",
+  "particles.billboard": "\u516C\u544A\u677F",
+  "particles.stretched": "\u62C9\u4F38\u516C\u544A\u677F",
+  "particles.horizontal": "\u6C34\u5E73\u516C\u544A\u677F",
+  "particles.vertical": "\u5782\u76F4\u516C\u544A\u677F",
+  "particles.mesh": "\u7F51\u683C",
+  "particles.trail": "\u62D6\u5C3E",
+  "particles.emission": "\u53D1\u5C04",
+  "particles.rate": "\u6BCF\u79D2",
+  "particles.burst": "\u7206\u53D1",
+  "particles.burstsLocked": "\u6709\u591A\u6B21\u7206\u53D1\uFF0C\u68C0\u67E5\u5668\u91CC\u4E0D\u6539\u3002",
+  "particles.start": "\u521D\u59CB",
+  "particles.life": "\u751F\u547D",
+  "particles.speed": "\u901F\u5EA6",
+  "particles.size": "\u5927\u5C0F",
+  "particles.rotation": "\u65CB\u8F6C",
+  "particles.color": "\u989C\u8272",
+  "particles.tint": "\u67D3\u8272",
+  "particles.alpha": "\u900F\u660E",
+  "particles.shape": "\u5F62\u72B6",
+  "particles.shapeType": "\u7C7B\u578B",
+  "particles.shapePoint": "\u70B9",
+  "particles.shapeCone": "\u9525\u4F53",
+  "particles.shapeSphere": "\u7403\u4F53",
+  "particles.shapeHemisphere": "\u534A\u7403",
+  "particles.shapeCircle": "\u5706",
+  "particles.shapeDonut": "\u5706\u73AF",
+  "particles.shapeRectangle": "\u77E9\u5F62",
+  "particles.radius": "\u534A\u5F84",
+  "particles.angle": "\u89D2\u5EA6",
+  "particles.arc": "\u5F20\u89D2",
+  "particles.thickness": "\u539A\u5EA6",
+  "particles.width": "\u5BBD",
+  "particles.height": "\u9AD8",
+  "particles.sheet": "\u5E8F\u5217\u5E27",
+  "particles.tilesX": "\u5217",
+  "particles.tilesY": "\u884C",
+  "particles.force": "\u529B",
+  "particles.gravity": "\u91CD\u529B",
+  "particles.gravityLocked": "\u5DF2\u6709\u659C\u5411\u7684\u529B\uFF0C\u91CD\u529B\u4E0D\u5728\u8FD9\u91CC\u6539\u3002",
+  "particles.speedFactor": "\u901F\u5EA6\u62C9\u4F38",
+  "particles.lengthFactor": "\u957F\u5EA6",
+  "particles.trailLength": "\u62D6\u5C3E\u8282\u6570",
+  "particles.modules": "\u66F2\u7EBF\u6A21\u5757",
+  "particles.moduleColor": "\u989C\u8272\u968F\u751F\u547D",
+  "particles.moduleSize": "\u5927\u5C0F\u968F\u751F\u547D",
+  "particles.moduleNoise": "\u566A\u58F0",
+  "particles.moduleOther": "{name}",
+  "particles.min": "\u6700\u5C0F",
+  "particles.max": "\u6700\u5927",
+  "particles.curve": "\u8FD9\u6761\u662F\u66F2\u7EBF\uFF0C\u68C0\u67E5\u5668\u91CC\u4E0D\u6539\u3002",
+  "particles.shared": "\u6B63\u5728\u6539\u8D44\u6E90\u300C{name}\u300D\uFF0C\u5F15\u7528\u5B83\u7684\u7269\u4F53\u90FD\u4F1A\u53D8\u3002",
+  "particles.createMaterial": "\u521B\u5EFA\u7C92\u5B50\u6750\u8D28",
+  "physics.title": "\u7269\u7406",
+  "physics.participate": "\u53C2\u4E0E\u7269\u7406",
+  "physics.body": "\u521A\u4F53",
+  "physics.static": "\u9759\u6001",
+  "physics.dynamic": "\u52A8\u6001",
+  "physics.kinematic": "\u8FD0\u52A8\u5B66",
+  "physics.shape": "\u5F62\u72B6",
+  "physics.box": "\u76D2\u5B50",
+  "physics.sphere": "\u7403\u4F53",
+  "physics.capsule": "\u80F6\u56CA",
+  "physics.cylinder": "\u5706\u67F1",
+  "physics.cone": "\u5706\u9525",
+  "physics.convex": "\u51F8\u5305",
+  "physics.trimesh": "\u4E09\u89D2\u7F51\u683C",
+  "physics.convexHint": "\u7528\u7269\u4F53\u7F51\u683C\u7684\u51F8\u5305\u3002\u53EF\u4EE5\u662F\u52A8\u6001\u521A\u4F53\uFF0C\u51F9\u8FDB\u53BB\u7684\u90E8\u5206\u4E0D\u4F1A\u6321\u4F4F\u3002",
+  "physics.trimeshHint": "\u7528\u7269\u4F53\u7F51\u683C\u7684\u4E09\u89D2\u9762\uFF0C\u53EF\u4EE5\u662F\u51F9\u7684\u3002\u9002\u5408\u9759\u6001\u548C\u8FD0\u52A8\u5B66\uFF1B\u52A8\u6001\u7269\u4F53\u66F4\u7A33\u7684\u662F\u51F8\u5305\u3002",
+  "physics.radius": "\u534A\u5F84",
+  "physics.height": "\u9AD8\u5EA6",
+  "physics.size": "\u5C3A\u5BF8",
+  "physics.trigger": "\u89E6\u53D1\u5668",
+  "physics.mass": "\u8D28\u91CF",
+  "physics.friction": "\u6469\u64E6",
+  "physics.restitution": "\u5F39\u6027",
+  "physics.linearDamping": "\u7EBF\u963B\u5C3C",
+  "physics.angularDamping": "\u89D2\u963B\u5C3C",
+  "physics.gravityScale": "\u91CD\u529B\u7F29\u653E",
+  "physics.gravity": "\u91CD\u529B",
+  "audio.title": "\u97F3\u6548",
+  "audio.master": "\u603B\u97F3\u91CF",
+  "audio.music": "\u97F3\u4E50",
+  "audio.sfx": "\u97F3\u6548",
+  "audio.volume": "\u97F3\u91CF",
+  "audio.pick": "\u9009\u62E9\u97F3\u6548",
+  "audio.hint": "\u7F51\u9875\u7248\u5728\u7B2C\u4E00\u6B21\u70B9\u51FB\u9875\u9762\u4E4B\u540E\u624D\u80FD\u51FA\u58F0\u3002\u684C\u9762\u7248\u6253\u5F00\u5C31\u80FD\u64AD\u3002",
+  "soundSource.title": "\u58F0\u6E90",
+  "soundSource.enable": "\u542F\u7528",
+  "soundSource.clip": "\u58F0\u97F3",
+  "soundSource.loop": "\u5FAA\u73AF",
+  "soundSource.distance": "\u6E05\u6670\u8DDD\u79BB",
+  "soundSource.rolloff": "\u8870\u51CF",
+  "soundSource.hint": "\u8BD5\u73A9\u65F6\u5728\u8FD9\u4E2A\u7269\u4F53\u4E0A\u64AD\u653E\uFF0C\u4F4D\u7F6E\u8DDF\u7740\u7269\u4F53\u8D70\u3002\u5173\u6389\u5FAA\u73AF\u5C31\u53EA\u64AD\u4E00\u904D\u3002",
+  "physics.disabledHint": "\u7269\u7406\u80FD\u529B\u5305\u5DF2\u5173\u95ED\u3002\u78B0\u649E\u6570\u636E\u4ECD\u7559\u5728\u7269\u4F53\u4E0A\u3002",
+  "navigation.enable": "\u5BFC\u822A",
+  "navigation.title": "\u5BFC\u822A",
+  "navigation.participate": "\u53C2\u4E0E\u5BFC\u822A",
+  "navigation.role": "\u7528\u9014",
+  "navigation.surface": "\u8868\u9762",
+  "navigation.obstacle": "\u969C\u788D",
+  "navigation.radius": "\u534A\u5F84",
+  "navigation.height": "\u9AD8\u5EA6",
+  "navigation.cellSize": "\u683C\u5B50\u5927\u5C0F",
+  "navigation.cellHeight": "\u683C\u5B50\u9AD8\u5EA6",
+  "navigation.slope": "\u6700\u5927\u5761\u5EA6",
+  "navigation.agentRadius": "\u4EE3\u7406\u534A\u5F84",
+  "navigation.agentHeight": "\u4EE3\u7406\u9AD8\u5EA6",
+  "navigation.maxObstacles": "\u969C\u788D\u5BB9\u91CF",
+  "navigation.show": "\u663E\u793A\u7F51\u683C",
+  "navigation.bake": "\u70D8\u7119",
+  "navigation.rebake": "\u91CD\u65B0\u70D8\u7119",
+  "navigation.clear": "\u6E05\u7A7A",
+  "navigation.cleared": "\u5DF2\u6E05\u7A7A\u5BFC\u822A\u7F51\u683C",
+  "navigation.cancel": "\u53D6\u6D88\u70D8\u7119",
+  "navigation.baking": "\u6B63\u5728\u70D8\u7119\u2026",
+  "navigation.ready": "\u53EF\u884C\u8D70\u9762\u5DF2\u751F\u6210",
+  "navigation.noSurface": "\u6CA1\u6709\u53EF\u70D8\u7119\u7684\u5BFC\u822A\u8868\u9762\u3002",
+  "navigation.disabledHint": "\u5BFC\u822A\u80FD\u529B\u5305\u5DF2\u5173\u95ED\u3002\u8868\u9762\u548C\u969C\u788D\u6570\u636E\u4ECD\u7559\u5728\u7269\u4F53\u4E0A\u3002",
+  "navigation.stale": "\u53C2\u6570\u5DF2\u53D8\u5316\uFF0C\u9700\u8981\u91CD\u65B0\u70D8\u7119\u3002",
+  "navigation.triangles": "\u8868\u9762\u4E09\u89D2\u5F62",
+  "navigation.obstacleHint": "\u969C\u788D\u5BB9\u91CF\u5927\u4E8E 0 \u65F6\uFF0C\u8BD5\u73A9\u4F1A\u7528\u7AD6\u76F4\u5706\u67F1\u628A\u969C\u788D\u4ECE\u5BFC\u822A\u7F51\u683C\u4E0A\u6316\u5F00\u3002",
+  "projectSettings.title": "\u9879\u76EE\u8BBE\u7F6E",
+  "projectSettings.modules": "\u80FD\u529B\u5305",
+  "projectSettings.note": "\u5F00\u5173\u4FDD\u5B58\u5728\u5F53\u524D\u9879\u76EE\u91CC\u3002\u5173\u95ED\u540E\u4E0D\u518D\u52A0\u8F7D\u5BF9\u5E94\u6A21\u5757\uFF0C\u5DF2\u586B\u5199\u7684\u6570\u636E\u4E0D\u4F1A\u5220\u9664\u3002",
+  "projectSettings.physicsDetail": "\u78B0\u649E\u4F53\u3001\u521A\u4F53\u548C\u8BD5\u73A9\u65F6\u7684\u7269\u7406\u6A21\u62DF\u3002",
+  "projectSettings.particlesDetail": "\u7C92\u5B50\u7279\u6548\u3002\u5173\u6389\u540E\u8D44\u6E90\u548C\u7269\u4F53\u4E0A\u7684\u6570\u636E\u8FD8\u5728\uFF0C\u53EA\u662F\u4E0D\u518D\u64AD\u653E\u3002",
+  "sky.enable": "\u5929\u7A7A",
+  "sky.title": "\u5929\u7A7A",
+  "sky.time": "\u65F6\u523B",
+  "sky.latitude": "\u7EAC\u5EA6",
+  "sky.day": "\u5E74\u79EF\u65E5",
+  "sky.north": "\u5317\u5411",
+  "sky.northPosZ": "+Z \u4E3A\u5317",
+  "sky.northNegZ": "-Z \u4E3A\u5317",
+  "sky.northPosX": "+X \u4E3A\u5317",
+  "sky.northNegX": "-X \u4E3A\u5317",
+  "sky.atmosphere": "\u5927\u6C14",
+  "sky.exposure": "\u5929\u7A7A\u66DD\u5149",
+  "sky.turbidity": "\u6D51\u6D4A\u5EA6",
+  "sky.albedo": "\u5730\u9762\u53CD\u7167\u7387",
+  "sky.mirror": "\u5730\u5E73\u7EBF\u4EE5\u4E0B\u955C\u50CF",
+  "sky.sun": "\u592A\u9633",
+  "sky.sunDisc": "\u592A\u9633\u76D8",
+  "sky.angularSize": "\u89D2\u76F4\u5F84 \xB0",
+  "sky.sunIntensity": "\u592A\u9633\u5F3A\u5EA6",
+  "sky.sunShadow": "\u592A\u9633\u9634\u5F71",
+  "sky.haze": "\u7A7A\u6C14\u900F\u89C6",
+  "sky.hazeStrength": "\u5F3A\u5EA6",
+  "sky.hazeNear": "\u8FD1\u8DDD",
+  "sky.fog": "\u9AD8\u5EA6\u96FE",
+  "sky.fogColor": "\u989C\u8272",
+  "sky.fogSkyColor": "\u8DDF\u968F\u5929\u7A7A",
+  "sky.fogDensity": "\u5BC6\u5EA6",
+  "sky.fogFalloff": "\u9AD8\u5EA6\u8870\u51CF",
+  "sky.fogBase": "\u57FA\u51C6\u9AD8\u5EA6",
+  "sky.fogOpacity": "\u6700\u5927\u4E0D\u900F\u660E\u5EA6",
+  "sky.night": "\u591C\u665A",
+  "sky.stars": "\u661F\u661F",
+  "sky.starIntensity": "\u661F\u5149",
+  "sky.starSize": "\u661F\u70B9",
+  "sky.milkyWay": "\u94F6\u6CB3",
+  "sky.moon": "\u6708\u4EAE",
+  "sky.moonPhase": "\u6708\u76F8",
+  "sky.moonLight": "\u6708\u5149",
+  "projectSettings.skyDetail": "\u7A0B\u5E8F\u5316\u5927\u6C14\u548C\u65F6\u523B\u3002\u5F00\u542F\u540E\u53D6\u4EE3\u80CC\u666F\u4E0E\u73AF\u5883\u8D34\u56FE\uFF0C\u91D1\u5C5E\u53CD\u5C04\u8DDF\u7740\u592A\u9633\u53D8\u3002\u5173\u6389\u540E\u53C2\u6570\u7559\u5728\u753B\u9762\u4E0A\u3002",
+  "projectSettings.navigationDetail": "\u4ECE\u9759\u6001\u8868\u9762\u70D8\u7119\u5BFC\u822A\u7F51\u683C\u3002\u8BD5\u73A9\u65F6\u969C\u788D\u53EF\u4EE5\u6316\u5F00\u7F51\u683C\uFF0C\u5BFB\u8DEF\u8BFB\u53D6\u8FD9\u4EFD\u7F51\u683C\u3002",
+  "projectSettings.catalogs": "\u9879\u76EE\u76EE\u5F55",
+  "projectSettings.manage": "\u7BA1\u7406\u2026",
+  "tags.title": "\u6807\u7B7E",
+  "tags.subtitle": "\u548C Unity \u7684 Tag \u4E00\u6837\uFF1A\u6BCF\u4E2A\u7269\u4F53\u6709\u4E00\u4E2A\u4E3B\u6807\u7B7E\uFF0C\u53E6\u5916\u53EF\u4EE5\u52A0\u591A\u5C42\u6807\u7B7E\uFF0C\u7528\u6765\u7B5B\u9009\u548C\u4EE5\u540E\u7684\u903B\u8F91\u67E5\u627E\u3002",
+  "tags.name": "\u540D\u79F0",
+  "tags.id": "Id",
+  "tags.add": "\u6DFB\u52A0\u6807\u7B7E",
+  "tags.addDefault": "\u65B0\u6807\u7B7E",
+  "tags.remove": "\u5220\u9664",
+  "tags.done": "\u5B8C\u6210",
+  "tags.card": "\u6807\u7B7E",
+  "tags.none": "\u65E0\u6807\u7B7E",
+  "tags.orphan": "\u7F3A\u5931\u7684\u6807\u7B7E {id}",
+  "tags.extraPlaceholder": "+ \u8F93\u5165\u5C42\u7EA7\u6807\u7B7E\uFF08\u5982 Team.Enemy\uFF09\u56DE\u8F66\u6DFB\u52A0",
+  "tags.gameplay": "\u73A9\u6CD5\u6807\u7B7E",
+  "tags.addGameplay": "\u6DFB\u52A0\u73A9\u6CD5\u6807\u7B7E\u2026",
+  "tags.runtime": "\u8BD5\u73A9\u4E2D\u7684\u9650\u65F6\u6807\u7B7E",
+  "tags.openDatabase": "\u6253\u5F00\u6E38\u620F\u6570\u636E",
+  "tags.filter": "\u6309\u6807\u7B7E\u7B5B\u9009",
+  "tags.filterAll": "\u5168\u90E8",
+  "tags.filterUntagged": "\u4EC5\u65E0\u6807\u7B7E",
+  "layers.title": "\u5C42",
+  "layers.subtitle": "\u5C42\u540C\u65F6\u7528\u4E8E\u89C6\u53E3\u5254\u9664\u548C\u7269\u7406\u78B0\u649E\u3002\u4F4D 31 \u7559\u7ED9\u7F16\u8F91\u5668\u624B\u67C4\uFF0C\u4E0D\u80FD\u5206\u914D\u3002",
+  "layers.tabLayers": "\u5C42\u5217\u8868",
+  "layers.tabPhysics": "\u7269\u7406\u78B0\u649E\u77E9\u9635",
+  "layers.bit": "\u4F4D",
+  "layers.name": "\u540D\u79F0",
+  "layers.id": "Id",
+  "layers.builtIn": "\u5185\u7F6E",
+  "layers.visible": "\u89C6\u53E3",
+  "layers.add": "\u6DFB\u52A0\u5C42",
+  "layers.addDefault": "\u65B0\u5C42",
+  "layers.remove": "\u5220\u9664",
+  "layers.done": "\u5B8C\u6210",
+  "layers.show": "\u5728\u7F16\u8F91\u89C6\u53E3\u663E\u793A\u8BE5\u5C42",
+  "layers.hide": "\u5728\u7F16\u8F91\u89C6\u53E3\u9690\u85CF\u8BE5\u5C42",
+  "layers.card": "\u5C42",
+  "layers.option": "{name} \xB7 \u4F4D {bit}",
+  "layers.matrixEnable": "\u542F\u7528\u78B0\u649E\u77E9\u9635",
+  "layers.matrixHint": "\u6BCF\u4E00\u884C\u662F\u4E00\u5BF9\u5C42\u3002\u52FE\u4E0A\u624D\u4F1A\u76F8\u649E\uFF0C\u5DE6\u53F3\u5BF9\u79F0\u3002\u5173\u95ED\u65F6\u6240\u6709\u5C42\u4E92\u76F8\u78B0\u649E\u3002Rapier \u53EA\u4F7F\u7528\u524D 16 \u4F4D\u3002",
+  "layers.matrixEmpty": "\u81F3\u5C11\u8981\u6709\u4E24\u5C42\uFF0C\u624D\u4F1A\u51FA\u73B0\u53EF\u52FE\u9009\u7684\u78B0\u649E\u5173\u7CFB\u3002",
+  "inspector.column.system": "\u7CFB\u7EDF",
+  "inspector.column.packs": "\u6269\u5C55\u5305",
+  "inspector.sky": "\u5929\u7A7A",
+  "inspector.background": "\u80CC\u666F",
+  "inspector.exposure": "\u66DD\u5149",
+  "inspector.toneMapping": "\u8272\u8C03\u6620\u5C04",
+  "tone.none": "\u65E0",
+  "tone.linear": "\u7EBF\u6027",
+  "tone.reinhard": "Reinhard",
+  "tone.cineon": "Cineon",
+  "tone.aces": "ACES",
+  "tone.agx": "AgX",
+  "tone.neutral": "Neutral",
+  "inspector.fog": "\u96FE",
+  "inspector.enabled": "\u542F\u7528",
+  "inspector.fogColor": "\u96FE\u8272",
+  "inspector.fogStart": "\u8D77\u59CB",
+  "inspector.fogEnd": "\u7ED3\u675F",
+  "inspector.environment": "\u73AF\u5883\u5149\u7167",
+  "inspector.env": "\u73AF\u5883",
+  "inspector.bloom": "\u6CDB\u5149",
+  "inspector.aa": "\u6297\u952F\u9F7F",
+  "inspector.ssr": "\u5C4F\u5E55\u53CD\u5C04",
+  "inspector.ssrQuality": "\u8D28\u91CF",
+  "inspector.ssrDistance": "\u8DDD\u79BB",
+  "inspector.ssrThickness": "\u539A\u5EA6",
+  "inspector.volume": "\u4F53\u79EF\u5149",
+  "inspector.volumeDensity": "\u5BC6\u5EA6",
+  "inspector.volumeSteps": "\u6B65\u8FDB",
+  "inspector.volumeSize": "\u8303\u56F4",
+  "inspector.volumeHeight": "\u9AD8\u5EA6",
+  "inspector.ssgi": "\u5168\u5C40\u5149\u7167",
+  "inspector.ssgiIndirect": "\u95F4\u63A5\u5149",
+  "inspector.ssgiOcclusion": "\u906E\u853D",
+  "inspector.ssgiRadius": "\u534A\u5F84",
+  "inspector.ssgiSlices": "\u5207\u7247",
+  "inspector.ssgiSteps": "\u6B65\u8FDB",
+  "inspector.ssgiDenoise": "\u964D\u566A",
+  "inspector.radius": "\u534A\u5F84",
+  "inspector.threshold": "\u9608\u503C",
+  "inspector.dof": "\u666F\u6DF1",
+  "inspector.focus": "\u5BF9\u7126",
+  "inspector.focal": "\u7126\u6BB5",
+  "inspector.bokeh": "\u6563\u666F",
+  "inspector.occlusion": "\u906E\u853D",
+  "inspector.grade": "\u8C03\u8272",
+  "inspector.hue": "\u8272\u76F8",
+  "inspector.saturation": "\u9971\u548C",
+  "inspector.clip": "\u7247\u6BB5",
+  "inspector.play": "\u64AD\u653E",
+  "inspector.pause": "\u6682\u505C",
+  "inspector.time": "\u65F6\u95F4",
+  "inspector.animFile": "\u52A8\u753B\u6587\u4EF6",
+  "inspector.modelClips": "\u6A21\u578B\u7247\u6BB5",
+  "inspector.fileClips": "\u6587\u4EF6\u7247\u6BB5",
+  "humanoid.summary": "\u4EBA\u5F62\u53EF\u7528 \xB7 {skins} \u5957\u8499\u76AE \xB7 {bind} \xB7 {motion}",
+  "humanoid.noHips": "\u8FD9\u5957\u9AA8\u67B6\u8FD8\u8BA4\u4E0D\u51FA\u76C6\u9AA8\uFF0C\u8DE8\u6A21\u578B\u52A8\u4F5C\u4E0D\u4F1A\u81EA\u52A8\u5957\u7528\u3002",
+  "humanoid.missing": "\u7F3A {names}",
+  "humanoid.coreOk": "{count} \u4E2A\u6838\u5FC3\u69FD\u5DF2\u9F50",
+  "humanoid.restConflict": "\u8FD9\u4E9B\u9AA8\u5934\u5728\u591A\u5957\u8499\u76AE\u91CC\u7684\u9759\u606F\u59FF\u6001\u4E0D\u4E00\u81F4\uFF1A{names}",
+  "humanoid.bind": "\u6709\u7ED1\u5B9A\u59FF\u6001",
+  "humanoid.noBind": "\u65E0\u7ED1\u5B9A\u59FF\u6001",
+  "humanoid.inPlace": "\u539F\u5730",
+  "humanoid.rootMotion": "\u6839\u8FD0\u52A8",
+  "humanoid.motionUnknown": "\u4F4D\u79FB\u672A\u5224\u65AD",
+  "humanoid.slots": "\u9AA8\u9ABC\u69FD\u4F4D",
+  "humanoid.slotsHint": "\u81EA\u52A8\u8BA4\u9519\u65F6\u53EA\u6539\u5BF9\u5E94\u7684\u4E00\u6839\u9AA8\u5934\u3002\u6539\u5B8C\u540E\u91CD\u65B0\u64AD\u653E\u3002",
+  "humanoid.auto": "\u81EA\u52A8",
+  "humanoid.slotHips": "\u76C6\u9AA8",
+  "humanoid.slotSpine": "\u810A\u67F1",
+  "humanoid.slotHead": "\u5934",
+  "humanoid.slotLeftUpperArm": "\u5DE6\u5927\u81C2",
+  "humanoid.slotLeftLowerArm": "\u5DE6\u5C0F\u81C2",
+  "humanoid.slotRightUpperArm": "\u53F3\u5927\u81C2",
+  "humanoid.slotRightLowerArm": "\u53F3\u5C0F\u81C2",
+  "humanoid.slotLeftUpperLeg": "\u5DE6\u5927\u817F",
+  "humanoid.slotLeftLowerLeg": "\u5DE6\u5C0F\u817F",
+  "humanoid.slotRightUpperLeg": "\u53F3\u5927\u817F",
+  "humanoid.slotRightLowerLeg": "\u53F3\u5C0F\u817F",
+  "humanoid.adjust": "\u91CD\u5B9A\u5411\u5FAE\u8C03",
+  "humanoid.adjustHint": "\u81EA\u52A8\u7ED3\u679C\u4E0D\u5BF9\u65F6\u518D\u62C9\u3002\u6B63\u503C\u5206\u522B\u662F\u80A9\u66F4\u5BBD\u3001\u80A9\u5411\u5916\u65CB\u3001\u624B\u81C2\u66F4\u5F00\u3001\u8098\u66F4\u5F2F\u3001\u80EF\u66F4\u5BBD\u3001\u819D\u66F4\u5F2F\u3001\u811A\u5C16\u5411\u4E0B\u3001\u4EBA\u66F4\u9AD8\u3001\u6B65\u5E45\u66F4\u5927\u3002\u53EA\u4F5C\u7528\u4E8E\u522B\u7684\u9AA8\u67B6\u5957\u5230\u8FD9\u4E2A\u89D2\u8272\u4E0A\u7684\u52A8\u753B\u3002",
+  "humanoid.reset": "\u91CD\u7F6E\u4E3A\u81EA\u52A8",
+  "humanoid.shoulderWidth": "\u80A9\u5BBD",
+  "humanoid.shoulderRotate": "\u80A9\u8180\u65CB\u8F6C",
+  "humanoid.armSpread": "\u624B\u81C2\u5F20\u5F00",
+  "humanoid.elbowBend": "\u8098\u89D2",
+  "humanoid.hipSpread": "\u80EF\u5BBD",
+  "humanoid.kneeBend": "\u819D\u89D2",
+  "humanoid.footPitch": "\u811A\u9762",
+  "humanoid.hipsHeight": "\u76C6\u9AA8\u9AD8\u4F4E",
+  "humanoid.stride": "\u6B65\u5E45",
+  "project.clips": "\u7247\u6BB5",
+  "anim.loop": "\u5FAA\u73AF",
+  "anim.speed": "\u901F\u5EA6",
+  "anim.fade": "\u6DE1\u5165",
+  "anim.inPlace": "\u539F\u5730",
+  "anim.animator": "\u72B6\u6001\u673A",
+  "anim.enabled": "\u542F\u7528",
+  "anim.current": "\u5F53\u524D {name}",
+  "anim.addState": "\u52A0\u72B6\u6001",
+  "anim.addParam": "\u52A0\u53C2\u6570",
+  "anim.addTransition": "\u52A0\u8FC7\u6E21",
+  "anim.transitions": "\u8FC7\u6E21",
+  "anim.state": "\u72B6\u6001",
+  "anim.param": "\u53C2\u6570",
+  "anim.remove": "\u5220\u9664",
+  "anim.bool": "\u5F00\u5173",
+  "anim.number": "\u6570\u503C",
+  "anim.trigger": "\u89E6\u53D1",
+  "anim.fire": "\u89E6\u53D1",
+  "anim.equals": "\u7B49\u4E8E",
+  "anim.greater": "\u5927\u4E8E",
+  "anim.less": "\u5C0F\u4E8E",
+  "anim.simple": "\u57FA\u7840\u64AD\u653E",
+  "anim.machine": "\u72B6\u6001\u673A",
+  "anim.simpleHint": "\u53EA\u64AD\u4E00\u6BB5\u3002\u8981\u591A\u4E2A\u72B6\u6001\u3001\u53C2\u6570\u548C\u81EA\u52A8\u5207\u6362\u65F6\uFF0C\u518D\u5207\u5230\u72B6\u6001\u673A\u3002",
+  "anim.machineHint": "\u72B6\u6001\u673A\u51B3\u5B9A\u64AD\u54EA\u4E00\u6BB5\u3002\u906E\u7F69\u8DDF\u7740\u6BCF\u4E2A\u72B6\u6001\u8D70\u3002",
+  "anim.end": "\u64AD\u5B8C\u540E",
+  "anim.hold": "\u505C\u5728\u6700\u540E\u4E00\u5E27",
+  "anim.stop": "\u505C\u6B62\u64AD\u653E",
+  "anim.backToDefault": "\u56DE\u5230\u9ED8\u8BA4\u72B6\u6001",
+  "anim.default": "\u9ED8\u8BA4",
+  "anim.setDefault": "\u8BBE\u4E3A\u9ED8\u8BA4",
+  "anim.fromClips": "\u6309\u7247\u6BB5\u751F\u6210\u72B6\u6001",
+  "anim.seedParams": "\u6DFB\u52A0\u5E38\u7528\u53C2\u6570",
+  "anim.mask": "\u9AA8\u9ABC\u906E\u7F69",
+  "anim.overlay": "\u4E0A\u534A\u8EAB",
+  "anim.overlayStop": "\u505C\u6389\u8986\u76D6",
+  "anim.maskFull": "\u5168\u8EAB\u9AA8\u9ABC",
+  "anim.maskUpper": "\u4EC5\u4E0A\u534A\u8EAB",
+  "anim.maskLower": "\u4EC5\u4E0B\u534A\u8EAB",
+  "anim.exit": "\u7B49\u5230\u8FDB\u5EA6",
+  "anim.embedded": "\u5185\u5D4C {count} \u6BB5",
+  "asset.scene": "\u573A\u666F",
+  "asset.model": "\u6A21\u578B",
+  "asset.texture": "\u8D34\u56FE",
+  "asset.environment": "\u73AF\u5883",
+  "asset.material": "\u6750\u8D28",
+  "asset.effect": "\u7279\u6548",
+  "asset.ui": "\u754C\u9762",
+  "project.createUi": "\u754C\u9762",
+  "project.newUiName": "\u8BA1\u5206\u754C\u9762",
+  "ui.open": "\u7F16\u8F91\u754C\u9762",
+  "ui.add": "\u6DFB\u52A0",
+  "ui.delete": "\u5220\u9664",
+  "ui.up": "\u4E0A\u79FB",
+  "ui.down": "\u4E0B\u79FB",
+  "ui.close": "\u5173\u95ED",
+  "ui.undo": "\u64A4\u9500",
+  "ui.redo": "\u91CD\u505A",
+  "ui.zoom": "\u7F29\u653E",
+  "ui.name": "\u540D\u79F0",
+  "ui.text": "\u6587\u5B57",
+  "ui.image": "\u56FE\u7247",
+  "ui.layout": "\u5E03\u5C40",
+  "ui.anchor": "\u951A\u70B9",
+  "ui.flex": "\u6392\u5217",
+  "ui.anchorPreset": "\u951A\u70B9\u4F4D\u7F6E",
+  "ui.custom": "\u4FDD\u6301\u73B0\u72B6",
+  "ui.direction": "\u65B9\u5411",
+  "ui.column": "\u7AD6\u6392",
+  "ui.row": "\u6A2A\u6392",
+  "ui.gap": "\u95F4\u8DDD",
+  "ui.width": "\u5BBD",
+  "ui.height": "\u9AD8",
+  "ui.style": "\u6837\u5F0F",
+  "ui.state": "\u72B6\u6001",
+  "ui.color": "\u989C\u8272",
+  "ui.align": "\u5BF9\u9F50",
+  "ui.align.left": "\u5DE6",
+  "ui.align.center": "\u4E2D",
+  "ui.align.right": "\u53F3",
+  "ui.border": "\u8FB9\u6846",
+  "ui.borderWidth": "\u8FB9\u6846\u7C97\u7EC6",
+  "ui.fontSize": "\u5B57\u53F7",
+  "ui.background": "\u80CC\u666F",
+  "ui.opacity": "\u900F\u660E\u5EA6",
+  "ui.radius": "\u5706\u89D2",
+  "ui.tint": "\u586B\u5145",
+  "ui.binding": "\u7ED1\u5B9A",
+  "ui.source": "\u6765\u6E90",
+  "ui.variable": "\u53D8\u91CF",
+  "ui.component": "\u7EC4\u4EF6",
+  "ui.node": "\u7269\u4F53",
+  "ui.field": "\u5B57\u6BB5",
+  "ui.value": "\u503C",
+  "ui.min": "\u6700\u5C0F",
+  "ui.max": "\u6700\u5927",
+  "ui.click": "\u70B9\u51FB",
+  "ui.none": "\u65E0",
+  "ui.sendMessage": "\u53D1\u9001\u6D88\u606F",
+  "ui.setVariable": "\u5199\u53D8\u91CF",
+  "ui.message": "\u6D88\u606F",
+  "ui.fake": "\u9884\u89C8\u6570\u503C",
+  "ui.previewClick": "{name}\uFF1A{detail}",
+  "ui.document": "\u754C\u9762",
+  "ui.layer": "\u5C42",
+  "ui.visibleOnPlay": "\u8BD5\u73A9\u5F00\u59CB\u65F6\u53EF\u89C1",
+  "ui.addScreen": "\u6DFB\u52A0\u5C4F\u5E55\u754C\u9762",
+  "ui.removeScreen": "\u79FB\u9664",
+  "ui.missing": "\u7F3A\u5C11\u754C\u9762\u6587\u6863",
+  "ui.mount": "\u6302\u4E0A\u754C\u9762",
+  "ui.type.panel": "\u9762\u677F",
+  "ui.type.stack": "\u6392\u5217",
+  "ui.type.text": "\u6587\u5B57",
+  "ui.type.image": "\u56FE\u7247",
+  "ui.type.button": "\u6309\u94AE",
+  "ui.type.progress": "\u8FDB\u5EA6\u6761",
+  "ui.state.normal": "\u901A\u5E38",
+  "ui.state.hover": "\u60AC\u505C",
+  "ui.state.pressed": "\u6309\u4E0B",
+  "ui.state.disabled": "\u7981\u7528",
+  "ui.target.text": "\u6587\u5B57",
+  "ui.target.visible": "\u53EF\u89C1",
+  "ui.target.enabled": "\u53EF\u7528",
+  "ui.target.progress": "\u8FDB\u5EA6",
+  "ui.target.opacity": "\u900F\u660E\u5EA6",
+  "ui.anchor.top": "\u4E0A",
+  "ui.anchor.center": "\u4E2D",
+  "ui.anchor.bottom": "\u4E0B",
+  "ui.anchor.left": "\u5DE6",
+  "ui.anchor.right": "\u53F3",
+  "ui.layer.hud": "\u62AC\u5934",
+  "ui.layer.menu": "\u83DC\u5355",
+  "ui.layer.popup": "\u5F39\u51FA",
+  "ui.layer.modal": "\u6A21\u6001",
+  "log.createdUi": "\u5DF2\u521B\u5EFA\u754C\u9762 {name}",
+  "log.mountedUi": "\u5DF2\u6302\u4E0A\u754C\u9762 {name}",
+  "log.uiMessage": "\u754C\u9762\u53D1\u51FA\u6D88\u606F {message}",
+  "asset.animation": "\u52A8\u753B",
+  "asset.audio": "\u97F3\u9891",
+  "asset.document": "\u6587\u6863",
+  "asset.prefab": "\u9884\u5236\u4F53",
+  "project.all": "\u5168\u90E8",
+  "project.model": "\u6A21\u578B",
+  "project.image": "\u6750\u8D28/\u8D34\u56FE",
+  "project.audio": "\u97F3\u9891",
+  "project.document": "\u6587\u6863",
+  "project.animation": "\u52A8\u753B",
+  "project.scene": "\u573A\u666F",
+  "project.used": "\u672C\u573A\u666F",
+  "project.unused": "\u672A\u5F15\u7528",
+  "project.newFolder": "\u5728\u5F53\u524D\u76EE\u5F55\u65B0\u5EFA\u6587\u4EF6\u5939",
+  "project.search": "\u641C\u7D22\u8D44\u6E90",
+  "project.clear": "\u6E05\u9664",
+  "project.import": "\u5BFC\u5165",
+  "project.extractPackage": "\u63D0\u53D6\u7D20\u6750\u5305",
+  "pkg.title": "\u5BFC\u5165 UnityPackage",
+  "pkg.noFile": "\u672A\u9009\u62E9\u6587\u4EF6",
+  "pkg.close": "\u5173\u95ED",
+  "pkg.scanning": "\u6B63\u5728\u626B\u63CF\u53EF\u63D0\u53D6\u8D44\u6E90\u2026",
+  "pkg.scanningSlow": "\u8D44\u6E90\u5305\u8F83\u5927\uFF0C\u6B63\u5728\u89E3\u538B\u548C\u5EFA\u7ACB\u7D22\u5F15\u3002\u7A97\u53E3\u6CA1\u6709\u5361\u6B7B\uFF0C\u5B8C\u6210\u540E\u4F1A\u663E\u793A\u53EF\u63D0\u53D6\u8D44\u6E90\u3002",
+  "pkg.scanFailed": "\u626B\u63CF\u5931\u8D25\uFF1A{detail}",
+  "pkg.empty": "\u6CA1\u6709\u627E\u5230\u53EF\u63D0\u53D6\u7684\u6A21\u578B\u3001\u8D34\u56FE\u3001\u52A8\u753B\u6216\u6750\u8D28\u3002",
+  "pkg.models": "\u6A21\u578B",
+  "pkg.textures": "\u8D34\u56FE",
+  "pkg.animations": "\u52A8\u753B",
+  "pkg.materials": "\u6750\u8D28",
+  "pkg.hidden": "\u5DF2\u9690\u85CF",
+  "pkg.unsupported": "\u4E0D\u652F\u6301",
+  "pkg.previewOnly": "\u63D0\u53D6\u6A21\u578B\u3001\u8D34\u56FE\u3001\u52A8\u753B\u548C\u6750\u8D28\u3002FBX \u7528 ufbx \u5BFC\u5165\uFF1B\u52FE\u9009\u5408\u5E76\u540E\uFF0C\u52A8\u753B\u4F1A\u6309\u73B0\u6709\u4EBA\u5F62\u91CD\u5B9A\u5411\u5199\u8FDB\u672C\u4F53\u6A21\u578B\u3002",
+  "pkg.selectedSummary": "\u5DF2\u9009\u62E9 {count} \u9879",
+  "pkg.selectAll": "\u5168\u9009",
+  "pkg.selectNone": "\u5168\u4E0D\u9009",
+  "pkg.selectModels": "\u53EA\u9009\u6A21\u578B",
+  "pkg.selectTextures": "\u53EA\u9009\u8D34\u56FE",
+  "pkg.selectAnimations": "\u53EA\u9009\u52A8\u753B",
+  "pkg.selectMaterials": "\u53EA\u9009\u6750\u8D28",
+  "pkg.filterPlaceholder": "\u6309\u6587\u4EF6\u540D\u8FC7\u6EE4",
+  "pkg.filterEmpty": "\u6CA1\u6709\u5339\u914D\u7684\u6587\u4EF6",
+  "pkg.targetDirectory": "\u76EE\u6807\u76EE\u5F55",
+  "pkg.directoryMode": "\u76EE\u5F55\u65B9\u5F0F",
+  "pkg.directoryModeFlat": "\u72EC\u7ACB\u76EE\u5F55\uFF08Textures / Materials / Animations\uFF09",
+  "pkg.directoryModePreserve": "\u4FDD\u7559\u5305\u5185\u76EE\u5F55",
+  "pkg.showDiagnostics": "\u663E\u793A\u8BCA\u65AD",
+  "pkg.hideDiagnostics": "\u9690\u85CF\u8BCA\u65AD",
+  "pkg.extracting": "\u6B63\u5728\u63D0\u53D6\u2026",
+  "pkg.extractingTitle": "\u6B63\u5728\u63D0\u53D6\u7D20\u6750",
+  "pkg.extractingProgress": "\u5DF2\u5904\u7406 {completed} / {total} \u9879",
+  "pkg.extractSelected": "\u63D0\u53D6\u5DF2\u9009\uFF08{count}\uFF09",
+  "pkg.extractSuccess": "\u5DF2\u63D0\u53D6 {count} \u4E2A\u8D44\u6E90\u3002",
+  "pkg.extractFailed": "{count} \u4E2A\u8D44\u6E90\u63D0\u53D6\u5931\u8D25\u3002",
+  "pkg.companions": "{count} \u4E2A\u4F34\u968F\u6587\u4EF6",
+  "pkg.warnings": "{count} \u4E2A\u63D0\u793A",
+  "pkg.kind.model": "\u6A21\u578B",
+  "pkg.kind.texture": "\u8D34\u56FE",
+  "pkg.kind.animation": "\u52A8\u753B",
+  "pkg.kind.material": "\u6750\u8D28",
+  "pkg.role.modelBody": "\u672C\u4F53\u6A21\u578B",
+  "pkg.role.animationCarrier": "\u52A8\u753B",
+  "pkg.role.ordinaryModel": "\u666E\u901A\u6A21\u578B",
+  "pkg.role.unknownModel": "\u5F85\u786E\u8BA4",
+  "pkg.confidence.high": "\u9AD8\u7F6E\u4FE1",
+  "pkg.confidence.medium": "\u4E2D\u7F6E\u4FE1",
+  "pkg.confidence.low": "\u4F4E\u7F6E\u4FE1",
+  "pkg.roleOverrideFor": "\u8BBE\u7F6E {name} \u7684\u5BFC\u5165\u89D2\u8272",
+  "pkg.carrierBodyFor": "\u8BBE\u7F6E {name} \u5173\u8054\u7684\u672C\u4F53\u6A21\u578B",
+  "pkg.noCarrierBody": "\u672A\u5173\u8054\u672C\u4F53",
+  "pkg.mergePreview.title": "\u52A8\u753B\u5408\u5E76\u9884\u89C8",
+  "pkg.mergePreview.summary": "{bodies} \u4E2A\u672C\u4F53\uFF0C{carriers} \u4E2A\u52A8\u753B",
+  "pkg.phase.textures": "\u8D34\u56FE",
+  "pkg.phase.models": "\u6A21\u578B",
+  "pkg.phase.animations": "\u52A8\u753B",
+  "pkg.phase.materials": "\u6750\u8D28",
+  "pkg.phase.retarget": "\u91CD\u5B9A\u5411",
+  "pkg.diag.hidden": "\u5DF2\u9690\u85CF",
+  "pkg.diag.unsupported": "\u4E0D\u652F\u6301",
+  "pkg.diag.missingPathname": "\u7F3A\u5C11\u8DEF\u5F84",
+  "pkg.diag.missingAssetBytes": "\u7F3A\u5C11\u8D44\u4EA7\u6570\u636E",
+  "pkg.diag.scan": "\u626B\u63CF\u8BCA\u65AD",
+  "project.newScene": "\u5728\u5F53\u524D\u76EE\u5F55\u65B0\u5EFA\u573A\u666F",
+  "project.count": "{count} \u9879",
+  "project.list": "\u5217\u8868",
+  "project.details": "\u8BE6\u60C5",
+  "project.grid": "\u7F29\u7565\u56FE",
+  "project.name": "\u540D\u79F0",
+  "project.type": "\u7C7B\u578B",
+  "project.detail": "\u8BF4\u660E",
+  "project.drop": "\u677E\u5F00\u5373\u53EF\u5BFC\u5165",
+  "project.empty": "\u8FD9\u4E2A\u76EE\u5F55\u91CC\u8FD8\u6CA1\u6709\u8D44\u6E90\u3002",
+  "project.deleteScene": "\u5220\u9664\u573A\u666F\u300C{name}\u300D\uFF1F\u91CC\u9762\u7684\u7269\u4F53\u4E5F\u4F1A\u53BB\u6389\u3002",
+  "project.deleteAsset": "\u5220\u9664\u8D44\u6E90\u300C{name}\u300D\uFF1F\u5220\u9664\u540E\u4E0D\u80FD\u64A4\u9500\u3002",
+  "project.cancel": "\u53D6\u6D88",
+  "project.open": "\u6253\u5F00",
+  "project.reveal": "\u6253\u5F00\u6240\u5728\u76EE\u5F55\u2026",
+  "project.revealMissing": "\u8FD9\u4E2A\u8D44\u6E90\u8FD8\u6CA1\u6709\u5199\u5230\u78C1\u76D8\u76EE\u5F55\u3002\u5148\u628A\u9879\u76EE\u53E6\u5B58\u4E3A\u76EE\u5F55\u9879\u76EE\u3002",
+  "project.revealFailed": "\u6253\u4E0D\u5F00\u6240\u5728\u76EE\u5F55\uFF1A{message}",
+  "project.place": "\u653E\u5165\u573A\u666F",
+  "project.rename": "\u91CD\u547D\u540D",
+  "project.delete": "\u5220\u9664",
+  "project.resizeTextures": "\u6279\u91CF\u8C03\u6574\u8D34\u56FE\u5C3A\u5BF8\u2026",
+  "texResize.title": "\u6279\u91CF\u8C03\u6574\u8D34\u56FE\u5C3A\u5BF8",
+  "texResize.maxEdge": "\u6700\u5927\u8FB9\u957F",
+  "texResize.search": "\u641C\u7D22\u8D34\u56FE\u540D\u79F0\u2026",
+  "texResize.scopeCurrent": "\u4EC5\u5F53\u524D\u8303\u56F4",
+  "texResize.scopeAll": "\u663E\u793A\u5168\u90E8\u8D34\u56FE ({count})",
+  "texResize.selectAll": "\u5168\u9009",
+  "texResize.selectLarge": "\u4EC5\u9009 > {size}px",
+  "texResize.selectBackedUp": "\u4EC5\u9009\u5DF2\u5907\u4EFD\u539F\u56FE",
+  "texResize.clear": "\u6E05\u7A7A",
+  "texResize.empty": "\u6CA1\u6709\u5339\u914D\u7684\u8D34\u56FE\u8D44\u4EA7",
+  "texResize.unsupported": "\u683C\u5F0F\u4E0D\u652F\u6301\u8C03\u6574",
+  "texResize.backedUp": "\u5DF2\u5907\u4EFD\u539F\u56FE",
+  "texResize.skipFormat": "\u8DF3\u8FC7\u8BE5\u683C\u5F0F",
+  "texResize.restoreOrSkip": "\u5C06\u8FD8\u539F\u539F\u56FE",
+  "texResize.alreadySmall": "\u5DF2\u6EE1\u8DB3\uFF0C\u8DF3\u8FC7",
+  "texResize.backupHint": "\u8986\u76D6\u524D\u4F1A\u81EA\u52A8\u4FDD\u7559\u539F\u56FE\u5907\u4EFD\uFF0C\u53EF\u968F\u65F6\u4E00\u952E\u8FD8\u539F",
+  "texResize.progress": "\u6B63\u5728\u5904\u7406 {done} / {total}\u2026",
+  "texResize.restore": "\u8FD8\u539F\u539F\u56FE ({count})",
+  "texResize.apply": "\u5E94\u7528\u7F29\u653E ({count})",
+  "texResize.done": "\u8D34\u56FE\u7F29\u653E\u5B8C\u6210\uFF1A\u66F4\u65B0 {updated} \u5F20\uFF0C\u8DF3\u8FC7 {skipped} \u5F20\uFF0C\u5931\u8D25 {failed} \u5F20",
+  "texResize.restored": "\u8D34\u56FE\u5DF2\u8FD8\u539F\u539F\u56FE\uFF1A{updated} \u5F20\uFF0C\u5931\u8D25 {failed} \u5F20",
+  "project.newFolderMenu": "\u65B0\u5EFA\u6587\u4EF6\u5939",
+  "project.deleteFolder": "\u5220\u9664\u6587\u4EF6\u5939\u300C{name}\u300D\uFF1F\u91CC\u9762\u7684\u8D44\u6E90\u548C\u5B50\u6587\u4EF6\u5939\u4F1A\u4E00\u8D77\u5220\u9664\uFF0C\u4E0D\u80FD\u64A4\u9500\u3002",
+  "project.objects": "{count} \u4E2A\u7269\u4F53",
+  "project.inUse": "\u4F7F\u7528\u4E2D",
+  "project.sceneHint": "\u5355\u51FB\u6253\u5F00\u3002\u518D\u5355\u51FB\u5F53\u524D\u573A\u666F\u53EF\u6539\u540D",
+  "project.modelHint": "\u53CC\u51FB\u9884\u89C8\uFF0C\u62D6\u8FDB\u89C6\u53E3\u653E\u5165\u573A\u666F",
+  "project.envHint": "\u53CC\u51FB\u9884\u89C8\u73AF\u5883\u8D34\u56FE",
+  "project.textureHint": "\u53CC\u51FB\u9884\u89C8\uFF0C\u4E5F\u53EF\u4EE5\u62D6\u5230\u7269\u4F53\u4E0A",
+  "project.animHint": "\u62D6\u5230\u6A21\u578B\u4E0A\u64AD\u653E",
+  "project.audioHint": "\u53CC\u51FB\u8BD5\u542C",
+  "project.docHint": "\u53CC\u51FB\u6253\u5F00\u7F16\u8F91\u6587\u6863",
+  "project.openFolder": "\u53CC\u51FB\u6253\u5F00\u76EE\u5F55",
+  "project.folder": "\u76EE\u5F55",
+  "hierarchy.search": "\u641C\u7D22\u7269\u4F53",
+  "hierarchy.expand": "\u5168\u90E8\u5C55\u5F00",
+  "hierarchy.collapse": "\u5168\u90E8\u6298\u53E0",
+  "hierarchy.create": "\u521B\u5EFA",
+  "hierarchy.empty": "\u573A\u666F\u662F\u7A7A\u7684\u3002\u7528\u52A0\u53F7\u6216\u300C\u521B\u5EFA\u300D\u83DC\u5355\u6DFB\u52A0\u7269\u4F53\u3002",
+  "hierarchy.hint": "\u5355\u51FB\u9009\u62E9\uFF0C\u518D\u5355\u51FB\u6539\u540D\uFF0C\u53CC\u51FB\u805A\u7126",
+  "hierarchy.hide": "\u9690\u85CF",
+  "hierarchy.show": "\u663E\u793A",
+  "hierarchy.locked": "\u5DF2\u9501\u5B9A\uFF1A\u89C6\u53E3\u70B9\u9009\u4F1A\u7A7F\u900F\uFF0C\u624B\u67C4\u4E5F\u4E0D\u4F5C\u7528",
+  "hierarchy.lock": "\u9501\u5B9A\u540E\u89C6\u53E3\u70B9\u9009\u7A7F\u900F\uFF0C\u624B\u67C4\u4E0D\u4F5C\u7528",
+  "hierarchy.createChild": "\u521B\u5EFA\u5B50\u7269\u4F53",
+  "hierarchy.unparent": "\u89E3\u9664\u7236\u5B50",
+  "hierarchy.pasteChild": "\u7C98\u8D34\u4E3A\u5B50\u7EA7",
+  "hierarchy.moveUp": "\u4E0A\u79FB",
+  "hierarchy.moveDown": "\u4E0B\u79FB",
+  "view.persp": "\u900F\u89C6",
+  "view.top": "\u9876",
+  "view.bottom": "\u5E95",
+  "view.front": "\u524D",
+  "view.back": "\u540E",
+  "view.left": "\u5DE6",
+  "view.right": "\u53F3",
+  "view.up": "\u4E0A",
+  "view.down": "\u4E0B",
+  "view.world": "\u4E16\u754C\u5750\u6807",
+  "view.local": "\u5C40\u90E8\u5750\u6807",
+  "view.helpers": "\u8F85\u52A9\u663E\u793A",
+  "view.grid": "\u7F51\u683C",
+  "view.lights": "\u706F\u5149\u548C\u76F8\u673A",
+  "view.gizmoCenter": "\u624B\u67C4\u5728\u4E2D\u5FC3",
+  "view.snap": "\u5438\u9644",
+  "view.step": "\u6B65\u957F",
+  "view.focus": "\u805A\u7126\u9009\u4E2D (F)",
+  "view.fullscreen": "\u89C6\u53E3\u5168\u5C4F",
+  "view.stats": "{objects} \u7269\u4F53 \xB7 {triangles} \u4E09\u89D2",
+  "view.statsOpen": "\u7EDF\u8BA1",
+  "view.statsTitle": "\u7EDF\u8BA1",
+  "view.statsRender": "\u6E32\u67D3",
+  "view.statsPhysics": "\u7269\u7406",
+  "view.statsCamera": "\u76F8\u673A\u4E0E\u9009\u4E2D",
+  "view.statsBackend": "\u56FE\u5F62\u540E\u7AEF",
+  "view.statsCalls": "\u7ED8\u5236\u8C03\u7528",
+  "view.statsTris": "\u6E32\u67D3\u4E09\u89D2",
+  "view.statsMeshes": "\u7F51\u683C / \u9876\u70B9",
+  "view.statsMats": "\u6750\u8D28 / \u8D34\u56FE",
+  "view.statsNodes": "\u573A\u666F\u7269\u4F53",
+  "view.statsAssets": "\u8D44\u6E90",
+  "view.statsBodies": "\u521A\u4F53 \u52A8 / \u8FD0 / \u9759",
+  "view.statsTriggers": "\u89E6\u53D1\u5668",
+  "view.statsPlay": "\u8FD0\u884C",
+  "view.statsCamMode": "\u76F8\u673A",
+  "view.statsCamPos": "\u5750\u6807",
+  "view.statsSelected": "\u9009\u4E2D",
+  "view.statsNone": "\u672A\u9009\u4E2D",
+  "view.statsPlaying": "\u8FD0\u884C\u4E2D",
+  "view.statsEditing": "\u7F16\u8F91",
+  "view.statsReady": "\u5DF2\u542F\u52A8",
+  "view.statsIdle": "\u672A\u8FD0\u884C",
+  "view.statsCollapse": "\u6536\u8D77\u8BE6\u60C5",
+  "view.statsExpand": "\u5C55\u5F00\u8BE6\u60C5",
+  "view.statsVertices": "\u9876\u70B9",
+  "view.statsCallsShort": "\u7ED8\u5236",
+  "view.statsTrisShort": "\u4E09\u89D2",
+  "view.costTitle": "\u8017\u65F6\u524D 8",
+  "view.costHint": "\u6700\u8FD1\u534A\u79D2\u6BCF\u5E27\u5E73\u5747",
+  "view.cost.core.character": "\u89D2\u8272",
+  "view.cost.core.camera": "\u8DDF\u968F\u955C\u5934",
+  "view.cost.core.rules": "\u5F8B\u4EE4",
+  "view.cost.core.devices": "\u4EA4\u4E92\u4E0E\u89E6\u53D1",
+  "view.cost.core.movers": "\u79FB\u52A8\u673A\u5173",
+  "view.cost.core.round": "\u8BA1\u5206\u4E0E\u56DE\u5408",
+  "view.cost.physics": "\u7269\u7406",
+  "view.cost.navigation": "\u5BFC\u822A",
+  "view.cost.animation": "\u9AA8\u9ABC\u52A8\u753B",
+  "view.cost.particles": "\u7C92\u5B50",
+  "view.cost.render": "\u4E3B\u573A\u666F\u7ED8\u5236",
+  "view.cost.picture": "\u753B\u9762\u4E0E\u7ED8\u5236\u524D",
+  "view.cost.rig": "\u7F16\u8F91\u955C\u5934",
+  "view.create": "\u521B\u5EFA",
+  "view.createChild": "\u521B\u5EFA\u5B50\u7269\u4F53",
+  "view.paste": "\u7C98\u8D34",
+  "console.info": "\u4FE1\u606F",
+  "console.warn": "\u8B66\u544A",
+  "console.error": "\u9519\u8BEF",
+  "console.filter": "\u7B5B\u9009",
+  "console.clear": "\u6E05\u7A7A",
+  "history.empty": "\u8FD8\u6CA1\u6709\u53EF\u64A4\u9500\u7684\u64CD\u4F5C\u3002\u79FB\u52A8\u3001\u521B\u5EFA\u548C\u5220\u9664\u90FD\u4F1A\u8BB0\u5728\u8FD9\u91CC\u3002",
+  "history.current": "\u5F53\u524D",
+  "preview.pendingMaterial": "\u6750\u8D28\u8FD8\u6CA1\u5C31\u7EEA",
+  "preview.sphere": "\u7403\u4F53",
+  "preview.box": "\u7ACB\u65B9\u4F53",
+  "preview.torus": "\u5706\u73AF",
+  "preview.plane": "\u5E73\u9762",
+  "preview.studio": "\u6444\u5F71\u68DA",
+  "preview.bright": "\u660E\u4EAE",
+  "preview.dark": "\u6697\u8C03",
+  "preview.turn": "\u65CB\u8F6C",
+  "preview.popout": "\u72EC\u7ACB\u7A97\u53E3",
+  "preview.title": "\u9884\u89C8",
+  "preview.pendingModel": "\u6A21\u578B\u8FD8\u5728\u8BFB\u53D6",
+  "preview.lit": "\u5149\u7167",
+  "preview.wire": "\u7EBF\u6846",
+  "preview.unlit": "\u65E0\u5149",
+  "preview.bounds": "\u5305\u56F4\u76D2",
+  "preview.reset": "\u590D\u4F4D",
+  "preview.light": "\u706F\u5149",
+  "preview.faces": "{count} \u9762",
+  "preview.tabOverview": "\u6982\u89C8",
+  "preview.tabMesh": "\u7F51\u683C",
+  "preview.tabAnim": "\u52A8\u753B",
+  "preview.tabMaterial": "\u6750\u8D28",
+  "preview.tabSocket": "\u6302\u70B9",
+  "preview.tabImport": "\u5BFC\u5165",
+  "preview.importScale": "\u5BFC\u5165\u7F29\u653E",
+  "preview.reimport": "\u91CD\u65B0\u5BFC\u5165",
+  "preview.reimportDone": "\u5DF2\u91CD\u65B0\u5BFC\u5165\uFF1A{name}",
+  "preview.reimportFailed": "\u91CD\u65B0\u5BFC\u5165\u5931\u8D25\u3002\u6E90\u6587\u4EF6\u4E0D\u5728\u7F13\u5B58\u91CC\u3002",
+  "preview.reimportFailedDetail": "\u91CD\u65B0\u5BFC\u5165\u5931\u8D25\uFF1A{message}",
+  "preview.reimportUnavailable": "\u8FD9\u4E2A\u8D44\u6E90\u4E0D\u80FD\u91CD\u65B0\u5BFC\u5165\u3002",
+  "preview.source": "\u6765\u6E90",
+  "preview.scaleHint": "\u5F53\u524D\u9AD8\u5EA6 {height} m\u3002\u5EFA\u8BAE\u628A\u5BFC\u5165\u7F29\u653E\u8BBE\u4E3A {scale}x\u3002",
+  "preview.useScale": "\u8BBE\u4E3A {scale}x",
+  "preview.noMesh": "\u8FD8\u6CA1\u6709\u7F51\u683C\u7EDF\u8BA1\u3002\u91CD\u65B0\u5BFC\u5165\u540E\u53EF\u4EE5\u770B\u6BCF\u4E2A\u5B50\u7F51\u683C\u3002",
+  "preview.noBone": "\u8FD9\u4E2A\u6A21\u578B\u6CA1\u6709\u9AA8\u9ABC\u3002",
+  "preview.noClip": "\u6CA1\u6709\u5185\u5D4C\u52A8\u753B\u3002",
+  "preview.socketEmpty": "\u8FD8\u6CA1\u6709\u6302\u70B9\u3002\u5728\u9AA8\u9ABC\u65C1\u8FB9\u70B9\u52A0\u53F7\uFF0C\u9884\u89C8\u91CC\u4F1A\u663E\u793A\u5750\u6807\u8F74\u3002",
+  "preview.addSocket": "\u52A0\u6302\u70B9",
+  "preview.triangles": "\u4E09\u89D2\u9762",
+  "preview.vertices": "\u9876\u70B9",
+  "preview.meshes": "\u7F51\u683C",
+  "preview.slots": "\u6750\u8D28\u69FD",
+  "preview.bones": "\u9AA8\u9ABC",
+  "preview.sourceSize": "\u539F\u56FE {size}",
+  "preview.textureHint": "\u6EDA\u8F6E\u7F29\u653E\uFF0C\u62D6\u52A8\u5E73\u79FB\u3002\u4FDD\u5B58\u4F1A\u751F\u6210\u65B0\u8D34\u56FE\uFF0C\u4E0D\u80FD\u64A4\u9500\u3002",
+  "preview.flipX": "\u5DE6\u53F3\u7FFB\u8F6C",
+  "preview.flipY": "\u4E0A\u4E0B\u7FFB\u8F6C",
+  "preview.flipNormalY": "\u7FFB\u8F6C\u6CD5\u7EBF Y",
+  "preview.width": "\u5BBD",
+  "preview.height": "\u9AD8",
+  "preview.lockAspect": "\u9501\u5B9A\u6BD4\u4F8B",
+  "preview.saveTexture": "\u4FDD\u5B58\u4E3A\u65B0\u8D34\u56FE",
+  "preview.overwriteTexture": "\u8986\u76D6\u539F\u56FE",
+  "preview.saving": "\u4FDD\u5B58\u4E2D\u2026",
+  "preview.savedTexture": "\u5DF2\u4FDD\u5B58\u65B0\u8D34\u56FE\u300C{name}\u300D",
+  "preview.overwroteTexture": "\u5DF2\u8986\u76D6\u539F\u56FE\u300C{name}\u300D\uFF08\u539F\u56FE\u5DF2\u5907\u4EFD\uFF09",
+  "preview.actor": "\u8BD5\u6F14\u6A21\u578B",
+  "preview.noActor": "\u8BF7\u5148\u5BFC\u5165\u4E00\u4E2A\u6A21\u578B\u6765\u8BD5\u6F14\u8FD9\u6BB5\u52A8\u753B",
+  "preview.loading": "\u6B63\u5728\u52A0\u8F7D\u2026",
+  "preview.saveTextureFail": "\u4FDD\u5B58\u8D34\u56FE\u5931\u8D25\uFF1A{message}",
+  "preview.envHint": "\u62D6\u52A8\u65CB\u8F6C\uFF0C\u6EDA\u8F6E\u62C9\u8FD1",
+  "gesture.create": "\u521B\u5EFA {name}",
+  "gesture.rename": "\u91CD\u547D\u540D",
+  "gesture.move": "\u4FEE\u6539\u4F4D\u79FB",
+  "gesture.rotate": "\u4FEE\u6539\u65CB\u8F6C",
+  "gesture.scale": "\u4FEE\u6539\u7F29\u653E",
+  "gesture.light": "\u4FEE\u6539\u5149\u6E90",
+  "gesture.camera": "\u4FEE\u6539\u76F8\u673A",
+  "gesture.alignCamera": "\u5BF9\u9F50\u955C\u5934",
+  "gesture.picture": "\u4FEE\u6539\u753B\u9762",
+  "gesture.shadow": "\u4FEE\u6539\u9634\u5F71",
+  "gesture.material": "\u4FEE\u6539\u6750\u8D28",
+  "gesture.map": "\u8BBE\u7F6E\u8D34\u56FE",
+  "gesture.mapClear": "\u6E05\u9664\u8D34\u56FE",
+  "gesture.anim": "\u9884\u89C8\u52A8\u753B",
+  "gesture.reset": "\u91CD\u7F6E\u53D8\u6362",
+  "gesture.color": "\u4FEE\u6539\u989C\u8272",
+  "error.panel": "{name} \u51FA\u9519\uFF1A{message}",
+  "log.cacheOpenFail": "\u672C\u5730\u9879\u76EE\u7F13\u5B58\u6CA1\u80FD\u6253\u5F00\uFF0C\u4F7F\u7528\u7A7A\u767D\u573A\u666F",
+  "log.projectCreated": "\u5DF2\u521B\u5EFA\u9879\u76EE\u300C{name}\u300D\u3002\u6E90\u6587\u4EF6\u5728 Assets/\uFF0C\u7F13\u5B58\u5728 .cache/t3d/",
+  "log.projectSavedAs": "\u5DF2\u628A\u5F53\u524D\u9879\u76EE\u53E6\u5B58\u4E3A\u9879\u76EE\u300C{name}\u300D",
+  "log.projectSaveAsOccupied": "\u300C{name}\u300D\u91CC\u5DF2\u7ECF\u6709\u9879\u76EE\uFF0C\u8BF7\u53E6\u9009\u4E00\u4E2A\u7A7A\u6587\u4EF6\u5939",
+  "log.projectOpened": "\u5DF2\u6253\u5F00\u9879\u76EE\u300C{name}\u300D",
+  "log.projectExists": "\u8FD9\u4E2A\u6587\u4EF6\u5939\u5DF2\u6709\u9879\u76EE\uFF0C\u5DF2\u6253\u5F00\u300C{name}\u300D",
+  "log.projectMissing": "\u8FD9\u4E2A\u6587\u4EF6\u5939\u91CC\u6CA1\u6709 project.t3d",
+  "log.projectInvalid": "project.t3d \u65E0\u6CD5\u8BFB\u53D6",
+  "log.projectFailed": "\u9879\u76EE\u64CD\u4F5C\u5931\u8D25\uFF1A{message}",
+  "log.projectBrowser": "\u5F53\u524D\u6D4F\u89C8\u5668\u4E0D\u80FD\u9009\u62E9\u672C\u5730\u9879\u76EE\u76EE\u5F55",
+  "log.projectPermission": "\u4E0A\u6B21\u7684\u9879\u76EE\u9700\u8981\u91CD\u65B0\u6388\u6743\u3002\u8BF7\u4ECE\u300C\u6587\u4EF6 \u2192 \u6700\u8FD1\u9879\u76EE\u300D\u6253\u5F00\uFF0C\u6216\u4F7F\u7528\u300C\u6253\u5F00\u9879\u76EE\u300D\u3002",
+  "log.projectLoose": "\u5DF2\u4ECE Assets \u76EE\u5F55\u7EB3\u5165 {count} \u4E2A\u6587\u4EF6",
+  "status.localProject": "\u672C\u5730\u7F13\u5B58",
+  "log.opened": "\u9879\u76EE\u5DF2\u6253\u5F00\uFF0C\u573A\u666F {ms}ms",
+  "log.openedDetail": "\u9879\u76EE\u5DF2\u6253\u5F00 {total}ms\uFF08\u573A\u666F {scene}ms \xB7 \u6A21\u578B\u7D2F\u8BA1 {model}ms \xB7 \u8D34\u56FE\u7D2F\u8BA1 {texture}ms\uFF09\uFF0C\u6210\u54C1\u547D\u4E2D {hits}\uFF0C\u6E90\u6587\u4EF6\u89E3\u6790 {parsed}\uFF0C\u5931\u8D25 {failed}",
+  "log.openProfile": "\u6253\u5F00\u5256\u6790\uFF08\u8D44\u6E90\u5230\u9F50\u540E\u5230\u753B\u9762\u7A33\u5B9A\uFF0C\u542B\u9884\u7F16\u8BD1\uFF09\uFF1A\u4E3B\u7EBF\u7A0B\u5404\u73AF\u8282 {costs} \xB7 \u65B0\u5EFA\u7740\u8272\u5668 {shaders} \u4E2A \xB7 \u73B0\u7F16\u8BD1\u7BA1\u7EBF {pipelines} \u6761 \xB7 \u9884\u7F16\u8BD1\u7BA1\u7EBF {asyncPipelines} \u6761\uFF08\u7D2F\u8BA1 {asyncMs}ms\uFF0C\u6700\u957F {asyncWorst}ms\uFF09\xB7 \u8D44\u6E90\u5230\u9F50\u524D\u5DF2\u5EFA\u7740\u8272\u5668 {earlyShaders} \u4E2A\u3001\u7BA1\u7EBF {earlyPipelines} \u6761",
+  "log.openTimeline": "\u6253\u5F00\u65F6\u95F4\u7EBF\uFF08\u5B9E\u9645\u8017\u65F6\uFF09\uFF1A\u8BFB\u9879\u76EE\u6587\u4EF6 {read}ms \xB7 \u5EFA\u7ACB\u4F1A\u8BDD {session}ms \xB7 \u626B\u63CF\u76EE\u5F55 {scan}ms \xB7 \u4FDD\u5B58 {save}ms \xB7 \u8D44\u6E90\u6062\u590D {warm}ms\uFF08\u6A21\u578B {model}ms \xB7 \u8D34\u56FE {texture}ms\uFF09\xB7 \u6E32\u67D3\u5668\u521D\u59CB\u5316 {init}ms\uFF08\u8D44\u6E90\u5230\u9F50\u540E\u53C8\u7B49\u4E86\u5B83 {wait}ms\uFF09\xB7 \u7740\u8272\u5668\u9884\u7F16\u8BD1 {compile}ms\uFF08\u671F\u95F4\u754C\u9762\u53EF\u64CD\u4F5C\uFF09\xB7 \u9884\u7F16\u8BD1\u540E\u5230\u753B\u9762\u7A33\u5B9A {settle}ms\uFF08{frames} \u5E27\uFF0C\u5176\u4E2D {slow} \u5E27\u5361\u987F\uFF0C\u6700\u957F\u4E00\u5E27 {worst}ms\uFF09\xB7 \u4E3B\u7EBF\u7A0B\u957F\u4EFB\u52A1 {tasks} \u4E2A\u5171 {busy}ms\uFF0C\u6700\u957F {longest}ms",
+  "log.backend": "\u6E32\u67D3\u540E\u7AEF\uFF1A{label}",
+  "log.webgpu": "WebGPU",
+  "log.webgl2": "WebGL2 \u56DE\u9000",
+  "log.playCameraMany": "\u6709\u591A\u53F0 MainCamera\uFF0C\u8BD5\u73A9\u4F7F\u7528\u300C{name}\u300D",
+  "log.rendererFail": "\u6E32\u67D3\u5668\u521D\u59CB\u5316\u5931\u8D25\uFF1A{message}",
+  "log.unknownFile": "\u4E0D\u8BA4\u8BC6\u7684\u6587\u4EF6\uFF1A{name}",
+  "log.already": "\u8D44\u6E90\u5DF2\u5728\u5E93\u4E2D\uFF1A{name}",
+  "log.importFail": "{name} \u5BFC\u5165\u5931\u8D25\uFF1A{message}",
+  "log.importedAnim": "\u5DF2\u5BFC\u5165\u52A8\u753B {name}",
+  "log.importedModel": "\u5DF2\u5BFC\u5165\u6A21\u578B {name}\uFF0C{count} \u4E2A\u7247\u6BB5",
+  "log.importedTexture": "\u5DF2\u5BFC\u5165\u8D34\u56FE {name}",
+  "log.importedEnv": "\u5DF2\u5BFC\u5165\u73AF\u5883\u8D34\u56FE {name}",
+  "log.importedAudio": "\u5DF2\u5BFC\u5165\u97F3\u9891 {name}",
+  "log.importedDocument": "\u5DF2\u5BFC\u5165\u6587\u6863 {name}",
+  "log.cacheFail": "\u7F13\u5B58\u8D44\u6E90 {name} \u6CA1\u80FD\u6062\u590D\uFF1A{message}",
+  "log.referenced": "\u8FD8\u88AB\u8FD9\u4E9B\u7269\u4F53\u5F15\u7528\uFF1A",
+  "log.folderKept": "\u6587\u4EF6\u5939\u91CC\u8FD8\u6709\u6B63\u5728\u4F7F\u7528\u7684\u8D44\u6E90\uFF0C\u8FD9\u4E9B\u548C\u6587\u4EF6\u5939\u90FD\u7559\u7740\uFF1A",
+  "log.modelLoading": "\u6A21\u578B\u8FD8\u5728\u8BFB\u53D6",
+  "log.envSet": "\u5DF2\u7528 {name} \u4F5C\u4E3A\u73AF\u5883",
+  "log.dragAnim": "\u628A\u52A8\u753B\u62D6\u5230\u6A21\u578B\u4E0A",
+  "log.dragAsset": "\u628A\u8D44\u6E90\u62D6\u5230\u7269\u4F53\u4E0A",
+  "log.animOnModel": "\u52A8\u753B\u8981\u62D6\u5230\u6A21\u578B\u4E0A",
+  "log.needMesh": "\u5148\u9009\u4E2D\u4E00\u4E2A\u7F51\u683C\u6216\u6A21\u578B",
+  "log.savedMaterial": "\u5DF2\u4FDD\u5B58\u6750\u8D28 {name}",
+  "log.needSelection": "\u5148\u9009\u4E2D\u8981\u4FDD\u5B58\u7684\u7269\u4F53",
+  "log.savedPrefab": "\u5DF2\u4FDD\u5B58\u9884\u5236\u4F53 {name}",
+  "log.created": "\u5DF2\u521B\u5EFA {name}",
+  "log.skippedLocked": "\u5DF2\u8DF3\u8FC7\u9501\u5B9A\u7684\u7269\u4F53\uFF1A{names}",
+  "log.deleted": "\u5DF2\u5220\u9664 {count} \u4E2A\u7269\u4F53",
+  "log.duplicated": "\u5DF2\u590D\u5236 {count} \u4E2A\u7269\u4F53",
+  "log.nothingCopy": "\u6CA1\u6709\u53EF\u62F7\u8D1D\u7684\u7269\u4F53",
+  "log.copied": "\u5DF2\u62F7\u8D1D {count} \u4E2A\u7269\u4F53",
+  "log.clipboardEmpty": "\u526A\u8D34\u677F\u662F\u7A7A\u7684",
+  "log.pasted": "\u5DF2\u7C98\u8D34 {count} \u4E2A\u7269\u4F53",
+  "log.groupNeedTwo": "\u6210\u7EC4\u81F3\u5C11\u8981\u9009\u4E2D\u4E24\u4E2A\u7269\u4F53",
+  "log.grouped": "\u5DF2\u6210\u7EC4",
+  "log.needGround": "\u5148\u9009\u62E9\u8981\u8D34\u5730\u7684\u7269\u4F53",
+  "log.alreadyGround": "\u7269\u4F53\u5DF2\u7ECF\u8D34\u5728\u5730\u9762\u4E0A",
+  "log.grounded": "\u5DF2\u8D34\u5730 {count} \u4E2A\u7269\u4F53",
+  "log.locked": "{name} \u5DF2\u9501\u5B9A",
+  "log.cycle": "\u4E0D\u80FD\u628A\u7269\u4F53\u62D6\u6210\u81EA\u5DF1\u7684\u5B50\u7EA7",
+  "log.noUndoPlay": "\u8BD5\u73A9\u4E2D\u4E0D\u80FD\u64A4\u9500",
+  "log.noRedoPlay": "\u8BD5\u73A9\u4E2D\u4E0D\u80FD\u91CD\u505A",
+  "log.resumePlay": "\u7EE7\u7EED\u8BD5\u73A9",
+  "log.startPlay": "\u5F00\u59CB\u8BD5\u73A9\u3002\u505C\u6B62\u540E\u573A\u666F\u4F1A\u56DE\u5230\u8BD5\u73A9\u524D\u3002",
+  "log.stopPlay": "\u5DF2\u505C\u6B62\u8BD5\u73A9\uFF0C\u573A\u666F\u5DF2\u6062\u590D",
+  "log.stopBeforeNew": "\u5148\u505C\u6B62\u8BD5\u73A9\uFF0C\u518D\u65B0\u5EFA\u573A\u666F",
+  "log.createdScene": "\u5DF2\u65B0\u5EFA\u5E76\u6253\u5F00\u573A\u666F {name}",
+  "log.stopBeforeOpen": "\u5148\u505C\u6B62\u8BD5\u73A9\uFF0C\u518D\u6253\u5F00\u573A\u666F",
+  "log.openedScene": "\u5DF2\u6253\u5F00\u573A\u666F {name}",
+  "log.keepScene": "\u81F3\u5C11\u4FDD\u7559\u4E00\u4E2A\u573A\u666F",
+  "log.stopBeforeDelete": "\u5148\u505C\u6B62\u8BD5\u73A9\uFF0C\u518D\u5220\u9664\u573A\u666F",
+  "log.deletedScene": "\u5DF2\u5220\u9664\u573A\u666F",
+  "log.placed": "\u5DF2\u653E\u5165\u573A\u666F {name}",
+  "log.assignedMaterial": "\u5DF2\u6307\u5B9A\u6750\u8D28 {name}",
+  "log.noStructure": "\u8BD5\u73A9\u4E2D\u4E0D\u80FD\u6539\u573A\u666F\u7ED3\u6784\uFF0C\u505C\u6B62\u540E\u518D\u7F16\u8F91",
+  "picker.search": "\u641C\u7D22",
+  "clip.pick": "\u9009\u62E9\u52A8\u753B",
+  "picker.empty": "\u6CA1\u6709\u5339\u914D\u7684\u8D44\u6E90",
+  "picker.texture": "\u9009\u62E9\u8D34\u56FE",
+  "picker.material": "\u9009\u62E9\u6750\u8D28",
+  "picker.environment": "\u9009\u62E9\u73AF\u5883",
+  "picker.none": "\u65E0",
+  "picker.unset": "\u672A\u8BBE\u7F6E",
+  "picker.select": "\u9009\u62E9",
+  "picker.clear": "\u6E05\u9664",
+  "picker.missing": "\u7F3A\u5931",
+  "picker.textureHint": "\u5355\u51FB\u5728\u8D44\u6E90\u7A97\u53E3\u5B9A\u4F4D\uFF0C\u53CC\u51FB\u9884\u89C8",
+  "picker.textureLocate": "\u5728\u8D44\u6E90\u7A97\u53E3\u4E2D\u5B9A\u4F4D",
+  "picker.textureReplace": "\u9009\u62E9\u6216\u66FF\u6362\u8D34\u56FE",
+  "picker.textureDrop": "\u62D6\u653E\u8D34\u56FE\u5230\u8FD9\u91CC",
+  "picker.thumbs": "\u5927\u7F29\u7565\u56FE",
+  "picker.list": "\u5217\u8868",
+  "project.create": "\u521B\u5EFA",
+  "project.createScene": "\u573A\u666F",
+  "project.createMaterial": "\u6750\u8D28",
+  "project.createPrefab": "\u9884\u5236\u4F53",
+  "project.newMaterialName": "\u65B0\u6750\u8D28",
+  "project.copySuffix": "\u526F\u672C",
+  "project.duplicate": "\u590D\u5236",
+  "project.findRefs": "\u67E5\u627E\u5F15\u7528",
+  "project.noRefs": "\u6CA1\u6709\u7269\u4F53\u5F15\u7528\u8FD9\u4E2A\u8D44\u6E90",
+  "project.refs": "\u88AB\u8FD9\u4E9B\u8D44\u6E90\u6216\u7269\u4F53\u4F7F\u7528\uFF1A{names}",
+  "field.enable": "\u542F\u7528",
+  "field.color": "\u989C\u8272",
+  "field.closed": "\u95ED\u5408\u66F2\u7EBF",
+  "field.tension": "\u5F20\u529B",
+  "tween.kind": "\u52A8\u6548\u7C7B\u578B",
+  "tween.kind.floatBob": "\u60AC\u6D6E\u6D6E\u52A8 (PingPong)",
+  "tween.kind.positionOffset": "\u4F4D\u7F6E\u504F\u79FB",
+  "tween.kind.rotationOffset": "\u65CB\u8F6C\u89D2\u5EA6 (\u5EA6)",
+  "tween.kind.scaleMultiplier": "\u7F29\u653E\u500D\u7387\u53D8\u5316",
+  "tween.delta": "\u53D8\u5316\u91CF (X/Y/Z)",
+  "tween.duration": "\u5355\u7A0B\u65F6\u957F (\u79D2)",
+  "tween.delay": "\u8D77\u59CB\u5EF6\u8FDF (\u79D2)",
+  "tween.ease": "\u7F13\u52A8\u66F2\u7EBF",
+  "tween.ease.linear": "\u7EBF\u6027 (Linear)",
+  "tween.ease.inOutSine": "\u6B63\u5F26\u7F13\u5165\u7F13\u51FA (Sine)",
+  "tween.ease.outQuad": "\u4E8C\u6B21\u7F13\u51FA (OutQuad)",
+  "tween.ease.inOutQuad": "\u4E8C\u6B21\u7F13\u5165\u7F13\u51FA (InOutQuad)",
+  "tween.ease.outCubic": "\u4E09\u6B21\u7F13\u51FA (OutCubic)",
+  "tween.ease.inOutCubic": "\u4E09\u6B21\u7F13\u5165\u7F13\u51FA (InOutCubic)",
+  "tween.ease.outBack": "\u56DE\u5F39 (OutBack)",
+  "tween.ease.outBounce": "\u5F39\u8DF3 (OutBounce)",
+  "tween.ease.outElastic": "\u5F39\u6027 (OutElastic)",
+  "tween.repeat": "\u5FAA\u73AF\u6A21\u5F0F",
+  "tween.repeat.once": "\u5355\u6B21",
+  "tween.repeat.loop": "\u4ECE\u5934\u5FAA\u73AF",
+  "tween.repeat.pingPong": "\u5F80\u8FD4 (PingPong)",
+  "tween.autoStart": "\u8BD5\u73A9\u81EA\u52A8\u64AD\u653E",
+  "spline.gesture": "\u7F16\u8F91 Spline \u66F2\u7EBF",
+  "spline.edit": "Spline \u66F2\u7EBF\u7F16\u8F91",
+  "spline.hint": "\u70B9\u51FB\u4EFB\u610F\u63A7\u5236\u70B9\uFF0C\u7528\u79FB\u52A8 Gizmo \u6CBF\u8F74\u5411\u62D6\u52A8\uFF1B\u76F4\u63A5\u62D6\u52A8\u5706\u70B9\u5219\u5728\u5F53\u524D\u89C6\u89D2\u5E73\u9762\u4E0A\u79FB\u52A8\u3002\u62D6\u62FD\u6846\u9009\u53EF\u4EE5\u540C\u65F6\u9009\u4E2D\u591A\u4E2A\u63A7\u5236\u70B9\u3002",
+  "spline.pathNode": "Spline \u66F2\u7EBF\u8282\u70B9",
+  "spline.mode": "\u8FD0\u884C\u6A21\u5F0F",
+  "spline.mode.once": "\u5355\u6B21\u5230\u8FBE",
+  "spline.mode.loop": "\u5FAA\u73AF",
+  "spline.mode.pingPong": "\u5F80\u8FD4",
+  "spline.speed": "\u79FB\u52A8\u901F\u5EA6 (m/s)",
+  "spline.curveTension": "\u66F2\u7EBF\u5F20\u529B",
+  "spline.face": "\u671D\u5411\u8DEF\u5F84\u5207\u7EBF",
+  "spline.planeXZ": "\u4FDD\u6301\u5F53\u524D\u9AD8\u5EA6 (XZ)",
+  "spline.autoStart": "\u8BD5\u73A9\u81EA\u52A8\u542F\u52A8",
+  "spline.start": "\u8D77\u59CB\u8FDB\u5EA6 (0~1)",
+  "spline.points": "\u63A7\u5236\u70B9 ({count})",
+  "spline.addPoint": "\u6DFB\u52A0\u63A7\u5236\u70B9",
+  "spline.removePoint": "\u5220\u9664\u63A7\u5236\u70B9",
+  "spline.fallback": "\u672A\u6307\u5B9A\u8DEF\u5F84\u7236\u8282\u70B9\u65F6\uFF0C\u5C06\u9ED8\u8BA4\u628A\u5F53\u524D\u8282\u70B9\u7684\u5B50\u8282\u70B9\u4F5C\u4E3A\u6709\u5E8F\u8DEF\u70B9\u3002",
+  "crowd.radius": "\u907F\u8BA9\u534A\u5F84 (m)",
+  "crowd.maxSpeed": "\u6700\u5927\u901F\u5EA6 (m/s)",
+  "crowd.separation": "\u5206\u79BB\u6743\u91CD",
+  "crowd.cohesion": "\u51DD\u805A\u6743\u91CD",
+  "crowd.alignment": "\u5BF9\u9F50\u6743\u91CD",
+  "crowd.planeXZ": "XZ \u5E73\u9762\u79FB\u52A8",
+  "crowd.face": "\u671D\u5411\u79FB\u52A8\u65B9\u5411",
+  "projectile.mode": "\u5F39\u9053\u6A21\u5F0F",
+  "projectile.mode.linear": "\u76F4\u7EBF\u98DE\u884C",
+  "projectile.mode.homing": "\u81EA\u52A8\u8FFD\u8E2A",
+  "projectile.mode.ballistic": "\u629B\u7269\u7EBF",
+  "projectile.speed": "\u98DE\u884C\u901F\u5EA6 (m/s)",
+  "projectile.gravity": "\u91CD\u529B\u52A0\u901F\u5EA6",
+  "projectile.turn": "\u8FFD\u8E2A\u8F6C\u5411\u7387 (rad/s)",
+  "projectile.life": "\u6700\u5927\u5BFF\u547D (s)",
+  "projectile.hitRadius": "\u547D\u4E2D\u5224\u5B9A\u534A\u5F84 (m)",
+  "projectile.targetTag": "\u76EE\u6807\u6807\u7B7E",
+  "projectile.damage": "\u4F24\u5BB3\u503C",
+  "projectile.destroy": "\u547D\u4E2D\u540E\u56DE\u6C60/\u9500\u6BC1",
+  "water.schema": "\u6C34\u4F53\u53C2\u6570",
+  "schema.listCount": "\u5171 {count} \u9879",
+  "schema.dropNode": "\u677E\u5F00\u4EE5\u5F15\u7528\u8282\u70B9",
+  "schema.dropNodeHint": "\u4ECE\u5C42\u7EA7\u6811\u62D6\u653E\u8282\u70B9\u5230\u6B64\u5904\uFF0C\u6216\u70B9\u51FB\u53F3\u4FA7\u653E\u5927\u955C\u9009\u62E9",
+  "schema.nodeTitle": "{name} ({id}) \u2014 \u70B9\u51FB\u5B9A\u4F4D\uFF0C\u6216\u62D6\u653E\u5176\u4ED6\u8282\u70B9\u66FF\u6362",
+  "schema.nodeEmpty": "\u65E0 (\u62D6\u653E\u8282\u70B9\u6216\u9009\u62E9)",
+  "schema.nodeMissing": "\u5DF2\u4E22\u5931 ({id})",
+  "schema.pick": "\u9009\u62E9{name}",
+  "schema.clearRef": "\u6E05\u7A7A\u5F15\u7528",
+  "schema.dropAsset": "\u677E\u5F00\u4EE5\u5F15\u7528\u8D44\u4EA7",
+  "schema.dropAssetHint": "\u4ECE\u8D44\u6E90\u9762\u677F\u62D6\u653E\u8D44\u4EA7\u5230\u6B64\u5904\uFF0C\u6216\u70B9\u51FB\u53F3\u4FA7\u653E\u5927\u955C\u9009\u62E9",
+  "schema.assetTitle": "{name} ({kind}) \u2014 \u70B9\u51FB\u5B9A\u4F4D\uFF0C\u6216\u62D6\u653E\u8D44\u4EA7\u66FF\u6362",
+  "schema.assetEmpty": "\u65E0 (\u62D6\u653E\u8D44\u4EA7\u6216\u9009\u62E9)",
+  "schema.dropClip": "\u677E\u5F00\u4EE5\u5F15\u7528\u52A8\u753B",
+  "schema.dropClipHint": "\u4ECE\u8D44\u6E90\u9762\u677F\u62D6\u653E\u52A8\u753B\u7247\u6BB5\u5230\u6B64\u5904\uFF0C\u6216\u70B9\u51FB\u53F3\u4FA7\u653E\u5927\u955C\u9009\u62E9",
+  "schema.clipTitle": "{name} \u2014 \u62D6\u653E\u52A8\u753B\u7247\u6BB5\u6216\u70B9\u51FB\u53F3\u4FA7\u9009\u62E9",
+  "schema.clipEmpty": "\u65E0 (\u62D6\u653E\u52A8\u753B\u6216\u9009\u62E9)",
+  "schema.rowHint": "\u70B9\u51FB\u9009\u62E9\u7B56\u5212\u8868\u6761\u76EE",
+  "schema.rowEmpty": "\u65E0 (\u70B9\u51FB\u9009\u62E9)",
+  "schema.search": "\u641C\u7D22\u540D\u79F0\u3001\u7C7B\u578B\u6216 ID\u2026",
+  "schema.clearPick": "\u65E0\uFF08\u6E05\u7A7A\u5F15\u7528\uFF09",
+  "schema.noMatch": "\u6CA1\u6709\u5339\u914D\u7684\u9879",
+  "tool.design": "\u84DD\u56FE",
+  "tool.designTip": "\u7ACB\u9879\u84DD\u56FE (design.md)",
+  "tool.packs": "\u80FD\u529B\u5305",
+  "tool.packsTip": "\u80FD\u529B\u5305\u6C89\u6DC0\u4E0E\u914D\u65B9",
+  "tool.branches": "\u5206\u652F",
+  "tool.branchesTip": "\u5FEB\u7167\u4E0E\u5B9E\u9A8C\u5206\u652F\u5BF9\u6BD4",
+  "tool.diagnose": "\u4F53\u68C0",
+  "tool.diagnoseTip": "\u4F53\u68C0\u4E0E\u6027\u80FD\u9884\u7B97\u770B\u677F",
+  "tool.publish": "\u53D1\u5E03",
+  "tool.publishTip": "\u9A8C\u8BC1\u4E0E Web \u53D1\u5E03",
+  "tool.ai": "AI \u52A9\u624B",
+  "tool.aiTip": "AI \u6307\u6325\u53F0",
+  "menu.exportWeb": "\u6784\u5EFA\u2026",
+  "view.device.full": "\u591A\u7AEF\u6BD4\u4F8B\u9884\u89C8\uFF1A\u81EA\u9002\u5E94\u5168\u5C4F\uFF08\u70B9\u51FB\u5207\u6362 16:9 / \u7AD6\u5C4F / \u6A2A\u5C4F\uFF09",
+  "view.device.desktop": "\u591A\u7AEF\u6BD4\u4F8B\u9884\u89C8\uFF1A16:9 \u684C\u9762",
+  "view.device.portrait": "\u591A\u7AEF\u6BD4\u4F8B\u9884\u89C8\uFF1A9:16 \u624B\u673A\u7AD6\u5C4F",
+  "view.device.landscape": "\u591A\u7AEF\u6BD4\u4F8B\u9884\u89C8\uFF1A16:9 \u624B\u673A\u6A2A\u5C4F",
+  "view.annotate": "\u89C6\u53E3\u5708\u9009\u6279\u6CE8\u5E76\u53D1\u9001\u7ED9 AI",
+  "view.aiPrompt": "\u5C31\u5730\u5524\u9192 AI \u6307\u4EE4\u6846 (Ctrl/Cmd + K)",
+  "view.interact": "\u4EA4\u4E92",
+  "view.jump": "\u8DF3",
+  "view.annotateHint": "\u5728\u89C6\u53E3\u4E2D\u5708\u753B\u9700\u8981\u4FEE\u6539\u7684\u4F4D\u7F6E",
+  "view.annotateClear": "\u6E05\u9664",
+  "view.annotateSend": "\u9644\u5E26\u6279\u6CE8\u53D1\u7ED9 AI",
+  "view.aiInline": "AI \u5C31\u5730\u6307\u4EE4",
+  "view.aiPlaceholder": "\u8F93\u5165\u5BF9\u5F53\u524D\u9009\u4E2D\u7269\u4F53\u6216\u89C6\u53E3\u7684\u4FEE\u6539\u8981\u6C42\uFF0C\u56DE\u8F66\u53D1\u9001\u2026",
+  "ui.addControl": "\u6DFB\u52A0\u63A7\u4EF6",
+  "ui.addNamed": "\u6DFB\u52A0 {name}",
+  "ui.layers": "\u56FE\u5C42\u6811",
+  "ui.show": "\u663E\u793A",
+  "ui.hide": "\u9690\u85CF",
+  "ui.interact": "\u542F\u7528\u4EA4\u4E92",
+  "ui.basic": "\u57FA\u7840\u5C5E\u6027",
+  "ui.mode": "\u6A21\u5F0F",
+  "ui.anchorGrid": "\u951A\u70B9\u9884\u8BBE",
+  "ui.anchor.tl": "\u5DE6\u4E0A",
+  "ui.anchor.tc": "\u4E2D\u4E0A",
+  "ui.anchor.tr": "\u53F3\u4E0A",
+  "ui.anchor.ml": "\u5DE6\u4E2D",
+  "ui.anchor.mc": "\u5C45\u4E2D",
+  "ui.anchor.mr": "\u53F3\u4E2D",
+  "ui.anchor.bl": "\u5DE6\u4E0B",
+  "ui.anchor.bc": "\u4E2D\u4E0B",
+  "ui.anchor.br": "\u53F3\u4E0B",
+  "ui.justify": "\u4E3B\u8F74\u5BF9\u9F50",
+  "ui.alignCross": "\u4EA4\u53C9\u8F74",
+  "ui.align.start": "\u8D77\u59CB",
+  "ui.flex.center": "\u5C45\u4E2D",
+  "ui.align.end": "\u672B\u5C3E",
+  "ui.align.between": "\u4E24\u7AEF\u5BF9\u9F50",
+  "ui.align.stretch": "\u62C9\u4F38",
+  "ui.selectedCount": "\u5DF2\u9009 {count} \u4E2A",
+  "ui.stageHint": "\u6EDA\u8F6E\u7F29\u653E \xB7 \u6309\u4F4F\u6EDA\u8F6E\u5E73\u79FB \xB7 \u62D6\u51FA\u6846\u9009\u591A\u4E2A\u63A7\u4EF6",
+  "ui.canvasSize": "\u753B\u5E03\u5206\u8FA8\u7387",
+  "ui.canvasZoom": "\u753B\u5E03\u7F29\u653E",
+  "ui.grid": "\u663E\u793A/\u9690\u85CF\u80CC\u666F\u7F51\u683C",
+  "ui.statePreview": "\u4EA4\u4E92\u72B6\u6001\u9884\u89C8",
+  "ui.docFallback": "UI \u6587\u6863",
+  "ui.bgPlaceholder": "\u5982 #1e293b \u6216 rgba(...)",
+  "ui.varPlaceholder": "\u5982 hp / score",
+  "ui.targetProp": "\u76EE\u6807\u5C5E\u6027",
+  "ui.action": "\u52A8\u4F5C",
+  "shader.file": "\u7740\u8272\u5668 (.shader.ts)",
+  "shader.scriptFile": "\u811A\u672C (.ts)",
+  "shader.asset": "\u7740\u8272\u5668\u8D44\u4EA7",
+  "shader.scriptAsset": "\u811A\u672C\u8D44\u4EA7",
+  "shader.info": "\u57FA\u672C\u4FE1\u606F",
+  "shader.id": "\u6807\u8BC6\u7B26",
+  "shader.path": "\u6587\u4EF6\u8DEF\u5F84",
+  "shader.compile": "\u7F16\u8BD1\u72B6\u6001",
+  "shader.compileOk": "\u7F16\u8BD1\u901A\u8FC7",
+  "shader.compileErr": "{count} \u4E2A\u7F16\u8BD1\u9519\u8BEF",
+  "shader.lightMode": "\u5149\u7167\u6A21\u5F0F",
+  "shader.unlit": "\u65E0\u5149\u7167 (unlit)",
+  "shader.lit": "\u6807\u51C6\u5149\u7167 (lit)",
+  "shader.surface": "\u900F\u660E / \u53CC\u9762",
+  "shader.transparent": "\u900F\u660E",
+  "shader.opaque": "\u4E0D\u900F\u660E",
+  "shader.double": "\u53CC\u9762",
+  "shader.single": "\u5355\u9762",
+  "shader.scriptKind": "\u811A\u672C\u7C7B\u578B",
+  "shader.system": "\u5168\u5C40\u7CFB\u7EDF (system)",
+  "shader.behavior": "\u8282\u70B9\u884C\u4E3A (behavior)",
+  "shader.params": "\u66B4\u9732\u53C2\u6570 ({count})",
+  "shader.builtin": "\u5185\u7F6E\u7740\u8272\u5668",
+  "shader.custom": "\u81EA\u5B9A\u4E49\u7740\u8272\u5668",
+  "shader.error": "\u9519\u8BEF",
+  "pm.title": "\u9879\u76EE\u7BA1\u7406\u4E2D\u5FC3",
+  "pm.branch": "\u5206\u652F\uFF1A{name}",
+  "pm.main": "\u4E3B\u7EBF (main)",
+  "pm.healthy": "\u4F53\u68C0\u5065\u5EB7",
+  "pm.errors": "{count} \u963B\u585E\u9519\u8BEF",
+  "pm.close": "\u5173\u95ED",
+  "pm.tab.design": "\u7ACB\u9879\u4E0E\u6D41\u56FE",
+  "pm.tab.packs": "\u7B56\u5212\u8868\u4E0E\u80FD\u529B\u5305",
+  "pm.tab.diagnose": "\u4F53\u68C0\u4E0E\u9884\u7B97",
+  "pm.tab.branches": "\u5FEB\u7167\u4E0E\u5206\u652F",
+  "pm.tab.publish": "\u6784\u5EFA\u4E0E\u53D1\u5E03",
+  "pm.sceneCount": "{count}\u573A\u666F",
+  "pm.designTitle": "\u7ACB\u9879\u84DD\u56FE\u4E0E\u5173\u5361\u6D41\u8F6C (design.md)",
+  "pm.designLead": "\u5168\u5C40\u8BBE\u8BA1\u8BB0\u5FC6\u4F1A\u968F\u6BCF\u8F6E\u5BF9\u8BDD\u81EA\u52A8\u6CE8\u5165 AI \u4E0A\u4E0B\u6587\uFF0C\u4FDD\u8BC1\u591A\u8F6E\u534F\u4F5C\u98CE\u683C\u4E0E\u73A9\u6CD5\u4E0D\u8DD1\u504F",
+  "pm.askDesign": "\u6309\u84DD\u56FE\u4EA4\u529E AI",
+  "pm.saveDesign": "\u4FDD\u5B58\u84DD\u56FE",
+  "pm.flow": "\u591A\u573A\u666F\u5173\u5361\u6D41\u8F6C\u56FE (Scene Flow)",
+  "pm.scenes": "{count} \u4E2A\u573A\u666F",
+  "pm.flowEmpty": "\u5F53\u524D\u9879\u76EE\u4EC5\u542B\u9ED8\u8BA4\u4E34\u65F6\u573A\u666F\uFF0C\u4FDD\u5B58\u6216\u65B0\u5EFA\u573A\u666F\u8D44\u4EA7\u540E\u5C06\u5728\u6B64\u5C55\u793A\u5173\u5361\u6D41\u3002",
+  "pm.current": "\u5F53\u524D",
+  "pm.nodeCount": "\u8282\u70B9\u6570: {count}",
+  "pm.openEdit": "\u5207\u5165\u7F16\u8F91",
+  "pm.playScene": "\u8DF3\u5173\u8BD5\u73A9",
+  "pm.settings": "\u9879\u76EE\u8BBE\u5B9A\u4E0E\u7F8E\u672F\u89C4\u8303",
+  "pm.projectName": "\u9879\u76EE\u540D\u79F0",
+  "pm.genre": "\u6E38\u620F\u7C7B\u578B",
+  "pm.genrePh": "\u5982\uFF1A\u5E73\u53F0\u8DF3\u8DC3 / RTS / TPS",
+  "pm.camera": "\u955C\u5934\u89C6\u89D2",
+  "pm.cameraPh": "\u5982\uFF1A\u7B2C\u4E09\u4EBA\u79F0\u8FFD\u5C3E / \u4FEF\u89C6\u89D2",
+  "pm.art": "\u7F8E\u672F\u98CE\u683C\u5173\u952E\u8BCD",
+  "pm.artPh": "\u4F4E\u591A\u8FB9\u5F62\u3001\u8D5B\u535A\u9713\u8679\u3001\u9AD8\u5BF9\u6BD4\u5149\u5F71",
+  "pm.palette": "\u8272\u5F69\u677F (\u9017\u53F7\u5206\u9694)",
+  "pm.loop": "\u6838\u5FC3\u73A9\u6CD5\u5FAA\u73AF",
+  "pm.win": "\u80DC\u8D1F\u6761\u4EF6\u4E0E\u64CD\u63A7\u8BF4\u660E",
+  "pm.notes": "\u8865\u5145\u5907\u6CE8",
+  "pm.packsTitle": "\u7B56\u5212\u6570\u503C\u8868\u3001\u80FD\u529B\u5305\u6C89\u6DC0\u4E0E\u914D\u65B9\u5E93",
+  "pm.packsLead": "\u652F\u6301\u5C06\u672C\u9879\u76EE\u811A\u672C\u4E0E\u7740\u8272\u5668\u6C89\u6DC0\u4E3A\u6807\u51C6\u80FD\u529B\u5305\uFF0C\u6216\u5BFC\u5165\u5916\u90E8 pack.json \u5E76\u8FDB\u884C\u5B89\u5168\u4FE1\u4EFB\u786E\u8BA4",
+  "pm.importPack": "\u5BFC\u5165 pack.json",
+  "pm.sedimentTitle": "\u4E00\u952E\u6C89\u6DC0\u5F53\u524D\u9879\u76EE\u4E3A\u80FD\u529B\u5305\uFF08\u81EA\u52A8\u89C4\u6574 __project__ \u811A\u672C\uFF09",
+  "pm.packIdPh": "\u5305 ID (\u5982 user.my-rts)",
+  "pm.packNamePh": "\u663E\u793A\u540D\u79F0",
+  "pm.tier.content": "\u5185\u5BB9\u5305 (content)",
+  "pm.tier.gameplay": "\u73A9\u6CD5\u5305 (gameplay)",
+  "pm.tier.effect": "\u6548\u679C\u5305 (effect)",
+  "pm.sedimentBusy": "\u6C89\u6DC0\u4E2D\u2026",
+  "pm.sediment": "\u4E00\u952E\u6C89\u6DC0",
+  "pm.tables": "\u9879\u76EE\u7B56\u5212\u6570\u636E\u8868\u6982\u89C8",
+  "pm.balance": "\u8BA9 AI \u5E73\u8861\u6570\u503C",
+  "pm.noTables": "\u5F53\u524D\u65E0\u5DF2\u542F\u7528\u7684\u7B56\u5212\u6570\u636E\u8868\u3002",
+  "pm.rows": "{count} \u884C",
+  "pm.installed": "\u5DF2\u5B89\u88C5\u7528\u6237\u80FD\u529B\u5305 ({count})",
+  "pm.noPacks": "\u6682\u672A\u5B89\u88C5\u7528\u6237\u6C89\u6DC0\u5305\u3002",
+  "pm.trusted": "\u5DF2\u4FE1\u4EFB",
+  "pm.untrusted": "\u5F85\u4FE1\u4EFB\u786E\u8BA4",
+  "pm.packMeta": "{id}@{version} \xB7 \u811A\u672C {scripts} \xB7 \u7740\u8272\u5668 {shaders} \xB7 \u7EC4\u4EF6 {components}",
+  "pm.trust": "\u4FE1\u4EFB\u5E76\u542F\u7528",
+  "pm.uninstall": "\u5378\u8F7D",
+  "pm.recipes": "\u53EF\u7528\u5B98\u65B9\u4E0E\u7528\u6237\u914D\u65B9 ({count})",
+  "pm.buildRecipe": "\u6309\u914D\u65B9\u642D\u5EFA",
+  "pm.diagnoseTitle": "\u9879\u76EE\u4F53\u68C0\u4E0E\u6027\u80FD\u9884\u7B97\u770B\u677F",
+  "pm.diagnoseLead": "\u5B9E\u65F6\u76D1\u63A7\u573A\u666F\u89C4\u6A21\u3001DrawCall\u3001\u4E09\u89D2\u9762\u6570\u4E0E\u5F15\u7528\u5B8C\u6574\u6027\uFF0C\u5F02\u5E38\u9879\u53EF\u76F4\u63A5\u4EA4\u529E AI \u4FEE\u590D",
+  "pm.fixAll": "\u5168\u90E8\u4EA4\u529E AI \u81EA\u68C0\u4FEE\u590D",
+  "pm.triangles": "\u4E09\u89D2\u9762\u6570",
+  "pm.shadowLights": "\u9634\u5F71\u5149\u6E90",
+  "pm.lightUnit": " \u76CF",
+  "pm.assetSize": "\u8D44\u4EA7\u603B\u4F53\u79EF",
+  "pm.issues": "\u4F53\u68C0\u660E\u7EC6",
+  "pm.issueCounts": "{errors} \u9519\u8BEF \xB7 {warnings} \u8B66\u544A",
+  "pm.allClear": "\u9879\u76EE\u4F53\u68C0\u4E0E\u6027\u80FD\u9884\u7B97\u5168\u90E8\u901A\u8FC7\uFF01",
+  "pm.error": "\u9519\u8BEF",
+  "pm.warning": "\u8B66\u544A",
+  "pm.hint": "\u5EFA\u8BAE\uFF1A{hint}",
+  "pm.fix": "\u4EA4\u7ED9 AI \u4FEE",
+  "pm.branchTitle": "\u7248\u672C\u5FEB\u7167\u4E0E\u8F7B\u91CF\u5B9E\u9A8C\u5206\u652F",
+  "pm.branchLead": "\u53EF\u4ECE\u4EFB\u610F\u8282\u70B9\u62C9\u51FA\u5B9E\u9A8C\u5206\u652F\u8FDB\u884C A/B \u65B9\u6848\u8BD5\u73A9\u5BF9\u6BD4\uFF0C\u786E\u8BA4\u6548\u679C\u540E\u4E00\u952E\u8BBE\u4E3A\u4E3B\u7EBF",
+  "pm.branches": "\u5B9E\u9A8C\u5206\u652F (Branches)",
+  "pm.branchPh": "\u65B0\u5B9E\u9A8C\u5206\u652F\u540D\u79F0\uFF08\u5982\uFF1A\u65B9\u6848B-\u5FEB\u8282\u594F\u624B\u611F\uFF09",
+  "pm.branchDefault": "\u5B9E\u9A8C\u5206\u652F",
+  "pm.branchFail": "\u521B\u5EFA\u5931\u8D25",
+  "pm.createBranch": "\u62C9\u51FA\u5B9E\u9A8C\u5206\u652F",
+  "pm.active": "\u5F53\u524D\u6FC0\u6D3B",
+  "pm.branchDiff": "\u8282\u70B9 {count}{diff}",
+  "pm.diff": " \xB7 \u76F8\u5BF9\u4E3B\u7EBF\uFF1A+{added} \u65B0\u589E / ~{modified} \u4FEE\u6539 / -{removed} \u5220\u9664",
+  "pm.switch": "\u5207\u6362\u5BF9\u6BD4",
+  "pm.promote": "\u8BBE\u4E3A\u4E3B\u7EBF",
+  "pm.checkpoints": "\u7248\u672C\u5FEB\u7167 (Checkpoints)",
+  "pm.checkpointPh": "\u91CC\u7A0B\u7891\u5FEB\u7167\u5907\u6CE8\u2026",
+  "pm.checkpointDefault": "\u624B\u52A8\u91CC\u7A0B\u7891",
+  "pm.saveCheckpoint": "\u4FDD\u5B58\u91CC\u7A0B\u7891",
+  "pm.noCheckpoints": "\u6682\u65E0\u5FEB\u7167\u8BB0\u5F55\u3002",
+  "pm.checkpointMeta": "{time} \xB7 \u8282\u70B9 {count}",
+  "pm.branchFrom": "\u62C9\u51FA\u5206\u652F",
+  "pm.restore": "\u6062\u590D",
+  "pm.publishTitle": "\u6784\u5EFA\u4E0E\u53D1\u5E03 Web \u64AD\u653E\u5305",
+  "pm.publishLead": "\u5BFC\u51FA\u96F6\u7F16\u8F91\u5668\u4F9D\u8D56\u7684\u72EC\u7ACB Web \u64AD\u653E\u5305\uFF08\u590D\u7528 WebGPURenderer \u4E0E WebGL2 \u56DE\u9000\uFF09",
+  "pm.gate": "\u53D1\u5E03\u524D\u95E8\u7981\u68C0\u67E5",
+  "pm.gateOk": "\u2713 \u4F53\u68C0\u65E0\u963B\u585E\u9519\u8BEF\uFF0C\u53EF\u4EE5\u5BFC\u51FA\u72EC\u7ACB Web \u64AD\u653E\u5305\u3002",
+  "pm.gateBad": "\u2715 \u5F53\u524D\u5B58\u5728 {count} \u4E2A\u4F53\u68C0\u9519\u8BEF\uFF0C\u5EFA\u8BAE\u5148\u5904\u7406\u540E\u518D\u53D1\u5E03\u3002",
+  "pm.export": "\u9009\u62E9\u76EE\u5F55\u5E76\u6784\u5EFA",
+  "pm.smoke": "\u8BA9 AI \u8DD1\u5192\u70DF\u9A8C\u8BC1",
+  "ai.title": "AI \u6307\u6325\u53F0",
+  "ai.unconfigured": "\u672A\u914D\u7F6E",
+  "ai.noKey": "\u672A\u8BBE\u5BC6\u94A5",
+  "ai.desktop": "\u684C\u9762\u7AEF\u53EF\u7528",
+  "ai.noExport": "\u5F53\u524D\u6CA1\u6709\u53EF\u5BFC\u51FA\u7684\u5BF9\u8BDD\u8BB0\u5F55",
+  "ai.exported": "\u5DF2\u5BFC\u51FA {count} \u6761\u5BF9\u8BDD\u8BB0\u5F55",
+  "ai.imported": "\u5DF2\u5BFC\u5165\u5408\u5E76 {count} \u6761\u5BF9\u8BDD\u8BB0\u5F55",
+  "ai.importFailed": "\u5BFC\u5165\u5931\u8D25\uFF1A{message}",
+  "ai.noViewport": "\u5F53\u524D\u65E0\u6CD5\u83B7\u53D6\u89C6\u53E3\u753B\u9762",
+  "ai.snapshot": "\u5DF2\u521B\u5EFA\u91CC\u7A0B\u7891\u5FEB\u7167",
+  "ai.manualSnapshot": "\u624B\u52A8\u5FEB\u7167 {time}",
+  "ai.importTip": "\u5BFC\u5165 / \u8FC1\u79FB\u5BF9\u8BDD\u8BB0\u5F55 (.json)",
+  "ai.exportTip": "\u5BFC\u51FA\u5BF9\u8BDD\u8BB0\u5F55 (.json)",
+  "ai.settingsTip": "\u6A21\u578B\u4E0E API \u8BBE\u7F6E",
+  "ai.knowledgeTip": "AI \u77E5\u8BC6\u4E0E\u89C4\u5219\uFF08\u6280\u80FD\u3001\u8BBE\u8BA1\u4E0E\u9700\u6C42\u6587\u6863\uFF09",
+  "ai.clearTip": "\u6E05\u7A7A\u5BF9\u8BDD",
+  "ai.collapse": "\u6536\u8D77 AI \u6307\u6325\u53F0",
+  "ai.settings": "\u6A21\u578B API \u8BBE\u7F6E\uFF08\u5BC6\u94A5\u4EC5\u5B58\u4E3B\u8FDB\u7A0B\uFF09",
+  "ai.addProvider": "\u65B0\u589E\u4E00\u6761",
+  "ai.current": "\u5F53\u524D",
+  "ai.newConfig": "+ \u65B0\u5EFA\u914D\u7F6E\u4E2D\u2026",
+  "ai.namePh": "\u540D\u79F0\uFF08\u5982\uFF1ADeepSeek \u5B98\u65B9 / \u7845\u57FA\u6D41\u52A8 / \u672C\u5730 Ollama\uFF09",
+  "ai.urlPh": "Base URL\uFF08\u5982 https://api.deepseek.com/v1\uFF09",
+  "ai.modelPh": "\u9ED8\u8BA4\u6A21\u578B\u540D\u79F0\uFF08\u5982 deepseek-chat / gpt-4o\uFF09",
+  "ai.modelsPh": "\u5907\u9009\u6A21\u578B\u5217\u8868\uFF08\u53EF\u9009\uFF0C\u9017\u53F7\u5206\u9694\uFF0C\u5982 deepseek-chat, deepseek-reasoner\uFF09",
+  "ai.keySaved": "\u5DF2\u4FDD\u5B58\u5BC6\u94A5\uFF08\u7559\u7A7A\u8868\u793A\u4E0D\u4FEE\u6539\uFF09",
+  "ai.keyPh": "\u8F93\u5165 API Key",
+  "ai.deleteItem": "\u5220\u9664\u6B64\u9879",
+  "ai.close": "\u5173\u95ED",
+  "ai.customApi": "\u81EA\u5B9A\u4E49\u63A5\u53E3",
+  "ai.saveEnable": "\u4FDD\u5B58\u5E76\u542F\u7528",
+  "ai.ready": "AI \u5DF2\u5C31\u7EEA\uFF0C\u53EF\u76F4\u63A5\u4E0B\u8FBE\u521B\u4F5C\u6307\u4EE4",
+  "ai.example": "\u793A\u4F8B\uFF1A\u300C\u65B0\u5EFA\u4E00\u4E2A\u5E73\u53F0\u8DF3\u8DC3\u5173\u5361\uFF0C\u5E26\u5730\u9762\u3001\u4E3B\u89D2\u51FA\u751F\u70B9\u3001\u51E0\u4E2A\u53F0\u9636\u3001\u4E00\u76CF\u65B9\u5411\u5149\u548C\u76F8\u673A\uFF0C\u6700\u540E\u505A\u4E00\u6B21\u4F53\u68C0\u3002\u300D",
+  "ai.older": "\u8FD8\u6709 {count} \u6761\u66F4\u65E9\u5BF9\u8BDD\uFF08\u4E0A\u6ED1\u6216\u70B9\u51FB\u52A0\u8F7D\uFF09",
+  "ai.deleteTurn": "\u5220\u9664\u6B64\u6761\u5BF9\u8BDD",
+  "ai.working": "\u6B63\u5728\u5904\u7406\u4E2D\u2026",
+  "ai.locate": "\u70B9\u51FB\u5B9A\u4F4D\u6216\u6253\u5F00\u8BE5\u5BF9\u8C61",
+  "ai.annotationAlt": "\u89C6\u53E3\u6279\u6CE8\u622A\u56FE",
+  "ai.interrupted": "\u6267\u884C\u5F02\u5E38\u4E2D\u65AD\uFF08\u9875\u9762\u5237\u65B0\u6216\u8FDE\u63A5\u65AD\u5F00\uFF09",
+  "ai.interruptedHint": "\u5DF2\u4FDD\u7559\u60A8\u7684\u63D0\u95EE\u4E0E\u5F53\u524D\u5DF2\u5B8C\u6210\u7684\u8FDB\u5EA6\uFF0C\u53EF\u70B9\u51FB\u7EE7\u7EED\u5904\u7406\u3002",
+  "ai.continue": "\u70B9\u51FB\u7EE7\u7EED",
+  "ai.stepLimit": "\u5DF2\u8FBE\u5355\u8F6E 32 \u6B65\u4E0A\u9650\uFF0C\u4EFB\u52A1\u5C1A\u672A\u5168\u90E8\u5B8C\u6210",
+  "ai.pending": "\u4ECD\u6709 {count} \u9879\u8BA1\u5212\u6B65\u9AA4\u5F85\u7EE7\u7EED",
+  "ai.resume": "\u7EE7\u7EED\u6267\u884C",
+  "ai.cache": "\u7F13\u5B58 {percent}%",
+  "ai.steps": "{count} \u6B65",
+  "ai.copyTip": "\u590D\u5236\u6587\u672C",
+  "ai.copied": "\u5DF2\u590D\u5236",
+  "ai.copy": "\u590D\u5236",
+  "ai.rollback": "\u56DE\u9000\u672C\u8F6E",
+  "ai.reject": "\u62D2\u7EDD",
+  "ai.allow": "\u5141\u8BB8\u6267\u884C",
+  "ai.allowMoreTip": "\u66F4\u591A\u5141\u8BB8\u9009\u9879",
+  "ai.allowAlwaysTool": "\u603B\u662F\u5141\u8BB8 {tool}",
+  "ai.allowAlwaysAll": "\u603B\u662F\u5141\u8BB8\u6240\u6709\u9AD8\u98CE\u9669\u64CD\u4F5C",
+  "ai.autoAllowActive": "\u5DF2\u81EA\u52A8\u5141\u8BB8 {count} \u7C7B\u9AD8\u98CE\u9669\u64CD\u4F5C\uFF08\u70B9\u51FB\u91CD\u7F6E\uFF09",
+  "ai.autoAllowAllActive": "\u5DF2\u5F00\u542F\u300C\u603B\u662F\u5141\u8BB8\u6240\u6709\u9AD8\u98CE\u9669\u64CD\u4F5C\u300D\uFF08\u70B9\u51FB\u91CD\u7F6E\uFF09",
+  "ai.autoAllowReset": "\u5DF2\u91CD\u7F6E\u9AD8\u98CE\u9669\u64CD\u4F5C\u81EA\u52A8\u5141\u8BB8\u89C4\u5219",
+  "ai.playtestPrompt": "\u8BF7\u542F\u52A8\u8BD5\u73A9\u63A2\u9488\u8DD1\u4E00\u6B21\u5192\u70DF\u6D4B\u8BD5\uFF08playtest__run_smoke\uFF09\u5E76\u505A\u9879\u76EE\u4F53\u68C0\uFF08query__project_diagnose\uFF09\uFF0C\u6C47\u62A5\u7ED3\u679C\u3002",
+  "ai.resumeInterruptedWithPrev": "\u4E0A\u4E00\u8F6E\u6267\u884C\u56E0\u9875\u9762\u5237\u65B0/\u5F02\u5E38\u4E2D\u65AD\uFF0C\u8BF7\u7ED3\u5408\u6211\u7684\u4E0A\u4E00\u6761\u8BF7\u6C42\uFF08\u201C{text}\u201D\uFF09\u4EE5\u53CA\u5DF2\u6267\u884C\u7684\u6B65\u9AA4\uFF0C\u7EE7\u7EED\u5B8C\u6210\u5269\u4F59\u5DE5\u4F5C\u3002",
+  "ai.resumeInterrupted": "\u4E0A\u4E00\u8F6E\u6267\u884C\u56E0\u9875\u9762\u5237\u65B0/\u5F02\u5E38\u4E2D\u65AD\uFF0C\u8BF7\u7ED3\u5408\u4E0A\u4E0B\u6587\u4E0E\u5DF2\u6267\u884C\u7684\u6B65\u9AA4\uFF0C\u7EE7\u7EED\u5B8C\u6210\u5269\u4F59\u5DE5\u4F5C\u3002",
+  "ai.resumePlanPrompt": "\u8BF7\u6309\u5F53\u524D\u4EFB\u52A1\u8BA1\u5212\u7EE7\u7EED\u63A8\u8FDB\u5269\u4F59\u672A\u5B8C\u6210\u7684\u6B65\u9AA4\uFF0C\u76F4\u5230\u5168\u90E8\u5B8C\u6210\u3002",
+  "ai.assertFailed": "\u65AD\u8A00\u672A\u901A\u8FC7\uFF1A{message}",
+  "ai.unknownAssert": "\u672A\u77E5\u65AD\u8A00",
+  "ai.perfBudget": "\u6027\u80FD\u9884\u7B97\uFF1A{note}",
+  "ai.warnLine": "\u8B66\u544A\uFF1A{msg}",
+  "ai.taskProgress": "\u4EFB\u52A1 {done}/{total}",
+  "ai.taskCurrent": "\xB7 {title}",
+  "ai.taskDone": "\xB7 \u5168\u90E8\u5B8C\u6210",
+  "ai.clearPlan": "\u6E05\u9664\u4EFB\u52A1\u8BA1\u5212",
+  "ai.dropHint": "\u677E\u5F00\u5373\u53EF\u5C06\u8282\u70B9 / \u811A\u672C / \u7740\u8272\u5668 / \u8D44\u4EA7\u9644\u52A0\u5230\u5F53\u524D\u5BF9\u8BDD",
+  "ai.pendingShot": "\u5F85\u53D1\u9001\u89C6\u53E3\u6279\u6CE8",
+  "ai.removeShot": "\u79FB\u9664\u6279\u6CE8\u622A\u56FE",
+  "ai.removeRef": "\u79FB\u9664\u5F15\u7528",
+  "ai.insertName": "\u5F53\u524D\u89C6\u53E3\u9009\u4E2D\u8282\u70B9\uFF08\u70B9\u51FB\u63D2\u5165\u540D\u79F0\uFF09",
+  "ai.inputPh": "\u8F93\u5165\u9700\u6C42\uFF0C\u652F\u6301\u622A\u56FE/Ctrl+V\u8D34\u56FE/\u62D6\u5165\u8D44\u6E90\uFF0C\u6216 @ \u5F15\u7528\uFF08Enter \u53D1\u9001\uFF09",
+  "ai.inputBusyPh": "AI \u8FD0\u884C\u4E2D\uFF0C\u53EF\u76F4\u63A5\u8F93\u5165\u7EA0\u504F/\u63D2\u8BDD\u6307\u4EE4\uFF08Enter \u53D1\u9001\uFF0C\u5C06\u5728\u5F53\u524D\u6B65\u9AA4\u540E\u6CE8\u5165\uFF09",
+  "ai.capture": "\u622A\u53D6\u5F53\u524D 3D \u89C6\u53E3\u7ED9 AI \u5206\u6790",
+  "ai.kind.node": "\u8282\u70B9",
+  "ai.kind.shader": "\u7740\u8272\u5668",
+  "ai.kind.script": "\u811A\u672C",
+  "ai.provider.compat": "\u517C\u5BB9\u63A5\u53E3",
+  "ai.cmd.playtest": "\u8FD0\u884C\u5192\u70DF\u8BD5\u73A9\u4E0E\u4F53\u68C0",
+  "ai.cmd.diagnose": "\u6253\u5F00\u4F53\u68C0\u4E0E\u6027\u80FD\u9884\u7B97\u770B\u677F",
+  "ai.cmd.pack": "\u6253\u5F00\u80FD\u529B\u5305\u6C89\u6DC0\u4E2D\u5FC3",
+  "ai.cmd.checkpoint": "\u7ACB\u5373\u4FDD\u5B58\u91CC\u7A0B\u7891\u5FEB\u7167",
+  "ai.send": "\u53D1\u9001",
+  "ai.steer": "\u8FD0\u884C\u4E2D\u63D2\u8BDD\u7EA0\u504F",
+  "ai.stop": "\u5B89\u5168\u505C\u6B62",
+  "ai.queued": "\u5DF2\u6392\u961F {count} \u6761\u63D2\u8BDD\uFF0C\u5C06\u5728\u5F53\u524D\u6B65\u9AA4\u5B8C\u6210\u540E\u6CE8\u5165",
+  "ai.switchModel": "\u5FEB\u901F\u5207\u6362\u5BF9\u8BDD\u6A21\u578B",
+  "ai.noModel": "\u672A\u9009\u62E9\u6A21\u578B",
+  "ai.enterSend": "Enter \u53D1\u9001",
+  "ai.modelLater": "\u5F53\u524D\u5BF9\u8BDD\u4ECD\u6CBF\u7528\u539F\u6A21\u578B\uFF0C\u5207\u6362\u540E\u5C06\u5728\u4E0B\u6B21\u53D1\u9001\u65B0\u5BF9\u8BDD\u65F6\u751F\u6548",
+  "ai.manage": "\u7BA1\u7406\u6A21\u578B\u4E0E API \u8BBE\u7F6E\u2026",
+  "ai.copySelection": "\u590D\u5236\u9009\u4E2D\u6587\u5B57",
+  "ai.copyMessage": "\u590D\u5236\u6574\u6761\u6D88\u606F",
+  "ai.selectAll": "\u5168\u9009\u672C\u6761\u6B63\u6587",
+  "ai.stepsDone": "\u5DF2\u6267\u884C {count} \u6B65\u64CD\u4F5C",
+  "ai.stepsFailed": "\u5DF2\u6267\u884C {count} \u6B65\u64CD\u4F5C\uFF08{failed} \u9879\u5931\u8D25\uFF09",
+  "ai.expandError": "\u70B9\u51FB\u5C55\u5F00/\u6536\u8D77\u5B8C\u6574\u62A5\u9519\u4FE1\u606F",
+  "ai.locateAsset": "\u70B9\u51FB\u5728\u5DE6\u4FA7\u8D44\u6E90\u7A97\u53E3\u5B9A\u4F4D\u8BE5\u8D44\u6E90",
+  "ai.focusNode": "\u70B9\u51FB\u5728\u89C6\u53E3\u4E2D\u805A\u7126\u8BE5\u8282\u70B9",
+  "ai.hintPrefix": "\u63D0\u793A\uFF1A{hint}",
+  "ai.copyCode": "\u590D\u5236\u4EE3\u7801",
+  "pm.savedDesign": "\u8BBE\u8BA1\u84DD\u56FE design.md \u5DF2\u4FDD\u5B58",
+  "pm.sedimentOk": "\u80FD\u529B\u5305 {id} \u5DF2\u6C89\u6DC0\u5E76\u6CE8\u518C",
+  "pm.sedimentFail": "\u6C89\u6DC0\u5931\u8D25",
+  "pm.packInvalid": "\u65E0\u6548\u7684 pack.json \u6E05\u5355\u683C\u5F0F",
+  "pm.importedTrust": "\u5DF2\u5BFC\u5165\u300C{name}\u300D\uFF0C\u8BF7\u70B9\u51FB\u300C\u4FE1\u4EFB\u5E76\u542F\u7528\u300D\u540E\u6FC0\u6D3B",
+  "pm.importedActive": "\u5DF2\u5BFC\u5165\u5E76\u6FC0\u6D3B\u80FD\u529B\u5305\u300C{name}\u300D",
+  "pm.importFail": "\u5BFC\u5165\u5931\u8D25\uFF1A{message}",
+  "pm.exportBrowser": "\u5F53\u524D\u4E3A\u6D4F\u89C8\u5668\u6A21\u5F0F\uFF0C\u8BF7\u5728\u684C\u9762\u7AEF\u5BFC\u51FA Web \u64AD\u653E\u5305\u3002",
+  "pm.branchSuffix": "{label}-\u5206\u652F"
+};
+var en = {
+  "menu.file": "File",
+  "menu.edit": "Edit",
+  "menu.create": "Create",
+  "menu.view": "View",
+  "menu.newProject": "New Project\u2026",
+  "menu.openProject": "Open Project\u2026",
+  "menu.recentProjects": "Recent Projects",
+  "menu.newScene": "New Scene",
+  "menu.save": "Save",
+  "menu.saveAsProject": "Save as Project\u2026",
+  "menu.projectSettings": "Project Settings\u2026",
+  "menu.database": "Game Database\u2026",
+  "menu.library": "Official Library\u2026",
+  "menu.tags": "Tags\u2026",
+  "menu.layers": "Layers\u2026",
+  "hub.title": "Game data",
+  "hub.count": "{tables} tables",
+  "hub.database": "Database ({count} tables)",
+  "hub.packs": "Packs",
+  "hub.search": "Search {name}",
+  "hub.reset": "Reset defaults",
+  "hub.add": "Add row",
+  "hub.catalog": "Tables",
+  "hub.corePack": "Core",
+  "hub.rowCount": "{count} rows",
+  "hub.showing": "Showing {shown} / {total}",
+  "hub.empty": "No matching rows. Add one.",
+  "hub.id": "Id",
+  "hub.name": "Name",
+  "hub.category": "Category",
+  "hub.note": "Note",
+  "hub.delete": "Delete",
+  "hub.enabled": "On",
+  "hub.disabled": "Off",
+  "hub.packHint": "A disabled pack leaves this catalog. Rows already written stay in the project. Stats and items appear when those packs exist.",
+  "library.title": "Official Library",
+  "library.lead": "Capabilities, gameplay, genres, and assets that ship with the editor. Switches belong to this project.",
+  "library.search": "Search",
+  "library.empty": "Nothing matches",
+  "library.on": "On",
+  "library.off": "Off",
+  "library.soon": "In development",
+  "library.official": "Official",
+  "library.includes": "Includes",
+  "library.switch": "Project switch",
+  "library.soonNote": "Still being built into the editor. The switch opens when the pack is registered.",
+  "library.assetNote": "Assets are a catalog. Import them into the project when you use them. Install is not available yet.",
+  "library.shelf.capability": "Capabilities",
+  "library.shelf.gameplay": "Gameplay",
+  "library.shelf.genre": "Genres",
+  "library.shelf.asset": "Assets",
+  "library.shelfHint.capability": "Simulation and rendering runtimes. Water and weather belong here.",
+  "library.shelfHint.gameplay": "Domain packs besides the core. The core pack stays on and is not listed.",
+  "library.shelfHint.genre": "Packs for one kind of game. Templates will be marked separately.",
+  "library.shelfHint.asset": "Ready-made models, animation, and particle presets.",
+  "library.item.physics": "Physics",
+  "library.item.physicsDetail": "Colliders, rigidbodies, and simulation while playing.",
+  "library.item.physicsPoints": "Rigidbodies and colliders\nSimulation under scene gravity",
+  "library.item.buoyancy": "Buoyancy",
+  "library.item.buoyancyDetail": "Wave-driven physical buoyancy and water drag (requires Physics).",
+  "library.item.buoyancyPoints": "Multi-point buoyancy sampling\nWater drag & wave following",
+  "library.item.navigation": "Navigation",
+  "library.item.navigationDetail": "Bakes a navmesh from static surfaces. Obstacles can carve it during play.",
+  "library.item.navigationPoints": "Navmesh baking\nPaths and obstacles",
+  "library.item.spline": "Spline Motion",
+  "library.item.splineDetail": "Constant-speed arc-length movement along editable 3D viewport Spline curves.",
+  "library.item.splinePoints": "3D viewport curve editor\nArc-length uniform speed\nOnce / Loop / Ping-Pong",
+  "library.item.tween": "Tween Motion",
+  "library.item.tweenDetail": "Drive looping or one-shot eased position, rotation, scale, and float animations.",
+  "library.item.tweenPoints": "12 built-in easing curves\nLoop & Yoyo repeat\nScript self.tween API",
+  "library.item.crowd": "Crowd Avoidance",
+  "library.item.crowdDetail": "Local separation steering and line/grid/wedge/circle formation movement for multiple units.",
+  "library.item.crowdPoints": "Spatial hash local avoidance\nLine / Grid / Wedge / Circle formations\nScript self.crowd / world.crowd",
+  "library.item.projectile": "Projectile",
+  "library.item.projectileDetail": "Linear, homing, and ballistic projectile flight with tag-based hit detection and auto-recycle.",
+  "library.item.projectilePoints": "Linear / Homing / Ballistic\nTag hit detection & pooling\nEmits onProjectileHit",
+  "library.item.particles": "Particles",
+  "library.item.particlesDetail": "Particle runtime. Turning this off keeps the data and stops playback.",
+  "library.item.particlesPoints": "Particle simulation\nPresets live in Assets",
+  "library.item.sky": "Sky",
+  "library.item.skyDetail": "Time of day, atmospheric scattering and image lighting that follows the sun. Turning this off keeps the settings and stops drawing it.",
+  "library.item.skyPoints": "Time and atmosphere\nImage-based lighting\nHeight fog, stars and moon",
+  "library.item.water": "Water",
+  "library.item.waterDetail": "TSL water surface with dual scrolling normals, planar reflection, depth absorption and shoreline foam.",
+  "library.item.waterPoints": "Planar reflection & depth\nShoreline foam & waves\n5 style & 3 quality presets",
+  "buoyancy.title": "Buoyancy",
+  "buoyancy.enable": "Enable buoyancy",
+  "buoyancy.sampleMode": "Sample points",
+  "buoyancy.sample.box4": "Bottom 4 corners (boat/crate)",
+  "buoyancy.sample.box8": "8 corners (full roll)",
+  "buoyancy.sample.center": "Center point (sphere/buoy)",
+  "buoyancy.force": "Buoyancy force",
+  "buoyancy.waterDrag": "Water drag",
+  "buoyancy.angularDrag": "Angular drag",
+  "buoyancy.draftDepth": "Draft depth (0 = auto)",
+  "buoyancy.needsDynamic": "Requires a dynamic rigid body to float",
+  "buoyancy.makeDynamic": "Set dynamic",
+  "projectSettings.buoyancyDetail": "Wave-driven physics buoyancy and water drag (requires physics).",
+  "spline.title": "Spline Path",
+  "projectSettings.splineDetail": "Move objects smoothly along ordered child waypoints of a path node.",
+  "tween.title": "Tween Motion",
+  "projectSettings.tweenDetail": "Drive looping or one-shot eased position, rotation, scale, and float animations.",
+  "crowd.title": "Crowd Avoidance",
+  "projectSettings.crowdDetail": "Local separation steering and line/grid/wedge/circle formation movement for multiple units.",
+  "projectile.title": "Projectile",
+  "projectSettings.projectileDetail": "Linear, homing, and ballistic projectile flight with tag-based hit detection and auto-recycle.",
+  "water.title": "Water",
+  "water.enable": "Enable water",
+  "water.groupColor": "Color & absorption",
+  "water.groupWaves": "Ripples & waves",
+  "water.groupOptics": "Optics & foam",
+  "water.on": "On",
+  "water.off": "Off",
+  "water.add": "Make Water",
+  "water.style": "Style preset",
+  "water.quality": "Quality",
+  "water.preset.tropical": "Tropical shallow",
+  "water.preset.ocean": "Deep ocean",
+  "water.preset.lake": "Calm lake",
+  "water.preset.pool": "Clear pool",
+  "water.preset.stylized": "Stylized toon",
+  "water.quality.fast": "Fast (no reflection)",
+  "water.quality.balanced": "Balanced (0.5x)",
+  "water.quality.ultra": "Ultra (0.75x + waves)",
+  "water.shallow": "Shallow color",
+  "water.deep": "Deep color",
+  "water.absorption": "Absorption (m)",
+  "water.opacity": "Base opacity",
+  "water.waveScale": "Wave scale",
+  "water.flowSpeed": "Flow speed",
+  "water.normalScale": "Normal scale",
+  "water.reflectivity": "Reflectivity",
+  "water.specular": "Sun specular",
+  "water.specularSize": "Sparkle size",
+  "water.sss": "Subsurface",
+  "water.foamWidth": "Foam range",
+  "water.foamIntensity": "Foam intensity",
+  "water.foamScale": "Foam scale",
+  "water.crestFoam": "Crest foam",
+  "water.crestThreshold": "Crest threshold",
+  "water.foamTrail": "Foam trail",
+  "water.debugView": "Debug view",
+  "water.debug.off": "Off",
+  "water.debug.height": "Wave height",
+  "water.debug.squeeze": "Squeeze",
+  "water.debug.foam": "Foam mask",
+  "water.waveHeight": "Wave height",
+  "water.waveSpeed": "Wave speed",
+  "water.waveSteepness": "Wave steepness",
+  "water.waveBend": "Crest meander",
+  "water.swellRate": "Swell rate",
+  "water.waveLean": "Crest curl",
+  "water.crestSharpness": "Crest sharpness",
+  "water.groupSwitches": "Features & Performance",
+  "water.planar": "Planar reflect",
+  "water.refraction": "Refraction",
+  "water.caustics": "Caustics",
+  "water.shoreFoam": "Shore foam",
+  "water.underwaterEffect": "Underwater effect",
+  "water.underwaterColor": "Underwater fog color",
+  "water.underwaterFogDensity": "Underwater fog density",
+  "water.underwaterFogStart": "Underwater fog start (m)",
+  "water.underwaterTint": "Underwater tint",
+  "water.underwaterSurfaceBrightness": "Underwater surface brightness",
+  "water.softEdge": "Soft edge (m)",
+  "water.flowDir": "Flow angle",
+  "water.fresnel": "Fresnel power",
+  "water.causticsStrength": "Caustics strength",
+  "water.causticsScale": "Caustics scale",
+  "water.foamColor": "Foam color",
+  "water.sunColor": "Sun color",
+  "water.normalMap": "Normal map",
+  "water.foamMap": "Foam map",
+  "library.item.stats": "Stats",
+  "library.item.statsDetail": "Health, attack, defense, status effects, and levels.",
+  "library.item.statsPoints": "Attributes\nStatus effects\nLevels",
+  "library.item.combat": "Combat",
+  "library.item.combatDetail": "Melee, shooting, weapons, and combos. Depends on Stats.",
+  "library.item.combatPoints": "Weapons and moves\nMelee and shooting",
+  "library.item.perception": "Perception",
+  "library.item.perceptionDetail": "Targeting and spawning.",
+  "library.item.perceptionPoints": "Targeting\nSpawning",
+  "library.item.inventory": "Inventory",
+  "library.item.inventoryDetail": "Items, containers, and pickups.",
+  "library.item.inventoryPoints": "Item table\nContainers and drops",
+  "library.item.dialogue": "Dialogue",
+  "library.item.dialogueDetail": "Dialogue and quest tracking.",
+  "library.item.dialoguePoints": "Dialogue\nQuests",
+  "library.item.rts": "Real-time strategy",
+  "library.item.rtsDetail": "Selection, groups, and unit orders. A genre pack, not a sample project.",
+  "library.item.rtsPoints": "Selection and groups\nUnit orders",
+  "library.item.rpg": "Role-playing",
+  "library.item.rpgDetail": "Stats, inventory, dialogue, and quests gathered as one ruleset.",
+  "library.item.rpgPoints": "Character growth\nQuest flow",
+  "library.item.characters": "Characters and animation",
+  "library.item.charactersDetail": "Official humanoids and common clips. Import adds them to the project.",
+  "library.item.charactersPoints": "Humanoid models\nWalk, run, and jump",
+  "library.item.environments": "Environment kit",
+  "library.item.environmentsDetail": "Ground, rock, and common props.",
+  "library.item.environmentsPoints": "Modular scenes\nProps",
+  "library.item.vfx": "Particle presets",
+  "library.item.vfxDetail": "Finished impacts, trails, and bursts. Playback still needs the particle capability.",
+  "library.item.vfxPoints": "Impacts and bursts\nTrails",
+  "hub.noBlock": "No block",
+  "menu.projectMenu": "Project",
+  "menu.hub": "Hub",
+  "menu.help": "Help",
+  "menu.helpSite": "Website",
+  "menu.helpSupport": "Support",
+  "menu.about": "About",
+  "menu.aboutBody": "AI game development platform",
+  "menu.views": "Views",
+  "menu.display": "Display",
+  "menu.savedDirectory": "Saved to {name}",
+  "menu.import": "Import Assets",
+  "menu.extractPackage": "Import UnityPackage\u2026",
+  "menu.undo": "Undo",
+  "menu.redo": "Redo",
+  "menu.duplicate": "Duplicate",
+  "menu.copy": "Copy",
+  "menu.paste": "Paste",
+  "menu.group": "Group",
+  "menu.ground": "Snap to Ground",
+  "menu.delete": "Delete",
+  "menu.selectAll": "Select All",
+  "menu.empty": "Empty",
+  "menu.meshes": "Geometry",
+  "menu.lights": "Lights",
+  "menu.devices": "Gameplay Devices",
+  "menu.camera": "Camera",
+  "menu.effect": "Effect",
+  "menu.screen": "UI",
+  "menu.spline": "Spline Curve",
+  "component.add": "Add Component",
+  "component.search": "Search components\u2026",
+  "component.remove": "Remove Component",
+  "component.reset": "Reset to defaults",
+  "component.added": "Added",
+  "component.empty": "No matching components",
+  "component.group.character": "Character & Camera",
+  "component.group.devices": "Scene Devices",
+  "component.group.world": "Physics & Navigation",
+  "component.group.pack": "Gameplay & Domain Packs",
+  "menu.focus": "Focus Selection",
+  "menu.alignCamera": "Align to Current View",
+  "menu.alignView": "Jump to This Camera",
+  "menu.focusAll": "Focus All",
+  "menu.viewTop": "Top",
+  "menu.viewFront": "Front",
+  "menu.viewRight": "Right",
+  "menu.viewPersp": "Perspective",
+  "menu.viewBottom": "Bottom",
+  "menu.viewBack": "Back",
+  "menu.viewLeft": "Left",
+  "menu.grid": "Show Grid",
+  "menu.snap": "Grid Snap",
+  "menu.resetLayout": "Reset Layout",
+  "menu.settings": "Settings",
+  "menu.saved": "Saved to local cache",
+  "kind.empty": "Empty",
+  "kind.box": "Cube",
+  "kind.sphere": "Sphere",
+  "kind.plane": "Plane",
+  "kind.capsule": "Capsule",
+  "kind.cylinder": "Cylinder",
+  "kind.cone": "Cone",
+  "kind.model": "Model",
+  "kind.directional-light": "Directional Light",
+  "kind.point-light": "Point Light",
+  "kind.spot-light": "Spot Light",
+  "kind.hemisphere-light": "Hemisphere Light",
+  "kind.camera": "Camera",
+  "kind.effect": "Effect",
+  "kind.screen": "UI",
+  "kind.spline": "Spline Curve",
+  "tool.newScene": "New Scene",
+  "tool.save": "Save to local cache",
+  "tool.undo": "Undo",
+  "tool.redo": "Redo",
+  "tool.move": "Move (W)",
+  "tool.rotate": "Rotate (E)",
+  "tool.scale": "Scale (R)",
+  "tool.world": "World",
+  "tool.local": "Local",
+  "tool.snap": "Grid Snap",
+  "tool.grid": "Show Grid",
+  "tool.ground": "Snap to Ground",
+  "tool.originCenter": "Gizmo at bounds center",
+  "tool.originPivot": "Gizmo at pivot",
+  "tool.center": "Center",
+  "tool.pivot": "Pivot",
+  "tool.play": "Play (Ctrl+P)",
+  "tool.pause": "Pause (Ctrl+P)",
+  "tool.playLabel": "Play",
+  "tool.pauseLabel": "Pause",
+  "tool.stop": "Stop (Ctrl+Shift+P)",
+  "tool.history": "History",
+  "status.unnamed": "Untitled Scene",
+  "status.playing": "Playing",
+  "status.paused": "Paused",
+  "status.ready": "Ready",
+  "status.objects": "Objects",
+  "status.none": "Nothing selected",
+  "status.selected": "{count} selected",
+  "status.move": "Move",
+  "status.rotate": "Rotate",
+  "status.scale": "Scale",
+  "status.world": "World",
+  "status.local": "Local",
+  "status.center": "Center",
+  "status.pivot": "Pivot",
+  "status.snapOn": "Snap {step}",
+  "status.snapOff": "Snap off",
+  "status.warming": "Loading assets {completed}/{total}",
+  "panel.project": "Assets",
+  "panel.viewport": "3D Viewport",
+  "panel.console": "Console",
+  "panel.scene": "Scene",
+  "panel.inspector": "Inspector",
+  "panel.history": "History",
+  "panel.unknown": "Unknown panel",
+  "settings.title": "Editor Settings",
+  "settings.general": "General",
+  "settings.language": "Language",
+  "settings.languageSystem": "Follow System",
+  "settings.languageZh": "\u4E2D\u6587",
+  "settings.languageEn": "English",
+  "settings.autoSave": "Auto Save",
+  "settings.autoSaveNote": "Writes to the local cache after edits. Closing the page still saves when this is off.",
+  "settings.openLastProject": "Open last project on startup",
+  "settings.openLastProjectNote": "Opens the most recent project folder when the page loads.",
+  "settings.uiScale": "UI Scale",
+  "settings.close": "Close",
+  "inspector.modelRenderer": "Model Renderer",
+  "inspector.castShadow": "Cast Shadows",
+  "inspector.receiveShadow": "Receive Shadows",
+  "inspector.materialSlots": "Material Slots",
+  "inspector.parts": "Parts",
+  "inspector.hierarchy": "Hierarchy",
+  "inspector.partHint": "Toggles visibility only. The part stays inside the model.",
+  "inspector.sockets": "Bone sockets",
+  "inspector.socketHint": "A socket is a child of the character and sticks to this bone. Parent the weapon under the socket and use the weapon\u2019s own position for the grip.",
+  "inspector.extractSocket": "Extract socket",
+  "inspector.socketReady": "Extracted",
+  "inspector.searchBones": "Search bones",
+  "inspector.backToModel": "Back to model",
+  "inspector.partVisible": "Show part",
+  "inspector.showAllSlots": "All ({count})",
+  "inspector.partSlotsOnly": "Part only",
+  "inspector.sharedSlotHint": "Shared with other parts. Edits affect all of them.",
+  "inspector.bonePath": "Path",
+  "inspector.jumpSocket": "Select socket",
+  "inspector.followModel": "Follow model",
+  "inspector.on": "On",
+  "inspector.off": "Off",
+  "inspector.partMaterial": "Part material",
+  "inspector.followSlot": "Follow slot",
+  "inspector.searchSlots": "Search material slots",
+  "inspector.slot": "Slot {index}",
+  "inspector.inline": "Inline",
+  "inspector.extract": "Extract as material asset",
+  "inspector.reveal": "Show in assets",
+  "inspector.clear": "Clear reference and restore inline material",
+  "inspector.expandSlot": "Expand material slot",
+  "inspector.collapseSlot": "Collapse material slot",
+  "inspector.linkedNote": "This slot references a material asset. Edits apply to every object using it.",
+  "material.shader": "Shader",
+  "material.lit": "Lit",
+  "material.unityStandard": "Unity Standard (R Metallic / A Smoothness)",
+  "material.unityMetallicGloss": "Metallic Smoothness",
+  "material.unityMetallicGlossHint": "Unity convention: Red is metallic, Alpha is smoothness (1-roughness), Green is occlusion",
+  "material.particle": "Particle Unlit",
+  "material.particleBlend": "Blending",
+  "material.blendAlpha": "Alpha",
+  "material.blendPremultiply": "Premultiply",
+  "material.blendAdditive": "Additive",
+  "material.blendMultiply": "Multiply",
+  "material.unlitColor": "Unlit Color",
+  "material.unlitTexture": "Unlit Texture",
+  "material.surface": "Surface",
+  "material.color": "Color",
+  "material.baseMap": "Base Map",
+  "material.metalness": "Metallic",
+  "material.roughness": "Roughness",
+  "material.metallicRoughness": "Metallic Roughness",
+  "material.metallicRoughnessHint": "Green is roughness, blue is metallic, red is occlusion",
+  "material.normal": "Normal",
+  "material.normalScale": "Normal Scale",
+  "material.ao": "Occlusion",
+  "material.aoMap": "Occlusion Map",
+  "material.aoMapHint": "When empty, the red channel of the metallic-roughness map is used",
+  "material.emission": "Emission",
+  "material.emissionColor": "Emission",
+  "material.emissionIntensity": "Emission Intensity",
+  "material.emissionMap": "Emission Map",
+  "material.transparency": "Transparency",
+  "material.mode": "Mode",
+  "material.opaque": "Opaque",
+  "material.blend": "Blend",
+  "material.clip": "Clip",
+  "material.opacity": "Opacity",
+  "material.cutoff": "Alpha Cutoff",
+  "material.render": "Rendering",
+  "material.cull": "Cull",
+  "material.cullBack": "Back",
+  "material.cullFront": "Front",
+  "material.cullOff": "Off",
+  "material.depthWrite": "Depth Write",
+  "material.wireframe": "Wireframe",
+  "material.none": "None",
+  "inspector.playBanner": "Values can change while playing. Stop to restore the scene.",
+  "inspector.keepPlayChanges": "Keep Changes",
+  "tool.keepPlayChanges": "Keep component, material, light, and picture changes made during Play, including scroll distance and right-drag angle (without overwriting runtime positions)",
+  "log.keptPlayChanges": "Kept parameter changes made during Play",
+  "inspector.multi": "{count} objects selected. Fields edit the primary one. The gizmo moves every unlocked object.",
+  "inspector.locked": "Locked",
+  "inspector.visible": "Visible",
+  "inspector.unlock": "Unlock",
+  "inspector.lockHint": "Lock so viewport picking passes through",
+  "inspector.sceneSettings": "Scene Settings",
+  "inspector.transform": "Transform",
+  "inspector.position": "Position",
+  "inspector.rotation": "Rotation",
+  "inspector.scale": "Scale",
+  "inspector.resetPosition": "Reset Position",
+  "inspector.resetRotation": "Reset Rotation",
+  "inspector.resetScale": "Reset Scale",
+  "inspector.model": "Model Animation",
+  "character.title": "Character",
+  "character.enable": "Control during play",
+  "character.driver": "Driver",
+  "character.driver.capsule": "Capsule",
+  "character.driver.nav": "Navigation",
+  "character.driver.hybrid": "Hybrid",
+  "character.mode": "Facing",
+  "character.mode.adventure": "Third-person free",
+  "character.mode.strafe": "Shoulder strafe",
+  "character.mode.lockOn": "Lock-on orbit",
+  "character.mode.pointAndClick": "Click to move",
+  "character.mode.topDown": "Top-down",
+  "character.mode.side25d": "Side scroller",
+  "character.mode.firstPerson": "First person",
+  "character.click": "Click button",
+  "character.clickRight": "Right",
+  "character.clickLeft": "Left",
+  "character.walk": "Walk speed",
+  "character.turn": "Turn speed (\xB0/s)",
+  "character.sprint": "Sprint multiplier",
+  "character.jump": "Jump speed",
+  "character.jumps": "Jump count",
+  "character.coyote": "Coyote time",
+  "character.buffer": "Jump buffer",
+  "character.dash": "Dodge",
+  "character.dashKey": "Dodge key",
+  "character.dashDistance": "Dodge distance",
+  "character.radius": "Capsule radius",
+  "character.height": "Capsule height",
+  "character.capsuleOffset": "Offset",
+  "character.physicsInteract": "Physics interaction",
+  "character.mass": "Mass (kg)",
+  "character.pushStrength": "Push strength",
+  "character.swim": "Swim in water",
+  "character.swimSpeed": "Swim speed scale",
+  "character.swimHeightOffset": "Swim height offset",
+  "character.gravity": "Gravity",
+  "character.clickStop": "Stop radius",
+  "character.footstep": "Footstep distance",
+  "character.footstepJuice": "Footstep feel",
+  "character.dashDuration": "Dodge duration",
+  "character.dashInvincible": "Invincible time",
+  "character.dashCooldown": "Dodge cooldown",
+  "character.section.control": "Control",
+  "character.section.move": "Movement",
+  "character.section.body": "Body",
+  "character.section.clips": "Locomotion clips",
+  "character.lock": "Lock target",
+  "character.pickLock": "Choose lock target",
+  "character.idle": "Idle clip",
+  "character.walkClip": "Walk clip",
+  "character.runClip": "Run clip",
+  "character.jumpClip": "Takeoff",
+  "character.airClip": "In air",
+  "character.landClip": "Landing",
+  "character.dodgeClip": "Dodge clip",
+  "character.swimIdleClip": "Swim idle clip",
+  "character.swimClip": "Swim clip",
+  "character.hint": "WASD moves, Shift sprints, Space jumps. Dodge defaults to C. Click-to-move uses the chosen mouse button. The follow camera owns the view.",
+  "camera.title": "Follow camera",
+  "camera.enable": "Follow during play",
+  "camera.hint": "The camera looks at the pivot and keeps the offset. Right-drag or mouse orbit turns it. Collision pulls it in before a wall.",
+  "camera.preset": "Framing preset",
+  "camera.presetPick": "Apply a framing",
+  "camera.target": "Follow target",
+  "camera.targetSelf": "Self",
+  "camera.pickTarget": "Choose follow target",
+  "camera.orbit": "Orbit",
+  "camera.orbit.rightDrag": "Hold right button",
+  "camera.orbit.mouse": "Mouse look",
+  "camera.orbit.none": "Fixed angle",
+  "camera.fov": "Field of view",
+  "camera.damping": "Damping",
+  "camera.collision": "Avoid walls",
+  "camera.zoom": "Scroll zoom",
+  "camera.zoomSpeed": "Zoom speed",
+  "camera.minDistance": "Min distance",
+  "camera.maxDistance": "Max distance",
+  "camera.offset": "Offset",
+  "camera.pivot": "Look pivot",
+  "camera.sensitivity": "Orbit sensitivity",
+  "camera.minPitch": "Min pitch",
+  "camera.maxPitch": "Max pitch",
+  "camera.local": "Follow facing",
+  "camera.look": "Look at target",
+  "camera.collisionRadius": "Probe radius",
+  "rule.title": "Rules",
+  "rule.hint": "The inspector shows a summary. Triggers, conditions, and the action flow are edited in the workbench. A failed If skips the waits inside it.",
+  "rule.add": "Add rule and edit",
+  "rule.addStep": "Add action",
+  "rule.remove": "Remove",
+  "rule.limit": "Three levels of nesting is the limit.",
+  "rule.cond": "Condition",
+  "rule.message": "Message",
+  "rule.key": "Key",
+  "rule.keyHint": "Click, then press a key",
+  "key.hint": "Click, then press a key",
+  "key.listening": "Press a key\u2026",
+  "rule.tag": "Tag",
+  "rule.left": "Left",
+  "rule.op": "Compare",
+  "rule.right": "Right",
+  "rule.var": "Variable",
+  "rule.value": "Value",
+  "rule.seconds": "Seconds",
+  "rule.clip": "Clip",
+  "rule.trigger.playStart": "Play starts",
+  "rule.trigger.interact": "Interact",
+  "rule.trigger.key": "Key",
+  "rule.trigger.message": "Message received",
+  "rule.trigger.enter": "Enter zone",
+  "rule.trigger.exit": "Exit zone",
+  "rule.trigger.hit": "Hit",
+  "rule.cond.always": "Always",
+  "rule.cond.hasTag": "Has tag",
+  "rule.cond.missingTag": "Missing tag",
+  "rule.cond.compare": "Compare",
+  "rule.cond.formula": "Formula",
+  "rule.step.message": "Send message",
+  "rule.step.setVar": "Set variable",
+  "rule.step.addTag": "Add tag",
+  "rule.step.removeTag": "Remove tag",
+  "rule.step.wait": "Wait seconds",
+  "rule.step.waitFrame": "Wait one frame",
+  "rule.step.waitUpper": "Wait for overlay",
+  "rule.step.waitMark": "Wait for progress",
+  "rule.step.playClip": "Play clip",
+  "rule.step.playUpper": "Play overlay",
+  "rule.step.stance": "Hold stance",
+  "rule.step.if": "If",
+  "rule.step.gather": "Gather nearby",
+  "rule.step.each": "For each",
+  "rule.step.switchState": "Switch state",
+  "rule.step.showUi": "Show UI",
+  "rule.step.hideUi": "Hide UI",
+  "rule.step.lock": "Lock target",
+  "rule.step.camera": "Switch camera",
+  "rule.step.moveTo": "Move to",
+  "rule.step.spawn": "Spawn prefab",
+  "rule.step.hide": "Destroy self",
+  "rule.step.score": "Add score",
+  "rule.step.juice": "Play hit feel",
+  "rule.step.sound": "Play sound",
+  "rule.sound.sfx": "Effect",
+  "rule.sound.music": "Music",
+  "rule.step.log": "Print to console",
+  "rule.formula": "Formula, true when > 0. clamp(value, min, max) and msg.field work",
+  "rule.mark": "Progress 0 to 1",
+  "rule.target": "Name",
+  "rule.offset": "Offset x,y,z",
+  "rule.amount": "Score or formula",
+  "rule.radius": "Radius",
+  "rule.angle": "Angle, 0 for any",
+  "rule.pickTag": "Select gameplay tag",
+  "rule.pickJuice": "Select hit feel",
+  "rule.pickNode": "Select object",
+  "rule.pickCamera": "Select camera",
+  "rule.pickScreen": "Select UI",
+  "rule.pickPrefab": "Select prefab",
+  "rule.pickEmpty": "Nothing to pick",
+  "rule.packMissing": "Missing ({kind})",
+  "rule.packDisabledHint": "Pack disabled, skipped during play",
+  "rule.logText": "Text to print",
+  "rule.open": "Open rules workbench ({count})",
+  "rule.note": "Interact, zones, hits, and messages arrive here. Pick a rule, or open the workbench.",
+  "rule.unnamed": "Untitled rule",
+  "rule.enabled": "Enable this rule",
+  "rule.duplicate": "Duplicate rule",
+  "rule.when": "When this happens",
+  "rule.ifTitle": "And these conditions hold",
+  "rule.doTitle": "Then do, in order",
+  "rule.addCond": "Add condition",
+  "rule.noCond": "No extra conditions. The actions run as soon as this triggers.",
+  "rule.noStep": "No actions yet.",
+  "rule.addChild": "Add child step",
+  "rule.rules": "Rules",
+  "rule.states": "State tree",
+  "rule.done": "Done",
+  "rule.workbench": "Rules workbench",
+  "rule.count": "{count} rules",
+  "rule.list": "Rules",
+  "rule.empty": "No rules yet. Add one from the toolbar.",
+  "rule.name": "Name",
+  "rule.triggerKind": "Trigger",
+  "rule.alwaysPass": "Always passes",
+  "rule.stateName": "State name",
+  "rule.enterCond": "Enter condition",
+  "rule.enterHint": "Used only for child states. Empty means the state can be entered.",
+  "rule.jump": "Jump to another state",
+  "rule.noJump": "With no jump, the state stays active.",
+  "rule.addJump": "Add jump",
+  "rule.pickState": "Choose target",
+  "rule.addState": "Add state",
+  "rule.addChildState": "Add child state",
+  "rule.noState": "No states yet. Locomotion stays on the character. Use states for explore, combat, or stun.",
+  "rule.lane.enter": "Enter",
+  "rule.lane.tick": "Each frame",
+  "rule.lane.exit": "Exit",
+  "rule.lane.enterHint": "Runs once when this state is entered.",
+  "rule.lane.tickHint": "Repeats while this state is active. Add a wait for effects that should not fire every frame.",
+  "rule.lane.exitHint": "Runs once when leaving this state.",
+  "rule.live": "Running",
+  "rule.waiting": "Waiting",
+  "rule.footer": "Edits are undoable. Every tag or variable condition must pass.",
+  "interact.title": "Smart object",
+  "interact.enable": "Interactable",
+  "interact.prompt": "Prompt",
+  "interact.key": "Interact key",
+  "interact.radius": "Radius",
+  "interact.tag": "Interactor tag",
+  "interact.any": "Any character",
+  "mover.title": "Mover",
+  "mover.enable": "Enable",
+  "mover.offset": "Offset",
+  "mover.duration": "Leg seconds",
+  "mover.pause": "Pause",
+  "mover.carry": "Carry radius",
+  "mover.ping": "Ping pong",
+  "mover.auto": "Play on start",
+  "mover.message": "Start message",
+  "checkpoint.title": "Checkpoint",
+  "checkpoint.enable": "Enable",
+  "checkpoint.spawn": "Initial spawn",
+  "checkpoint.radius": "Radius",
+  "checkpoint.delay": "Respawn delay",
+  "checkpoint.abyss": "Abyss height",
+  "checkpoint.message": "Respawn message",
+  "score.title": "Score",
+  "score.enable": "Enable",
+  "score.hint": "Bind UI text to objective, score, timeLeft",
+  "score.objective": "Objective",
+  "score.target": "Target",
+  "score.interact": "Per interact",
+  "score.time": "Time limit",
+  "interact.message": "Interact message",
+  "interact.once": "Only once",
+  "trigger.title": "Trigger zone",
+  "trigger.enable": "Enabled",
+  "trigger.radius": "Radius",
+  "trigger.tag": "Subject tag",
+  "trigger.enter": "Enter message",
+  "trigger.exit": "Exit message",
+  "trigger.once": "Only once",
+  "inspector.savePrefab": "Save as Prefab",
+  "inspector.shortSavePrefab": "Prefab",
+  "inspector.shortPreview": "Preview",
+  "prefab.edit": "Open Prefab",
+  "prefab.shortEdit": "Open",
+  "prefab.shortReveal": "Reveal",
+  "prefab.shortApply": "Apply",
+  "prefab.shortRevert": "Revert",
+  "prefab.shortUnpack": "Unpack",
+  "prefab.instance": "Prefab Instance",
+  "prefab.apply": "Apply to Prefab",
+  "prefab.revert": "Revert Prefab",
+  "prefab.unpack": "Unpack",
+  "prefab.saveAs": "Save as Prefab\u2026",
+  "prefab.saveHint": "Leave blank to use \u201C{name}\u201D.",
+  "prefab.reveal": "Reveal Prefab",
+  "prefab.openHint": "Click to edit this prefab",
+  "prefab.cancel": "Cancel",
+  "prefab.confirm": "OK",
+  "prefab.discard": "Discard and Return",
+  "prefab.unpackTitle": "Unpack Prefab",
+  "prefab.unpackMessage": "This instance becomes a normal object and will no longer follow the prefab.",
+  "prefab.alreadyInstance": "This is already a prefab instance. Unpack it before saving a new prefab.",
+  "prefab.rebind": "Rebind",
+  "prefab.rebindPick": "Choose a prefab\u2026",
+  "prefab.rebound": "Rebound instances to the new prefab",
+  "prefab.editing": "Editing prefab {name}",
+  "prefab.saveBack": "Save and Return",
+  "prefab.saved": "Prefab saved and instances updated",
+  "prefab.closed": "Returned to the scene",
+  "prefab.applied": "Instance changes were written to the prefab",
+  "prefab.reverted": "Reverted to the prefab",
+  "prefab.unpacked": "Prefab unpacked",
+  "prefab.place": "Place {name}",
+  "prefab.create": "Create prefab {name}",
+  "prefab.needOne": "Select a single object to create a prefab",
+  "prefab.exitFirst": "Exit prefab editing first",
+  "prefab.noPlay": "Cannot play while editing a prefab",
+  "prefab.keepRoot": "The prefab root cannot be deleted",
+  "prefab.rootLocked": "The prefab root transform stays at the origin",
+  "prefab.missing": "Missing prefab",
+  "prefab.dirty": "Unapplied changes",
+  "inspector.previewModel": "Preview Model",
+  "inspector.light": "Light",
+  "inspector.color": "Color",
+  "inspector.intensity": "Intensity",
+  "inspector.angle": "Angle",
+  "inspector.ground": "Ground",
+  "inspector.range": "Range",
+  "inspector.decay": "Decay",
+  "inspector.penumbra": "Penumbra",
+  "inspector.shadow": "Shadow",
+  "inspector.bias": "Bias",
+  "inspector.normalBias": "Normal Bias",
+  "inspector.camera": "Camera",
+  "inspector.fov": "Field of View",
+  "inspector.near": "Near",
+  "inspector.far": "Far",
+  "inspector.material": "Material",
+  "inspector.asset": "Asset",
+  "inspector.type": "Type",
+  "inspector.file": "File",
+  "inspector.objects": "Objects",
+  "inspector.clips": "Clips",
+  "inspector.preview": "Preview",
+  "inspector.place": "Place in Scene",
+  "inspector.unnamedScene": "Untitled Scene",
+  "inspector.scene": "Scene",
+  "physics.enable": "Physics",
+  "particles.enable": "Effects",
+  "particles.title": "Effect",
+  "particles.playing": "Playing",
+  "particles.material": "Material",
+  "particles.materialEmpty": "Default additive",
+  "particles.clearMaterial": "Clear material",
+  "particles.saveAsset": "Save as asset",
+  "particles.saved": "Saved {name} as an effect asset",
+  "particles.missing": "The effect capability is off, so this object does not play.",
+  "particles.missingAsset": "The effect asset is missing.",
+  "particles.badMaterial": "This material is not Particle Unlit, so its look is not used.",
+  "particles.version": "This effect was written by quarks {version}. The runtime is {current}.",
+  "particles.loadFail": "This effect could not be read: {message}",
+  "particles.imported": "Imported effect {name}",
+  "particles.notQuarks": "{name} is not a Quarks effect",
+  "particles.noEmitter": "This effect has no editable emitter.",
+  "particles.emitter": "Emitter",
+  "particles.main": "Main",
+  "particles.duration": "Duration",
+  "particles.looping": "Looping",
+  "particles.prewarm": "Prewarm",
+  "particles.worldSpace": "World space",
+  "particles.renderMode": "Render mode",
+  "particles.billboard": "Billboard",
+  "particles.stretched": "Stretched billboard",
+  "particles.horizontal": "Horizontal billboard",
+  "particles.vertical": "Vertical billboard",
+  "particles.mesh": "Mesh",
+  "particles.trail": "Trail",
+  "particles.emission": "Emission",
+  "particles.rate": "Rate",
+  "particles.burst": "Burst",
+  "particles.burstsLocked": "Several bursts are stored; the inspector leaves them alone.",
+  "particles.start": "Start",
+  "particles.life": "Lifetime",
+  "particles.speed": "Speed",
+  "particles.size": "Size",
+  "particles.rotation": "Rotation",
+  "particles.color": "Color",
+  "particles.tint": "Tint",
+  "particles.alpha": "Alpha",
+  "particles.shape": "Shape",
+  "particles.shapeType": "Type",
+  "particles.shapePoint": "Point",
+  "particles.shapeCone": "Cone",
+  "particles.shapeSphere": "Sphere",
+  "particles.shapeHemisphere": "Hemisphere",
+  "particles.shapeCircle": "Circle",
+  "particles.shapeDonut": "Donut",
+  "particles.shapeRectangle": "Rectangle",
+  "particles.radius": "Radius",
+  "particles.angle": "Angle",
+  "particles.arc": "Arc",
+  "particles.thickness": "Thickness",
+  "particles.width": "Width",
+  "particles.height": "Height",
+  "particles.sheet": "Texture sheet",
+  "particles.tilesX": "Columns",
+  "particles.tilesY": "Rows",
+  "particles.force": "Forces",
+  "particles.gravity": "Gravity",
+  "particles.gravityLocked": "A sideways force is already stored. Gravity is left unchanged.",
+  "particles.speedFactor": "Speed stretch",
+  "particles.lengthFactor": "Length",
+  "particles.trailLength": "Trail segments",
+  "particles.modules": "Curve modules",
+  "particles.moduleColor": "Color over lifetime",
+  "particles.moduleSize": "Size over lifetime",
+  "particles.moduleNoise": "Noise",
+  "particles.moduleOther": "{name}",
+  "particles.min": "min",
+  "particles.max": "max",
+  "particles.curve": "This value is a curve. The inspector does not edit it.",
+  "particles.shared": "Editing asset \u201C{name}\u201D. Every object that uses it changes.",
+  "particles.createMaterial": "Create particle material",
+  "physics.title": "Physics",
+  "physics.participate": "Simulate",
+  "physics.body": "Body",
+  "physics.static": "Static",
+  "physics.dynamic": "Dynamic",
+  "physics.kinematic": "Kinematic",
+  "physics.shape": "Shape",
+  "physics.box": "Box",
+  "physics.sphere": "Sphere",
+  "physics.capsule": "Capsule",
+  "physics.cylinder": "Cylinder",
+  "physics.cone": "Cone",
+  "physics.convex": "Convex hull",
+  "physics.trimesh": "Triangle mesh",
+  "physics.convexHint": "Uses the convex hull of this object\u2019s mesh. Dynamic bodies are fine. Concave gaps are not solid.",
+  "physics.trimeshHint": "Uses the mesh triangles and can be concave. Best as static or kinematic. Dynamic bodies are steadier with a convex hull.",
+  "physics.radius": "Radius",
+  "physics.height": "Height",
+  "physics.size": "Size",
+  "physics.trigger": "Trigger",
+  "physics.mass": "Mass",
+  "physics.friction": "Friction",
+  "physics.restitution": "Restitution",
+  "physics.linearDamping": "Linear damping",
+  "physics.angularDamping": "Angular damping",
+  "physics.gravityScale": "Gravity scale",
+  "physics.gravity": "Gravity",
+  "audio.title": "Audio",
+  "audio.master": "Master",
+  "audio.music": "Music",
+  "audio.sfx": "Effects",
+  "audio.volume": "Volume",
+  "audio.pick": "Choose sound",
+  "audio.hint": "In the browser, sound starts after the first click. The desktop app can play immediately.",
+  "soundSource.title": "Sound source",
+  "soundSource.enable": "Enable",
+  "soundSource.clip": "Sound",
+  "soundSource.loop": "Loop",
+  "soundSource.distance": "Full volume distance",
+  "soundSource.rolloff": "Falloff",
+  "soundSource.hint": "Plays on this object during play and follows it. Turn loop off to play once.",
+  "physics.disabledHint": "The physics pack is off. Collider data stays on the objects.",
+  "navigation.enable": "Navigation",
+  "navigation.title": "Navigation",
+  "navigation.participate": "Navigate",
+  "navigation.role": "Use",
+  "navigation.surface": "Surface",
+  "navigation.obstacle": "Obstacle",
+  "navigation.radius": "Radius",
+  "navigation.height": "Height",
+  "navigation.cellSize": "Cell size",
+  "navigation.cellHeight": "Cell height",
+  "navigation.slope": "Max slope",
+  "navigation.agentRadius": "Agent radius",
+  "navigation.agentHeight": "Agent height",
+  "navigation.maxObstacles": "Obstacle capacity",
+  "navigation.show": "Show mesh",
+  "navigation.bake": "Bake",
+  "navigation.rebake": "Bake again",
+  "navigation.clear": "Clear",
+  "navigation.cleared": "Cleared the navigation mesh.",
+  "navigation.cancel": "Cancel bake",
+  "navigation.baking": "Baking\u2026",
+  "navigation.ready": "Walkable surface is ready",
+  "navigation.noSurface": "There is no navigation surface to bake.",
+  "navigation.disabledHint": "The navigation pack is off. Surface and obstacle data stays on the objects.",
+  "navigation.stale": "Parameters changed. Bake again.",
+  "navigation.triangles": "Source triangles",
+  "navigation.obstacleHint": "When obstacle capacity is above 0, play mode carves vertical cylinders out of the navmesh.",
+  "projectSettings.title": "Project Settings",
+  "projectSettings.modules": "Capability packs",
+  "projectSettings.note": "Switches are saved with this project. Turning one off stops loading that module and keeps data already authored.",
+  "projectSettings.physicsDetail": "Colliders, rigidbodies, and simulation while playing.",
+  "projectSettings.particlesDetail": "Particle effects. Turning this off keeps the data and stops playback.",
+  "sky.enable": "Sky",
+  "sky.title": "Sky",
+  "sky.time": "Time",
+  "sky.latitude": "Latitude",
+  "sky.day": "Day of year",
+  "sky.north": "North",
+  "sky.northPosZ": "+Z is north",
+  "sky.northNegZ": "-Z is north",
+  "sky.northPosX": "+X is north",
+  "sky.northNegX": "-X is north",
+  "sky.atmosphere": "Atmosphere",
+  "sky.exposure": "Sky exposure",
+  "sky.turbidity": "Turbidity",
+  "sky.albedo": "Ground albedo",
+  "sky.mirror": "Mirror below horizon",
+  "sky.sun": "Sun",
+  "sky.sunDisc": "Sun disc",
+  "sky.angularSize": "Angular size \xB0",
+  "sky.sunIntensity": "Sun intensity",
+  "sky.sunShadow": "Sun shadows",
+  "sky.haze": "Aerial haze",
+  "sky.hazeStrength": "Strength",
+  "sky.hazeNear": "Near range",
+  "sky.fog": "Height fog",
+  "sky.fogColor": "Color",
+  "sky.fogSkyColor": "Match the sky",
+  "sky.fogDensity": "Density",
+  "sky.fogFalloff": "Height falloff",
+  "sky.fogBase": "Base height",
+  "sky.fogOpacity": "Max opacity",
+  "sky.night": "Night",
+  "sky.stars": "Stars",
+  "sky.starIntensity": "Starlight",
+  "sky.starSize": "Star size",
+  "sky.milkyWay": "Milky Way",
+  "sky.moon": "Moon",
+  "sky.moonPhase": "Moon phase",
+  "sky.moonLight": "Moonlight",
+  "projectSettings.skyDetail": "Procedural atmosphere and time of day. While on, it replaces the background and environment image so metal reflections follow the sun. Turning it off keeps the settings.",
+  "projectSettings.navigationDetail": "Bakes a navmesh from static surfaces. Obstacles can carve it during play, and path queries read that mesh.",
+  "projectSettings.catalogs": "Project catalogs",
+  "projectSettings.manage": "Manage\u2026",
+  "tags.title": "Tags",
+  "tags.subtitle": "Like Unity tags: each object has one primary tag, plus extra hierarchical tags for filtering and later gameplay queries.",
+  "tags.name": "Name",
+  "tags.id": "Id",
+  "tags.add": "Add Tag",
+  "tags.addDefault": "New Tag",
+  "tags.remove": "Delete",
+  "tags.done": "Done",
+  "tags.card": "Tag",
+  "tags.none": "Untagged",
+  "tags.orphan": "Missing tag {id}",
+  "tags.extraPlaceholder": "+ Type a tag such as Team.Enemy and press Enter",
+  "tags.gameplay": "Gameplay tags",
+  "tags.addGameplay": "Add gameplay tag\u2026",
+  "tags.runtime": "Timed tag while playing",
+  "tags.openDatabase": "Open game database",
+  "tags.filter": "Filter by tag",
+  "tags.filterAll": "All",
+  "tags.filterUntagged": "Untagged only",
+  "layers.title": "Layers",
+  "layers.subtitle": "Layers drive viewport visibility and physics collision. Bit 31 is reserved for editor helpers.",
+  "layers.tabLayers": "Layers",
+  "layers.tabPhysics": "Physics matrix",
+  "layers.bit": "Bit",
+  "layers.name": "Name",
+  "layers.id": "Id",
+  "layers.builtIn": "Built-in",
+  "layers.visible": "View",
+  "layers.add": "Add Layer",
+  "layers.addDefault": "New Layer",
+  "layers.remove": "Delete",
+  "layers.done": "Done",
+  "layers.show": "Show this layer in the viewport",
+  "layers.hide": "Hide this layer in the viewport",
+  "layers.card": "Layer",
+  "layers.option": "{name} \xB7 bit {bit}",
+  "layers.matrixEnable": "Use collision matrix",
+  "layers.matrixHint": "Each row is one pair of layers. Checked pairs collide, and the relationship is symmetric. While off, every layer collides. Rapier uses the first 16 bits.",
+  "layers.matrixEmpty": "Add at least two layers to choose collision pairs.",
+  "inspector.column.system": "System",
+  "inspector.column.packs": "Extension packs",
+  "inspector.sky": "Sky",
+  "inspector.background": "Background",
+  "inspector.exposure": "Exposure",
+  "inspector.toneMapping": "Tone Mapping",
+  "tone.none": "None",
+  "tone.linear": "Linear",
+  "tone.reinhard": "Reinhard",
+  "tone.cineon": "Cineon",
+  "tone.aces": "ACES",
+  "tone.agx": "AgX",
+  "tone.neutral": "Neutral",
+  "inspector.fog": "Fog",
+  "inspector.enabled": "Enabled",
+  "inspector.fogColor": "Fog Color",
+  "inspector.fogStart": "Start",
+  "inspector.fogEnd": "End",
+  "inspector.environment": "Environment Lighting",
+  "inspector.env": "Environment",
+  "inspector.bloom": "Bloom",
+  "inspector.aa": "Antialiasing",
+  "inspector.ssr": "Screen Reflections",
+  "inspector.ssrQuality": "Quality",
+  "inspector.ssrDistance": "Distance",
+  "inspector.ssrThickness": "Thickness",
+  "inspector.volume": "Volumetric Light",
+  "inspector.volumeDensity": "Density",
+  "inspector.volumeSteps": "Steps",
+  "inspector.volumeSize": "Extent",
+  "inspector.volumeHeight": "Height",
+  "inspector.ssgi": "Global Illumination",
+  "inspector.ssgiIndirect": "Indirect",
+  "inspector.ssgiOcclusion": "Occlusion",
+  "inspector.ssgiRadius": "Radius",
+  "inspector.ssgiSlices": "Slices",
+  "inspector.ssgiSteps": "Steps",
+  "inspector.ssgiDenoise": "Denoise",
+  "inspector.radius": "Radius",
+  "inspector.threshold": "Threshold",
+  "inspector.dof": "Depth of Field",
+  "inspector.focus": "Focus",
+  "inspector.focal": "Focal Length",
+  "inspector.bokeh": "Bokeh",
+  "inspector.occlusion": "Ambient Occlusion",
+  "inspector.grade": "Color Grade",
+  "inspector.hue": "Hue",
+  "inspector.saturation": "Saturation",
+  "inspector.clip": "Clip",
+  "inspector.play": "Play",
+  "inspector.pause": "Pause",
+  "inspector.time": "Time",
+  "inspector.animFile": "Animation",
+  "inspector.modelClips": "Model clips",
+  "inspector.fileClips": "File clips",
+  "humanoid.summary": "Humanoid \xB7 {skins} skins \xB7 {bind} \xB7 {motion}",
+  "humanoid.noHips": "No hips bone was recognized, so clips will not retarget onto this model.",
+  "humanoid.missing": "Missing {names}",
+  "humanoid.coreOk": "{count} core slots found",
+  "humanoid.restConflict": "These bones disagree across skins: {names}",
+  "humanoid.bind": "bind pose",
+  "humanoid.noBind": "no bind pose",
+  "humanoid.inPlace": "in place",
+  "humanoid.rootMotion": "root motion",
+  "humanoid.motionUnknown": "motion unknown",
+  "humanoid.slots": "Bone slots",
+  "humanoid.slotsHint": "Correct one bone when the automatic slot is wrong. Play the clip again afterwards.",
+  "humanoid.auto": "Auto",
+  "humanoid.slotHips": "Hips",
+  "humanoid.slotSpine": "Spine",
+  "humanoid.slotHead": "Head",
+  "humanoid.slotLeftUpperArm": "Left upper arm",
+  "humanoid.slotLeftLowerArm": "Left lower arm",
+  "humanoid.slotRightUpperArm": "Right upper arm",
+  "humanoid.slotRightLowerArm": "Right lower arm",
+  "humanoid.slotLeftUpperLeg": "Left upper leg",
+  "humanoid.slotLeftLowerLeg": "Left lower leg",
+  "humanoid.slotRightUpperLeg": "Right upper leg",
+  "humanoid.slotRightLowerLeg": "Right lower leg",
+  "humanoid.adjust": "Retarget adjust",
+  "humanoid.adjustHint": "Leave this closed unless the automatic result is off. Positive values widen the shoulders, rotate them outward, spread the arms, bend the elbows, widen the hips, bend the knees, point the toes down, raise the hips, and lengthen the stride. Applied only when another skeleton plays on this character.",
+  "humanoid.reset": "Reset to automatic",
+  "humanoid.shoulderWidth": "Shoulder width",
+  "humanoid.shoulderRotate": "Shoulder rotate",
+  "humanoid.armSpread": "Arm spread",
+  "humanoid.elbowBend": "Elbow",
+  "humanoid.hipSpread": "Hip spread",
+  "humanoid.kneeBend": "Knee",
+  "humanoid.footPitch": "Foot pitch",
+  "humanoid.hipsHeight": "Hips height",
+  "humanoid.stride": "Stride",
+  "project.clips": "Clips",
+  "anim.loop": "Loop",
+  "anim.speed": "Speed",
+  "anim.fade": "Fade",
+  "anim.inPlace": "In place",
+  "anim.animator": "State machine",
+  "anim.enabled": "Enabled",
+  "anim.current": "Current {name}",
+  "anim.addState": "Add state",
+  "anim.addParam": "Add parameter",
+  "anim.addTransition": "Add transition",
+  "anim.transitions": "Transitions",
+  "anim.state": "State",
+  "anim.param": "Parameter",
+  "anim.remove": "Remove",
+  "anim.bool": "Bool",
+  "anim.number": "Number",
+  "anim.trigger": "Trigger",
+  "anim.fire": "Fire",
+  "anim.equals": "Equals",
+  "anim.greater": "Greater",
+  "anim.less": "Less",
+  "anim.simple": "Simple",
+  "anim.machine": "State machine",
+  "anim.simpleHint": "Play one clip. Switch to the state machine for parameters and automatic changes.",
+  "anim.machineHint": "The state machine picks the clip. Each state has its own mask.",
+  "anim.end": "When finished",
+  "anim.hold": "Hold last frame",
+  "anim.stop": "Stop",
+  "anim.backToDefault": "Return to default",
+  "anim.default": "Default",
+  "anim.setDefault": "Set default",
+  "anim.fromClips": "Create states from clips",
+  "anim.seedParams": "Add common parameters",
+  "anim.mask": "Bone mask",
+  "anim.overlay": "Upper body",
+  "anim.overlayStop": "Stop overlay",
+  "anim.maskFull": "Full body",
+  "anim.maskUpper": "Upper body only",
+  "anim.maskLower": "Lower body only",
+  "anim.exit": "Wait until",
+  "anim.embedded": "{count} embedded clips",
+  "asset.scene": "Scene",
+  "asset.model": "Model",
+  "asset.texture": "Texture",
+  "asset.environment": "Environment",
+  "asset.material": "Material",
+  "asset.effect": "Effect",
+  "asset.ui": "UI",
+  "project.createUi": "UI",
+  "project.newUiName": "Score UI",
+  "ui.open": "Edit UI",
+  "ui.add": "Add",
+  "ui.delete": "Delete",
+  "ui.up": "Up",
+  "ui.down": "Down",
+  "ui.close": "Close",
+  "ui.undo": "Undo",
+  "ui.redo": "Redo",
+  "ui.zoom": "Zoom",
+  "ui.name": "Name",
+  "ui.text": "Text",
+  "ui.image": "Image",
+  "ui.layout": "Layout",
+  "ui.anchor": "Anchor",
+  "ui.flex": "Stack",
+  "ui.anchorPreset": "Anchor",
+  "ui.custom": "Keep",
+  "ui.direction": "Direction",
+  "ui.column": "Column",
+  "ui.row": "Row",
+  "ui.gap": "Gap",
+  "ui.width": "Width",
+  "ui.height": "Height",
+  "ui.style": "Style",
+  "ui.state": "State",
+  "ui.color": "Color",
+  "ui.align": "Align",
+  "ui.align.left": "Left",
+  "ui.align.center": "Center",
+  "ui.align.right": "Right",
+  "ui.border": "Border",
+  "ui.borderWidth": "Border width",
+  "ui.fontSize": "Font size",
+  "ui.background": "Background",
+  "ui.opacity": "Opacity",
+  "ui.radius": "Radius",
+  "ui.tint": "Fill",
+  "ui.binding": "Binding",
+  "ui.source": "Source",
+  "ui.variable": "Variable",
+  "ui.component": "Component",
+  "ui.node": "Object",
+  "ui.field": "Field",
+  "ui.value": "Value",
+  "ui.min": "Min",
+  "ui.max": "Max",
+  "ui.click": "Click",
+  "ui.none": "None",
+  "ui.sendMessage": "Send message",
+  "ui.setVariable": "Set variable",
+  "ui.message": "Message",
+  "ui.fake": "Preview values",
+  "ui.previewClick": "{name}: {detail}",
+  "ui.document": "UI",
+  "ui.layer": "Layer",
+  "ui.visibleOnPlay": "Visible when play starts",
+  "ui.addScreen": "Add screen UI",
+  "ui.removeScreen": "Remove",
+  "ui.missing": "Missing UI document",
+  "ui.mount": "Mount UI",
+  "ui.type.panel": "Panel",
+  "ui.type.stack": "Stack",
+  "ui.type.text": "Text",
+  "ui.type.image": "Image",
+  "ui.type.button": "Button",
+  "ui.type.progress": "Progress",
+  "ui.state.normal": "Normal",
+  "ui.state.hover": "Hover",
+  "ui.state.pressed": "Pressed",
+  "ui.state.disabled": "Disabled",
+  "ui.target.text": "Text",
+  "ui.target.visible": "Visible",
+  "ui.target.enabled": "Enabled",
+  "ui.target.progress": "Progress",
+  "ui.target.opacity": "Opacity",
+  "ui.anchor.top": "Top",
+  "ui.anchor.center": "Center",
+  "ui.anchor.bottom": "Bottom",
+  "ui.anchor.left": "Left",
+  "ui.anchor.right": "Right",
+  "ui.layer.hud": "HUD",
+  "ui.layer.menu": "Menu",
+  "ui.layer.popup": "Popup",
+  "ui.layer.modal": "Modal",
+  "log.createdUi": "Created UI {name}",
+  "log.mountedUi": "Mounted UI {name}",
+  "log.uiMessage": "UI sent message {message}",
+  "asset.animation": "Animation",
+  "asset.audio": "Audio",
+  "asset.document": "Document",
+  "asset.prefab": "Prefab",
+  "project.all": "All",
+  "project.model": "Models",
+  "project.image": "Materials/Textures",
+  "project.audio": "Audio",
+  "project.document": "Documents",
+  "project.animation": "Animations",
+  "project.scene": "Scenes",
+  "project.used": "Used Here",
+  "project.unused": "Unused",
+  "project.newFolder": "New folder in the current directory",
+  "project.search": "Search assets",
+  "project.clear": "Clear",
+  "project.import": "Import",
+  "project.extractPackage": "Extract Unity Package",
+  "pkg.title": "Import UnityPackage",
+  "pkg.noFile": "No file selected",
+  "pkg.close": "Close",
+  "pkg.scanning": "Scanning extractable assets\u2026",
+  "pkg.scanningSlow": "This package is large. The window is still working.",
+  "pkg.scanFailed": "Scan failed: {detail}",
+  "pkg.empty": "No extractable models, textures, animations, or materials.",
+  "pkg.models": "Models",
+  "pkg.textures": "Textures",
+  "pkg.animations": "Animations",
+  "pkg.materials": "Materials",
+  "pkg.hidden": "Hidden",
+  "pkg.unsupported": "Unsupported",
+  "pkg.previewOnly": "Extracts models, textures, animations, and materials. FBX uses ufbx. Merged animations are retargeted onto the body model.",
+  "pkg.selectedSummary": "{count} selected",
+  "pkg.selectAll": "All",
+  "pkg.selectNone": "None",
+  "pkg.selectModels": "Models only",
+  "pkg.selectTextures": "Textures only",
+  "pkg.selectAnimations": "Animations only",
+  "pkg.selectMaterials": "Materials only",
+  "pkg.filterPlaceholder": "Filter by file name",
+  "pkg.filterEmpty": "No matching files",
+  "pkg.targetDirectory": "Target folder",
+  "pkg.directoryMode": "Folders",
+  "pkg.directoryModeFlat": "Split folders (Textures / Materials / Animations)",
+  "pkg.directoryModePreserve": "Keep package folders",
+  "pkg.showDiagnostics": "Show diagnostics",
+  "pkg.hideDiagnostics": "Hide diagnostics",
+  "pkg.extracting": "Extracting\u2026",
+  "pkg.extractingTitle": "Extracting assets",
+  "pkg.extractingProgress": "{completed} / {total}",
+  "pkg.extractSelected": "Extract selected ({count})",
+  "pkg.extractSuccess": "Extracted {count} assets.",
+  "pkg.extractFailed": "{count} assets failed.",
+  "pkg.companions": "{count} companion files",
+  "pkg.warnings": "{count} warnings",
+  "pkg.kind.model": "Model",
+  "pkg.kind.texture": "Texture",
+  "pkg.kind.animation": "Animation",
+  "pkg.kind.material": "Material",
+  "pkg.role.modelBody": "Body",
+  "pkg.role.animationCarrier": "Animation",
+  "pkg.role.ordinaryModel": "Ordinary",
+  "pkg.role.unknownModel": "Unreviewed",
+  "pkg.confidence.high": "High",
+  "pkg.confidence.medium": "Medium",
+  "pkg.confidence.low": "Low",
+  "pkg.roleOverrideFor": "Role for {name}",
+  "pkg.carrierBodyFor": "Body for {name}",
+  "pkg.noCarrierBody": "No body",
+  "pkg.mergePreview.title": "Animation merge preview",
+  "pkg.mergePreview.summary": "{bodies} bodies, {carriers} animations",
+  "pkg.phase.textures": "Textures",
+  "pkg.phase.models": "Models",
+  "pkg.phase.animations": "Animations",
+  "pkg.phase.materials": "Materials",
+  "pkg.phase.retarget": "Retarget",
+  "pkg.diag.hidden": "Hidden",
+  "pkg.diag.unsupported": "Unsupported",
+  "pkg.diag.missingPathname": "Missing path",
+  "pkg.diag.missingAssetBytes": "Missing bytes",
+  "pkg.diag.scan": "Scan diagnostics",
+  "project.newScene": "New scene in the current directory",
+  "project.count": "{count} items",
+  "project.list": "List",
+  "project.details": "Details",
+  "project.grid": "Grid",
+  "project.name": "Name",
+  "project.type": "Type",
+  "project.detail": "Details",
+  "project.drop": "Drop to import",
+  "project.empty": "This folder is empty.",
+  "project.deleteScene": "Delete scene \u201C{name}\u201D? Its objects will be removed.",
+  "project.deleteAsset": "Delete \u201C{name}\u201D? This cannot be undone.",
+  "project.cancel": "Cancel",
+  "project.open": "Open",
+  "project.reveal": "Show in Explorer\u2026",
+  "project.revealMissing": "This item is not on disk yet. Save the project as a folder first.",
+  "project.revealFailed": "Could not open the folder: {message}",
+  "project.place": "Place in Scene",
+  "project.rename": "Rename",
+  "project.delete": "Delete",
+  "project.resizeTextures": "Batch resize textures\u2026",
+  "texResize.title": "Batch Resize Textures",
+  "texResize.maxEdge": "Max edge",
+  "texResize.search": "Search textures\u2026",
+  "texResize.scopeCurrent": "Current scope only",
+  "texResize.scopeAll": "Show all textures ({count})",
+  "texResize.selectAll": "Select all",
+  "texResize.selectLarge": "Only > {size}px",
+  "texResize.selectBackedUp": "Only backed up",
+  "texResize.clear": "Clear",
+  "texResize.empty": "No matching texture assets",
+  "texResize.unsupported": "Unsupported format",
+  "texResize.backedUp": "Original backed up",
+  "texResize.skipFormat": "Format skipped",
+  "texResize.restoreOrSkip": "Will restore original",
+  "texResize.alreadySmall": "Already fits, skip",
+  "texResize.backupHint": "Originals are backed up automatically before overwriting and can be restored anytime",
+  "texResize.progress": "Processing {done} / {total}\u2026",
+  "texResize.restore": "Restore original ({count})",
+  "texResize.apply": "Apply resize ({count})",
+  "texResize.done": "Textures resized: {updated} updated, {skipped} skipped, {failed} failed",
+  "texResize.restored": "Textures restored: {updated} restored, {failed} failed",
+  "project.newFolderMenu": "New Folder",
+  "project.deleteFolder": "Delete folder \u201C{name}\u201D? Assets and subfolders inside are deleted too. This cannot be undone.",
+  "project.objects": "{count} objects",
+  "project.inUse": "In use",
+  "project.sceneHint": "Click to open. Click the current scene again to rename.",
+  "project.modelHint": "Double-click to preview. Drag into the viewport to place.",
+  "project.envHint": "Double-click to preview the environment map",
+  "project.textureHint": "Double-click to preview. Drag onto an object.",
+  "project.animHint": "Drag onto a model to play",
+  "project.audioHint": "Double-click to listen",
+  "project.docHint": "Double-click to open and edit document",
+  "project.openFolder": "Double-click to open the folder",
+  "project.folder": "Folder",
+  "hierarchy.search": "Search objects",
+  "hierarchy.expand": "Expand all",
+  "hierarchy.collapse": "Collapse all",
+  "hierarchy.create": "Create",
+  "hierarchy.empty": "The scene is empty. Use + or the Create menu to add objects.",
+  "hierarchy.hint": "Click to select, click again to rename, double-click to focus",
+  "hierarchy.hide": "Hide",
+  "hierarchy.show": "Show",
+  "hierarchy.locked": "Locked: viewport picking and the gizmo pass through",
+  "hierarchy.lock": "Lock so viewport picking and the gizmo pass through",
+  "hierarchy.createChild": "Create Child",
+  "hierarchy.unparent": "Unparent",
+  "hierarchy.pasteChild": "Paste as Child",
+  "hierarchy.moveUp": "Move Up",
+  "hierarchy.moveDown": "Move Down",
+  "view.persp": "Persp",
+  "view.top": "Top",
+  "view.bottom": "Bottom",
+  "view.front": "Front",
+  "view.back": "Back",
+  "view.left": "Left",
+  "view.right": "Right",
+  "view.up": "Up",
+  "view.down": "Down",
+  "view.world": "World space",
+  "view.local": "Local space",
+  "view.helpers": "Helpers",
+  "view.grid": "Grid",
+  "view.lights": "Lights and cameras",
+  "view.gizmoCenter": "Gizmo at center",
+  "view.snap": "Snap",
+  "view.step": "Step",
+  "view.focus": "Focus selection (F)",
+  "view.fullscreen": "Maximize viewport",
+  "view.stats": "{objects} objects \xB7 {triangles} tris",
+  "view.statsOpen": "Stats",
+  "view.statsTitle": "Stats",
+  "view.statsRender": "Rendering",
+  "view.statsPhysics": "Physics",
+  "view.statsCamera": "Camera and selection",
+  "view.statsBackend": "Backend",
+  "view.statsCalls": "Draw calls",
+  "view.statsTris": "Rendered triangles",
+  "view.statsMeshes": "Meshes / vertices",
+  "view.statsMats": "Materials / textures",
+  "view.statsNodes": "Scene objects",
+  "view.statsAssets": "Assets",
+  "view.statsBodies": "Bodies dyn / kin / static",
+  "view.statsTriggers": "Triggers",
+  "view.statsPlay": "Play",
+  "view.statsCamMode": "Camera",
+  "view.statsCamPos": "Position",
+  "view.statsSelected": "Selection",
+  "view.statsNone": "None",
+  "view.statsPlaying": "Playing",
+  "view.statsEditing": "Editing",
+  "view.statsReady": "Running",
+  "view.statsIdle": "Idle",
+  "view.statsCollapse": "Collapse details",
+  "view.statsExpand": "Expand details",
+  "view.statsVertices": "Vertices",
+  "view.statsCallsShort": "Calls",
+  "view.statsTrisShort": "Tris",
+  "view.costTitle": "Top 8 costs",
+  "view.costHint": "Average per frame, last half second",
+  "view.cost.core.character": "Character",
+  "view.cost.core.camera": "Follow camera",
+  "view.cost.core.rules": "Rules",
+  "view.cost.core.devices": "Interact and triggers",
+  "view.cost.core.movers": "Movers",
+  "view.cost.core.round": "Score and round",
+  "view.cost.physics": "Physics",
+  "view.cost.navigation": "Navigation",
+  "view.cost.animation": "Skeletal animation",
+  "view.cost.particles": "Particles",
+  "view.cost.render": "Scene render",
+  "view.cost.picture": "Picture and pre-draw",
+  "view.cost.rig": "Editor camera",
+  "view.create": "Create",
+  "view.createChild": "Create Child",
+  "view.paste": "Paste",
+  "console.info": "Info",
+  "console.warn": "Warning",
+  "console.error": "Error",
+  "console.filter": "Filter",
+  "console.clear": "Clear",
+  "history.empty": "Nothing to undo yet. Moves, creates, and deletes are recorded here.",
+  "history.current": "Current",
+  "preview.pendingMaterial": "Material is not ready",
+  "preview.sphere": "Sphere",
+  "preview.box": "Box",
+  "preview.torus": "Torus",
+  "preview.plane": "Plane",
+  "preview.studio": "Studio",
+  "preview.bright": "Bright",
+  "preview.dark": "Dark",
+  "preview.turn": "Turn",
+  "preview.popout": "Pop out",
+  "preview.title": "Preview",
+  "preview.pendingModel": "Model is still loading",
+  "preview.lit": "Lit",
+  "preview.wire": "Wire",
+  "preview.unlit": "Unlit",
+  "preview.bounds": "Bounds",
+  "preview.reset": "Reset",
+  "preview.light": "Light",
+  "preview.faces": "{count} faces",
+  "preview.tabOverview": "Overview",
+  "preview.tabMesh": "Meshes",
+  "preview.tabAnim": "Animation",
+  "preview.tabMaterial": "Materials",
+  "preview.tabSocket": "Sockets",
+  "preview.tabImport": "Import",
+  "preview.importScale": "Import scale",
+  "preview.reimport": "Reimport",
+  "preview.reimportDone": "Reimported {name}",
+  "preview.reimportFailed": "Reimport failed. The source file is not in the cache.",
+  "preview.reimportFailedDetail": "Reimport failed: {message}",
+  "preview.reimportUnavailable": "This asset cannot be reimported.",
+  "preview.source": "Source",
+  "preview.scaleHint": "Height is {height} m. Suggested import scale is {scale}x.",
+  "preview.useScale": "Set {scale}x",
+  "preview.noMesh": "No mesh stats yet. Reimport to list each mesh.",
+  "preview.noBone": "This model has no skeleton.",
+  "preview.noClip": "No embedded clips.",
+  "preview.socketEmpty": "No sockets yet. Add one from a bone to show its axis in the preview.",
+  "preview.addSocket": "Add socket",
+  "preview.triangles": "Triangles",
+  "preview.vertices": "Vertices",
+  "preview.meshes": "Meshes",
+  "preview.slots": "Slots",
+  "preview.bones": "Bones",
+  "preview.sourceSize": "Source {size}",
+  "preview.textureHint": "Scroll to zoom, drag to pan. Saving creates a new texture and cannot be undone.",
+  "preview.flipX": "Flip horizontally",
+  "preview.flipY": "Flip vertically",
+  "preview.flipNormalY": "Flip normal Y",
+  "preview.width": "W",
+  "preview.height": "H",
+  "preview.lockAspect": "Lock aspect",
+  "preview.saveTexture": "Save as new texture",
+  "preview.overwriteTexture": "Overwrite original",
+  "preview.saving": "Saving\u2026",
+  "preview.savedTexture": "Saved new texture \u201C{name}\u201D",
+  "preview.overwroteTexture": "Overwrote original \u201C{name}\u201D (original backed up)",
+  "preview.actor": "Actor",
+  "preview.noActor": "Import a model first to preview this animation",
+  "preview.loading": "Loading\u2026",
+  "preview.saveTextureFail": "Failed to save texture: {message}",
+  "preview.envHint": "Drag to rotate, scroll to zoom",
+  "gesture.create": "Create {name}",
+  "gesture.rename": "Rename",
+  "gesture.move": "Move",
+  "gesture.rotate": "Rotate",
+  "gesture.scale": "Scale",
+  "gesture.light": "Edit Light",
+  "gesture.camera": "Edit Camera",
+  "gesture.alignCamera": "Align Camera",
+  "gesture.picture": "Edit Picture",
+  "gesture.shadow": "Edit Shadows",
+  "gesture.material": "Edit Material",
+  "gesture.map": "Set Texture",
+  "gesture.mapClear": "Clear Texture",
+  "gesture.anim": "Preview Animation",
+  "gesture.reset": "Reset Transform",
+  "gesture.color": "Edit Color",
+  "error.panel": "{name} failed: {message}",
+  "log.cacheOpenFail": "Could not open the local project cache. Starting with an empty scene.",
+  "log.projectCreated": 'Created project "{name}". Sources are in Assets/, cache is in .cache/t3d/',
+  "log.projectSavedAs": 'Saved the current project as "{name}"',
+  "log.projectSaveAsOccupied": '"{name}" already contains a project. Choose an empty folder',
+  "log.projectOpened": 'Opened project "{name}"',
+  "log.projectExists": 'This folder already has a project. Opened "{name}"',
+  "log.projectMissing": "This folder has no project.t3d",
+  "log.projectInvalid": "Could not read project.t3d",
+  "log.projectFailed": "Project action failed: {message}",
+  "log.projectBrowser": "This browser cannot pick a local project folder",
+  "log.projectPermission": "The last project needs permission again. Open it from File \u2192 Recent Projects, or use Open Project.",
+  "log.projectLoose": "Added {count} file(s) from the Assets folder",
+  "status.localProject": "Local cache",
+  "log.opened": "Project opened, scene {ms}ms",
+  "log.openedDetail": "Project opened in {total}ms (scene {scene}ms \xB7 models {model}ms \xB7 textures {texture}ms), artifact hits {hits}, source parses {parsed}, failed {failed}",
+  "log.openProfile": "Open profile (assets ready to steady frames): main thread {costs} \xB7 new shaders {shaders} \xB7 pipelines compiled on draw {pipelines} \xB7 precompiled pipelines {asyncPipelines} ({asyncMs}ms total, worst {asyncWorst}ms) \xB7 before assets were ready: shaders {earlyShaders}, pipelines {earlyPipelines}",
+  "log.openTimeline": "Open timeline (wall clock): read project {read}ms \xB7 session {session}ms \xB7 scan folders {scan}ms \xB7 save {save}ms \xB7 asset restore {warm}ms (models {model}ms \xB7 textures {texture}ms) \xB7 renderer init {init}ms (assets waited {wait}ms for it) \xB7 shader precompile {compile}ms (UI stays responsive) \xB7 precompile to steady frames {settle}ms ({frames} frames, {slow} slow, worst {worst}ms) \xB7 main-thread long tasks {tasks} totalling {busy}ms, longest {longest}ms",
+  "log.backend": "Renderer: {label}",
+  "log.webgpu": "WebGPU",
+  "log.webgl2": "WebGL2 fallback",
+  "log.playCameraMany": 'Several MainCamera tags; play uses "{name}"',
+  "log.rendererFail": "Renderer failed to start: {message}",
+  "log.unknownFile": "Unrecognized file: {name}",
+  "log.importFail": "{name} failed to import: {message}",
+  "log.already": "Asset is already in the library: {name}",
+  "log.importedAnim": "Imported animation {name}",
+  "log.importedModel": "Imported model {name}, {count} clips",
+  "log.importedTexture": "Imported texture {name}",
+  "log.importedEnv": "Imported environment {name}",
+  "log.importedAudio": "Imported audio {name}",
+  "log.importedDocument": "Imported document {name}",
+  "log.cacheFail": "Cached asset {name} could not be restored: {message}",
+  "log.referenced": "Still used by: ",
+  "log.folderKept": "Kept the folder. These assets are still in use: ",
+  "log.modelLoading": "The model is still loading",
+  "log.envSet": "Using {name} as the environment",
+  "log.dragAnim": "Drop the animation on a model",
+  "log.dragAsset": "Drop the asset on an object",
+  "log.animOnModel": "Animations belong on models",
+  "log.needMesh": "Select a mesh or model first",
+  "log.savedMaterial": "Saved material {name}",
+  "log.needSelection": "Select objects to save first",
+  "log.savedPrefab": "Saved prefab {name}",
+  "log.created": "Created {name}",
+  "log.skippedLocked": "Skipped locked objects: {names}",
+  "log.deleted": "Deleted {count} objects",
+  "log.duplicated": "Duplicated {count} objects",
+  "log.nothingCopy": "Nothing to copy",
+  "log.copied": "Copied {count} objects",
+  "log.clipboardEmpty": "The clipboard is empty",
+  "log.pasted": "Pasted {count} objects",
+  "log.groupNeedTwo": "Select at least two objects to group",
+  "log.grouped": "Grouped",
+  "log.needGround": "Select objects to snap to the ground",
+  "log.alreadyGround": "The objects are already on the ground",
+  "log.grounded": "Snapped {count} objects to the ground",
+  "log.locked": "{name} is locked",
+  "log.cycle": "An object cannot become its own child",
+  "log.noUndoPlay": "Stop playing before undoing",
+  "log.noRedoPlay": "Stop playing before redoing",
+  "log.resumePlay": "Resumed play",
+  "log.startPlay": "Playing. Stop to restore the scene.",
+  "log.stopPlay": "Stopped. The scene is restored.",
+  "log.stopBeforeNew": "Stop playing before creating a scene",
+  "log.createdScene": "Created and opened {name}",
+  "log.stopBeforeOpen": "Stop playing before opening a scene",
+  "log.openedScene": "Opened {name}",
+  "log.keepScene": "Keep at least one scene",
+  "log.stopBeforeDelete": "Stop playing before deleting a scene",
+  "log.deletedScene": "Deleted the scene",
+  "log.placed": "Placed {name}",
+  "log.assignedMaterial": "Assigned material {name}",
+  "log.noStructure": "Stop playing before changing the scene structure",
+  "picker.search": "Search",
+  "clip.pick": "Choose clip",
+  "picker.empty": "No matching assets",
+  "picker.texture": "Select Texture",
+  "picker.material": "Select Material",
+  "picker.environment": "Select Environment",
+  "picker.none": "None",
+  "picker.unset": "None",
+  "picker.select": "Select",
+  "picker.clear": "Clear",
+  "picker.missing": "Missing",
+  "picker.textureHint": "Click to reveal in assets, double-click to preview",
+  "picker.textureLocate": "Reveal in assets",
+  "picker.textureReplace": "Select or replace texture",
+  "picker.textureDrop": "Drop a texture here",
+  "picker.thumbs": "Large thumbnails",
+  "picker.list": "List",
+  "project.create": "Create",
+  "project.createScene": "Scene",
+  "project.createMaterial": "Material",
+  "project.createPrefab": "Prefab",
+  "project.newMaterialName": "New Material",
+  "project.copySuffix": "Copy",
+  "project.duplicate": "Duplicate",
+  "project.findRefs": "Find References",
+  "project.noRefs": "Nothing references this asset",
+  "project.refs": "Used by: {names}",
+  "field.enable": "Enabled",
+  "field.color": "Color",
+  "field.closed": "Closed curve",
+  "field.tension": "Tension",
+  "tween.kind": "Motion",
+  "tween.kind.floatBob": "Float (ping-pong)",
+  "tween.kind.positionOffset": "Position offset",
+  "tween.kind.rotationOffset": "Rotation (degrees)",
+  "tween.kind.scaleMultiplier": "Scale multiplier",
+  "tween.delta": "Delta (X/Y/Z)",
+  "tween.duration": "Duration (s)",
+  "tween.delay": "Start delay (s)",
+  "tween.ease": "Easing",
+  "tween.ease.linear": "Linear",
+  "tween.ease.inOutSine": "Sine in-out",
+  "tween.ease.outQuad": "Quad out",
+  "tween.ease.inOutQuad": "Quad in-out",
+  "tween.ease.outCubic": "Cubic out",
+  "tween.ease.inOutCubic": "Cubic in-out",
+  "tween.ease.outBack": "Back out",
+  "tween.ease.outBounce": "Bounce out",
+  "tween.ease.outElastic": "Elastic out",
+  "tween.repeat": "Repeat",
+  "tween.repeat.once": "Once",
+  "tween.repeat.loop": "Loop",
+  "tween.repeat.pingPong": "Ping-pong",
+  "tween.autoStart": "Play on start",
+  "spline.gesture": "Edit spline",
+  "spline.edit": "Spline curve",
+  "spline.hint": "Click a control point and use the move gizmo. Drag the sphere to move it on the view plane. Drag a box to select several points.",
+  "spline.pathNode": "Spline node",
+  "spline.mode": "Mode",
+  "spline.mode.once": "Once",
+  "spline.mode.loop": "Loop",
+  "spline.mode.pingPong": "Ping-pong",
+  "spline.speed": "Speed (m/s)",
+  "spline.curveTension": "Curve tension",
+  "spline.face": "Face the tangent",
+  "spline.planeXZ": "Keep current height (XZ)",
+  "spline.autoStart": "Start on play",
+  "spline.start": "Start progress (0\u20131)",
+  "spline.points": "Control points ({count})",
+  "spline.addPoint": "Add point",
+  "spline.removePoint": "Remove point",
+  "spline.fallback": "Without a path parent, this node\u2019s children are used as ordered waypoints.",
+  "crowd.radius": "Avoidance radius (m)",
+  "crowd.maxSpeed": "Max speed (m/s)",
+  "crowd.separation": "Separation",
+  "crowd.cohesion": "Cohesion",
+  "crowd.alignment": "Alignment",
+  "crowd.planeXZ": "Move on XZ",
+  "crowd.face": "Face movement",
+  "projectile.mode": "Flight mode",
+  "projectile.mode.linear": "Linear",
+  "projectile.mode.homing": "Homing",
+  "projectile.mode.ballistic": "Ballistic",
+  "projectile.speed": "Speed (m/s)",
+  "projectile.gravity": "Gravity",
+  "projectile.turn": "Turn rate (rad/s)",
+  "projectile.life": "Max lifetime (s)",
+  "projectile.hitRadius": "Hit radius (m)",
+  "projectile.targetTag": "Target tag",
+  "projectile.damage": "Damage",
+  "projectile.destroy": "Recycle on hit",
+  "water.schema": "Water settings",
+  "schema.listCount": "{count} items",
+  "schema.dropNode": "Drop to reference a node",
+  "schema.dropNodeHint": "Drop a node from the hierarchy, or use the picker",
+  "schema.nodeTitle": "{name} ({id}) \u2014 click to reveal, or drop another node",
+  "schema.nodeEmpty": "None (drop or pick a node)",
+  "schema.nodeMissing": "Missing ({id})",
+  "schema.pick": "Pick {name}",
+  "schema.clearRef": "Clear reference",
+  "schema.dropAsset": "Drop to reference an asset",
+  "schema.dropAssetHint": "Drop an asset, or use the picker",
+  "schema.assetTitle": "{name} ({kind}) \u2014 click to reveal, or drop another asset",
+  "schema.assetEmpty": "None (drop or pick an asset)",
+  "schema.dropClip": "Drop to reference a clip",
+  "schema.dropClipHint": "Drop a clip, or use the picker",
+  "schema.clipTitle": "{name} \u2014 drop a clip or use the picker",
+  "schema.clipEmpty": "None (drop or pick a clip)",
+  "schema.rowHint": "Click to pick a table row",
+  "schema.rowEmpty": "None (click to pick)",
+  "schema.search": "Search name, type, or ID\u2026",
+  "schema.clearPick": "None (clear reference)",
+  "schema.noMatch": "No matches",
+  "tool.design": "Design",
+  "tool.designTip": "Design brief (design.md)",
+  "tool.packs": "Packs",
+  "tool.packsTip": "Capability packs and recipes",
+  "tool.branches": "Branches",
+  "tool.branchesTip": "Snapshots and experiment branches",
+  "tool.diagnose": "Diagnose",
+  "tool.diagnoseTip": "Health and performance budget",
+  "tool.publish": "Publish",
+  "tool.publishTip": "Validate and export Web",
+  "tool.ai": "AI",
+  "tool.aiTip": "AI console",
+  "menu.exportWeb": "Build\u2026",
+  "view.device.full": "Device frame: full screen (click for 16:9 / portrait / landscape)",
+  "view.device.desktop": "Device frame: 16:9 desktop",
+  "view.device.portrait": "Device frame: 9:16 portrait",
+  "view.device.landscape": "Device frame: 16:9 landscape",
+  "view.annotate": "Draw on the viewport and send it to AI",
+  "view.aiPrompt": "Open the inline AI prompt (Ctrl/Cmd + K)",
+  "view.interact": "Interact",
+  "view.jump": "Jump",
+  "view.annotateHint": "Circle the part of the view to change",
+  "view.annotateClear": "Clear",
+  "view.annotateSend": "Send markup to AI",
+  "view.aiInline": "Inline AI prompt",
+  "view.aiPlaceholder": "Describe a change to the selection or the view, then press Enter\u2026",
+  "ui.addControl": "Add control",
+  "ui.addNamed": "Add {name}",
+  "ui.layers": "Layers",
+  "ui.show": "Show",
+  "ui.hide": "Hide",
+  "ui.interact": "Interactive",
+  "ui.basic": "Basics",
+  "ui.mode": "Mode",
+  "ui.anchorGrid": "Anchor preset",
+  "ui.anchor.tl": "Top left",
+  "ui.anchor.tc": "Top",
+  "ui.anchor.tr": "Top right",
+  "ui.anchor.ml": "Left",
+  "ui.anchor.mc": "Center",
+  "ui.anchor.mr": "Right",
+  "ui.anchor.bl": "Bottom left",
+  "ui.anchor.bc": "Bottom",
+  "ui.anchor.br": "Bottom right",
+  "ui.justify": "Main axis",
+  "ui.alignCross": "Cross axis",
+  "ui.align.start": "Start",
+  "ui.flex.center": "Center",
+  "ui.align.end": "End",
+  "ui.align.between": "Space between",
+  "ui.align.stretch": "Stretch",
+  "ui.selectedCount": "{count} selected",
+  "ui.stageHint": "Wheel to zoom \xB7 drag the wheel to pan \xB7 drag to select",
+  "ui.canvasSize": "Canvas size",
+  "ui.canvasZoom": "Canvas zoom",
+  "ui.grid": "Toggle the background grid",
+  "ui.statePreview": "State preview",
+  "ui.docFallback": "UI document",
+  "ui.bgPlaceholder": "e.g. #1e293b or rgba(...)",
+  "ui.varPlaceholder": "e.g. hp / score",
+  "ui.targetProp": "Target property",
+  "ui.action": "Action",
+  "shader.file": "Shader (.shader.ts)",
+  "shader.scriptFile": "Script (.ts)",
+  "shader.asset": "Shader asset",
+  "shader.scriptAsset": "Script asset",
+  "shader.info": "Details",
+  "shader.id": "Identifier",
+  "shader.path": "File path",
+  "shader.compile": "Compile status",
+  "shader.compileOk": "Compiled",
+  "shader.compileErr": "{count} compile errors",
+  "shader.lightMode": "Lighting",
+  "shader.unlit": "Unlit",
+  "shader.lit": "Lit",
+  "shader.surface": "Transparency / sides",
+  "shader.transparent": "Transparent",
+  "shader.opaque": "Opaque",
+  "shader.double": "Double-sided",
+  "shader.single": "Single-sided",
+  "shader.scriptKind": "Script kind",
+  "shader.system": "Global system",
+  "shader.behavior": "Node behavior",
+  "shader.params": "Exposed parameters ({count})",
+  "shader.builtin": "Built-in shaders",
+  "shader.custom": "Custom shaders",
+  "shader.error": "Error",
+  "pm.title": "Project hub",
+  "pm.branch": "Branch: {name}",
+  "pm.main": "Main",
+  "pm.healthy": "Health check passed",
+  "pm.errors": "{count} blocking errors",
+  "pm.close": "Close",
+  "pm.tab.design": "Design & flow",
+  "pm.tab.packs": "Tables & packs",
+  "pm.tab.diagnose": "Health & budget",
+  "pm.tab.branches": "Snapshots & branches",
+  "pm.tab.publish": "Build & publish",
+  "pm.sceneCount": "{count} scenes",
+  "pm.designTitle": "Design brief and scene flow (design.md)",
+  "pm.designLead": "The design brief is injected into every AI turn so later work stays on the same game.",
+  "pm.askDesign": "Ask AI from the brief",
+  "pm.saveDesign": "Save brief",
+  "pm.flow": "Scene flow",
+  "pm.scenes": "{count} scenes",
+  "pm.flowEmpty": "Only the temporary scene exists. Save or create a scene asset to see the flow.",
+  "pm.current": "Current",
+  "pm.nodeCount": "Nodes: {count}",
+  "pm.openEdit": "Edit",
+  "pm.playScene": "Play this scene",
+  "pm.settings": "Project and art direction",
+  "pm.projectName": "Project name",
+  "pm.genre": "Genre",
+  "pm.genrePh": "e.g. platformer / RTS / TPS",
+  "pm.camera": "Camera",
+  "pm.cameraPh": "e.g. third-person follow / top-down",
+  "pm.art": "Art-style keywords",
+  "pm.artPh": "Low poly, neon, high-contrast light",
+  "pm.palette": "Palette (comma separated)",
+  "pm.loop": "Core loop",
+  "pm.win": "Win, lose, and controls",
+  "pm.notes": "Notes",
+  "pm.packsTitle": "Tables, capability packs, and recipes",
+  "pm.packsLead": "Turn this project\u2019s scripts and shaders into a pack, or import an external pack.json after a trust check.",
+  "pm.importPack": "Import pack.json",
+  "pm.sedimentTitle": "Save this project as a capability pack",
+  "pm.packIdPh": "Pack id (e.g. user.my-rts)",
+  "pm.packNamePh": "Display name",
+  "pm.tier.content": "Content",
+  "pm.tier.gameplay": "Gameplay",
+  "pm.tier.effect": "Effect",
+  "pm.sedimentBusy": "Saving\u2026",
+  "pm.sediment": "Save pack",
+  "pm.tables": "Design tables",
+  "pm.balance": "Ask AI to balance",
+  "pm.noTables": "No design tables are enabled.",
+  "pm.rows": "{count} rows",
+  "pm.installed": "Installed packs ({count})",
+  "pm.noPacks": "No user packs installed.",
+  "pm.trusted": "Trusted",
+  "pm.untrusted": "Needs trust",
+  "pm.packMeta": "{id}@{version} \xB7 scripts {scripts} \xB7 shaders {shaders} \xB7 components {components}",
+  "pm.trust": "Trust and enable",
+  "pm.uninstall": "Uninstall",
+  "pm.recipes": "Recipes ({count})",
+  "pm.buildRecipe": "Build from recipe",
+  "pm.diagnoseTitle": "Health and performance budget",
+  "pm.diagnoseLead": "Scene size, draw calls, triangles, and missing references. Issues can be sent to AI.",
+  "pm.fixAll": "Ask AI to fix all",
+  "pm.triangles": "Triangles",
+  "pm.shadowLights": "Shadow lights",
+  "pm.lightUnit": "",
+  "pm.assetSize": "Asset size",
+  "pm.issues": "Findings",
+  "pm.issueCounts": "{errors} errors \xB7 {warnings} warnings",
+  "pm.allClear": "Health check and budget both passed.",
+  "pm.error": "Error",
+  "pm.warning": "Warning",
+  "pm.hint": "Suggestion: {hint}",
+  "pm.fix": "Ask AI to fix",
+  "pm.branchTitle": "Snapshots and experiment branches",
+  "pm.branchLead": "Branch from any point, compare in play, then promote the one you keep.",
+  "pm.branches": "Branches",
+  "pm.branchPh": "New branch name",
+  "pm.branchDefault": "Experiment",
+  "pm.branchFail": "Could not create the branch",
+  "pm.createBranch": "Create branch",
+  "pm.active": "Active",
+  "pm.branchDiff": "Nodes {count}{diff}",
+  "pm.diff": " \xB7 vs main: +{added} added / ~{modified} changed / -{removed} removed",
+  "pm.switch": "Switch",
+  "pm.promote": "Make main",
+  "pm.checkpoints": "Checkpoints",
+  "pm.checkpointPh": "Checkpoint note\u2026",
+  "pm.checkpointDefault": "Manual checkpoint",
+  "pm.saveCheckpoint": "Save checkpoint",
+  "pm.noCheckpoints": "No checkpoints yet.",
+  "pm.checkpointMeta": "{time} \xB7 nodes {count}",
+  "pm.branchFrom": "Branch",
+  "pm.restore": "Restore",
+  "pm.publishTitle": "Build and publish Web player",
+  "pm.publishLead": "Export a standalone Web player that reuses the WebGPU renderer and the WebGL2 fallback.",
+  "pm.gate": "Publish gate",
+  "pm.gateOk": "No blocking errors. The Web player can be exported.",
+  "pm.gateBad": "{count} health errors. Fix them before publishing.",
+  "pm.export": "Choose folder and build",
+  "pm.smoke": "Ask AI to smoke-test",
+  "ai.title": "AI console",
+  "ai.unconfigured": "Not configured",
+  "ai.noKey": "No API key",
+  "ai.desktop": "Desktop only",
+  "ai.noExport": "There is no chat to export",
+  "ai.exported": "Exported {count} messages",
+  "ai.imported": "Imported {count} messages",
+  "ai.importFailed": "Import failed: {message}",
+  "ai.noViewport": "The viewport image is not available",
+  "ai.snapshot": "Checkpoint saved",
+  "ai.manualSnapshot": "Manual snapshot {time}",
+  "ai.importTip": "Import chat (.json)",
+  "ai.exportTip": "Export chat (.json)",
+  "ai.settingsTip": "Model and API settings",
+  "ai.knowledgeTip": "AI knowledge & rules (skills, design and requirement docs)",
+  "ai.clearTip": "Clear chat",
+  "ai.collapse": "Hide the AI console",
+  "ai.settings": "Model API (the key stays in the main process)",
+  "ai.addProvider": "Add",
+  "ai.current": "Current",
+  "ai.newConfig": "+ New configuration\u2026",
+  "ai.namePh": "Name (e.g. DeepSeek, local Ollama)",
+  "ai.urlPh": "Base URL (e.g. https://api.deepseek.com/v1)",
+  "ai.modelPh": "Default model (e.g. deepseek-chat / gpt-4o)",
+  "ai.modelsPh": "Extra models, comma separated",
+  "ai.keySaved": "Key saved (leave blank to keep it)",
+  "ai.keyPh": "API key",
+  "ai.deleteItem": "Delete",
+  "ai.close": "Close",
+  "ai.customApi": "Custom endpoint",
+  "ai.saveEnable": "Save and enable",
+  "ai.ready": "Ready. Describe what to build.",
+  "ai.example": "Example: \u201CMake a platform level with a ground, a spawn, a few steps, a directional light and a camera, then run a health check.\u201D",
+  "ai.older": "{count} earlier messages (scroll or click to load)",
+  "ai.deleteTurn": "Delete this message",
+  "ai.working": "Working\u2026",
+  "ai.locate": "Click to reveal this object",
+  "ai.annotationAlt": "Viewport markup",
+  "ai.interrupted": "The run stopped (the page reloaded or the connection dropped)",
+  "ai.interruptedHint": "Your question and the finished steps are kept. Continue when ready.",
+  "ai.continue": "Continue",
+  "ai.stepLimit": "The 32-step limit for this turn was reached",
+  "ai.pending": "{count} planned steps are still open",
+  "ai.resume": "Continue",
+  "ai.cache": "cache {percent}%",
+  "ai.steps": "{count} steps",
+  "ai.copyTip": "Copy text",
+  "ai.copied": "Copied",
+  "ai.copy": "Copy",
+  "ai.rollback": "Undo this turn",
+  "ai.reject": "Reject",
+  "ai.allow": "Allow",
+  "ai.allowMoreTip": "More allow options",
+  "ai.allowAlwaysTool": "Always allow {tool}",
+  "ai.allowAlwaysAll": "Always allow all high-risk actions",
+  "ai.autoAllowActive": "Auto-allowing {count} high-risk action(s) (click to reset)",
+  "ai.autoAllowAllActive": "Always-allow all high-risk enabled (click to reset)",
+  "ai.autoAllowReset": "High-risk auto-allow rules cleared",
+  "ai.playtestPrompt": "Please run a smoke playtest (playtest__run_smoke) and project health check (query__project_diagnose), then report the results.",
+  "ai.resumeInterruptedWithPrev": 'The previous run was interrupted by a page reload or error. Please continue the remaining work based on my last request ("{text}") and the steps already completed.',
+  "ai.resumeInterrupted": "The previous run was interrupted by a page reload or error. Please continue the remaining work based on the context and completed steps.",
+  "ai.resumePlanPrompt": "Please continue executing the remaining steps in the current task plan until everything is complete.",
+  "ai.assertFailed": "Assertion failed: {message}",
+  "ai.unknownAssert": "Unknown assertion",
+  "ai.perfBudget": "Performance budget: {note}",
+  "ai.warnLine": "Warning: {msg}",
+  "ai.taskProgress": "Tasks {done}/{total}",
+  "ai.taskCurrent": "\xB7 {title}",
+  "ai.taskDone": "\xB7 Done",
+  "ai.clearPlan": "Clear the plan",
+  "ai.dropHint": "Drop to attach nodes, scripts, shaders, or assets",
+  "ai.pendingShot": "Viewport markup to send",
+  "ai.removeShot": "Remove markup",
+  "ai.removeRef": "Remove reference",
+  "ai.insertName": "Selected viewport nodes (click to insert the name)",
+  "ai.inputPh": "Describe a change. Paste or drop images, or @ a reference. Enter to send.",
+  "ai.inputBusyPh": "AI is running. Type a correction and press Enter to inject it after the current step.",
+  "ai.capture": "Capture the viewport for AI",
+  "ai.kind.node": "Node",
+  "ai.kind.shader": "Shader",
+  "ai.kind.script": "Script",
+  "ai.provider.compat": "Compatible API",
+  "ai.cmd.playtest": "Run a smoke playtest and health check",
+  "ai.cmd.diagnose": "Open the health and budget board",
+  "ai.cmd.pack": "Open capability packs",
+  "ai.cmd.checkpoint": "Save a checkpoint now",
+  "ai.send": "Send",
+  "ai.steer": "Steer the running task",
+  "ai.stop": "Stop safely",
+  "ai.queued": "{count} follow-ups queued; they are injected after the current step",
+  "ai.switchModel": "Switch the chat model",
+  "ai.noModel": "No model selected",
+  "ai.enterSend": "Enter to send",
+  "ai.modelLater": "This chat keeps its model. The new one applies to the next message.",
+  "ai.manage": "Manage models and API\u2026",
+  "ai.copySelection": "Copy selection",
+  "ai.copyMessage": "Copy the whole message",
+  "ai.selectAll": "Select this message",
+  "ai.stepsDone": "{count} steps ran",
+  "ai.stepsFailed": "{count} steps ran ({failed} failed)",
+  "ai.expandError": "Show or hide the full error",
+  "ai.locateAsset": "Reveal this asset",
+  "ai.focusNode": "Focus this node in the viewport",
+  "ai.hintPrefix": "Note: {hint}",
+  "ai.copyCode": "Copy code",
+  "pm.savedDesign": "Saved design.md",
+  "pm.sedimentOk": "Pack {id} was saved and registered",
+  "pm.sedimentFail": "Could not save the pack",
+  "pm.packInvalid": "The pack.json manifest is invalid",
+  "pm.importedTrust": "Imported \u201C{name}\u201D. Trust and enable it to activate the scripts.",
+  "pm.importedActive": "Imported and activated \u201C{name}\u201D",
+  "pm.importFail": "Import failed: {message}",
+  "pm.exportBrowser": "Web export needs the desktop app. The browser build cannot write the player.",
+  "pm.branchSuffix": "{label}-branch"
+};
+
+// src/editor/i18n/index.ts
+function translate(key, vars2) {
+  const lang = resolveLanguage(usePrefsStore.getState().language);
+  const text = (lang === "en" ? en : zh)[key];
+  if (!vars2) return text;
+  return text.replace(/\{(\w+)\}/g, (_, name) => String(vars2[name] ?? ""));
+}
+
+// src/editor/scene/store.ts
+init_registry2();
+
+// src/gameplay/corePack.ts
+init_registry();
+init_types();
+var tags = [
+  { id: "Team.Player", name: "\u73A9\u5BB6\u9635\u8425", category: "Team", description: "\u4E3B\u89D2\u4E0E\u53CB\u519B", fields: { color: "#3b82f6", defaultDurationSec: 0, blockPrefix: "" } },
+  { id: "Team.Enemy", name: "\u654C\u4EBA\u9635\u8425", category: "Team", description: "\u654C\u65B9\u5355\u4F4D", fields: { color: "#ef4444", defaultDurationSec: 0, blockPrefix: "" } },
+  { id: "State.Dead", name: "\u6B7B\u4EA1", category: "State", description: "\u751F\u547D\u5F52\u96F6\u540E\u7684\u7EC8\u6001", fields: { color: "#6b7280", defaultDurationSec: 0, blockPrefix: "Action" } },
+  { id: "State.CrowdControl.Stunned", name: "\u7729\u6655\u786C\u76F4", category: "State/Control", description: "\u6E05\u6389\u5E76\u7981\u6B62 Action \u4E0B\u7684\u52A8\u4F5C", fields: { color: "#f59e0b", defaultDurationSec: 1.5, blockPrefix: "Action" } },
+  { id: "State.Invincible", name: "\u65E0\u654C", category: "State", description: "\u95EA\u907F\u6216\u53D7\u51FB\u540E\u7684\u514D\u75AB", fields: { color: "#fbbf24", defaultDurationSec: 0.4, blockPrefix: "" } },
+  { id: "Action.Attacking", name: "\u653B\u51FB\u4E2D", category: "Action", description: "\u6B63\u5728\u6325\u780D\u6216\u51FA\u624B", fields: { color: "#ec4899", defaultDurationSec: 0.8, blockPrefix: "" } },
+  { id: "Interactive.Chest", name: "\u53EF\u5F00\u542F", category: "Interactive", description: "\u7BB1\u5B50\u6216\u673A\u5173", fields: { color: "#10b981", defaultDurationSec: 0, blockPrefix: "" } }
+];
+var juice = [
+  { id: "juice_light_hit", name: "\u8F7B\u51FB", category: "Combat", description: "\u77ED\u987F\u5E27\u3001\u8F7B\u9707\u548C\u77ED\u51FB\u9000", fields: { hitStopSec: 0.04, cameraShake: 0.2, rimFlashColor: "#ffffff", knockbackMeters: 0.45 } },
+  { id: "juice_heavy_hit", name: "\u91CD\u51FB", category: "Combat", description: "\u66F4\u957F\u7684\u987F\u5E27\u3001\u9707\u5C4F\u548C\u51FB\u9000", fields: { hitStopSec: 0.09, cameraShake: 0.65, rimFlashColor: "#fde047", knockbackMeters: 0.9 } },
+  { id: "juice_pickup", name: "\u62FE\u53D6", category: "Interact", description: "\u6253\u5F00\u6216\u62FE\u53D6\u65F6\u7684\u8F7B\u53CD\u9988", fields: { hitStopSec: 0.02, cameraShake: 0.1, rimFlashColor: "#34d399", knockbackMeters: 0 } }
+];
+registerGameplayPack({
+  id: CORE_GAMEPLAY_PACK_ID,
+  name: "\u6838\u5FC3\u5305",
+  description: "\u89D2\u8272\u3001\u5F8B\u4EE4\u3001\u73A9\u6CD5\u6807\u7B7E\u548C\u6253\u51FB\u611F\u3002\u59CB\u7EC8\u5F00\u542F\u3002\u9886\u57DF\u5305\u4EE5\u540E\u53EA\u5F80\u8FD9\u91CC\u8FFD\u52A0\u8868\u548C\u52A8\u4F5C\u3002",
+  builtIn: true,
+  core: true,
+  tables: [
+    {
+      tableId: "tags",
+      title: "\u73A9\u6CD5\u6807\u7B7E",
+      packId: CORE_GAMEPLAY_PACK_ID,
+      description: "\u70B9\u5206\u540D\u5B57\uFF0C\u5982 State.CrowdControl.Stunned\u3002\u67E5\u8BE2\u524D\u7F00\u4F1A\u547D\u4E2D\u5B83\u4E0B\u9762\u7684\u6807\u7B7E\u3002\u963B\u65AD\u524D\u7F00\u4F1A\u6E05\u6389\u5E76\u7981\u6B62\u8FD9\u4E00\u652F\u3002",
+      columns: [
+        { key: "color", label: "\u989C\u8272", type: "color", defaultValue: "#3b82f6" },
+        { key: "defaultDurationSec", label: "\u9ED8\u8BA4\u6301\u7EED\u79D2\u6570\uFF0C0 \u4E3A\u5E38\u9A7B", type: "number", defaultValue: 0 },
+        { key: "blockPrefix", label: "\u963B\u65AD\u524D\u7F00", type: "string", defaultValue: "" }
+      ],
+      defaultRows: tags
+    },
+    {
+      tableId: "juice",
+      title: "\u6253\u51FB\u611F",
+      packId: CORE_GAMEPLAY_PACK_ID,
+      description: "\u5F8B\u4EE4\u53EA\u5F15\u7528\u9884\u8BBE\u540D\u3002\u987F\u5E27\u3001\u955C\u5934\u9707\u52A8\u3001\u53D7\u51FB\u95EA\u5149\u548C\u51FB\u9000\u5199\u5728\u8FD9\u4E00\u884C\u3002",
+      columns: [
+        { key: "hitStopSec", label: "\u987F\u5E27\u79D2\u6570", type: "number", defaultValue: 0.05 },
+        { key: "cameraShake", label: "\u955C\u5934\u9707\u52A8", type: "number", defaultValue: 0.3 },
+        { key: "rimFlashColor", label: "\u53D7\u51FB\u95EA\u5149", type: "color", defaultValue: "#ffffff" },
+        { key: "knockbackMeters", label: "\u51FB\u9000\u7C73\u6570", type: "number", defaultValue: 0.45 },
+        { key: "sound", label: "\u97F3\u6548", type: "string", defaultValue: "" },
+        { key: "soundVolume", label: "\u97F3\u91CF", type: "number", defaultValue: 1 }
+      ],
+      defaultRows: juice
+    }
+  ]
+});
+
+// src/editor/scene/store.ts
+init_registry();
+init_sceneRuntime();
+
+// src/runtime/camera.ts
+init_juiceClock();
+init_sceneRuntime();
+init_world();
+var arms = /* @__PURE__ */ new Map();
+function stepCameras(dt, host) {
+  const world3 = getRuntimeWorld();
+  const playState = world3.getPlayState();
+  if (playState === "stopped") {
+    arms.clear();
+    return;
+  }
+  if (playState !== "playing") return;
+  const nodes = world3.getNodes();
+  const wheel = host.wheel?.() ?? 0;
+  const active = Object.values(nodes).find((node) => node.gameplay?.character?.enabled && node.gameplay.cameraFollow?.enabled !== false) ?? Object.values(nodes).find((node) => node.gameplay?.cameraFollow?.enabled);
+  if (!active) return;
+  const character = active.gameplay?.character?.enabled ? { ...defaultCharacter(), ...active.gameplay.character } : null;
+  const spec = character ? resolveCharacterCamera(character, active.gameplay?.cameraFollow) : { ...defaultCameraFollow(), ...active.gameplay?.cameraFollow };
+  if (!spec.enabled) return;
+  const target = character ? active : resolveTarget(spec, active.id, nodes);
+  const targetObject = target ? host.resolveObject(target.id) : null;
+  if (!targetObject) return;
+  const lockNode = character?.mode === "lockOn" ? resolveLock(character, active.id, nodes) : void 0;
+  const lockObject = lockNode ? host.resolveObject(lockNode.id) : null;
+  const focus = [
+    targetObject.position.x + spec.pivot[0],
+    targetObject.position.y + spec.pivot[1],
+    targetObject.position.z + spec.pivot[2]
+  ];
+  const lookAt = lockObject ? [
+    (focus[0] + lockObject.position.x) * 0.5,
+    (focus[1] + lockObject.position.y + spec.pivot[1] * 0.6) * 0.5,
+    (focus[2] + lockObject.position.z) * 0.5
+  ] : focus;
+  const arm2 = arms.get(active.id) ?? freshArm(spec, host);
+  if (arm2.local !== spec.localOffset) {
+    arm2.local = spec.localOffset;
+    arm2.yaw = spec.localOffset ? 0 : host.yaw?.() ?? arm2.yaw;
+    arm2.position = null;
+  }
+  const q = targetObject.quaternion;
+  const targetYaw = lockObject ? Math.atan2(lockObject.position.x - targetObject.position.x, lockObject.position.z - targetObject.position.z) : Math.atan2(2 * (q.w * q.y + q.x * q.z), 1 - 2 * (q.y * q.y + q.z * q.z));
+  steer2(spec, arm2, host);
+  arm2.pitch = clampPitch(arm2.pitch, spec);
+  if (character?.mode === "firstPerson") {
+    poseFirstPerson(active.id, spec, arm2, focus, host);
+    return;
+  }
+  const scale = dolly(spec, arm2, wheel);
+  const yaw = lockObject ? targetYaw + Math.PI : spec.orbit === "none" ? targetYaw : spec.localOffset ? targetYaw + arm2.yaw : arm2.yaw;
+  const offset = orbitOffset(spec, yaw, arm2.pitch, scale);
+  let desired = [focus[0] + offset[0], focus[1] + offset[1], focus[2] + offset[2]];
+  if (spec.collision) desired = spring(host, focus, desired, target.id, spec.collisionRadius);
+  const alpha = spec.damping > 0 && dt > 0 ? 1 - Math.exp(-spec.damping * dt) : 1;
+  const from = arm2.position ?? desired;
+  const next = [
+    from[0] + (desired[0] - from[0]) * alpha,
+    from[1] + (desired[1] - from[1]) * alpha,
+    from[2] + (desired[2] - from[2]) * alpha
+  ];
+  const shake = juiceShake();
+  const shaken = [next[0] + shake.x, next[1] + shake.y, next[2]];
+  arm2.position = next;
+  arms.set(active.id, arm2);
+  if (!arm2.noted && armChanged(arm2)) {
+    arm2.noted = true;
+    getRuntimeWorld().markPlayDirty();
+  }
+  host.poseCamera?.(shaken, lookPoint(shaken, lookAt, spec.lookAtTarget), spec.fov);
+}
+function poseFirstPerson(id, spec, arm2, focus, host) {
+  const yaw = arm2.yaw;
+  const pitch = arm2.pitch;
+  const flat = Math.cos(pitch);
+  const forward = [-Math.sin(yaw) * flat, Math.sin(pitch), -Math.cos(yaw) * flat];
+  const right = [Math.cos(yaw), 0, -Math.sin(yaw)];
+  const eye = [
+    focus[0] + right[0] * spec.offset[0] + forward[0] * spec.offset[2],
+    focus[1] + spec.offset[1] + forward[1] * spec.offset[2],
+    focus[2] + right[2] * spec.offset[0] + forward[2] * spec.offset[2]
+  ];
+  const look = [eye[0] + forward[0], eye[1] + forward[1], eye[2] + forward[2]];
+  arm2.position = eye;
+  arms.set(id, arm2);
+  if (!arm2.noted && armChanged(arm2)) {
+    arm2.noted = true;
+    getRuntimeWorld().markPlayDirty();
+  }
+  const shake = juiceShake();
+  host.poseCamera?.(
+    [eye[0] + shake.x, eye[1] + shake.y, eye[2]],
+    [look[0] + shake.x, look[1] + shake.y, look[2]],
+    spec.fov
+  );
+}
+function freshArm(spec, host) {
+  const yaw = typeof spec.orbitYaw === "number" ? spec.orbitYaw * Math.PI / 180 : spec.localOffset ? 0 : host.yaw?.() ?? 0;
+  const pitch = clampPitch(
+    typeof spec.orbitPitch === "number" ? spec.orbitPitch * Math.PI / 180 : host.pitch?.() ?? 0,
+    spec
+  );
+  return { yaw, pitch, zoom: 1, startYaw: yaw, startPitch: pitch, position: null, local: spec.localOffset, noted: false };
+}
+function armChanged(arm2) {
+  return Math.abs(arm2.zoom - 1) > 1e-3 || Math.abs(angleDelta(arm2.yaw, arm2.startYaw)) > 1e-3 || Math.abs(angleDelta(arm2.pitch, arm2.startPitch)) > 1e-3;
+}
+function angleDelta(current, start2) {
+  let delta = current - start2;
+  if (delta > Math.PI) delta -= Math.PI * 2;
+  if (delta < -Math.PI) delta += Math.PI * 2;
+  return delta;
+}
+function cameraArmOf(id) {
+  const arm2 = arms.get(id);
+  if (!arm2) return null;
+  return { zoom: arm2.zoom, yaw: arm2.yaw, pitch: arm2.pitch, changed: armChanged(arm2) };
+}
+function settleCameraArm(id) {
+  const arm2 = arms.get(id);
+  if (!arm2) return;
+  arm2.zoom = 1;
+  arm2.startYaw = arm2.yaw;
+  arm2.startPitch = arm2.pitch;
+  arm2.noted = false;
+}
+function resolveLock(character, selfId, nodes) {
+  if (character.lockTargetId && character.lockTargetId !== selfId && nodes[character.lockTargetId]) return nodes[character.lockTargetId];
+  if (!character.lockTargetId && character.lockTargetName) {
+    return Object.values(nodes).find((item) => item.id !== selfId && item.name === character.lockTargetName);
+  }
+  return void 0;
+}
+function resolveTarget(spec, selfId, nodes) {
+  if (spec.targetId && nodes[spec.targetId]) return nodes[spec.targetId];
+  if (!spec.targetId && spec.targetName) return Object.values(nodes).find((node) => node.name === spec.targetName) ?? nodes[selfId];
+  return nodes[selfId];
+}
+function steer2(spec, arm2, host) {
+  const delta = host.pointerDelta?.() ?? { x: 0, y: 0 };
+  if (spec.orbit === "none") return;
+  const drag = spec.orbit === "mouse" || host.rightHeld?.() === true;
+  if (!drag) return;
+  const sens = Math.max(0.01, spec.sensitivity) * 0.02;
+  arm2.yaw -= delta.x * sens;
+  arm2.pitch = clampPitch(arm2.pitch - delta.y * sens, spec);
+}
+function dolly(spec, arm2, wheel) {
+  if (!spec.zoom) {
+    arm2.zoom = 1;
+    return 1;
+  }
+  const base = Math.max(0.05, Math.hypot(spec.offset[0], spec.offset[1], spec.offset[2]));
+  const minScale = Math.max(0.05, spec.minDistance) / base;
+  const maxScale = Math.max(minScale, spec.maxDistance) / base;
+  if (wheel) {
+    const steps = Math.sign(wheel) * Math.min(Math.abs(wheel), 400) / 100;
+    arm2.zoom *= Math.exp(steps * Math.max(0.01, spec.zoomSpeed));
+  }
+  arm2.zoom = Math.min(maxScale, Math.max(minScale, arm2.zoom));
+  return arm2.zoom;
+}
+function orbitOffset(spec, yaw, pitch, scale = 1) {
+  const scaled = [spec.offset[0] * scale, spec.offset[1] * scale, spec.offset[2] * scale];
+  if (spec.orbit === "none" && !spec.localOffset) return scaled;
+  const pitchNow = spec.orbit === "none" ? 0 : pitch;
+  const [x, y, z] = scaled;
+  const behind = -z;
+  const cp = Math.cos(pitchNow);
+  const sp = Math.sin(pitchNow);
+  const y1 = y * cp - behind * sp;
+  const z1 = y * sp + behind * cp;
+  const sy = Math.sin(yaw);
+  const cy = Math.cos(yaw);
+  return [x * cy + z1 * sy, y1, -x * sy + z1 * cy];
+}
+function lookPoint(eye, focus, lookAtTarget) {
+  if (lookAtTarget) return focus;
+  const dx = eye[0] - focus[0];
+  const dy = eye[1] - focus[1];
+  const dz = eye[2] - focus[2];
+  const len = Math.hypot(dx, dy, dz);
+  if (len < 1e-4) return [eye[0], eye[1], eye[2] - 1];
+  return [eye[0] + dx / len, eye[1] + dy / len, eye[2] + dz / len];
+}
+function clampPitch(pitch, spec) {
+  let min3 = spec.minPitch * Math.PI / 180;
+  let max4 = spec.maxPitch * Math.PI / 180;
+  if (min3 > max4) [min3, max4] = [max4, min3];
+  return Math.min(max4, Math.max(min3, pitch));
+}
+function spring(host, focus, desired, ignoreId, radius) {
+  const dx = desired[0] - focus[0];
+  const dy = desired[1] - focus[1];
+  const dz = desired[2] - focus[2];
+  const dist = Math.hypot(dx, dy, dz);
+  if (dist < 0.25 || !host.probe) return desired;
+  const hit = host.probe(focus, [dx / dist, dy / dist, dz / dist], dist, ignoreId);
+  if (hit === null || hit >= dist) return desired;
+  const safe = Math.max(0.2, hit - radius);
+  return [focus[0] + dx / dist * safe, focus[1] + dy / dist * safe, focus[2] + dz / dist * safe];
+}
+registerRuntimeSystem("core.camera", 75, stepCameras);
+
+// src/editor/project/taxonomy.ts
+var TAG_ID_MAIN_CAMERA = "tag_main_camera";
+var TAG_NAME_MAIN_CAMERA = "MainCamera";
+var LAYER_ID_DEFAULT = "layer_default";
+var ALL_LAYERS_VISIBLE_MASK = 4294967295 >>> 0;
+var DEFAULT_LAYERS = [
+  { id: LAYER_ID_DEFAULT, name: "Default", bitIndex: 0, builtIn: true }
+];
+function defaultTags() {
+  return [{ id: TAG_ID_MAIN_CAMERA, name: TAG_NAME_MAIN_CAMERA }];
+}
+function defaultLayers() {
+  return DEFAULT_LAYERS.map((layer) => ({ ...layer }));
+}
+function ensureTags(tags2) {
+  const list = (tags2 ?? []).map((tag) => ({ id: tag.id, name: tag.name }));
+  if (list.some((tag) => tag.id === TAG_ID_MAIN_CAMERA || tag.name === TAG_NAME_MAIN_CAMERA)) return list;
+  return [{ id: TAG_ID_MAIN_CAMERA, name: TAG_NAME_MAIN_CAMERA }, ...list];
+}
+function ensureLayers(layers) {
+  const list = layers && layers.length > 0 ? layers.map((layer) => ({ ...layer })) : defaultLayers();
+  if (!list.some((layer) => layer.id === LAYER_ID_DEFAULT)) {
+    list.unshift({ id: LAYER_ID_DEFAULT, name: "Default", bitIndex: 0, builtIn: true });
+  }
+  return list;
+}
+
+// src/editor/scene/transform.ts
+import { Euler as Euler3, Matrix4 as Matrix42, Quaternion as Quaternion6, Vector3 as Vector312 } from "three";
+var DEG2 = Math.PI / 180;
+var RAD = 180 / Math.PI;
+function eulerQuaternion2(rotation) {
+  return new Quaternion6().setFromEuler(new Euler3(rotation[0] * DEG2, rotation[1] * DEG2, rotation[2] * DEG2, "XYZ"));
+}
+function quaternionEuler(quaternion) {
+  const euler = new Euler3().setFromQuaternion(quaternion, "XYZ");
+  return [euler.x * RAD, euler.y * RAD, euler.z * RAD];
+}
+function worldPose2(nodes, id) {
+  const chain = [];
+  const seen = /* @__PURE__ */ new Set();
+  let current = nodes[id];
+  while (current && !seen.has(current.id)) {
+    seen.add(current.id);
+    chain.push(current);
+    current = current.parentId ? nodes[current.parentId] : void 0;
+  }
+  chain.reverse();
+  const position = new Vector312();
+  const quaternion = new Quaternion6();
+  const scale = new Vector312(1, 1, 1);
+  const localPosition = new Vector312();
+  const localScale = new Vector312();
+  for (const node of chain) {
+    localPosition.set(node.position[0], node.position[1], node.position[2]).multiply(scale).applyQuaternion(quaternion);
+    position.add(localPosition);
+    quaternion.multiply(eulerQuaternion2(node.rotation));
+    localScale.set(node.scale[0], node.scale[1], node.scale[2]);
+    scale.multiply(localScale);
+  }
+  return { position, quaternion, scale };
+}
+function safeDiv(value, scale) {
+  return Math.abs(scale) > 1e-8 ? value / scale : value;
+}
+function worldPointToLocal(parent, point2) {
+  const delta = point2.clone().sub(parent.position).applyQuaternion(parent.quaternion.clone().invert());
+  return new Vector312(
+    safeDiv(delta.x, parent.scale.x),
+    safeDiv(delta.y, parent.scale.y),
+    safeDiv(delta.z, parent.scale.z)
+  );
+}
+function localPoseFromWorld(parent, world3) {
+  if (!parent) {
+    return {
+      position: world3.position.clone(),
+      quaternion: world3.quaternion.clone(),
+      scale: world3.scale.clone()
+    };
+  }
+  return {
+    position: worldPointToLocal(parent, world3.position),
+    quaternion: parent.quaternion.clone().invert().multiply(world3.quaternion),
+    scale: new Vector312(
+      safeDiv(world3.scale.x, parent.scale.x),
+      safeDiv(world3.scale.y, parent.scale.y),
+      safeDiv(world3.scale.z, parent.scale.z)
+    )
+  };
+}
+function poseComponents(pose) {
+  return {
+    position: [pose.position.x, pose.position.y, pose.position.z],
+    rotation: quaternionEuler(pose.quaternion),
+    scale: [pose.scale.x, pose.scale.y, pose.scale.z]
+  };
+}
+function writePose2(node, pose) {
+  const parts = poseComponents(pose);
+  node.position = parts.position;
+  node.rotation = parts.rotation;
+  node.scale = parts.scale;
+}
+function isUnder(nodes, nodeId, ancestorId) {
+  const seen = /* @__PURE__ */ new Set();
+  let current = nodes[nodeId]?.parentId;
+  while (current && !seen.has(current)) {
+    if (current === ancestorId) return true;
+    seen.add(current);
+    current = nodes[current]?.parentId ?? null;
+  }
+  return false;
+}
+
+// src/editor/scene/viewportBridge.ts
+var snapper = null;
+var readViewport = null;
+var placeViewport = null;
+function measureGroundSnap(ids) {
+  return snapper?.(ids) ?? [];
+}
+var readEditorView = null;
+function readEditorViewPose() {
+  return readEditorView?.() ?? null;
+}
+function readViewportPose() {
+  return readViewport?.() ?? null;
+}
+function placeViewportAt(position, quaternion) {
+  placeViewport?.(position, quaternion);
+}
+
+// src/editor/scene/store.ts
+init_archive();
+init_session10();
+var seed = createSeed();
+function bakeFollow(node) {
+  const arm2 = cameraArmOf(node.id);
+  if (!arm2?.changed) return null;
+  const character = node.gameplay?.character?.enabled ? { ...defaultCharacter(), ...node.gameplay.character } : null;
+  if (!character && !node.gameplay?.cameraFollow?.enabled) return null;
+  const spec = character ? resolveCharacterCamera(character, node.gameplay?.cameraFollow) : { ...defaultCameraFollow(), ...node.gameplay?.cameraFollow };
+  if (!spec.enabled) return null;
+  const zoom = arm2.zoom;
+  return {
+    ...spec,
+    offset: [spec.offset[0] * zoom, spec.offset[1] * zoom, spec.offset[2] * zoom],
+    orbitYaw: arm2.yaw * 180 / Math.PI,
+    orbitPitch: arm2.pitch * 180 / Math.PI
+  };
+}
+function cloneNodes(nodes) {
+  return structuredClone(nodes);
+}
+function sameNodes(a, b) {
+  if (a === b) return true;
+  const keysA = Object.keys(a);
+  const keysB = Object.keys(b);
+  if (keysA.length !== keysB.length) return false;
+  for (let i = 0; i < keysA.length; i += 1) {
+    const key = keysA[i];
+    const nodeA = a[key];
+    const nodeB = b[key];
+    if (!nodeB) return false;
+    if (nodeA === nodeB) continue;
+    if (JSON.stringify(nodeA) !== JSON.stringify(nodeB)) return false;
+  }
+  return true;
+}
+function sameJson(a, b) {
+  if (a === b) return true;
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+function sameSelection(a, b) {
+  return a.length === b.length && a.every((id, index) => id === b[index]);
+}
+function pushHistory(set, entry) {
+  set((state) => ({
+    past: [...state.past, entry].slice(-80),
+    future: []
+  }));
+}
+var useEditorStore = create6((set, get) => ({
+  nodes: seed.nodes,
+  selection: [seed.selectedId],
+  gizmoMode: "translate",
+  gizmoSpace: "world",
+  gizmoOrigin: "pivot",
+  snap: false,
+  gridVisible: true,
+  playState: "stopped",
+  playSnapshot: null,
+  playSelection: [],
+  playDirty: false,
+  past: [],
+  future: [],
+  gesture: null,
+  logs: [
+    { id: "boot", level: "info", message: "\u7F16\u8F91\u5668\u5DF2\u5C31\u7EEA", time: Date.now() },
+    {
+      id: "boot-help",
+      level: "info",
+      message: "\u89C6\u53E3\uFF1A\u53F3\u952E\u73AF\u987E\uFF0C\u6309\u4F4F\u53F3\u952E\u7528 WASD \u6216\u65B9\u5411\u952E\u98DE\u884C\uFF0C\u4E2D\u952E\u5E73\u79FB\uFF0C\u6EDA\u8F6E\u7F29\u653E\uFF0CAlt+\u5DE6\u952E\u7ED5\u76EE\u6807\u65CB\u8F6C\u3002",
+      time: Date.now()
+    }
+  ],
+  notice: null,
+  gameplayHubOpen: false,
+  setGameplayHubOpen: (open) => set({ gameplayHubOpen: open }),
+  libraryOpen: false,
+  setLibraryOpen: (open) => set({ libraryOpen: open }),
+  projectionLabel: "\u900F\u89C6",
+  sidePanel: "inspector",
+  cameraNonce: 0,
+  cameraAction: "focus",
+  cameraView: "persp",
+  picture: structuredClone(DEFAULT_PICTURE),
+  editorView: null,
+  editorViewNonce: 0,
+  capabilities: defaultCapabilities(),
+  tags: defaultTags(),
+  gameplayPacks: [...resolveEnabledPackIds()],
+  gameDatabase: createDefaultGameDatabase(),
+  layers: defaultLayers(),
+  editorCullingMask: ALL_LAYERS_VISIBLE_MASK,
+  physicsCollisionMatrixEnabled: false,
+  physicsCollisionRowMasks: {},
+  activeSceneId: "",
+  inspectedAssetId: null,
+  assetPing: null,
+  pendingRenameId: null,
+  renderBackend: "\u6B63\u5728\u521D\u59CB\u5316",
+  helpersVisible: true,
+  navMeshVisible: true,
+  snapStep: 1,
+  canPaste: false,
+  viewportStats: { objects: 0, triangles: 0, vertices: 0, materials: 0, textures: 0, calls: 0, fps: 0, frameMs: 0, costs: [], camera: [0, 0, 0], orbit: 0 },
+  playPicture: null,
+  prefabSession: null,
+  setSelection: (ids) => {
+    const selection = ids.filter((id) => get().nodes[id]);
+    set({
+      selection,
+      inspectedAssetId: selection.length > 0 ? null : get().inspectedAssetId
+    });
+  },
+  inspectAsset: (id) => set({ inspectedAssetId: id, selection: id ? [] : get().selection }),
+  pingAsset: (id) => {
+    const library = useAssetStore.getState();
+    if (id.startsWith("code:")) {
+      const parts = id.split(":");
+      const codeKind = parts[1] === "shader" ? "shader" : "script";
+      const codeId = parts.slice(2).join(":");
+      const codeAssets = useCodeAssetStore.getState().assets;
+      const record = codeAssets[codeId];
+      if (!record) return;
+      const storedDir = library.assetDirs[id];
+      const fallbackDir = record.relativePath.startsWith("Assets/") && record.relativePath.includes("/") ? record.relativePath.slice(0, record.relativePath.lastIndexOf("/")) : codeKind === "shader" ? "Assets/Shaders" : "Assets/Scripts";
+      library.setBrowseDir(storedDir || fallbackDir);
+      useCodeAssetStore.getState().selectAsset(codeId);
+      set({ inspectedAssetId: null, selection: [], assetPing: { id, nonce: Date.now() } });
+      return;
+    }
+    if (!library.assets[id]) return;
+    library.setBrowseDir(assetDirectory(id, library.assetDirs));
+    set({ assetPing: { id, nonce: Date.now() } });
+  },
+  setGizmoMode: (mode) => {
+    if (get().gizmoMode !== mode) set({ gizmoMode: mode });
+  },
+  setGizmoSpace: (space) => {
+    if (get().gizmoSpace !== space) set({ gizmoSpace: space });
+  },
+  setGizmoOrigin: (origin) => {
+    if (get().gizmoOrigin !== origin) set({ gizmoOrigin: origin });
+  },
+  toggleSnap: () => set((state) => ({ snap: !state.snap })),
+  toggleGrid: () => set((state) => ({ gridVisible: !state.gridVisible })),
+  setSidePanel: (panel) => {
+    if (get().sidePanel !== panel) set({ sidePanel: panel });
+  },
+  setProjectionLabel: (label) => {
+    if (get().projectionLabel !== label) set({ projectionLabel: label });
+  },
+  requestFocus: () => set((state) => ({ cameraNonce: state.cameraNonce + 1, cameraAction: "focus" })),
+  requestFocusAll: () => set((state) => ({ cameraNonce: state.cameraNonce + 1, cameraAction: "focus-all" })),
+  requestView: (view) => set((state) => ({
+    cameraNonce: state.cameraNonce + 1,
+    cameraAction: "view",
+    cameraView: view
+  })),
+  alignCameraToView: () => {
+    if (get().playState !== "stopped") return;
+    const id = selectedCameraId(get(), true);
+    const view = readViewportPose();
+    if (!id || !view) return;
+    const nodes = get().nodes;
+    const node = nodes[id];
+    const parent = node.parentId ? worldPose2(nodes, node.parentId) : null;
+    const current = worldPose2(nodes, id);
+    const local = poseComponents(localPoseFromWorld(parent, {
+      position: new Vector313(view.position[0], view.position[1], view.position[2]),
+      quaternion: new Quaternion7(view.quaternion[0], view.quaternion[1], view.quaternion[2], view.quaternion[3]),
+      scale: current.scale
+    }));
+    get().beginGesture(translate("gesture.alignCamera"));
+    get().updateNode(id, { position: local.position, rotation: local.rotation });
+    get().endGesture();
+  },
+  alignViewToCamera: () => {
+    if (get().playState !== "stopped") return;
+    const id = selectedCameraId(get(), false);
+    if (!id) return;
+    const pose = worldPose2(get().nodes, id);
+    placeViewportAt(
+      [pose.position.x, pose.position.y, pose.position.z],
+      [pose.quaternion.x, pose.quaternion.y, pose.quaternion.z, pose.quaternion.w]
+    );
+  },
+  beginGesture: (label) => {
+    if (get().gesture) get().endGesture();
+    set({
+      gesture: {
+        label,
+        before: cloneNodes(get().nodes),
+        beforeSelection: get().selection.slice(),
+        beforePicture: structuredClone(get().picture)
+      }
+    });
+  },
+  endGesture: () => {
+    const gesture = get().gesture;
+    if (!gesture) return;
+    const after = cloneNodes(get().nodes);
+    const afterSelection = get().selection.slice();
+    set({ gesture: null });
+    if (get().playState !== "stopped") return;
+    if (sameNodes(gesture.before, after) && sameSelection(gesture.beforeSelection, afterSelection) && sameJson(gesture.beforePicture, get().picture)) return;
+    pushHistory(set, {
+      label: gesture.label,
+      before: gesture.before,
+      after,
+      beforeSelection: gesture.beforeSelection,
+      afterSelection,
+      beforePicture: gesture.beforePicture,
+      afterPicture: structuredClone(get().picture)
+    });
+  },
+  updateNode: (id, patch) => {
+    const node = get().nodes[id];
+    if (!node) return;
+    const touchesTransform = patch.position !== void 0 || patch.rotation !== void 0 || patch.scale !== void 0;
+    if (node.locked && touchesTransform) return;
+    if (get().prefabSession && !node.parentId && touchesTransform) return;
+    const next = { ...node, ...patch, id: node.id, kind: node.kind };
+    if (!get().prefabSession) markOverrides(next, patch);
+    const keys = Object.keys(patch);
+    const onlyRuntimeClock = keys.every((key) => key === "clipTime" || key === "overlayTime");
+    const markPlayDirty = get().playState !== "stopped" && !onlyRuntimeClock;
+    set((state) => ({
+      nodes: { ...state.nodes, [id]: next },
+      ...markPlayDirty ? { playDirty: true } : {}
+    }));
+  },
+  createNode: (kind, parentId = null) => {
+    let created = "";
+    const label = translate(`kind.${kind}`);
+    const ok = mutate(set, get, translate("gesture.create", { name: label }), (draft) => {
+      let parent = parentId && draft.nodes[parentId] ? parentId : null;
+      if (get().prefabSession && !parent) parent = Object.values(draft.nodes).find((node) => !node.parentId)?.id ?? null;
+      const id = crypto.randomUUID();
+      const name = uniqueName(draft.nodes, label);
+      const shaped = kind === "box" || kind === "sphere" || kind === "capsule" || kind === "cylinder" || kind === "cone" || kind === "plane";
+      draft.nodes[id] = makeNode({
+        id,
+        name,
+        kind,
+        parentId: parent,
+        order: nextOrder(draft.nodes, parent),
+        position: spawnPosition(kind, parent, getSpawn()),
+        rotation: kind === "plane" ? [-90, 0, 0] : [0, 0, 0],
+        ...shaped ? { physics: defaultNodePhysics(kind) } : {}
+      });
+      tagAddedChild(draft.nodes, id);
+      draft.selection = [id];
+      created = name;
+    });
+    if (ok && created) get().log("info", translate("log.created", { name: created }));
+  },
+  extractSocket: (modelId, bone, name, select3 = true) => {
+    if (get().playState !== "stopped") return null;
+    const parent = get().nodes[modelId];
+    if (!parent || parent.kind !== "model") return null;
+    const existing = Object.values(get().nodes).find((node) => node.parentId === modelId && node.socketBone === bone);
+    if (existing) {
+      if (select3) get().setSelection([existing.id]);
+      return existing.id;
+    }
+    let createdId = null;
+    mutate(set, get, translate("inspector.extractSocket"), (draft) => {
+      const id = crypto.randomUUID();
+      createdId = id;
+      draft.nodes[id] = makeNode({
+        id,
+        name: uniqueName(draft.nodes, name || bone),
+        kind: "empty",
+        parentId: modelId,
+        order: nextOrder(draft.nodes, modelId),
+        socketBone: bone
+      });
+      tagAddedChild(draft.nodes, id);
+      if (select3) draft.selection = [id];
+    });
+    return createdId;
+  },
+  createDevice: (device, parentId = null) => {
+    let created = "";
+    const labelKey = {
+      interact: "interact.title",
+      trigger: "trigger.title",
+      mover: "mover.title",
+      checkpoint: "checkpoint.title",
+      score: "score.title",
+      sound: "soundSource.title"
+    };
+    const label = translate(labelKey[device]);
+    const ok = mutate(set, get, translate("gesture.create", { name: label }), (draft) => {
+      let parent = parentId && draft.nodes[parentId] ? parentId : null;
+      if (get().prefabSession && !parent) parent = Object.values(draft.nodes).find((node) => !node.parentId)?.id ?? null;
+      const id = crypto.randomUUID();
+      const name = uniqueName(draft.nodes, label);
+      const isMover = device === "mover";
+      const kind = isMover ? "box" : "empty";
+      const gameplay = {};
+      if (device === "interact") gameplay.interact = defaultInteract();
+      else if (device === "trigger") gameplay.trigger = defaultTrigger();
+      else if (device === "mover") gameplay.mover = defaultMover();
+      else if (device === "checkpoint") gameplay.checkpoint = defaultCheckpoint();
+      else if (device === "score") gameplay.score = defaultScore();
+      else if (device === "sound") gameplay.soundSource = defaultSoundSource();
+      draft.nodes[id] = makeNode({
+        id,
+        name,
+        kind,
+        parentId: parent,
+        order: nextOrder(draft.nodes, parent),
+        position: spawnPosition(kind, parent, getSpawn()),
+        scale: isMover ? [2.4, 0.3, 2.4] : [1, 1, 1],
+        gameplay,
+        ...isMover ? { physics: { ...defaultNodePhysics("box"), body: "kinematic" } } : {}
+      });
+      tagAddedChild(draft.nodes, id);
+      draft.selection = [id];
+      created = name;
+    });
+    if (ok && created) get().log("info", translate("log.created", { name: created }));
+  },
+  spawnEffect: (assetId, point2) => {
+    const asset = useAssetStore.getState().assets[assetId];
+    if (!asset || asset.kind !== "effect") return;
+    let created = "";
+    const ok = mutate(set, get, translate("gesture.create", { name: asset.name }), (draft) => {
+      const id = crypto.randomUUID();
+      const name = uniqueName(draft.nodes, asset.name);
+      draft.nodes[id] = makeNode({
+        id,
+        name,
+        kind: "effect",
+        parentId: null,
+        order: nextOrder(draft.nodes, null),
+        position: point2,
+        effect: {
+          assetId: asset.id,
+          quarksVersion: asset.quarksVersion,
+          simulation: null,
+          materialAssetId: null,
+          playing: true
+        }
+      });
+      tagAddedChild(draft.nodes, id);
+      draft.selection = [id];
+      created = name;
+    });
+    if (ok && created) get().log("info", translate("log.created", { name: created }));
+  },
+  mountScreen: (assetId, point2) => {
+    const asset = useAssetStore.getState().assets[assetId];
+    if (!asset || asset.kind !== "ui") return;
+    let created = "";
+    const ok = mutate(set, get, translate("gesture.create", { name: asset.name }), (draft) => {
+      const id = crypto.randomUUID();
+      const name = uniqueName(draft.nodes, asset.name);
+      draft.nodes[id] = makeNode({
+        id,
+        name,
+        kind: "screen",
+        parentId: null,
+        order: nextOrder(draft.nodes, null),
+        position: point2,
+        screen: { documentId: asset.id, layer: "hud", visibleOnPlay: true }
+      });
+      tagAddedChild(draft.nodes, id);
+      draft.selection = [id];
+      created = name;
+    });
+    if (ok && created) get().log("info", translate("log.created", { name: created }));
+  },
+  deleteSelection: () => {
+    const state = get();
+    const selected = new Set(state.selection);
+    const roots = state.selection.filter((id) => {
+      let parent = state.nodes[id]?.parentId;
+      while (parent) {
+        if (selected.has(parent)) return false;
+        parent = state.nodes[parent]?.parentId ?? null;
+      }
+      return Boolean(state.nodes[id]);
+    });
+    const remove = /* @__PURE__ */ new Set();
+    const blocked2 = [];
+    for (const id of roots) {
+      const sub = subtreeIds(state.nodes, id);
+      if (sub.some((childId) => state.nodes[childId]?.locked)) blocked2.push(state.nodes[id].name);
+      else sub.forEach((childId) => remove.add(childId));
+    }
+    if (get().prefabSession) {
+      const root = Object.values(state.nodes).find((node) => !node.parentId);
+      if (root && remove.has(root.id)) {
+        remove.delete(root.id);
+        get().log("warn", translate("prefab.keepRoot"));
+      }
+    }
+    if (blocked2.length) get().log("warn", translate("log.skippedLocked", { names: blocked2.join("\u3001") }));
+    if (remove.size === 0) return;
+    const ok = mutate(set, get, "\u5220\u9664", (draft) => {
+      for (const id of remove) rememberRemoval(draft.nodes, id);
+      for (const id of remove) delete draft.nodes[id];
+      draft.selection = [];
+    });
+    if (ok) get().log("info", translate("log.deleted", { count: remove.size }));
+  },
+  duplicateSelection: () => {
+    let count = 0;
+    const ok = mutate(set, get, "\u590D\u5236", (draft) => {
+      const selected = new Set(draft.selection);
+      const roots = draft.selection.filter((id) => {
+        let parent = draft.nodes[id]?.parentId;
+        while (parent) {
+          if (selected.has(parent)) return false;
+          parent = draft.nodes[parent]?.parentId ?? null;
+        }
+        return Boolean(draft.nodes[id]);
+      });
+      const created = [];
+      const cloneSubtree = (id, parentId, isRoot) => {
+        const source = draft.nodes[id];
+        const childIds = childrenOf(draft.nodes, id).map((child) => child.id);
+        const nextId2 = crypto.randomUUID();
+        const copy = structuredClone(source);
+        copy.id = nextId2;
+        copy.parentId = parentId;
+        copy.name = uniqueName(draft.nodes, source.name);
+        copy.order = nextOrder(draft.nodes, parentId);
+        copy.locked = false;
+        if (isRoot) copy.position = [copy.position[0] + 1, copy.position[1], copy.position[2]];
+        draft.nodes[nextId2] = copy;
+        for (const childId of childIds) cloneSubtree(childId, nextId2, false);
+        return nextId2;
+      };
+      for (const id of roots) {
+        const createdId = cloneSubtree(id, draft.nodes[id].parentId, true);
+        if (draft.nodes[id]?.prefabInstanceId === id) retargetInstance(draft.nodes, id, createdId);
+        created.push(createdId);
+      }
+      draft.selection = created;
+      count = created.length;
+    });
+    if (ok && count) get().log("info", translate("log.duplicated", { count }));
+  },
+  copySelection: () => {
+    const state = get();
+    const roots = selectionRoots(state.nodes, state.selection);
+    if (roots.length === 0) {
+      state.log("warn", translate("log.nothingCopy"));
+      return;
+    }
+    const nodes = [];
+    const walk = (id, parentId) => {
+      const source = state.nodes[id];
+      const copy = structuredClone(source);
+      copy.parentId = parentId;
+      nodes.push(copy);
+      for (const child of childrenOf(state.nodes, id)) walk(child.id, id);
+    };
+    for (const id of roots) walk(id, null);
+    clipboard = nodes;
+    set({ canPaste: true });
+    state.log("info", translate("log.copied", { count: roots.length }));
+  },
+  pasteClipboard: (parentId = null) => {
+    if (!clipboard || clipboard.length === 0) {
+      get().log("warn", translate("log.clipboardEmpty"));
+      return;
+    }
+    let count = 0;
+    const ok = mutate(set, get, "\u7C98\u8D34", (draft) => {
+      const created = pasteNodes(draft, parentId);
+      draft.selection = created;
+      count = created.length;
+    });
+    if (ok && count) get().log("info", translate("log.pasted", { count }));
+  },
+  groupSelection: () => {
+    const roots = selectionRoots(get().nodes, get().selection);
+    if (roots.length < 2) {
+      get().log("warn", translate("log.groupNeedTwo"));
+      return;
+    }
+    const ok = mutate(set, get, "\u6210\u7EC4", (draft) => {
+      const live = selectionRoots(draft.nodes, draft.selection);
+      if (live.length < 2) return;
+      const sharedParent = draft.nodes[live[0]].parentId;
+      const parentId = live.every((id) => draft.nodes[id].parentId === sharedParent) ? sharedParent : null;
+      const worlds = new Map(live.map((id) => [id, worldPose2(draft.nodes, id)]));
+      const center = new Vector313();
+      for (const id of live) center.add(worlds.get(id).position);
+      center.multiplyScalar(1 / live.length);
+      const parentPose = parentId ? worldPose2(draft.nodes, parentId) : null;
+      const localCenter = parentPose ? worldPointToLocal(parentPose, center) : center;
+      const group = makeNode({
+        id: crypto.randomUUID(),
+        name: uniqueName(draft.nodes, "\u7EC4"),
+        kind: "empty",
+        parentId,
+        order: nextOrder(draft.nodes, parentId),
+        position: [localCenter.x, localCenter.y, localCenter.z]
+      });
+      draft.nodes[group.id] = group;
+      const groupPose = worldPose2(draft.nodes, group.id);
+      for (const id of live) {
+        const world3 = worlds.get(id);
+        if (!world3) continue;
+        draft.nodes[id].parentId = group.id;
+        draft.nodes[id].order = nextOrder(draft.nodes, group.id, id);
+        writePose2(draft.nodes[id], localPoseFromWorld(groupPose, world3));
+      }
+      draft.selection = [group.id];
+    });
+    if (ok) get().log("info", translate("log.grouped"));
+  },
+  snapSelectionToGround: () => {
+    const state = get();
+    const ids = selectionRoots(state.nodes, state.selection).filter((id) => !state.nodes[id]?.locked);
+    if (ids.length === 0) {
+      state.log("warn", translate("log.needGround"));
+      return;
+    }
+    const moves = measureGroundSnap(ids);
+    if (moves.length === 0) {
+      state.log("info", translate("log.alreadyGround"));
+      return;
+    }
+    const ok = mutate(set, get, "\u8D34\u5730", (draft) => {
+      for (const move of moves) {
+        const node = draft.nodes[move.id];
+        if (node) node.position = move.position;
+      }
+    });
+    if (ok) get().log("info", translate("log.grounded", { count: moves.length }));
+  },
+  reparent: (id, parentId) => {
+    get().placeNodes([id], parentId, "end");
+  },
+  attachToBone: (id, modelId, bonePath) => {
+    const nodes = get().nodes;
+    const node = nodes[id];
+    const model = nodes[modelId];
+    if (!node || !model || model.kind !== "model" || node.locked) return;
+    if (id === modelId || isUnder(nodes, modelId, id)) {
+      get().log("warn", translate("log.cycle"));
+      return;
+    }
+    mutate(set, get, translate("inspector.extractSocket"), (draft) => {
+      const current = draft.nodes[id];
+      if (!current) return;
+      current.parentId = modelId;
+      current.socketBone = bonePath;
+      current.position = [0, 0, 0];
+      current.rotation = [0, 0, 0];
+      current.order = nextOrder(draft.nodes, modelId, id);
+      detachIfReparented(draft.nodes, id);
+      draft.selection = [id];
+    });
+  },
+  placeNodes: (ids, parentId, zone, anchorId = null) => {
+    const nodes = get().nodes;
+    const moving = selectionRoots(nodes, ids).filter((id) => nodes[id] && !nodes[id].locked);
+    if (moving.length === 0) return;
+    if (parentId && moving.some((id) => id === parentId || isUnder(nodes, parentId, id))) {
+      get().log("warn", translate("log.cycle"));
+      return;
+    }
+    const anchor = anchorId ? nodes[anchorId] : null;
+    const nextParent = zone === "into" || zone === "end" ? parentId : anchor?.parentId ?? parentId;
+    if (nextParent && moving.some((id) => id === nextParent || isUnder(nodes, nextParent, id))) {
+      get().log("warn", translate("log.cycle"));
+      return;
+    }
+    mutate(set, get, "\u66F4\u6539\u7236\u5B50", (draft) => {
+      const worlds = new Map(moving.map((id) => [id, worldPose2(draft.nodes, id)]));
+      const parentPose = nextParent ? worldPose2(draft.nodes, nextParent) : null;
+      for (const id of moving) {
+        const current = draft.nodes[id];
+        if (!current || current.parentId === nextParent) continue;
+        const world3 = worlds.get(id);
+        if (!world3) continue;
+        current.parentId = nextParent;
+        delete current.socketBone;
+        writePose2(current, localPoseFromWorld(parentPose, world3));
+        detachIfReparented(draft.nodes, id);
+      }
+      const siblings = childrenOf(draft.nodes, nextParent).filter((node) => !moving.includes(node.id));
+      let index = siblings.length;
+      if (anchor && (zone === "before" || zone === "after")) {
+        const at = siblings.findIndex((node) => node.id === anchor.id);
+        index = at < 0 ? siblings.length : zone === "before" ? at : at + 1;
+      }
+      const ordered = [...siblings];
+      ordered.splice(index, 0, ...moving.map((id) => draft.nodes[id]).filter(Boolean));
+      ordered.forEach((node, order) => {
+        node.order = order;
+      });
+    });
+  },
+  toggleVisible: (id) => {
+    const node = get().nodes[id];
+    if (!node) return;
+    mutate(set, get, node.visible ? "\u9690\u85CF" : "\u663E\u793A", (draft) => {
+      draft.nodes[id].visible = !draft.nodes[id].visible;
+    });
+  },
+  toggleLocked: (id) => {
+    const node = get().nodes[id];
+    if (!node) return;
+    mutate(set, get, node.locked ? "\u89E3\u9501" : "\u9501\u5B9A", (draft) => {
+      draft.nodes[id].locked = !draft.nodes[id].locked;
+    });
+  },
+  selectAll: () => set({ selection: Object.keys(get().nodes) }),
+  undo: () => {
+    if (get().playState !== "stopped") {
+      get().log("warn", translate("log.noUndoPlay"));
+      return;
+    }
+    if (get().gesture) get().endGesture();
+    const past = get().past;
+    const entry = past[past.length - 1];
+    if (!entry) return;
+    if (entry.databaseOnly && entry.beforeDatabase) {
+      set({
+        past: past.slice(0, -1),
+        future: [...get().future, entry],
+        gameDatabase: structuredClone(entry.beforeDatabase),
+        gameplayPacks: [...entry.beforePacks ?? get().gameplayPacks]
+      });
+      return;
+    }
+    if (entry.materialsOnly) {
+      set({
+        past: past.slice(0, -1),
+        future: [...get().future, entry]
+      });
+      restoreMaterials(entry.beforeMaterials);
+      return;
+    }
+    set({
+      nodes: cloneNodes(entry.before),
+      selection: entry.beforeSelection.filter((id) => entry.before[id]),
+      past: past.slice(0, -1),
+      future: [...get().future, entry],
+      picture: structuredClone(entry.beforePicture)
+    });
+    restoreMaterials(entry.beforeMaterials);
+  },
+  redo: () => {
+    if (get().playState !== "stopped") {
+      get().log("warn", translate("log.noRedoPlay"));
+      return;
+    }
+    if (get().gesture) {
+      get().endGesture();
+      return;
+    }
+    const future = get().future;
+    const entry = future[future.length - 1];
+    if (!entry) return;
+    if (entry.databaseOnly && entry.afterDatabase) {
+      set({
+        future: future.slice(0, -1),
+        past: [...get().past, entry],
+        gameDatabase: structuredClone(entry.afterDatabase),
+        gameplayPacks: [...entry.afterPacks ?? get().gameplayPacks]
+      });
+      return;
+    }
+    if (entry.materialsOnly) {
+      set({
+        future: future.slice(0, -1),
+        past: [...get().past, entry]
+      });
+      restoreMaterials(entry.afterMaterials);
+      return;
+    }
+    set({
+      nodes: cloneNodes(entry.after),
+      selection: entry.afterSelection.filter((id) => entry.after[id]),
+      future: future.slice(0, -1),
+      past: [...get().past, entry],
+      picture: structuredClone(entry.afterPicture)
+    });
+    restoreMaterials(entry.afterMaterials);
+  },
+  play: () => {
+    if (get().prefabSession) {
+      get().log("warn", translate("prefab.noPlay"));
+      return;
+    }
+    if (get().gesture) get().endGesture();
+    const state = get().playState;
+    if (state === "paused") {
+      set({ playState: "playing" });
+      get().log("info", translate("log.resumePlay"));
+      return;
+    }
+    if (state === "playing") return;
+    resetUiValues();
+    const snapshot2 = cloneNodes(get().nodes);
+    const nodes = cloneNodes(snapshot2);
+    for (const node of Object.values(nodes)) {
+      if (node.kind !== "model") continue;
+      const animator = node.animator?.enabled ? node.animator : null;
+      if (animator) {
+        const start2 = animator.states.find((state2) => state2.id === (animator.defaultStateId || animator.stateId)) ?? animator.states[0];
+        if (!start2?.clip) continue;
+        nodes[node.id] = { ...node, clipPlaying: true, clipTime: 0, animator: { ...animator, stateId: start2.id } };
+        continue;
+      }
+      if (!node.clip) continue;
+      nodes[node.id] = { ...node, clipPlaying: true, clipTime: 0 };
+    }
+    set({
+      playState: "playing",
+      playSnapshot: snapshot2,
+      nodes,
+      playSelection: get().selection.slice(),
+      playPicture: structuredClone(get().picture),
+      playDirty: false
+    });
+    get().log("info", translate("log.startPlay"));
+  },
+  pause: () => {
+    const state = get().playState;
+    if (state === "playing") set({ playState: "paused" });
+    else if (state === "paused") set({ playState: "playing" });
+  },
+  stop: () => {
+    const snapshot2 = get().playSnapshot;
+    const picture = get().playPicture;
+    if (get().playState === "stopped" || !snapshot2) return;
+    set({
+      gesture: null,
+      playState: "stopped",
+      nodes: cloneNodes(snapshot2),
+      selection: get().playSelection.filter((id) => snapshot2[id]),
+      playSnapshot: null,
+      picture: picture ? structuredClone(picture) : get().picture,
+      playPicture: null,
+      playDirty: false
+    });
+    resetUiValues();
+    get().log("info", translate("log.stopPlay"));
+  },
+  keepPlayChanges: () => {
+    const snapshot2 = get().playSnapshot;
+    if (get().playState === "stopped" || !snapshot2) return;
+    const beforeNodes = cloneNodes(snapshot2);
+    const beforePicture = get().playPicture ? structuredClone(get().playPicture) : structuredClone(get().picture);
+    const currentNodes = get().nodes;
+    const nextSnapshot = {};
+    const liveNodes = { ...currentNodes };
+    let cameraKept = false;
+    for (const [id, snapNode] of Object.entries(snapshot2)) {
+      const liveNode = currentNodes[id];
+      if (!liveNode) {
+        nextSnapshot[id] = structuredClone(snapNode);
+        continue;
+      }
+      const merged = structuredClone(liveNode);
+      merged.position = [...snapNode.position];
+      merged.rotation = [...snapNode.rotation];
+      merged.scale = [...snapNode.scale];
+      merged.clipPlaying = snapNode.clipPlaying;
+      merged.clipTime = snapNode.clipTime;
+      merged.overlayPlaying = snapNode.overlayPlaying;
+      merged.overlayTime = snapNode.overlayTime;
+      if (merged.animator && snapNode.animator) {
+        merged.animator = {
+          ...merged.animator,
+          stateId: snapNode.animator.stateId
+        };
+      }
+      const followed = bakeFollow(liveNode);
+      if (followed) {
+        const gameplay = { ...liveNode.gameplay, cameraFollow: followed };
+        merged.gameplay = gameplay;
+        liveNodes[id] = { ...liveNode, gameplay };
+        cameraKept = true;
+        settleCameraArm(id);
+      }
+      nextSnapshot[id] = merged;
+    }
+    const nextPicture = structuredClone(get().picture);
+    if (!sameNodes(beforeNodes, nextSnapshot) || !sameJson(beforePicture, nextPicture)) {
+      pushHistory(set, {
+        label: translate("inspector.keepPlayChanges"),
+        before: beforeNodes,
+        after: cloneNodes(nextSnapshot),
+        beforeSelection: get().playSelection.slice(),
+        afterSelection: get().playSelection.slice(),
+        beforePicture,
+        afterPicture: structuredClone(nextPicture)
+      });
+    }
+    set({
+      nodes: cameraKept ? liveNodes : currentNodes,
+      playSnapshot: nextSnapshot,
+      playPicture: nextPicture,
+      playDirty: false
+    });
+    get().notify(translate("log.keptPlayChanges"));
+    get().log("info", translate("log.keptPlayChanges"));
+  },
+  newScene: () => {
+    get().createScene();
+  },
+  createScene: () => {
+    if (get().playState !== "stopped") {
+      get().log("warn", translate("log.stopBeforeNew"));
+      return;
+    }
+    if (get().gesture) get().endGesture();
+    get().flushActiveScene();
+    const existing = Object.values(useAssetStore.getState().assets).filter((asset) => asset.kind === "scene");
+    const fresh = createFreshScene(uniqueSceneName(existing.map((scene2) => scene2.name)));
+    useAssetStore.getState().add({
+      id: fresh.id,
+      name: fresh.name,
+      kind: "scene",
+      nodes: fresh.nodes,
+      picture: fresh.picture
+    });
+    useAssetStore.getState().place(fresh.id);
+    set({
+      activeSceneId: fresh.id,
+      nodes: fresh.nodes,
+      selection: [fresh.selectedId],
+      past: [],
+      future: [],
+      gesture: null,
+      playSnapshot: null,
+      playPicture: null,
+      picture: fresh.picture
+    });
+    get().log("info", translate("log.createdScene", { name: fresh.name }));
+  },
+  openScene: (id) => {
+    const asset = useAssetStore.getState().assets[id];
+    if (!asset || asset.kind !== "scene") return;
+    if (get().playState !== "stopped") {
+      get().log("warn", translate("log.stopBeforeOpen"));
+      return;
+    }
+    if (get().activeSceneId === id && !get().prefabSession) return;
+    if (get().prefabSession) get().closePrefab(true);
+    if (get().activeSceneId === id) return;
+    if (get().gesture) get().endGesture();
+    get().flushActiveScene();
+    set({
+      activeSceneId: id,
+      nodes: structuredClone(asset.nodes),
+      picture: normalizePicture(asset.picture),
+      editorView: normalizeEditorView(asset.editorView),
+      editorViewNonce: get().editorViewNonce + 1,
+      selection: [],
+      past: [],
+      future: [],
+      gesture: null,
+      playSnapshot: null,
+      playPicture: null
+    });
+    get().log("info", translate("log.openedScene", { name: asset.name }));
+  },
+  deleteScene: (id) => {
+    const scenes = Object.values(useAssetStore.getState().assets).filter((asset) => asset.kind === "scene");
+    if (!scenes.some((scene2) => scene2.id === id)) return;
+    if (scenes.length <= 1) {
+      get().log("warn", translate("log.keepScene"));
+      return;
+    }
+    if (get().playState !== "stopped") {
+      get().log("warn", translate("log.stopBeforeDelete"));
+      return;
+    }
+    if (get().activeSceneId === id) {
+      const next = scenes.find((scene2) => scene2.id !== id);
+      if (!next) return;
+      set({
+        activeSceneId: next.id,
+        nodes: structuredClone(next.nodes),
+        picture: normalizePicture(next.picture),
+        editorView: normalizeEditorView(next.editorView),
+        editorViewNonce: get().editorViewNonce + 1,
+        selection: [],
+        past: [],
+        future: [],
+        gesture: null,
+        playSnapshot: null,
+        playPicture: null
+      });
+    }
+    useAssetStore.getState().remove(id);
+    forgetNavMesh(id);
+    get().log("info", translate("log.deletedScene"));
+  },
+  flushActiveScene: () => {
+    const id = get().activeSceneId;
+    if (!id) return;
+    const session = get().prefabSession;
+    if (session) {
+      const editing = structuredClone(get().nodes);
+      const root = Object.values(editing).find((node) => !node.parentId);
+      if (root) {
+        root.position = [0, 0, 0];
+        root.rotation = [0, 0, 0];
+        root.scale = [1, 1, 1];
+      }
+      useAssetStore.getState().writePrefab(session.assetId, root?.id ?? "", editing);
+      reconcilePrefab(session.sceneNodes, session.assetId, readPrefab({ rootId: root?.id ?? "", nodes: editing }), lookupPrefab);
+    }
+    const nodes = session ? session.sceneNodes : get().nodes;
+    const liveView = get().prefabSession ? get().editorView : readEditorViewPose();
+    useAssetStore.getState().writeScene(id, structuredClone(nodes), structuredClone(get().picture), liveView ?? void 0);
+  },
+  ensureSceneAsset: () => {
+    const scenes = Object.values(useAssetStore.getState().assets).filter((asset) => asset.kind === "scene");
+    if (scenes.length === 0) {
+      const id = crypto.randomUUID();
+      useAssetStore.getState().add({
+        id,
+        name: "\u672A\u547D\u540D\u573A\u666F",
+        kind: "scene",
+        nodes: structuredClone(get().nodes),
+        picture: structuredClone(get().picture)
+      });
+      useAssetStore.getState().place(id, "Assets");
+      set({ activeSceneId: id });
+      return;
+    }
+    if (!scenes.some((scene2) => scene2.id === get().activeSceneId)) {
+      const first = scenes[0];
+      set({
+        activeSceneId: first.id,
+        nodes: structuredClone(first.nodes),
+        picture: structuredClone(first.picture),
+        selection: []
+      });
+    }
+  },
+  requestRename: (id) => {
+    if (!get().nodes[id]) return;
+    set({ pendingRenameId: id, selection: [id] });
+  },
+  loadDocument: (document2) => {
+    if (get().gesture) get().endGesture();
+    const nodes = document2.nodes;
+    set({
+      nodes,
+      selection: document2.selection.filter((id) => nodes[id]),
+      past: [],
+      future: [],
+      gesture: null,
+      playState: "stopped",
+      playSnapshot: null,
+      playSelection: [],
+      playPicture: null,
+      picture: normalizePicture(document2.picture),
+      editorView: savedEditorView(document2),
+      editorViewNonce: get().editorViewNonce + 1,
+      capabilities: normalizeCapabilities(document2.capabilities),
+      tags: ensureTags(document2.tags),
+      gameplayPacks: [...resolveEnabledPackIds(document2.gameplayPacks)],
+      gameDatabase: ensureGameDatabase(document2.gameDatabase, document2.gameplayPacks),
+      layers: ensureLayers(document2.layers),
+      editorCullingMask: typeof document2.editorCullingMask === "number" ? document2.editorCullingMask >>> 0 : ALL_LAYERS_VISIBLE_MASK,
+      physicsCollisionMatrixEnabled: document2.physicsCollisionMatrixEnabled === true,
+      physicsCollisionRowMasks: document2.physicsCollisionRowMasks ?? {},
+      activeSceneId: document2.activeSceneId,
+      prefabSession: null,
+      inspectedAssetId: typeof document2.workspace?.inspectedAssetId === "string" ? document2.workspace.inspectedAssetId : null
+    });
+    hydrateNavigation(document2.navMeshes);
+  },
+  clearLogs: () => set({ logs: [] }),
+  log: (level, message, parts) => {
+    const entry = { id: crypto.randomUUID(), level, message, time: Date.now(), parts };
+    set((state) => ({ logs: [...state.logs, entry].slice(-300) }));
+    if (level !== "info") get().notify(message);
+  },
+  notify: (message) => {
+    set({ notice: message });
+    window.setTimeout(() => {
+      if (get().notice === message) set({ notice: null });
+    }, 2600);
+  },
+  setPicture: (patch) => set((state) => ({
+    picture: normalizePicture({ ...state.picture, ...patch }),
+    ...state.playState !== "stopped" ? { playDirty: true } : {}
+  })),
+  rememberEditorView: (view) => {
+    if (get().prefabSession || get().playState !== "stopped") return;
+    if (JSON.stringify(get().editorView) === JSON.stringify(view)) return;
+    set({ editorView: view });
+  },
+  setCapability: (id, enabled) => set((state) => ({
+    capabilities: { ...state.capabilities, [id]: enabled }
+  })),
+  commitGameplay: (packs2, database, label) => {
+    const beforePacks = [...get().gameplayPacks];
+    const beforeDatabase = structuredClone(get().gameDatabase);
+    const nextPacks = [...resolveEnabledPackIds(packs2)];
+    const nextDatabase = ensureGameDatabase(database, nextPacks);
+    if (JSON.stringify(beforePacks) === JSON.stringify(nextPacks) && JSON.stringify(beforeDatabase) === JSON.stringify(nextDatabase)) return;
+    pushHistory(set, {
+      label,
+      before: {},
+      after: {},
+      beforeSelection: [],
+      afterSelection: [],
+      beforePicture: get().picture,
+      afterPicture: get().picture,
+      databaseOnly: true,
+      beforeDatabase,
+      afterDatabase: structuredClone(nextDatabase),
+      beforePacks,
+      afterPacks: nextPacks
+    });
+    set({ gameplayPacks: nextPacks, gameDatabase: nextDatabase });
+  },
+  setTags: (tags2) => {
+    const next = ensureTags(tags2);
+    const ids = new Set(next.map((tag) => tag.id));
+    const previous = new Set(get().tags.map((tag) => tag.id));
+    set((state) => {
+      const nodes = { ...state.nodes };
+      for (const [id, node] of Object.entries(nodes)) {
+        const tagId = node.tagId && ids.has(node.tagId) ? node.tagId : null;
+        const tagIds = (node.tagIds ?? []).filter((tag) => !previous.has(tag) || ids.has(tag));
+        const samePrimary = (node.tagId ?? null) === tagId;
+        const sameExtra = (node.tagIds ?? []).join("|") === tagIds.join("|");
+        if (!samePrimary || !sameExtra) nodes[id] = { ...node, tagId, tagIds };
+      }
+      return { tags: next, nodes };
+    });
+  },
+  setLayers: (layers) => {
+    const next = ensureLayers(layers);
+    const ids = new Set(next.map((layer) => layer.id));
+    set((state) => {
+      const nodes = { ...state.nodes };
+      for (const [id, node] of Object.entries(nodes)) {
+        if (node.renderLayerId && !ids.has(node.renderLayerId)) {
+          nodes[id] = { ...node, renderLayerId: LAYER_ID_DEFAULT };
+        }
+      }
+      return { layers: next, nodes };
+    });
+  },
+  setEditorCullingMask: (mask) => set({ editorCullingMask: mask >>> 0 }),
+  setPhysicsCollisionMatrix: (enabled, rows) => set({
+    physicsCollisionMatrixEnabled: enabled,
+    physicsCollisionRowMasks: rows
+  }),
+  applySimulation: (poses) => {
+    if (get().playState !== "playing" || poses.length === 0) return;
+    const depthOf = (id) => {
+      let depth = 0;
+      let parent = get().nodes[id]?.parentId;
+      const seen = /* @__PURE__ */ new Set();
+      while (parent && !seen.has(parent)) {
+        seen.add(parent);
+        depth += 1;
+        parent = get().nodes[parent]?.parentId;
+      }
+      return depth;
+    };
+    const ordered = [...poses].sort((a, b) => depthOf(a.id) - depthOf(b.id));
+    set((state) => {
+      const nodes = { ...state.nodes };
+      for (const pose of ordered) {
+        const node = nodes[pose.id];
+        if (!node) continue;
+        const parent = node.parentId ? worldPose2(nodes, node.parentId) : null;
+        const local = localPoseFromWorld(parent, {
+          position: new Vector313(pose.position[0], pose.position[1], pose.position[2]),
+          quaternion: new Quaternion7(pose.rotation[0], pose.rotation[1], pose.rotation[2], pose.rotation[3]),
+          scale: new Vector313(node.scale[0], node.scale[1], node.scale[2])
+        });
+        const parts = poseComponents(local);
+        nodes[pose.id] = { ...node, position: parts.position, rotation: parts.rotation };
+      }
+      return { nodes };
+    });
+  },
+  setRenderBackend: (label) => {
+    if (get().renderBackend !== label) set({ renderBackend: label });
+  },
+  setHelpersVisible: (visible) => set({ helpersVisible: visible }),
+  setNavMeshVisible: (visible) => set({ navMeshVisible: visible }),
+  setSnapStep: (step2) => set({ snapStep: Math.max(0.01, step2) }),
+  setViewportStats: (stats) => {
+    set({ viewportStats: stats });
+  },
+  spawnModel: (assetId, name, slots, point2) => {
+    let created = "";
+    const ok = mutate(set, get, `\u653E\u7F6E${name}`, (draft) => {
+      const id = crypto.randomUUID();
+      created = uniqueName(draft.nodes, name);
+      draft.nodes[id] = makeNode({
+        id,
+        name: created,
+        kind: "model",
+        assetId,
+        slots: structuredClone(slots),
+        position: [point2[0], point2[1], point2[2]]
+      });
+      draft.selection = [id];
+    });
+    if (ok && created) get().log("info", translate("log.placed", { name: created }));
+  },
+  spawnPrefab: (assetId, point2, parentId = null) => {
+    if (get().prefabSession) {
+      get().log("warn", translate("prefab.exitFirst"));
+      return;
+    }
+    const asset = useAssetStore.getState().assets[assetId];
+    const doc = asset?.kind === "prefab" ? readPrefab(asset) : null;
+    if (!doc?.rootId) return;
+    let created = "";
+    const ok = mutate(set, get, translate("prefab.place", { name: asset?.name ?? "" }), (draft) => {
+      const id = instantiatePrefab(draft.nodes, doc, assetId, parentId, parentId ? null : point2, lookupPrefab);
+      if (!id) return;
+      created = draft.nodes[id]?.name ?? "";
+      draft.selection = [id];
+    });
+    if (ok && created) get().log("info", translate("log.placed", { name: created }));
+  },
+  createPrefabFromSelection: (name, nodeId, dir) => {
+    if (get().playState !== "stopped") return;
+    if (get().prefabSession) {
+      get().log("warn", translate("prefab.exitFirst"));
+      return;
+    }
+    const roots = nodeId ? [nodeId] : selectionRoots(get().nodes, get().selection);
+    if (roots.length !== 1 || !get().nodes[roots[0]]) {
+      get().log("warn", translate("prefab.needOne"));
+      return;
+    }
+    if (get().nodes[roots[0]].prefabInstanceId === roots[0]) {
+      get().log("warn", translate("prefab.alreadyInstance"));
+      return;
+    }
+    const source = get().nodes[roots[0]];
+    const doc = captureTemplate(get().nodes, roots[0]);
+    if (!doc.rootId) return;
+    const id = crypto.randomUUID();
+    const assetName = uniqueAssetName(name?.trim() || source.name);
+    useAssetStore.getState().add({ id, name: assetName, kind: "prefab", rootId: doc.rootId, nodes: doc.nodes });
+    useAssetStore.getState().place(id, dir);
+    const ok = mutate(set, get, translate("prefab.create", { name: assetName }), (draft) => {
+      const current = draft.nodes[roots[0]];
+      if (!current) return;
+      const parentId = current.parentId;
+      const position = current.position;
+      const rotation = current.rotation;
+      const scale = current.scale;
+      const order = current.order;
+      const name2 = current.name;
+      deleteSubtree2(draft.nodes, roots[0]);
+      const instanceId = instantiatePrefab(draft.nodes, doc, id, parentId, position, lookupPrefab);
+      const instance2 = instanceId ? draft.nodes[instanceId] : void 0;
+      if (!instance2) return;
+      instance2.name = name2;
+      instance2.rotation = rotation;
+      instance2.scale = scale;
+      instance2.order = order;
+      instance2.prefabOverrides = ["position", "rotation", "scale"];
+      draft.selection = [instance2.id];
+    });
+    if (ok) get().log("info", translate("log.savedPrefab", { name: assetName }));
+  },
+  rebindPrefab: (fromId, toId) => {
+    const doc = lookupPrefab(toId);
+    if (!doc?.rootId || fromId === toId) return;
+    const ok = mutate(set, get, translate("prefab.rebind"), (draft) => {
+      const roots = Object.values(draft.nodes).filter((node) => node.prefabAssetId === fromId && node.prefabInstanceId === node.id);
+      for (const root of roots) {
+        for (const node of Object.values(draft.nodes)) {
+          if (node.prefabInstanceId === root.id && node.id !== root.id) delete draft.nodes[node.id];
+        }
+        root.prefabAssetId = toId;
+        root.prefabTemplateId = doc.rootId;
+        root.prefabRemoved = [];
+        root.prefabOverrides = ["position", "rotation", "scale"];
+      }
+      reconcilePrefab(draft.nodes, toId, doc, lookupPrefab);
+    });
+    if (ok) get().log("info", translate("prefab.rebound"));
+  },
+  openPrefab: (assetId) => {
+    if (get().playState !== "stopped") {
+      get().log("warn", translate("prefab.noPlay"));
+      return;
+    }
+    if (get().prefabSession?.assetId === assetId) return;
+    if (get().prefabSession) get().closePrefab(true);
+    const asset = useAssetStore.getState().assets[assetId];
+    const doc = asset?.kind === "prefab" ? readPrefab(asset) : null;
+    if (!doc?.rootId) return;
+    if (get().gesture) get().endGesture();
+    set({
+      prefabSession: {
+        assetId,
+        sceneNodes: structuredClone(get().nodes),
+        sceneSelection: get().selection.slice(),
+        scenePast: get().past,
+        sceneFuture: get().future,
+        sceneView: readEditorViewPose() ?? get().editorView
+      },
+      nodes: structuredClone(doc.nodes),
+      selection: [doc.rootId],
+      past: [],
+      future: [],
+      inspectedAssetId: null
+    });
+    get().log("info", translate("prefab.editing", { name: asset?.name ?? "" }));
+  },
+  closePrefab: (save) => {
+    const session = get().prefabSession;
+    if (!session) return;
+    if (get().gesture) get().endGesture();
+    const sceneNodes = session.sceneNodes;
+    if (save) {
+      const nodes = structuredClone(get().nodes);
+      const root = Object.values(nodes).find((node) => !node.parentId);
+      if (root) {
+        root.position = [0, 0, 0];
+        root.rotation = [0, 0, 0];
+        root.scale = [1, 1, 1];
+      }
+      useAssetStore.getState().writePrefab(session.assetId, root?.id ?? "", nodes);
+      const doc = readPrefab({ rootId: root?.id ?? "", nodes });
+      reconcilePrefab(sceneNodes, session.assetId, doc, lookupPrefab);
+    }
+    set({
+      prefabSession: null,
+      nodes: sceneNodes,
+      selection: session.sceneSelection.filter((id) => sceneNodes[id]),
+      past: session.scenePast,
+      future: session.sceneFuture,
+      editorView: session.sceneView,
+      editorViewNonce: session.sceneView ? get().editorViewNonce + 1 : get().editorViewNonce
+    });
+    get().log("info", translate(save ? "prefab.saved" : "prefab.closed"));
+  },
+  applyPrefabInstance: (id) => {
+    const root = get().nodes[id];
+    const asset = root?.prefabAssetId ? useAssetStore.getState().assets[root.prefabAssetId] : void 0;
+    if (!root || root.prefabInstanceId !== root.id || asset?.kind !== "prefab") return;
+    const ok = mutate(set, get, translate("prefab.apply"), (draft) => {
+      const doc = applyInstance(draft.nodes, id, readPrefab(asset));
+      useAssetStore.getState().writePrefab(asset.id, doc.rootId, doc.nodes);
+      reconcilePrefab(draft.nodes, asset.id, doc, lookupPrefab);
+    });
+    if (ok) get().log("info", translate("prefab.applied"));
+  },
+  revertPrefabInstance: (id) => {
+    const root = get().nodes[id];
+    const asset = root?.prefabAssetId ? useAssetStore.getState().assets[root.prefabAssetId] : void 0;
+    if (!root || root.prefabInstanceId !== root.id || asset?.kind !== "prefab") return;
+    const ok = mutate(set, get, translate("prefab.revert"), (draft) => {
+      revertInstance(draft.nodes, id, readPrefab(asset), asset.id, lookupPrefab);
+    });
+    if (ok) get().log("info", translate("prefab.reverted"));
+  },
+  unpackPrefabInstance: (id) => {
+    if (!get().nodes[id] || get().nodes[id].prefabInstanceId !== id) return;
+    const ok = mutate(set, get, translate("prefab.unpack"), (draft) => {
+      unpackInstance(draft.nodes, id);
+    });
+    if (ok) get().log("info", translate("prefab.unpacked"));
+  },
+  assignMap: (id, assetId) => {
+    const node = get().nodes[id];
+    if (!node) return;
+    const label = translate(assetId ? "gesture.map" : "gesture.mapClear");
+    if (node.kind === "model" && node.slots.length > 0) {
+      const linked = node.slots[0].materialAssetId;
+      if (linked) {
+        get().commitMaterial(linked, { mapAssetId: assetId }, label);
+        return;
+      }
+      get().beginGesture(label);
+      get().updateNode(id, {
+        slots: node.slots.map((slot, index) => index === 0 ? { ...slot, mapAssetId: assetId } : slot)
+      });
+      get().endGesture();
+      return;
+    }
+    if (node.materialAssetId) {
+      get().commitMaterial(node.materialAssetId, { mapAssetId: assetId }, label);
+      return;
+    }
+    get().beginGesture(label);
+    get().updateNode(id, { mapAssetId: assetId });
+    get().endGesture();
+  },
+  commitMaterial: (id, patch, label) => {
+    const asset = useAssetStore.getState().assets[id];
+    if (!asset || asset.kind !== "material") return;
+    const beforeSlot = structuredClone(asset.slot);
+    const afterSlot = { ...beforeSlot, ...patch };
+    if (sameJson(beforeSlot, afterSlot)) return;
+    if (get().gesture) get().endGesture();
+    useAssetStore.getState().replaceMaterial(id, afterSlot);
+    const nodes = cloneNodes(get().nodes);
+    const selection = get().selection.slice();
+    const picture = structuredClone(get().picture);
+    pushHistory(set, {
+      label,
+      before: nodes,
+      after: cloneNodes(nodes),
+      beforeSelection: selection,
+      afterSelection: selection.slice(),
+      beforePicture: picture,
+      afterPicture: picture,
+      materialsOnly: true,
+      beforeMaterials: { [id]: beforeSlot },
+      afterMaterials: { [id]: structuredClone(afterSlot) }
+    });
+  },
+  assignMaterial: (id, materialId) => {
+    const asset = useAssetStore.getState().assets[materialId];
+    const node = get().nodes[id];
+    if (!node || asset?.kind !== "material") return;
+    get().beginGesture("\u6307\u5B9A\u6750\u8D28");
+    if (node.kind === "model" && node.slots.length > 0) {
+      get().updateNode(id, {
+        slots: node.slots.map((item) => ({ ...item, materialAssetId: materialId }))
+      });
+    } else {
+      get().updateNode(id, { materialAssetId: materialId });
+    }
+    get().endGesture();
+    get().log("info", translate("log.assignedMaterial", { name: asset.name }));
+  }
+}));
+function savedEditorView(document2) {
+  const scene2 = document2.library.find((item) => item.kind === "scene" && item.id === document2.activeSceneId);
+  return normalizeEditorView(scene2?.editorView);
+}
+function selectionRoots(nodes, selection) {
+  const selected = new Set(selection);
+  return selection.filter((id) => {
+    let parent = nodes[id]?.parentId;
+    while (parent) {
+      if (selected.has(parent)) return false;
+      parent = nodes[parent]?.parentId ?? null;
+    }
+    return Boolean(nodes[id]);
+  });
+}
+var clipboard = null;
+function pasteNodes(draft, parentId) {
+  if (!clipboard) return [];
+  const map = /* @__PURE__ */ new Map();
+  for (const node of clipboard) map.set(node.id, crypto.randomUUID());
+  const roots = [];
+  for (const source of clipboard) {
+    const copy = structuredClone(source);
+    const nextId2 = map.get(source.id);
+    if (!nextId2) continue;
+    copy.id = nextId2;
+    copy.locked = false;
+    const mappedParent = source.parentId ? map.get(source.parentId) ?? null : null;
+    copy.parentId = mappedParent ?? parentId;
+    if (!source.parentId) {
+      copy.name = uniqueName(draft.nodes, source.name);
+      copy.order = nextOrder(draft.nodes, copy.parentId);
+      if (!parentId) copy.position = [copy.position[0] + 1, copy.position[1], copy.position[2]];
+      roots.push(nextId2);
+    }
+    draft.nodes[nextId2] = copy;
+  }
+  return roots;
+}
+function mutate(set, get, label, fn) {
+  if (get().playState !== "stopped") {
+    get().log("warn", translate("log.noStructure"));
+    return false;
+  }
+  if (get().gesture) get().endGesture();
+  const before = cloneNodes(get().nodes);
+  const beforeSelection = get().selection.slice();
+  const draft = { nodes: cloneNodes(before), selection: beforeSelection.slice() };
+  fn(draft);
+  draft.selection = draft.selection.filter((id) => draft.nodes[id]);
+  set({ nodes: draft.nodes, selection: draft.selection });
+  if (sameNodes(before, draft.nodes) && sameSelection(beforeSelection, draft.selection)) return true;
+  const picture = structuredClone(get().picture);
+  pushHistory(set, {
+    label,
+    before,
+    after: cloneNodes(draft.nodes),
+    beforeSelection,
+    afterSelection: draft.selection.slice(),
+    beforePicture: picture,
+    afterPicture: picture
+  });
+  return true;
+}
+function restoreMaterials(slots) {
+  if (!slots) return;
+  for (const [id, slot] of Object.entries(slots)) {
+    useAssetStore.getState().replaceMaterial(id, structuredClone(slot));
+  }
+}
+function lookupPrefab(assetId) {
+  const asset = useAssetStore.getState().assets[assetId];
+  return asset?.kind === "prefab" ? readPrefab(asset) : null;
+}
+function deleteSubtree2(nodes, id) {
+  for (const child of childrenOf(nodes, id)) deleteSubtree2(nodes, child.id);
+  delete nodes[id];
+}
+function uniqueAssetName(base) {
+  const names = new Set(Object.values(useAssetStore.getState().assets).map((asset) => asset.name));
+  if (!names.has(base)) return base;
+  let index = 2;
+  while (names.has(`${base} ${index}`)) index += 1;
+  return `${base} ${index}`;
+}
+function uniqueSceneName(names) {
+  if (!names.includes("\u65B0\u573A\u666F")) return "\u65B0\u573A\u666F";
+  let index = 2;
+  while (names.includes(`\u65B0\u573A\u666F ${index}`)) index += 1;
+  return `\u65B0\u573A\u666F ${index}`;
+}
+function primaryId(state) {
+  return state.selection[state.selection.length - 1] ?? null;
+}
+function selectedCameraId(state, editable) {
+  const id = primaryId(state);
+  const node = id ? state.nodes[id] : void 0;
+  if (!node || node.kind !== "camera") return null;
+  if (editable && node.locked) return null;
+  return id;
+}
+if (typeof window !== "undefined") {
+  window.addEventListener("t3d:load-scene", (ev) => {
+    const detail = ev.detail;
+    if (!detail?.sceneId) return;
+    const st = useEditorStore.getState();
+    if (st.playState === "playing") {
+      st.openScene(detail.sceneId);
+    }
+  });
+}
+
+// src/core/query/diagnose.ts
+init_actionMap();
+var DEFAULT_PERFORMANCE_BUDGET = {
+  maxDrawCalls: 600,
+  maxTriangles: 35e4,
+  maxShadowLights: 3,
+  maxAssetBytes: 120 * 1024 * 1024
+};
+
+// src/playtest/session.ts
+init_sceneRuntime();
+init_world();
+function summarizeRuntimeLogs(logs, maxEach = 8) {
+  const collect = (level) => {
+    const counts = /* @__PURE__ */ new Map();
+    for (const item of logs) {
+      if (item.level !== level) continue;
+      counts.set(item.message, (counts.get(item.message) ?? 0) + 1);
+    }
+    const total = Array.from(counts.values()).reduce((sum, n) => sum + n, 0);
+    const lines = Array.from(counts.entries()).slice(0, maxEach).map(([message, n]) => n > 1 ? `${message}\uFF08\u91CD\u590D ${n} \u6B21\uFF09` : message);
+    if (counts.size > maxEach) lines.push(`\u2026\u53E6\u6709 ${counts.size - maxEach} \u79CD\u4E0D\u540C\u6D88\u606F\u672A\u5217\u51FA`);
+    return { total, lines };
+  };
+  const errors = collect("error");
+  const warnings = collect("warn");
+  return { errorCount: errors.total, warningCount: warnings.total, errors: errors.lines, warnings: warnings.lines };
+}
+function summarizeInfoLogs(logs, maxLines = 40) {
+  const counts = /* @__PURE__ */ new Map();
+  for (const item of logs) {
+    if (item.level === "error" || item.level === "warn") continue;
+    counts.set(item.message, (counts.get(item.message) ?? 0) + 1);
+  }
+  const lines = Array.from(counts.entries()).slice(0, maxLines).map(([message, n]) => {
+    const text = message.length > 300 ? `${message.slice(0, 300)}\u2026` : message;
+    return n > 1 ? `${text}\uFF08\u91CD\u590D ${n} \u6B21\uFF09` : text;
+  });
+  if (counts.size > maxLines) lines.push(`\u2026\u53E6\u6709 ${counts.size - maxLines} \u79CD\u4E0D\u540C\u65E5\u5FD7\u672A\u5217\u51FA`);
+  return lines;
+}
 
 // src/runtime/locomotion.ts
 init_world();

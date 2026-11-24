@@ -30,7 +30,8 @@ import {
 import { readScriptStateSnapshot } from '../core/codeAssets/scriptRuntime'
 import { measureRenderBreakdown } from './renderBreakdown'
 import { measureUiLayout, type UiLayoutEntry } from './uiLayout'
-import { findRecipe, listRecipeIndex } from './knowledge/recipes'
+import { readKnowledgeFile } from './knowledge/loader'
+import { knowledgeFs, listUsableKnowledge, lookupKnowledgeEntry, useKnowledgeStore } from './knowledge/store'
 
 export interface AiToolSpec {
   name: string
@@ -202,11 +203,12 @@ const QUERY_TOOLS: AiToolSpec[] = [
   },
   {
     name: 'kb__read',
-    description: '读取一份经过验证的范例（可运行的完整脚本源码 + 场景搭建与挂载说明）。范例目录见系统提示的「范例库」。实现同类玩法时先读范例再改写，不要从零摸索',
+    description: '读取一份范例、技能或知识条目（搭建步骤与验收说明，技能还附带可运行的完整脚本源码）。内置范例目录见系统提示的「范例库」，工程与用户扩展的目录见工程上下文。实现同类玩法时先读再改写，不要从零摸索',
     parameters: {
       type: 'object',
       properties: {
-        id: { type: 'string', description: '范例 ID，如 third-person-controller' },
+        id: { type: 'string', description: '条目 ID，如 third-person-controller' },
+        file: { type: 'string', description: '可选：只读取该条目附带的某个文件（相对路径，如 ChaseEnemy.ts）' },
       },
       required: ['id'],
       additionalProperties: false,
@@ -690,20 +692,66 @@ async function executeAiToolInner(
     }
     case 'kb__read': {
       const id = typeof args.id === 'string' ? args.id.trim() : ''
-      const recipe = findRecipe(id)
-      if (!recipe) {
+      const fileArg = typeof args.file === 'string' ? args.file.trim() : ''
+      // 首次调用时快照可能还没扫描过（例如评测脚本直接调用工具）
+      if (useKnowledgeStore.getState().snapshot.scannedAt === 0) await useKnowledgeStore.getState().refresh()
+      const entry = lookupKnowledgeEntry(id)
+      if (!entry) {
         return {
           ok: false,
           toolName,
-          displayLabel: `范例 ${id || '(空)'} 不存在`,
-          data: { ok: false, message: `范例 "${id}" 不存在`, available: listRecipeIndex() },
+          displayLabel: `条目 ${id || '(空)'} 不存在`,
+          data: { ok: false, message: `技能/知识 "${id}" 不存在或已被停用`, available: listUsableKnowledge() },
+        }
+      }
+      const kindLabel = entry.source === 'builtin' ? '范例' : entry.kind === 'skill' ? '技能' : '知识'
+      if (fileArg) {
+        const res = await readKnowledgeFile(entry, fileArg, knowledgeFs())
+        if (!res.ok) {
+          return {
+            ok: false,
+            toolName,
+            displayLabel: `读取 ${entry.id}/${fileArg} 失败`,
+            data: { ok: false, message: res.message, files: entry.files.map((file) => file.path) },
+          }
+        }
+        return {
+          ok: true,
+          toolName,
+          displayLabel: `查阅${kindLabel}文件：${entry.name} / ${fileArg}`,
+          data: { id: entry.id, file: fileArg, source: res.source },
+        }
+      }
+      // 附带源码一并返回（一次调用拿全）；总量过大时只列路径，由模型按需用 file 参数读取
+      const INLINE_BUDGET = 40000
+      let used = entry.body.length
+      const files: Array<{ path: string; attachTo?: string; source?: string; note?: string }> = []
+      for (const file of entry.files) {
+        const res = await readKnowledgeFile(entry, file.path, knowledgeFs())
+        if (res.ok && used + res.source.length <= INLINE_BUDGET) {
+          used += res.source.length
+          files.push({ path: file.path, attachTo: file.attachTo, source: res.source })
+        } else {
+          files.push({
+            path: file.path,
+            attachTo: file.attachTo,
+            note: res.ok ? '内容较长，请用 kb__read({ id, file }) 单独读取' : res.message,
+          })
         }
       }
       return {
         ok: true,
         toolName,
-        displayLabel: `查阅范例：${recipe.title}`,
-        data: recipe,
+        displayLabel: `查阅${kindLabel}：${entry.name}`,
+        data: {
+          id: entry.id,
+          kind: entry.kind,
+          source: entry.source,
+          title: entry.name,
+          summary: entry.description,
+          guide: entry.body,
+          files,
+        },
       }
     }
     case 'playtest__run_smoke': {

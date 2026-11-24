@@ -667,15 +667,19 @@ var init_rapierWorld = __esm({
 });
 
 // src/capabilities/physics/session.ts
-function registerPhysicsExtension(id, order, step) {
+function registerPhysicsExtension(id, order, step2) {
   const index = extensions.findIndex((item) => item.id === id);
   if (index >= 0) extensions.splice(index, 1);
-  extensions.push({ id, order, step });
+  extensions.push({ id, order, step: step2 });
   extensions.sort((a, b) => a.order - b.order);
   return () => {
     const idx = extensions.findIndex((item) => item.id === id);
     if (idx >= 0) extensions.splice(idx, 1);
   };
+}
+function moveCharacters(moves) {
+  if (!world || moves.length === 0) return null;
+  return world.moveCharacters(moves);
 }
 function getPhysicsBodyState(id) {
   return world?.bodyState(id) ?? null;
@@ -887,9 +891,9 @@ function normalizeWater(raw) {
     foamMapAssetId: typeof record.foamMapAssetId === "string" ? record.foamMapAssetId : null
   };
 }
-function finite(value, fallback, min2, max3) {
+function finite(value, fallback, min3, max4) {
   if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
-  return Math.min(max3, Math.max(min2, value));
+  return Math.min(max4, Math.max(min3, value));
 }
 var WATER_CAPABILITY_ID, WATER_DEBUG_VIEWS, WATER_QUALITY_PRESETS, WATER_STYLE_PRESETS;
 var init_defaults = __esm({
@@ -1138,16 +1142,16 @@ function defaultWaterNormalTexture() {
       data[o + 3] = 255;
     }
   }
-  const texture3 = new DataTexture(data, size, size, RGBAFormat, UnsignedByteType);
-  texture3.colorSpace = NoColorSpace;
-  texture3.wrapS = RepeatWrapping;
-  texture3.wrapT = RepeatWrapping;
-  texture3.minFilter = LinearMipmapLinearFilter;
-  texture3.magFilter = LinearFilter;
-  texture3.generateMipmaps = true;
-  texture3.needsUpdate = true;
-  cachedNormal = texture3;
-  return texture3;
+  const texture4 = new DataTexture(data, size, size, RGBAFormat, UnsignedByteType);
+  texture4.colorSpace = NoColorSpace;
+  texture4.wrapS = RepeatWrapping;
+  texture4.wrapT = RepeatWrapping;
+  texture4.minFilter = LinearMipmapLinearFilter;
+  texture4.magFilter = LinearFilter;
+  texture4.generateMipmaps = true;
+  texture4.needsUpdate = true;
+  cachedNormal = texture4;
+  return texture4;
 }
 function cellularWeb(u, v, period, pts, thickness) {
   const gx = Math.floor(u * period);
@@ -1224,16 +1228,16 @@ function defaultWaterFoamTexture() {
       data[o + 3] = 255;
     }
   }
-  const texture3 = new DataTexture(data, size, size, RGBAFormat, UnsignedByteType);
-  texture3.colorSpace = NoColorSpace;
-  texture3.wrapS = RepeatWrapping;
-  texture3.wrapT = RepeatWrapping;
-  texture3.minFilter = LinearMipmapLinearFilter;
-  texture3.magFilter = LinearFilter;
-  texture3.generateMipmaps = true;
-  texture3.needsUpdate = true;
-  cachedFoam = texture3;
-  return texture3;
+  const texture4 = new DataTexture(data, size, size, RGBAFormat, UnsignedByteType);
+  texture4.colorSpace = NoColorSpace;
+  texture4.wrapS = RepeatWrapping;
+  texture4.wrapT = RepeatWrapping;
+  texture4.minFilter = LinearMipmapLinearFilter;
+  texture4.magFilter = LinearFilter;
+  texture4.generateMipmaps = true;
+  texture4.needsUpdate = true;
+  cachedFoam = texture4;
+  return texture4;
 }
 function defaultWaterCausticsTexture() {
   if (cachedCaustics) return cachedCaustics;
@@ -1285,16 +1289,16 @@ function defaultWaterCausticsTexture() {
       data[o + 3] = 255;
     }
   }
-  const texture3 = new DataTexture(data, size, size, RGBAFormat, UnsignedByteType);
-  texture3.colorSpace = NoColorSpace;
-  texture3.wrapS = RepeatWrapping;
-  texture3.wrapT = RepeatWrapping;
-  texture3.minFilter = LinearMipmapLinearFilter;
-  texture3.magFilter = LinearFilter;
-  texture3.generateMipmaps = true;
-  texture3.needsUpdate = true;
-  cachedCaustics = texture3;
-  return texture3;
+  const texture4 = new DataTexture(data, size, size, RGBAFormat, UnsignedByteType);
+  texture4.colorSpace = NoColorSpace;
+  texture4.wrapS = RepeatWrapping;
+  texture4.wrapT = RepeatWrapping;
+  texture4.minFilter = LinearMipmapLinearFilter;
+  texture4.magFilter = LinearFilter;
+  texture4.generateMipmaps = true;
+  texture4.needsUpdate = true;
+  cachedCaustics = texture4;
+  return texture4;
 }
 var cachedNormal, cachedFoam, cachedCaustics;
 var init_proceduralTextures = __esm({
@@ -1310,14 +1314,14 @@ var init_proceduralTextures = __esm({
 function swellGroupInfo(group) {
   const a = VERTEX_WAVES[group * 2];
   const b = VERTEX_WAVES[group * 2 + 1] ?? a;
-  const length3 = (a.length + b.length) / 2;
-  const k = Math.PI * 2 / length3;
+  const length4 = (a.length + b.length) / 2;
+  const k = Math.PI * 2 / length4;
   const speed = Math.sqrt(GRAVITY / k);
   return {
     crestSpeed: speed,
     overtake: speed * PACKET_OVERTAKE,
-    kAlong: Math.PI * 2 / (length3 * PACKET_SPACING),
-    kAcross: Math.PI * 2 / (length3 * PACKET_WIDTH)
+    kAlong: Math.PI * 2 / (length4 * PACKET_SPACING),
+    kAcross: Math.PI * 2 / (length4 * PACKET_WIDTH)
   };
 }
 function smoothstep(edge0, edge1, x) {
@@ -1404,8 +1408,8 @@ function sampleAtRest(restX, restZ, spec, waveTime, swellTime) {
     const slope = c * w * crestPower - (c * c * 2 - 1) * waveLean;
     dy += height * amp * mod2;
     const crestUp = Math.max(s, 0);
-    const gather = c * spec.waveSteepness + crestUp * crestUp * waveCurl;
-    const horiz = gather * pinch * Math.min(mod2, 1.1);
+    const gather2 = c * spec.waveSteepness + crestUp * crestUp * waveCurl;
+    const horiz = gather2 * pinch * Math.min(mod2, 1.1);
     dx += dirX * horiz;
     dz += dirZ * horiz;
     const gradX = dirX * (gradAlong + k) + perpX * gradAcross;
@@ -1680,8 +1684,8 @@ function createWaterMaterial(options) {
       const c = cos(theta);
       vHeight = vHeight.add(profileOf(s, c, false).height.mul(wave.amp).mul(mod2).mul(wave.geoFade));
       const crestUp = max(s, float(0));
-      const gather = c.mul(uWaveSteepness).add(crestUp.mul(crestUp).mul(uWaveCurl));
-      vHoriz = vHoriz.add(wave.dir.mul(gather.mul(wave.pinch).mul(min(mod2, float(1.1))).mul(wave.geoFade)));
+      const gather2 = c.mul(uWaveSteepness).add(crestUp.mul(crestUp).mul(uWaveCurl));
+      vHoriz = vHoriz.add(wave.dir.mul(gather2.mul(wave.pinch).mul(min(mod2, float(1.1))).mul(wave.geoFade)));
     });
     displacedLocal = options.upAxis === "z" ? vec3(
       restLocal.x.add(vHoriz.x.mul(uInvScale.x)),
@@ -1964,9 +1968,9 @@ function createWaterMaterial(options) {
       normalTexNode.value = customNormal ?? defaultNormal;
       foamTexNode.value = customFoam ?? defaultFoam;
     },
-    setTime(time, waveTime, swellTime) {
+    setTime(time2, waveTime, swellTime) {
       uSwellTime.value = swellTime;
-      uTime.value = time;
+      uTime.value = time2;
       uWaveTime.value = waveTime;
     },
     setInvScale(worldScale) {
@@ -1982,10 +1986,10 @@ function createWaterMaterial(options) {
     setGridCenter(localX, localY) {
       uGridCenter.value.set(localX, localY);
     },
-    setSun(direction, color, intensity, skyHorizon, skyTop) {
+    setSun(direction, color2, intensity, skyHorizon, skyTop) {
       uSunDir.value.copy(direction).normalize();
       const boost = Math.min(2, Math.max(0.2, intensity));
-      uSunColor.value.copy(color).multiplyScalar(boost);
+      uSunColor.value.copy(color2).multiplyScalar(boost);
       if (skyHorizon) uSkyHorizonColor.value.copy(skyHorizon);
       if (skyTop) uSkyTopColor.value.copy(skyTop);
     },
@@ -2054,12 +2058,12 @@ function getFollowGeometry() {
   const half = [];
   let at = 0;
   let lastStep = 0;
-  for (const [step, count2] of FOLLOW_GRID.bands) {
+  for (const [step2, count2] of FOLLOW_GRID.bands) {
     for (let i = 0; i < count2; i += 1) {
-      at += step;
-      half.push({ at, step });
+      at += step2;
+      half.push({ at, step: step2 });
     }
-    lastStep = step;
+    lastStep = step2;
   }
   for (let i = 0; i < FOLLOW_GRID.doublingSteps; i += 1) {
     lastStep *= 2;
@@ -2502,8 +2506,8 @@ function defaultBuoyancy() {
     draftDepth: 0
   };
 }
-function clamp2(value, min2, max3) {
-  return Math.max(min2, Math.min(max3, value));
+function clamp2(value, min3, max4) {
+  return Math.max(min3, Math.min(max4, value));
 }
 function finite2(value, fallback) {
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
@@ -2913,8 +2917,8 @@ function createSplinePath(rawPoints, options) {
     closed,
     pointAt: (t) => rawPointAt(distanceToU((closed ? (t % 1 + 1) % 1 : Math.max(0, Math.min(1, t))) * totalLength)),
     tangentAt: (t) => tangentFromU(distanceToU((closed ? (t % 1 + 1) % 1 : Math.max(0, Math.min(1, t))) * totalLength)),
-    pointAtDistance: (distance) => rawPointAt(distanceToU(distance)),
-    tangentAtDistance: (distance) => tangentFromU(distanceToU(distance))
+    pointAtDistance: (distance2) => rawPointAt(distanceToU(distance2)),
+    tangentAtDistance: (distance2) => tangentFromU(distanceToU(distance2))
   };
 }
 var init_motion = __esm({
@@ -3137,8 +3141,8 @@ function createTrailMaterial(source) {
   const particleColor = attr(PARTICLE_ATTR.color, "vec4");
   const map = source.map;
   const sampled = map ? texture2(map, uv()) : vec42(1, 1, 1, 1);
-  const color = source.color;
-  const tint = uni(new Color3(color?.r ?? 1, color?.g ?? 1, color?.b ?? 1));
+  const color2 = source.color;
+  const tint = uni(new Color3(color2?.r ?? 1, color2?.g ?? 1, color2?.b ?? 1));
   material.colorNode = sampled.rgb.mul(particleColor.rgb).mul(tint);
   material.opacityNode = sampled.a.mul(particleColor.a);
   material.vertexNode = trailClip();
@@ -3577,17 +3581,66 @@ function scalePlayDt(dt, now = performance.now() / 1e3) {
   if (now < holdUntil) return 0;
   return dt;
 }
-var holdUntil;
+function clearJuice() {
+  holdUntil = 0;
+  shakeAmp = 0;
+  shakeUntil = 0;
+  if (flashColor) {
+    flashColor = "";
+    flashUntil = 0;
+    flashListeners.forEach((listener2) => listener2());
+  }
+}
+function armJuice(hitStopSec, shake, color2, now) {
+  if (hitStopSec > 0) holdUntil = Math.max(holdUntil, now + hitStopSec);
+  if (shake > 0) {
+    shakeAmp = shake;
+    shakeUntil = now + 0.28;
+  }
+  if (color2) {
+    flashColor = color2;
+    flashUntil = now + 0.12;
+    flashListeners.forEach((listener2) => listener2());
+    window.setTimeout(() => flashListeners.forEach((listener2) => listener2()), 140);
+  }
+}
+var holdUntil, shakeAmp, shakeUntil, flashColor, flashUntil, flashListeners;
 var init_juiceClock = __esm({
   "src/gameplay/juiceClock.ts"() {
     "use strict";
     holdUntil = 0;
+    shakeAmp = 0;
+    shakeUntil = 0;
+    flashColor = "";
+    flashUntil = 0;
+    flashListeners = /* @__PURE__ */ new Set();
   }
 });
 
 // src/core/input/actionMap.ts
 function cloneDefaultMap() {
   return structuredClone(DEFAULT_INPUT_MAP);
+}
+function isTypingTarget(target) {
+  const element = target;
+  const tag = element?.tagName;
+  return Boolean(tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || element?.isContentEditable);
+}
+function bindGlobalInputListeners() {
+  if (listenersBound || typeof window === "undefined") return;
+  listenersBound = true;
+  window.addEventListener("keydown", (event) => {
+    if (isTypingTarget(event.target)) return;
+    if (!physicalKeys.has(event.code)) tappedKeys.add(event.code);
+    physicalKeys.add(event.code);
+  });
+  window.addEventListener("keyup", (event) => {
+    physicalKeys.delete(event.code);
+  });
+  window.addEventListener("blur", () => {
+    physicalKeys.clear();
+    tappedKeys.clear();
+  });
 }
 function injectVirtualInput(events) {
   const list = Array.isArray(events) ? events : [events];
@@ -3692,7 +3745,7 @@ function consumeInputFrame() {
   tappedKeys.clear();
   tappedActions.clear();
 }
-var DEFAULT_INPUT_MAP, currentMap, physicalKeys, virtualKeys, tappedKeys, virtualActions, tappedActions, virtualAxes;
+var DEFAULT_INPUT_MAP, currentMap, physicalKeys, virtualKeys, tappedKeys, virtualActions, tappedActions, virtualAxes, listenersBound;
 var init_actionMap = __esm({
   "src/core/input/actionMap.ts"() {
     "use strict";
@@ -3759,14 +3812,15 @@ var init_actionMap = __esm({
     virtualActions = /* @__PURE__ */ new Set();
     tappedActions = /* @__PURE__ */ new Set();
     virtualAxes = /* @__PURE__ */ new Map();
+    listenersBound = false;
   }
 });
 
 // src/runtime/frameProfile.ts
-function measureCost(id, run) {
+function measureCost(id, run2) {
   const start2 = performance.now();
   try {
-    run();
+    run2();
   } finally {
     const ms = performance.now() - start2;
     buckets.set(id, (buckets.get(id) ?? 0) + ms);
@@ -3783,11 +3837,166 @@ var init_frameProfile = __esm({
 });
 
 // src/runtime/sceneRuntime.ts
-function registerRuntimeSystem(id, order, step) {
+function defaultCharacter() {
+  return {
+    enabled: true,
+    driver: "capsule",
+    mode: "adventure",
+    clickButton: "right",
+    clickStop: 0.35,
+    moveSpeed: 4.5,
+    turnSpeed: 540,
+    sprintMultiplier: 1.6,
+    jumpSpeed: 6.5,
+    maxJumps: 2,
+    coyoteTime: 0.12,
+    jumpBuffer: 0.12,
+    gravity: 18,
+    radius: 0.35,
+    height: 1.7,
+    capsuleOffset: [0, 0, 0],
+    physicsInteract: false,
+    mass: 65,
+    pushStrength: 1,
+    swim: true,
+    swimSpeedMultiplier: 0.65,
+    swimHeightOffset: 0,
+    dash: true,
+    dashKey: "KeyC",
+    dashDistance: 4,
+    dashDuration: 0.22,
+    dashInvincible: 0.35,
+    dashCooldown: 0.8,
+    footstepDistance: 1.6,
+    footstepJuice: "",
+    lockTargetId: "",
+    lockTargetName: "",
+    idleClip: "",
+    idleClipAssetId: "",
+    walkClip: "",
+    walkClipAssetId: "",
+    runClip: "",
+    runClipAssetId: "",
+    jumpClip: "",
+    jumpClipAssetId: "",
+    airClip: "",
+    airClipAssetId: "",
+    landClip: "",
+    landClipAssetId: "",
+    dodgeClip: "",
+    dodgeClipAssetId: "",
+    swimIdleClip: "",
+    swimIdleClipAssetId: "",
+    swimClip: "",
+    swimClipAssetId: ""
+  };
+}
+function isCoreCondition(kind) {
+  return CONDS.includes(kind);
+}
+function emptyCondition(kind = "hasTag") {
+  return { id: crypto.randomUUID(), kind, tag: "", left: "", op: "==", right: "" };
+}
+function emptyStep(kind = "message") {
+  return {
+    id: crypto.randomUUID(),
+    do: kind,
+    message: "",
+    name: "",
+    value: "0",
+    tag: "",
+    seconds: kind === "wait" ? 0.5 : 0,
+    clip: "",
+    clipAssetId: "",
+    stateId: "",
+    level: "info",
+    conditions: kind === "if" ? [emptyCondition("hasTag")] : [],
+    steps: []
+  };
+}
+function readRules(raw) {
+  if (!Array.isArray(raw)) return [];
+  return raw.map(normalizeRule).filter((rule) => !!rule);
+}
+function readRuleStates(raw) {
+  if (!Array.isArray(raw)) return [];
+  return raw.map(normalizeState).filter((node) => !!node);
+}
+function normalizeRule(raw) {
+  if (!raw || typeof raw !== "object") return null;
+  const item = raw;
+  const legacy = item.cond && item.cond !== "always" ? [emptyCondition(item.cond)] : [];
+  if (legacy[0] && item.cond) {
+    legacy[0].tag = item.tag ?? "";
+    legacy[0].left = item.left ?? "";
+    legacy[0].op = item.op || "==";
+    legacy[0].right = item.right ?? "";
+  }
+  return {
+    id: item.id || crypto.randomUUID(),
+    name: item.name ?? "",
+    enabled: item.enabled !== false,
+    trigger: typeof item.trigger === "string" && item.trigger ? item.trigger : "playStart",
+    message: item.message ?? "",
+    key: item.key || "KeyE",
+    conditions: Array.isArray(item.conditions) && item.conditions.length > 0 ? item.conditions.map(normalizeCondition) : legacy,
+    steps: Array.isArray(item.steps) ? item.steps.map(normalizeStep) : []
+  };
+}
+function normalizeCondition(raw) {
+  const item = raw ?? {};
+  return {
+    id: item.id || crypto.randomUUID(),
+    kind: typeof item.kind === "string" && item.kind ? item.kind : "always",
+    tag: item.tag ?? "",
+    left: item.left ?? "",
+    op: item.op || "==",
+    right: item.right ?? ""
+  };
+}
+function normalizeStep(raw) {
+  const item = raw ?? {};
+  const kind = typeof item.do === "string" && item.do ? item.do : "message";
+  const step2 = emptyStep(kind);
+  step2.id = item.id || step2.id;
+  step2.message = item.message ?? "";
+  step2.name = item.name ?? "";
+  step2.value = item.value ?? "0";
+  step2.tag = item.tag ?? "";
+  step2.seconds = Number.isFinite(item.seconds) ? Number(item.seconds) : step2.seconds;
+  step2.clip = item.clip ?? "";
+  step2.clipAssetId = item.clipAssetId ?? "";
+  step2.stateId = item.stateId ?? "";
+  step2.level = item.level === "warn" || item.level === "error" ? item.level : "info";
+  const legacy = item.do === "if" && item.cond ? [{ ...emptyCondition(isCoreCondition(item.cond) ? item.cond : "always"), tag: item.tag ?? "", left: item.left ?? "", op: item.op || "==", right: item.right ?? "" }] : [];
+  step2.conditions = Array.isArray(item.conditions) && item.conditions.length > 0 ? item.conditions.map(normalizeCondition) : legacy;
+  step2.steps = Array.isArray(item.steps) ? item.steps.map(normalizeStep) : [];
+  return step2;
+}
+function normalizeState(raw) {
+  if (!raw || typeof raw !== "object") return null;
+  const item = raw;
+  if (!item.id) return null;
+  return {
+    id: item.id,
+    name: item.name ?? "",
+    children: Array.isArray(item.children) ? item.children.map(normalizeState).filter((node) => !!node) : [],
+    onEnter: Array.isArray(item.onEnter) ? item.onEnter.map(normalizeStep) : [],
+    onTick: Array.isArray(item.onTick) ? item.onTick.map(normalizeStep) : [],
+    onExit: Array.isArray(item.onExit) ? item.onExit.map(normalizeStep) : [],
+    transitions: Array.isArray(item.transitions) ? item.transitions.map((jump) => ({
+      id: jump.id || crypto.randomUUID(),
+      targetId: jump.targetId ?? "",
+      conditions: Array.isArray(jump.conditions) ? jump.conditions.map(normalizeCondition) : []
+    })) : [],
+    enter: Array.isArray(item.enter) ? item.enter.map(normalizeCondition) : []
+  };
+}
+function registerRuntimeSystem(id, order, step2) {
   const target = order >= RUNTIME_STAGE.POST_ANIMATION ? postAnimationSystems : order >= RUNTIME_STAGE.PHYSICS_NAV ? postPhysicsSystems : systems;
   const index = target.findIndex((item) => item.id === id);
   if (index >= 0) target.splice(index, 1);
-  target.push({ id, order, step });
+  target.push({ id, order, step: step2 });
   target.sort((a, b) => a.order - b.order);
   return () => {
     const idx = target.findIndex((item) => item.id === id);
@@ -3813,7 +4022,7 @@ function stepSceneRuntime(dt, host) {
   }
   consumeInputFrame();
 }
-var RUNTIME_STAGE, systems, postPhysicsSystems, postAnimationSystems;
+var CONDS, RUNTIME_STAGE, systems, postPhysicsSystems, postAnimationSystems;
 var init_sceneRuntime = __esm({
   "src/runtime/sceneRuntime.ts"() {
     "use strict";
@@ -3823,6 +4032,7 @@ var init_sceneRuntime = __esm({
     init_juiceClock();
     init_actionMap();
     init_frameProfile();
+    CONDS = ["always", "hasTag", "missingTag", "compare", "formula"];
     RUNTIME_STAGE = {
       PRE_PHYSICS: 10,
       PHYSICS_NAV: 50,
@@ -3983,27 +4193,27 @@ var init_schema = __esm({
     SPLINE_PATH_CAPABILITY_ID = "splinePath";
     SPLINE_SCHEMA = {
       type: "object",
-      label: "Spline \u8DEF\u5F84\u8FD0\u52A8",
+      label: "spline.title",
       fields: {
-        enabled: { type: "boolean", default: true, label: "\u542F\u7528" },
-        pathNodeId: { type: "ref", target: "node", kinds: ["spline"], default: null, label: "Spline \u66F2\u7EBF\u8282\u70B9" },
+        enabled: { type: "boolean", default: true, label: "field.enable" },
+        pathNodeId: { type: "ref", target: "node", kinds: ["spline"], default: null, label: "spline.pathNode" },
         mode: {
           type: "enum",
           default: "loop",
-          label: "\u8FD0\u884C\u6A21\u5F0F",
+          label: "spline.mode",
           options: [
-            { value: "once", label: "\u5355\u6B21\u5230\u8FBE" },
-            { value: "loop", label: "\u5FAA\u73AF" },
-            { value: "pingPong", label: "\u5F80\u8FD4" }
+            { value: "once", label: "spline.mode.once" },
+            { value: "loop", label: "spline.mode.loop" },
+            { value: "pingPong", label: "spline.mode.pingPong" }
           ]
         },
-        speed: { type: "number", default: 4, min: 0.05, max: 200, step: 0.5, label: "\u79FB\u52A8\u901F\u5EA6 (m/s)" },
-        tension: { type: "number", default: 0.5, min: 0, max: 1, step: 0.05, label: "\u66F2\u7EBF\u5F20\u529B" },
-        closed: { type: "boolean", default: false, label: "\u95ED\u5408\u66F2\u7EBF" },
-        faceDirection: { type: "boolean", default: true, label: "\u671D\u5411\u8DEF\u5F84\u5207\u7EBF" },
-        planeXZ: { type: "boolean", default: false, label: "\u4FDD\u6301\u5F53\u524D\u9AD8\u5EA6 (XZ)" },
-        autoStart: { type: "boolean", default: true, label: "\u8BD5\u73A9\u81EA\u52A8\u542F\u52A8" },
-        startProgress: { type: "number", default: 0, min: 0, max: 1, step: 0.05, label: "\u8D77\u59CB\u8FDB\u5EA6 (0~1)" }
+        speed: { type: "number", default: 4, min: 0.05, max: 200, step: 0.5, label: "spline.speed" },
+        tension: { type: "number", default: 0.5, min: 0, max: 1, step: 0.05, label: "spline.curveTension" },
+        closed: { type: "boolean", default: false, label: "field.closed" },
+        faceDirection: { type: "boolean", default: true, label: "spline.face" },
+        planeXZ: { type: "boolean", default: false, label: "spline.planeXZ" },
+        autoStart: { type: "boolean", default: true, label: "spline.autoStart" },
+        startProgress: { type: "number", default: 0, min: 0, max: 1, step: 0.05, label: "spline.start" }
       }
     };
   }
@@ -4124,9 +4334,9 @@ function stepSplineCapability(dt, host) {
     const pt = agent.spline.pointAtDistance(nextDist);
     obj.position.set(pt.x, spec.planeXZ ? obj.position.y : pt.y, pt.z);
     if (spec.faceDirection) {
-      const tan = agent.spline.tangentAtDistance(nextDist);
-      const tx = tan.x * agent.direction;
-      const tz = tan.z * agent.direction;
+      const tan2 = agent.spline.tangentAtDistance(nextDist);
+      const tx = tan2.x * agent.direction;
+      const tz = tan2.z * agent.direction;
       if (Math.abs(tx) > 1e-5 || Math.abs(tz) > 1e-5) {
         obj.rotation.y = Math.atan2(tx, tz);
       }
@@ -4179,50 +4389,50 @@ var init_schema2 = __esm({
     TWEEN_CAPABILITY_ID = "tween";
     TWEEN_SCHEMA = {
       type: "object",
-      label: "Tween \u8865\u95F4\u52A8\u6548",
+      label: "tween.title",
       fields: {
-        enabled: { type: "boolean", default: true, label: "\u542F\u7528" },
+        enabled: { type: "boolean", default: true, label: "field.enable" },
         property: {
           type: "enum",
           default: "floatBob",
-          label: "\u52A8\u6548\u7C7B\u578B",
+          label: "tween.kind",
           options: [
-            { value: "floatBob", label: "\u60AC\u6D6E\u6D6E\u52A8 (PingPong)" },
-            { value: "positionOffset", label: "\u4F4D\u7F6E\u504F\u79FB" },
-            { value: "rotationOffset", label: "\u65CB\u8F6C\u89D2\u5EA6 (\u5EA6)" },
-            { value: "scaleMultiplier", label: "\u7F29\u653E\u500D\u7387\u53D8\u5316" }
+            { value: "floatBob", label: "tween.kind.floatBob" },
+            { value: "positionOffset", label: "tween.kind.positionOffset" },
+            { value: "rotationOffset", label: "tween.kind.rotationOffset" },
+            { value: "scaleMultiplier", label: "tween.kind.scaleMultiplier" }
           ]
         },
-        delta: { type: "vec3", default: [0, 0.35, 0], label: "\u53D8\u5316\u91CF (X/Y/Z)" },
-        duration: { type: "number", default: 1.2, min: 0.05, max: 60, step: 0.1, label: "\u5355\u7A0B\u65F6\u957F (\u79D2)" },
-        delay: { type: "number", default: 0, min: 0, max: 30, step: 0.1, label: "\u8D77\u59CB\u5EF6\u8FDF (\u79D2)" },
+        delta: { type: "vec3", default: [0, 0.35, 0], label: "tween.delta" },
+        duration: { type: "number", default: 1.2, min: 0.05, max: 60, step: 0.1, label: "tween.duration" },
+        delay: { type: "number", default: 0, min: 0, max: 30, step: 0.1, label: "tween.delay" },
         ease: {
           type: "enum",
           default: "inOutSine",
-          label: "\u7F13\u52A8\u66F2\u7EBF",
+          label: "tween.ease",
           options: [
-            { value: "linear", label: "\u7EBF\u6027 (Linear)" },
-            { value: "inOutSine", label: "\u6B63\u5F26\u7F13\u5165\u7F13\u51FA (Sine)" },
-            { value: "outQuad", label: "\u4E8C\u6B21\u7F13\u51FA (OutQuad)" },
-            { value: "inOutQuad", label: "\u4E8C\u6B21\u7F13\u5165\u7F13\u51FA (InOutQuad)" },
-            { value: "outCubic", label: "\u4E09\u6B21\u7F13\u51FA (OutCubic)" },
-            { value: "inOutCubic", label: "\u4E09\u6B21\u7F13\u5165\u7F13\u51FA (InOutCubic)" },
-            { value: "outBack", label: "\u56DE\u5F39 (OutBack)" },
-            { value: "outBounce", label: "\u5F39\u8DF3 (OutBounce)" },
-            { value: "outElastic", label: "\u5F39\u6027 (OutElastic)" }
+            { value: "linear", label: "tween.ease.linear" },
+            { value: "inOutSine", label: "tween.ease.inOutSine" },
+            { value: "outQuad", label: "tween.ease.outQuad" },
+            { value: "inOutQuad", label: "tween.ease.inOutQuad" },
+            { value: "outCubic", label: "tween.ease.outCubic" },
+            { value: "inOutCubic", label: "tween.ease.inOutCubic" },
+            { value: "outBack", label: "tween.ease.outBack" },
+            { value: "outBounce", label: "tween.ease.outBounce" },
+            { value: "outElastic", label: "tween.ease.outElastic" }
           ]
         },
         loopMode: {
           type: "enum",
           default: "pingPong",
-          label: "\u5FAA\u73AF\u6A21\u5F0F",
+          label: "tween.repeat",
           options: [
-            { value: "once", label: "\u5355\u6B21" },
-            { value: "loop", label: "\u4ECE\u5934\u5FAA\u73AF" },
-            { value: "pingPong", label: "\u5F80\u8FD4 (PingPong)" }
+            { value: "once", label: "tween.repeat.once" },
+            { value: "loop", label: "tween.repeat.loop" },
+            { value: "pingPong", label: "tween.repeat.pingPong" }
           ]
         },
-        autoStart: { type: "boolean", default: true, label: "\u8BD5\u73A9\u81EA\u52A8\u64AD\u653E" }
+        autoStart: { type: "boolean", default: true, label: "tween.autoStart" }
       }
     };
   }
@@ -4371,16 +4581,16 @@ var init_schema3 = __esm({
     CROWD_CAPABILITY_ID = "crowd";
     CROWD_SCHEMA = {
       type: "object",
-      label: "\u7FA4\u4F53\u907F\u8BA9 (Crowd)",
+      label: "crowd.title",
       fields: {
-        enabled: { type: "boolean", default: true, label: "\u542F\u7528" },
-        radius: { type: "number", default: 0.8, min: 0.2, max: 10, step: 0.1, label: "\u907F\u8BA9\u534A\u5F84 (m)" },
-        maxSpeed: { type: "number", default: 4.5, min: 0.1, max: 50, step: 0.5, label: "\u6700\u5927\u901F\u5EA6 (m/s)" },
-        separationWeight: { type: "number", default: 1.8, min: 0, max: 10, step: 0.1, label: "\u5206\u79BB\u6743\u91CD" },
-        cohesionWeight: { type: "number", default: 0.25, min: 0, max: 5, step: 0.05, label: "\u51DD\u805A\u6743\u91CD" },
-        alignmentWeight: { type: "number", default: 0.35, min: 0, max: 5, step: 0.05, label: "\u5BF9\u9F50\u6743\u91CD" },
-        planeXZ: { type: "boolean", default: true, label: "XZ \u5E73\u9762\u79FB\u52A8" },
-        faceDirection: { type: "boolean", default: true, label: "\u671D\u5411\u79FB\u52A8\u65B9\u5411" }
+        enabled: { type: "boolean", default: true, label: "field.enable" },
+        radius: { type: "number", default: 0.8, min: 0.2, max: 10, step: 0.1, label: "crowd.radius" },
+        maxSpeed: { type: "number", default: 4.5, min: 0.1, max: 50, step: 0.5, label: "crowd.maxSpeed" },
+        separationWeight: { type: "number", default: 1.8, min: 0, max: 10, step: 0.1, label: "crowd.separation" },
+        cohesionWeight: { type: "number", default: 0.25, min: 0, max: 5, step: 0.05, label: "crowd.cohesion" },
+        alignmentWeight: { type: "number", default: 0.35, min: 0, max: 5, step: 0.05, label: "crowd.alignment" },
+        planeXZ: { type: "boolean", default: true, label: "crowd.planeXZ" },
+        faceDirection: { type: "boolean", default: true, label: "crowd.face" }
       }
     };
   }
@@ -4462,12 +4672,12 @@ function setCrowdFormation(nodeIds, center, options) {
   const formation = options?.formation ?? "grid";
   const spacing = Math.max(0.5, options?.spacing ?? 1.8);
   const yaw = options?.facingYaw ?? 0;
-  const cos2 = Math.cos(yaw);
-  const sin2 = Math.sin(yaw);
+  const cos3 = Math.cos(yaw);
+  const sin3 = Math.sin(yaw);
   const rotateOffset = (lx, lz) => ({
-    x: center.x + lx * cos2 + lz * sin2,
+    x: center.x + lx * cos3 + lz * sin3,
     y: center.y,
-    z: center.z - lx * sin2 + lz * cos2
+    z: center.z - lx * sin3 + lz * cos3
   });
   if (formation === "line") {
     const half = (count - 1) * 0.5;
@@ -4723,13 +4933,31 @@ var init_session7 = __esm({
 });
 
 // src/gameplay/types.ts
+var CORE_GAMEPLAY_PACK_ID;
 var init_types = __esm({
   "src/gameplay/types.ts"() {
     "use strict";
+    CORE_GAMEPLAY_PACK_ID = "t3d.core";
   }
 });
 
 // src/gameplay/registry.ts
+function resolveEnabledPackIds(enabled) {
+  const next = /* @__PURE__ */ new Set([CORE_GAMEPLAY_PACK_ID, ...enabled ?? []]);
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const id of [...next]) {
+      for (const dep of packs.get(id)?.dependencies ?? []) {
+        if (!next.has(dep)) {
+          next.add(dep);
+          changed = true;
+        }
+      }
+    }
+  }
+  return next;
+}
 function tableSchema(tableId) {
   for (const pack of packs.values()) {
     const found = pack.tables?.find((table) => table.tableId === tableId);
@@ -4749,6 +4977,39 @@ function findRow(database, tableId, id) {
   const key = id.trim();
   if (!key) return void 0;
   return tableRows(database, tableId).find((row) => row.id === key);
+}
+function listEnabledPackTriggers(enabled) {
+  const on = resolveEnabledPackIds(enabled);
+  const out = [];
+  for (const pack of packs.values()) {
+    if (!on.has(pack.id)) continue;
+    for (const def of pack.triggers ?? []) out.push({ packId: pack.id, def });
+  }
+  return out;
+}
+function findPackTrigger(kind, enabled) {
+  const on = resolveEnabledPackIds(enabled);
+  for (const pack of packs.values()) {
+    const def = pack.triggers?.find((item) => item.kind === kind);
+    if (def) return { packId: pack.id, enabled: on.has(pack.id), def };
+  }
+  return void 0;
+}
+function findPackCondition(kind, enabled) {
+  const on = resolveEnabledPackIds(enabled);
+  for (const pack of packs.values()) {
+    const def = pack.conditions?.find((item) => item.kind === kind);
+    if (def) return { packId: pack.id, enabled: on.has(pack.id), def };
+  }
+  return void 0;
+}
+function findPackAction(kind, enabled) {
+  const on = resolveEnabledPackIds(enabled);
+  for (const pack of packs.values()) {
+    const def = pack.actions?.find((item) => item.kind === kind);
+    if (def) return { packId: pack.id, enabled: on.has(pack.id), def };
+  }
+  return void 0;
 }
 var packs;
 var init_registry = __esm({
@@ -4777,6 +5038,17 @@ function listRuntimeTags(nodeId, now = performance.now() / 1e3) {
     remaining: until > 0 ? Math.max(0, until - now) : null
   }));
 }
+function clearRuntimeTags() {
+  bags.clear();
+}
+function tickRuntimeTags(now) {
+  for (const [nodeId, bag] of bags) {
+    for (const [tag, until] of bag) {
+      if (until > 0 && now >= until) bag.delete(tag);
+    }
+    if (bag.size === 0) bags.delete(nodeId);
+  }
+}
 function nodeHasTag(node, query) {
   if (!query.trim()) return false;
   if (matchesTag(node.tagId, query)) return true;
@@ -4789,6 +5061,50 @@ function nodeHasTag(node, query) {
     if (matchesTag(tag, query)) return true;
   }
   return false;
+}
+function addRuntimeTag(nodeId, tag, seconds, now) {
+  const id = tag.trim();
+  if (!id || blocked(nodeId, id)) return false;
+  const bag = bags.get(nodeId) ?? /* @__PURE__ */ new Map();
+  const previous = bag.get(id);
+  if (previous === 0 || seconds <= 0) bag.set(id, 0);
+  else bag.set(id, Math.max(previous ?? 0, now + seconds));
+  bags.set(nodeId, bag);
+  enforceBlocks(nodeId);
+  return bags.get(nodeId)?.has(id) ?? false;
+}
+function removeRuntimeTag(nodeId, tag) {
+  const id = tag.trim();
+  if (!id) return;
+  const bag = bags.get(nodeId);
+  if (!bag) return;
+  for (const key of [...bag.keys()]) {
+    if (matchesTag(key, id)) bag.delete(key);
+  }
+  if (bag.size === 0) bags.delete(nodeId);
+}
+function blockPrefix(tag) {
+  const row = findRow(getRuntimeWorld().getGameDatabase(), "tags", tag);
+  const prefix = row?.fields?.blockPrefix;
+  return typeof prefix === "string" ? prefix.trim() : "";
+}
+function blocked(nodeId, tag) {
+  const bag = bags.get(nodeId);
+  if (!bag) return false;
+  for (const held2 of bag.keys()) {
+    const prefix = blockPrefix(held2);
+    if (prefix && matchesTag(tag, prefix)) return true;
+  }
+  return false;
+}
+function enforceBlocks(nodeId) {
+  const bag = bags.get(nodeId);
+  if (!bag) return;
+  const prefixes = [...bag.keys()].map(blockPrefix).filter(Boolean);
+  if (prefixes.length === 0) return;
+  for (const key of [...bag.keys()]) {
+    if (prefixes.some((prefix) => matchesTag(key, prefix))) bag.delete(key);
+  }
 }
 var bags;
 var init_runtimeTags = __esm({
@@ -4812,27 +5128,27 @@ var init_schema4 = __esm({
     PROJECTILE_CAPABILITY_ID = "projectile";
     PROJECTILE_SCHEMA = {
       type: "object",
-      label: "\u901A\u7528\u5F39\u9053 (Projectile)",
+      label: "projectile.title",
       fields: {
-        enabled: { type: "boolean", default: true, label: "\u542F\u7528" },
+        enabled: { type: "boolean", default: true, label: "field.enable" },
         mode: {
           type: "enum",
           default: "linear",
-          label: "\u5F39\u9053\u6A21\u5F0F",
+          label: "projectile.mode",
           options: [
-            { value: "linear", label: "\u76F4\u7EBF\u98DE\u884C" },
-            { value: "homing", label: "\u81EA\u52A8\u8FFD\u8E2A" },
-            { value: "ballistic", label: "\u629B\u7269\u7EBF" }
+            { value: "linear", label: "projectile.mode.linear" },
+            { value: "homing", label: "projectile.mode.homing" },
+            { value: "ballistic", label: "projectile.mode.ballistic" }
           ]
         },
-        speed: { type: "number", default: 22, min: 0.5, max: 200, step: 1, label: "\u98DE\u884C\u901F\u5EA6 (m/s)" },
-        gravity: { type: "number", default: 9.8, min: 0, max: 50, step: 0.5, label: "\u91CD\u529B\u52A0\u901F\u5EA6" },
-        turnRate: { type: "number", default: 6, min: 0.1, max: 30, step: 0.5, label: "\u8FFD\u8E2A\u8F6C\u5411\u7387 (rad/s)" },
-        maxLifetime: { type: "number", default: 3, min: 0.1, max: 60, step: 0.2, label: "\u6700\u5927\u5BFF\u547D (s)" },
-        hitRadius: { type: "number", default: 0.65, min: 0.05, max: 10, step: 0.05, label: "\u547D\u4E2D\u5224\u5B9A\u534A\u5F84 (m)" },
-        targetTag: { type: "string", default: "enemy", label: "\u76EE\u6807\u6807\u7B7E" },
-        damage: { type: "number", default: 10, min: 0, max: 9999, step: 1, label: "\u4F24\u5BB3\u503C" },
-        destroyOnHit: { type: "boolean", default: true, label: "\u547D\u4E2D\u540E\u56DE\u6C60/\u9500\u6BC1" }
+        speed: { type: "number", default: 22, min: 0.5, max: 200, step: 1, label: "projectile.speed" },
+        gravity: { type: "number", default: 9.8, min: 0, max: 50, step: 0.5, label: "projectile.gravity" },
+        turnRate: { type: "number", default: 6, min: 0.1, max: 30, step: 0.5, label: "projectile.turn" },
+        maxLifetime: { type: "number", default: 3, min: 0.1, max: 60, step: 0.2, label: "projectile.life" },
+        hitRadius: { type: "number", default: 0.65, min: 0.05, max: 10, step: 0.05, label: "projectile.hitRadius" },
+        targetTag: { type: "string", default: "enemy", label: "projectile.targetTag" },
+        damage: { type: "number", default: 10, min: 0, max: 9999, step: 1, label: "projectile.damage" },
+        destroyOnHit: { type: "boolean", default: true, label: "projectile.destroy" }
       }
     };
   }
@@ -5150,9 +5466,9 @@ function normalizeSkySettings(value) {
     mirrorBelowHorizon: bool(raw.mirrorBelowHorizon, base.mirrorBelowHorizon)
   };
 }
-function clamp3(value, fallback, min2, max3) {
+function clamp3(value, fallback, min3, max4) {
   const next = typeof value === "number" && Number.isFinite(value) ? value : fallback;
-  return Math.min(max3, Math.max(min2, next));
+  return Math.min(max4, Math.max(min3, next));
 }
 function bool(value, fallback) {
   return typeof value === "boolean" ? value : fallback;
@@ -5255,6 +5571,8 @@ var init_runtime = __esm({
       hazeOn = false;
       fogOn = false;
       apKey = "";
+      apFrame = 0;
+      apWarned = false;
       applyFogNode = (colorNode, scenePass) => {
         let node = colorNode;
         if (this.hazeOn && this.sky.aerialPerspectiveTexture) {
@@ -5323,7 +5641,7 @@ var init_runtime = __esm({
           const nextApKey = `${e[0].toFixed(3)},${e[4].toFixed(3)},${e[8].toFixed(3)},${e[12].toFixed(2)},${e[13].toFixed(2)},${e[14].toFixed(2)}|${settings.timeOfDay}|${settings.latitude}|${settings.dayOfYear}|${settings.north}|${settings.turbidity}|${settings.groundAlbedo}`;
           if (nextApKey !== this.apKey) {
             this.apKey = nextApKey;
-            void this.sky.updateAerialPerspective();
+            this.scheduleAerialPerspective();
           }
         } else {
           this.apKey = "";
@@ -5336,7 +5654,20 @@ var init_runtime = __esm({
           signature: `${settings.haze ? 1 : 0}${settings.fog ? 1 : 0}`
         });
       }
+      scheduleAerialPerspective() {
+        if (this.apFrame) return;
+        this.apFrame = requestAnimationFrame(() => {
+          this.apFrame = 0;
+          void this.sky.updateAerialPerspective().catch((error) => {
+            if (this.apWarned) return;
+            this.apWarned = true;
+            console.warn("[sky] \u5927\u6C14\u900F\u89C6\u66F4\u65B0\u5931\u8D25", error);
+          });
+        });
+      }
       dispose() {
+        if (this.apFrame) cancelAnimationFrame(this.apFrame);
+        this.apFrame = 0;
         this.starToken += 1;
         this.starsWanted = false;
         if (this.starsReady) this.sky.disableStars();
@@ -5765,7 +6096,7 @@ var init_recastNav = __esm({
           this.carved.set(item.id, added.obstacle);
         }
         if (!changed) return;
-        for (let step = 0; step < 8; step += 1) {
+        for (let step2 = 0; step2 < 8; step2 += 1) {
           const updated = cache.update(mesh);
           if (updated.upToDate) break;
         }
@@ -5994,7 +6325,7 @@ init_session7();
 init_session8();
 init_session();
 init_registry();
-import { Vector3 as Vector39 } from "three";
+import { Vector3 as Vector310 } from "three";
 
 // src/runtime/audio.ts
 init_sceneRuntime();
@@ -6026,11 +6357,11 @@ function playSound(options) {
   const id = nextId++;
   const ticket = playTicket;
   const ear = ensureListener();
-  const run = () => {
+  const run2 = () => {
     void start(id, options, ticket);
   };
-  if (ear.context.state === "suspended" && !holdContext) void ear.context.resume().then(run);
-  else run();
+  if (ear.context.state === "suspended" && !holdContext) void ear.context.resume().then(run2);
+  else run2();
   return id;
 }
 function stopMusic() {
@@ -6105,8 +6436,8 @@ async function start(id, options, ticket) {
   }
   const latestWorld = getRuntimeWorld();
   if (options.bus === "music" && latestWorld.getPlayState() !== "playing") return;
-  const mix5 = readAudioMix(latestWorld.getPicture());
-  applyMix(mix5);
+  const mix6 = readAudioMix(latestWorld.getPicture());
+  applyMix(mix6);
   const bus = options.bus ?? "sfx";
   if (bus === "sfx") trimSfx();
   const ear = ensureListener();
@@ -6114,7 +6445,7 @@ async function start(id, options, ticket) {
   audio.setBuffer(buffer);
   audio.setLoop(options.loop === true);
   const local = clamp4(options.volume ?? 1, 0, 4);
-  audio.setVolume(local * (bus === "music" ? mix5.music : mix5.sfx));
+  audio.setVolume(local * (bus === "music" ? mix6.music : mix6.sfx));
   if (options.playbackRate && options.playbackRate > 0) audio.setPlaybackRate(options.playbackRate);
   if (audio instanceof PositionalAudio && options.parent) {
     audio.setRefDistance(Math.max(0.05, options.refDistance ?? 2));
@@ -6190,22 +6521,22 @@ function stopVoice(voice) {
   voice.audio.disconnect();
 }
 var appliedMix = "";
-function applyMix(mix5) {
-  const key = `${mix5.master}|${mix5.music}|${mix5.sfx}`;
+function applyMix(mix6) {
+  const key = `${mix6.master}|${mix6.music}|${mix6.sfx}`;
   if (key === appliedMix) return;
   appliedMix = key;
   const ear = listener;
-  if (ear) ear.gain.gain.value = mix5.master;
+  if (ear) ear.gain.gain.value = mix6.master;
   for (const voice of voices) {
-    voice.audio.setVolume(voice.local * (voice.bus === "music" ? mix5.music : mix5.sfx));
+    voice.audio.setVolume(voice.local * (voice.bus === "music" ? mix6.music : mix6.sfx));
   }
 }
 function unit(value, fallback) {
   const number = typeof value === "number" ? value : Number(value);
   return Number.isFinite(number) ? clamp4(number, 0, 1) : fallback;
 }
-function clamp4(value, min2, max3) {
-  return Math.min(max3, Math.max(min2, value));
+function clamp4(value, min3, max4) {
+  return Math.min(max4, Math.max(min3, value));
 }
 var contextChain = Promise.resolve();
 function settleContext(paused) {
@@ -6243,10 +6574,85 @@ registerRuntimeSystem("core.audio", 44, () => {
 });
 installUnlock();
 
-// src/core/codeAssets/scriptRuntime.ts
-init_frameProfile();
-init_motion();
+// src/runtime/character.ts
+init_session10();
+init_session();
+init_session2();
+init_runtimeTags();
+init_juiceClock();
+
+// src/runtime/signals.ts
+var footstepListeners = /* @__PURE__ */ new Set();
+var characterEventListeners = /* @__PURE__ */ new Set();
+function onFootstep(listener2) {
+  footstepListeners.add(listener2);
+  return () => {
+    footstepListeners.delete(listener2);
+  };
+}
+function emitFootstep(nodeId) {
+  for (const listener2 of footstepListeners) {
+    listener2(nodeId);
+  }
+  emitCharacterEvent(nodeId, "onFootstep");
+}
+function onCharacterEvent(listener2) {
+  characterEventListeners.add(listener2);
+  return () => {
+    characterEventListeners.delete(listener2);
+  };
+}
+function emitCharacterEvent(nodeId, event, payload) {
+  for (const listener2 of characterEventListeners) {
+    listener2(nodeId, event, payload);
+  }
+}
+
+// src/gameplay/juice.ts
+init_world();
+init_juiceClock();
+init_registry();
+function playJuice(id, nodeId, host) {
+  const world3 = getRuntimeWorld();
+  const row = findRow(world3.getGameDatabase(), "juice", id);
+  if (!row) {
+    if (id.trim()) world3.log("warn", `\u6253\u51FB\u611F\u7F3A\u5C11\u4E00\u884C\uFF1A${id}`);
+    return false;
+  }
+  const fields = row.fields ?? {};
+  const now = performance.now() / 1e3;
+  const color2 = typeof fields.rimFlashColor === "string" ? fields.rimFlashColor : "";
+  armJuice(numberField(fields.hitStopSec), numberField(fields.cameraShake), color2, now);
+  const sound = typeof fields.sound === "string" ? fields.sound.trim() : "";
+  if (sound) {
+    playSound({
+      assetId: sound,
+      volume: fields.soundVolume === void 0 ? 1 : numberField(fields.soundVolume),
+      parent: host.resolveObject(nodeId)
+    });
+  }
+  const knock = numberField(fields.knockbackMeters);
+  if (knock > 0) knockBack(nodeId, host, knock);
+  return true;
+}
+function knockBack(nodeId, host, meters) {
+  const object = host.resolveObject(nodeId);
+  if (!object) return;
+  const yaw = Math.atan2(2 * object.quaternion.w * object.quaternion.y, 1 - 2 * object.quaternion.y * object.quaternion.y);
+  object.position.x -= Math.sin(yaw) * meters;
+  object.position.z -= Math.cos(yaw) * meters;
+}
+function numberField(value) {
+  const number = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(number) ? number : 0;
+}
+
+// src/runtime/devices.ts
 init_sceneRuntime();
+
+// src/runtime/rules.ts
+init_registry();
+init_runtimeTags();
 
 // src/runtime/ui/bindings.ts
 var EMPTY_UI_VALUES = { variables: {}, components: {}, screens: {} };
@@ -6282,22 +6688,2178 @@ function onUiClick(listener2) {
   return () => clickListeners.delete(listener2);
 }
 
-// src/core/codeAssets/scriptRuntime.ts
+// src/runtime/rules.ts
+init_world();
+init_sceneRuntime();
+var jobs = [];
+var vars = /* @__PURE__ */ new Map();
+var texts = /* @__PURE__ */ new Map();
+var messageFields = /* @__PURE__ */ new Map();
+var inbox = [];
+var heldKeys = /* @__PURE__ */ new Set();
+var tappedKeys2 = /* @__PURE__ */ new Set();
+var cursors = /* @__PURE__ */ new Map();
+var traces = /* @__PURE__ */ new Map();
+var keysOn = false;
+var started = false;
+function watchKeys() {
+  if (keysOn || typeof window === "undefined") return;
+  keysOn = true;
+  window.addEventListener("keydown", (event) => {
+    const tag = event.target?.tagName;
+    if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+    if (!heldKeys.has(event.code)) tappedKeys2.add(event.code);
+    heldKeys.add(event.code);
+  });
+  window.addEventListener("keyup", (event) => heldKeys.delete(event.code));
+  window.addEventListener("blur", () => {
+    heldKeys.clear();
+    tappedKeys2.clear();
+  });
+}
+function postRuleEvent(nodeId, trigger, message = "") {
+  inbox.push({ nodeId, trigger, message });
+}
+function postRuleMessage(message, nodeId = "", fields) {
+  if (!message) return;
+  texts.set("msg", message);
+  messageFields.clear();
+  if (fields) {
+    for (const [key, raw] of Object.entries(fields)) {
+      const number = typeof raw === "number" ? raw : Number(raw);
+      if (Number.isFinite(number)) messageFields.set(`msg.${key}`, number);
+    }
+  }
+  inbox.push({ nodeId, trigger: "message", message });
+}
+onFootstep((nodeId) => postRuleMessage("onFootstep", nodeId));
+var rulesSimClock = 0;
+function stepRules(dt, host) {
+  watchKeys();
+  const world3 = getRuntimeWorld();
+  if (world3.getPlayState() !== "playing") {
+    rulesSimClock = 0;
+    jobs.length = 0;
+    vars.clear();
+    texts.clear();
+    messageFields.clear();
+    clearRuntimeTags();
+    inbox.length = 0;
+    tappedKeys2.clear();
+    cursors.clear();
+    traces.clear();
+    started = false;
+    world3.clearPlayCameraForce?.();
+    return;
+  }
+  rulesSimClock += Math.max(0, dt);
+  const now = rulesSimClock;
+  const nodes = world3.getNodes();
+  tickRuntimeTags(now);
+  if (!started) {
+    started = true;
+    for (const node of Object.values(nodes)) fire(node, "playStart", "");
+  }
+  const batch = inbox.splice(0, inbox.length);
+  for (const event of batch) {
+    for (const node of Object.values(nodes)) {
+      if (event.nodeId && event.nodeId !== node.id) continue;
+      if (event.trigger === "message") {
+        for (const rule of readRules(node.gameplay?.rules)) {
+          if (rule.trigger === "message" && rule.message && rule.message === event.message) arm(node, rule);
+        }
+        continue;
+      }
+      fire(node, event.trigger, event.message);
+    }
+  }
+  for (const node of Object.values(nodes)) {
+    for (const rule of readRules(node.gameplay?.rules)) {
+      if (rule.trigger === "key" && keyHit(rule.key, tappedKeys2)) arm(node, rule);
+    }
+  }
+  const gameplayPacks = world3.getGameplayPacks();
+  const packTriggers = listEnabledPackTriggers(gameplayPacks);
+  if (packTriggers.length > 0) {
+    for (const node of Object.values(nodes)) {
+      for (const rule of readRules(node.gameplay?.rules)) {
+        const reg = findPackTrigger(rule.trigger, gameplayPacks);
+        if (reg?.enabled && reg.def.poll?.(node, rule, host)) arm(node, rule);
+      }
+    }
+  }
+  tappedKeys2.clear();
+  tickStates(host);
+  for (let i = jobs.length - 1; i >= 0; i -= 1) {
+    if (advance(jobs[i], dt, host, now)) jobs.splice(i, 1);
+  }
+}
+function keyHit(expected, codes) {
+  const want = expected.trim();
+  if (!want || codes.size === 0) return false;
+  if (codes.has(want)) return true;
+  const upper = want.toUpperCase();
+  if (want.length === 1 && upper >= "A" && upper <= "Z" && codes.has(`Key${upper}`)) return true;
+  if (want.length === 1 && want >= "0" && want <= "9" && codes.has(`Digit${want}`)) return true;
+  const lower = want.toLowerCase();
+  for (const code of codes) {
+    if (code.toLowerCase() === lower) return true;
+  }
+  return false;
+}
+function fire(node, trigger, message) {
+  for (const rule of readRules(node.gameplay?.rules)) {
+    if (rule.trigger !== trigger) continue;
+    if (trigger === "message" && rule.message && rule.message !== message) continue;
+    arm(node, rule);
+  }
+}
+function arm(node, rule) {
+  if (!rule.enabled) return;
+  if (!allPass(node, rule.conditions)) return;
+  if (rule.steps.length === 0) return;
+  jobs.push({
+    nodeId: node.id,
+    ruleId: rule.id,
+    stateId: "",
+    source: "rule",
+    steps: rule.steps.map(copyStep),
+    index: 0,
+    wait: 0,
+    frame: false,
+    list: [],
+    target: "",
+    moving: false,
+    loop: null
+  });
+}
+function advance(job, dt, host, now) {
+  const node = getRuntimeWorld().getNodes()[job.nodeId];
+  if (!node) return true;
+  let guard = 0;
+  while (job.index < job.steps.length && guard < 48) {
+    guard += 1;
+    const step2 = job.steps[job.index];
+    const waiting = step2?.do === "wait" && job.wait > 0 || step2?.do === "waitUpper" || step2?.do === "waitMark" || step2?.do === "waitFrame" && job.frame;
+    markTrace(job, step2, waiting);
+    if (!step2) break;
+    if (step2.do === "wait") {
+      if (job.wait <= 0) job.wait = Math.max(0, evaluate(step2.value) || step2.seconds);
+      job.wait -= dt;
+      if (job.wait > 0) {
+        markTrace(job, step2, true);
+        return false;
+      }
+      job.wait = 0;
+      job.index += 1;
+      continue;
+    }
+    if (step2.do === "waitFrame") {
+      if (!job.frame) {
+        job.frame = true;
+        markTrace(job, step2, true);
+        return false;
+      }
+      job.frame = false;
+      job.index += 1;
+      continue;
+    }
+    if (step2.do === "moveTo") {
+      if (!job.moving) {
+        const point2 = pointOf(step2, job, host);
+        if (!point2) {
+          job.index += 1;
+          continue;
+        }
+        orderCharacterMove(job.nodeId, point2[0], point2[1], point2[2]);
+        job.moving = true;
+        markTrace(job, step2, true);
+        return false;
+      }
+      if (characterTraveling(job.nodeId)) {
+        markTrace(job, step2, true);
+        return false;
+      }
+      job.moving = false;
+      job.index += 1;
+      continue;
+    }
+    if (step2.do === "waitUpper") {
+      if (node.overlayPlaying) {
+        markTrace(job, step2, true);
+        return false;
+      }
+      job.index += 1;
+      continue;
+    }
+    if (step2.do === "waitMark") {
+      const mark = Math.min(1, Math.max(0, evaluate(step2.value) || step2.seconds));
+      const progress = node.overlayClip ? overlayProgress(node) : getRuntimeWorld().bodyProgress?.(node.id) ?? 0;
+      lastValue = progress;
+      if (progress + 1e-3 < mark) {
+        markTrace(job, step2, true);
+        return false;
+      }
+      job.index += 1;
+      continue;
+    }
+    if (step2.do === "if") {
+      const passed = allPass(node, step2.conditions);
+      lastValue = passed ? 1 : 0;
+      if (passed && step2.steps.length > 0) {
+        job.steps = [...job.steps.slice(0, job.index + 1), ...step2.steps.map(copyStep), ...job.steps.slice(job.index + 1)];
+      }
+      job.index += 1;
+      continue;
+    }
+    if (step2.do === "each") {
+      if (job.list.length === 0 || step2.steps.length === 0) {
+        job.index += 1;
+        continue;
+      }
+      job.loop = {
+        ids: job.list.slice(),
+        item: 0,
+        steps: step2.steps.map(copyStep),
+        after: job.steps.slice(job.index + 1).map(copyStep)
+      };
+      job.target = job.loop.ids[0];
+      job.steps = job.loop.steps.map(copyStep);
+      job.index = 0;
+      continue;
+    }
+    if (step2.do === "switchState" && step2.stateId) {
+      const cursor2 = cursors.get(job.nodeId);
+      if (cursor2 && cursor2.stateId !== step2.stateId) cursor2.pendingId = step2.stateId;
+      job.index += 1;
+      continue;
+    }
+    run(node, step2, job, host, now);
+    job.index += 1;
+  }
+  if (job.loop && job.index >= job.steps.length) {
+    job.loop.item += 1;
+    if (job.loop.item < job.loop.ids.length) {
+      job.target = job.loop.ids[job.loop.item];
+      job.steps = job.loop.steps.map(copyStep);
+      job.index = 0;
+      return false;
+    }
+    job.steps = job.loop.after;
+    job.index = 0;
+    job.loop = null;
+    return false;
+  }
+  const cursor = cursors.get(job.nodeId);
+  traces.set(job.nodeId, { ruleId: "", stepId: "", stateId: cursor?.stateId ?? "", waiting: false, value: lastValue });
+  return job.index >= job.steps.length;
+}
+function markTrace(job, step2, waiting) {
+  traces.set(job.nodeId, {
+    ruleId: job.ruleId,
+    stepId: step2?.id ?? "",
+    stateId: cursors.get(job.nodeId)?.stateId ?? job.stateId,
+    waiting,
+    value: lastValue
+  });
+}
+function run(node, step2, job, host, now) {
+  const world3 = getRuntimeWorld();
+  const actor = job.target ? world3.getNodes()[job.target] ?? node : node;
+  if (step2.do === "message") {
+    postRuleMessage(step2.message);
+    world3.log("info", `${node.name}\uFF1A${step2.message}`);
+    return;
+  }
+  if (step2.do === "setVar") {
+    const value = evaluate(step2.value);
+    lastValue = value;
+    if (step2.name) vars.set(step2.name, value);
+    return;
+  }
+  if (step2.do === "addTag") {
+    const row = findRow(world3.getGameDatabase(), "tags", step2.tag);
+    if (step2.tag.trim() && !row) world3.log("warn", `\u73A9\u6CD5\u6807\u7B7E\u7F3A\u5C11\u4E00\u884C\uFF1A${step2.tag}`);
+    const fallback = Number(row?.fields?.defaultDurationSec ?? 0);
+    const seconds = step2.seconds > 0 ? step2.seconds : Number.isFinite(fallback) ? fallback : 0;
+    addRuntimeTag(actor.id, step2.tag, seconds, now);
+    return;
+  }
+  if (step2.do === "removeTag") {
+    removeRuntimeTag(actor.id, step2.tag);
+    return;
+  }
+  if (step2.do === "playClip" && step2.clip) {
+    playOn(actor, step2, false);
+    return;
+  }
+  if (step2.do === "playUpper" && step2.clip) {
+    playOn(actor, step2, true);
+    return;
+  }
+  if (step2.do === "stance") {
+    if (!step2.clip) world3.stopUpper?.(actor.id);
+    else world3.playUpper?.(actor.id, step2.clip, { assetId: clipAsset(actor, step2), loop: true, fade: actor.clipFade ?? 0.15 });
+    return;
+  }
+  if (step2.do === "showUi" || step2.do === "hideUi") {
+    const screen = findNamed(step2.name, "screen");
+    if (screen) setScreenVisible(screen.id, step2.do === "showUi");
+    return;
+  }
+  if (step2.do === "lock") {
+    const target = step2.name ? findNamed(step2.name) : job.target ? world3.getNodes()[job.target] : void 0;
+    const character = node.gameplay?.character;
+    if (!character) return;
+    world3.updateNode(node.id, {
+      gameplay: { ...node.gameplay, character: { ...character, lockTargetName: target?.name ?? "", lockTargetId: target?.id ?? "" } }
+    });
+    return;
+  }
+  if (step2.do === "camera") {
+    const camera = findNamed(step2.name, "camera");
+    if (camera) world3.forcePlayCamera?.(camera.id);
+    return;
+  }
+  if (step2.do === "spawn") spawnPrefab(node, step2, host);
+  if (step2.do === "hide") {
+    const nodes = { ...world3.getNodes() };
+    delete nodes[actor.id];
+    world3.setNodes(nodes);
+    return;
+  }
+  if (step2.do === "score") {
+    const amount = evaluate(step2.value);
+    lastValue = amount;
+    addRuleScore(amount);
+    return;
+  }
+  if (step2.do === "juice") {
+    playJuice(step2.name, actor.id, host);
+    return;
+  }
+  if (step2.do === "sound") {
+    const assetId = step2.clipAssetId || step2.name;
+    const music = step2.tag === "music";
+    if (!assetId) {
+      if (music) stopMusic();
+      return;
+    }
+    const volume = step2.value.trim() ? evaluate(step2.value) : 1;
+    lastValue = volume;
+    playSound({
+      assetId,
+      bus: music ? "music" : "sfx",
+      loop: music,
+      volume,
+      parent: music ? null : host.resolveObject(actor.id)
+    });
+    return;
+  }
+  if (step2.do === "gather") {
+    job.list = gather(node, step2, host);
+    lastValue = job.list.length;
+    return;
+  }
+  if (step2.do === "log") {
+    world3.log(step2.level, step2.message);
+    return;
+  }
+  const packAction = findPackAction(step2.do, world3.getGameplayPacks());
+  if (packAction?.enabled) {
+    packAction.def.execute({
+      node,
+      actor,
+      step: step2,
+      host,
+      now,
+      evaluate,
+      postMessage: postRuleMessage,
+      log: (level, message) => world3.log(level, message),
+      orderMove: (id, point2) => orderCharacterMove(id, point2[0], point2[1], point2[2])
+    });
+  }
+}
+function allPass(node, conditions) {
+  return conditions.every((item) => passes(node, item));
+}
+function passes(node, cond) {
+  if (cond.kind === "always") return true;
+  if (cond.kind === "formula") {
+    const value = evaluate(cond.left);
+    lastValue = value;
+    return value > 0;
+  }
+  if (cond.kind === "hasTag") return hasTag(node, cond.tag);
+  if (cond.kind === "missingTag") return !hasTag(node, cond.tag);
+  if (cond.kind !== "compare") {
+    const packCond = findPackCondition(cond.kind, getRuntimeWorld().getGameplayPacks());
+    if (!packCond?.enabled) return false;
+    return packCond.def.test(node, cond, { hasTag: (tag) => hasTag(node, tag), evaluate });
+  }
+  const a = readValue(cond.left);
+  const b = readValue(cond.right);
+  if (cond.op === "!=") return a !== b;
+  if (cond.op === ">") return a > b;
+  if (cond.op === "<") return a < b;
+  if (cond.op === ">=") return a >= b;
+  if (cond.op === "<=") return a <= b;
+  return a === b;
+}
+function hasTag(node, tag) {
+  return nodeHasTag(node, tag);
+}
+function readValue(token) {
+  const numeric = Number(token);
+  if (token.trim() !== "" && Number.isFinite(numeric)) return numeric;
+  if (messageFields.has(token)) return messageFields.get(token) ?? 0;
+  return vars.get(token) ?? 0;
+}
+function copyStep(step2) {
+  return { ...step2, conditions: step2.conditions.map((item) => ({ ...item })), steps: step2.steps.map(copyStep) };
+}
+function tickStates(host) {
+  for (const node of Object.values(getRuntimeWorld().getNodes())) {
+    const tree = readRuleStates(node.gameplay?.ruleStates);
+    if (tree.length === 0) {
+      cursors.delete(node.id);
+      continue;
+    }
+    let cursor = cursors.get(node.id);
+    if (!cursor) {
+      const leaf = pickLeaf(node, tree[0]);
+      if (!leaf) continue;
+      cursor = { stateId: leaf.id, phase: "entering", pendingId: "" };
+      cursors.set(node.id, cursor);
+      startEdge(node, leaf, "enter");
+      continue;
+    }
+    if (jobs.some((job) => job.nodeId === node.id && job.source !== "rule" && job.stateId === cursor.stateId)) continue;
+    const current = findState(tree, cursor.stateId);
+    if (!current) {
+      cursors.delete(node.id);
+      continue;
+    }
+    if (cursor.phase === "entering") {
+      cursor.phase = "ticking";
+      continue;
+    }
+    if (cursor.phase === "exiting") {
+      enterPending(node, tree, cursor);
+      continue;
+    }
+    const jump = current.transitions.find((item) => item.targetId && item.conditions.length > 0 && allPass(node, item.conditions) && findState(tree, item.targetId));
+    const pending3 = cursor.pendingId && cursor.pendingId !== cursor.stateId ? cursor.pendingId : "";
+    if (jump || pending3) {
+      cursor.pendingId = jump?.targetId || pending3;
+      cursor.phase = "exiting";
+      startEdge(node, current, "exit");
+      if (!jobs.some((job) => job.nodeId === node.id && job.source === "exit")) enterPending(node, tree, cursor);
+      continue;
+    }
+    startEdge(node, current, "tick");
+  }
+  void host;
+}
+function startEdge(node, state, source) {
+  const steps = source === "enter" ? state.onEnter : source === "exit" ? state.onExit : state.onTick;
+  if (steps.length === 0) return;
+  jobs.push({
+    nodeId: node.id,
+    ruleId: "",
+    stateId: state.id,
+    source,
+    steps: steps.map(copyStep),
+    index: 0,
+    wait: 0,
+    frame: false,
+    list: [],
+    target: "",
+    moving: false,
+    loop: null
+  });
+}
+function enterPending(node, tree, cursor) {
+  const target = findState(tree, cursor.pendingId);
+  const leaf = target ? pickLeaf(node, target) : void 0;
+  cursor.pendingId = "";
+  if (!leaf) {
+    cursor.phase = "ticking";
+    return;
+  }
+  cursor.stateId = leaf.id;
+  cursor.phase = "entering";
+  startEdge(node, leaf, "enter");
+}
+function findState(nodes, id) {
+  for (const node of nodes) {
+    if (node.id === id) return node;
+    const child = findState(node.children, id);
+    if (child) return child;
+  }
+  return void 0;
+}
+function pickLeaf(node, state) {
+  if (!state) return void 0;
+  if (state.children.length === 0) return state;
+  const chosen = state.children.find((child) => child.enter.length === 0 || allPass(node, child.enter)) ?? state.children[0];
+  return pickLeaf(node, chosen);
+}
+registerRuntimeSystem("core.rules", 35, stepRules);
+var lastValue = null;
+function playOn(node, step2, upper) {
+  const assetId = clipAsset(node, step2);
+  const world3 = getRuntimeWorld();
+  const opts = { assetId, loop: !upper, fade: node.clipFade ?? 0.15 };
+  if (upper) world3.playUpper?.(node.id, step2.clip, opts);
+  else world3.playBody?.(node.id, step2.clip, opts);
+}
+function clipAsset(node, step2) {
+  if (!step2.clipAssetId || step2.clipAssetId === node.assetId) return null;
+  return step2.clipAssetId;
+}
+function overlayProgress(node) {
+  if (!node.overlayClip) return 0;
+  const duration = getRuntimeWorld().clipDuration?.(node.overlayAssetId || node.assetId, node.overlayClip) ?? 0;
+  if (duration <= 0) return node.overlayPlaying ? 0 : 1;
+  return Math.min(1, Math.max(0, (node.overlayTime ?? 0) / duration));
+}
+function findNamed(name, kind) {
+  const trimmed = name.trim();
+  if (!trimmed) return void 0;
+  return Object.values(getRuntimeWorld().getNodes()).find((node) => (!kind || node.kind === kind) && (node.id === trimmed || node.name === trimmed));
+}
+function pointOf(step2, job, host) {
+  const named = step2.name ? findNamed(step2.name) : job.target ? getRuntimeWorld().getNodes()[job.target] : void 0;
+  if (named) {
+    const object = host.resolveObject(named.id);
+    if (!object) return null;
+    return [object.position.x, object.position.y, object.position.z];
+  }
+  const parts = step2.value.split(",").map((item) => Number(item.trim()));
+  if (parts.length === 3 && parts.every((item) => Number.isFinite(item))) return [parts[0], parts[1], parts[2]];
+  return null;
+}
+function gather(node, step2, host) {
+  const self = host.resolveObject(node.id);
+  if (!self) return [];
+  const radius = Math.max(0.1, step2.seconds > 0 ? step2.seconds : evaluate(step2.value) || 3);
+  const angle = step2.value.includes(",") ? 0 : Number(step2.value);
+  const limit = Number.isFinite(angle) && angle > 0 ? angle * Math.PI / 180 : Math.PI * 2;
+  const forward = { x: -Math.sin(yawOf(self.quaternion)), z: -Math.cos(yawOf(self.quaternion)) };
+  const hits = [];
+  for (const other of Object.values(getRuntimeWorld().getNodes())) {
+    if (other.id === node.id || !other.visible) continue;
+    if (step2.tag && !nodeHasTag(other, step2.tag)) continue;
+    const object = host.resolveObject(other.id);
+    if (!object) continue;
+    const dx = object.position.x - self.position.x;
+    const dz = object.position.z - self.position.z;
+    if (dx * dx + dz * dz > radius * radius) continue;
+    if (limit < Math.PI * 2) {
+      const len = Math.hypot(dx, dz) || 1;
+      const dot3 = (forward.x * dx + forward.z * dz) / len;
+      if (Math.acos(Math.min(1, Math.max(-1, dot3))) > limit / 2) continue;
+    }
+    hits.push(other.id);
+  }
+  return hits;
+}
+function yawOf(quaternion) {
+  return Math.atan2(2 * quaternion.w * quaternion.y, 1 - 2 * quaternion.y * quaternion.y);
+}
+function spawnPrefab(node, step2, host) {
+  const self = host.resolveObject(node.id);
+  const parts = step2.value.split(",").map((item) => Number(item.trim()));
+  const offset = parts.length >= 3 && parts.every((item) => Number.isFinite(item)) ? parts : [1, 0, 0];
+  const position = [
+    (self?.position.x ?? node.position[0]) + offset[0],
+    (self?.position.y ?? node.position[1]) + offset[1],
+    (self?.position.z ?? node.position[2]) + offset[2]
+  ];
+  getRuntimeWorld().instantiatePrefab?.(step2.name, { parentId: node.parentId, position });
+}
+function evaluate(source) {
+  const text = source.trim();
+  if (!text) return 0;
+  let index = 0;
+  const skip = () => {
+    while (text[index] === " ") index += 1;
+  };
+  const unary = () => {
+    skip();
+    if (text[index] === "-") {
+      index += 1;
+      return -unary();
+    }
+    if (text[index] === "(") {
+      index += 1;
+      const value2 = expression();
+      skip();
+      if (text[index] === ")") index += 1;
+      return value2;
+    }
+    const start2 = index;
+    if (/[0-9.]/.test(text[index] ?? "")) {
+      while (/[0-9.]/.test(text[index] ?? "")) index += 1;
+      return Number(text.slice(start2, index)) || 0;
+    }
+    while (/[\w.]/.test(text[index] ?? "")) index += 1;
+    const name = text.slice(start2, index);
+    skip();
+    if (text[index] === "(") {
+      index += 1;
+      const args = [];
+      skip();
+      if (text[index] !== ")") {
+        args.push(expression());
+        for (; ; ) {
+          skip();
+          if (text[index] !== ",") break;
+          index += 1;
+          args.push(expression());
+        }
+      }
+      skip();
+      if (text[index] === ")") index += 1;
+      return callFn(name, args);
+    }
+    return readValue(name);
+  };
+  const product = () => {
+    let value2 = unary();
+    for (; ; ) {
+      skip();
+      if (text[index] === "*") {
+        index += 1;
+        value2 *= unary();
+      } else if (text[index] === "/") {
+        index += 1;
+        const divisor = unary();
+        value2 = divisor === 0 ? 0 : value2 / divisor;
+      } else break;
+    }
+    return value2;
+  };
+  const sum = () => {
+    let value2 = product();
+    for (; ; ) {
+      skip();
+      if (text[index] === "+") {
+        index += 1;
+        value2 += product();
+      } else if (text[index] === "-") {
+        index += 1;
+        value2 -= product();
+      } else break;
+    }
+    return value2;
+  };
+  const expression = () => {
+    const value2 = sum();
+    skip();
+    const two = text.slice(index, index + 2);
+    if (two === ">=" || two === "<=" || two === "==" || two === "!=") {
+      index += 2;
+      return compare(value2, sum(), two) ? 1 : 0;
+    }
+    if (text[index] === ">" || text[index] === "<") {
+      const op = text[index];
+      index += 1;
+      return compare(value2, sum(), op) ? 1 : 0;
+    }
+    return value2;
+  };
+  const value = expression();
+  return Number.isFinite(value) ? value : 0;
+}
+function callFn(name, args) {
+  if (name === "clamp" && args.length >= 3) return Math.min(Math.max(args[0], args[1]), args[2]);
+  if (name === "min" && args.length > 0) return Math.min(...args);
+  if (name === "max" && args.length > 0) return Math.max(...args);
+  if (name === "abs" && args.length > 0) return Math.abs(args[0]);
+  return 0;
+}
+function compare(left, right, op) {
+  if (op === "!=") return left !== right;
+  if (op === ">") return left > right;
+  if (op === "<") return left < right;
+  if (op === ">=") return left >= right;
+  if (op === "<=") return left <= right;
+  return left === right;
+}
+
+// src/runtime/devices.ts
 init_world();
 init_actionMap();
+var interactUsed = /* @__PURE__ */ new Set();
+var zones = /* @__PURE__ */ new Map();
+var prompt = "";
+var promptListeners = /* @__PURE__ */ new Set();
+function setPrompt(next) {
+  if (next === prompt) return;
+  prompt = next;
+  promptListeners.forEach((listener2) => listener2());
+}
+function ensureKeys() {
+  bindGlobalInputListeners();
+}
+function stepDevices(_dt, host) {
+  ensureKeys();
+  const world3 = getRuntimeWorld();
+  if (world3.getPlayState() !== "playing") {
+    interactUsed.clear();
+    zones.clear();
+    setPrompt("");
+    return;
+  }
+  const nodes = world3.getNodes();
+  const actors = Object.values(nodes).filter((node) => node.gameplay?.character?.enabled);
+  let nextPrompt = "";
+  for (const node of Object.values(nodes)) {
+    if (node.gameplay?.interact?.enabled) nextPrompt = nearerPrompt(nextPrompt, touchInteract(node, node.gameplay.interact, actors, host));
+    if (node.gameplay?.trigger?.enabled) touchTrigger(node, node.gameplay.trigger, actors, host);
+  }
+  setPrompt(nextPrompt);
+}
+function touchInteract(node, spec, actors, host) {
+  if (spec.once && interactUsed.has(node.id)) return "";
+  const self = host.resolveObject(node.id);
+  if (!self) return "";
+  const radius = Math.max(0.2, spec.radius);
+  const near = actors.some((actor) => matchesTag2(actor, spec.filterTagId) && within(self, host.resolveObject(actor.id), radius));
+  if (!near) return "";
+  const key = spec.key || "KeyE";
+  const triggered = isKeyHeld(key) || key === "KeyE" && wasActionTapped("Interact");
+  if (triggered) {
+    interactUsed.add(node.id);
+    const message = spec.message || "onInteract";
+    getRuntimeWorld().log("info", `${node.name}\uFF1A${message}`);
+    hear(message);
+    postRuleEvent(node.id, "interact");
+    grantInteractScore();
+    return "";
+  }
+  return spec.prompt || "\u6309 E \u4EA4\u4E92";
+}
+function touchTrigger(node, spec, actors, host) {
+  const live = zones.get(node.id) ?? { inside: /* @__PURE__ */ new Set(), used: false };
+  const self = host.resolveObject(node.id);
+  if (!self) return;
+  if (spec.once && live.used && live.inside.size === 0) return;
+  const radius = Math.max(0.2, spec.radius);
+  const nowInside = /* @__PURE__ */ new Set();
+  for (const actor of actors) {
+    if (!matchesTag2(actor, spec.filterTagId)) continue;
+    if (!within(self, host.resolveObject(actor.id), radius)) continue;
+    nowInside.add(actor.id);
+    if (!live.inside.has(actor.id)) {
+      getRuntimeWorld().log("info", `${node.name}\uFF1A${spec.enterMessage || "onZoneEnter"}`);
+      hear(spec.enterMessage || "onZoneEnter");
+      postRuleEvent(node.id, "enter");
+      live.used = true;
+    }
+  }
+  for (const id of live.inside) {
+    if (nowInside.has(id)) continue;
+    getRuntimeWorld().log("info", `${node.name}\uFF1A${spec.exitMessage || "onZoneExit"}`);
+    hear(spec.exitMessage || "onZoneExit");
+    postRuleEvent(node.id, "exit");
+    live.used = true;
+  }
+  live.inside = nowInside;
+  zones.set(node.id, live);
+}
+function matchesTag2(node, tagId) {
+  if (!tagId) return true;
+  if (node.tagId === tagId) return true;
+  return (node.tagIds ?? []).includes(tagId);
+}
+function within(self, other, radius) {
+  if (!self || !other) return false;
+  const dx = self.position.x - other.position.x;
+  const dy = self.position.y - other.position.y;
+  const dz = self.position.z - other.position.z;
+  return dx * dx + dy * dy + dz * dz <= radius * radius;
+}
+function nearerPrompt(current, next) {
+  return next || current;
+}
+function stepMovers(dt, host) {
+  carries.length = 0;
+  const world3 = getRuntimeWorld();
+  if (world3.getPlayState() !== "playing") {
+    rides.clear();
+    heard.clear();
+    return;
+  }
+  for (const node of Object.values(world3.getNodes())) {
+    const spec = node.gameplay?.mover;
+    if (!spec?.enabled) continue;
+    const object = host.resolveObject(node.id);
+    if (!object) continue;
+    const ride = rides.get(node.id) ?? { origin: null, travel: 0, forward: true, started: spec.autoPlay, wait: 0 };
+    if (!ride.origin) ride.origin = [object.position.x, object.position.y, object.position.z];
+    if (!ride.started && heard.has(spec.startMessage)) ride.started = true;
+    const before = [object.position.x, object.position.y, object.position.z];
+    if (ride.started) advanceRide(ride, spec, dt);
+    const duration = Math.max(0.05, spec.duration);
+    const along = ride.forward ? ride.travel / duration : 1 - ride.travel / duration;
+    const span = smooth(along);
+    object.position.set(
+      ride.origin[0] + spec.offset[0] * span,
+      ride.origin[1] + spec.offset[1] * span,
+      ride.origin[2] + spec.offset[2] * span
+    );
+    rides.set(node.id, ride);
+    carries.push({
+      x: object.position.x,
+      y: object.position.y,
+      z: object.position.z,
+      dx: object.position.x - before[0],
+      dy: object.position.y - before[1],
+      dz: object.position.z - before[2],
+      radius: Math.max(0.4, spec.carryRadius)
+    });
+  }
+}
+function advanceRide(ride, spec, dt) {
+  const duration = Math.max(0.05, spec.duration);
+  if (ride.wait > 0) {
+    ride.wait = Math.max(0, ride.wait - dt);
+    if (ride.wait > 0 || !spec.pingPong) return;
+    ride.travel = 0;
+    ride.forward = !ride.forward;
+    return;
+  }
+  ride.travel += dt;
+  if (ride.travel < duration) return;
+  ride.travel = duration;
+  ride.wait = spec.pause;
+  if (!spec.pingPong) ride.started = false;
+  else if (spec.pause <= 0) {
+    ride.travel = 0;
+    ride.forward = !ride.forward;
+  }
+}
+var rides = /* @__PURE__ */ new Map();
+var carries = [];
+var heard = /* @__PURE__ */ new Set();
+var spawnId = "";
+var fallAt = 0;
+var scoreValue = 0;
+var scoreState = "";
+var clock = 0;
+var shownTime = -1;
+function hear(message) {
+  if (!message) return;
+  heard.add(message);
+  postRuleMessage(message);
+}
+function carryFor(x, y, z) {
+  for (const item of carries) {
+    const flat = (item.x - x) ** 2 + (item.z - z) ** 2;
+    if (flat > item.radius * item.radius) continue;
+    if (y < item.y - 0.35 || y > item.y + 1.8) continue;
+    return item;
+  }
+  return null;
+}
+var roundSimTime = 0;
+function stepRound(dt, host) {
+  const world3 = getRuntimeWorld();
+  if (world3.getPlayState() !== "playing") {
+    roundSimTime = 0;
+    spawnId = "";
+    fallAt = 0;
+    scoreValue = 0;
+    scoreState = "";
+    clock = 0;
+    shownTime = -1;
+    return;
+  }
+  roundSimTime += Math.max(0, dt);
+  const nodes = world3.getNodes();
+  const actors = Object.values(nodes).filter((node) => node.gameplay?.character?.enabled);
+  let abyssY = -12;
+  let abyssDelay = 1.2;
+  let abyssMessage = "onPlayerRespawned";
+  let abyssName = "";
+  for (const node of Object.values(nodes)) {
+    const spec = node.gameplay?.checkpoint;
+    if (!spec?.enabled) continue;
+    const point2 = host.resolveObject(node.id);
+    if (!point2) continue;
+    if (spec.spawn && !spawnId) spawnId = node.id;
+    if (node.id === spawnId || !abyssName) {
+      abyssY = spec.abyssY;
+      abyssDelay = spec.delay;
+      abyssMessage = spec.message || abyssMessage;
+      abyssName = node.name;
+    }
+    for (const actor of actors) {
+      const body = host.resolveObject(actor.id);
+      if (!body || !within(point2, body, spec.radius) || spawnId === node.id) continue;
+      spawnId = node.id;
+      abyssY = spec.abyssY;
+      abyssDelay = spec.delay;
+      abyssMessage = spec.message || abyssMessage;
+      abyssName = node.name;
+      world3.log("info", `${node.name}\uFF1A\u68C0\u67E5\u70B9`);
+    }
+  }
+  const now = roundSimTime;
+  if (abyssName) for (const actor of actors) {
+    const body = host.resolveObject(actor.id);
+    if (!body) continue;
+    if (body.position.y < abyssY && fallAt <= 0) fallAt = now + Math.max(0, abyssDelay);
+    if (fallAt > 0 && now >= fallAt) {
+      const home = spawnId ? host.resolveObject(spawnId) : null;
+      if (home) {
+        relocateCharacter(actor.id, home.position.x, home.position.y + 0.05, home.position.z);
+        world3.log("info", `${abyssName}\uFF1A${abyssMessage}`);
+        hear(abyssMessage);
+      }
+      fallAt = 0;
+    }
+  }
+  const board = Object.values(nodes).find((node) => node.gameplay?.score?.enabled);
+  const score = board?.gameplay?.score;
+  if (!score || scoreState === "done" || scoreState === "victory" || scoreState === "defeat") return;
+  if (clock <= 0) {
+    clock = roundSimTime || 1e-4;
+    writeUiVariable("objective", score.title);
+    writeUiVariable("score", scoreValue);
+  }
+  const elapsed = Math.max(0, roundSimTime - clock);
+  const left = score.timeLimit > 0 ? Math.ceil(Math.max(0, score.timeLimit - elapsed)) : 0;
+  if (left !== shownTime) {
+    shownTime = left;
+    writeUiVariable("timeLeft", score.timeLimit > 0 ? left : "");
+  }
+  if (score.timeLimit > 0 && left <= 0 && scoreState !== "defeat") {
+    scoreState = "defeat";
+    world3.log("info", `${board?.name}\uFF1A${score.defeatMessage}`);
+    hear(score.defeatMessage);
+  }
+}
+function grantInteractScore() {
+  const board = Object.values(getRuntimeWorld().getNodes()).find((node) => node.gameplay?.score?.enabled);
+  addRuleScore(board?.gameplay?.score?.perInteract ?? 0);
+}
+function addRuleScore(amount) {
+  const world3 = getRuntimeWorld();
+  const board = Object.values(world3.getNodes()).find((node) => node.gameplay?.score?.enabled);
+  const score = board?.gameplay?.score;
+  if (!score || scoreState === "done" || scoreState === "defeat" || scoreState === "victory") return;
+  scoreValue += amount;
+  writeUiVariable("score", scoreValue);
+  writeUiVariable("objective", score.title);
+  if (scoreValue >= score.target) {
+    scoreState = "victory";
+    world3.log("info", `${board?.name}\uFF1A${score.victoryMessage}`);
+    hear(score.victoryMessage);
+  }
+}
+function smooth(value) {
+  const t = Math.min(1, Math.max(0, value));
+  return t * t * (3 - 2 * t);
+}
+registerRuntimeSystem("core.movers", 8, stepMovers);
+registerRuntimeSystem("core.devices", 30, stepDevices);
+registerRuntimeSystem("core.round", 40, stepRound);
+
+// src/runtime/character.ts
+init_world();
+init_actionMap();
+init_sceneRuntime();
+var motion = /* @__PURE__ */ new Map();
+function ensureKeys2() {
+  bindGlobalInputListeners();
+}
+function held(code) {
+  return isKeyHeld(code);
+}
+function tapped(code) {
+  return wasKeyTapped(code);
+}
+function consumeTaps() {
+}
+function characterTraveling(id) {
+  if (orders.has(id)) return true;
+  const live = motion.get(id);
+  if (!live) return false;
+  return live.pathIndex < live.path.length;
+}
+function relocateCharacter(id, x, y, z) {
+  relocations.set(id, [x, y, z]);
+}
+var orders = /* @__PURE__ */ new Map();
+function orderCharacterMove(id, x, y, z) {
+  orders.set(id, [x, y, z]);
+}
+var relocations = /* @__PURE__ */ new Map();
+function takeRelocation(id) {
+  const next = relocations.get(id) ?? null;
+  if (next) relocations.delete(id);
+  return next;
+}
+var runtimeModifiers = /* @__PURE__ */ new Map();
+function setCharacterModifiers(nodeId, patch) {
+  const prev = runtimeModifiers.get(nodeId) ?? {};
+  runtimeModifiers.set(nodeId, { ...prev, ...patch });
+}
+function getCharacterModifiers(nodeId) {
+  return { ...runtimeModifiers.get(nodeId) ?? {} };
+}
+function clearCharacterModifiers(nodeId) {
+  runtimeModifiers.delete(nodeId);
+}
+var simClock = 0;
+function stepCharacters(dt, host) {
+  ensureKeys2();
+  const worldState = getRuntimeWorld();
+  if (worldState.getPlayState() !== "playing") {
+    simClock = 0;
+    motion.clear();
+    orders.clear();
+    runtimeModifiers.clear();
+    consumeTaps();
+    clearJuice();
+    return;
+  }
+  simClock += Math.max(0, dt);
+  const now = simClock;
+  const nodes = worldState.getNodes();
+  const yaw = host.yaw?.() ?? 0;
+  for (const node of Object.values(nodes)) {
+    const raw = node.gameplay?.character;
+    if (!raw?.enabled) continue;
+    const spec = { ...defaultCharacter(), ...raw };
+    const object = host.resolveObject(node.id);
+    if (!object) continue;
+    const live = motion.get(node.id) ?? freshMotion(yawOf2(object.quaternion));
+    const order = orders.get(node.id);
+    if (order) {
+      const path = findNavigationPath([object.position.x, object.position.y, object.position.z], order);
+      live.path = path && path.length > 1 ? path.slice(1) : [order];
+      live.pathIndex = 0;
+      orders.delete(node.id);
+    }
+    const placed = takeRelocation(node.id);
+    if (placed) {
+      object.position.set(placed[0], placed[1], placed[2]);
+      live.vy = 0;
+      live.grounded = true;
+    }
+    const mods = runtimeModifiers.get(node.id);
+    const inputLocked = Boolean(mods?.inputLock);
+    const moveSpeedMul = typeof mods?.moveSpeedMul === "number" && Number.isFinite(mods.moveSpeedMul) ? Math.max(0, mods.moveSpeedMul) : 1;
+    const gravityMul = typeof mods?.gravityMul === "number" && Number.isFinite(mods.gravityMul) ? Math.max(0, mods.gravityMul) : 1;
+    const effectiveGravity = spec.gravity * gravityMul;
+    const wish = inputLocked ? { x: 0, z: 0, amount: 0 } : wishInput(spec);
+    const sprint = !inputLocked && (isActionPressed("Sprint") || held("ShiftLeft") || held("ShiftRight"));
+    const speed = spec.moveSpeed * moveSpeedMul * (sprint && wish.amount > 0 ? spec.sprintMultiplier : 1);
+    const basis = facingBasis(spec, node.id, nodes, object.position.x, object.position.z, yaw, host);
+    const world3 = rotate(wish.x, wish.z, basis.moveYaw);
+    const dashPressed = !inputLocked && spec.dash && (wasActionTapped("Dash") || tapped(spec.dashKey || "KeyC"));
+    if (dashPressed && now >= live.dashReady) {
+      const dir = wish.amount > 0.1 ? world3 : { x: Math.sin(live.yaw), z: Math.cos(live.yaw) };
+      const len = Math.hypot(dir.x, dir.z) || 1;
+      live.dashX = dir.x / len;
+      live.dashZ = dir.z / len;
+      live.dashUntil = now + spec.dashDuration;
+      live.dashReady = live.dashUntil + spec.dashCooldown;
+      live.invincibleUntil = now + spec.dashInvincible;
+      addRuntimeTag(node.id, "State.Invincible", spec.dashInvincible, now);
+      live.path = [];
+    }
+    const click = spec.mode === "pointAndClick" || spec.driver !== "capsule" ? host.consumeClick?.(spec.clickButton) ?? null : null;
+    if (click && (spec.driver === "nav" || spec.driver === "hybrid" || spec.mode === "pointAndClick")) {
+      const path = findNavigationPath([object.position.x, object.position.y, object.position.z], click);
+      live.path = path && path.length > 1 ? path.slice(1) : [click];
+      live.pathIndex = 0;
+    }
+    if (wish.amount > 0.1 || now < live.dashUntil) live.path = [];
+    const dodging = now < live.dashUntil;
+    let moveX = 0;
+    let moveZ = 0;
+    if (dodging) {
+      moveX = live.dashX * (spec.dashDistance / Math.max(0.05, spec.dashDuration));
+      moveZ = live.dashZ * (spec.dashDistance / Math.max(0.05, spec.dashDuration));
+    } else if (wish.amount > 0.1 && spec.driver !== "nav") {
+      moveX = world3.x * speed;
+      moveZ = world3.z * speed;
+    } else if (spec.driver === "nav" && wish.amount > 0.1) {
+      const steered = steer([object.position.x, object.position.y, object.position.z], {
+        x: object.position.x + world3.x * 2,
+        y: object.position.y,
+        z: object.position.z + world3.z * 2
+      }, spec.clickStop);
+      moveX = steered.x * speed;
+      moveZ = steered.z * speed;
+    } else if (live.path.length > 0) {
+      const steered = followPath(object.position.x, object.position.z, live, spec.clickStop);
+      moveX = steered.x * speed;
+      moveZ = steered.z * speed;
+    }
+    const useCapsule = spec.driver !== "nav";
+    const shift = useCapsule ? capsuleShift(spec, object.quaternion) : { x: 0, y: 0, z: 0 };
+    const feet = object.position.y + shift.y;
+    const footX = object.position.x + shift.x;
+    const footZ = object.position.z + shift.z;
+    const water = spec.swim !== false ? sampleWaterSurface(footX, footZ) : null;
+    const submerged = water ? water.height - feet : -999;
+    const swimOffset = spec.swimHeightOffset ?? 0;
+    const targetSubmerged = Math.max(0.1, spec.height * 0.68 - swimOffset);
+    const enterDepth = spec.height * 0.62;
+    const exitDepth = Math.max(0.05, Math.min(spec.height * 0.48, targetSubmerged - 0.18));
+    const ground = useCapsule && live.grounded ? feet : groundUnder(host, useCapsule ? footX : object.position.x, useCapsule ? feet : object.position.y, useCapsule ? footZ : object.position.z, node.id, spec);
+    const touchingFloor = ground !== null && feet <= ground + 0.12;
+    const swimJumping = now <= live.swimJumpUntil;
+    const wasGrounded = live.grounded;
+    if (water && submerged >= enterDepth) {
+      if (!live.swimming) {
+        live.swimming = true;
+        live.jumpsUsed = 0;
+        live.jumpPhase = "none";
+        live.clip = "";
+        emitCharacterEvent(node.id, "onEnterWater", { waterHeight: water.height });
+      }
+    } else if (!water || submerged < exitDepth && (touchingFloor || swimJumping || submerged < -0.2)) {
+      if (live.swimming) {
+        live.swimming = false;
+        live.clip = "";
+        if (!swimJumping) live.lastGrounded = now;
+        emitCharacterEvent(node.id, "onExitWater");
+      }
+    }
+    const onGround = !live.swimming && (live.grounded || ground !== null && feet <= ground + 0.08 && live.vy <= 0.1);
+    if (onGround) live.lastGrounded = now;
+    const coyote = now - live.lastGrounded <= spec.coyoteTime;
+    if (!inputLocked && (wasActionTapped("Jump") || tapped("Space"))) live.jumpBufferUntil = now + spec.jumpBuffer;
+    if (onGround && live.vy <= 0) live.jumpsUsed = 0;
+    const canJump = !inputLocked && (live.swimming || coyote && live.jumpsUsed === 0 || !onGround && live.jumpsUsed > 0 && live.jumpsUsed < spec.maxJumps || onGround && live.jumpsUsed < spec.maxJumps);
+    let jumped = false;
+    if (now <= live.jumpBufferUntil && canJump && !dodging) {
+      if (live.swimming) {
+        live.vy = Math.max(live.vy, spec.jumpSpeed * 0.85);
+        live.swimJumpUntil = now + 0.28;
+      } else {
+        live.vy = spec.jumpSpeed;
+        live.jumpsUsed += 1;
+      }
+      live.jumpBufferUntil = 0;
+      live.lastGrounded = -999;
+      jumped = true;
+      emitCharacterEvent(node.id, "onJump", { swimming: live.swimming, jumpIndex: live.jumpsUsed });
+    }
+    if (live.swimming && water) {
+      const swimScale = Math.max(0.1, spec.swimSpeedMultiplier ?? 0.65);
+      if (!dodging) {
+        moveX *= swimScale;
+        moveZ *= swimScale;
+      }
+      if (now <= live.swimJumpUntil) {
+        live.vy -= effectiveGravity * dt;
+      } else {
+        const targetFeetY = water.height - targetSubmerged;
+        live.vy += ((targetFeetY - feet) * 18 - live.vy * 6) * dt;
+        moveX += water.normal[0] * 0.45;
+        moveZ += water.normal[2] * 0.45;
+      }
+    } else {
+      const supported = onGround || live.grounded;
+      if (!(supported && live.vy <= 0)) live.vy -= effectiveGravity * dt;
+    }
+    const damp = Math.exp(-(live.grounded ? 10 : 2.5) * dt);
+    live.extVx *= damp;
+    live.extVy *= damp;
+    live.extVz *= damp;
+    if (Math.abs(live.extVx) < 0.01) live.extVx = 0;
+    if (Math.abs(live.extVy) < 0.01) live.extVy = 0;
+    if (Math.abs(live.extVz) < 0.01) live.extVz = 0;
+    const dispX = (moveX + live.extVx) * dt;
+    const dispY = (live.vy + live.extVy) * dt;
+    const dispZ = (moveZ + live.extVz) * dt;
+    let nextX = object.position.x + dispX;
+    let nextY = object.position.y + dispY;
+    let nextZ = object.position.z + dispZ;
+    let landed = false;
+    let platformYaw = 0;
+    if (spec.driver !== "nav") {
+      const solved = moveCharacters([{
+        id: node.id,
+        position: [footX, feet, footZ],
+        displacement: [dispX, dispY, dispZ],
+        radius: spec.radius,
+        height: spec.height,
+        dt,
+        interact: spec.physicsInteract ?? false,
+        mass: spec.mass ?? 65,
+        pushStrength: spec.pushStrength ?? 1
+      }]);
+      const step2 = solved?.[0];
+      if (step2) {
+        nextX = step2.position[0] - shift.x;
+        nextY = step2.position[1] - shift.y;
+        nextZ = step2.position[2] - shift.z;
+        if (step2.yawDelta) platformYaw = step2.yawDelta;
+        if (step2.impulse) {
+          live.extVx += step2.impulse[0];
+          live.extVy += step2.impulse[1];
+          live.extVz += step2.impulse[2];
+          if (step2.impulse[1] > 0.6) live.vy = Math.max(live.vy, step2.impulse[1]);
+        }
+        landed = step2.grounded && live.vy <= 0.35 && live.extVy <= 0.6;
+      } else {
+        const blocked2 = slide(host, footX, feet + spec.height * 0.45, footZ, footX + dispX, footZ + dispZ, node.id, spec.radius);
+        nextX = blocked2.x - shift.x;
+        nextZ = blocked2.z - shift.z;
+        landed = ground !== null && live.vy <= 0 && nextY <= ground + 0.08;
+        if (landed && ground !== null) nextY = ground - shift.y;
+      }
+    } else if (ground !== null && live.vy <= 0 && nextY <= ground + 0.08) {
+      nextY = ground;
+      landed = true;
+    }
+    if (landed && !live.swimming) {
+      live.vy = 0;
+      live.grounded = true;
+      live.lastGrounded = now;
+      if (!jumped) live.jumpsUsed = 0;
+      if (!wasGrounded) emitCharacterEvent(node.id, "onLand");
+    } else {
+      live.grounded = false;
+    }
+    const traveled = Math.hypot(nextX - object.position.x, nextZ - object.position.z);
+    if (live.grounded && !live.swimming && traveled > 0) {
+      live.footstep += traveled;
+      if (live.footstep >= spec.footstepDistance) {
+        live.footstep = 0;
+        live.footsteps += 1;
+        emitFootstep(node.id);
+        if (spec.footstepJuice) playJuice(spec.footstepJuice, node.id, host);
+      }
+    }
+    object.position.set(nextX, nextY, nextZ);
+    const carry = carryFor(nextX, nextY, nextZ);
+    if (carry && live.grounded) object.position.set(nextX + carry.dx, nextY + carry.dy, nextZ + carry.dz);
+    if (platformYaw) live.yaw += platformYaw;
+    const face = faceYaw(spec, basis, wish, moveX, moveZ, dodging, live);
+    if (face !== null) {
+      const rate = Math.max(30, spec.turnSpeed) * Math.PI / 180 * (basis.lock ? 1.5 : 1);
+      live.yaw = stepYaw(live.yaw, face, rate * dt);
+    }
+    object.quaternion.set(0, Math.sin(live.yaw / 2), 0, Math.cos(live.yaw / 2));
+    if (live.swimming) {
+      live.jumpPhase = "none";
+    } else {
+      stepJumpPose(node.id, node.assetId ?? "", spec, live, dt, now, jumped, dodging, wish.amount > 0.1 || Math.hypot(moveX, moveZ) > 0.2);
+    }
+    if (live.jumpPhase !== "none") {
+      motion.set(node.id, live);
+      continue;
+    }
+    const clip = pickClip(spec, dodging, wish.amount > 0.1 || Math.hypot(moveX, moveZ) > 0.2, sprint, live.swimming);
+    const clipKey = clip.name ? `${clip.assetId}\0${clip.name}` : "";
+    if (clipKey && clipKey !== live.clip) {
+      live.clip = clipKey;
+      const own = !clip.assetId || clip.assetId === node.assetId;
+      getRuntimeWorld().playBody?.(node.id, clip.name, {
+        assetId: own ? null : clip.assetId,
+        loop: clip.name !== spec.dodgeClip && clip.name !== spec.landClip,
+        fade: 0.12
+      });
+    }
+    motion.set(node.id, live);
+  }
+  consumeTaps();
+}
+function freshMotion(yaw) {
+  return {
+    yaw,
+    vy: 0,
+    extVx: 0,
+    extVy: 0,
+    extVz: 0,
+    grounded: false,
+    swimming: false,
+    swimJumpUntil: 0,
+    lastGrounded: 0,
+    jumpBufferUntil: 0,
+    jumpsUsed: 0,
+    dashUntil: 0,
+    dashReady: 0,
+    dashX: 0,
+    dashZ: 1,
+    invincibleUntil: 0,
+    clip: "",
+    jumpPhase: "none",
+    jumpTime: 0,
+    path: [],
+    pathIndex: 0,
+    footstep: 0,
+    footsteps: 0
+  };
+}
+function wishInput(spec) {
+  const axis = getActionAxis2D("Move");
+  const x = axis.x;
+  const z = spec.mode === "side25d" ? 0 : axis.y;
+  const amount = Math.hypot(x, z);
+  return { x, z, amount: amount > 1 ? 1 : amount };
+}
+function facingBasis(spec, selfId, nodes, x, z, cameraYaw, host) {
+  if (spec.mode === "side25d") return { moveYaw: cameraYaw, faceYaw: 0, lock: false };
+  if (spec.mode === "lockOn") {
+    const target = spec.lockTargetId && spec.lockTargetId !== selfId ? nodes[spec.lockTargetId] : spec.lockTargetName ? Object.values(nodes).find((item) => item.id !== selfId && item.name === spec.lockTargetName) : void 0;
+    const targetObject = target ? host.resolveObject(target.id) : null;
+    if (targetObject) {
+      const yaw = Math.atan2(targetObject.position.x - x, targetObject.position.z - z);
+      return { moveYaw: yaw, faceYaw: yaw, lock: true };
+    }
+  }
+  if (spec.mode === "strafe" || spec.mode === "firstPerson" || spec.mode === "lockOn") {
+    return { moveYaw: cameraYaw, faceYaw: cameraYaw + Math.PI, lock: true };
+  }
+  return { moveYaw: cameraYaw, faceYaw: cameraYaw, lock: false };
+}
+function rotate(x, z, yaw) {
+  const sin3 = Math.sin(yaw);
+  const cos3 = Math.cos(yaw);
+  return {
+    x: x * cos3 - z * sin3,
+    z: -x * sin3 - z * cos3
+  };
+}
+function faceYaw(spec, basis, wish, moveX, moveZ, dodging, live) {
+  if (dodging) return Math.atan2(live.dashX, live.dashZ);
+  if (basis.lock || spec.mode === "strafe" || spec.mode === "firstPerson" || spec.mode === "lockOn") return basis.faceYaw;
+  if (wish.amount > 0.1 || Math.hypot(moveX, moveZ) > 0.2) return Math.atan2(moveX, moveZ);
+  return null;
+}
+function capsuleShift(spec, q) {
+  const offset = spec.capsuleOffset ?? [0, 0, 0];
+  const yaw = yawOf2(q);
+  const sin3 = Math.sin(yaw);
+  const cos3 = Math.cos(yaw);
+  return {
+    x: offset[0] * cos3 + offset[2] * sin3,
+    y: offset[1],
+    z: -offset[0] * sin3 + offset[2] * cos3
+  };
+}
+function yawOf2(q) {
+  return Math.atan2(2 * (q.w * q.y + q.x * q.z), 1 - 2 * (q.y * q.y + q.z * q.z));
+}
+function stepYaw(current, target, maxStep) {
+  let delta = target - current;
+  if (delta > Math.PI) delta -= Math.PI * 2;
+  if (delta < -Math.PI) delta += Math.PI * 2;
+  if (Math.abs(delta) <= maxStep) return target;
+  return current + Math.sign(delta) * maxStep;
+}
+function followPath(x, z, live, stop) {
+  while (live.pathIndex < live.path.length) {
+    const point3 = live.path[live.pathIndex];
+    if (Math.hypot(point3[0] - x, point3[2] - z) <= stop) live.pathIndex += 1;
+    else break;
+  }
+  if (live.pathIndex >= live.path.length) {
+    live.path = [];
+    return { x: 0, z: 0 };
+  }
+  const point2 = live.path[live.pathIndex];
+  return steerPoint(x, z, point2[0], point2[2]);
+}
+function steer(from, to, stop) {
+  const path = findNavigationPath(from, [to.x, to.y, to.z]);
+  const next = path && path.length > 1 ? path[1] : [to.x, to.y, to.z];
+  if (Math.hypot(next[0] - from[0], next[2] - from[2]) <= stop) return { x: 0, z: 0 };
+  return steerPoint(from[0], from[2], next[0], next[2]);
+}
+function steerPoint(x, z, tx, tz) {
+  const dx = tx - x;
+  const dz = tz - z;
+  const len = Math.hypot(dx, dz) || 1;
+  return { x: dx / len, z: dz / len };
+}
+function airborne(live, now) {
+  return now - live.lastGrounded >= 0.12 || live.vy < -2;
+}
+function stepJumpPose(id, ownerAssetId, spec, live, dt, now, jumped, dodging, moving) {
+  const anyJump = spec.jumpClip || spec.airClip || spec.landClip;
+  if (dodging || !anyJump) {
+    if (live.jumpPhase !== "none") live.clip = "";
+    live.jumpPhase = "none";
+    return;
+  }
+  const begin = (phase) => {
+    live.jumpPhase = phase;
+    live.jumpTime = 0;
+    live.clip = "";
+  };
+  if (jumped && (spec.jumpClip || spec.airClip)) begin(spec.jumpClip ? "rise" : "hang");
+  else if (live.jumpPhase === "rise") {
+    live.jumpTime += dt;
+    const duration = getRuntimeWorld().clipDuration?.(spec.jumpClipAssetId || ownerAssetId, spec.jumpClip) ?? 0;
+    const finished = duration > 0 && live.jumpTime >= duration - 0.02;
+    const falling = live.vy <= 0 && live.jumpTime >= 0.12;
+    if (live.grounded) begin(spec.landClip ? "land" : "none");
+    else if (finished || falling) begin("hang");
+  } else if (live.jumpPhase === "hang") {
+    live.jumpTime += dt;
+    if (live.grounded) begin(spec.landClip ? "land" : "none");
+  } else if (live.jumpPhase === "land") {
+    live.jumpTime += dt;
+    const duration = getRuntimeWorld().clipDuration?.(spec.landClipAssetId || ownerAssetId, spec.landClip) ?? 0;
+    const contact = duration > 0 ? Math.min(0.22, Math.max(0.12, duration * 0.4)) : 0.16;
+    const finished = duration > 0 && live.jumpTime >= Math.min(duration, 0.5) - 0.02 || duration <= 0 && live.jumpTime >= 0.28;
+    if (!live.grounded && airborne(live, now)) begin(spec.airClip ? "hang" : "none");
+    else if (finished) begin("none");
+    else if (moving && live.jumpTime >= contact) begin("none");
+  } else if (!live.grounded && spec.airClip && airborne(live, now)) begin("hang");
+  if (live.jumpPhase === "rise" && spec.jumpClip) playOwned(id, ownerAssetId, live, spec.jumpClip, spec.jumpClipAssetId, false);
+  else if (live.jumpPhase === "hang" && spec.airClip) playOwned(id, ownerAssetId, live, spec.airClip, spec.airClipAssetId, true);
+  else if (live.jumpPhase === "land" && spec.landClip) playOwned(id, ownerAssetId, live, spec.landClip, spec.landClipAssetId, false);
+}
+function playOwned(id, ownerAssetId, live, name, assetId, loop) {
+  const key = `${loop ? "loop" : "once"}\0${assetId}\0${name}`;
+  if (live.clip === key) return;
+  live.clip = key;
+  const own = !assetId || assetId === ownerAssetId;
+  getRuntimeWorld().playBody?.(id, name, { assetId: own ? null : assetId, loop, fade: 0.1 });
+}
+function pickClip(spec, dodging, moving, sprint, swimming) {
+  if (dodging && spec.dodgeClip) return { name: spec.dodgeClip, assetId: spec.dodgeClipAssetId };
+  if (swimming) {
+    if (moving && spec.swimClip) return { name: spec.swimClip, assetId: spec.swimClipAssetId ?? "" };
+    if (spec.swimIdleClip) return { name: spec.swimIdleClip, assetId: spec.swimIdleClipAssetId ?? "" };
+    if (spec.swimClip) return { name: spec.swimClip, assetId: spec.swimClipAssetId ?? "" };
+  }
+  if (moving && sprint && spec.runClip) return { name: spec.runClip, assetId: spec.runClipAssetId };
+  if (moving && spec.walkClip) return { name: spec.walkClip, assetId: spec.walkClipAssetId };
+  return { name: spec.idleClip, assetId: spec.idleClipAssetId };
+}
+function groundUnder(host, x, y, z, id, spec) {
+  const distance2 = host.probe?.([x, y + spec.height * 0.5, z], [0, -1, 0], spec.height + 0.45, id);
+  if (distance2 === null || distance2 === void 0) return null;
+  return y + spec.height * 0.5 - distance2;
+}
+function slide(host, x, y, z, nextX, nextZ, id, radius) {
+  const dx = nextX - x;
+  const dz = nextZ - z;
+  const length4 = Math.hypot(dx, dz);
+  if (length4 < 1e-5 || !host.probe) return { x: nextX, z: nextZ };
+  const hit = host.probe([x, y, z], [dx / length4, 0, dz / length4], length4 + radius, id);
+  if (hit === null || hit > length4 + radius * 0.2) return { x: nextX, z: nextZ };
+  const allowed = Math.max(0, hit - radius);
+  return { x: x + dx / length4 * allowed, z: z + dz / length4 * allowed };
+}
+registerRuntimeSystem("core.character", RUNTIME_STAGE.POST_PHYSICS, stepCharacters);
+
+// src/core/codeAssets/shaderRuntime.ts
 init_fieldSchema();
+import {
+  AdditiveBlending as AdditiveBlending2,
+  BackSide,
+  Color as Color5,
+  DataTexture as DataTexture2,
+  DoubleSide as DoubleSide3,
+  FrontSide,
+  MultiplyBlending as MultiplyBlending2,
+  NoBlending,
+  NormalBlending as NormalBlending2,
+  RGBAFormat as RGBAFormat2,
+  SubtractiveBlending,
+  Vector2 as Vector23,
+  Vector3 as Vector39,
+  Vector4
+} from "three";
+import * as tsl from "three/tsl";
+import {
+  MeshBasicNodeMaterial as MeshBasicNodeMaterial3,
+  MeshPhysicalNodeMaterial,
+  MeshSSSNodeMaterial,
+  MeshStandardNodeMaterial,
+  MeshToonNodeMaterial,
+  PhysicalLightingModel
+} from "three/webgpu";
 
 // src/core/codeAssets/compiler.ts
 import ts from "typescript";
+
+// src/core/codeAssets/typeDefs.ts
+var CORE_ES_LIB_DTS = `
+declare type PropertyKey = string | number | symbol;
+declare type Partial<T> = { [P in keyof T]?: T[P] };
+declare type Required<T> = { [P in keyof T]-?: T[P] };
+declare type Readonly<T> = { readonly [P in keyof T]: T[P] };
+declare type Pick<T, K extends keyof T> = { [P in K]: T[P] };
+declare type Record<K extends keyof any, T> = { [P in K]: T };
+declare type Exclude<T, U> = T extends U ? never : T;
+declare type Extract<T, U> = T extends U ? T : never;
+declare type Omit<T, K extends keyof any> = Pick<T, Exclude<keyof T, K>>;
+declare type NonNullable<T> = T & {};
+declare type Parameters<T extends (...args: any) => any> = T extends (...args: infer P) => any ? P : never;
+declare type ReturnType<T extends (...args: any) => any> = T extends (...args: any) => infer R ? R : any;
+declare type Awaited<T> = T extends null | undefined ? T : T extends object & { then(onfulfilled: infer F, ...args: any): any } ? F extends (value: infer V, ...args: any) => any ? Awaited<V> : never : T;
+
+interface Symbol { readonly description: string | undefined; toString(): string }
+interface SymbolConstructor { readonly iterator: unique symbol; readonly toStringTag: unique symbol }
+declare var Symbol: SymbolConstructor;
+
+interface IteratorResult<T, TReturn = any> { done?: boolean; value: T }
+interface Iterator<T, TReturn = any, TNext = undefined> { next(...args: [] | [TNext]): IteratorResult<T, TReturn> }
+interface Iterable<T> { [Symbol.iterator](): Iterator<T> }
+interface IterableIterator<T> extends Iterable<T>, Iterator<T> {}
+
+interface Function { apply(this: Function, thisArg: any, argArray?: any): any; call(this: Function, thisArg: any, ...argArray: any[]): any; bind(this: Function, thisArg: any, ...argArray: any[]): any; readonly length: number; readonly name: string }
+interface CallableFunction extends Function {}
+interface NewableFunction extends Function {}
+interface IArguments { [index: number]: any; length: number }
+
+interface Object { constructor: Function; toString(): string; valueOf(): Object; hasOwnProperty(v: PropertyKey): boolean }
+interface ObjectConstructor {
+  keys(o: object): string[];
+  values<T>(o: { [s: string]: T } | ArrayLike<T>): T[];
+  values(o: {}): any[];
+  entries<T>(o: { [s: string]: T } | ArrayLike<T>): [string, T][];
+  entries(o: {}): [string, any][];
+  assign<T extends {}, U>(target: T, source: U): T & U;
+  assign<T extends {}, U, V>(target: T, source1: U, source2: V): T & U & V;
+  assign(target: object, ...sources: any[]): any;
+  fromEntries<T = any>(entries: Iterable<readonly [PropertyKey, T]>): { [k: string]: T };
+  freeze<T>(o: T): Readonly<T>;
+  is(value1: unknown, value2: unknown): boolean;
+}
+declare var Object: ObjectConstructor;
+
+interface ArrayLike<T> { readonly length: number; readonly [n: number]: T }
+
+interface ReadonlyArray<T> {
+  readonly length: number;
+  readonly [n: number]: T;
+  [Symbol.iterator](): IterableIterator<T>;
+  concat(...items: (T | ConcatArray<T>)[]): T[];
+  join(separator?: string): string;
+  slice(start?: number, end?: number): T[];
+  indexOf(searchElement: T, fromIndex?: number): number;
+  lastIndexOf(searchElement: T, fromIndex?: number): number;
+  every(predicate: (value: T, index: number, array: readonly T[]) => unknown, thisArg?: any): boolean;
+  some(predicate: (value: T, index: number, array: readonly T[]) => unknown, thisArg?: any): boolean;
+  forEach(callbackfn: (value: T, index: number, array: readonly T[]) => void, thisArg?: any): void;
+  map<U>(callbackfn: (value: T, index: number, array: readonly T[]) => U, thisArg?: any): U[];
+  filter<S extends T>(predicate: (value: T, index: number, array: readonly T[]) => value is S, thisArg?: any): S[];
+  filter(predicate: (value: T, index: number, array: readonly T[]) => unknown, thisArg?: any): T[];
+  reduce<U = T>(callbackfn: (previousValue: U, currentValue: T, currentIndex: number, array: readonly T[]) => U, initialValue?: U): U;
+  find<S extends T>(predicate: (value: T, index: number, obj: readonly T[]) => value is S, thisArg?: any): S | undefined;
+  find(predicate: (value: T, index: number, obj: readonly T[]) => unknown, thisArg?: any): T | undefined;
+  findIndex(predicate: (value: T, index: number, obj: readonly T[]) => unknown, thisArg?: any): number;
+  includes(searchElement: T, fromIndex?: number): boolean;
+  flat<D extends number = 1>(depth?: D): any[];
+  flatMap<U>(callback: (value: T, index: number, array: readonly T[]) => U | readonly U[]): U[];
+  at(index: number): T | undefined;
+}
+interface ConcatArray<T> { readonly length: number; readonly [n: number]: T; join(separator?: string): string; slice(start?: number, end?: number): T[] }
+
+interface Array<T> {
+  length: number;
+  [n: number]: T;
+  [Symbol.iterator](): IterableIterator<T>;
+  push(...items: T[]): number;
+  pop(): T | undefined;
+  shift(): T | undefined;
+  unshift(...items: T[]): number;
+  splice(start: number, deleteCount?: number, ...items: T[]): T[];
+  slice(start?: number, end?: number): T[];
+  concat(...items: (T | ConcatArray<T>)[]): T[];
+  join(separator?: string): string;
+  reverse(): T[];
+  sort(compareFn?: (a: T, b: T) => number): this;
+  indexOf(searchElement: T, fromIndex?: number): number;
+  lastIndexOf(searchElement: T, fromIndex?: number): number;
+  every(predicate: (value: T, index: number, array: T[]) => unknown, thisArg?: any): boolean;
+  some(predicate: (value: T, index: number, array: T[]) => unknown, thisArg?: any): boolean;
+  forEach(callbackfn: (value: T, index: number, array: T[]) => void, thisArg?: any): void;
+  map<U>(callbackfn: (value: T, index: number, array: T[]) => U, thisArg?: any): U[];
+  filter<S extends T>(predicate: (value: T, index: number, array: T[]) => value is S, thisArg?: any): S[];
+  filter(predicate: (value: T, index: number, array: T[]) => unknown, thisArg?: any): T[];
+  reduce<U = T>(callbackfn: (previousValue: U, currentValue: T, currentIndex: number, array: T[]) => U, initialValue?: U): U;
+  find<S extends T>(predicate: (value: T, index: number, obj: T[]) => value is S, thisArg?: any): S | undefined;
+  find(predicate: (value: T, index: number, obj: T[]) => unknown, thisArg?: any): T | undefined;
+  findIndex(predicate: (value: T, index: number, obj: T[]) => unknown, thisArg?: any): number;
+  includes(searchElement: T, fromIndex?: number): boolean;
+  fill(value: T, start?: number, end?: number): this;
+  flat<D extends number = 1>(depth?: D): any[];
+  flatMap<U>(callback: (value: T, index: number, array: T[]) => U | readonly U[]): U[];
+  at(index: number): T | undefined;
+}
+interface ArrayConstructor {
+  new <T>(...items: T[]): T[];
+  from<T>(iterable: Iterable<T> | ArrayLike<T>): T[];
+  from<T, U>(iterable: Iterable<T> | ArrayLike<T>, mapfn: (v: T, k: number) => U): U[];
+  isArray(arg: any): arg is any[];
+}
+declare var Array: ArrayConstructor;
+
+interface String {
+  readonly length: number;
+  charAt(pos: number): string;
+  charCodeAt(index: number): number;
+  concat(...strings: string[]): string;
+  indexOf(searchString: string, position?: number): number;
+  lastIndexOf(searchString: string, position?: number): number;
+  localeCompare(that: string): number;
+  match(regexp: string | RegExp): RegExpMatchArray | null;
+  replace(searchValue: string | RegExp, replaceValue: string | ((substring: string, ...args: any[]) => string)): string;
+  replaceAll(searchValue: string | RegExp, replaceValue: string | ((substring: string, ...args: any[]) => string)): string;
+  search(regexp: string | RegExp): number;
+  slice(start?: number, end?: number): string;
+  split(separator: string | RegExp, limit?: number): string[];
+  substring(start: number, end?: number): string;
+  toLowerCase(): string;
+  toUpperCase(): string;
+  trim(): string;
+  trimStart(): string;
+  trimEnd(): string;
+  padStart(maxLength: number, fillString?: string): string;
+  padEnd(maxLength: number, fillString?: string): string;
+  startsWith(searchString: string, position?: number): boolean;
+  endsWith(searchString: string, endPosition?: number): boolean;
+  includes(searchString: string, position?: number): boolean;
+  repeat(count: number): string;
+}
+interface StringConstructor { (value?: any): string; fromCharCode(...codes: number[]): string }
+declare var String: StringConstructor;
+
+interface Number { toFixed(fractionDigits?: number): string; toString(radix?: number): string; valueOf(): number }
+interface NumberConstructor { (value?: any): number; isFinite(number: unknown): boolean; isNaN(number: unknown): boolean; isInteger(number: unknown): boolean; parseFloat(string: string): number; parseInt(string: string, radix?: number): number; readonly MAX_VALUE: number; readonly MIN_VALUE: number; readonly NaN: number }
+declare var Number: NumberConstructor;
+
+interface Boolean { valueOf(): boolean }
+interface BooleanConstructor { <T>(value?: T): boolean }
+declare var Boolean: BooleanConstructor;
+
+interface RegExpMatchArray extends Array<string> { index?: number; input?: string }
+interface RegExpExecArray extends Array<string> { index: number; input: string }
+interface RegExp { test(string: string): boolean; exec(string: string): RegExpExecArray | null; readonly source: string; readonly flags: string }
+interface RegExpConstructor { new (pattern: RegExp | string, flags?: string): RegExp; (pattern: RegExp | string, flags?: string): RegExp }
+declare var RegExp: RegExpConstructor;
+
+interface Error { name: string; message: string; stack?: string }
+interface ErrorConstructor { new (message?: string): Error; (message?: string): Error }
+declare var Error: ErrorConstructor;
+
+interface Date { getTime(): number; toISOString(): string; valueOf(): number }
+interface DateConstructor { new (): Date; new (value: number | string): Date; now(): number }
+declare var Date: DateConstructor;
+
+interface Map<K, V> {
+  clear(): void; delete(key: K): boolean; forEach(callbackfn: (value: V, key: K, map: Map<K, V>) => void): void;
+  get(key: K): V | undefined; has(key: K): boolean; set(key: K, value: V): this; readonly size: number;
+  entries(): IterableIterator<[K, V]>; keys(): IterableIterator<K>; values(): IterableIterator<V>; [Symbol.iterator](): IterableIterator<[K, V]>;
+}
+interface MapConstructor { new <K = any, V = any>(entries?: readonly (readonly [K, V])[] | null): Map<K, V> }
+declare var Map: MapConstructor;
+
+interface Set<T> {
+  add(value: T): this; clear(): void; delete(value: T): boolean; forEach(callbackfn: (value: T, value2: T, set: Set<T>) => void): void;
+  has(value: T): boolean; readonly size: number;
+  entries(): IterableIterator<[T, T]>; keys(): IterableIterator<T>; values(): IterableIterator<T>; [Symbol.iterator](): IterableIterator<T>;
+}
+interface SetConstructor { new <T = any>(values?: readonly T[] | null): Set<T> }
+declare var Set: SetConstructor;
+
+interface Promise<T> {
+  then<TResult1 = T, TResult2 = never>(onfulfilled?: ((value: T) => TResult1 | PromiseLike<TResult1>) | null, onrejected?: ((reason: any) => TResult2 | PromiseLike<TResult2>) | null): Promise<TResult1 | TResult2>;
+  catch<TResult = never>(onrejected?: ((reason: any) => TResult | PromiseLike<TResult>) | null): Promise<T | TResult>;
+  finally(onfinally?: (() => void) | null): Promise<T>;
+}
+interface PromiseLike<T> { then<TResult1 = T, TResult2 = never>(onfulfilled?: ((value: T) => TResult1 | PromiseLike<TResult1>) | null, onrejected?: ((reason: any) => TResult2 | PromiseLike<TResult2>) | null): PromiseLike<TResult1 | TResult2> }
+interface PromiseConstructor { new <T>(executor: (resolve: (value: T | PromiseLike<T>) => void, reject: (reason?: any) => void) => void): Promise<T>; resolve<T>(value: T | PromiseLike<T>): Promise<T>; reject<T = never>(reason?: any): Promise<T>; all<T extends readonly unknown[]>(values: T): Promise<{ -readonly [P in keyof T]: Awaited<T[P]> }> }
+declare var Promise: PromiseConstructor;
+
+interface Math {
+  readonly E: number; readonly LN10: number; readonly LN2: number; readonly LOG2E: number; readonly LOG10E: number; readonly PI: number; readonly SQRT1_2: number; readonly SQRT2: number;
+  abs(x: number): number; acos(x: number): number; asin(x: number): number; atan(x: number): number; atan2(y: number, x: number): number;
+  ceil(x: number): number; cos(x: number): number; exp(x: number): number; floor(x: number): number; hypot(...values: number[]): number;
+  log(x: number): number; max(...values: number[]): number; min(...values: number[]): number; pow(x: number, y: number): number;
+  random(): number; round(x: number): number; sign(x: number): number; sin(x: number): number; sqrt(x: number): number; tan(x: number): number; trunc(x: number): number;
+}
+declare var Math: Math;
+
+interface JSON { parse(text: string): any; stringify(value: any, replacer?: any, space?: string | number): string }
+declare var JSON: JSON;
+
+declare var console: { log(...data: any[]): void; warn(...data: any[]): void; error(...data: any[]): void; info(...data: any[]): void };
+declare var performance: { now(): number };
+declare function parseInt(string: string, radix?: number): number;
+declare function parseFloat(string: string): number;
+declare function isNaN(number: number): boolean;
+declare function isFinite(number: number): boolean;
+declare function structuredClone<T>(value: T): T;
+declare var undefined: undefined;
+declare var NaN: number;
+declare var Infinity: number;
+`;
+var RUNTIME_DTS_SUMMARY = `export interface Vec2 { x: number; y: number }
+export interface Vec3 { x: number; y: number; z: number }
+export interface Vec4 { x: number; y: number; z: number; w: number }
+export type ScriptParamSchema =
+  | { type: 'number'; default: number; min?: number; max?: number; step?: number; label: string; description?: string }
+  | { type: 'boolean'; default: boolean; label: string; description?: string }
+  | { type: 'string'; default: string; label: string; description?: string }
+  | { type: 'color'; default: string; label: string; description?: string }
+  | { type: 'vec2'; default: readonly [number, number]; label: string; description?: string }
+  | { type: 'vec3'; default: readonly [number, number, number]; label: string; description?: string }
+  | { type: 'enum'; options: ReadonlyArray<{ value: string; label: string }>; default: string; label: string; description?: string }
+  | { type: 'texture'; default?: string | null; label: string; description?: string }
+  | { type: 'ref'; target: 'node' | 'asset' | 'clip' | 'tableRow'; kinds?: readonly string[]; tableId?: string; default?: string | null; label: string; description?: string }
+  | Record<string, unknown>
+export type ScriptParamMap = Record<string, ScriptParamSchema>
+export interface NodeHandle {
+  readonly id: string; readonly name: string; readonly tags: readonly string[]; readonly parent: NodeHandle | null
+  position: Vec3; rotation: Vec3; scale: Vec3; visible: boolean
+  hasTag(tag: string): boolean
+  addTag(tag: string): void
+  removeTag(tag: string): void
+  getChildren(): readonly NodeHandle[]
+  sendMessage(name: string, payload?: unknown): void
+  getBehavior<T = Record<string, (...args: unknown[]) => unknown>>(behavior: unknown): T | null
+  destroy(): void
+}
+export interface ScriptContext<P = Record<string, unknown>, S = Record<string, unknown>> {
+  readonly node: NodeHandle; readonly params: P; readonly state: S; readonly elapsedTime: number
+  position: Vec3; rotation: Vec3; scale: Vec3; visible: boolean
+  readonly forward: Vec3; readonly right: Vec3
+  distanceTo(target: Vec3 | NodeHandle): number
+  hasTag(tag: string): boolean
+  addTag(tag: string): void
+  removeTag(tag: string): void
+  directionTo(target: Vec3 | NodeHandle, options?: { planeXZ?: boolean }): Vec3
+  translate(delta: Vec3, space?: 'local' | 'world'): void
+  rotateY(radians: number): void
+  moveToward(target: Vec3 | NodeHandle, maxDistance: number, options?: { faceTarget?: boolean; planeXZ?: boolean }): boolean
+  lookAt(target: Vec3 | NodeHandle, options?: { yOnly?: boolean }): void
+  sendMessage(name: string, payload?: unknown): void
+  broadcast(name: string, payload?: unknown): void
+  getBehavior<T = Record<string, (...args: unknown[]) => unknown>>(behavior: unknown): T | null
+  findNodeById(id: string): NodeHandle | null
+  findNodesByTag(tag: string): readonly NodeHandle[]
+  findNodesInRadius(center: Vec3, radius: number, tag?: string): readonly NodeHandle[]
+  cloneNode(templateOrName: string | NodeHandle, options?: { position?: Vec3; rotation?: Vec3; scale?: Vec3; parent?: NodeHandle | string | null; visible?: boolean; name?: string; initMessage?: string; initPayload?: unknown }): NodeHandle | null
+  spawnPrefab(prefabId: string, options?: { position?: Vec3; rotation?: Vec3; name?: string }): NodeHandle | null
+  destroyNode(node: NodeHandle): void
+  readonly pool: {
+    preload(templateOrPrefab: string | NodeHandle, count: number): void
+    acquire(templateOrPrefab: string | NodeHandle, options?: { position?: Vec3; rotation?: Vec3; scale?: Vec3; payload?: unknown }): NodeHandle | null
+    release(node: NodeHandle): void
+    stats(templateOrPrefab?: string | NodeHandle): { active: number; pooled: number; total: number }
+  }
+  after(seconds: number, callback: () => void): number
+  every(seconds: number, callback: () => void): number
+  cancelTimer(timerId: number): void
+  readonly physics: {
+    raycast(origin: Vec3, dir: Vec3, maxDistance: number): { node: NodeHandle; point: Vec3; normal: Vec3; distance: number } | null
+    sphereCast(center: Vec3, radius: number, options?: { tag?: string }): readonly NodeHandle[]
+    applyImpulse(impulse: Vec3): void
+    applyForce(force: Vec3): void
+  }
+  readonly nav: {
+    moveTo(target: Vec3, speed?: number): boolean
+    stop(): void
+    readonly isMoving: boolean
+  }
+  readonly spline: {
+    create(pointsOrParent: string | NodeHandle | ReadonlyArray<Vec3 | NodeHandle>, options?: { closed?: boolean; tension?: number }): {
+      readonly length: number; readonly closed: boolean; readonly points: readonly Vec3[]
+      pointAt(t: number): Vec3; tangentAt(t: number): Vec3
+      pointAtDistance(distance: number): Vec3; tangentAtDistance(distance: number): Vec3
+    }
+    follow(pointsOrParent: string | NodeHandle | ReadonlyArray<Vec3 | NodeHandle>, options?: {
+      speed?: number; closed?: boolean; tension?: number; loop?: boolean; pingPong?: boolean
+      faceDirection?: boolean; planeXZ?: boolean; startProgress?: number; onArrive?: () => void
+    }): boolean
+    stop(): void
+    readonly isFollowing: boolean
+    readonly progress: number
+  }
+  readonly tween: {
+    to(target: NodeHandle | { position?: Vec3; rotation?: Vec3; scale?: Vec3 }, props: { position?: Vec3; rotation?: Vec3; scale?: Vec3 }, duration: number, options?: { ease?: string; delay?: number; repeat?: number; yoyo?: boolean; onUpdate?: (p: number) => void; onComplete?: () => void }): number
+    value(from: number, to: number, duration: number, onUpdate: (val: number) => void, options?: { ease?: string; delay?: number; repeat?: number; yoyo?: boolean; onComplete?: () => void }): number
+    punchScale(strength?: number, duration?: number): number
+    shakePosition(intensity?: number, duration?: number): number
+    cancel(tweenId: number): void
+    cancelAll(): void
+  }
+  readonly curve: {
+    create(keys: ReadonlyArray<readonly [number, number] | { t: number; v: number; mode?: 'linear' | 'smooth' | 'step' }>, options?: { wrap?: 'clamp' | 'loop' | 'pingPong' }): { eval(t: number): number }
+    eval(keys: ReadonlyArray<readonly [number, number] | { t: number; v: number; mode?: 'linear' | 'smooth' | 'step' }>, t: number, options?: { wrap?: 'clamp' | 'loop' | 'pingPong' }): number
+    ease(name: string, t: number): number
+    parabola(t: number, height?: number): number
+    pulse(t: number): number
+  }
+  readonly crowd: {
+    moveTo(target: Vec3 | readonly [number, number, number], options?: { speed?: number; arriveDist?: number; onArrive?: () => void }): void
+    stop(): void
+    readonly isMoving: boolean
+    formation(units: ReadonlyArray<string | NodeHandle>, center: Vec3 | readonly [number, number, number], options?: { formation?: string; spacing?: number; facingYaw?: number; speed?: number; arriveDist?: number }): void
+    stats(): { active: number; total: number }
+  }
+  readonly projectile: {
+    launch(options?: {
+      direction?: Vec3 | readonly [number, number, number]
+      target?: string | NodeHandle | null
+      owner?: string | NodeHandle | null
+      mode?: 'linear' | 'ballistic' | 'homing'
+      speed?: number; gravity?: number; turnRate?: number; maxLifetime?: number
+      hitRadius?: number; targetTag?: string; damage?: number; destroyOnHit?: boolean
+      onHit?: (hitNode: NodeHandle | null, pos: Vec3) => void
+    }): void
+    reset(): void
+  }
+  readonly anim: {
+    playBody(clipName: string, opts?: { loop?: boolean; fade?: number; speed?: number }): void
+    playUpper(clipName: string, opts?: { loop?: boolean; fade?: number; speed?: number }): void
+    stopUpper(fade?: number): void
+  }
+  readonly character: {
+    setModifiers(patch: { moveSpeedMul?: number; gravityMul?: number; inputLock?: boolean }): void
+    getModifiers(): { moveSpeedMul?: number; gravityMul?: number; inputLock?: boolean }
+    clearModifiers(): void
+  }
+  readonly input: {
+    isPressed(a: string): boolean
+    justPressed(a: string): boolean
+    isKeyPressed(code: string): boolean
+    axis2D(a: string): Vec2
+    /** \u76F8\u5BF9\u5F53\u524D\u76F8\u673A\u7684\u4E16\u754C\u6C34\u5E73\u79FB\u52A8\u65B9\u5411\uFF08y=0\uFF0C\u957F\u5EA6\u4E3A\u8F93\u5165\u5F3A\u5EA6 0~1\uFF09 */
+    moveDirection(a?: string): Vec3
+    pointerDelta(): Vec2
+    pointerPosition(): Vec2
+    wheelDelta(): number
+    isMouseButtonPressed(button: 0 | 1 | 2): boolean
+    justPressedMouseButton(button: 0 | 1 | 2): boolean
+    justReleasedMouseButton(button: 0 | 1 | 2): boolean
+  }
+  readonly audio: {
+    playSfx(id: string, opts?: { volume?: number; pitch?: number }): void
+    playBgm(id: string, opts?: { volume?: number; loop?: boolean }): void
+    stopBgm(): void
+  }
+  readonly fx: {
+    spawn(effectId: string, position: Vec3, options?: { scale?: number; autoDestroySec?: number }): NodeHandle | null
+  }
+  readonly ui: {
+    getVar(k: string): unknown
+    setVar(k: string, v: unknown): void
+    onEvent(eventName: string, handler: (payload?: unknown) => void): () => void
+    showScreen(screenIdOrName: string): void
+    hideScreen(screenIdOrName: string): void
+    toggleScreen(screenIdOrName: string): void
+    isScreenVisible(screenIdOrName: string): boolean
+    worldToScreen(position: Vec3 | NodeHandle): { x: number; y: number; ndcX: number; ndcY: number; visible: boolean } | null
+  }
+  readonly scene: {
+    currentId(): string
+    load(sceneId: string, options?: { spawnPoint?: string }): void
+  }
+  readonly shader: {
+    setParam(shaderId: string, paramName: string, value: unknown): boolean
+    getParam(shaderId: string, paramName: string): unknown
+  }
+  readonly global: {
+    get(key: string): unknown
+    set(key: string, value: unknown): void
+    remove(key: string): void
+  }
+  readonly storage: {
+    get(key: string): unknown
+    set(key: string, value: unknown): void
+    remove(key: string): void
+  }
+  readonly tables: {
+    getRow(tableId: string, rowId: string): Record<string, unknown> | null
+  }
+  log(...args: unknown[]): void
+  warn(...args: unknown[]): void
+}
+export interface GizmosApi {
+  readonly isSelected: boolean
+  line(from: Vec3 | NodeHandle, to: Vec3 | NodeHandle, opts?: { color?: string }): void
+  arrow(from: Vec3 | NodeHandle, dir: Vec3, length?: number, opts?: { color?: string }): void
+  wireSphere(center: Vec3 | NodeHandle, radius: number, opts?: { color?: string }): void
+  wireBox(center: Vec3 | NodeHandle, size: Vec3, opts?: { color?: string }): void
+  disc(center: Vec3 | NodeHandle, radius: number, opts?: { normal?: Vec3; color?: string }): void
+  radiusHandle(paramKey: string, opts?: { center?: Vec3 | NodeHandle; axis?: 'x' | 'y' | 'z'; color?: string }): void
+  positionHandle(paramKey: string, opts?: { color?: string }): void
+}
+export function defineBehavior<P extends ScriptParamMap, S extends Record<string, unknown>>(def: {
+  name: string; description?: string; params?: P; state?: () => S
+  methods?: Record<string, (self: ScriptContext<Record<string, any>, S>, ...args: any[]) => unknown>
+  onStart?: (self: ScriptContext<Record<string, any>, S>) => void
+  onSpawn?: (self: ScriptContext<Record<string, any>, S>, payload?: unknown) => void
+  onUpdate?: (self: ScriptContext<Record<string, any>, S>, dt: number) => void
+  onDestroy?: (self: ScriptContext<Record<string, any>, S>) => void
+  onMessage?: (self: ScriptContext<Record<string, any>, S>, msg: { name: string; payload?: unknown; sender?: NodeHandle }) => void
+  onDrawGizmos?: (self: ScriptContext<Record<string, any>, S>, gizmos: GizmosApi) => void
+}): unknown
+export function defineSystem<S extends Record<string, unknown>>(def: {
+  name: string; description?: string; stage?: 'prePhysics' | 'postPhysics' | 'postAnimation' | 'preRender'; order?: number
+  state?: () => S; createState?: () => S
+  onMount?: (world: Omit<ScriptContext<Record<string, any>, S>, 'node' | 'params' | 'state' | 'position' | 'rotation' | 'scale' | 'visible'>, state: S) => void
+  onInit?: (world: Omit<ScriptContext<Record<string, any>, S>, 'node' | 'params' | 'state' | 'position' | 'rotation' | 'scale' | 'visible'>, state: S) => void
+  onStep?: (world: Omit<ScriptContext<Record<string, any>, S>, 'node' | 'params' | 'state' | 'position' | 'rotation' | 'scale' | 'visible'>, state: S, dt: number) => void
+  onUpdate?: (world: Omit<ScriptContext<Record<string, any>, S>, 'node' | 'params' | 'state' | 'position' | 'rotation' | 'scale' | 'visible'>, state: S, dt: number) => void
+  onDispose?: (world: Omit<ScriptContext<Record<string, any>, S>, 'node' | 'params' | 'state' | 'position' | 'rotation' | 'scale' | 'visible'>, state: S) => void
+  onDestroy?: (world: Omit<ScriptContext<Record<string, any>, S>, 'node' | 'params' | 'state' | 'position' | 'rotation' | 'scale' | 'visible'>, state: S) => void
+}): unknown
+`;
+var SHADER_DTS_SUMMARY = `export interface ShaderNode {
+  add(other: unknown): ShaderNode; sub(other: unknown): ShaderNode; mul(other: unknown): ShaderNode; div(other: unknown): ShaderNode
+  min(other: unknown): ShaderNode; max(other: unknown): ShaderNode; pow(other: unknown): ShaderNode; mod(other: unknown): ShaderNode
+  clamp(min?: unknown, max?: unknown): ShaderNode; mix(b: unknown, t: unknown): ShaderNode; abs(): ShaderNode; fract(): ShaderNode; floor(): ShaderNode; ceil(): ShaderNode; round(): ShaderNode
+  sin(): ShaderNode; cos(): ShaderNode; tan(): ShaderNode; sqrt(): ShaderNode; exp(): ShaderNode; log(): ShaderNode
+  negate(): ShaderNode; oneMinus(): ShaderNode; saturate(): ShaderNode; normalize(): ShaderNode; length(): ShaderNode
+  dot(other: unknown): ShaderNode; cross(other: unknown): ShaderNode; reflect(normal: unknown): ShaderNode; distance(other: unknown): ShaderNode
+  equal(other: unknown): ShaderNode; notEqual(other: unknown): ShaderNode; lessThan(other: unknown): ShaderNode; greaterThan(other: unknown): ShaderNode
+  lessThanEqual(other: unknown): ShaderNode; greaterThanEqual(other: unknown): ShaderNode; and(other: unknown): ShaderNode; or(other: unknown): ShaderNode; not(): ShaderNode
+  select(a: unknown, b: unknown): ShaderNode; toVar(name?: string): ShaderNode; assign(val: unknown): ShaderNode
+  addAssign(val: unknown): ShaderNode; subAssign(val: unknown): ShaderNode; mulAssign(val: unknown): ShaderNode
+  readonly x: ShaderNode; readonly y: ShaderNode; readonly z: ShaderNode; readonly w: ShaderNode
+  readonly r: ShaderNode; readonly g: ShaderNode; readonly b: ShaderNode; readonly a: ShaderNode
+  readonly xy: ShaderNode; readonly xz: ShaderNode; readonly yz: ShaderNode; readonly xyz: ShaderNode; readonly rgb: ShaderNode; readonly rgba: ShaderNode
+}
+export type ShaderMode = 'lit' | 'unlit' | 'physical' | 'toon' | 'sss'
+export interface ShaderLightingDirectContext {
+  lightDirection: ShaderNode
+  lightColor: ShaderNode
+  normal: ShaderNode
+  viewDirection: ShaderNode
+  diffuseColor: ShaderNode
+  params: Record<string, any>
+}
+export interface ShaderLightingIndirectContext {
+  normal: ShaderNode
+  viewDirection: ShaderNode
+  diffuseColor: ShaderNode
+  params: Record<string, any>
+}
+export interface PostEffectContext {
+  color: ShaderNode
+  depth: ShaderNode
+  normal: ShaderNode
+  uv: ShaderNode
+  time: ShaderNode
+  deltaTime: ShaderNode
+  params: Record<string, any>
+}
+export function defineShader(def: {
+  name: string; description?: string; mode?: ShaderMode; transparent?: boolean; doubleSided?: boolean
+  side?: 'front' | 'back' | 'double'; depthWrite?: boolean; depthTest?: boolean
+  blending?: 'normal' | 'additive' | 'subtractive' | 'multiply' | 'none'; alphaTest?: number; wireframe?: boolean
+  params?: Record<string, unknown>
+  surface: (params: Record<string, any>) => {
+    baseColor?: unknown; normal?: unknown; roughness?: unknown; metalness?: unknown
+    emissive?: unknown; opacity?: unknown; vertexOffset?: unknown
+    clearcoat?: unknown; clearcoatRoughness?: unknown; clearcoatNormal?: unknown
+    transmission?: unknown; ior?: unknown; thickness?: unknown; attenuationColor?: unknown; attenuationDistance?: unknown
+    sheen?: unknown; sheenRoughness?: unknown; iridescence?: unknown; iridescenceIOR?: unknown; iridescenceThickness?: unknown
+    anisotropy?: unknown; dispersion?: unknown; specularIntensity?: unknown; specularColor?: unknown
+  }
+  lighting?: {
+    direct?: (ctx: ShaderLightingDirectContext) => ShaderNode | { diffuse?: unknown; specular?: unknown }
+    indirect?: (ctx: ShaderLightingIndirectContext) => ShaderNode | { diffuse?: unknown; specular?: unknown }
+  }
+}): unknown
+export function definePostEffect(def: {
+  name: string; description?: string; params?: Record<string, unknown>
+  apply: (ctx: PostEffectContext) => unknown
+}): unknown
+export function float(x?: number): ShaderNode
+export function int(x?: number): ShaderNode
+export function uint(x?: number): ShaderNode
+export function vec2(x?: unknown, y?: unknown): ShaderNode
+export function vec3(x?: unknown, y?: unknown, z?: unknown): ShaderNode
+export function vec4(x?: unknown, y?: unknown, z?: unknown, w?: unknown): ShaderNode
+export function ivec2(x?: unknown, y?: unknown): ShaderNode
+export function ivec3(x?: unknown, y?: unknown, z?: unknown): ShaderNode
+export function ivec4(x?: unknown, y?: unknown, z?: unknown, w?: unknown): ShaderNode
+export function uvec2(x?: unknown, y?: unknown): ShaderNode
+export function uvec3(x?: unknown, y?: unknown, z?: unknown): ShaderNode
+export function uvec4(x?: unknown, y?: unknown, z?: unknown, w?: unknown): ShaderNode
+export function mat3(...args: unknown[]): ShaderNode
+export function mat4(...args: unknown[]): ShaderNode
+export function uniform(val: unknown): ShaderNode
+export function varying(node: unknown, name?: string): ShaderNode
+export function Fn<T extends (...args: any[]) => any>(fn: T): T
+export function If(cond: unknown, cb: () => void): { ElseIf: (c: unknown, cb: () => void) => any; Else: (cb: () => void) => void }
+export function Loop(countOrOpts: unknown, cb: (i: { i: ShaderNode }) => void): void
+export function Break(): void
+export function Continue(): void
+export function select(cond: unknown, a: unknown, b: unknown): ShaderNode
+export function color(hexOrR: string | number, g?: number, b?: number): ShaderNode
+export function mix(a: unknown, b: unknown, t: unknown): ShaderNode
+export function clamp(x: unknown, min?: unknown, max?: unknown): ShaderNode
+export function smoothstep(edge0: unknown, edge1: unknown, x: unknown): ShaderNode
+export function step(edge: unknown, x: unknown): ShaderNode
+export function sin(x: unknown): ShaderNode
+export function cos(x: unknown): ShaderNode
+export function tan(x: unknown): ShaderNode
+export function asin(x: unknown): ShaderNode
+export function acos(x: unknown): ShaderNode
+export function atan(x: unknown): ShaderNode
+export function atan2(y: unknown, x: unknown): ShaderNode
+export function radians(deg: unknown): ShaderNode
+export function degrees(rad: unknown): ShaderNode
+export function abs(x: unknown): ShaderNode
+export function sign(x: unknown): ShaderNode
+export function floor(x: unknown): ShaderNode
+export function ceil(x: unknown): ShaderNode
+export function round(x: unknown): ShaderNode
+export function trunc(x: unknown): ShaderNode
+export function fract(x: unknown): ShaderNode
+export function mod(a: unknown, b: unknown): ShaderNode
+export function pow(x: unknown, y: unknown): ShaderNode
+export function sqrt(x: unknown): ShaderNode
+export function exp(x: unknown): ShaderNode
+export function log(x: unknown): ShaderNode
+export function saturate(x: unknown): ShaderNode
+export function min(a: unknown, b: unknown): ShaderNode
+export function max(a: unknown, b: unknown): ShaderNode
+export function dot(a: unknown, b: unknown): ShaderNode
+export function cross(a: unknown, b: unknown): ShaderNode
+export function normalize(v: unknown): ShaderNode
+export function length(v: unknown): ShaderNode
+export function distance(a: unknown, b: unknown): ShaderNode
+export function reflect(incident: unknown, normal: unknown): ShaderNode
+export function refract(incident: unknown, normal: unknown, eta: unknown): ShaderNode
+export function faceforward(n: unknown, i: unknown, nref: unknown): ShaderNode
+export function fwidth(x: unknown): ShaderNode
+export function dFdx(x: unknown): ShaderNode
+export function dFdy(x: unknown): ShaderNode
+export function hash(x: unknown): ShaderNode
+export function fresnel(normal: unknown, viewDir: unknown, power?: unknown): ShaderNode
+export function texture(texRef: unknown, uv?: unknown): ShaderNode
+export function uv(index?: number): ShaderNode
+export const time: ShaderNode
+export const deltaTime: ShaderNode
+export const normalView: ShaderNode
+export const normalWorld: ShaderNode
+export const normalLocal: ShaderNode
+export const tangentLocal: ShaderNode
+export const tangentView: ShaderNode
+export const tangentWorld: ShaderNode
+export const positionGeometry: ShaderNode
+export const positionWorld: ShaderNode
+export const positionLocal: ShaderNode
+export const positionView: ShaderNode
+export const viewDirection: ShaderNode
+export const positionViewDirection: ShaderNode
+export const cameraPosition: ShaderNode
+export const cameraNear: ShaderNode
+export const cameraFar: ShaderNode
+export const cameraViewMatrix: ShaderNode
+export const cameraProjectionMatrix: ShaderNode
+export const modelWorldMatrix: ShaderNode
+export const modelViewMatrix: ShaderNode
+export const frontFacing: ShaderNode
+export const screenUV: ShaderNode
+export const screenCoordinate: ShaderNode
+export const screenSize: ShaderNode
+export const viewportCoordinate: ShaderNode
+export const viewportSize: ShaderNode
+export function linearDepth(depthNode?: unknown): ShaderNode
+export const viewportLinearDepth: ShaderNode
+export function viewportDepthTexture(uvNode?: unknown): ShaderNode
+export function viewportSharedTexture(uvNode?: unknown): ShaderNode
+export function vertexColor(): ShaderNode
+`;
+
+// src/core/codeAssets/compiler.ts
 function diagnosticHint(code, message) {
   if (message.includes("t3d/shader") || message.includes("t3d/runtime")) {
     return '\u8BF7\u786E\u4FDD\u4ECE "t3d/shader" \u6216 "t3d/runtime" \u5BFC\u5165\u767D\u540D\u5355 API';
   }
   if (code === 2304) return "\u5B58\u5728\u672A\u5B9A\u4E49\u7684\u6807\u8BC6\u7B26\uFF0C\u8BF7\u68C0\u67E5\u62FC\u5199\u6216\u4ECE t3d/runtime / t3d/shader \u5BFC\u5165";
+  if (code === 2339) return "\u8BBF\u95EE\u4E86\u5BF9\u8C61\u4E0A\u4E0D\u5B58\u5728\u7684\u5C5E\u6027\u6216\u65B9\u6CD5\uFF0C\u8BF7\u5BF9\u7167 .t3d/runtime.d.ts / .t3d/shader.d.ts \u68C0\u67E5 API \u540D\u79F0";
   if (code === 2322 || code === 2345) return "\u7C7B\u578B\u4E0D\u5339\u914D\uFF0C\u8BF7\u68C0\u67E5\u53C2\u6570\u6216\u8FD4\u56DE\u503C\u7C7B\u578B\u662F\u5426\u7B26\u5408\u5951\u7EA6";
+  if (code === 2554 || code === 2555) return "\u51FD\u6570\u8C03\u7528\u53C2\u6570\u6570\u91CF\u4E0D\u5339\u914D\uFF0C\u8BF7\u68C0\u67E5\u5FC5\u586B\u53C2\u6570";
   return "\u8BF7\u6839\u636E\u62A5\u9519\u884C\u53F7\u4FEE\u6B63\u8BED\u6CD5\u6216\u7C7B\u578B\u9519\u8BEF";
 }
+var LIB_PATH = "/__lib.d.ts";
+var RUNTIME_DTS_PATH = "/node_modules/t3d/runtime.d.ts";
+var SHADER_DTS_PATH = "/node_modules/t3d/shader.d.ts";
+function toCodeDiagnostic(diag, fileName) {
+  const start2 = diag.start ?? 0;
+  const pos = diag.file ? diag.file.getLineAndCharacterOfPosition(start2) : { line: 0, character: 0 };
+  const msg = ts.flattenDiagnosticMessageText(diag.messageText, "\n");
+  return {
+    file: fileName,
+    line: pos.line + 1,
+    column: pos.character + 1,
+    severity: diag.category === ts.DiagnosticCategory.Warning ? "warning" : "error",
+    message: msg,
+    hint: diagnosticHint(diag.code, msg)
+  };
+}
+function runSemanticTypeCheck(fileName, source) {
+  const entryPath = `/__user__/${fileName.replace(/^\/+/, "")}`;
+  const virtualFiles = /* @__PURE__ */ new Map([
+    [LIB_PATH, CORE_ES_LIB_DTS],
+    [RUNTIME_DTS_PATH, RUNTIME_DTS_SUMMARY],
+    [SHADER_DTS_PATH, SHADER_DTS_SUMMARY],
+    [entryPath, source]
+  ]);
+  const compilerOptions = {
+    target: ts.ScriptTarget.ES2022,
+    module: ts.ModuleKind.ESNext,
+    moduleResolution: ts.ModuleResolutionKind.Bundler,
+    strict: true,
+    noImplicitAny: false,
+    skipLibCheck: true,
+    noEmit: true,
+    baseUrl: "/",
+    paths: {
+      "t3d/runtime": [RUNTIME_DTS_PATH],
+      "t3d/shader": [SHADER_DTS_PATH]
+    }
+  };
+  const host = {
+    getSourceFile: (name, languageVersion) => {
+      const content = virtualFiles.get(name);
+      if (content === void 0) return void 0;
+      return ts.createSourceFile(name, content, languageVersion, true);
+    },
+    getDefaultLibFileName: () => LIB_PATH,
+    writeFile: () => {
+    },
+    getCurrentDirectory: () => "/",
+    getDirectories: () => [],
+    fileExists: (name) => virtualFiles.has(name),
+    readFile: (name) => virtualFiles.get(name),
+    getCanonicalFileName: (name) => name,
+    useCaseSensitiveFileNames: () => true,
+    getNewLine: () => "\n",
+    resolveModuleNames: (moduleNames) => moduleNames.map((mod2) => {
+      if (mod2 === "t3d/runtime") return { resolvedFileName: RUNTIME_DTS_PATH, isExternalLibraryImport: true };
+      if (mod2 === "t3d/shader") return { resolvedFileName: SHADER_DTS_PATH, isExternalLibraryImport: true };
+      return void 0;
+    })
+  };
+  const program = ts.createProgram([entryPath], compilerOptions, host);
+  const sourceFile = program.getSourceFile(entryPath);
+  if (!sourceFile) return [];
+  const rawDiags = [
+    ...program.getSyntacticDiagnostics(sourceFile),
+    ...program.getSemanticDiagnostics(sourceFile)
+  ];
+  return rawDiags.map((d) => toCodeDiagnostic(d, fileName));
+}
 function checkAndTranspileTs(fileName, source) {
+  const semanticDiagnostics = runSemanticTypeCheck(fileName, source);
   const compilerOptions = {
     target: ts.ScriptTarget.ES2022,
     module: ts.ModuleKind.CommonJS,
@@ -6311,19 +8873,15 @@ function checkAndTranspileTs(fileName, source) {
     reportDiagnostics: true,
     compilerOptions
   });
-  const diagnostics = (output.diagnostics ?? []).map((diag) => {
-    const start2 = diag.start ?? 0;
-    const pos = diag.file ? diag.file.getLineAndCharacterOfPosition(start2) : { line: 0, character: 0 };
-    const msg = ts.flattenDiagnosticMessageText(diag.messageText, "\n");
-    return {
-      file: fileName,
-      line: pos.line + 1,
-      column: pos.character + 1,
-      severity: diag.category === ts.DiagnosticCategory.Warning ? "warning" : "error",
-      message: msg,
-      hint: diagnosticHint(diag.code, msg)
-    };
-  });
+  const transpileDiags = (output.diagnostics ?? []).map((diag) => toCodeDiagnostic(diag, fileName));
+  const seen = /* @__PURE__ */ new Set();
+  const diagnostics = [];
+  for (const d of [...semanticDiagnostics, ...transpileDiags]) {
+    const key = `${d.line}:${d.column}:${d.message}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    diagnostics.push(d);
+  }
   const hasError = diagnostics.some((d) => d.severity === "error");
   if (hasError) {
     return { ok: false, diagnostics };
@@ -6343,7 +8901,9 @@ function evaluateTranspiledModule(fileName, jsCode, injectedModules) {
     throw new Error(`\u4E0D\u5141\u8BB8\u5BFC\u5165\u672A\u6388\u6743\u6A21\u5757 "${specifier}"\uFF08\u4EC5\u5141\u8BB8 ${Object.keys(injectedModules).join(", ")}\uFF09`);
   };
   try {
-    const fn = new Function("require", "module", "exports", jsCode);
+    const safeUrl = fileName.replace(/[\r\n]/g, "_");
+    const fn = new Function("require", "module", "exports", `${jsCode}
+//# sourceURL=t3d:///${safeUrl}`);
     fn(customRequire, moduleObj, moduleObj.exports);
     const exported = moduleObj.exports.default ?? moduleObj.exports;
     return {
@@ -6370,14 +8930,138 @@ function evaluateTranspiledModule(fileName, jsCode, injectedModules) {
   }
 }
 
+// src/core/codeAssets/shaderRuntime.ts
+var textureResolver = null;
+var cachedFallbackTex = null;
+function fallbackWhiteTexture() {
+  if (!cachedFallbackTex) {
+    cachedFallbackTex = new DataTexture2(new Uint8Array([255, 255, 255, 255]), 1, 1, RGBAFormat2);
+    cachedFallbackTex.needsUpdate = true;
+  }
+  return cachedFallbackTex;
+}
+function resolveTextureAsset(raw) {
+  if (typeof raw === "string" && raw.trim() && textureResolver) {
+    const tex = textureResolver(raw.trim());
+    if (tex) return tex;
+  }
+  if (raw && typeof raw === "object" && "isTexture" in raw) {
+    return raw;
+  }
+  if (raw && typeof raw === "object" && "value" in raw) {
+    const val = raw.value;
+    if (val && typeof val === "object" && "isTexture" in val) return val;
+  }
+  return fallbackWhiteTexture();
+}
+function coerceUniformValue(schema, raw) {
+  const value = raw !== void 0 ? raw : defaultForSchema(schema);
+  if (schema.type === "number") return Number(value) || 0;
+  if (schema.type === "boolean") return value ? 1 : 0;
+  if (schema.type === "color") return new Color5(typeof value === "string" ? value : "#ffffff");
+  if (schema.type === "vec2") {
+    const arr = Array.isArray(value) ? value : [0, 0];
+    return new Vector23(Number(arr[0]) || 0, Number(arr[1]) || 0);
+  }
+  if (schema.type === "vec3") {
+    const arr = Array.isArray(value) ? value : [0, 0, 0];
+    return new Vector39(Number(arr[0]) || 0, Number(arr[1]) || 0, Number(arr[2]) || 0);
+  }
+  if (schema.type === "vec4") {
+    const arr = Array.isArray(value) ? value : [0, 0, 0, 1];
+    return new Vector4(Number(arr[0]) || 0, Number(arr[1]) || 0, Number(arr[2]) || 0, Number(arr[3]) ?? 1);
+  }
+  if (schema.type === "texture" || schema.type === "ref" && schema.target === "asset") {
+    return resolveTextureAsset(value);
+  }
+  return value;
+}
+var PHYSICAL_SURFACE_KEYS = /* @__PURE__ */ new Set([
+  "clearcoat",
+  "clearcoatRoughness",
+  "clearcoatNormal",
+  "transmission",
+  "ior",
+  "thickness",
+  "attenuationColor",
+  "attenuationDistance",
+  "sheen",
+  "sheenRoughness",
+  "iridescence",
+  "iridescenceIOR",
+  "iridescenceThickness",
+  "anisotropy",
+  "dispersion",
+  "specularIntensity",
+  "specularColor"
+]);
+var VALID_SURFACE_KEYS = /* @__PURE__ */ new Set([
+  "baseColor",
+  "normal",
+  "roughness",
+  "metalness",
+  "emissive",
+  "opacity",
+  "vertexOffset",
+  ...PHYSICAL_SURFACE_KEYS
+]);
+var compiledShaders = /* @__PURE__ */ new Map();
+function updateCompiledShaderParam(compiled, paramName, value) {
+  const entry = compiled.uniforms[paramName];
+  if (!entry) return false;
+  entry.node.value = coerceUniformValue(entry.schema, value);
+  compiled.paramValues[paramName] = value;
+  return true;
+}
+function setCompiledShaderParam(shaderId, paramName, value) {
+  const compiled = compiledShaders.get(shaderId);
+  if (!compiled) return false;
+  return updateCompiledShaderParam(compiled, paramName, value);
+}
+function getCompiledShaderParam(shaderId, paramName) {
+  return compiledShaders.get(shaderId)?.paramValues[paramName];
+}
+
 // src/core/codeAssets/scriptRuntime.ts
+init_frameProfile();
+init_motion();
+init_sceneRuntime();
+init_world();
+init_actionMap();
+init_fieldSchema();
 var compiledBehaviors = /* @__PURE__ */ new Map();
 var compiledSystems = /* @__PURE__ */ new Map();
 var instanceStates = /* @__PURE__ */ new Map();
+var runtimeErrorCounts = /* @__PURE__ */ new Map();
+function extractShortStack(error) {
+  if (!(error instanceof Error) || !error.stack) return "";
+  const lines = error.stack.split("\n").slice(1).map((line) => line.trim()).filter((line) => line.length > 0);
+  if (lines.length === 0) return "";
+  const scriptFrames = lines.filter((line) => line.includes("t3d:///"));
+  const picked = (scriptFrames.length > 0 ? scriptFrames : lines).slice(0, 3);
+  return `
+  at ${picked.join("\n  at ")}`;
+}
+function reportRuntimeError(phase, scriptId, label, error, nodeId) {
+  const world3 = getRuntimeWorld();
+  const message = error instanceof Error ? error.message : String(error);
+  const key = `${phase}|${scriptId}|${nodeId ?? ""}|${message}`;
+  const count = (runtimeErrorCounts.get(key) ?? 0) + 1;
+  runtimeErrorCounts.set(key, count);
+  const nodeName = nodeId ? world3.getNodes()[nodeId]?.name : void 0;
+  const nodeDesc = nodeId ? ` \u8282\u70B9=${nodeName ? `"${nodeName}"(${nodeId})` : nodeId}` : "";
+  if (count === 1) {
+    const stack = extractShortStack(error);
+    world3.log("error", `[${phase}] ${label} (${scriptId})${nodeDesc}: ${message}${stack}`);
+  } else if (count === 10 || count === 100 || count === 1e3) {
+    world3.log("error", `[${phase}] ${label} (${scriptId})${nodeDesc} \u5DF2\u91CD\u590D\u62A5\u9519 ${count} \u6B21: ${message}`);
+  }
+}
 var messageQueue = [];
 var uiEventHandlers = /* @__PURE__ */ new Map();
 var uiEventQueue = [];
 var uiClickSubscribed = false;
+var characterEventSubscribed = false;
 var globalMemory = /* @__PURE__ */ new Map();
 var persistentMemory = /* @__PURE__ */ new Map();
 var navAgents = /* @__PURE__ */ new Map();
@@ -6390,6 +9074,14 @@ var activeTweens = /* @__PURE__ */ new Map();
 var sfxCooldownAt = /* @__PURE__ */ new Map();
 var nextTimerId = 1;
 var nextTweenId = 1;
+function ensureCharacterEventBridge() {
+  if (characterEventSubscribed) return;
+  characterEventSubscribed = true;
+  onCharacterEvent((nodeId, event, payload) => {
+    if (getRuntimeWorld().getPlayState() !== "playing") return;
+    messageQueue.push({ targetNodeId: nodeId, name: event, payload, senderId: nodeId });
+  });
+}
 function ensureUiClickBridge() {
   if (uiClickSubscribed) return;
   uiClickSubscribed = true;
@@ -6604,7 +9296,7 @@ function resolveSplinePointsInput(input, host) {
       const ly = Number(p[1]) || 0;
       const lz = Number(p[2]) || 0;
       if (pathObj) {
-        const v = new Vector39(lx, ly, lz).applyMatrix4(pathObj.matrixWorld);
+        const v = new Vector310(lx, ly, lz).applyMatrix4(pathObj.matrixWorld);
         pts.push({ x: v.x, y: v.y, z: v.z });
       } else {
         pts.push({
@@ -6825,7 +9517,7 @@ function resetAndInvokeSpawn(nodeId, payload, host) {
         def.onStart?.(ctx);
         def.onSpawn?.(ctx, payload);
       } catch (error) {
-        getRuntimeWorld().log("error", `\u811A\u672C "${def.name}" \u6FC0\u6D3B\u9519\u8BEF: ${error instanceof Error ? error.message : String(error)}`);
+        reportRuntimeError("onSpawn", sid, `\u811A\u672C "${def.name}"`, error, subId);
       }
     }
   }
@@ -7548,6 +10240,11 @@ function buildScriptContext(node, scriptId, rawParams, stateObj, host) {
       },
       stopUpper: (fade2) => world3.stopUpper?.(node.id, fade2)
     },
+    character: {
+      setModifiers: (patch) => setCharacterModifiers(node.id, patch),
+      getModifiers: () => getCharacterModifiers(node.id),
+      clearModifiers: () => clearCharacterModifiers(node.id)
+    },
     audio: {
       playSfx: (assetId, opts) => {
         const now = typeof performance !== "undefined" ? performance.now() : Date.now();
@@ -7679,6 +10376,10 @@ function buildScriptContext(node, scriptId, rawParams, stateObj, host) {
           window.dispatchEvent(new CustomEvent("t3d:load-scene", { detail: { sceneId, spawnPoint: options?.spawnPoint } }));
         }
       }
+    },
+    shader: {
+      setParam: (shaderId, paramName, value) => setCompiledShaderParam(shaderId, paramName, value),
+      getParam: (shaderId, paramName) => getCompiledShaderParam(shaderId, paramName)
     },
     global: {
       get: (key) => globalMemory.get(key),
@@ -8012,6 +10713,10 @@ function buildSystemWorldApi(systemId, host) {
         }
       }
     },
+    shader: {
+      setParam: (shaderId, paramName, value) => setCompiledShaderParam(shaderId, paramName, value),
+      getParam: (shaderId, paramName) => getCompiledShaderParam(shaderId, paramName)
+    },
     global: {
       get: (key) => globalMemory.get(key),
       set: (key, value) => {
@@ -8054,9 +10759,9 @@ function compileAndRegisterScript(id, fileName, source) {
   if (!evaluated.ok || !evaluated.exports) {
     return { ok: false, diagnostics: evaluated.diagnostics };
   }
-  const exp2 = evaluated.exports;
-  if (exp2.__t3dKind === "system") {
-    const def2 = exp2;
+  const exp3 = evaluated.exports;
+  if (exp3.__t3dKind === "system") {
+    const def2 = exp3;
     const prev = compiledSystems.get(id);
     prev?.unregister();
     const baseOrder = def2.stage === "preRender" ? RUNTIME_STAGE.PRE_RENDER - 1 : def2.stage === "postAnimation" ? RUNTIME_STAGE.POST_ANIMATION : def2.stage === "postPhysics" ? RUNTIME_STAGE.PHYSICS_NAV + 5 : RUNTIME_STAGE.PRE_PHYSICS + 1;
@@ -8083,7 +10788,7 @@ function compileAndRegisterScript(id, fileName, source) {
           def2.onStep?.(api, sysEntry.state, dt);
           def2.onUpdate?.(api, sysEntry.state, dt);
         } catch (error) {
-          getRuntimeWorld().log("error", `\u7CFB\u7EDF "${def2.name}" \u8FD0\u884C\u9519\u8BEF: ${error instanceof Error ? error.message : String(error)}`);
+          reportRuntimeError("system", id, `\u7CFB\u7EDF "${def2.name}"`, error);
         }
       }
     );
@@ -8096,8 +10801,8 @@ function compileAndRegisterScript(id, fileName, source) {
       exports: { id, file: fileName, kind: "system", system: def2 }
     };
   }
-  const def = exp2;
-  if (exp2.__t3dKind !== "behavior" || typeof def.name !== "string" || !def.name.trim()) {
+  const def = exp3;
+  if (exp3.__t3dKind !== "behavior" || typeof def.name !== "string" || !def.name.trim()) {
     return {
       ok: false,
       diagnostics: [
@@ -8122,16 +10827,16 @@ function compileAndRegisterScript(id, fileName, source) {
 }
 function viewRelativeMove(action, host) {
   const axis = getActionAxis2D(action);
-  const length3 = Math.hypot(axis.x, axis.y);
-  if (length3 < 1e-4) return { x: 0, y: 0, z: 0 };
-  const scale = length3 > 1 ? 1 / length3 : 1;
+  const length4 = Math.hypot(axis.x, axis.y);
+  if (length4 < 1e-4) return { x: 0, y: 0, z: 0 };
+  const scale = length4 > 1 ? 1 / length4 : 1;
   const yaw = host.yaw?.() ?? 0;
-  const sin2 = Math.sin(yaw);
-  const cos2 = Math.cos(yaw);
+  const sin3 = Math.sin(yaw);
+  const cos3 = Math.cos(yaw);
   return {
-    x: (axis.x * cos2 - axis.y * sin2) * scale,
+    x: (axis.x * cos3 - axis.y * sin3) * scale,
     y: 0,
-    z: (-axis.x * sin2 - axis.y * cos2) * scale
+    z: (-axis.x * sin3 - axis.y * cos3) * scale
   };
 }
 function clearScriptRuntimeState() {
@@ -8150,6 +10855,7 @@ function clearScriptRuntimeState() {
     }
   }
   instanceStates.clear();
+  runtimeErrorCounts.clear();
   messageQueue.length = 0;
   uiEventHandlers.clear();
   uiEventQueue.length = 0;
@@ -8178,6 +10884,7 @@ function stepProjectScripts(dt, host) {
     return;
   }
   ensureUiClickBridge();
+  ensureCharacterEventBridge();
   bindProjectileRuntimeHooks({
     onHit: ({ projectileId, targetId, ownerId, damage, position }) => {
       messageQueue.push({
@@ -8267,14 +10974,17 @@ function stepProjectScripts(dt, host) {
       }
       const ctx = buildScriptContext(node, scriptId, rawParams, rec.state, host);
       measureCost(`script:${scriptId}`, () => {
+        let phase = "onUpdate";
         try {
           if (!rec.started) {
             rec.started = true;
+            phase = "onStart";
             def.onStart?.(ctx);
+            phase = "onUpdate";
           }
           def.onUpdate?.(ctx, dt);
         } catch (error) {
-          world3.log("error", `\u811A\u672C "${def.name}" \u8FD0\u884C\u9519\u8BEF: ${error instanceof Error ? error.message : String(error)}`);
+          reportRuntimeError(phase, scriptId, `\u811A\u672C "${def.name}"`, error, node.id);
         }
       });
     }
@@ -8319,9 +11029,9 @@ function stepProjectScripts(dt, host) {
       const cur = h.position;
       h.position = { x: pt.x, y: ag.planeXZ ? cur.y : pt.y, z: pt.z };
       if (ag.faceDirection) {
-        const tan = ag.spline.tangentAtDistance(nextDist);
-        const tx = tan.x * ag.direction;
-        const tz = tan.z * ag.direction;
+        const tan2 = ag.spline.tangentAtDistance(nextDist);
+        const tx = tan2.x * ag.direction;
+        const tz = tan2.z * ag.direction;
         if (Math.abs(tx) > 1e-5 || Math.abs(tz) > 1e-5) {
           const r = h.rotation;
           h.rotation = { x: r.x, y: Math.atan2(tx, tz), z: r.z };
@@ -8332,7 +11042,7 @@ function stepProjectScripts(dt, host) {
         try {
           ag.onArrive?.();
         } catch (error) {
-          world3.log("error", `Spline \u5230\u8FBE\u56DE\u8C03\u9519\u8BEF: ${error instanceof Error ? error.message : String(error)}`);
+          reportRuntimeError("spline.onArrive", "spline", "Spline \u5230\u8FBE\u56DE\u8C03", error, ag.nodeId);
         }
       }
     }
@@ -8360,7 +11070,7 @@ function stepProjectScripts(dt, host) {
         tw.apply(eased);
         tw.onUpdate?.(eased);
       } catch (error) {
-        world3.log("error", `Tween \u66F4\u65B0\u9519\u8BEF: ${error instanceof Error ? error.message : String(error)}`);
+        reportRuntimeError("tween.onUpdate", "tween", "Tween \u66F4\u65B0\u56DE\u8C03", error, tw.ownerNodeId);
         activeTweens.delete(tw.id);
         continue;
       }
@@ -8374,7 +11084,7 @@ function stepProjectScripts(dt, host) {
           try {
             tw.onComplete?.();
           } catch (error) {
-            world3.log("error", `Tween \u5B8C\u6210\u56DE\u8C03\u9519\u8BEF: ${error instanceof Error ? error.message : String(error)}`);
+            reportRuntimeError("tween.onComplete", "tween", "Tween \u5B8C\u6210\u56DE\u8C03", error, tw.ownerNodeId);
           }
         }
       }
@@ -8401,7 +11111,7 @@ function stepProjectScripts(dt, host) {
         try {
           timer.callback();
         } catch (error) {
-          world3.log("error", `\u811A\u672C\u5B9A\u65F6\u5668\u56DE\u8C03\u9519\u8BEF: ${error instanceof Error ? error.message : String(error)}`);
+          reportRuntimeError("timer", "timer", "\u811A\u672C\u5B9A\u65F6\u5668\u56DE\u8C03", error, timer.nodeId);
         }
       }
     }
@@ -8421,7 +11131,7 @@ function stepProjectScripts(dt, host) {
         try {
           def.onMessage(ctx, { name: msg.name, payload: msg.payload, sender });
         } catch (error) {
-          world3.log("error", `\u811A\u672C "${def.name}" \u6D88\u606F\u5904\u7406\u9519\u8BEF: ${error instanceof Error ? error.message : String(error)}`);
+          reportRuntimeError(`onMessage:${msg.name}`, rec.scriptId, `\u811A\u672C "${def.name}"`, error, rec.nodeId);
         }
       }
     }
@@ -8437,7 +11147,7 @@ function stepProjectScripts(dt, host) {
           try {
             fn(evt.payload);
           } catch (error) {
-            world3.log("error", `UI \u4E8B\u4EF6 "${evt.eventName}" \u5904\u7406\u9519\u8BEF: ${error instanceof Error ? error.message : String(error)}`);
+            reportRuntimeError(`uiEvent:${evt.eventName}`, instKey, `UI \u4E8B\u4EF6 "${evt.eventName}"`, error, evt.payload.nodeId);
           }
         }
       }

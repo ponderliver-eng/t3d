@@ -9,6 +9,8 @@
  * - 源码里不要使用反引号与 ${}（本文件用模板字符串承载源码）。
  */
 
+import type { KnowledgeEntry } from './types'
+
 export interface RecipeFile {
   /** 建议的脚本 ID（script__create 的 id） */
   scriptId: string
@@ -585,6 +587,38 @@ export function findRecipe(id: string): Recipe | null {
 
 export function listRecipeIndex(): Array<{ id: string; title: string; summary: string }> {
   return RECIPES.map((r) => ({ id: r.id, title: r.title, summary: r.summary }))
+}
+
+/** 内置范例转换为扩展层统一结构（与工程 / 用户技能同一套查找与覆盖规则） */
+export function recipeToKnowledgeEntry(recipe: Recipe): KnowledgeEntry {
+  const body = [
+    '## 搭建步骤',
+    ...recipe.setup.map((step, index) => `${index + 1}. ${step}`),
+    '',
+    '## 验收',
+    recipe.verify,
+    ...(recipe.pitfalls && recipe.pitfalls.length > 0
+      ? ['', '## 常见坑', ...recipe.pitfalls.map((item) => `- ${item}`)]
+      : []),
+  ].join('\n')
+  return {
+    id: recipe.id,
+    kind: 'skill',
+    source: 'builtin',
+    name: recipe.title,
+    description: recipe.summary,
+    body,
+    files: recipe.files.map((file) => ({
+      path: `${file.scriptId}.ts`,
+      attachTo: file.attachTo,
+      source: file.source,
+    })),
+    issues: [],
+  }
+}
+
+export function builtinKnowledgeEntries(): KnowledgeEntry[] {
+  return RECIPES.map(recipeToKnowledgeEntry)
 }
 
 /** 系统提示里的范例目录（静态文本，保持稳定以命中提示缓存） */

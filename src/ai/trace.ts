@@ -1,5 +1,6 @@
 import { projectDirectoryPath } from '../editor/project/disk'
 import { electronBridge, joinProjectPath } from '../editor/project/electronBridge'
+import type { KnowledgeInjection } from './knowledge/loader'
 
 /**
  * AI 轮次运行轨迹：每轮对话记录一条，用于回答「到底慢在哪、缓存命中没有、失败了几次」。
@@ -29,6 +30,10 @@ export interface AiTraceDraft {
   autoVerifyRounds: number
   /** 上下文折叠触发次数 */
   compactions: number
+  /** 本轮注入的扩展层内容（规则 / 需求文档 / 技能与知识目录条数） */
+  knowledge?: KnowledgeInjection
+  /** 本轮通过 kb__read 实际读取的条目 ID */
+  knowledgeReads?: string[]
 }
 
 export interface AiTraceRecord extends AiTraceDraft {
