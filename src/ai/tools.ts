@@ -791,8 +791,8 @@ async function executeAiToolInner(
               }
               const sampledState = sampleNodeScriptState(pose.id, watchFields)
               nodes[query] = {
-                pos: pose.position.map((v) => Number(v.toFixed(2))) as [number, number, number],
-                yaw: Number(pose.rotation[1].toFixed(1)),
+                pos: pose.position.map((v) => roundNum(v, 2)) as [number, number, number],
+                yaw: roundNum(pose.rotation?.[1], 1),
                 ...(sampledState ? { state: sampledState } : {}),
               }
             }
@@ -809,9 +809,14 @@ async function executeAiToolInner(
           trajectory.push(entry)
         })
       }
-      const report = session.runSmoke(steps, { autoStop: false })
-      const watched = readWatchedNodes(session, watchList)
-      if (autoStop) session.stop()
+      let report: ReturnType<PlaytestSession['runSmoke']>
+      let watched: ReturnType<typeof readWatchedNodes> = null
+      try {
+        report = session.runSmoke(steps, { autoStop: false })
+        watched = readWatchedNodes(session, watchList)
+      } finally {
+        if (autoStop) session.stop()
+      }
       // 采样点过多时等间隔抽稀，始终保留首尾
       const MAX_SAMPLES = 60
       const thinned = trajectory.length > MAX_SAMPLES
@@ -894,13 +899,13 @@ async function executeAiToolInner(
       if (startedHere) {
         store.play()
       }
-      if (playSec > 0 || store.playState === 'playing') {
-        await waitRealFrames(playSec)
-      }
       let dataUrl: string | null = null
       let watched: ReturnType<typeof readWatchedNodes> = null
       let uiLayoutIssues: Array<{ screen: string; nodes: UiLayoutEntry[] }> | null = null
       try {
+        if (playSec > 0 || store.playState === 'playing') {
+          await waitRealFrames(playSec)
+        }
         dataUrl = await captureViewportComposite({
           width: typeof args.width === 'number' ? args.width : undefined,
           height: typeof args.height === 'number' ? args.height : undefined,
@@ -1176,6 +1181,10 @@ function sampleNodeScriptState(
   return Object.keys(out).length > 0 ? out : null
 }
 
+function roundNum(val: unknown, digits: number): number {
+  return typeof val === 'number' && Number.isFinite(val) ? Number(val.toFixed(digits)) : 0
+}
+
 function readWatchedNodes(session: PlaytestSession, raw: unknown): WatchedNode[] | null {
   if (!Array.isArray(raw) || raw.length === 0) return null
   return raw
@@ -1190,8 +1199,8 @@ function readWatchedNodes(session: PlaytestSession, raw: unknown): WatchedNode[]
         found: true,
         id: pose.id,
         name: pose.name,
-        position: pose.position.map((v) => Number(v.toFixed(3))) as [number, number, number],
-        rotation: pose.rotation.map((v) => Number(v.toFixed(1))) as [number, number, number],
+        position: pose.position.map((v) => roundNum(v, 3)) as [number, number, number],
+        rotation: pose.rotation.map((v) => roundNum(v, 1)) as [number, number, number],
         visible: pose.visible,
         ...(scriptState ? { scriptState } : {}),
       }

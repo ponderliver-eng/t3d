@@ -741,8 +741,20 @@ export default function AiWorkbenchPanel() {
         <button
           type="button"
           title={t('ai.settingsTip')}
-          onClick={() => setSettingsOpen((v) => !v)}
-          style={iconBtnStyle}
+          onClick={() => {
+            setSettingsOpen((v) => !v)
+            setKnowledgeOpen(false)
+          }}
+          style={
+            settingsOpen
+              ? {
+                  ...iconBtnStyle,
+                  color: '#5eead4',
+                  borderColor: 'rgba(45,212,191,0.5)',
+                  background: 'rgba(45,212,191,0.12)',
+                }
+              : iconBtnStyle
+          }
         >
           <Settings size={13} />
         </button>
@@ -780,18 +792,33 @@ export default function AiWorkbenchPanel() {
       {settingsOpen && (
         <div
           style={{
+            margin: '8px',
             padding: '10px',
-            borderBottom: '1px solid rgba(255,255,255,0.08)',
-            background: '#141417',
+            border: '1px solid rgba(45, 212, 191, 0.5)',
+            borderRadius: '8px',
+            background: '#11161a',
+            boxShadow: '0 4px 18px rgba(0, 0, 0, 0.4)',
             display: 'flex',
             flexDirection: 'column',
             gap: '8px',
             maxHeight: '62vh',
             overflowY: 'auto',
+            flexShrink: 0,
           }}
         >
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <span style={{ fontWeight: 600, color: '#d4d4d8' }}>{t('ai.settings')}</span>
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              paddingBottom: '6px',
+              borderBottom: '1px solid rgba(45, 212, 191, 0.18)',
+            }}
+          >
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 600, color: '#99f6e4' }}>
+              <Settings size={12} color="#2dd4bf" />
+              {t('ai.settings')}
+            </span>
             <button
               type="button"
               onClick={() => startNewProvider(settingsProviderType)}

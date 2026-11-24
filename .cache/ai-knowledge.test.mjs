@@ -9179,10 +9179,14 @@ function makeNodeHandle(nodeId, host) {
       return obj ? { x: obj.position.x, y: obj.position.y, z: obj.position.z } : toVec3Obj(node.position);
     },
     set position(val) {
-      if (obj) obj.position.set(val.x, val.y, val.z);
-      node.position[0] = val.x;
-      node.position[1] = val.y;
-      node.position[2] = val.z;
+      if (!val || typeof val !== "object") return;
+      const x = typeof val.x === "number" && Number.isFinite(val.x) ? val.x : obj ? obj.position.x : node.position[0];
+      const y = typeof val.y === "number" && Number.isFinite(val.y) ? val.y : obj ? obj.position.y : node.position[1];
+      const z = typeof val.z === "number" && Number.isFinite(val.z) ? val.z : obj ? obj.position.z : node.position[2];
+      if (obj) obj.position.set(x, y, z);
+      node.position[0] = x;
+      node.position[1] = y;
+      node.position[2] = z;
     },
     get rotation() {
       return obj ? { x: obj.rotation.x, y: obj.rotation.y, z: obj.rotation.z } : {

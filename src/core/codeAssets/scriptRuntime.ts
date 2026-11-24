@@ -320,10 +320,14 @@ function makeNodeHandle(nodeId: string, host: SceneRuntimeHost): Record<string, 
         : toVec3Obj(node.position)
     },
     set position(val: Vec3Obj) {
-      if (obj) obj.position.set(val.x, val.y, val.z)
-      node.position[0] = val.x
-      node.position[1] = val.y
-      node.position[2] = val.z
+      if (!val || typeof val !== 'object') return
+      const x = typeof val.x === 'number' && Number.isFinite(val.x) ? val.x : (obj ? obj.position.x : node.position[0])
+      const y = typeof val.y === 'number' && Number.isFinite(val.y) ? val.y : (obj ? obj.position.y : node.position[1])
+      const z = typeof val.z === 'number' && Number.isFinite(val.z) ? val.z : (obj ? obj.position.z : node.position[2])
+      if (obj) obj.position.set(x, y, z)
+      node.position[0] = x
+      node.position[1] = y
+      node.position[2] = z
     },
     get rotation(): Vec3Obj {
       return obj

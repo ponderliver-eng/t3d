@@ -501,14 +501,18 @@ export function TurnContextLine({
 }
 
 const drawerStyle: React.CSSProperties = {
+  margin: '8px',
   padding: '10px',
-  borderBottom: '1px solid rgba(255,255,255,0.08)',
-  background: '#141417',
+  border: '1px solid rgba(96, 165, 250, 0.45)',
+  borderRadius: '8px',
+  background: '#111520',
+  boxShadow: '0 4px 18px rgba(0, 0, 0, 0.4)',
   display: 'flex',
   flexDirection: 'column',
   gap: '6px',
   maxHeight: '62vh',
   overflowY: 'auto',
+  flexShrink: 0,
   fontSize: '11px',
 }
 
