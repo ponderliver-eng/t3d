@@ -1343,8 +1343,9 @@ function buildSystemPrompt(lang: 'zh' | 'en'): string {
 
   lines.push(
       '【脚本】编写节点行为脚本（script__create / script__update）时，必须从 "t3d/runtime" 导入 defineBehavior，并严格使用：',
-      '   export default defineBehavior({ name: "简短中文标题", description: "一句话介绍脚本作用", params: { ... }, state: () => ({ ... }), onStart(self) {}, onSpawn(self, payload) {}, onUpdate(self, dt) { ... }, onMessage(self, msg) {}, onDestroy(self) {}, onDrawGizmos(self, gizmos) {} })',
+      '   export default defineBehavior({ name: "简短中文标题", description: "一句话介绍脚本作用", params: { ... }, state: () => ({ ... }), onStart(self) {}, onEnable(self) {}, onDisable(self) {}, onSpawn(self, payload) {}, onUpdate(self, dt) { ... }, onMessage(self, msg) {}, onDestroy(self) {}, onDrawGizmos(self, gizmos) {} })',
       '   脚本完整可用 API（严禁编造 window.__t3dKeys 等全局变量）：',
+      '   - 生命周期与开关：首次启用执行 onStart -> onEnable -> onUpdate；关闭属性面板脚本开关时触发 onDisable 并自动冻结该脚本发起的 tween / after / every / spline.follow / nav.moveTo，保留 self.state；重新开启触发 onEnable 继续执行，不会重复 onStart；只读 self.enabled 可查当前开关状态。有物理速度/音效/需要暂停还原的脚本请在 onDisable 里处理。',
       '   - 变换与状态：self.position / self.rotation（弧度）/ self.scale（必须整体赋值，如 self.position = { x, y, z }，不要写 self.position.x = ...）、self.visible、self.elapsedTime、self.state、self.node。',
       '   - 动态生成与对象池（子弹/敌人/特效标准范式：建1个隐藏模板节点或Prefab，用 pool 复用，严禁手建几十个空物体充当对象池）：',
       '     · self.pool.preload(templateOrPrefab, count) / self.pool.acquire(templateOrPrefab, { position?, rotation?, scale?, payload? }) -> NodeHandle | null（自动重置状态并触发脚本 onSpawn(self, payload)）',

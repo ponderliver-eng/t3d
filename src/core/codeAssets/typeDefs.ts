@@ -241,6 +241,7 @@ export interface NodeHandle {
 export interface ScriptContext<P = Record<string, unknown>, S = Record<string, unknown>> {
   readonly node: NodeHandle; readonly params: P; readonly state: S; readonly elapsedTime: number
   position: Vec3; rotation: Vec3; scale: Vec3; visible: boolean
+  readonly enabled: boolean
   readonly forward: Vec3; readonly right: Vec3
   distanceTo(target: Vec3 | NodeHandle): number
   hasTag(tag: string): boolean
@@ -408,6 +409,8 @@ export function defineBehavior<P extends ScriptParamMap, S extends Record<string
   name: string; description?: string; params?: P; state?: () => S
   methods?: Record<string, (self: ScriptContext<Record<string, any>, S>, ...args: any[]) => unknown>
   onStart?: (self: ScriptContext<Record<string, any>, S>) => void
+  onEnable?: (self: ScriptContext<Record<string, any>, S>) => void
+  onDisable?: (self: ScriptContext<Record<string, any>, S>) => void
   onSpawn?: (self: ScriptContext<Record<string, any>, S>, payload?: unknown) => void
   onUpdate?: (self: ScriptContext<Record<string, any>, S>, dt: number) => void
   onDestroy?: (self: ScriptContext<Record<string, any>, S>) => void

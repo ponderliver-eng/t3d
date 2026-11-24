@@ -396,7 +396,13 @@ test('脚本开关关闭再开启：暂停执行但保留 state，不重复触�
       name: 'ToggleLife',
       state: () => ({ count: 0 }),
       onStart(self) {
-        self.log('start')
+        self.log('start:' + self.enabled)
+      },
+      onEnable(self) {
+        self.log('enable')
+      },
+      onDisable(self) {
+        self.log('disable')
       },
       onUpdate(self) {
         self.state.count = Number(self.state.count) + 1
@@ -454,20 +460,20 @@ test('脚本开关关闭再开启：暂停执行但保留 state，不重复触�
   }
   setRuntimeWorld(world)
 
-  // 1. 启用首帧：触发 start + update:1
+  // 1. 启用首帧：触发 start -> enable -> update:1
   stepSceneRuntime(1 / 60, host)
-  // 2. 关闭开关两帧：暂停执行，不触发 onDestroy
+  // 2. 关闭开关两帧：首帧触发 disable，之后暂停执行，不触发 onDestroy
   nodes = { n1: { ...node, gameplay: { packs: { __project__: { toggle_life: { __enabled: false } } } } } }
   stepSceneRuntime(1 / 60, host)
   stepSceneRuntime(1 / 60, host)
-  // 3. 重新开启：继续 update:2，不重复触发 start
+  // 3. 重新开启：触发 enable -> update:2，不重复触发 start
   nodes = { n1: { ...node, gameplay: { packs: { __project__: { toggle_life: { __enabled: true } } } } } }
   stepSceneRuntime(1 / 60, host)
-  // 4. 卸载脚本：触发一次 destroy
+  // 4. 卸载脚本：先触发一次 disable，再触发 destroy
   nodes = { n1: { ...node, gameplay: { packs: { __project__: {} } } } }
   stepSceneRuntime(1 / 60, host)
 
-  assert.deepEqual(events, ['start', 'update:1', 'update:2', 'destroy'])
+  assert.deepEqual(events, ['start:true', 'enable', 'update:1', 'disable', 'enable', 'update:2', 'disable', 'destroy'])
   clearScriptRuntimeState()
 })
 
@@ -556,5 +562,82 @@ test('脚本开关关闭时暂停该脚本发起的 Tween 与定时器，开启�
   assert.ok(Math.abs(obj.position.x - 10) < 1e-4, `开启后应继续走到终点，x=${obj.position.x}`)
   assert.deepEqual(logs, ['start', 'done'])
 
+  clearScriptRuntimeState()
+})
+
+test('Play 期间修改脚本参数：onStart/after 回调闭包捕获的 self.params 也能实时读到最新值', () => {
+  clearScriptRuntimeState()
+  const seen: number[] = []
+  const res = compileAndRegisterScript(
+    'live_params',
+    'Assets/Scripts/LiveParams.ts',
+    `
+    import { defineBehavior } from 't3d/runtime'
+    export default defineBehavior({
+      name: 'LiveParams',
+      params: {
+        height: { type: 'number', default: 1.5, label: '高度' },
+      },
+      onStart(self) {
+        self.log(String(self.params.height))
+        self.after(0.1, () => {
+          self.log(String(self.params.height))
+        })
+      },
+    })
+    `,
+  )
+  assert.equal(res.ok, true, JSON.stringify(res.diagnostics))
+
+  const node = {
+    id: 'n1',
+    name: 'Box',
+    kind: 'box',
+    parentId: null,
+    position: [0, 0, 0],
+    rotation: [0, 0, 0],
+    scale: [1, 1, 1],
+    visible: true,
+    color: '#ffffff',
+    roughness: 0.5,
+    metalness: 0,
+    assetId: null,
+    materialAssetId: null,
+    slots: [],
+    castShadow: false,
+    receiveShadow: true,
+    gameplay: { packs: { __project__: { live_params: { __enabled: true, height: 1.5 } } } },
+  } as unknown as SceneNode
+  let nodes: Record<string, SceneNode> = { n1: node }
+  const obj = new Group()
+  const world: RuntimeWorld = {
+    getNodes: () => nodes,
+    setNodes: (next) => { nodes = next },
+    updateNode: () => {},
+    getActiveSceneId: () => 'default',
+    getPicture: () => ({}) as ScenePicture,
+    getCapabilities: () => ({}),
+    getGameplayPacks: () => ['core'],
+    getGameDatabase: () => ({ tables: {} }),
+    getTags: () => [],
+    getAsset: () => undefined,
+    listAssets: () => [],
+    getPlayState: () => 'playing',
+    markPlayDirty: () => {},
+    log: (_level, msg) => { seen.push(Number(msg)) },
+  }
+  const host: SceneRuntimeHost = {
+    ready: true,
+    resolveObject: (id) => (id === 'n1' ? obj : null),
+    updateAnimations: () => {},
+  }
+  setRuntimeWorld(world)
+
+  stepSceneRuntime(0.05, host)
+  // Play 期间用户在面板里把 height 改成 4.2
+  nodes = { n1: { ...node, gameplay: { packs: { __project__: { live_params: { __enabled: true, height: 4.2 } } } } } }
+  stepSceneRuntime(0.06, host)
+
+  assert.deepEqual(seen, [1.5, 4.2])
   clearScriptRuntimeState()
 })

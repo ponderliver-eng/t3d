@@ -6524,6 +6524,7 @@ export interface NodeHandle {
 export interface ScriptContext<P = Record<string, unknown>, S = Record<string, unknown>> {
   readonly node: NodeHandle; readonly params: P; readonly state: S; readonly elapsedTime: number
   position: Vec3; rotation: Vec3; scale: Vec3; visible: boolean
+  readonly enabled: boolean
   readonly forward: Vec3; readonly right: Vec3
   distanceTo(target: Vec3 | NodeHandle): number
   hasTag(tag: string): boolean
@@ -6691,6 +6692,8 @@ export function defineBehavior<P extends ScriptParamMap, S extends Record<string
   name: string; description?: string; params?: P; state?: () => S
   methods?: Record<string, (self: ScriptContext<Record<string, any>, S>, ...args: any[]) => unknown>
   onStart?: (self: ScriptContext<Record<string, any>, S>) => void
+  onEnable?: (self: ScriptContext<Record<string, any>, S>) => void
+  onDisable?: (self: ScriptContext<Record<string, any>, S>) => void
   onSpawn?: (self: ScriptContext<Record<string, any>, S>, payload?: unknown) => void
   onUpdate?: (self: ScriptContext<Record<string, any>, S>, dt: number) => void
   onDestroy?: (self: ScriptContext<Record<string, any>, S>) => void
@@ -9991,12 +9994,15 @@ function resetAndInvokeSpawn(nodeId, payload, host) {
         nodeId: subId,
         scriptId: sid,
         started: true,
+        enabled: true,
+        lastRawParams: rawParams,
         state: def.state ? { ...def.state() } : {}
       };
       instanceStates.set(key, rec);
       const ctx = buildScriptContext(subNode, sid, rawParams, rec.state, host);
       try {
         def.onStart?.(ctx);
+        def.onEnable?.(ctx);
         def.onSpawn?.(ctx, payload);
       } catch (error) {
         reportRuntimeError("onSpawn", sid, `\u811A\u672C "${def.name}"`, error, subId);
@@ -10066,25 +10072,57 @@ function resolvePoolKey(templateOrPrefab) {
   }
   return null;
 }
+function resolveParamValue(schema, rawVal, host) {
+  if (schema.type === "vec2" && Array.isArray(rawVal)) {
+    return { x: Number(rawVal[0]) || 0, y: Number(rawVal[1]) || 0 };
+  }
+  if (schema.type === "vec3" && Array.isArray(rawVal)) {
+    return { x: Number(rawVal[0]) || 0, y: Number(rawVal[1]) || 0, z: Number(rawVal[2]) || 0 };
+  }
+  if (schema.type === "ref" && schema.target === "node" && typeof rawVal === "string") {
+    return makeNodeHandle(rawVal, host);
+  }
+  return rawVal;
+}
 function buildScriptContext(node, scriptId, rawParams, stateObj, host) {
   const world3 = getRuntimeWorld();
   const def = compiledBehaviors.get(scriptId);
-  const resolvedParams = {};
-  const inputRecord = rawParams && typeof rawParams === "object" ? rawParams : {};
-  for (const [k, schema] of Object.entries(def?.params ?? {})) {
-    const val = k in inputRecord ? inputRecord[k] : defaultForSchema(schema);
-    if (schema.type === "vec2" && Array.isArray(val)) resolvedParams[k] = { x: Number(val[0]) || 0, y: Number(val[1]) || 0 };
-    else if (schema.type === "vec3" && Array.isArray(val)) resolvedParams[k] = { x: Number(val[0]) || 0, y: Number(val[1]) || 0, z: Number(val[2]) || 0 };
-    else if (schema.type === "ref" && schema.target === "node" && typeof val === "string") resolvedParams[k] = makeNodeHandle(val, host);
-    else resolvedParams[k] = val;
-  }
+  const paramSchemas = def?.params ?? {};
+  const readLatestInputRecord = () => {
+    const liveNode = world3.getNodes()[node.id];
+    const liveRaw = liveNode?.gameplay?.packs?.__project__?.[scriptId];
+    const chosen = liveRaw !== void 0 ? liveRaw : rawParams;
+    return chosen && typeof chosen === "object" ? chosen : {};
+  };
+  const liveParams = new Proxy(paramSchemas, {
+    get(_target, prop) {
+      if (typeof prop !== "string") return void 0;
+      const schema = paramSchemas[prop];
+      if (!schema) return void 0;
+      const inputRecord = readLatestInputRecord();
+      const val = prop in inputRecord ? inputRecord[prop] : defaultForSchema(schema);
+      return resolveParamValue(schema, val, host);
+    },
+    has(_target, prop) {
+      return typeof prop === "string" && prop in paramSchemas;
+    },
+    ownKeys() {
+      return Object.keys(paramSchemas);
+    },
+    getOwnPropertyDescriptor(_target, prop) {
+      if (typeof prop !== "string" || !(prop in paramSchemas)) return void 0;
+      return { enumerable: true, configurable: true };
+    }
+  });
   const handle = makeNodeHandle(node.id, host);
   const obj = host.resolveObject(node.id);
   return {
     node: handle,
-    params: resolvedParams,
+    params: liveParams,
     state: stateObj,
-    elapsedTime: simElapsed,
+    get elapsedTime() {
+      return simElapsed;
+    },
     get position() {
       return handle.position;
     },
@@ -10108,6 +10146,9 @@ function buildScriptContext(node, scriptId, rawParams, stateObj, host) {
     },
     set visible(v) {
       handle.visible = v;
+    },
+    get enabled() {
+      return readLatestInputRecord().__enabled !== false;
     },
     hasTag: (tag) => handle.hasTag(tag),
     addTag: (tag) => handle.addTag(tag),
@@ -10461,7 +10502,7 @@ function buildScriptContext(node, scriptId, rawParams, stateObj, host) {
           navAgents.delete(node.id);
           return false;
         }
-        navAgents.set(node.id, { path, index: 0, speed: Math.max(0.1, speed) });
+        navAgents.set(node.id, { scriptId, path, index: 0, speed: Math.max(0.1, speed) });
         return true;
       },
       stop: () => {
@@ -11364,6 +11405,14 @@ function clearScriptRuntimeState() {
   prevMouseButtons = 0;
   currMouseButtons = 0;
 }
+function resolveTaskOwnerState(nodeId, scriptId, nodes, mountedKeys, activeKeys) {
+  if (nodeId.startsWith("__system__:")) return "active";
+  if (!nodes[nodeId] || isNodePooledInactive(nodeId, nodes)) return "destroyed";
+  if (!scriptId) return "active";
+  const key = instanceKey2(nodeId, scriptId);
+  if (!mountedKeys.has(key)) return "destroyed";
+  return activeKeys.has(key) ? "active" : "disabled";
+}
 function stepProjectScripts(dt, host) {
   const world3 = getRuntimeWorld();
   if (world3.getPlayState() !== "playing") {
@@ -11405,8 +11454,77 @@ function stepProjectScripts(dt, host) {
     mountedKeys.add(`sys:${sysId}`);
     activeKeys.add(`sys:${sysId}`);
   }
+  for (const node of Object.values(nodes)) {
+    if (isNodePooledInactive(node.id, nodes)) continue;
+    const projectScripts = node.gameplay?.packs?.__project__;
+    if (!projectScripts || typeof projectScripts !== "object") continue;
+    for (const [scriptId, rawParams] of Object.entries(projectScripts)) {
+      const def = compiledBehaviors.get(scriptId);
+      if (!def) continue;
+      const key = instanceKey2(node.id, scriptId);
+      mountedKeys.add(key);
+      const isEnabled = !(rawParams && typeof rawParams === "object" && rawParams.__enabled === false);
+      if (!isEnabled) {
+        const disabledRec = instanceStates.get(key);
+        if (disabledRec && disabledRec.enabled) {
+          disabledRec.enabled = false;
+          disabledRec.lastRawParams = rawParams;
+          if (def.onDisable) {
+            const ctx2 = buildScriptContext(node, scriptId, rawParams, disabledRec.state, host);
+            try {
+              def.onDisable(ctx2);
+            } catch (error) {
+              reportRuntimeError("onDisable", scriptId, `\u811A\u672C "${def.name}"`, error, node.id);
+            }
+          }
+        }
+        continue;
+      }
+      activeKeys.add(key);
+      let rec = instanceStates.get(key);
+      if (!rec) {
+        rec = {
+          nodeId: node.id,
+          scriptId,
+          started: false,
+          enabled: false,
+          lastRawParams: rawParams,
+          state: def.state ? { ...def.state() } : {}
+        };
+        instanceStates.set(key, rec);
+      } else {
+        rec.lastRawParams = rawParams;
+      }
+      const ctx = buildScriptContext(node, scriptId, rawParams, rec.state, host);
+      measureCost(`script:${scriptId}`, () => {
+        let phase = "onUpdate";
+        try {
+          if (!rec.started) {
+            rec.started = true;
+            phase = "onStart";
+            def.onStart?.(ctx);
+          }
+          if (!rec.enabled) {
+            rec.enabled = true;
+            phase = "onEnable";
+            def.onEnable?.(ctx);
+          }
+          phase = "onUpdate";
+          def.onUpdate?.(ctx, dt);
+        } catch (error) {
+          reportRuntimeError(phase, scriptId, `\u811A\u672C "${def.name}"`, error, node.id);
+        }
+      });
+    }
+  }
   if (navAgents.size > 0 && dt > 0) {
     for (const [agentId, agent] of navAgents) {
+      const ownerState = resolveTaskOwnerState(agentId, agent.scriptId, nodes, mountedKeys, activeKeys);
+      if (ownerState === "destroyed") {
+        navAgents.delete(agentId);
+        continue;
+      }
+      if (ownerState === "disabled") continue;
       const obj = host.resolveObject(agentId);
       const n = nodes[agentId];
       if (!obj && !n) {
@@ -11439,61 +11557,19 @@ function stepProjectScripts(dt, host) {
       }
     }
   }
-  for (const node of Object.values(nodes)) {
-    if (isNodePooledInactive(node.id, nodes)) continue;
-    const projectScripts = node.gameplay?.packs?.__project__;
-    if (!projectScripts || typeof projectScripts !== "object") continue;
-    for (const [scriptId, rawParams] of Object.entries(projectScripts)) {
-      const def = compiledBehaviors.get(scriptId);
-      if (!def) continue;
-      const key = instanceKey2(node.id, scriptId);
-      mountedKeys.add(key);
-      if (rawParams && typeof rawParams === "object" && rawParams.__enabled === false) {
-        continue;
-      }
-      activeKeys.add(key);
-      let rec = instanceStates.get(key);
-      if (!rec) {
-        rec = {
-          nodeId: node.id,
-          scriptId,
-          started: false,
-          state: def.state ? { ...def.state() } : {}
-        };
-        instanceStates.set(key, rec);
-      }
-      const ctx = buildScriptContext(node, scriptId, rawParams, rec.state, host);
-      measureCost(`script:${scriptId}`, () => {
-        let phase = "onUpdate";
-        try {
-          if (!rec.started) {
-            rec.started = true;
-            phase = "onStart";
-            def.onStart?.(ctx);
-            phase = "onUpdate";
-          }
-          def.onUpdate?.(ctx, dt);
-        } catch (error) {
-          reportRuntimeError(phase, scriptId, `\u811A\u672C "${def.name}"`, error, node.id);
-        }
-      });
-    }
-  }
   if (splineFollowAgents.size > 0 && dt > 0) {
     for (const [agentId, ag] of Array.from(splineFollowAgents.entries())) {
-      const n = nodes[agentId];
-      const h = makeNodeHandle(agentId, host);
-      if (!n || !h || isNodePooledInactive(agentId, nodes)) {
+      const ownerState = resolveTaskOwnerState(agentId, ag.scriptId, nodes, mountedKeys, activeKeys);
+      if (ownerState === "destroyed") {
         splineFollowAgents.delete(agentId);
         continue;
       }
-      if (ag.scriptId) {
-        const sk = instanceKey2(agentId, ag.scriptId);
-        if (!mountedKeys.has(sk)) {
-          splineFollowAgents.delete(agentId);
-          continue;
-        }
-        if (!activeKeys.has(sk)) continue;
+      if (ownerState === "disabled") continue;
+      const n = nodes[agentId];
+      const h = makeNodeHandle(agentId, host);
+      if (!n || !h) {
+        splineFollowAgents.delete(agentId);
+        continue;
       }
       const totalLen = ag.spline.length;
       if (totalLen <= 1e-6) {
@@ -11548,19 +11624,12 @@ function stepProjectScripts(dt, host) {
   if (activeTweens.size > 0 && dt > 0) {
     for (const tw of Array.from(activeTweens.values())) {
       if (!activeTweens.has(tw.id)) continue;
-      const ownerExists = tw.ownerNodeId.startsWith("__system__:") || Boolean(nodes[tw.ownerNodeId]) && !isNodePooledInactive(tw.ownerNodeId, nodes);
-      if (!ownerExists) {
+      const ownerState = resolveTaskOwnerState(tw.ownerNodeId, tw.scriptId, nodes, mountedKeys, activeKeys);
+      if (ownerState === "destroyed") {
         activeTweens.delete(tw.id);
         continue;
       }
-      if (tw.scriptId && !tw.ownerNodeId.startsWith("__system__:")) {
-        const sk = instanceKey2(tw.ownerNodeId, tw.scriptId);
-        if (!mountedKeys.has(sk)) {
-          activeTweens.delete(tw.id);
-          continue;
-        }
-        if (!activeKeys.has(sk)) continue;
-      }
+      if (ownerState === "disabled") continue;
       if (tw.delayRemaining > 0) {
         tw.delayRemaining -= dt;
         if (tw.delayRemaining > 0) continue;
@@ -11600,16 +11669,12 @@ function stepProjectScripts(dt, host) {
     const timerSnapshot = Array.from(scriptTimers.values());
     for (const timer of timerSnapshot) {
       if (!scriptTimers.has(timer.id)) continue;
-      const isSystemTimer = timer.nodeId.startsWith("__system__:");
-      const tNode = isSystemTimer ? null : nodes[timer.nodeId];
-      if (!isSystemTimer && (!tNode || isNodePooledInactive(timer.nodeId, nodes))) {
+      const ownerState = resolveTaskOwnerState(timer.nodeId, timer.scriptId, nodes, mountedKeys, activeKeys);
+      if (ownerState === "destroyed") {
         scriptTimers.delete(timer.id);
         continue;
       }
-      if (!isSystemTimer) {
-        const sk = instanceKey2(timer.nodeId, timer.scriptId);
-        if (mountedKeys.has(sk) && !activeKeys.has(sk)) continue;
-      }
+      if (ownerState === "disabled") continue;
       timer.remaining -= dt;
       if (timer.remaining <= 0) {
         if (timer.repeat) {
@@ -11668,11 +11733,19 @@ function stepProjectScripts(dt, host) {
     uiEventHandlers.delete(key);
     const def = compiledBehaviors.get(rec.scriptId);
     const node = nodes[rec.nodeId];
-    if (def?.onDestroy && node) {
-      const ctx = buildScriptContext(node, rec.scriptId, {}, rec.state, host);
-      try {
-        def.onDestroy(ctx);
-      } catch {
+    if (node && (def?.onDisable || def?.onDestroy)) {
+      const ctx = buildScriptContext(node, rec.scriptId, rec.lastRawParams ?? {}, rec.state, host);
+      if (rec.enabled && def.onDisable) {
+        try {
+          def.onDisable(ctx);
+        } catch {
+        }
+      }
+      if (def.onDestroy) {
+        try {
+          def.onDestroy(ctx);
+        } catch {
+        }
       }
     }
     instanceStates.delete(key);
@@ -12050,7 +12123,13 @@ test("\u811A\u672C\u5F00\u5173\u5173\u95ED\u518D\u5F00\u542F\uFF1A\u6682\u505C\u
       name: 'ToggleLife',
       state: () => ({ count: 0 }),
       onStart(self) {
-        self.log('start')
+        self.log('start:' + self.enabled)
+      },
+      onEnable(self) {
+        self.log('enable')
+      },
+      onDisable(self) {
+        self.log('disable')
       },
       onUpdate(self) {
         self.state.count = Number(self.state.count) + 1
@@ -12121,7 +12200,7 @@ test("\u811A\u672C\u5F00\u5173\u5173\u95ED\u518D\u5F00\u542F\uFF1A\u6682\u505C\u
   stepSceneRuntime(1 / 60, host);
   nodes = { n1: { ...node, gameplay: { packs: { __project__: {} } } } };
   stepSceneRuntime(1 / 60, host);
-  assert.deepEqual(events, ["start", "update:1", "update:2", "destroy"]);
+  assert.deepEqual(events, ["start:true", "enable", "update:1", "disable", "enable", "update:2", "disable", "destroy"]);
   clearScriptRuntimeState();
 });
 test("\u811A\u672C\u5F00\u5173\u5173\u95ED\u65F6\u6682\u505C\u8BE5\u811A\u672C\u53D1\u8D77\u7684 Tween \u4E0E\u5B9A\u65F6\u5668\uFF0C\u5F00\u542F\u540E\u4ECE\u65AD\u70B9\u7EE7\u7EED", () => {
@@ -12208,5 +12287,84 @@ test("\u811A\u672C\u5F00\u5173\u5173\u95ED\u65F6\u6682\u505C\u8BE5\u811A\u672C\u
   for (let i = 0; i < 8; i += 1) stepSceneRuntime(0.05, host);
   assert.ok(Math.abs(obj.position.x - 10) < 1e-4, `\u5F00\u542F\u540E\u5E94\u7EE7\u7EED\u8D70\u5230\u7EC8\u70B9\uFF0Cx=${obj.position.x}`);
   assert.deepEqual(logs, ["start", "done"]);
+  clearScriptRuntimeState();
+});
+test("Play \u671F\u95F4\u4FEE\u6539\u811A\u672C\u53C2\u6570\uFF1AonStart/after \u56DE\u8C03\u95ED\u5305\u6355\u83B7\u7684 self.params \u4E5F\u80FD\u5B9E\u65F6\u8BFB\u5230\u6700\u65B0\u503C", () => {
+  clearScriptRuntimeState();
+  const seen = [];
+  const res = compileAndRegisterScript(
+    "live_params",
+    "Assets/Scripts/LiveParams.ts",
+    `
+    import { defineBehavior } from 't3d/runtime'
+    export default defineBehavior({
+      name: 'LiveParams',
+      params: {
+        height: { type: 'number', default: 1.5, label: '\u9AD8\u5EA6' },
+      },
+      onStart(self) {
+        self.log(String(self.params.height))
+        self.after(0.1, () => {
+          self.log(String(self.params.height))
+        })
+      },
+    })
+    `
+  );
+  assert.equal(res.ok, true, JSON.stringify(res.diagnostics));
+  const node = {
+    id: "n1",
+    name: "Box",
+    kind: "box",
+    parentId: null,
+    position: [0, 0, 0],
+    rotation: [0, 0, 0],
+    scale: [1, 1, 1],
+    visible: true,
+    color: "#ffffff",
+    roughness: 0.5,
+    metalness: 0,
+    assetId: null,
+    materialAssetId: null,
+    slots: [],
+    castShadow: false,
+    receiveShadow: true,
+    gameplay: { packs: { __project__: { live_params: { __enabled: true, height: 1.5 } } } }
+  };
+  let nodes = { n1: node };
+  const obj = new Group();
+  const world3 = {
+    getNodes: () => nodes,
+    setNodes: (next) => {
+      nodes = next;
+    },
+    updateNode: () => {
+    },
+    getActiveSceneId: () => "default",
+    getPicture: () => ({}),
+    getCapabilities: () => ({}),
+    getGameplayPacks: () => ["core"],
+    getGameDatabase: () => ({ tables: {} }),
+    getTags: () => [],
+    getAsset: () => void 0,
+    listAssets: () => [],
+    getPlayState: () => "playing",
+    markPlayDirty: () => {
+    },
+    log: (_level, msg) => {
+      seen.push(Number(msg));
+    }
+  };
+  const host = {
+    ready: true,
+    resolveObject: (id) => id === "n1" ? obj : null,
+    updateAnimations: () => {
+    }
+  };
+  setRuntimeWorld(world3);
+  stepSceneRuntime(0.05, host);
+  nodes = { n1: { ...node, gameplay: { packs: { __project__: { live_params: { __enabled: true, height: 4.2 } } } } } };
+  stepSceneRuntime(0.06, host);
+  assert.deepEqual(seen, [1.5, 4.2]);
   clearScriptRuntimeState();
 });

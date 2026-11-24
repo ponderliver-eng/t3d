@@ -61,6 +61,8 @@ export interface BehaviorDefinition {
   state?: () => Record<string, unknown>
   methods?: Record<string, (self: unknown, ...args: unknown[]) => unknown>
   onStart?: (self: unknown) => void
+  onEnable?: (self: unknown) => void
+  onDisable?: (self: unknown) => void
   onSpawn?: (self: unknown, payload?: unknown) => void
   onUpdate?: (self: unknown, dt: number) => void
   onDestroy?: (self: unknown) => void
@@ -104,6 +106,8 @@ interface BehaviorInstanceRecord {
   nodeId: string
   scriptId: string
   started: boolean
+  enabled: boolean
+  lastRawParams?: unknown
   state: Record<string, unknown>
 }
 
@@ -153,7 +157,7 @@ let uiClickSubscribed = false
 let characterEventSubscribed = false
 const globalMemory = new Map<string, unknown>()
 const persistentMemory = new Map<string, unknown>()
-const navAgents = new Map<string, { path: TupleVec3[]; index: number; speed: number }>()
+const navAgents = new Map<string, { scriptId?: string; path: TupleVec3[]; index: number; speed: number }>()
 
 interface PoolBucket {
   all: string[]
@@ -733,12 +737,15 @@ function resetAndInvokeSpawn(nodeId: string, payload: unknown, host: SceneRuntim
         nodeId: subId,
         scriptId: sid,
         started: true,
+        enabled: true,
+        lastRawParams: rawParams,
         state: def.state ? { ...def.state() } : {},
       }
       instanceStates.set(key, rec)
       const ctx = buildScriptContext(subNode, sid, rawParams, rec.state, host)
       try {
         def.onStart?.(ctx)
+        def.onEnable?.(ctx)
         def.onSpawn?.(ctx, payload)
       } catch (error) {
         reportRuntimeError('onSpawn', sid, `脚本 "${def.name}"`, error, subId)
@@ -812,6 +819,19 @@ function resolvePoolKey(templateOrPrefab: string | { id?: string } | null | unde
   return null
 }
 
+function resolveParamValue(schema: FieldSchema, rawVal: unknown, host: SceneRuntimeHost): unknown {
+  if (schema.type === 'vec2' && Array.isArray(rawVal)) {
+    return { x: Number(rawVal[0]) || 0, y: Number(rawVal[1]) || 0 }
+  }
+  if (schema.type === 'vec3' && Array.isArray(rawVal)) {
+    return { x: Number(rawVal[0]) || 0, y: Number(rawVal[1]) || 0, z: Number(rawVal[2]) || 0 }
+  }
+  if (schema.type === 'ref' && schema.target === 'node' && typeof rawVal === 'string') {
+    return makeNodeHandle(rawVal, host)
+  }
+  return rawVal
+}
+
 function buildScriptContext(
   node: SceneNode,
   scriptId: string,
@@ -821,24 +841,43 @@ function buildScriptContext(
 ) {
   const world = getRuntimeWorld()
   const def = compiledBehaviors.get(scriptId)
-  const resolvedParams: Record<string, unknown> = {}
-  const inputRecord = rawParams && typeof rawParams === 'object' ? (rawParams as Record<string, unknown>) : {}
-  for (const [k, schema] of Object.entries(def?.params ?? {})) {
-    const val = k in inputRecord ? inputRecord[k] : defaultForSchema(schema)
-    if (schema.type === 'vec2' && Array.isArray(val)) resolvedParams[k] = { x: Number(val[0]) || 0, y: Number(val[1]) || 0 }
-    else if (schema.type === 'vec3' && Array.isArray(val)) resolvedParams[k] = { x: Number(val[0]) || 0, y: Number(val[1]) || 0, z: Number(val[2]) || 0 }
-    else if (schema.type === 'ref' && schema.target === 'node' && typeof val === 'string') resolvedParams[k] = makeNodeHandle(val, host)
-    else resolvedParams[k] = val
+  const paramSchemas = def?.params ?? {}
+  const readLatestInputRecord = (): Record<string, unknown> => {
+    const liveNode = world.getNodes()[node.id]
+    const liveRaw = (liveNode?.gameplay?.packs?.__project__ as Record<string, unknown> | undefined)?.[scriptId]
+    const chosen = liveRaw !== undefined ? liveRaw : rawParams
+    return chosen && typeof chosen === 'object' ? (chosen as Record<string, unknown>) : {}
   }
+  // 使用 Proxy 动态读取最新节点参数，确保 onStart / after / tween 等回调闭包捕获的 self.params 在 Play 调参时也能实时生效
+  const liveParams = new Proxy(paramSchemas as Record<string, unknown>, {
+    get(_target, prop) {
+      if (typeof prop !== 'string') return undefined
+      const schema = paramSchemas[prop]
+      if (!schema) return undefined
+      const inputRecord = readLatestInputRecord()
+      const val = prop in inputRecord ? inputRecord[prop] : defaultForSchema(schema)
+      return resolveParamValue(schema, val, host)
+    },
+    has(_target, prop) {
+      return typeof prop === 'string' && prop in paramSchemas
+    },
+    ownKeys() {
+      return Object.keys(paramSchemas)
+    },
+    getOwnPropertyDescriptor(_target, prop) {
+      if (typeof prop !== 'string' || !(prop in paramSchemas)) return undefined
+      return { enumerable: true, configurable: true }
+    },
+  })
 
   const handle = makeNodeHandle(node.id, host)!
   const obj = host.resolveObject(node.id)
 
   return {
     node: handle,
-    params: resolvedParams,
+    params: liveParams,
     state: stateObj,
-    elapsedTime: simElapsed,
+    get elapsedTime() { return simElapsed },
     get position() { return handle.position },
     set position(v: Vec3Obj) { handle.position = v },
     get rotation() { return handle.rotation },
@@ -847,6 +886,7 @@ function buildScriptContext(
     set scale(v: Vec3Obj) { handle.scale = v },
     get visible() { return handle.visible },
     set visible(v: boolean) { handle.visible = v },
+    get enabled() { return readLatestInputRecord().__enabled !== false },
     hasTag: (tag: string) => handle.hasTag(tag),
     addTag: (tag: string) => handle.addTag(tag),
     removeTag: (tag: string) => handle.removeTag(tag),
@@ -1231,7 +1271,7 @@ function buildScriptContext(
           navAgents.delete(node.id)
           return false
         }
-        navAgents.set(node.id, { path, index: 0, speed: Math.max(0.1, speed) })
+        navAgents.set(node.id, { scriptId, path, index: 0, speed: Math.max(0.1, speed) })
         return true
       },
       stop: () => {
@@ -2315,6 +2355,27 @@ export function clearScriptRuntimeState(): void {
   currMouseButtons = 0
 }
 
+type TaskOwnerState = 'active' | 'disabled' | 'destroyed'
+
+/**
+ * 统一的任务归属门控：所有由脚本发起的跨帧任务（Tween / Timer / Spline / Nav 等）
+ * 在推进前统一经过这里，确保脚本开关关闭时冻结、卸载或删节点时自动清理。
+ */
+function resolveTaskOwnerState(
+  nodeId: string,
+  scriptId: string | undefined,
+  nodes: Record<string, SceneNode>,
+  mountedKeys: ReadonlySet<string>,
+  activeKeys: ReadonlySet<string>,
+): TaskOwnerState {
+  if (nodeId.startsWith('__system__:')) return 'active'
+  if (!nodes[nodeId] || isNodePooledInactive(nodeId, nodes)) return 'destroyed'
+  if (!scriptId) return 'active'
+  const key = instanceKey(nodeId, scriptId)
+  if (!mountedKeys.has(key)) return 'destroyed'
+  return activeKeys.has(key) ? 'active' : 'disabled'
+}
+
 function stepProjectScripts(dt: number, host: SceneRuntimeHost) {
   const world = getRuntimeWorld()
   if (world.getPlayState() !== 'playing') {
@@ -2357,9 +2418,80 @@ function stepProjectScripts(dt: number, host: SceneRuntimeHost) {
     activeKeys.add(`sys:${sysId}`)
   }
 
+  for (const node of Object.values(nodes)) {
+    if (isNodePooledInactive(node.id, nodes)) continue
+    const projectScripts = node.gameplay?.packs?.__project__
+    if (!projectScripts || typeof projectScripts !== 'object') continue
+    for (const [scriptId, rawParams] of Object.entries(projectScripts as Record<string, unknown>)) {
+      const def = compiledBehaviors.get(scriptId)
+      if (!def) continue
+      const key = instanceKey(node.id, scriptId)
+      // 只要脚本仍挂在存活节点上，就保留实例状态与 started 标记；禁用只暂停执行，不销毁重建
+      mountedKeys.add(key)
+      const isEnabled = !(rawParams && typeof rawParams === 'object' && (rawParams as Record<string, unknown>).__enabled === false)
+      if (!isEnabled) {
+        const disabledRec = instanceStates.get(key)
+        if (disabledRec && disabledRec.enabled) {
+          disabledRec.enabled = false
+          disabledRec.lastRawParams = rawParams
+          if (def.onDisable) {
+            const ctx = buildScriptContext(node, scriptId, rawParams, disabledRec.state, host)
+            try {
+              def.onDisable(ctx)
+            } catch (error) {
+              reportRuntimeError('onDisable', scriptId, `脚本 "${def.name}"`, error, node.id)
+            }
+          }
+        }
+        continue
+      }
+      activeKeys.add(key)
+      let rec = instanceStates.get(key)
+      if (!rec) {
+        rec = {
+          nodeId: node.id,
+          scriptId,
+          started: false,
+          enabled: false,
+          lastRawParams: rawParams,
+          state: def.state ? { ...def.state() } : {},
+        }
+        instanceStates.set(key, rec)
+      } else {
+        rec.lastRawParams = rawParams
+      }
+      const ctx = buildScriptContext(node, scriptId, rawParams, rec.state, host)
+      measureCost(`script:${scriptId}`, () => {
+        let phase = 'onUpdate'
+        try {
+          if (!rec!.started) {
+            rec!.started = true
+            phase = 'onStart'
+            def.onStart?.(ctx)
+          }
+          if (!rec!.enabled) {
+            rec!.enabled = true
+            phase = 'onEnable'
+            def.onEnable?.(ctx)
+          }
+          phase = 'onUpdate'
+          def.onUpdate?.(ctx, dt)
+        } catch (error) {
+          reportRuntimeError(phase, scriptId, `脚本 "${def.name}"`, error, node.id)
+        }
+      })
+    }
+  }
+
   // 推进已激活的导航代理移动
   if (navAgents.size > 0 && dt > 0) {
     for (const [agentId, agent] of navAgents) {
+      const ownerState = resolveTaskOwnerState(agentId, agent.scriptId, nodes, mountedKeys, activeKeys)
+      if (ownerState === 'destroyed') {
+        navAgents.delete(agentId)
+        continue
+      }
+      if (ownerState === 'disabled') continue
       const obj = host.resolveObject(agentId)
       const n = nodes[agentId]
       if (!obj && !n) {
@@ -2393,64 +2525,20 @@ function stepProjectScripts(dt: number, host: SceneRuntimeHost) {
     }
   }
 
-  for (const node of Object.values(nodes)) {
-    if (isNodePooledInactive(node.id, nodes)) continue
-    const projectScripts = node.gameplay?.packs?.__project__
-    if (!projectScripts || typeof projectScripts !== 'object') continue
-    for (const [scriptId, rawParams] of Object.entries(projectScripts as Record<string, unknown>)) {
-      const def = compiledBehaviors.get(scriptId)
-      if (!def) continue
-      const key = instanceKey(node.id, scriptId)
-      // 只要脚本仍挂在存活节点上，就保留实例状态与 started 标记；禁用只暂停执行，不销毁重建
-      mountedKeys.add(key)
-      if (rawParams && typeof rawParams === 'object' && (rawParams as Record<string, unknown>).__enabled === false) {
-        continue
-      }
-      activeKeys.add(key)
-      let rec = instanceStates.get(key)
-      if (!rec) {
-        rec = {
-          nodeId: node.id,
-          scriptId,
-          started: false,
-          state: def.state ? { ...def.state() } : {},
-        }
-        instanceStates.set(key, rec)
-      }
-      const ctx = buildScriptContext(node, scriptId, rawParams, rec.state, host)
-      measureCost(`script:${scriptId}`, () => {
-        let phase = 'onUpdate'
-        try {
-          if (!rec!.started) {
-            rec!.started = true
-            phase = 'onStart'
-            def.onStart?.(ctx)
-            phase = 'onUpdate'
-          }
-          def.onUpdate?.(ctx, dt)
-        } catch (error) {
-          reportRuntimeError(phase, scriptId, `脚本 "${def.name}"`, error, node.id)
-        }
-      })
-    }
-  }
-
   // 推进 Spline 路径跟随代理
   if (splineFollowAgents.size > 0 && dt > 0) {
     for (const [agentId, ag] of Array.from(splineFollowAgents.entries())) {
-      const n = nodes[agentId]
-      const h = makeNodeHandle(agentId, host)
-      if (!n || !h || isNodePooledInactive(agentId, nodes)) {
+      const ownerState = resolveTaskOwnerState(agentId, ag.scriptId, nodes, mountedKeys, activeKeys)
+      if (ownerState === 'destroyed') {
         splineFollowAgents.delete(agentId)
         continue
       }
-      if (ag.scriptId) {
-        const sk = instanceKey(agentId, ag.scriptId)
-        if (!mountedKeys.has(sk)) {
-          splineFollowAgents.delete(agentId)
-          continue
-        }
-        if (!activeKeys.has(sk)) continue
+      if (ownerState === 'disabled') continue
+      const n = nodes[agentId]
+      const h = makeNodeHandle(agentId, host)
+      if (!n || !h) {
+        splineFollowAgents.delete(agentId)
+        continue
       }
       const totalLen = ag.spline.length
       if (totalLen <= 1e-6) {
@@ -2507,19 +2595,12 @@ function stepProjectScripts(dt: number, host: SceneRuntimeHost) {
   if (activeTweens.size > 0 && dt > 0) {
     for (const tw of Array.from(activeTweens.values())) {
       if (!activeTweens.has(tw.id)) continue
-      const ownerExists = tw.ownerNodeId.startsWith('__system__:') || (Boolean(nodes[tw.ownerNodeId]) && !isNodePooledInactive(tw.ownerNodeId, nodes))
-      if (!ownerExists) {
+      const ownerState = resolveTaskOwnerState(tw.ownerNodeId, tw.scriptId, nodes, mountedKeys, activeKeys)
+      if (ownerState === 'destroyed') {
         activeTweens.delete(tw.id)
         continue
       }
-      if (tw.scriptId && !tw.ownerNodeId.startsWith('__system__:')) {
-        const sk = instanceKey(tw.ownerNodeId, tw.scriptId)
-        if (!mountedKeys.has(sk)) {
-          activeTweens.delete(tw.id)
-          continue
-        }
-        if (!activeKeys.has(sk)) continue
-      }
+      if (ownerState === 'disabled') continue
       if (tw.delayRemaining > 0) {
         tw.delayRemaining -= dt
         if (tw.delayRemaining > 0) continue
@@ -2561,16 +2642,12 @@ function stepProjectScripts(dt: number, host: SceneRuntimeHost) {
     const timerSnapshot = Array.from(scriptTimers.values())
     for (const timer of timerSnapshot) {
       if (!scriptTimers.has(timer.id)) continue
-      const isSystemTimer = timer.nodeId.startsWith('__system__:')
-      const tNode = isSystemTimer ? null : nodes[timer.nodeId]
-      if (!isSystemTimer && (!tNode || isNodePooledInactive(timer.nodeId, nodes))) {
+      const ownerState = resolveTaskOwnerState(timer.nodeId, timer.scriptId, nodes, mountedKeys, activeKeys)
+      if (ownerState === 'destroyed') {
         scriptTimers.delete(timer.id)
         continue
       }
-      if (!isSystemTimer) {
-        const sk = instanceKey(timer.nodeId, timer.scriptId)
-        if (mountedKeys.has(sk) && !activeKeys.has(sk)) continue
-      }
+      if (ownerState === 'disabled') continue
       timer.remaining -= dt
       if (timer.remaining <= 0) {
         if (timer.repeat) {
@@ -2635,9 +2712,14 @@ function stepProjectScripts(dt: number, host: SceneRuntimeHost) {
     uiEventHandlers.delete(key)
     const def = compiledBehaviors.get(rec.scriptId)
     const node = nodes[rec.nodeId]
-    if (def?.onDestroy && node) {
-      const ctx = buildScriptContext(node, rec.scriptId, {}, rec.state, host)
-      try { def.onDestroy(ctx) } catch { /* ignore */ }
+    if (node && (def?.onDisable || def?.onDestroy)) {
+      const ctx = buildScriptContext(node, rec.scriptId, rec.lastRawParams ?? {}, rec.state, host)
+      if (rec.enabled && def.onDisable) {
+        try { def.onDisable(ctx) } catch { /* ignore */ }
+      }
+      if (def.onDestroy) {
+        try { def.onDestroy(ctx) } catch { /* ignore */ }
+      }
     }
     instanceStates.delete(key)
   }

@@ -386,6 +386,8 @@ export interface ScriptContext<
   rotation: Vec3
   scale: Vec3
   visible: boolean
+  /** 当前脚本开关是否启用 */
+  readonly enabled: boolean
   hasTag(tag: string): boolean
   addTag(tag: string): void
   removeTag(tag: string): void
@@ -482,6 +484,10 @@ export interface BehaviorDefinition<
   params?: P
   createState?: () => S
   onStart?(self: ScriptContext<NoInfer<P>, NoInfer<S>>): void
+  /** 脚本启用时调用（首次在 onStart 之后执行；关闭后重新开启时也会调用，不再重复 onStart） */
+  onEnable?(self: ScriptContext<NoInfer<P>, NoInfer<S>>): void
+  /** 脚本关闭或销毁前调用（可用于暂停物理速度、声音或还原临时状态） */
+  onDisable?(self: ScriptContext<NoInfer<P>, NoInfer<S>>): void
   onSpawn?(self: ScriptContext<NoInfer<P>, NoInfer<S>>, payload?: unknown): void
   onStep?(self: ScriptContext<NoInfer<P>, NoInfer<S>>, dt: number): void
   onTriggerEnter?(self: ScriptContext<NoInfer<P>, NoInfer<S>>, other: NodeHandle): void

@@ -8680,6 +8680,7 @@ export interface NodeHandle {
 export interface ScriptContext<P = Record<string, unknown>, S = Record<string, unknown>> {
   readonly node: NodeHandle; readonly params: P; readonly state: S; readonly elapsedTime: number
   position: Vec3; rotation: Vec3; scale: Vec3; visible: boolean
+  readonly enabled: boolean
   readonly forward: Vec3; readonly right: Vec3
   distanceTo(target: Vec3 | NodeHandle): number
   hasTag(tag: string): boolean
@@ -8847,6 +8848,8 @@ export function defineBehavior<P extends ScriptParamMap, S extends Record<string
   name: string; description?: string; params?: P; state?: () => S
   methods?: Record<string, (self: ScriptContext<Record<string, any>, S>, ...args: any[]) => unknown>
   onStart?: (self: ScriptContext<Record<string, any>, S>) => void
+  onEnable?: (self: ScriptContext<Record<string, any>, S>) => void
+  onDisable?: (self: ScriptContext<Record<string, any>, S>) => void
   onSpawn?: (self: ScriptContext<Record<string, any>, S>, payload?: unknown) => void
   onUpdate?: (self: ScriptContext<Record<string, any>, S>, dt: number) => void
   onDestroy?: (self: ScriptContext<Record<string, any>, S>) => void
@@ -9760,12 +9763,15 @@ function resetAndInvokeSpawn(nodeId, payload, host) {
         nodeId: subId,
         scriptId: sid,
         started: true,
+        enabled: true,
+        lastRawParams: rawParams,
         state: def.state ? { ...def.state() } : {}
       };
       instanceStates.set(key, rec);
       const ctx = buildScriptContext(subNode, sid, rawParams, rec.state, host);
       try {
         def.onStart?.(ctx);
+        def.onEnable?.(ctx);
         def.onSpawn?.(ctx, payload);
       } catch (error) {
         reportRuntimeError("onSpawn", sid, `\u811A\u672C "${def.name}"`, error, subId);
@@ -9877,6 +9883,9 @@ function buildScriptContext(node, scriptId, rawParams, stateObj, host) {
     },
     set visible(v) {
       handle.visible = v;
+    },
+    get enabled() {
+      return inputRecord.__enabled !== false;
     },
     hasTag: (tag) => handle.hasTag(tag),
     addTag: (tag) => handle.addTag(tag),
@@ -10230,7 +10239,7 @@ function buildScriptContext(node, scriptId, rawParams, stateObj, host) {
           navAgents.delete(node.id);
           return false;
         }
-        navAgents.set(node.id, { path, index: 0, speed: Math.max(0.1, speed) });
+        navAgents.set(node.id, { scriptId, path, index: 0, speed: Math.max(0.1, speed) });
         return true;
       },
       stop: () => {
@@ -10273,6 +10282,7 @@ function buildScriptContext(node, scriptId, rawParams, stateObj, host) {
         };
         splineFollowAgents.set(node.id, {
           nodeId: node.id,
+          scriptId,
           spline,
           distance: startDist,
           speed: Math.max(0.01, Number(options?.speed ?? 4)),
@@ -10312,6 +10322,7 @@ function buildScriptContext(node, scriptId, rawParams, stateObj, host) {
         activeTweens.set(id, {
           id,
           ownerNodeId: node.id,
+          scriptId,
           delayRemaining: Math.max(0, Number(options?.delay ?? 0)),
           elapsed: 0,
           duration: dur,
@@ -10354,6 +10365,7 @@ function buildScriptContext(node, scriptId, rawParams, stateObj, host) {
         activeTweens.set(id, {
           id,
           ownerNodeId: node.id,
+          scriptId,
           delayRemaining: Math.max(0, Number(options?.delay ?? 0)),
           elapsed: 0,
           duration: dur,
@@ -10376,6 +10388,7 @@ function buildScriptContext(node, scriptId, rawParams, stateObj, host) {
         activeTweens.set(id, {
           id,
           ownerNodeId: node.id,
+          scriptId,
           delayRemaining: 0,
           elapsed: 0,
           duration: dur,
@@ -10405,6 +10418,7 @@ function buildScriptContext(node, scriptId, rawParams, stateObj, host) {
         activeTweens.set(id, {
           id,
           ownerNodeId: node.id,
+          scriptId,
           delayRemaining: 0,
           elapsed: 0,
           duration: dur,
@@ -11163,6 +11177,14 @@ function clearScriptRuntimeState() {
   prevMouseButtons = 0;
   currMouseButtons = 0;
 }
+function resolveTaskOwnerState(nodeId, scriptId, nodes, mountedKeys, activeKeys) {
+  if (nodeId.startsWith("__system__:")) return "active";
+  if (!nodes[nodeId] || isNodePooledInactive(nodeId, nodes)) return "destroyed";
+  if (!scriptId) return "active";
+  const key = instanceKey2(nodeId, scriptId);
+  if (!mountedKeys.has(key)) return "destroyed";
+  return activeKeys.has(key) ? "active" : "disabled";
+}
 function stepProjectScripts(dt, host) {
   const world3 = getRuntimeWorld();
   if (world3.getPlayState() !== "playing") {
@@ -11204,8 +11226,77 @@ function stepProjectScripts(dt, host) {
     mountedKeys.add(`sys:${sysId}`);
     activeKeys.add(`sys:${sysId}`);
   }
+  for (const node of Object.values(nodes)) {
+    if (isNodePooledInactive(node.id, nodes)) continue;
+    const projectScripts = node.gameplay?.packs?.__project__;
+    if (!projectScripts || typeof projectScripts !== "object") continue;
+    for (const [scriptId, rawParams] of Object.entries(projectScripts)) {
+      const def = compiledBehaviors.get(scriptId);
+      if (!def) continue;
+      const key = instanceKey2(node.id, scriptId);
+      mountedKeys.add(key);
+      const isEnabled = !(rawParams && typeof rawParams === "object" && rawParams.__enabled === false);
+      if (!isEnabled) {
+        const disabledRec = instanceStates.get(key);
+        if (disabledRec && disabledRec.enabled) {
+          disabledRec.enabled = false;
+          disabledRec.lastRawParams = rawParams;
+          if (def.onDisable) {
+            const ctx2 = buildScriptContext(node, scriptId, rawParams, disabledRec.state, host);
+            try {
+              def.onDisable(ctx2);
+            } catch (error) {
+              reportRuntimeError("onDisable", scriptId, `\u811A\u672C "${def.name}"`, error, node.id);
+            }
+          }
+        }
+        continue;
+      }
+      activeKeys.add(key);
+      let rec = instanceStates.get(key);
+      if (!rec) {
+        rec = {
+          nodeId: node.id,
+          scriptId,
+          started: false,
+          enabled: false,
+          lastRawParams: rawParams,
+          state: def.state ? { ...def.state() } : {}
+        };
+        instanceStates.set(key, rec);
+      } else {
+        rec.lastRawParams = rawParams;
+      }
+      const ctx = buildScriptContext(node, scriptId, rawParams, rec.state, host);
+      measureCost(`script:${scriptId}`, () => {
+        let phase = "onUpdate";
+        try {
+          if (!rec.started) {
+            rec.started = true;
+            phase = "onStart";
+            def.onStart?.(ctx);
+          }
+          if (!rec.enabled) {
+            rec.enabled = true;
+            phase = "onEnable";
+            def.onEnable?.(ctx);
+          }
+          phase = "onUpdate";
+          def.onUpdate?.(ctx, dt);
+        } catch (error) {
+          reportRuntimeError(phase, scriptId, `\u811A\u672C "${def.name}"`, error, node.id);
+        }
+      });
+    }
+  }
   if (navAgents.size > 0 && dt > 0) {
     for (const [agentId, agent] of navAgents) {
+      const ownerState = resolveTaskOwnerState(agentId, agent.scriptId, nodes, mountedKeys, activeKeys);
+      if (ownerState === "destroyed") {
+        navAgents.delete(agentId);
+        continue;
+      }
+      if (ownerState === "disabled") continue;
       const obj = host.resolveObject(agentId);
       const n = nodes[agentId];
       if (!obj && !n) {
@@ -11238,51 +11329,17 @@ function stepProjectScripts(dt, host) {
       }
     }
   }
-  for (const node of Object.values(nodes)) {
-    if (isNodePooledInactive(node.id, nodes)) continue;
-    const projectScripts = node.gameplay?.packs?.__project__;
-    if (!projectScripts || typeof projectScripts !== "object") continue;
-    for (const [scriptId, rawParams] of Object.entries(projectScripts)) {
-      const def = compiledBehaviors.get(scriptId);
-      if (!def) continue;
-      const key = instanceKey2(node.id, scriptId);
-      mountedKeys.add(key);
-      if (rawParams && typeof rawParams === "object" && rawParams.__enabled === false) {
-        continue;
-      }
-      activeKeys.add(key);
-      let rec = instanceStates.get(key);
-      if (!rec) {
-        rec = {
-          nodeId: node.id,
-          scriptId,
-          started: false,
-          state: def.state ? { ...def.state() } : {}
-        };
-        instanceStates.set(key, rec);
-      }
-      const ctx = buildScriptContext(node, scriptId, rawParams, rec.state, host);
-      measureCost(`script:${scriptId}`, () => {
-        let phase = "onUpdate";
-        try {
-          if (!rec.started) {
-            rec.started = true;
-            phase = "onStart";
-            def.onStart?.(ctx);
-            phase = "onUpdate";
-          }
-          def.onUpdate?.(ctx, dt);
-        } catch (error) {
-          reportRuntimeError(phase, scriptId, `\u811A\u672C "${def.name}"`, error, node.id);
-        }
-      });
-    }
-  }
   if (splineFollowAgents.size > 0 && dt > 0) {
     for (const [agentId, ag] of Array.from(splineFollowAgents.entries())) {
+      const ownerState = resolveTaskOwnerState(agentId, ag.scriptId, nodes, mountedKeys, activeKeys);
+      if (ownerState === "destroyed") {
+        splineFollowAgents.delete(agentId);
+        continue;
+      }
+      if (ownerState === "disabled") continue;
       const n = nodes[agentId];
       const h = makeNodeHandle(agentId, host);
-      if (!n || !h || isNodePooledInactive(agentId, nodes)) {
+      if (!n || !h) {
         splineFollowAgents.delete(agentId);
         continue;
       }
@@ -11339,11 +11396,12 @@ function stepProjectScripts(dt, host) {
   if (activeTweens.size > 0 && dt > 0) {
     for (const tw of Array.from(activeTweens.values())) {
       if (!activeTweens.has(tw.id)) continue;
-      const ownerExists = tw.ownerNodeId.startsWith("__system__:") || Boolean(nodes[tw.ownerNodeId]) && !isNodePooledInactive(tw.ownerNodeId, nodes);
-      if (!ownerExists) {
+      const ownerState = resolveTaskOwnerState(tw.ownerNodeId, tw.scriptId, nodes, mountedKeys, activeKeys);
+      if (ownerState === "destroyed") {
         activeTweens.delete(tw.id);
         continue;
       }
+      if (ownerState === "disabled") continue;
       if (tw.delayRemaining > 0) {
         tw.delayRemaining -= dt;
         if (tw.delayRemaining > 0) continue;
@@ -11383,12 +11441,12 @@ function stepProjectScripts(dt, host) {
     const timerSnapshot = Array.from(scriptTimers.values());
     for (const timer of timerSnapshot) {
       if (!scriptTimers.has(timer.id)) continue;
-      const isSystemTimer = timer.nodeId.startsWith("__system__:");
-      const tNode = isSystemTimer ? null : nodes[timer.nodeId];
-      if (!isSystemTimer && (!tNode || isNodePooledInactive(timer.nodeId, nodes))) {
+      const ownerState = resolveTaskOwnerState(timer.nodeId, timer.scriptId, nodes, mountedKeys, activeKeys);
+      if (ownerState === "destroyed") {
         scriptTimers.delete(timer.id);
         continue;
       }
+      if (ownerState === "disabled") continue;
       timer.remaining -= dt;
       if (timer.remaining <= 0) {
         if (timer.repeat) {
@@ -11447,11 +11505,19 @@ function stepProjectScripts(dt, host) {
     uiEventHandlers.delete(key);
     const def = compiledBehaviors.get(rec.scriptId);
     const node = nodes[rec.nodeId];
-    if (def?.onDestroy && node) {
-      const ctx = buildScriptContext(node, rec.scriptId, {}, rec.state, host);
-      try {
-        def.onDestroy(ctx);
-      } catch {
+    if (node && (def?.onDisable || def?.onDestroy)) {
+      const ctx = buildScriptContext(node, rec.scriptId, rec.lastRawParams ?? {}, rec.state, host);
+      if (rec.enabled && def.onDisable) {
+        try {
+          def.onDisable(ctx);
+        } catch {
+        }
+      }
+      if (def.onDestroy) {
+        try {
+          def.onDestroy(ctx);
+        } catch {
+        }
       }
     }
     instanceStates.delete(key);
