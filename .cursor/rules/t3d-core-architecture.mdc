@@ -24,5 +24,6 @@ alwaysApply: true
   - 新增节点级能力包数据统一挂在 `node.capabilities[capabilityId]`，场景级环境能力包挂在 `picture.capabilities[capabilityId]`。
   - **严禁**继续向 `SceneNode` 或 `ScenePicture` 顶层平铺新模块字段。
 - **指令层与运行时解耦**：工程数据修改统一经过指令层，试玩期间拒绝文档修改指令；运行时代码不得引用 `src/editor/`；参数说明统一使用 `FieldSchema`。
+- **试玩与发布双端同步**：公共运行时与渲染管线下沉到 `src/runtime/` 共用；新增节点类型、资源引用字段、`SceneRuntimeHost` 方法或能力包后，必须同步更新 `src/player/exporter.ts` 与 `src/player/main.ts`，并通过 `npm run check:player-deps` 与 `npm run build:player`。
 - **代码类资产与安全**：AI 写逻辑采用「已有组件 + `t3d/runtime` TypeScript 脚本」（`defineBehavior` / `defineSystem`），着色器采用 `t3d/shader` 表面输出（`defineShader`，TSL 白名单）；着色器与脚本作为工程目录下的独立 `.ts` 文件存放；模型与生成服务的密钥只存主进程且请求仅从主进程发出。
 - **沟通与提交**：始终使用简体中文回复；未经用户明确要求，不要自动执行 `git commit`。

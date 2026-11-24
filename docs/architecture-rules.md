@@ -138,3 +138,18 @@
      - `defaults.ts` / `types.ts`：纯序列化数据结构与默认值（零 Three.js / 第三方库依赖）。
      - `session.ts` / `runtime.ts`：对接 `registerRuntimeSystem`、`registerPhysicsExtension` 或 `registerBeforeRenderHook` 的运行时生命周期。
      - `<Name>Card.tsx`：遵循 `iv2-card` 布局规范的属性面板卡片，内部自行判断 `capabilityEnabled` 决定是否渲染。
+
+---
+
+## 8. 独立发布端（Standalone Player）与试玩模式双端同步规范
+
+编辑器试玩模式（`EditorViewport`）与打包发布端（`src/player/main.ts` + `src/player/exporter.ts`）共用同一套 `src/runtime/sceneRuntime.ts` 运行时内核，但**资源导出清单、宿主渲染与对象挂载**各自实现。今后新增任何功能或修改能力时，必须同步检查以下三处：
+
+1. **导出依赖与载荷同步（`src/player/exporter.ts`）**
+   - 凡是节点、材质、UI、能力包、玩法包或场景属性（`ScenePicture`）新增了资源引用字段（资产 ID、贴图、环境图、动画、预制体、UI 文档等），必须在 `collectSceneDependencies` 中显式收集，并在 `buildExportedProjectPayload` 中导出所需元数据，防止 `stripUnusedAssets` 误删资产。
+2. **宿主环境与渲染同步（`src/player/main.ts`）**
+   - 公共运行时算法、后期管线（`src/runtime/picturePipeline.ts`）、动画重定向（`src/runtime/animation/`）、UI 叠加层（`src/runtime/playerUiOverlay.tsx`）应尽量下沉至 `src/runtime/`，由编辑器与 Player 共同复用，严禁 `src/player/` 引用 `src/editor/`（通过 `npm run check:player-deps` 强制校验）。
+   - 若新增节点种类（`NodeKind`）、灯光类型、材质槽/着色器属性或 `SceneRuntimeHost` 接口方法，必须同步在 `src/player/main.ts` 中实现对应挂载与宿主回调。
+3. **发布构建产物同步**
+   - 修改 `src/player/` 或其依赖的 `src/runtime/`、`src/capabilities/`、`src/gameplay/` 后，发版前需执行 `npm run check:player-deps` 与 `npm run build:player` 更新 `dist-player/` 外壳产物。
+
