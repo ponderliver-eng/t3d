@@ -177,6 +177,7 @@ interface ScriptTimer {
 
 interface SplineFollowAgent {
   nodeId: string
+  scriptId?: string
   spline: SplinePath
   distance: number
   speed: number
@@ -191,6 +192,7 @@ interface SplineFollowAgent {
 interface TweenTask {
   id: number
   ownerNodeId: string
+  scriptId?: string
   delayRemaining: number
   elapsed: number
   duration: number
@@ -1285,6 +1287,7 @@ function buildScriptContext(
         }
         splineFollowAgents.set(node.id, {
           nodeId: node.id,
+          scriptId,
           spline,
           distance: startDist,
           speed: Math.max(0.01, Number(options?.speed ?? 4)),
@@ -1339,6 +1342,7 @@ function buildScriptContext(
         activeTweens.set(id, {
           id,
           ownerNodeId: node.id,
+          scriptId,
           delayRemaining: Math.max(0, Number(options?.delay ?? 0)),
           elapsed: 0,
           duration: dur,
@@ -1387,6 +1391,7 @@ function buildScriptContext(
         activeTweens.set(id, {
           id,
           ownerNodeId: node.id,
+          scriptId,
           delayRemaining: Math.max(0, Number(options?.delay ?? 0)),
           elapsed: 0,
           duration: dur,
@@ -1409,6 +1414,7 @@ function buildScriptContext(
         activeTweens.set(id, {
           id,
           ownerNodeId: node.id,
+          scriptId,
           delayRemaining: 0,
           elapsed: 0,
           duration: dur,
@@ -1438,6 +1444,7 @@ function buildScriptContext(
         activeTweens.set(id, {
           id,
           ownerNodeId: node.id,
+          scriptId,
           delayRemaining: 0,
           elapsed: 0,
           duration: dur,
@@ -2343,8 +2350,10 @@ function stepProjectScripts(dt: number, host: SceneRuntimeHost) {
   prevMouseButtons = currMouseButtons
   currMouseButtons = host.mouseButtons ? host.mouseButtons() : (host.rightHeld?.() ? 2 : 0)
   const nodes = world.getNodes()
+  const mountedKeys = new Set<string>()
   const activeKeys = new Set<string>()
   for (const sysId of compiledSystems.keys()) {
+    mountedKeys.add(`sys:${sysId}`)
     activeKeys.add(`sys:${sysId}`)
   }
 
@@ -2389,12 +2398,14 @@ function stepProjectScripts(dt: number, host: SceneRuntimeHost) {
     const projectScripts = node.gameplay?.packs?.__project__
     if (!projectScripts || typeof projectScripts !== 'object') continue
     for (const [scriptId, rawParams] of Object.entries(projectScripts as Record<string, unknown>)) {
-      if (rawParams && typeof rawParams === 'object' && (rawParams as Record<string, unknown>).__enabled === false) {
-        continue
-      }
       const def = compiledBehaviors.get(scriptId)
       if (!def) continue
       const key = instanceKey(node.id, scriptId)
+      // 只要脚本仍挂在存活节点上，就保留实例状态与 started 标记；禁用只暂停执行，不销毁重建
+      mountedKeys.add(key)
+      if (rawParams && typeof rawParams === 'object' && (rawParams as Record<string, unknown>).__enabled === false) {
+        continue
+      }
       activeKeys.add(key)
       let rec = instanceStates.get(key)
       if (!rec) {
@@ -2432,6 +2443,14 @@ function stepProjectScripts(dt: number, host: SceneRuntimeHost) {
       if (!n || !h || isNodePooledInactive(agentId, nodes)) {
         splineFollowAgents.delete(agentId)
         continue
+      }
+      if (ag.scriptId) {
+        const sk = instanceKey(agentId, ag.scriptId)
+        if (!mountedKeys.has(sk)) {
+          splineFollowAgents.delete(agentId)
+          continue
+        }
+        if (!activeKeys.has(sk)) continue
       }
       const totalLen = ag.spline.length
       if (totalLen <= 1e-6) {
@@ -2493,6 +2512,14 @@ function stepProjectScripts(dt: number, host: SceneRuntimeHost) {
         activeTweens.delete(tw.id)
         continue
       }
+      if (tw.scriptId && !tw.ownerNodeId.startsWith('__system__:')) {
+        const sk = instanceKey(tw.ownerNodeId, tw.scriptId)
+        if (!mountedKeys.has(sk)) {
+          activeTweens.delete(tw.id)
+          continue
+        }
+        if (!activeKeys.has(sk)) continue
+      }
       if (tw.delayRemaining > 0) {
         tw.delayRemaining -= dt
         if (tw.delayRemaining > 0) continue
@@ -2539,6 +2566,10 @@ function stepProjectScripts(dt: number, host: SceneRuntimeHost) {
       if (!isSystemTimer && (!tNode || isNodePooledInactive(timer.nodeId, nodes))) {
         scriptTimers.delete(timer.id)
         continue
+      }
+      if (!isSystemTimer) {
+        const sk = instanceKey(timer.nodeId, timer.scriptId)
+        if (mountedKeys.has(sk) && !activeKeys.has(sk)) continue
       }
       timer.remaining -= dt
       if (timer.remaining <= 0) {
@@ -2598,9 +2629,9 @@ function stepProjectScripts(dt: number, host: SceneRuntimeHost) {
     }
   }
 
-  // 清理已移除节点或卸载脚本的实例状态
+  // 清理已移除节点或卸载脚本的实例状态（暂时关闭 __enabled 不销毁）
   for (const [key, rec] of instanceStates.entries()) {
-    if (activeKeys.has(key)) continue
+    if (mountedKeys.has(key)) continue
     uiEventHandlers.delete(key)
     const def = compiledBehaviors.get(rec.scriptId)
     const node = nodes[rec.nodeId]

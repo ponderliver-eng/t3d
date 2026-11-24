@@ -10916,8 +10916,10 @@ function stepProjectScripts(dt, host) {
   prevMouseButtons = currMouseButtons;
   currMouseButtons = host.mouseButtons ? host.mouseButtons() : host.rightHeld?.() ? 2 : 0;
   const nodes = world3.getNodes();
+  const mountedKeys = /* @__PURE__ */ new Set();
   const activeKeys = /* @__PURE__ */ new Set();
   for (const sysId of compiledSystems.keys()) {
+    mountedKeys.add(`sys:${sysId}`);
     activeKeys.add(`sys:${sysId}`);
   }
   if (navAgents.size > 0 && dt > 0) {
@@ -10959,12 +10961,13 @@ function stepProjectScripts(dt, host) {
     const projectScripts = node.gameplay?.packs?.__project__;
     if (!projectScripts || typeof projectScripts !== "object") continue;
     for (const [scriptId, rawParams] of Object.entries(projectScripts)) {
-      if (rawParams && typeof rawParams === "object" && rawParams.__enabled === false) {
-        continue;
-      }
       const def = compiledBehaviors.get(scriptId);
       if (!def) continue;
       const key = instanceKey2(node.id, scriptId);
+      mountedKeys.add(key);
+      if (rawParams && typeof rawParams === "object" && rawParams.__enabled === false) {
+        continue;
+      }
       activeKeys.add(key);
       let rec = instanceStates.get(key);
       if (!rec) {
@@ -11158,7 +11161,7 @@ function stepProjectScripts(dt, host) {
     }
   }
   for (const [key, rec] of instanceStates.entries()) {
-    if (activeKeys.has(key)) continue;
+    if (mountedKeys.has(key)) continue;
     uiEventHandlers.delete(key);
     const def = compiledBehaviors.get(rec.scriptId);
     const node = nodes[rec.nodeId];

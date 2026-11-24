@@ -9657,10 +9657,14 @@ function makeNodeHandle(nodeId, host) {
       return obj ? { x: obj.position.x, y: obj.position.y, z: obj.position.z } : toVec3Obj(node.position);
     },
     set position(val) {
-      if (obj) obj.position.set(val.x, val.y, val.z);
-      node.position[0] = val.x;
-      node.position[1] = val.y;
-      node.position[2] = val.z;
+      if (!val || typeof val !== "object") return;
+      const x = typeof val.x === "number" && Number.isFinite(val.x) ? val.x : obj ? obj.position.x : node.position[0];
+      const y = typeof val.y === "number" && Number.isFinite(val.y) ? val.y : obj ? obj.position.y : node.position[1];
+      const z = typeof val.z === "number" && Number.isFinite(val.z) ? val.z : obj ? obj.position.z : node.position[2];
+      if (obj) obj.position.set(x, y, z);
+      node.position[0] = x;
+      node.position[1] = y;
+      node.position[2] = z;
     },
     get rotation() {
       return obj ? { x: obj.rotation.x, y: obj.rotation.y, z: obj.rotation.z } : {
@@ -10500,6 +10504,7 @@ function buildScriptContext(node, scriptId, rawParams, stateObj, host) {
         };
         splineFollowAgents.set(node.id, {
           nodeId: node.id,
+          scriptId,
           spline,
           distance: startDist,
           speed: Math.max(0.01, Number(options?.speed ?? 4)),
@@ -10539,6 +10544,7 @@ function buildScriptContext(node, scriptId, rawParams, stateObj, host) {
         activeTweens.set(id, {
           id,
           ownerNodeId: node.id,
+          scriptId,
           delayRemaining: Math.max(0, Number(options?.delay ?? 0)),
           elapsed: 0,
           duration: dur,
@@ -10581,6 +10587,7 @@ function buildScriptContext(node, scriptId, rawParams, stateObj, host) {
         activeTweens.set(id, {
           id,
           ownerNodeId: node.id,
+          scriptId,
           delayRemaining: Math.max(0, Number(options?.delay ?? 0)),
           elapsed: 0,
           duration: dur,
@@ -10603,6 +10610,7 @@ function buildScriptContext(node, scriptId, rawParams, stateObj, host) {
         activeTweens.set(id, {
           id,
           ownerNodeId: node.id,
+          scriptId,
           delayRemaining: 0,
           elapsed: 0,
           duration: dur,
@@ -10632,6 +10640,7 @@ function buildScriptContext(node, scriptId, rawParams, stateObj, host) {
         activeTweens.set(id, {
           id,
           ownerNodeId: node.id,
+          scriptId,
           delayRemaining: 0,
           elapsed: 0,
           duration: dur,
@@ -11390,8 +11399,10 @@ function stepProjectScripts(dt, host) {
   prevMouseButtons = currMouseButtons;
   currMouseButtons = host.mouseButtons ? host.mouseButtons() : host.rightHeld?.() ? 2 : 0;
   const nodes = world3.getNodes();
+  const mountedKeys = /* @__PURE__ */ new Set();
   const activeKeys = /* @__PURE__ */ new Set();
   for (const sysId of compiledSystems.keys()) {
+    mountedKeys.add(`sys:${sysId}`);
     activeKeys.add(`sys:${sysId}`);
   }
   if (navAgents.size > 0 && dt > 0) {
@@ -11433,12 +11444,13 @@ function stepProjectScripts(dt, host) {
     const projectScripts = node.gameplay?.packs?.__project__;
     if (!projectScripts || typeof projectScripts !== "object") continue;
     for (const [scriptId, rawParams] of Object.entries(projectScripts)) {
-      if (rawParams && typeof rawParams === "object" && rawParams.__enabled === false) {
-        continue;
-      }
       const def = compiledBehaviors.get(scriptId);
       if (!def) continue;
       const key = instanceKey2(node.id, scriptId);
+      mountedKeys.add(key);
+      if (rawParams && typeof rawParams === "object" && rawParams.__enabled === false) {
+        continue;
+      }
       activeKeys.add(key);
       let rec = instanceStates.get(key);
       if (!rec) {
@@ -11474,6 +11486,14 @@ function stepProjectScripts(dt, host) {
       if (!n || !h || isNodePooledInactive(agentId, nodes)) {
         splineFollowAgents.delete(agentId);
         continue;
+      }
+      if (ag.scriptId) {
+        const sk = instanceKey2(agentId, ag.scriptId);
+        if (!mountedKeys.has(sk)) {
+          splineFollowAgents.delete(agentId);
+          continue;
+        }
+        if (!activeKeys.has(sk)) continue;
       }
       const totalLen = ag.spline.length;
       if (totalLen <= 1e-6) {
@@ -11533,6 +11553,14 @@ function stepProjectScripts(dt, host) {
         activeTweens.delete(tw.id);
         continue;
       }
+      if (tw.scriptId && !tw.ownerNodeId.startsWith("__system__:")) {
+        const sk = instanceKey2(tw.ownerNodeId, tw.scriptId);
+        if (!mountedKeys.has(sk)) {
+          activeTweens.delete(tw.id);
+          continue;
+        }
+        if (!activeKeys.has(sk)) continue;
+      }
       if (tw.delayRemaining > 0) {
         tw.delayRemaining -= dt;
         if (tw.delayRemaining > 0) continue;
@@ -11577,6 +11605,10 @@ function stepProjectScripts(dt, host) {
       if (!isSystemTimer && (!tNode || isNodePooledInactive(timer.nodeId, nodes))) {
         scriptTimers.delete(timer.id);
         continue;
+      }
+      if (!isSystemTimer) {
+        const sk = instanceKey2(timer.nodeId, timer.scriptId);
+        if (mountedKeys.has(sk) && !activeKeys.has(sk)) continue;
       }
       timer.remaining -= dt;
       if (timer.remaining <= 0) {
@@ -11632,7 +11664,7 @@ function stepProjectScripts(dt, host) {
     }
   }
   for (const [key, rec] of instanceStates.entries()) {
-    if (activeKeys.has(key)) continue;
+    if (mountedKeys.has(key)) continue;
     uiEventHandlers.delete(key);
     const def = compiledBehaviors.get(rec.scriptId);
     const node = nodes[rec.nodeId];
@@ -12005,4 +12037,176 @@ test("compileShaderSource \u652F\u6301 physical \u6269\u5C55\u6750\u8D28\u3001\u
     uv: { x: 0.5, y: 0.5 }
   });
   assert.ok(outNode);
+});
+test("\u811A\u672C\u5F00\u5173\u5173\u95ED\u518D\u5F00\u542F\uFF1A\u6682\u505C\u6267\u884C\u4F46\u4FDD\u7559 state\uFF0C\u4E0D\u91CD\u590D\u89E6\u53D1 onStart\uFF1B\u5378\u8F7D\u624D\u89E6\u53D1 onDestroy", () => {
+  clearScriptRuntimeState();
+  const events = [];
+  const res = compileAndRegisterScript(
+    "toggle_life",
+    "Assets/Scripts/ToggleLife.ts",
+    `
+    import { defineBehavior } from 't3d/runtime'
+    export default defineBehavior({
+      name: 'ToggleLife',
+      state: () => ({ count: 0 }),
+      onStart(self) {
+        self.log('start')
+      },
+      onUpdate(self) {
+        self.state.count = Number(self.state.count) + 1
+        self.log('update:' + self.state.count)
+      },
+      onDestroy(self) {
+        self.log('destroy')
+      },
+    })
+    `
+  );
+  assert.equal(res.ok, true, JSON.stringify(res.diagnostics));
+  const node = {
+    id: "n1",
+    name: "Box",
+    kind: "box",
+    parentId: null,
+    position: [0, 0, 0],
+    rotation: [0, 0, 0],
+    scale: [1, 1, 1],
+    visible: true,
+    color: "#ffffff",
+    roughness: 0.5,
+    metalness: 0,
+    assetId: null,
+    materialAssetId: null,
+    slots: [],
+    castShadow: false,
+    receiveShadow: true,
+    gameplay: { packs: { __project__: { toggle_life: { __enabled: true } } } }
+  };
+  let nodes = { n1: node };
+  const obj = new Group();
+  const world3 = {
+    getNodes: () => nodes,
+    setNodes: (next) => {
+      nodes = next;
+    },
+    updateNode: () => {
+    },
+    getActiveSceneId: () => "default",
+    getPicture: () => ({}),
+    getCapabilities: () => ({}),
+    getGameplayPacks: () => ["core"],
+    getGameDatabase: () => ({ tables: {} }),
+    getTags: () => [],
+    getAsset: () => void 0,
+    listAssets: () => [],
+    getPlayState: () => "playing",
+    markPlayDirty: () => {
+    },
+    log: (_level, msg) => {
+      events.push(msg);
+    }
+  };
+  const host = {
+    ready: true,
+    resolveObject: (id) => id === "n1" ? obj : null,
+    updateAnimations: () => {
+    }
+  };
+  setRuntimeWorld(world3);
+  stepSceneRuntime(1 / 60, host);
+  nodes = { n1: { ...node, gameplay: { packs: { __project__: { toggle_life: { __enabled: false } } } } } };
+  stepSceneRuntime(1 / 60, host);
+  stepSceneRuntime(1 / 60, host);
+  nodes = { n1: { ...node, gameplay: { packs: { __project__: { toggle_life: { __enabled: true } } } } } };
+  stepSceneRuntime(1 / 60, host);
+  nodes = { n1: { ...node, gameplay: { packs: { __project__: {} } } } };
+  stepSceneRuntime(1 / 60, host);
+  assert.deepEqual(events, ["start", "update:1", "update:2", "destroy"]);
+  clearScriptRuntimeState();
+});
+test("\u811A\u672C\u5F00\u5173\u5173\u95ED\u65F6\u6682\u505C\u8BE5\u811A\u672C\u53D1\u8D77\u7684 Tween \u4E0E\u5B9A\u65F6\u5668\uFF0C\u5F00\u542F\u540E\u4ECE\u65AD\u70B9\u7EE7\u7EED", () => {
+  clearScriptRuntimeState();
+  const logs = [];
+  const res = compileAndRegisterScript(
+    "tween_toggle",
+    "Assets/Scripts/TweenToggle.ts",
+    `
+    import { defineBehavior } from 't3d/runtime'
+    export default defineBehavior({
+      name: 'TweenToggle',
+      onStart(self) {
+        self.log('start')
+        self.after(0.1, () => {
+          self.tween.to(self.node, { position: { x: 10, y: 0, z: 0 } }, 0.4, {
+            ease: 'linear',
+            onComplete: () => self.log('done'),
+          })
+        })
+      },
+    })
+    `
+  );
+  assert.equal(res.ok, true, JSON.stringify(res.diagnostics));
+  const node = {
+    id: "n1",
+    name: "Cube",
+    kind: "box",
+    parentId: null,
+    position: [0, 0, 0],
+    rotation: [0, 0, 0],
+    scale: [1, 1, 1],
+    visible: true,
+    color: "#ffffff",
+    roughness: 0.5,
+    metalness: 0,
+    assetId: null,
+    materialAssetId: null,
+    slots: [],
+    castShadow: false,
+    receiveShadow: true,
+    gameplay: { packs: { __project__: { tween_toggle: { __enabled: true } } } }
+  };
+  let nodes = { n1: node };
+  const obj = new Group();
+  const world3 = {
+    getNodes: () => nodes,
+    setNodes: (next) => {
+      nodes = next;
+    },
+    updateNode: () => {
+    },
+    getActiveSceneId: () => "default",
+    getPicture: () => ({}),
+    getCapabilities: () => ({}),
+    getGameplayPacks: () => ["core"],
+    getGameDatabase: () => ({ tables: {} }),
+    getTags: () => [],
+    getAsset: () => void 0,
+    listAssets: () => [],
+    getPlayState: () => "playing",
+    markPlayDirty: () => {
+    },
+    log: (_level, msg) => {
+      logs.push(msg);
+    }
+  };
+  const host = {
+    ready: true,
+    resolveObject: (id) => id === "n1" ? obj : null,
+    updateAnimations: () => {
+    }
+  };
+  setRuntimeWorld(world3);
+  for (let i = 0; i < 4; i += 1) stepSceneRuntime(0.05, host);
+  const pausedX = obj.position.x;
+  assert.ok(pausedX > 1 && pausedX < 5, `\u6682\u505C\u524D\u5E94\u5728\u8FD0\u52A8\u4E2D\uFF0Cx=${pausedX}`);
+  nodes = { n1: { ...node, gameplay: { packs: { __project__: { tween_toggle: { __enabled: false } } } } } };
+  for (let i = 0; i < 10; i += 1) stepSceneRuntime(0.05, host);
+  assert.equal(obj.position.x, pausedX, "\u5173\u95ED\u5F00\u5173\u540E Tween \u4E0D\u5E94\u7EE7\u7EED\u63A8\u8FDB");
+  assert.deepEqual(logs, ["start"]);
+  nodes = { n1: { ...node, gameplay: { packs: { __project__: { tween_toggle: { __enabled: true } } } } } };
+  for (let i = 0; i < 8; i += 1) stepSceneRuntime(0.05, host);
+  assert.ok(Math.abs(obj.position.x - 10) < 1e-4, `\u5F00\u542F\u540E\u5E94\u7EE7\u7EED\u8D70\u5230\u7EC8\u70B9\uFF0Cx=${obj.position.x}`);
+  assert.deepEqual(logs, ["start", "done"]);
+  clearScriptRuntimeState();
 });

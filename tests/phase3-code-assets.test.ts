@@ -383,3 +383,178 @@ test('compileShaderSource 支持 physical 扩展材质、自定义光照模型�
   })
   assert.ok(outNode)
 })
+
+test('脚本开关关闭再开启：暂停执行但保留 state，不重复触发 onStart；卸载才触发 onDestroy', () => {
+  clearScriptRuntimeState()
+  const events: string[] = []
+  const res = compileAndRegisterScript(
+    'toggle_life',
+    'Assets/Scripts/ToggleLife.ts',
+    `
+    import { defineBehavior } from 't3d/runtime'
+    export default defineBehavior({
+      name: 'ToggleLife',
+      state: () => ({ count: 0 }),
+      onStart(self) {
+        self.log('start')
+      },
+      onUpdate(self) {
+        self.state.count = Number(self.state.count) + 1
+        self.log('update:' + self.state.count)
+      },
+      onDestroy(self) {
+        self.log('destroy')
+      },
+    })
+    `,
+  )
+  assert.equal(res.ok, true, JSON.stringify(res.diagnostics))
+
+  const node = {
+    id: 'n1',
+    name: 'Box',
+    kind: 'box',
+    parentId: null,
+    position: [0, 0, 0],
+    rotation: [0, 0, 0],
+    scale: [1, 1, 1],
+    visible: true,
+    color: '#ffffff',
+    roughness: 0.5,
+    metalness: 0,
+    assetId: null,
+    materialAssetId: null,
+    slots: [],
+    castShadow: false,
+    receiveShadow: true,
+    gameplay: { packs: { __project__: { toggle_life: { __enabled: true } } } },
+  } as unknown as SceneNode
+  let nodes: Record<string, SceneNode> = { n1: node }
+  const obj = new Group()
+  const world: RuntimeWorld = {
+    getNodes: () => nodes,
+    setNodes: (next) => { nodes = next },
+    updateNode: () => {},
+    getActiveSceneId: () => 'default',
+    getPicture: () => ({}) as ScenePicture,
+    getCapabilities: () => ({}),
+    getGameplayPacks: () => ['core'],
+    getGameDatabase: () => ({ tables: {} }),
+    getTags: () => [],
+    getAsset: () => undefined,
+    listAssets: () => [],
+    getPlayState: () => 'playing',
+    markPlayDirty: () => {},
+    log: (_level, msg) => { events.push(msg) },
+  }
+  const host: SceneRuntimeHost = {
+    ready: true,
+    resolveObject: (id) => (id === 'n1' ? obj : null),
+    updateAnimations: () => {},
+  }
+  setRuntimeWorld(world)
+
+  // 1. 启用首帧：触发 start + update:1
+  stepSceneRuntime(1 / 60, host)
+  // 2. 关闭开关两帧：暂停执行，不触发 onDestroy
+  nodes = { n1: { ...node, gameplay: { packs: { __project__: { toggle_life: { __enabled: false } } } } } }
+  stepSceneRuntime(1 / 60, host)
+  stepSceneRuntime(1 / 60, host)
+  // 3. 重新开启：继续 update:2，不重复触发 start
+  nodes = { n1: { ...node, gameplay: { packs: { __project__: { toggle_life: { __enabled: true } } } } } }
+  stepSceneRuntime(1 / 60, host)
+  // 4. 卸载脚本：触发一次 destroy
+  nodes = { n1: { ...node, gameplay: { packs: { __project__: {} } } } }
+  stepSceneRuntime(1 / 60, host)
+
+  assert.deepEqual(events, ['start', 'update:1', 'update:2', 'destroy'])
+  clearScriptRuntimeState()
+})
+
+test('脚本开关关闭时暂停该脚本发起的 Tween 与定时器，开启后从断点继续', () => {
+  clearScriptRuntimeState()
+  const logs: string[] = []
+  const res = compileAndRegisterScript(
+    'tween_toggle',
+    'Assets/Scripts/TweenToggle.ts',
+    `
+    import { defineBehavior } from 't3d/runtime'
+    export default defineBehavior({
+      name: 'TweenToggle',
+      onStart(self) {
+        self.log('start')
+        self.after(0.1, () => {
+          self.tween.to(self.node, { position: { x: 10, y: 0, z: 0 } }, 0.4, {
+            ease: 'linear',
+            onComplete: () => self.log('done'),
+          })
+        })
+      },
+    })
+    `,
+  )
+  assert.equal(res.ok, true, JSON.stringify(res.diagnostics))
+
+  const node = {
+    id: 'n1',
+    name: 'Cube',
+    kind: 'box',
+    parentId: null,
+    position: [0, 0, 0],
+    rotation: [0, 0, 0],
+    scale: [1, 1, 1],
+    visible: true,
+    color: '#ffffff',
+    roughness: 0.5,
+    metalness: 0,
+    assetId: null,
+    materialAssetId: null,
+    slots: [],
+    castShadow: false,
+    receiveShadow: true,
+    gameplay: { packs: { __project__: { tween_toggle: { __enabled: true } } } },
+  } as unknown as SceneNode
+  let nodes: Record<string, SceneNode> = { n1: node }
+  const obj = new Group()
+  const world: RuntimeWorld = {
+    getNodes: () => nodes,
+    setNodes: (next) => { nodes = next },
+    updateNode: () => {},
+    getActiveSceneId: () => 'default',
+    getPicture: () => ({}) as ScenePicture,
+    getCapabilities: () => ({}),
+    getGameplayPacks: () => ['core'],
+    getGameDatabase: () => ({ tables: {} }),
+    getTags: () => [],
+    getAsset: () => undefined,
+    listAssets: () => [],
+    getPlayState: () => 'playing',
+    markPlayDirty: () => {},
+    log: (_level, msg) => { logs.push(msg) },
+  }
+  const host: SceneRuntimeHost = {
+    ready: true,
+    resolveObject: (id) => (id === 'n1' ? obj : null),
+    updateAnimations: () => {},
+  }
+  setRuntimeWorld(world)
+
+  // 推进 0.2s：after(0.1) 已触发，tween 推进约 0.1s（x 约为 2.5）
+  for (let i = 0; i < 4; i += 1) stepSceneRuntime(0.05, host)
+  const pausedX = obj.position.x
+  assert.ok(pausedX > 1 && pausedX < 5, `暂停前应在运动中，x=${pausedX}`)
+
+  // 关闭脚本开关并推进 0.5s：位置与定时器都应完全冻结
+  nodes = { n1: { ...node, gameplay: { packs: { __project__: { tween_toggle: { __enabled: false } } } } } }
+  for (let i = 0; i < 10; i += 1) stepSceneRuntime(0.05, host)
+  assert.equal(obj.position.x, pausedX, '关闭开关后 Tween 不应继续推进')
+  assert.deepEqual(logs, ['start'])
+
+  // 重新开启并推进 0.4s：应从断点继续直到完成，且不重复触发 start
+  nodes = { n1: { ...node, gameplay: { packs: { __project__: { tween_toggle: { __enabled: true } } } } } }
+  for (let i = 0; i < 8; i += 1) stepSceneRuntime(0.05, host)
+  assert.ok(Math.abs(obj.position.x - 10) < 1e-4, `开启后应继续走到终点，x=${obj.position.x}`)
+  assert.deepEqual(logs, ['start', 'done'])
+
+  clearScriptRuntimeState()
+})
