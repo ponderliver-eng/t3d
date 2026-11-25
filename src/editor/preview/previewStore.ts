@@ -10,6 +10,8 @@ export interface PreviewWindow {
   x: number
   y: number
   z: number
+  width?: number
+  height?: number
 }
 
 interface PreviewState {
@@ -19,6 +21,7 @@ interface PreviewState {
   closePreview: (id: string) => void
   bringToFront: (id: string) => void
   movePreview: (id: string, x: number, y: number) => void
+  resizePreview: (id: string, width: number, height: number, x?: number, y?: number) => void
 }
 
 export const usePreviewStore = create<PreviewState>(set => ({
@@ -47,6 +50,17 @@ export const usePreviewStore = create<PreviewState>(set => ({
   }),
   movePreview: (id, x, y) => set(state => ({
     windows: state.windows.map(item => item.id === id ? { ...item, x, y } : item),
+  })),
+  resizePreview: (id, width, height, x, y) => set(state => ({
+    windows: state.windows.map(item => item.id === id
+      ? {
+          ...item,
+          width,
+          height,
+          ...(x !== undefined ? { x } : {}),
+          ...(y !== undefined ? { y } : {}),
+        }
+      : item),
   })),
 }))
 

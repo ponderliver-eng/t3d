@@ -169,11 +169,48 @@ export function DocumentPreview({ assetId, standalone = false }: { assetId: stri
   )
 }
 
+function isTableSeparator(line: string): boolean {
+  const trimmed = line.trim().replace(/^\|/, '').replace(/\|$/, '')
+  if (!trimmed.includes('|') && !line.trim().startsWith('|')) return false
+  const cells = trimmed.split('|').map(c => c.trim())
+  return cells.length > 0 && cells.every(c => /^:?-{3,}:?$/.test(c))
+}
+
+function splitTableRow(line: string): string[] {
+  const trimmed = line.trim().replace(/^\|/, '').replace(/\|$/, '')
+  return trimmed.split('|').map(cell => cell.trim())
+}
+
+function parseTableAlignments(line: string): Array<'left' | 'center' | 'right' | undefined> {
+  return splitTableRow(line).map(cell => {
+    const left = cell.startsWith(':')
+    const right = cell.endsWith(':')
+    if (left && right) return 'center'
+    if (right) return 'right'
+    if (left) return 'left'
+    return undefined
+  })
+}
+
 function renderMarkdown(source: string): ReactNode[] {
   const lines = source.replace(/\r\n/g, '\n').split('\n')
   const blocks: ReactNode[] = []
   let i = 0
   let key = 0
+
+  const isBlockStart = (idx: number): boolean => {
+    if (idx >= lines.length) return true
+    const l = lines[idx]!
+    if (!l.trim()) return true
+    if (l.trim().startsWith('```')) return true
+    if (/^(#{1,6})\s+/.test(l)) return true
+    if (l.trimStart().startsWith('>')) return true
+    if (/^\s*[-*+]\s+/.test(l)) return true
+    if (/^\s*\d+\.\s+/.test(l)) return true
+    if (/^(-{3,}|\*{3,}|_{3,})$/.test(l.trim())) return true
+    if (l.includes('|') && idx + 1 < lines.length && isTableSeparator(lines[idx + 1]!)) return true
+    return false
+  }
 
   while (i < lines.length) {
     const line = lines[i]!
@@ -197,6 +234,43 @@ function renderMarkdown(source: string): ReactNode[] {
       i += 1
       continue
     }
+    if (line.includes('|') && i + 1 < lines.length && isTableSeparator(lines[i + 1]!)) {
+      const headers = splitTableRow(line)
+      const aligns = parseTableAlignments(lines[i + 1]!)
+      i += 2
+      const rows: string[][] = []
+      while (i < lines.length && lines[i]!.trim() && lines[i]!.includes('|')) {
+        rows.push(splitTableRow(lines[i]!))
+        i += 1
+      }
+      blocks.push(
+        <div key={key++} className="doc-preview__table-wrap">
+          <table>
+            <thead>
+              <tr>
+                {headers.map((cell, cIdx) => (
+                  <th key={cIdx} style={aligns[cIdx] ? { textAlign: aligns[cIdx] } : undefined}>
+                    {renderInline(cell)}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row, rIdx) => (
+                <tr key={rIdx}>
+                  {headers.map((_, cIdx) => (
+                    <td key={cIdx} style={aligns[cIdx] ? { textAlign: aligns[cIdx] } : undefined}>
+                      {renderInline(row[cIdx] ?? '')}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>,
+      )
+      continue
+    }
     const heading = line.match(/^(#{1,6})\s+(.*)$/)
     if (heading) {
       const level = heading[1]!.length
@@ -216,13 +290,29 @@ function renderMarkdown(source: string): ReactNode[] {
         quoteLines.push(lines[i]!.replace(/^\s*>\s?/, ''))
         i += 1
       }
-      blocks.push(<blockquote key={key++}>{renderInline(quoteLines.join(' '))}</blockquote>)
+      blocks.push(<blockquote key={key++}>{renderInline(quoteLines.join('\n'))}</blockquote>)
       continue
     }
     if (/^\s*[-*+]\s+/.test(line)) {
       const items: ReactNode[] = []
       while (i < lines.length && /^\s*[-*+]\s+/.test(lines[i]!)) {
         const raw = lines[i]!.replace(/^\s*[-*+]\s+/, '')
+        i += 1
+        const subLines: string[] = []
+        while (i < lines.length) {
+          const next = lines[i]!
+          if (/^\s{2,}[^\s]/.test(next) && !/^\s*[-*+]\s+/.test(next) && !/^\s*\d+\.\s+/.test(next)) {
+            subLines.push(next.trim())
+            i += 1
+            continue
+          }
+          if (!next.trim() && i + 1 < lines.length && /^\s{2,}[^\s]/.test(lines[i + 1]!)) {
+            subLines.push('')
+            i += 1
+            continue
+          }
+          break
+        }
         const task = raw.match(/^\[( |x|X)\]\s+(.*)$/)
         if (task) {
           items.push(
@@ -232,33 +322,60 @@ function renderMarkdown(source: string): ReactNode[] {
             </li>,
           )
         } else {
-          items.push(<li key={items.length}>{renderInline(raw)}</li>)
+          items.push(
+            <li key={items.length}>
+              <div>{renderInline(raw)}</div>
+              {subLines.length > 0 && <div className="doc-preview__li-sub">{renderInline(subLines.join('\n'))}</div>}
+            </li>,
+          )
         }
-        i += 1
+        if (i < lines.length && !lines[i]!.trim() && i + 1 < lines.length && /^\s*[-*+]\s+/.test(lines[i + 1]!)) {
+          i += 1
+        }
       }
       blocks.push(<ul key={key++}>{items}</ul>)
       continue
     }
-    if (/^\s*\d+\.\s+/.test(line)) {
+    const olFirst = line.match(/^\s*(\d+)\.\s+(.*)$/)
+    if (olFirst) {
+      const startNum = Number.parseInt(olFirst[1]!, 10)
       const items: ReactNode[] = []
-      while (i < lines.length && /^\s*\d+\.\s+/.test(lines[i]!)) {
-        items.push(<li key={items.length}>{renderInline(lines[i]!.replace(/^\s*\d+\.\s+/, ''))}</li>)
+      while (i < lines.length) {
+        const m = lines[i]!.match(/^\s*\d+\.\s+(.*)$/)
+        if (!m) break
+        const headText = m[1]!
         i += 1
+        const subLines: string[] = []
+        while (i < lines.length) {
+          const next = lines[i]!
+          if (/^\s{2,}[^\s]/.test(next) && !/^\s*\d+\.\s+/.test(next) && !/^\s*[-*+]\s+/.test(next)) {
+            subLines.push(next.trim())
+            i += 1
+            continue
+          }
+          if (!next.trim() && i + 1 < lines.length && /^\s{2,}[^\s]/.test(lines[i + 1]!)) {
+            subLines.push('')
+            i += 1
+            continue
+          }
+          break
+        }
+        items.push(
+          <li key={items.length}>
+            <div>{renderInline(headText)}</div>
+            {subLines.length > 0 && <div className="doc-preview__li-sub">{renderInline(subLines.join('\n'))}</div>}
+          </li>,
+        )
+        if (i < lines.length && !lines[i]!.trim() && i + 1 < lines.length && /^\s*\d+\.\s+/.test(lines[i + 1]!)) {
+          i += 1
+        }
       }
-      blocks.push(<ol key={key++}>{items}</ol>)
+      blocks.push(<ol key={key++} start={Number.isFinite(startNum) && startNum !== 1 ? startNum : undefined}>{items}</ol>)
       continue
     }
     const para: string[] = [line]
     i += 1
-    while (
-      i < lines.length
-      && lines[i]!.trim()
-      && !lines[i]!.trim().startsWith('```')
-      && !/^(#{1,6})\s+/.test(lines[i]!)
-      && !lines[i]!.trimStart().startsWith('>')
-      && !/^\s*([-*+]|\d+\.)\s+/.test(lines[i]!)
-      && !/^(-{3,}|\*{3,}|_{3,})$/.test(lines[i]!.trim())
-    ) {
+    while (!isBlockStart(i)) {
       para.push(lines[i]!)
       i += 1
     }
@@ -269,7 +386,7 @@ function renderMarkdown(source: string): ReactNode[] {
 
 function renderInline(text: string): ReactNode[] {
   const parts: ReactNode[] = []
-  const token = /(`[^`]+`|\*\*[^*]+\*\*|\*[^*]+\*|\[([^\]]+)\]\((https?:\/\/[^)]+)\))/g
+  const token = /(`[^`]+`|\*\*[^*]+\*\*|~~[^~]+~~|\*[^*]+\*|\[([^\]]+)\]\((https?:\/\/[^)]+)\))/g
   let last = 0
   let match: RegExpExecArray | null
   let key = 0
@@ -280,6 +397,8 @@ function renderInline(text: string): ReactNode[] {
       parts.push(<code key={key++}>{raw.slice(1, -1)}</code>)
     } else if (raw.startsWith('**')) {
       parts.push(<strong key={key++}>{raw.slice(2, -2)}</strong>)
+    } else if (raw.startsWith('~~')) {
+      parts.push(<del key={key++}>{raw.slice(2, -2)}</del>)
     } else if (raw.startsWith('*')) {
       parts.push(<em key={key++}>{raw.slice(1, -1)}</em>)
     } else if (match[2] && match[3]) {

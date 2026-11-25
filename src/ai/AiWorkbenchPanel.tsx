@@ -7,7 +7,7 @@ import { useCodeAssetStore } from '../core/codeAssets/workspace'
 import { captureMainViewport } from '../core/preview/offscreenPreview'
 import { ASSET_MIME, FOLDER_MIME, NODE_MIME } from '../editor/assets/import'
 import { CLIP_MIME } from '../editor/animation/playback'
-import { useAssetStore } from '../editor/assets/library'
+import { assetDirectory, useAssetStore } from '../editor/assets/library'
 import { translate, useI18n } from '../editor/i18n'
 import { useEditorStore } from '../editor/scene/store'
 import { useAgentStore, type AiActionPill, type AiRefItem } from './agentLoop'
@@ -640,6 +640,15 @@ export default function AiWorkbenchPanel() {
         .t3d-ai-turn .t3d-ai-turn-delete:hover {
           color: #fca5a5 !important;
           background: rgba(239, 68, 68, 0.22) !important;
+        }
+        .t3d-ai-quick-ref:hover {
+          color: #e4e4e7 !important;
+          border-color: rgba(161, 161, 170, 0.7) !important;
+          background: rgba(255, 255, 255, 0.06) !important;
+        }
+        .t3d-ai-inline-asset:hover {
+          background: rgba(59, 130, 246, 0.18) !important;
+          color: #dbeafe !important;
         }
       `}</style>
       {/* 头部 */}
@@ -1743,11 +1752,19 @@ export default function AiWorkbenchPanel() {
                 <button
                   key={n.id}
                   type="button"
+                  className="t3d-ai-quick-ref"
                   onClick={() => setInput((prev) => `${prev}${prev && !prev.endsWith(' ') ? ' ' : ''}@${n.name} `)}
                   title={t('ai.insertName')}
-                  style={{ ...refPillStyle, cursor: 'pointer', border: 'none', opacity: 0.85 }}
+                  style={{
+                    ...refPillStyle,
+                    background: 'rgba(255,255,255,0.02)',
+                    border: '1px dashed rgba(161,161,170,0.38)',
+                    color: '#a1a1aa',
+                    cursor: 'pointer',
+                    transition: 'color 0.12s ease, border-color 0.12s ease, background 0.12s ease',
+                  }}
                 >
-                  @{n.name}
+                  + @{n.name}
                 </button>
               ))}
           </div>
@@ -2586,25 +2603,142 @@ function renderInlineMd(text: string): React.ReactNode[] {
   const tokens = text.split(/(`[^`]+`|\*\*[^*]+\*\*)/g)
   return tokens.map((tok, idx) => {
     if (tok.startsWith('`') && tok.endsWith('`') && tok.length >= 2) {
-      return (
-        <code
-          key={idx}
-          style={{
-            padding: '1px 4px',
-            borderRadius: 3,
-            background: 'rgba(255,255,255,0.09)',
-            color: '#93c5fd',
-            fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
-            fontSize: '0.92em',
-          }}
-        >
-          {tok.slice(1, -1)}
-        </code>
-      )
+      return <InlineCodeToken key={idx} value={tok.slice(1, -1)} />
     }
     if (tok.startsWith('**') && tok.endsWith('**') && tok.length >= 4) {
       return <strong key={idx} style={{ color: '#fafafa', fontWeight: 600 }}>{tok.slice(2, -2)}</strong>
     }
     return <span key={idx}>{tok}</span>
   })
+}
+
+type MatchedResourceTarget =
+  | { kind: 'asset'; id: string; label: string }
+  | { kind: 'code'; codeKind: 'script' | 'shader'; id: string; label: string }
+  | { kind: 'folder'; dir: string }
+
+function normalizeLookupPath(raw: string): string {
+  return raw.trim().replace(/\\/g, '/').replace(/^\.\//, '').replace(/\/+$/, '')
+}
+
+function matchResourceTarget(
+  raw: string,
+  assets: ReturnType<typeof useAssetStore.getState>['assets'],
+  assetDirs: Record<string, string>,
+  folders: string[],
+  codeAssets: ReturnType<typeof useCodeAssetStore.getState>['assets'],
+): MatchedResourceTarget | null {
+  const norm = normalizeLookupPath(raw)
+  if (!norm || /\s{2,}/.test(norm)) return null
+  const lower = norm.toLowerCase()
+
+  // 1. 按资产 ID 精确匹配
+  if (assets[norm]) {
+    return { kind: 'asset', id: norm, label: assets[norm].name }
+  }
+  if (codeAssets[norm]) {
+    const code = codeAssets[norm]
+    return { kind: 'code', codeKind: code.kind, id: code.id, label: code.relativePath }
+  }
+
+  // 2. 按完整工程路径匹配（如 Assets/Docs/xxx.md 或 Assets/Scripts/foo.ts）
+  for (const asset of Object.values(assets)) {
+    const dir = assetDirectory(asset.id, assetDirs)
+    const fileName = 'fileName' in asset && typeof asset.fileName === 'string' ? asset.fileName : ''
+    const byFile = fileName ? `${dir}/${fileName}`.toLowerCase() : ''
+    const byName = `${dir}/${asset.name}`.toLowerCase()
+    if ((byFile && byFile === lower) || byName === lower) {
+      return { kind: 'asset', id: asset.id, label: asset.name }
+    }
+  }
+
+  for (const code of Object.values(codeAssets)) {
+    const rel = code.relativePath.replace(/\\/g, '/').toLowerCase()
+    const withRoot = rel.startsWith('assets/') ? rel : `assets/${rel}`
+    if (rel === lower || withRoot === lower) {
+      return { kind: 'code', codeKind: code.kind, id: code.id, label: code.relativePath }
+    }
+  }
+
+  // 3. 按文件夹路径匹配（如 Assets/Docs）
+  if (lower === 'assets') return { kind: 'folder', dir: 'Assets' }
+  const dirMatched = folders.find((f) => f.toLowerCase() === lower)
+    ?? Object.values(assetDirs).find((d) => d.toLowerCase() === lower)
+  if (dirMatched) return { kind: 'folder', dir: dirMatched }
+
+  // 4. 仅文件名且带扩展名时，尝试匹配唯一/同名文件（避免把普通代码词误判成资源）
+  if (!norm.includes('/') && /\.[a-z0-9]{1,8}$/i.test(norm)) {
+    const assetMatches = Object.values(assets).filter((a) => {
+      const fileName = 'fileName' in a && typeof a.fileName === 'string' ? a.fileName.toLowerCase() : ''
+      return fileName === lower || a.name.toLowerCase() === lower
+    })
+    if (assetMatches.length > 0) {
+      return { kind: 'asset', id: assetMatches[0].id, label: assetMatches[0].name }
+    }
+    const codeMatch = Object.values(codeAssets).find((c) => {
+      const base = c.relativePath.split('/').pop()?.toLowerCase() ?? ''
+      return base === lower || c.name.toLowerCase() === lower
+    })
+    if (codeMatch) {
+      return { kind: 'code', codeKind: codeMatch.kind, id: codeMatch.id, label: codeMatch.relativePath }
+    }
+  }
+
+  return null
+}
+
+function InlineCodeToken({ value }: { value: string }) {
+  const { t } = useI18n()
+  const assets = useAssetStore((s) => s.assets)
+  const assetDirs = useAssetStore((s) => s.assetDirs)
+  const folders = useAssetStore((s) => s.folders)
+  const codeAssets = useCodeAssetStore((s) => s.assets)
+
+  const target = matchResourceTarget(value, assets, assetDirs, folders, codeAssets)
+  const baseStyle: React.CSSProperties = {
+    padding: '1px 4px',
+    borderRadius: 3,
+    background: 'rgba(255,255,255,0.09)',
+    color: '#93c5fd',
+    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
+    fontSize: '0.92em',
+  }
+
+  if (!target) {
+    return <code style={baseStyle}>{value}</code>
+  }
+
+  const locate = () => {
+    if (target.kind === 'asset') {
+      useEditorStore.getState().inspectAsset(target.id)
+      useEditorStore.getState().pingAsset(target.id)
+      return
+    }
+    if (target.kind === 'code') {
+      useEditorStore.getState().pingAsset(`code:${target.codeKind}:${target.id}`)
+      return
+    }
+    useAssetStore.getState().setBrowseDir(target.dir)
+  }
+
+  return (
+    <button
+      type="button"
+      className="t3d-ai-inline-asset"
+      onClick={locate}
+      title={t('ai.locateAsset')}
+      style={{
+        ...baseStyle,
+        border: 'none',
+        cursor: 'pointer',
+        textDecoration: 'underline',
+        textUnderlineOffset: '3px',
+        display: 'inline',
+        lineHeight: 'inherit',
+        verticalAlign: 'baseline',
+      }}
+    >
+      {value}
+    </button>
+  )
 }

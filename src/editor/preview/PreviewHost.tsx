@@ -1,4 +1,4 @@
-import { useState, type PointerEvent } from 'react'
+import { useRef, useState, type PointerEvent } from 'react'
 import { useI18n } from '../i18n'
 import { useAssetStore } from '../assets/library'
 import { AnimationPreview } from './AnimationPreview'
@@ -31,16 +31,90 @@ export function PreviewStandalone({ kind, assetId }: { kind: PreviewKind, assetI
   )
 }
 
+type ResizeDir = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw'
+
+const RESIZE_DIRS: ResizeDir[] = ['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw']
+
 function PreviewFrame({ item }: { item: PreviewWindow }) {
+  const frameRef = useRef<HTMLElement>(null)
   const [drag, setDrag] = useState<{ x: number, y: number, left: number, top: number } | null>(null)
+  const [resize, setResize] = useState<{
+    dir: ResizeDir
+    startX: number
+    startY: number
+    left: number
+    top: number
+    width: number
+    height: number
+  } | null>(null)
+
   const move = (event: PointerEvent) => {
     if (!drag) return
     usePreviewStore.getState().movePreview(item.id, drag.left + event.clientX - drag.x, drag.top + event.clientY - drag.y)
   }
+
+  const startResize = (dir: ResizeDir) => (event: PointerEvent<HTMLDivElement>) => {
+    event.stopPropagation()
+    const rect = frameRef.current?.getBoundingClientRect()
+    if (!rect) return
+    event.currentTarget.setPointerCapture(event.pointerId)
+    usePreviewStore.getState().bringToFront(item.id)
+    setResize({
+      dir,
+      startX: event.clientX,
+      startY: event.clientY,
+      left: item.x,
+      top: item.y,
+      width: item.width ?? rect.width,
+      height: item.height ?? rect.height,
+    })
+  }
+
+  const onResizeMove = (event: PointerEvent<HTMLDivElement>) => {
+    if (!resize) return
+    const dx = event.clientX - resize.startX
+    const dy = event.clientY - resize.startY
+    const minW = item.kind === 'document' ? 420 : item.kind === 'audio' ? 320 : 360
+    const minH = item.kind === 'document' ? 300 : item.kind === 'audio' ? 180 : 240
+    const maxW = Math.max(minW, window.innerWidth - 16)
+    const maxH = Math.max(minH, window.innerHeight - 16)
+
+    let nextW = resize.width
+    let nextH = resize.height
+    let nextX = resize.left
+    let nextY = resize.top
+
+    if (resize.dir.includes('e')) {
+      nextW = Math.min(maxW, Math.max(minW, resize.width + dx))
+    }
+    if (resize.dir.includes('s')) {
+      nextH = Math.min(maxH, Math.max(minH, resize.height + dy))
+    }
+    if (resize.dir.includes('w')) {
+      const clampedW = Math.min(maxW, Math.max(minW, resize.width - dx))
+      nextX = resize.left + (resize.width - clampedW)
+      nextW = clampedW
+    }
+    if (resize.dir.includes('n')) {
+      const clampedH = Math.min(maxH, Math.max(minH, resize.height - dy))
+      nextY = Math.max(0, resize.top + (resize.height - clampedH))
+      nextH = resize.height - (nextY - resize.top)
+    }
+
+    usePreviewStore.getState().resizePreview(item.id, Math.round(nextW), Math.round(nextH), Math.round(nextX), Math.round(nextY))
+  }
+
   return (
     <section
+      ref={frameRef}
       className={`preview-window${item.kind === 'model' ? ' preview-window--model' : item.kind === 'audio' ? ' preview-window--audio' : item.kind === 'document' ? ' preview-window--document' : ''}`}
-      style={{ left: item.x, top: item.y, zIndex: item.z }}
+      style={{
+        left: item.x,
+        top: item.y,
+        zIndex: item.z,
+        ...(item.width !== undefined ? { width: item.width } : {}),
+        ...(item.height !== undefined ? { height: item.height } : {}),
+      }}
       onPointerDown={() => usePreviewStore.getState().bringToFront(item.id)}
     >
       <header
@@ -56,6 +130,16 @@ function PreviewFrame({ item }: { item: PreviewWindow }) {
         <button type="button" onClick={() => usePreviewStore.getState().closePreview(item.id)}>×</button>
       </header>
       <PreviewBody kind={item.kind} assetId={item.assetId} />
+      {RESIZE_DIRS.map(dir => (
+        <div
+          key={dir}
+          className={`preview-window__resize preview-window__resize--${dir}`}
+          onPointerDown={startResize(dir)}
+          onPointerMove={onResizeMove}
+          onPointerUp={() => setResize(null)}
+          onPointerCancel={() => setResize(null)}
+        />
+      ))}
     </section>
   )
 }

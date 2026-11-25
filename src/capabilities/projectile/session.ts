@@ -134,6 +134,11 @@ export function resetProjectileState(nodeId: string) {
 
 function stepProjectileRuntime(dt: number, host: SceneRuntimeHost) {
   const world = getRuntimeWorld()
+  const playState = world.getPlayState()
+  if (playState !== 'playing') {
+    if (playState === 'stopped' && activeProjectiles.size > 0) activeProjectiles.clear()
+    return
+  }
   const nodes = world.getNodes()
   const safeDt = Math.min(0.05, Math.max(0.0001, dt))
 
