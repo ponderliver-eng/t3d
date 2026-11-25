@@ -1233,7 +1233,7 @@ export default function AiWorkbenchPanel() {
               <div
                 data-ai-message-body="1"
                 style={{
-                  lineHeight: 1.5,
+                  lineHeight: 1.6,
                   userSelect: 'text',
                   WebkitUserSelect: 'text',
                   cursor: 'text',
@@ -1248,7 +1248,7 @@ export default function AiWorkbenchPanel() {
               <div
                 data-ai-message-body="1"
                 style={{
-                  lineHeight: 1.5,
+                  lineHeight: 1.6,
                   color: '#d4d4d8',
                   opacity: 0.9,
                   userSelect: 'text',
@@ -2521,7 +2521,7 @@ function refKindColors(kind: AiRefItem['kind']): React.CSSProperties {
 function AiMarkdown({ text }: { text: string }) {
   const segments = text.split(/(```[\s\S]*?```)/g)
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
       {segments.map((seg, idx) => {
         if (!seg) return null
         if (seg.startsWith('```') && seg.endsWith('```')) {
@@ -2560,56 +2560,319 @@ function AiCodeBlock({ lang, code }: { lang: string; code: string }) {
   )
 }
 
+function isAiTableSeparator(line: string): boolean {
+  const trimmed = line.trim().replace(/^\|/, '').replace(/\|$/, '')
+  if (!trimmed.includes('|') && !line.trim().startsWith('|')) return false
+  const cells = trimmed.split('|').map((c) => c.trim())
+  return cells.length > 0 && cells.every((c) => /^:?-{3,}:?$/.test(c))
+}
+
+function splitAiTableRow(line: string): string[] {
+  const trimmed = line.trim().replace(/^\|/, '').replace(/\|$/, '')
+  return trimmed.split('|').map((c) => c.trim())
+}
+
+function parseAiTableAlignments(line: string): Array<'left' | 'center' | 'right' | undefined> {
+  return splitAiTableRow(line).map((cell) => {
+    const left = cell.startsWith(':')
+    const right = cell.endsWith(':')
+    if (left && right) return 'center'
+    if (right) return 'right'
+    if (left) return 'left'
+    return undefined
+  })
+}
+
 function AiMarkdownBlock({ text }: { text: string }) {
-  const lines = text.split('\n')
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-      {lines.map((line, i) => {
-        if (!line.trim()) return <div key={i} style={{ height: 4 }} />
-        const hMatch = /^(#{1,3})\s+(.*)$/.exec(line)
-        if (hMatch) {
-          const level = hMatch[1].length
-          return (
-            <div key={i} style={{ fontWeight: 700, fontSize: level === 1 ? 13 : 12, color: '#f4f4f5', marginTop: 2 }}>
-              {renderInlineMd(hMatch[2])}
-            </div>
-          )
+  const lines = text.replace(/\r\n/g, '\n').split('\n')
+  const blocks: React.ReactNode[] = []
+  let i = 0
+  let key = 0
+
+  const isBlockStarter = (idx: number): boolean => {
+    if (idx >= lines.length) return true
+    const l = lines[idx]!
+    if (!l.trim()) return true
+    if (/^(-{3,}|\*{3,}|_{3,})$/.test(l.trim())) return true
+    if (/^(#{1,6})\s+/.test(l)) return true
+    if (l.trimStart().startsWith('>')) return true
+    if (/^\s*[-*•]\s+/.test(l)) return true
+    if (/^\s*\d+\.\s+/.test(l)) return true
+    if (l.includes('|') && idx + 1 < lines.length && isAiTableSeparator(lines[idx + 1]!)) return true
+    return false
+  }
+
+  while (i < lines.length) {
+    const line = lines[i]!
+    if (!line.trim()) {
+      i += 1
+      continue
+    }
+    if (/^(-{3,}|\*{3,}|_{3,})$/.test(line.trim())) {
+      blocks.push(
+        <hr
+          key={key++}
+          style={{
+            border: 'none',
+            borderTop: '1px solid rgba(255,255,255,0.1)',
+            margin: '6px 0',
+          }}
+        />,
+      )
+      i += 1
+      continue
+    }
+    if (line.includes('|') && i + 1 < lines.length && isAiTableSeparator(lines[i + 1]!)) {
+      const headers = splitAiTableRow(line)
+      const aligns = parseAiTableAlignments(lines[i + 1]!)
+      i += 2
+      const rows: string[][] = []
+      while (i < lines.length && lines[i]!.trim() && lines[i]!.includes('|')) {
+        rows.push(splitAiTableRow(lines[i]!))
+        i += 1
+      }
+      blocks.push(
+        <div
+          key={key++}
+          style={{
+            margin: '4px 0',
+            overflowX: 'auto',
+            border: '1px solid rgba(255,255,255,0.12)',
+            borderRadius: 6,
+            background: 'rgba(0,0,0,0.2)',
+          }}
+        >
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11, lineHeight: 1.45 }}>
+            <thead>
+              <tr>
+                {headers.map((cell, cIdx) => (
+                  <th
+                    key={cIdx}
+                    style={{
+                      padding: '5px 8px',
+                      textAlign: aligns[cIdx] ?? 'left',
+                      background: 'rgba(255,255,255,0.06)',
+                      color: '#f4f4f5',
+                      fontWeight: 600,
+                      borderBottom: '1px solid rgba(255,255,255,0.1)',
+                      borderRight: cIdx < headers.length - 1 ? '1px solid rgba(255,255,255,0.06)' : 'none',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {renderInlineMd(cell)}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row, rIdx) => (
+                <tr key={rIdx} style={{ background: rIdx % 2 === 1 ? 'rgba(255,255,255,0.025)' : 'transparent' }}>
+                  {headers.map((_, cIdx) => (
+                    <td
+                      key={cIdx}
+                      style={{
+                        padding: '5px 8px',
+                        textAlign: aligns[cIdx] ?? 'left',
+                        color: '#e4e4e7',
+                        borderBottom: rIdx < rows.length - 1 ? '1px solid rgba(255,255,255,0.07)' : 'none',
+                        borderRight: cIdx < headers.length - 1 ? '1px solid rgba(255,255,255,0.06)' : 'none',
+                        verticalAlign: 'top',
+                      }}
+                    >
+                      {renderInlineMd(row[cIdx] ?? '')}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>,
+      )
+      continue
+    }
+    const hMatch = /^(#{1,6})\s+(.*)$/.exec(line)
+    if (hMatch) {
+      const level = hMatch[1].length
+      const headingStyle: React.CSSProperties =
+        level === 1
+          ? {
+              fontWeight: 700,
+              fontSize: 14.5,
+              lineHeight: 1.35,
+              color: '#fafafa',
+              marginTop: blocks.length > 0 ? 10 : 2,
+              marginBottom: 2,
+              paddingBottom: 4,
+              borderBottom: '1px solid rgba(255,255,255,0.1)',
+            }
+          : level === 2
+            ? {
+                fontWeight: 700,
+                fontSize: 13.5,
+                lineHeight: 1.38,
+                color: '#f4f4f5',
+                marginTop: blocks.length > 0 ? 8 : 2,
+                marginBottom: 1,
+              }
+            : level === 3
+              ? {
+                  fontWeight: 650,
+                  fontSize: 12.5,
+                  lineHeight: 1.4,
+                  color: '#e4e4e7',
+                  marginTop: blocks.length > 0 ? 6 : 1,
+                }
+              : {
+                  fontWeight: 600,
+                  fontSize: 12,
+                  lineHeight: 1.4,
+                  color: '#cbd5e1',
+                  marginTop: blocks.length > 0 ? 4 : 0,
+                }
+      blocks.push(
+        <div key={key++} style={headingStyle}>
+          {renderInlineMd(hMatch[2])}
+        </div>,
+      )
+      i += 1
+      continue
+    }
+    if (line.trimStart().startsWith('>')) {
+      const quoteLines: string[] = []
+      while (i < lines.length && lines[i]!.trimStart().startsWith('>')) {
+        quoteLines.push(lines[i]!.replace(/^\s*>\s?/, ''))
+        i += 1
+      }
+      blocks.push(
+        <blockquote
+          key={key++}
+          style={{
+            margin: '3px 0',
+            padding: '4px 10px',
+            borderLeft: '3px solid #60a5fa',
+            background: 'rgba(59,130,246,0.08)',
+            borderRadius: '0 4px 4px 0',
+            color: '#cbd5e1',
+            whiteSpace: 'pre-wrap',
+          }}
+        >
+          {renderInlineMd(quoteLines.join('\n'))}
+        </blockquote>,
+      )
+      continue
+    }
+    const ulMatch = /^(\s*)[-*•]\s+(.*)$/.exec(line)
+    if (ulMatch) {
+      const items: React.ReactNode[] = []
+      while (i < lines.length) {
+        const m = /^(\s*)[-*•]\s+(.*)$/.exec(lines[i]!)
+        if (!m) break
+        const indent = Math.min(3, Math.floor(m[1].length / 2))
+        const body = m[2]
+        const task = /^\[( |x|X)\]\s+(.*)$/.exec(body)
+        items.push(
+          <div key={items.length} style={{ display: 'flex', gap: 6, paddingLeft: 4 + indent * 14, alignItems: 'flex-start' }}>
+            {task ? (
+              <input
+                type="checkbox"
+                readOnly
+                checked={task[1].toLowerCase() === 'x'}
+                style={{ marginTop: 3, accentColor: '#60a5fa', flexShrink: 0 }}
+              />
+            ) : (
+              <span style={{ color: indent > 0 ? '#94a3b8' : '#60a5fa', flexShrink: 0 }}>{indent > 0 ? '◦' : '•'}</span>
+            )}
+            <span style={{ minWidth: 0 }}>{renderInlineMd(task ? task[2] : body)}</span>
+          </div>,
+        )
+        i += 1
+        if (i < lines.length && !lines[i]!.trim() && i + 1 < lines.length && /^\s*[-*•]\s+/.test(lines[i + 1]!)) {
+          i += 1
         }
-        const ulMatch = /^\s*[-*•]\s+(.*)$/.exec(line)
-        if (ulMatch) {
-          return (
-            <div key={i} style={{ display: 'flex', gap: 6, paddingLeft: 4 }}>
-              <span style={{ color: '#60a5fa', flexShrink: 0 }}>•</span>
-              <span>{renderInlineMd(ulMatch[1])}</span>
-            </div>
-          )
+      }
+      blocks.push(
+        <div key={key++} style={{ display: 'flex', flexDirection: 'column', gap: 4, margin: '2px 0' }}>
+          {items}
+        </div>,
+      )
+      continue
+    }
+    const olMatch = /^(\s*)(\d+\.)\s+(.*)$/.exec(line)
+    if (olMatch) {
+      const items: React.ReactNode[] = []
+      while (i < lines.length) {
+        const m = /^(\s*)(\d+\.)\s+(.*)$/.exec(lines[i]!)
+        if (!m) break
+        const indent = Math.min(3, Math.floor(m[1].length / 2))
+        items.push(
+          <div key={items.length} style={{ display: 'flex', gap: 6, paddingLeft: 4 + indent * 14, alignItems: 'flex-start' }}>
+            <span style={{ color: '#60a5fa', fontWeight: 600, fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>{m[2]}</span>
+            <span style={{ minWidth: 0 }}>{renderInlineMd(m[3])}</span>
+          </div>,
+        )
+        i += 1
+        if (i < lines.length && !lines[i]!.trim() && i + 1 < lines.length && /^\s*\d+\.\s+/.test(lines[i + 1]!)) {
+          i += 1
         }
-        const olMatch = /^\s*(\d+\.)\s+(.*)$/.exec(line)
-        if (olMatch) {
-          return (
-            <div key={i} style={{ display: 'flex', gap: 6, paddingLeft: 4 }}>
-              <span style={{ color: '#60a5fa', flexShrink: 0 }}>{olMatch[1]}</span>
-              <span>{renderInlineMd(olMatch[2])}</span>
-            </div>
-          )
-        }
-        return <div key={i}>{renderInlineMd(line)}</div>
-      })}
-    </div>
-  )
+      }
+      blocks.push(
+        <div key={key++} style={{ display: 'flex', flexDirection: 'column', gap: 4, margin: '2px 0' }}>
+          {items}
+        </div>,
+      )
+      continue
+    }
+
+    const paraLines: string[] = [line]
+    i += 1
+    while (!isBlockStarter(i)) {
+      paraLines.push(lines[i]!)
+      i += 1
+    }
+    blocks.push(
+      <p key={key++} style={{ margin: '1px 0', whiteSpace: 'pre-wrap' }}>
+        {renderInlineMd(paraLines.join('\n'))}
+      </p>,
+    )
+  }
+
+  return <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>{blocks}</div>
 }
 
 function renderInlineMd(text: string): React.ReactNode[] {
-  const tokens = text.split(/(`[^`]+`|\*\*[^*]+\*\*)/g)
-  return tokens.map((tok, idx) => {
-    if (tok.startsWith('`') && tok.endsWith('`') && tok.length >= 2) {
-      return <InlineCodeToken key={idx} value={tok.slice(1, -1)} />
+  const parts: React.ReactNode[] = []
+  const token = /(`[^`]+`|\*\*[^*]+\*\*|~~[^~]+~~|\*[^*]+\*|\[([^\]]+)\]\((https?:\/\/[^)]+)\))/g
+  let last = 0
+  let match: RegExpExecArray | null
+  let key = 0
+  while ((match = token.exec(text)) !== null) {
+    if (match.index > last) parts.push(<span key={key++}>{text.slice(last, match.index)}</span>)
+    const raw = match[0]!
+    if (raw.startsWith('`')) {
+      parts.push(<InlineCodeToken key={key++} value={raw.slice(1, -1)} />)
+    } else if (raw.startsWith('**')) {
+      parts.push(<strong key={key++} style={{ color: '#fafafa', fontWeight: 650 }}>{raw.slice(2, -2)}</strong>)
+    } else if (raw.startsWith('~~')) {
+      parts.push(<del key={key++} style={{ color: '#94a3b8' }}>{raw.slice(2, -2)}</del>)
+    } else if (raw.startsWith('*')) {
+      parts.push(<em key={key++} style={{ color: '#e2e8f0', fontStyle: 'italic' }}>{raw.slice(1, -1)}</em>)
+    } else if (match[2] && match[3]) {
+      parts.push(
+        <a
+          key={key++}
+          href={match[3]}
+          target="_blank"
+          rel="noreferrer"
+          style={{ color: '#60a5fa', textDecoration: 'underline', textUnderlineOffset: '2px' }}
+        >
+          {match[2]}
+        </a>,
+      )
     }
-    if (tok.startsWith('**') && tok.endsWith('**') && tok.length >= 4) {
-      return <strong key={idx} style={{ color: '#fafafa', fontWeight: 600 }}>{tok.slice(2, -2)}</strong>
-    }
-    return <span key={idx}>{tok}</span>
-  })
+    last = match.index + raw.length
+  }
+  if (last < text.length) parts.push(<span key={key++}>{text.slice(last)}</span>)
+  return parts
 }
 
 type MatchedResourceTarget =
