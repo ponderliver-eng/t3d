@@ -4,6 +4,7 @@ import { defaultNodeEffect } from './particles/defaults'
 import { defaultNodePhysics } from './physics/defaults'
 import { CAPABILITIES, type CapabilityId, type CapabilityManifest } from './registry'
 import { defaultSkySettings } from './sky/defaults'
+import { defaultHeightFogSettings } from './fog/defaults'
 import { defaultWater } from './water/defaults'
 
 export interface CapabilityDescription {
@@ -141,6 +142,43 @@ const CAPABILITY_META: Record<CapabilityId | 'postEffects', CapabilityMetaEntry>
       haze: 'boolean，是否开启空气透视',
       stars: 'boolean，是否显示星空',
       moon: 'boolean，是否显示月亮',
+    },
+  },
+  fog: {
+    label: '高度雾与远近雾',
+    description: '独立双套参数控制高度雾与远近雾，支持高度标准线/过渡范围、远近起点/终点/过渡范围、双色融合与 3D 随机噪点',
+    scope: 'picture',
+    dataPath: 'picture.capabilities.fog',
+    writeWith: 'capability__setPictureData (capabilityId="fog")',
+    defaults: () => ({ ...defaultHeightFogSettings() }),
+    fields: {
+      enabled: 'boolean，总开关',
+      opacity: 'number (0~1)，整体最大不透明度',
+      affectSky: 'boolean，是否作用于天空/背景',
+      heightEnabled: 'boolean，是否开启高度雾',
+      heightGradient: 'boolean，是否开启高度雾三色垂直渐变',
+      heightColor: 'string，高度雾底层颜色（关闭渐变时为单色）',
+      heightMidColor: 'string，高度雾中层颜色',
+      heightTopColor: 'string，高度雾顶层颜色',
+      heightBase: 'number，高度标准线（米）',
+      heightRange: 'number，高度过渡范围（米）',
+      heightDensity: 'number (0~1)，高度雾浓度',
+      heightFalloff: 'number (0.2~4)，高度衰减曲线',
+      heightNoiseEnabled: 'boolean，高度雾随机噪点开关',
+      heightNoiseScale: 'number，高度雾噪点空间尺度',
+      heightNoiseIntensity: 'number (0~1)，高度雾噪点扰动强度',
+      heightNoiseSpeed: 'number，高度雾噪点飘动速度',
+      distanceEnabled: 'boolean，是否开启远近雾',
+      distanceNearColor: 'string，远近雾近端颜色',
+      distanceFarColor: 'string，远近雾远端颜色',
+      distanceStart: 'number，远近雾起点（米）',
+      distanceEnd: 'number，远近雾终点（米）',
+      distanceTransition: 'number，远近雾过渡范围（米）',
+      distanceDensity: 'number (0~1)，远近雾浓度',
+      distanceNoiseEnabled: 'boolean，远近雾随机噪点开关',
+      distanceNoiseScale: 'number，远近雾噪点空间尺度',
+      distanceNoiseIntensity: 'number (0~1)，远近雾噪点扰动强度',
+      distanceNoiseSpeed: 'number，远近雾噪点飘动速度',
     },
   },
   postEffects: {

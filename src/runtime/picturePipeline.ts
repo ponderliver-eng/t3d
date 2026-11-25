@@ -10,6 +10,7 @@ import { denoise } from 'three/addons/tsl/display/DenoiseNode.js'
 import { smaa } from 'three/addons/tsl/display/SMAANode.js'
 import type { ScenePicture } from '../editor/scene/types'
 import { composeSkyFog, skyFogActive, skyFogRevision } from '../capabilities/sky/session'
+import { buildHeightFogPass, heightFogActive, heightFogPipelineKey, type HeightFogPassHandle } from '../capabilities/fog/session'
 import { anyUnderwaterEffectEnabled, sampleUnderwaterView } from '../capabilities/water/session'
 import { buildPostEffectNode, getCompiledPostEffect, getPostEffectRevision, setCompiledShaderParam } from '../core/codeAssets/shaderRuntime'
 
@@ -88,6 +89,7 @@ export class RuntimePicturePipeline {
   private dofNode: DofUniforms | null = null
   private ssrNode: SsrUniforms | null = null
   private ssgiNode: SsgiUniforms | null = null
+  private heightFogPass: HeightFogPassHandle | null = null
   private underwaterNode: UnderwaterUniforms | null = null
   private readonly camWorldPos = new Vector3()
   private denoiseNodes: Array<{ dispose: () => void }> = []
@@ -101,14 +103,14 @@ export class RuntimePicturePipeline {
   ) {}
 
   usesEffects(picture: ScenePicture, extraActive = false): boolean {
-    return extraActive || picture.bloom || picture.ssr || picture.ssgi || picture.aa !== false || picture.ao || picture.dof || picture.hue !== 0 || picture.saturation !== 1 || skyFogActive() || anyUnderwaterEffectEnabled() || readCustomPostEffects(picture).length > 0
+    return extraActive || picture.bloom || picture.ssr || picture.ssgi || picture.aa !== false || picture.ao || picture.dof || picture.hue !== 0 || picture.saturation !== 1 || skyFogActive() || heightFogActive(picture) || anyUnderwaterEffectEnabled() || readCustomPostEffects(picture).length > 0
   }
 
   render(scene: Scene, camera: Camera, picture: ScenePicture, width: number, height: number, beforeRender?: () => void) {
     const underwaterEnabled = anyUnderwaterEffectEnabled()
     const customPosts = readCustomPostEffects(picture)
     const customPostKey = customPosts.length > 0 ? `${getPostEffectRevision()}:${customPosts.map((p) => p.id).join(',')}` : ''
-    const key = [camera.uuid, picture.toneMapping, picture.bloom, picture.ssr, picture.ssgi, picture.ssgi && picture.ssgiDenoise, picture.aa !== false, picture.ao, picture.dof, picture.hue !== 0 || picture.saturation !== 1, skyFogRevision(), underwaterEnabled, customPostKey, width, height].join('|')
+    const key = [camera.uuid, picture.toneMapping, picture.bloom, picture.ssr, picture.ssgi, picture.ssgi && picture.ssgiDenoise, picture.aa !== false, picture.ao, picture.dof, picture.hue !== 0 || picture.saturation !== 1, skyFogRevision(), heightFogPipelineKey(picture), underwaterEnabled, customPostKey, width, height].join('|')
     if (this.failed && this.key === key) {
       this.renderer.render(scene, camera)
       return
@@ -140,6 +142,9 @@ export class RuntimePicturePipeline {
       this.ssgiNode.radius.value = picture.ssgiRadius
       this.ssgiNode.giIntensity.value = picture.ssgiIntensity
       this.ssgiNode.aoIntensity.value = picture.ssgiOcclusion
+    }
+    if (this.heightFogPass) {
+      this.heightFogPass.sync(picture, camera)
     }
     if (this.underwaterNode) {
       camera.getWorldPosition(this.camWorldPos)
@@ -270,6 +275,18 @@ export class RuntimePicturePipeline {
       this.dofNode = null
     }
     if (skyFogActive()) current = composeSkyFog(current, scenePass) as typeof current
+    if (heightFogActive(picture)) {
+      const fogKey = heightFogPipelineKey(picture)
+      const [, hFlag, dFlag] = fogKey.split(':')
+      const fogPass = buildHeightFogPass(current, scenePass, {
+        heightNoise: hFlag === '1',
+        distanceNoise: dFlag === '1',
+      })
+      this.heightFogPass = fogPass
+      current = fogPass.node as typeof current
+    } else {
+      this.heightFogPass = null
+    }
     if (anyUnderwaterEffectEnabled()) {
       const weight = uniform(0)
       const density = uniform(0.25)

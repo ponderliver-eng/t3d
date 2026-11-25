@@ -891,9 +891,9 @@ function normalizeWater(raw) {
     foamMapAssetId: typeof record.foamMapAssetId === "string" ? record.foamMapAssetId : null
   };
 }
-function finite(value, fallback, min3, max4) {
+function finite(value, fallback, min4, max5) {
   if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
-  return Math.min(max4, Math.max(min3, value));
+  return Math.min(max5, Math.max(min4, value));
 }
 var WATER_CAPABILITY_ID, WATER_DEBUG_VIEWS, WATER_QUALITY_PRESETS, WATER_STYLE_PRESETS;
 var init_defaults = __esm({
@@ -1314,14 +1314,14 @@ var init_proceduralTextures = __esm({
 function swellGroupInfo(group) {
   const a = VERTEX_WAVES[group * 2];
   const b = VERTEX_WAVES[group * 2 + 1] ?? a;
-  const length4 = (a.length + b.length) / 2;
-  const k = Math.PI * 2 / length4;
+  const length5 = (a.length + b.length) / 2;
+  const k = Math.PI * 2 / length5;
   const speed = Math.sqrt(GRAVITY / k);
   return {
     crestSpeed: speed,
     overtake: speed * PACKET_OVERTAKE,
-    kAlong: Math.PI * 2 / (length4 * PACKET_SPACING),
-    kAcross: Math.PI * 2 / (length4 * PACKET_WIDTH)
+    kAlong: Math.PI * 2 / (length5 * PACKET_SPACING),
+    kAcross: Math.PI * 2 / (length5 * PACKET_WIDTH)
   };
 }
 function smoothstep(edge0, edge1, x) {
@@ -2506,8 +2506,8 @@ function defaultBuoyancy() {
     draftDepth: 0
   };
 }
-function clamp2(value, min3, max4) {
-  return Math.max(min3, Math.min(max4, value));
+function clamp2(value, min4, max5) {
+  return Math.max(min4, Math.min(max5, value));
 }
 function finite2(value, fallback) {
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
@@ -3987,7 +3987,7 @@ var init_sceneRuntime = __esm({
   "src/runtime/sceneRuntime.ts"() {
     "use strict";
     init_session();
-    init_session10();
+    init_session11();
     init_session4();
     init_juiceClock();
     init_actionMap();
@@ -4633,11 +4633,11 @@ function setCrowdFormation(nodeIds, center, options) {
   const spacing = Math.max(0.5, options?.spacing ?? 1.8);
   const yaw = options?.facingYaw ?? 0;
   const cos3 = Math.cos(yaw);
-  const sin3 = Math.sin(yaw);
+  const sin4 = Math.sin(yaw);
   const rotateOffset = (lx, lz) => ({
-    x: center.x + lx * cos3 + lz * sin3,
+    x: center.x + lx * cos3 + lz * sin4,
     y: center.y,
-    z: center.z - lx * sin3 + lz * cos3
+    z: center.z - lx * sin4 + lz * cos3
   });
   if (formation === "line") {
     const half = (count - 1) * 0.5;
@@ -5426,9 +5426,9 @@ function normalizeSkySettings(value) {
     mirrorBelowHorizon: bool(raw.mirrorBelowHorizon, base.mirrorBelowHorizon)
   };
 }
-function clamp3(value, fallback, min3, max4) {
+function clamp3(value, fallback, min4, max5) {
   const next = typeof value === "number" && Number.isFinite(value) ? value : fallback;
-  return Math.min(max4, Math.max(min3, next));
+  return Math.min(max5, Math.max(min4, next));
 }
 function bool(value, fallback) {
   return typeof value === "boolean" ? value : fallback;
@@ -5880,6 +5880,260 @@ var init_session9 = __esm({
   }
 });
 
+// src/capabilities/fog/defaults.ts
+function defaultHeightFogSettings() {
+  return {
+    enabled: false,
+    opacity: 1,
+    affectSky: false,
+    heightEnabled: true,
+    heightColor: "#8fa8c8",
+    heightBase: 0,
+    heightRange: 16,
+    heightDensity: 0.85,
+    heightFalloff: 1.2,
+    distanceEnabled: true,
+    distanceColor: "#c9d6e6",
+    distanceStart: 15,
+    distanceEnd: 120,
+    distanceTransition: 30,
+    distanceDensity: 0.9,
+    noiseEnabled: false,
+    noiseScale: 0.06,
+    noiseIntensity: 0.4,
+    noiseSpeed: 0.3
+  };
+}
+function clamp4(value, fallback, min4, max5) {
+  if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
+  return Math.max(min4, Math.min(max5, value));
+}
+function colorHex(value, fallback) {
+  if (typeof value !== "string") return fallback;
+  const trimmed = value.trim();
+  return /^#[0-9a-fA-F]{6}$/.test(trimmed) ? trimmed : fallback;
+}
+function normalizeHeightFogSettings(value) {
+  const base = defaultHeightFogSettings();
+  if (!value || typeof value !== "object") return base;
+  const raw = value;
+  const distanceStart = clamp4(raw.distanceStart, base.distanceStart, 0, 2e3);
+  const distanceEnd = Math.max(distanceStart + 0.1, clamp4(raw.distanceEnd, base.distanceEnd, 0.1, 4e3));
+  return {
+    enabled: typeof raw.enabled === "boolean" ? raw.enabled : base.enabled,
+    opacity: clamp4(raw.opacity, base.opacity, 0, 1),
+    affectSky: typeof raw.affectSky === "boolean" ? raw.affectSky : base.affectSky,
+    heightEnabled: typeof raw.heightEnabled === "boolean" ? raw.heightEnabled : base.heightEnabled,
+    heightColor: colorHex(raw.heightColor, base.heightColor),
+    heightBase: clamp4(raw.heightBase, base.heightBase, -1e3, 2e3),
+    heightRange: clamp4(raw.heightRange, base.heightRange, 0.1, 2e3),
+    heightDensity: clamp4(raw.heightDensity, base.heightDensity, 0, 1),
+    heightFalloff: clamp4(raw.heightFalloff, base.heightFalloff, 0.2, 4),
+    distanceEnabled: typeof raw.distanceEnabled === "boolean" ? raw.distanceEnabled : base.distanceEnabled,
+    distanceColor: colorHex(raw.distanceColor, base.distanceColor),
+    distanceStart,
+    distanceEnd,
+    distanceTransition: clamp4(raw.distanceTransition, base.distanceTransition, 0, 2e3),
+    distanceDensity: clamp4(raw.distanceDensity, base.distanceDensity, 0, 1),
+    noiseEnabled: typeof raw.noiseEnabled === "boolean" ? raw.noiseEnabled : base.noiseEnabled,
+    noiseScale: clamp4(raw.noiseScale, base.noiseScale, 2e-3, 1),
+    noiseIntensity: clamp4(raw.noiseIntensity, base.noiseIntensity, 0, 1),
+    noiseSpeed: clamp4(raw.noiseSpeed, base.noiseSpeed, 0, 5)
+  };
+}
+var HEIGHT_FOG_CAPABILITY_ID;
+var init_defaults4 = __esm({
+  "src/capabilities/fog/defaults.ts"() {
+    "use strict";
+    HEIGHT_FOG_CAPABILITY_ID = "fog";
+  }
+});
+
+// src/capabilities/fog/session.ts
+var session_exports8 = {};
+__export(session_exports8, {
+  buildHeightFogPass: () => buildHeightFogPass,
+  dispose: () => dispose8,
+  heightFogActive: () => heightFogActive,
+  heightFogPipelineKey: () => heightFogPipelineKey,
+  mount: () => mount8
+});
+import { Color as Color5, Matrix4 as Matrix42 } from "three";
+import {
+  cameraProjectionMatrixInverse,
+  clamp as clamp5,
+  dot as dot2,
+  float as float3,
+  floor as floor2,
+  fract as fract2,
+  getViewPosition,
+  isBackgroundDepth,
+  length as length3,
+  max as max3,
+  min as min2,
+  mix as mix5,
+  pow as pow2,
+  screenUV as screenUV2,
+  select as select2,
+  sin as sin2,
+  smoothstep as smoothstep3,
+  uniform as uniform4,
+  vec3 as vec33,
+  vec4 as vec44
+} from "three/tsl";
+function currentSettings(pictureOverride) {
+  try {
+    const world3 = getRuntimeWorld();
+    if (!capabilityEnabled(world3.getCapabilities(), HEIGHT_FOG_CAPABILITY_ID)) {
+      return defaultHeightFogSettings();
+    }
+    const picture = pictureOverride ?? world3.getPicture();
+    return normalizeHeightFogSettings(picture.capabilities?.[HEIGHT_FOG_CAPABILITY_ID]);
+  } catch {
+    if (!pictureOverride) return defaultHeightFogSettings();
+    return normalizeHeightFogSettings(pictureOverride.capabilities?.[HEIGHT_FOG_CAPABILITY_ID]);
+  }
+}
+function mount8() {
+  if (mounted) return () => shutdown2();
+  mounted = true;
+  elapsedTime = 0;
+  removeHook2 = getRuntimeWorld().registerBeforeRenderHook?.(HEIGHT_FOG_CAPABILITY_ID, 25, (ctx) => {
+    elapsedTime += ctx.dt;
+  }) ?? null;
+  return () => shutdown2();
+}
+function dispose8() {
+  shutdown2();
+}
+function shutdown2() {
+  mounted = false;
+  removeHook2?.();
+  removeHook2 = null;
+}
+function heightFogActive(picture) {
+  if (!mounted) return false;
+  const s = currentSettings(picture);
+  return s.enabled && s.opacity > 0 && (s.heightEnabled || s.distanceEnabled);
+}
+function heightFogPipelineKey(picture) {
+  if (!heightFogActive(picture)) return "off";
+  const s = currentSettings(picture);
+  return `on:${s.noiseEnabled ? 1 : 0}`;
+}
+function hash3(p) {
+  return fract2(sin2(dot2(p, vec33(127.1, 311.7, 74.7))).mul(43758.5453123));
+}
+function valueNoise3D(p) {
+  const i = floor2(p);
+  const f = fract2(p);
+  const u = f.mul(f).mul(vec33(3, 3, 3).sub(f.mul(2)));
+  const n000 = hash3(i);
+  const n100 = hash3(i.add(vec33(1, 0, 0)));
+  const n010 = hash3(i.add(vec33(0, 1, 0)));
+  const n110 = hash3(i.add(vec33(1, 1, 0)));
+  const n001 = hash3(i.add(vec33(0, 0, 1)));
+  const n101 = hash3(i.add(vec33(1, 0, 1)));
+  const n011 = hash3(i.add(vec33(0, 1, 1)));
+  const n111 = hash3(i.add(vec33(1, 1, 1)));
+  const nx00 = mix5(n000, n100, u.x);
+  const nx10 = mix5(n010, n110, u.x);
+  const nx01 = mix5(n001, n101, u.x);
+  const nx11 = mix5(n011, n111, u.x);
+  const nxy0 = mix5(nx00, nx10, u.y);
+  const nxy1 = mix5(nx01, nx11, u.y);
+  return mix5(nxy0, nxy1, u.z);
+}
+function buildHeightFogPass(colorNode, scenePass, withNoise) {
+  const uCameraWorldMatrix = uniform4(new Matrix42());
+  const uOpacity = uniform4(1);
+  const uAffectSky = uniform4(0);
+  const uHeightEnabled = uniform4(1);
+  const uHeightColor = uniform4(new Color5("#8fa8c8"));
+  const uHeightBase = uniform4(0);
+  const uHeightRange = uniform4(16);
+  const uHeightDensity = uniform4(0.85);
+  const uHeightFalloff = uniform4(1.2);
+  const uDistEnabled = uniform4(1);
+  const uDistColor = uniform4(new Color5("#c9d6e6"));
+  const uDistStart = uniform4(15);
+  const uDistEnd = uniform4(120);
+  const uDistTrans = uniform4(30);
+  const uDistDensity = uniform4(0.9);
+  const uNoiseScale = uniform4(0.06);
+  const uNoiseIntensity = uniform4(0.4);
+  const uNoiseTime = uniform4(0);
+  const depthNode = scenePass.getTextureNode("depth");
+  const isBg = isBackgroundDepth(depthNode);
+  const viewPos = getViewPosition(screenUV2, depthNode, cameraProjectionMatrixInverse);
+  const viewDist = length3(viewPos);
+  const worldPos = uCameraWorldMatrix.mul(vec44(viewPos, 1)).xyz;
+  const hNorm = clamp5(worldPos.y.sub(uHeightBase).div(max3(uHeightRange, float3(1e-3))), 0, 1);
+  const hCurve = pow2(float3(1).sub(hNorm), max3(uHeightFalloff, float3(0.05)));
+  const hBaseWeight = hCurve.mul(uHeightDensity).mul(uHeightEnabled);
+  const dMain = smoothstep3(uDistStart, max3(uDistStart.add(0.01), uDistEnd), viewDist);
+  const dRamp = smoothstep3(uDistStart, uDistStart.add(max3(uDistTrans, float3(0.01))), viewDist);
+  const dBaseWeight = dMain.mul(mix5(float3(1), dRamp, clamp5(uDistTrans.div(max3(uDistEnd.sub(uDistStart), float3(0.01))), 0, 1))).mul(uDistDensity).mul(uDistEnabled);
+  let hWeight = hBaseWeight;
+  let dWeight = dBaseWeight;
+  if (withNoise) {
+    const samplePos = worldPos.mul(uNoiseScale).add(vec33(uNoiseTime, uNoiseTime.mul(0.37), uNoiseTime.mul(0.71)));
+    const n1 = valueNoise3D(samplePos);
+    const n2 = valueNoise3D(samplePos.mul(2.07).add(vec33(13.1, 7.7, 5.3)));
+    const fbm = n1.mul(0.65).add(n2.mul(0.35));
+    const noiseMod = mix5(float3(1), clamp5(fbm.mul(1.7).add(0.15), 0, 1.5), uNoiseIntensity);
+    hWeight = clamp5(hBaseWeight.mul(noiseMod), 0, 1);
+    dWeight = clamp5(dBaseWeight.mul(mix5(float3(1), noiseMod, 0.7)), 0, 1);
+  }
+  const combinedRaw = clamp5(max3(hWeight, dWeight).add(min2(hWeight, dWeight).mul(0.35)), 0, 1);
+  const skyFogAmount = clamp5(dWeight.mul(uDistEnabled).add(hWeight.mul(0.25).mul(uHeightEnabled)), 0, 1).mul(uAffectSky);
+  const fogFactor = select2(isBg, skyFogAmount, combinedRaw).mul(uOpacity);
+  const weightSum = max3(hWeight.add(dWeight), float3(1e-4));
+  const distRatio = dWeight.div(weightSum);
+  const blendedFogColor = mix5(uHeightColor, uDistColor, distRatio);
+  const outRgb = mix5(colorNode.rgb, blendedFogColor, fogFactor);
+  const node = vec44(outRgb, colorNode.a);
+  return {
+    node,
+    sync: (picture, camera) => {
+      const s = currentSettings(picture);
+      camera.updateMatrixWorld();
+      uCameraWorldMatrix.value.copy(camera.matrixWorld);
+      uOpacity.value = s.enabled ? s.opacity : 0;
+      uAffectSky.value = s.affectSky ? 1 : 0;
+      uHeightEnabled.value = s.heightEnabled ? 1 : 0;
+      uHeightColor.value.set(s.heightColor);
+      uHeightBase.value = s.heightBase;
+      uHeightRange.value = s.heightRange;
+      uHeightDensity.value = s.heightDensity;
+      uHeightFalloff.value = s.heightFalloff;
+      uDistEnabled.value = s.distanceEnabled ? 1 : 0;
+      uDistColor.value.set(s.distanceColor);
+      uDistStart.value = s.distanceStart;
+      uDistEnd.value = s.distanceEnd;
+      uDistTrans.value = s.distanceTransition;
+      uDistDensity.value = s.distanceDensity;
+      if (withNoise) {
+        uNoiseScale.value = s.noiseScale;
+        uNoiseIntensity.value = s.noiseIntensity;
+        uNoiseTime.value = elapsedTime * s.noiseSpeed;
+      }
+    }
+  };
+}
+var mounted, removeHook2, elapsedTime;
+var init_session10 = __esm({
+  "src/capabilities/fog/session.ts"() {
+    "use strict";
+    init_world();
+    init_registry2();
+    init_defaults4();
+    mounted = false;
+    removeHook2 = null;
+    elapsedTime = 0;
+  }
+});
+
 // src/capabilities/registry.ts
 function allCapabilityManifests() {
   return [...CAPABILITIES, ...dynamicCapabilities.values()];
@@ -5914,6 +6168,7 @@ var init_registry2 = __esm({
       { id: "projectile", defaultEnabled: true, category: "physics", loadRuntime: () => Promise.resolve().then(() => (init_session8(), session_exports6)) },
       { id: "particles", defaultEnabled: false, category: "scene-object" },
       { id: "sky", defaultEnabled: false, category: "environment", loadRuntime: () => Promise.resolve().then(() => (init_session9(), session_exports7)) },
+      { id: "fog", defaultEnabled: true, category: "environment", loadRuntime: () => Promise.resolve().then(() => (init_session10(), session_exports8)) },
       { id: "water", defaultEnabled: false, category: "environment", loadRuntime: () => Promise.resolve().then(() => (init_session2(), session_exports)) }
     ];
     dynamicCapabilities = /* @__PURE__ */ new Map();
@@ -5943,7 +6198,7 @@ var init_archive = __esm({
 });
 
 // src/capabilities/navigation/defaults.ts
-var init_defaults4 = __esm({
+var init_defaults5 = __esm({
   "src/capabilities/navigation/defaults.ts"() {
     "use strict";
   }
@@ -6245,14 +6500,14 @@ function abortError2() {
   return error;
 }
 var useNavUi, instance, opening, life, loadedScene, seenEpoch, activating, controller, pending2, obstacleKey, debugMesh;
-var init_session10 = __esm({
+var init_session11 = __esm({
   "src/capabilities/navigation/session.ts"() {
     "use strict";
     init_registry2();
     init_transform();
     init_world();
     init_archive();
-    init_defaults4();
+    init_defaults5();
     useNavUi = create(() => ({
       phase: "idle",
       text: "",
@@ -7025,7 +7280,7 @@ function evaluateTranspiledModule(fileName, jsCode, injectedModules) {
 }
 
 // src/core/codeAssets/scriptRuntime.ts
-init_session10();
+init_session11();
 init_runtimeTags();
 init_session7();
 init_session8();
@@ -7142,16 +7397,16 @@ async function start(id, options, ticket) {
   }
   const latestWorld = getRuntimeWorld();
   if (options.bus === "music" && latestWorld.getPlayState() !== "playing") return;
-  const mix6 = readAudioMix(latestWorld.getPicture());
-  applyMix(mix6);
+  const mix7 = readAudioMix(latestWorld.getPicture());
+  applyMix(mix7);
   const bus = options.bus ?? "sfx";
   if (bus === "sfx") trimSfx();
   const ear = ensureListener();
   const audio = options.parent ? guardAudioMatrixUpdate(new PositionalAudio(ear)) : new Audio(ear);
   audio.setBuffer(buffer);
   audio.setLoop(options.loop === true);
-  const local = clamp4(options.volume ?? 1, 0, 4);
-  audio.setVolume(local * (bus === "music" ? mix6.music : mix6.sfx));
+  const local = clamp6(options.volume ?? 1, 0, 4);
+  audio.setVolume(local * (bus === "music" ? mix7.music : mix7.sfx));
   if (options.playbackRate && options.playbackRate > 0) audio.setPlaybackRate(options.playbackRate);
   if (audio instanceof PositionalAudio && options.parent) {
     audio.setRefDistance(Math.max(0.05, options.refDistance ?? 2));
@@ -7227,22 +7482,22 @@ function stopVoice(voice) {
   voice.audio.disconnect();
 }
 var appliedMix = "";
-function applyMix(mix6) {
-  const key = `${mix6.master}|${mix6.music}|${mix6.sfx}`;
+function applyMix(mix7) {
+  const key = `${mix7.master}|${mix7.music}|${mix7.sfx}`;
   if (key === appliedMix) return;
   appliedMix = key;
   const ear = listener;
-  if (ear) ear.gain.gain.value = mix6.master;
+  if (ear) ear.gain.gain.value = mix7.master;
   for (const voice of voices) {
-    voice.audio.setVolume(voice.local * (voice.bus === "music" ? mix6.music : mix6.sfx));
+    voice.audio.setVolume(voice.local * (voice.bus === "music" ? mix7.music : mix7.sfx));
   }
 }
 function unit(value, fallback) {
   const number = typeof value === "number" ? value : Number(value);
-  return Number.isFinite(number) ? clamp4(number, 0, 1) : fallback;
+  return Number.isFinite(number) ? clamp6(number, 0, 1) : fallback;
 }
-function clamp4(value, min3, max4) {
-  return Math.min(max4, Math.max(min3, value));
+function clamp6(value, min4, max5) {
+  return Math.min(max5, Math.max(min4, value));
 }
 var contextChain = Promise.resolve();
 function settleContext(paused) {
@@ -7281,7 +7536,7 @@ registerRuntimeSystem("core.audio", 44, () => {
 installUnlock();
 
 // src/runtime/character.ts
-init_session10();
+init_session11();
 init_session();
 init_session2();
 init_runtimeTags();
@@ -7964,8 +8219,8 @@ function gather(node, step2, host) {
     if (dx * dx + dz * dz > radius * radius) continue;
     if (limit < Math.PI * 2) {
       const len = Math.hypot(dx, dz) || 1;
-      const dot3 = (forward.x * dx + forward.z * dz) / len;
-      if (Math.acos(Math.min(1, Math.max(-1, dot3))) > limit / 2) continue;
+      const dot4 = (forward.x * dx + forward.z * dz) / len;
+      if (Math.acos(Math.min(1, Math.max(-1, dot4))) > limit / 2) continue;
     }
     hits.push(other.id);
   }
@@ -8732,11 +8987,11 @@ function facingBasis(spec, selfId, nodes, x, z, cameraYaw, host) {
   return { moveYaw: cameraYaw, faceYaw: cameraYaw, lock: false };
 }
 function rotate(x, z, yaw) {
-  const sin3 = Math.sin(yaw);
+  const sin4 = Math.sin(yaw);
   const cos3 = Math.cos(yaw);
   return {
-    x: x * cos3 - z * sin3,
-    z: -x * sin3 - z * cos3
+    x: x * cos3 - z * sin4,
+    z: -x * sin4 - z * cos3
   };
 }
 function faceYaw(spec, basis, wish, moveX, moveZ, dodging, live) {
@@ -8748,12 +9003,12 @@ function faceYaw(spec, basis, wish, moveX, moveZ, dodging, live) {
 function capsuleShift(spec, q) {
   const offset = spec.capsuleOffset ?? [0, 0, 0];
   const yaw = yawOf2(q);
-  const sin3 = Math.sin(yaw);
+  const sin4 = Math.sin(yaw);
   const cos3 = Math.cos(yaw);
   return {
-    x: offset[0] * cos3 + offset[2] * sin3,
+    x: offset[0] * cos3 + offset[2] * sin4,
     y: offset[1],
-    z: -offset[0] * sin3 + offset[2] * cos3
+    z: -offset[0] * sin4 + offset[2] * cos3
   };
 }
 function yawOf2(q) {
@@ -8856,12 +9111,12 @@ function groundUnder(host, x, y, z, id, spec) {
 function slide(host, x, y, z, nextX, nextZ, id, radius) {
   const dx = nextX - x;
   const dz = nextZ - z;
-  const length4 = Math.hypot(dx, dz);
-  if (length4 < 1e-5 || !host.probe) return { x: nextX, z: nextZ };
-  const hit = host.probe([x, y, z], [dx / length4, 0, dz / length4], length4 + radius, id);
-  if (hit === null || hit > length4 + radius * 0.2) return { x: nextX, z: nextZ };
+  const length5 = Math.hypot(dx, dz);
+  if (length5 < 1e-5 || !host.probe) return { x: nextX, z: nextZ };
+  const hit = host.probe([x, y, z], [dx / length5, 0, dz / length5], length5 + radius, id);
+  if (hit === null || hit > length5 + radius * 0.2) return { x: nextX, z: nextZ };
   const allowed = Math.max(0, hit - radius);
-  return { x: x + dx / length4 * allowed, z: z + dz / length4 * allowed };
+  return { x: x + dx / length5 * allowed, z: z + dz / length5 * allowed };
 }
 registerRuntimeSystem("core.character", RUNTIME_STAGE.POST_PHYSICS, stepCharacters);
 
@@ -8870,7 +9125,7 @@ init_fieldSchema();
 import {
   AdditiveBlending as AdditiveBlending2,
   BackSide,
-  Color as Color5,
+  Color as Color6,
   DataTexture as DataTexture2,
   DoubleSide as DoubleSide3,
   FrontSide,
@@ -8919,14 +9174,14 @@ function asNode(value) {
   if (value === void 0 || value === null) return void 0;
   if (typeof value === "number") return tsl.float(value);
   if (typeof value === "boolean") return tsl.float(value ? 1 : 0);
-  if (typeof value === "string") return tsl.color(new Color5(value));
+  if (typeof value === "string") return tsl.color(new Color6(value));
   return value;
 }
 function coerceUniformValue(schema, raw) {
   const value = raw !== void 0 ? raw : defaultForSchema(schema);
   if (schema.type === "number") return Number(value) || 0;
   if (schema.type === "boolean") return value ? 1 : 0;
-  if (schema.type === "color") return new Color5(typeof value === "string" ? value : "#ffffff");
+  if (schema.type === "color") return new Color6(typeof value === "string" ? value : "#ffffff");
   if (schema.type === "vec2") {
     const arr = Array.isArray(value) ? value : [0, 0];
     return new Vector23(Number(arr[0]) || 0, Number(arr[1]) || 0);
@@ -8995,7 +9250,7 @@ function createShaderSdk() {
     Break: tsl.Break,
     Continue: tsl.Continue,
     select: (cond, a, b) => tsl.select(asNode(cond), asNode(a), asNode(b)),
-    color: (hexOrR, g, b) => typeof hexOrR === "string" ? tsl.color(new Color5(hexOrR)) : tsl.vec3(hexOrR, g ?? hexOrR, b ?? hexOrR),
+    color: (hexOrR, g, b) => typeof hexOrR === "string" ? tsl.color(new Color6(hexOrR)) : tsl.vec3(hexOrR, g ?? hexOrR, b ?? hexOrR),
     mix: (a, b, t) => tsl.mix(asNode(a), asNode(b), asNode(t)),
     clamp: (x, minVal, maxVal) => tsl.clamp(asNode(x), asNode(minVal), asNode(maxVal)),
     smoothstep: (edge0, edge1, x) => tsl.smoothstep(asNode(edge0), asNode(edge1), asNode(x)),
@@ -11355,16 +11610,16 @@ function compileAndRegisterScript(id, fileName, source) {
 }
 function viewRelativeMove(action, host) {
   const axis = getActionAxis2D(action);
-  const length4 = Math.hypot(axis.x, axis.y);
-  if (length4 < 1e-4) return { x: 0, y: 0, z: 0 };
-  const scale = length4 > 1 ? 1 / length4 : 1;
+  const length5 = Math.hypot(axis.x, axis.y);
+  if (length5 < 1e-4) return { x: 0, y: 0, z: 0 };
+  const scale = length5 > 1 ? 1 / length5 : 1;
   const yaw = host.yaw?.() ?? 0;
-  const sin3 = Math.sin(yaw);
+  const sin4 = Math.sin(yaw);
   const cos3 = Math.cos(yaw);
   return {
-    x: (axis.x * cos3 - axis.y * sin3) * scale,
+    x: (axis.x * cos3 - axis.y * sin4) * scale,
     y: 0,
-    z: (-axis.x * sin3 - axis.y * cos3) * scale
+    z: (-axis.x * sin4 - axis.y * cos3) * scale
   };
 }
 function clearScriptRuntimeState() {

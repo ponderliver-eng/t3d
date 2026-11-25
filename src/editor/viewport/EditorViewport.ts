@@ -2122,7 +2122,7 @@ export class EditorViewport {
     this.renderer.toneMapping = this.toneMappingOf(picture.toneMapping)
     this.renderer.toneMappingExposure = picture.exposure
     this.volume.sync(picture)
-    if (picture.fog && !skyFogActive()) {
+    if (picture.fog && !skyFogActive() && !capabilityEnabled(state.capabilities, 'fog')) {
       const fog = this.scene.fog instanceof Fog ? this.scene.fog : new Fog(picture.fogColor, picture.fogNear, picture.fogFar)
       fog.color.set(picture.fogColor)
       fog.near = picture.fogNear

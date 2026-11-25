@@ -1121,9 +1121,9 @@ function normalizeWater(raw) {
     foamMapAssetId: typeof record.foamMapAssetId === "string" ? record.foamMapAssetId : null
   };
 }
-function finite(value, fallback, min3, max4) {
+function finite(value, fallback, min4, max5) {
   if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
-  return Math.min(max4, Math.max(min3, value));
+  return Math.min(max5, Math.max(min4, value));
 }
 var WATER_CAPABILITY_ID, WATER_DEBUG_VIEWS, WATER_QUALITY_PRESETS, WATER_STYLE_PRESETS;
 var init_defaults = __esm({
@@ -1544,14 +1544,14 @@ var init_proceduralTextures = __esm({
 function swellGroupInfo(group) {
   const a = VERTEX_WAVES[group * 2];
   const b = VERTEX_WAVES[group * 2 + 1] ?? a;
-  const length4 = (a.length + b.length) / 2;
-  const k = Math.PI * 2 / length4;
+  const length5 = (a.length + b.length) / 2;
+  const k = Math.PI * 2 / length5;
   const speed = Math.sqrt(GRAVITY / k);
   return {
     crestSpeed: speed,
     overtake: speed * PACKET_OVERTAKE,
-    kAlong: Math.PI * 2 / (length4 * PACKET_SPACING),
-    kAcross: Math.PI * 2 / (length4 * PACKET_WIDTH)
+    kAlong: Math.PI * 2 / (length5 * PACKET_SPACING),
+    kAcross: Math.PI * 2 / (length5 * PACKET_WIDTH)
   };
 }
 function smoothstep(edge0, edge1, x) {
@@ -2736,8 +2736,8 @@ function defaultBuoyancy() {
     draftDepth: 0
   };
 }
-function clamp2(value, min3, max4) {
-  return Math.max(min3, Math.min(max4, value));
+function clamp2(value, min4, max5) {
+  return Math.max(min4, Math.min(max5, value));
 }
 function finite2(value, fallback) {
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
@@ -5227,11 +5227,11 @@ function setCrowdFormation(nodeIds, center, options) {
   const spacing = Math.max(0.5, options?.spacing ?? 1.8);
   const yaw = options?.facingYaw ?? 0;
   const cos3 = Math.cos(yaw);
-  const sin3 = Math.sin(yaw);
+  const sin4 = Math.sin(yaw);
   const rotateOffset = (lx, lz) => ({
-    x: center.x + lx * cos3 + lz * sin3,
+    x: center.x + lx * cos3 + lz * sin4,
     y: center.y,
-    z: center.z - lx * sin3 + lz * cos3
+    z: center.z - lx * sin4 + lz * cos3
   });
   if (formation === "line") {
     const half = (count - 1) * 0.5;
@@ -6062,9 +6062,9 @@ function normalizeSkySettings(value) {
     mirrorBelowHorizon: bool(raw.mirrorBelowHorizon, base.mirrorBelowHorizon)
   };
 }
-function clamp3(value, fallback, min3, max4) {
+function clamp3(value, fallback, min4, max5) {
   const next = typeof value === "number" && Number.isFinite(value) ? value : fallback;
-  return Math.min(max4, Math.max(min3, next));
+  return Math.min(max5, Math.max(min4, next));
 }
 function bool(value, fallback) {
   return typeof value === "boolean" ? value : fallback;
@@ -6516,6 +6516,260 @@ var init_session10 = __esm({
   }
 });
 
+// src/capabilities/fog/defaults.ts
+function defaultHeightFogSettings() {
+  return {
+    enabled: false,
+    opacity: 1,
+    affectSky: false,
+    heightEnabled: true,
+    heightColor: "#8fa8c8",
+    heightBase: 0,
+    heightRange: 16,
+    heightDensity: 0.85,
+    heightFalloff: 1.2,
+    distanceEnabled: true,
+    distanceColor: "#c9d6e6",
+    distanceStart: 15,
+    distanceEnd: 120,
+    distanceTransition: 30,
+    distanceDensity: 0.9,
+    noiseEnabled: false,
+    noiseScale: 0.06,
+    noiseIntensity: 0.4,
+    noiseSpeed: 0.3
+  };
+}
+function clamp4(value, fallback, min4, max5) {
+  if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
+  return Math.max(min4, Math.min(max5, value));
+}
+function colorHex(value, fallback) {
+  if (typeof value !== "string") return fallback;
+  const trimmed = value.trim();
+  return /^#[0-9a-fA-F]{6}$/.test(trimmed) ? trimmed : fallback;
+}
+function normalizeHeightFogSettings(value) {
+  const base = defaultHeightFogSettings();
+  if (!value || typeof value !== "object") return base;
+  const raw = value;
+  const distanceStart = clamp4(raw.distanceStart, base.distanceStart, 0, 2e3);
+  const distanceEnd = Math.max(distanceStart + 0.1, clamp4(raw.distanceEnd, base.distanceEnd, 0.1, 4e3));
+  return {
+    enabled: typeof raw.enabled === "boolean" ? raw.enabled : base.enabled,
+    opacity: clamp4(raw.opacity, base.opacity, 0, 1),
+    affectSky: typeof raw.affectSky === "boolean" ? raw.affectSky : base.affectSky,
+    heightEnabled: typeof raw.heightEnabled === "boolean" ? raw.heightEnabled : base.heightEnabled,
+    heightColor: colorHex(raw.heightColor, base.heightColor),
+    heightBase: clamp4(raw.heightBase, base.heightBase, -1e3, 2e3),
+    heightRange: clamp4(raw.heightRange, base.heightRange, 0.1, 2e3),
+    heightDensity: clamp4(raw.heightDensity, base.heightDensity, 0, 1),
+    heightFalloff: clamp4(raw.heightFalloff, base.heightFalloff, 0.2, 4),
+    distanceEnabled: typeof raw.distanceEnabled === "boolean" ? raw.distanceEnabled : base.distanceEnabled,
+    distanceColor: colorHex(raw.distanceColor, base.distanceColor),
+    distanceStart,
+    distanceEnd,
+    distanceTransition: clamp4(raw.distanceTransition, base.distanceTransition, 0, 2e3),
+    distanceDensity: clamp4(raw.distanceDensity, base.distanceDensity, 0, 1),
+    noiseEnabled: typeof raw.noiseEnabled === "boolean" ? raw.noiseEnabled : base.noiseEnabled,
+    noiseScale: clamp4(raw.noiseScale, base.noiseScale, 2e-3, 1),
+    noiseIntensity: clamp4(raw.noiseIntensity, base.noiseIntensity, 0, 1),
+    noiseSpeed: clamp4(raw.noiseSpeed, base.noiseSpeed, 0, 5)
+  };
+}
+var HEIGHT_FOG_CAPABILITY_ID;
+var init_defaults5 = __esm({
+  "src/capabilities/fog/defaults.ts"() {
+    "use strict";
+    HEIGHT_FOG_CAPABILITY_ID = "fog";
+  }
+});
+
+// src/capabilities/fog/session.ts
+var session_exports8 = {};
+__export(session_exports8, {
+  buildHeightFogPass: () => buildHeightFogPass,
+  dispose: () => dispose8,
+  heightFogActive: () => heightFogActive,
+  heightFogPipelineKey: () => heightFogPipelineKey,
+  mount: () => mount8
+});
+import { Color as Color5, Matrix4 as Matrix42 } from "three";
+import {
+  cameraProjectionMatrixInverse,
+  clamp as clamp5,
+  dot as dot2,
+  float as float3,
+  floor as floor2,
+  fract as fract2,
+  getViewPosition,
+  isBackgroundDepth,
+  length as length3,
+  max as max3,
+  min as min2,
+  mix as mix5,
+  pow as pow2,
+  screenUV as screenUV2,
+  select as select2,
+  sin as sin2,
+  smoothstep as smoothstep3,
+  uniform as uniform4,
+  vec3 as vec33,
+  vec4 as vec44
+} from "three/tsl";
+function currentSettings(pictureOverride) {
+  try {
+    const world3 = getRuntimeWorld();
+    if (!capabilityEnabled(world3.getCapabilities(), HEIGHT_FOG_CAPABILITY_ID)) {
+      return defaultHeightFogSettings();
+    }
+    const picture = pictureOverride ?? world3.getPicture();
+    return normalizeHeightFogSettings(picture.capabilities?.[HEIGHT_FOG_CAPABILITY_ID]);
+  } catch {
+    if (!pictureOverride) return defaultHeightFogSettings();
+    return normalizeHeightFogSettings(pictureOverride.capabilities?.[HEIGHT_FOG_CAPABILITY_ID]);
+  }
+}
+function mount8() {
+  if (mounted) return () => shutdown2();
+  mounted = true;
+  elapsedTime = 0;
+  removeHook2 = getRuntimeWorld().registerBeforeRenderHook?.(HEIGHT_FOG_CAPABILITY_ID, 25, (ctx) => {
+    elapsedTime += ctx.dt;
+  }) ?? null;
+  return () => shutdown2();
+}
+function dispose8() {
+  shutdown2();
+}
+function shutdown2() {
+  mounted = false;
+  removeHook2?.();
+  removeHook2 = null;
+}
+function heightFogActive(picture) {
+  if (!mounted) return false;
+  const s = currentSettings(picture);
+  return s.enabled && s.opacity > 0 && (s.heightEnabled || s.distanceEnabled);
+}
+function heightFogPipelineKey(picture) {
+  if (!heightFogActive(picture)) return "off";
+  const s = currentSettings(picture);
+  return `on:${s.noiseEnabled ? 1 : 0}`;
+}
+function hash3(p) {
+  return fract2(sin2(dot2(p, vec33(127.1, 311.7, 74.7))).mul(43758.5453123));
+}
+function valueNoise3D(p) {
+  const i = floor2(p);
+  const f = fract2(p);
+  const u = f.mul(f).mul(vec33(3, 3, 3).sub(f.mul(2)));
+  const n000 = hash3(i);
+  const n100 = hash3(i.add(vec33(1, 0, 0)));
+  const n010 = hash3(i.add(vec33(0, 1, 0)));
+  const n110 = hash3(i.add(vec33(1, 1, 0)));
+  const n001 = hash3(i.add(vec33(0, 0, 1)));
+  const n101 = hash3(i.add(vec33(1, 0, 1)));
+  const n011 = hash3(i.add(vec33(0, 1, 1)));
+  const n111 = hash3(i.add(vec33(1, 1, 1)));
+  const nx00 = mix5(n000, n100, u.x);
+  const nx10 = mix5(n010, n110, u.x);
+  const nx01 = mix5(n001, n101, u.x);
+  const nx11 = mix5(n011, n111, u.x);
+  const nxy0 = mix5(nx00, nx10, u.y);
+  const nxy1 = mix5(nx01, nx11, u.y);
+  return mix5(nxy0, nxy1, u.z);
+}
+function buildHeightFogPass(colorNode, scenePass, withNoise) {
+  const uCameraWorldMatrix = uniform4(new Matrix42());
+  const uOpacity = uniform4(1);
+  const uAffectSky = uniform4(0);
+  const uHeightEnabled = uniform4(1);
+  const uHeightColor = uniform4(new Color5("#8fa8c8"));
+  const uHeightBase = uniform4(0);
+  const uHeightRange = uniform4(16);
+  const uHeightDensity = uniform4(0.85);
+  const uHeightFalloff = uniform4(1.2);
+  const uDistEnabled = uniform4(1);
+  const uDistColor = uniform4(new Color5("#c9d6e6"));
+  const uDistStart = uniform4(15);
+  const uDistEnd = uniform4(120);
+  const uDistTrans = uniform4(30);
+  const uDistDensity = uniform4(0.9);
+  const uNoiseScale = uniform4(0.06);
+  const uNoiseIntensity = uniform4(0.4);
+  const uNoiseTime = uniform4(0);
+  const depthNode = scenePass.getTextureNode("depth");
+  const isBg = isBackgroundDepth(depthNode);
+  const viewPos = getViewPosition(screenUV2, depthNode, cameraProjectionMatrixInverse);
+  const viewDist = length3(viewPos);
+  const worldPos = uCameraWorldMatrix.mul(vec44(viewPos, 1)).xyz;
+  const hNorm = clamp5(worldPos.y.sub(uHeightBase).div(max3(uHeightRange, float3(1e-3))), 0, 1);
+  const hCurve = pow2(float3(1).sub(hNorm), max3(uHeightFalloff, float3(0.05)));
+  const hBaseWeight = hCurve.mul(uHeightDensity).mul(uHeightEnabled);
+  const dMain = smoothstep3(uDistStart, max3(uDistStart.add(0.01), uDistEnd), viewDist);
+  const dRamp = smoothstep3(uDistStart, uDistStart.add(max3(uDistTrans, float3(0.01))), viewDist);
+  const dBaseWeight = dMain.mul(mix5(float3(1), dRamp, clamp5(uDistTrans.div(max3(uDistEnd.sub(uDistStart), float3(0.01))), 0, 1))).mul(uDistDensity).mul(uDistEnabled);
+  let hWeight = hBaseWeight;
+  let dWeight = dBaseWeight;
+  if (withNoise) {
+    const samplePos = worldPos.mul(uNoiseScale).add(vec33(uNoiseTime, uNoiseTime.mul(0.37), uNoiseTime.mul(0.71)));
+    const n1 = valueNoise3D(samplePos);
+    const n2 = valueNoise3D(samplePos.mul(2.07).add(vec33(13.1, 7.7, 5.3)));
+    const fbm = n1.mul(0.65).add(n2.mul(0.35));
+    const noiseMod = mix5(float3(1), clamp5(fbm.mul(1.7).add(0.15), 0, 1.5), uNoiseIntensity);
+    hWeight = clamp5(hBaseWeight.mul(noiseMod), 0, 1);
+    dWeight = clamp5(dBaseWeight.mul(mix5(float3(1), noiseMod, 0.7)), 0, 1);
+  }
+  const combinedRaw = clamp5(max3(hWeight, dWeight).add(min2(hWeight, dWeight).mul(0.35)), 0, 1);
+  const skyFogAmount = clamp5(dWeight.mul(uDistEnabled).add(hWeight.mul(0.25).mul(uHeightEnabled)), 0, 1).mul(uAffectSky);
+  const fogFactor = select2(isBg, skyFogAmount, combinedRaw).mul(uOpacity);
+  const weightSum = max3(hWeight.add(dWeight), float3(1e-4));
+  const distRatio = dWeight.div(weightSum);
+  const blendedFogColor = mix5(uHeightColor, uDistColor, distRatio);
+  const outRgb = mix5(colorNode.rgb, blendedFogColor, fogFactor);
+  const node = vec44(outRgb, colorNode.a);
+  return {
+    node,
+    sync: (picture, camera) => {
+      const s = currentSettings(picture);
+      camera.updateMatrixWorld();
+      uCameraWorldMatrix.value.copy(camera.matrixWorld);
+      uOpacity.value = s.enabled ? s.opacity : 0;
+      uAffectSky.value = s.affectSky ? 1 : 0;
+      uHeightEnabled.value = s.heightEnabled ? 1 : 0;
+      uHeightColor.value.set(s.heightColor);
+      uHeightBase.value = s.heightBase;
+      uHeightRange.value = s.heightRange;
+      uHeightDensity.value = s.heightDensity;
+      uHeightFalloff.value = s.heightFalloff;
+      uDistEnabled.value = s.distanceEnabled ? 1 : 0;
+      uDistColor.value.set(s.distanceColor);
+      uDistStart.value = s.distanceStart;
+      uDistEnd.value = s.distanceEnd;
+      uDistTrans.value = s.distanceTransition;
+      uDistDensity.value = s.distanceDensity;
+      if (withNoise) {
+        uNoiseScale.value = s.noiseScale;
+        uNoiseIntensity.value = s.noiseIntensity;
+        uNoiseTime.value = elapsedTime * s.noiseSpeed;
+      }
+    }
+  };
+}
+var mounted, removeHook2, elapsedTime;
+var init_session11 = __esm({
+  "src/capabilities/fog/session.ts"() {
+    "use strict";
+    init_world();
+    init_registry2();
+    init_defaults5();
+    mounted = false;
+    removeHook2 = null;
+    elapsedTime = 0;
+  }
+});
+
 // src/capabilities/registry.ts
 function allCapabilityManifests() {
   return [...CAPABILITIES, ...dynamicCapabilities.values()];
@@ -6564,6 +6818,7 @@ var init_registry2 = __esm({
       { id: "projectile", defaultEnabled: true, category: "physics", loadRuntime: () => Promise.resolve().then(() => (init_session9(), session_exports6)) },
       { id: "particles", defaultEnabled: false, category: "scene-object" },
       { id: "sky", defaultEnabled: false, category: "environment", loadRuntime: () => Promise.resolve().then(() => (init_session10(), session_exports7)) },
+      { id: "fog", defaultEnabled: true, category: "environment", loadRuntime: () => Promise.resolve().then(() => (init_session11(), session_exports8)) },
       { id: "water", defaultEnabled: false, category: "environment", loadRuntime: () => Promise.resolve().then(() => (init_session2(), session_exports)) }
     ];
     dynamicCapabilities = /* @__PURE__ */ new Map();
@@ -6838,7 +7093,7 @@ function defaultNodePhysics(kind) {
   return { ...SHARED, body: "dynamic", shape: "box", size: [1, 1, 1] };
 }
 var SHARED;
-var init_defaults5 = __esm({
+var init_defaults6 = __esm({
   "src/capabilities/physics/defaults.ts"() {
     "use strict";
     SHARED = {
@@ -6864,7 +7119,7 @@ function defaultNodeEffect() {
   };
 }
 var QUARKS_VERSION, DEFAULT_SIMULATION;
-var init_defaults6 = __esm({
+var init_defaults7 = __esm({
   "src/capabilities/particles/defaults.ts"() {
     "use strict";
     QUARKS_VERSION = "0.17.1";
@@ -7055,12 +7310,12 @@ function childrenOf(nodes, parentId) {
   return Object.values(nodes).filter((node) => node.parentId === parentId).sort((a, b) => a.order - b.order || a.name.localeCompare(b.name, "zh"));
 }
 function nextOrder(nodes, parentId, exceptId) {
-  let max4 = 0;
+  let max5 = 0;
   for (const node of Object.values(nodes)) {
     if (node.id === exceptId || node.parentId !== parentId) continue;
-    if (node.order >= max4) max4 = node.order + 1;
+    if (node.order >= max5) max5 = node.order + 1;
   }
-  return max4;
+  return max5;
 }
 function uniqueName(nodes, base) {
   const names = new Set(Object.values(nodes).map((node) => node.name));
@@ -7087,7 +7342,7 @@ var MESH_KINDS;
 var init_kinds = __esm({
   "src/editor/scene/kinds.ts"() {
     "use strict";
-    init_defaults6();
+    init_defaults7();
     init_schema();
     init_spec();
     MESH_KINDS = ["box", "sphere", "plane", "capsule", "cylinder", "cone"];
@@ -7267,7 +7522,7 @@ function createFreshScene(name) {
 var init_seed = __esm({
   "src/editor/scene/seed.ts"() {
     "use strict";
-    init_defaults5();
+    init_defaults6();
     init_kinds();
     init_types2();
   }
@@ -7401,16 +7656,16 @@ async function start(id, options, ticket) {
   }
   const latestWorld = getRuntimeWorld();
   if (options.bus === "music" && latestWorld.getPlayState() !== "playing") return;
-  const mix6 = readAudioMix(latestWorld.getPicture());
-  applyMix(mix6);
+  const mix7 = readAudioMix(latestWorld.getPicture());
+  applyMix(mix7);
   const bus = options.bus ?? "sfx";
   if (bus === "sfx") trimSfx();
   const ear = ensureListener();
   const audio = options.parent ? guardAudioMatrixUpdate(new PositionalAudio(ear)) : new Audio(ear);
   audio.setBuffer(buffer);
   audio.setLoop(options.loop === true);
-  const local = clamp4(options.volume ?? 1, 0, 4);
-  audio.setVolume(local * (bus === "music" ? mix6.music : mix6.sfx));
+  const local = clamp6(options.volume ?? 1, 0, 4);
+  audio.setVolume(local * (bus === "music" ? mix7.music : mix7.sfx));
   if (options.playbackRate && options.playbackRate > 0) audio.setPlaybackRate(options.playbackRate);
   if (audio instanceof PositionalAudio && options.parent) {
     audio.setRefDistance(Math.max(0.05, options.refDistance ?? 2));
@@ -7485,22 +7740,22 @@ function stopVoice(voice) {
   voice.parent?.remove(voice.audio);
   voice.audio.disconnect();
 }
-function applyMix(mix6) {
-  const key = `${mix6.master}|${mix6.music}|${mix6.sfx}`;
+function applyMix(mix7) {
+  const key = `${mix7.master}|${mix7.music}|${mix7.sfx}`;
   if (key === appliedMix) return;
   appliedMix = key;
   const ear = listener;
-  if (ear) ear.gain.gain.value = mix6.master;
+  if (ear) ear.gain.gain.value = mix7.master;
   for (const voice of voices) {
-    voice.audio.setVolume(voice.local * (voice.bus === "music" ? mix6.music : mix6.sfx));
+    voice.audio.setVolume(voice.local * (voice.bus === "music" ? mix7.music : mix7.sfx));
   }
 }
 function unit(value, fallback) {
   const number = typeof value === "number" ? value : Number(value);
-  return Number.isFinite(number) ? clamp4(number, 0, 1) : fallback;
+  return Number.isFinite(number) ? clamp6(number, 0, 1) : fallback;
 }
-function clamp4(value, min3, max4) {
-  return Math.min(max4, Math.max(min3, value));
+function clamp6(value, min4, max5) {
+  return Math.min(max5, Math.max(min4, value));
 }
 function settleContext(paused) {
   const ctx = listener?.context;
@@ -8256,8 +8511,8 @@ function gather(node, step2, host) {
     if (dx * dx + dz * dz > radius * radius) continue;
     if (limit < Math.PI * 2) {
       const len = Math.hypot(dx, dz) || 1;
-      const dot3 = (forward.x * dx + forward.z * dz) / len;
-      if (Math.acos(Math.min(1, Math.max(-1, dot3))) > limit / 2) continue;
+      const dot4 = (forward.x * dx + forward.z * dz) / len;
+      if (Math.acos(Math.min(1, Math.max(-1, dot4))) > limit / 2) continue;
     }
     hits.push(other.id);
   }
@@ -9057,11 +9312,11 @@ function facingBasis(spec, selfId, nodes, x, z, cameraYaw, host) {
   return { moveYaw: cameraYaw, faceYaw: cameraYaw, lock: false };
 }
 function rotate(x, z, yaw) {
-  const sin3 = Math.sin(yaw);
+  const sin4 = Math.sin(yaw);
   const cos3 = Math.cos(yaw);
   return {
-    x: x * cos3 - z * sin3,
-    z: -x * sin3 - z * cos3
+    x: x * cos3 - z * sin4,
+    z: -x * sin4 - z * cos3
   };
 }
 function faceYaw(spec, basis, wish, moveX, moveZ, dodging, live) {
@@ -9073,12 +9328,12 @@ function faceYaw(spec, basis, wish, moveX, moveZ, dodging, live) {
 function capsuleShift(spec, q) {
   const offset = spec.capsuleOffset ?? [0, 0, 0];
   const yaw = yawOf2(q);
-  const sin3 = Math.sin(yaw);
+  const sin4 = Math.sin(yaw);
   const cos3 = Math.cos(yaw);
   return {
-    x: offset[0] * cos3 + offset[2] * sin3,
+    x: offset[0] * cos3 + offset[2] * sin4,
     y: offset[1],
-    z: -offset[0] * sin3 + offset[2] * cos3
+    z: -offset[0] * sin4 + offset[2] * cos3
   };
 }
 function yawOf2(q) {
@@ -9181,12 +9436,12 @@ function groundUnder(host, x, y, z, id, spec) {
 function slide(host, x, y, z, nextX, nextZ, id, radius) {
   const dx = nextX - x;
   const dz = nextZ - z;
-  const length4 = Math.hypot(dx, dz);
-  if (length4 < 1e-5 || !host.probe) return { x: nextX, z: nextZ };
-  const hit = host.probe([x, y, z], [dx / length4, 0, dz / length4], length4 + radius, id);
-  if (hit === null || hit > length4 + radius * 0.2) return { x: nextX, z: nextZ };
+  const length5 = Math.hypot(dx, dz);
+  if (length5 < 1e-5 || !host.probe) return { x: nextX, z: nextZ };
+  const hit = host.probe([x, y, z], [dx / length5, 0, dz / length5], length5 + radius, id);
+  if (hit === null || hit > length5 + radius * 0.2) return { x: nextX, z: nextZ };
   const allowed = Math.max(0, hit - radius);
-  return { x: x + dx / length4 * allowed, z: z + dz / length4 * allowed };
+  return { x: x + dx / length5 * allowed, z: z + dz / length5 * allowed };
 }
 var motion, orders, relocations, runtimeModifiers, simClock;
 var init_character = __esm({
@@ -9232,7 +9487,7 @@ var init_compiler = __esm({
 import {
   AdditiveBlending as AdditiveBlending2,
   BackSide,
-  Color as Color5,
+  Color as Color6,
   DataTexture as DataTexture2,
   DoubleSide as DoubleSide3,
   FrontSide,
@@ -9279,7 +9534,7 @@ function coerceUniformValue(schema, raw) {
   const value = raw !== void 0 ? raw : defaultForSchema(schema);
   if (schema.type === "number") return Number(value) || 0;
   if (schema.type === "boolean") return value ? 1 : 0;
-  if (schema.type === "color") return new Color5(typeof value === "string" ? value : "#ffffff");
+  if (schema.type === "color") return new Color6(typeof value === "string" ? value : "#ffffff");
   if (schema.type === "vec2") {
     const arr = Array.isArray(value) ? value : [0, 0];
     return new Vector23(Number(arr[0]) || 0, Number(arr[1]) || 0);
@@ -11090,16 +11345,16 @@ function buildSystemWorldApi(systemId, host) {
 }
 function viewRelativeMove(action, host) {
   const axis = getActionAxis2D(action);
-  const length4 = Math.hypot(axis.x, axis.y);
-  if (length4 < 1e-4) return { x: 0, y: 0, z: 0 };
-  const scale = length4 > 1 ? 1 / length4 : 1;
+  const length5 = Math.hypot(axis.x, axis.y);
+  if (length5 < 1e-4) return { x: 0, y: 0, z: 0 };
+  const scale = length5 > 1 ? 1 / length5 : 1;
   const yaw = host.yaw?.() ?? 0;
-  const sin3 = Math.sin(yaw);
+  const sin4 = Math.sin(yaw);
   const cos3 = Math.cos(yaw);
   return {
-    x: (axis.x * cos3 - axis.y * sin3) * scale,
+    x: (axis.x * cos3 - axis.y * sin4) * scale,
     y: 0,
-    z: (-axis.x * sin3 - axis.y * cos3) * scale
+    z: (-axis.x * sin4 - axis.y * cos3) * scale
   };
 }
 function snapshotStateValue(value, depth) {
@@ -11953,9 +12208,9 @@ function contains(nodes, ancestor, id) {
   return false;
 }
 function nextOrder2(nodes, parentId) {
-  let max4 = -1;
-  for (const node of Object.values(nodes)) if (node.parentId === parentId) max4 = Math.max(max4, node.order);
-  return max4 + 1;
+  let max5 = -1;
+  for (const node of Object.values(nodes)) if (node.parentId === parentId) max5 = Math.max(max5, node.order);
+  return max5 + 1;
 }
 function uniqueName2(nodes, base) {
   const names = new Set(Object.values(nodes).map((node) => node.name));
@@ -12135,6 +12390,9 @@ var init_messages = __esm({
       "library.item.sky": "\u5929\u7A7A",
       "library.item.skyDetail": "\u65F6\u523B\u3001\u5927\u6C14\u6563\u5C04\u548C\u8DDF\u7740\u592A\u9633\u8D70\u7684\u73AF\u5883\u5149\u7167\u3002\u5173\u6389\u540E\u53C2\u6570\u7559\u5728\u753B\u9762\u4E0A\uFF0C\u53EA\u662F\u4E0D\u518D\u7ED8\u5236\u3002",
       "library.item.skyPoints": "\u65F6\u523B\u4E0E\u5927\u6C14\n\u73AF\u5883\u5149\u7167\n\u9AD8\u5EA6\u96FE\u3001\u661F\u7A7A\u4E0E\u6708\u4EAE",
+      "library.item.fog": "\u9AD8\u5EA6\u96FE",
+      "library.item.fogDetail": "\u66FF\u4EE3\u9ED8\u8BA4\u7EBF\u6027\u96FE\uFF0C\u540C\u65F6\u63D0\u4F9B\u9AD8\u5EA6\u96FE\u4E0E\u8FDC\u8FD1\u96FE\u4E24\u5957\u72EC\u7ACB\u53C2\u6570\uFF0C\u652F\u6301\u9AD8\u5EA6\u6807\u51C6\u7EBF\u3001\u8FC7\u6E21\u8303\u56F4\u3001\u53CC\u8272\u6DF7\u5408\u4E0E\u968F\u673A\u566A\u70B9\u3002",
+      "library.item.fogPoints": "\u9AD8\u5EA6\u96FE\uFF08\u6807\u51C6\u7EBF\u4E0E\u8FC7\u6E21\u8303\u56F4\uFF09\n\u8FDC\u8FD1\u96FE\uFF08\u8D77\u70B9\u3001\u7EC8\u70B9\u4E0E\u8FC7\u6E21\u8303\u56F4\uFF09\n3D \u968F\u673A\u566A\u70B9\u6D41\u52A8\u4E0E\u53CC\u8272\u878D\u5408",
       "library.item.water": "\u6C34\u4F53",
       "library.item.waterDetail": "TSL \u6C34\u9762\u3001\u53CC\u5C42\u6D41\u52A8\u6CD5\u7EBF\u3001\u5E73\u9762\u53CD\u5C04\u3001\u6C34\u6DF1\u5438\u6536\u4E0E\u5CB8\u8FB9\u6CE1\u6CAB\u3002\u5173\u6389\u540E\u53C2\u6570\u4FDD\u7559\uFF0C\u6062\u590D\u539F\u6750\u8D28\u3002",
       "library.item.waterPoints": "\u5E73\u9762\u53CD\u5C04\u4E0E\u6C34\u6DF1\u5438\u6536\n\u5CB8\u8FB9\u6CE1\u6CAB\u4E0E\u6CE2\u6D6A\n5 \u5957\u9884\u8BBE\u4E0E 3 \u6863\u753B\u8D28",
@@ -12980,6 +13238,29 @@ var init_messages = __esm({
       "sky.moon": "\u6708\u4EAE",
       "sky.moonPhase": "\u6708\u76F8",
       "sky.moonLight": "\u6708\u5149",
+      "fog.title": "\u9AD8\u5EA6\u96FE",
+      "fog.general": "\u57FA\u7840\u8BBE\u7F6E",
+      "fog.opacity": "\u6700\u5927\u4E0D\u900F\u660E\u5EA6",
+      "fog.affectSky": "\u4F5C\u7528\u4E8E\u5929\u7A7A",
+      "fog.heightGroup": "\u9AD8\u5EA6\u96FE",
+      "fog.heightEnabled": "\u542F\u7528\u9AD8\u5EA6\u96FE",
+      "fog.heightColor": "\u9AD8\u5EA6\u96FE\u989C\u8272",
+      "fog.heightBase": "\u9AD8\u5EA6\u6807\u51C6\u7EBF",
+      "fog.heightRange": "\u9AD8\u5EA6\u8FC7\u6E21\u8303\u56F4",
+      "fog.heightDensity": "\u6D53\u5EA6",
+      "fog.heightFalloff": "\u8870\u51CF\u66F2\u7EBF",
+      "fog.distanceGroup": "\u8FDC\u8FD1\u96FE",
+      "fog.distanceEnabled": "\u542F\u7528\u8FDC\u8FD1\u96FE",
+      "fog.distanceColor": "\u8FDC\u8FD1\u96FE\u989C\u8272",
+      "fog.distanceStart": "\u8D77\u70B9\u8DDD\u79BB",
+      "fog.distanceEnd": "\u7EC8\u70B9\u8DDD\u79BB",
+      "fog.distanceTransition": "\u8FC7\u6E21\u8303\u56F4",
+      "fog.distanceDensity": "\u6D53\u5EA6",
+      "fog.noiseGroup": "\u968F\u673A\u566A\u70B9",
+      "fog.noiseEnabled": "\u542F\u7528\u566A\u70B9",
+      "fog.noiseScale": "\u566A\u70B9\u5C3A\u5EA6",
+      "fog.noiseIntensity": "\u6270\u52A8\u5F3A\u5EA6",
+      "fog.noiseSpeed": "\u98D8\u52A8\u901F\u5EA6",
       "projectSettings.skyDetail": "\u7A0B\u5E8F\u5316\u5927\u6C14\u548C\u65F6\u523B\u3002\u5F00\u542F\u540E\u53D6\u4EE3\u80CC\u666F\u4E0E\u73AF\u5883\u8D34\u56FE\uFF0C\u91D1\u5C5E\u53CD\u5C04\u8DDF\u7740\u592A\u9633\u53D8\u3002\u5173\u6389\u540E\u53C2\u6570\u7559\u5728\u753B\u9762\u4E0A\u3002",
       "projectSettings.navigationDetail": "\u4ECE\u9759\u6001\u8868\u9762\u70D8\u7119\u5BFC\u822A\u7F51\u683C\u3002\u8BD5\u73A9\u65F6\u969C\u788D\u53EF\u4EE5\u6316\u5F00\u7F51\u683C\uFF0C\u5BFB\u8DEF\u8BFB\u53D6\u8FD9\u4EFD\u7F51\u683C\u3002",
       "projectSettings.catalogs": "\u9879\u76EE\u76EE\u5F55",
@@ -14126,6 +14407,9 @@ var init_messages = __esm({
       "library.item.sky": "Sky",
       "library.item.skyDetail": "Time of day, atmospheric scattering and image lighting that follows the sun. Turning this off keeps the settings and stops drawing it.",
       "library.item.skyPoints": "Time and atmosphere\nImage-based lighting\nHeight fog, stars and moon",
+      "library.item.fog": "Height Fog",
+      "library.item.fogDetail": "Replaces default linear fog with independent height and distance fog controls, transition bands, dual colors, and 3D noise.",
+      "library.item.fogPoints": "Height fog (base line & range)\nDistance fog (start, end & transition)\n3D noise animation & color blending",
       "library.item.water": "Water",
       "library.item.waterDetail": "TSL water surface with dual scrolling normals, planar reflection, depth absorption and shoreline foam.",
       "library.item.waterPoints": "Planar reflection & depth\nShoreline foam & waves\n5 style & 3 quality presets",
@@ -14971,6 +15255,29 @@ var init_messages = __esm({
       "sky.moon": "Moon",
       "sky.moonPhase": "Moon phase",
       "sky.moonLight": "Moonlight",
+      "fog.title": "Height Fog",
+      "fog.general": "General",
+      "fog.opacity": "Max opacity",
+      "fog.affectSky": "Affect sky",
+      "fog.heightGroup": "Height Fog",
+      "fog.heightEnabled": "Enable height fog",
+      "fog.heightColor": "Height color",
+      "fog.heightBase": "Base height",
+      "fog.heightRange": "Height range",
+      "fog.heightDensity": "Density",
+      "fog.heightFalloff": "Falloff curve",
+      "fog.distanceGroup": "Distance Fog",
+      "fog.distanceEnabled": "Enable distance fog",
+      "fog.distanceColor": "Distance color",
+      "fog.distanceStart": "Start distance",
+      "fog.distanceEnd": "End distance",
+      "fog.distanceTransition": "Transition range",
+      "fog.distanceDensity": "Density",
+      "fog.noiseGroup": "Noise",
+      "fog.noiseEnabled": "Enable noise",
+      "fog.noiseScale": "Noise scale",
+      "fog.noiseIntensity": "Noise intensity",
+      "fog.noiseSpeed": "Noise speed",
       "projectSettings.skyDetail": "Procedural atmosphere and time of day. While on, it replaces the background and environment image so metal reflections follow the sun. Turning it off keeps the settings.",
       "projectSettings.navigationDetail": "Bakes a navmesh from static surfaces. Obstacles can carve it during play, and path queries read that mesh.",
       "projectSettings.catalogs": "Project catalogs",
@@ -16295,10 +16602,10 @@ function lookPoint(eye, focus, lookAtTarget) {
   return [eye[0] + dx / len, eye[1] + dy / len, eye[2] + dz / len];
 }
 function clampPitch(pitch, spec) {
-  let min3 = spec.minPitch * Math.PI / 180;
-  let max4 = spec.maxPitch * Math.PI / 180;
-  if (min3 > max4) [min3, max4] = [max4, min3];
-  return Math.min(max4, Math.max(min3, pitch));
+  let min4 = spec.minPitch * Math.PI / 180;
+  let max5 = spec.maxPitch * Math.PI / 180;
+  if (min4 > max5) [min4, max5] = [max5, min4];
+  return Math.min(max5, Math.max(min4, pitch));
 }
 function spring(host, focus, desired, ignoreId, radius) {
   const dx = desired[0] - focus[0];
@@ -16357,7 +16664,7 @@ var init_taxonomy = __esm({
 });
 
 // src/editor/scene/transform.ts
-import { Euler as Euler3, Matrix4 as Matrix42, Quaternion as Quaternion6, Vector3 as Vector312 } from "three";
+import { Euler as Euler3, Matrix4 as Matrix43, Quaternion as Quaternion6, Vector3 as Vector312 } from "three";
 function eulerQuaternion2(rotation) {
   return new Quaternion6().setFromEuler(new Euler3(rotation[0] * DEG2, rotation[1] * DEG2, rotation[2] * DEG2, "XYZ"));
 }
@@ -16646,7 +16953,7 @@ var init_store2 = __esm({
     init_registry2();
     init_corePack();
     init_registry();
-    init_defaults5();
+    init_defaults6();
     init_sceneRuntime();
     init_camera();
     init_values();
@@ -16865,13 +17172,13 @@ var init_store2 = __esm({
         });
         if (ok && created) get().log("info", translate("log.created", { name: created }));
       },
-      extractSocket: (modelId, bone, name, select3 = true) => {
+      extractSocket: (modelId, bone, name, select4 = true) => {
         if (get().playState !== "stopped") return null;
         const parent = get().nodes[modelId];
         if (!parent || parent.kind !== "model") return null;
         const existing = Object.values(get().nodes).find((node) => node.parentId === modelId && node.socketBone === bone);
         if (existing) {
-          if (select3) get().setSelection([existing.id]);
+          if (select4) get().setSelection([existing.id]);
           return existing.id;
         }
         let createdId = null;
@@ -16887,7 +17194,7 @@ var init_store2 = __esm({
             socketBone: bone
           });
           tagAddedChild(draft.nodes, id);
-          if (select3) draft.selection = [id];
+          if (select4) draft.selection = [id];
         });
         return createdId;
       },

@@ -28,6 +28,7 @@ export const CAPABILITIES = [
   { id: 'projectile', defaultEnabled: true, category: 'physics', loadRuntime: () => import('./projectile/session') },
   { id: 'particles', defaultEnabled: false, category: 'scene-object' },
   { id: 'sky', defaultEnabled: false, category: 'environment', loadRuntime: () => import('./sky/session') },
+  { id: 'fog', defaultEnabled: true, category: 'environment', loadRuntime: () => import('./fog/session') },
   { id: 'water', defaultEnabled: false, category: 'environment', loadRuntime: () => import('./water/session') },
 ] as const satisfies readonly CapabilityManifest[]
 

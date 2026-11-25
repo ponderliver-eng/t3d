@@ -29,7 +29,7 @@ import { EXRLoader } from 'three/addons/loaders/EXRLoader.js'
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js'
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js'
 import { WebGPURenderer } from 'three/webgpu'
-import { normalizeCapabilities, syncCapabilityRuntimes } from '../capabilities/registry'
+import { capabilityEnabled, normalizeCapabilities, syncCapabilityRuntimes } from '../capabilities/registry'
 import { disposeParticles, mountParticles } from '../capabilities/particles/session'
 import { SKY_CAPABILITY_ID } from '../capabilities/sky/defaults'
 import { skyFogActive } from '../capabilities/sky/session'
@@ -998,7 +998,7 @@ function applyPlayerPicture(
   renderer.toneMapping = toneMappingOfPlayer(picture.toneMapping)
   renderer.toneMappingExposure = typeof picture.exposure === 'number' ? picture.exposure : 1.05
   volume.sync(picture)
-  if (picture.fog && !skyFogActive()) {
+  if (picture.fog && !skyFogActive() && !capabilityEnabled(capabilities, 'fog')) {
     scene.fog = new Fog(picture.fogColor || '#181d26', picture.fogNear ?? 15, picture.fogFar ?? 85)
   } else {
     scene.fog = null

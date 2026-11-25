@@ -41,6 +41,7 @@ import {
 import { EffectCard } from '../../capabilities/particles/EffectCard'
 import { NavigationCard, SceneNavigationCard } from '../../capabilities/navigation/NavigationCards'
 import { SkyCard } from '../../capabilities/sky/SkyCard'
+import { HeightFogCard } from '../../capabilities/fog/HeightFogCard'
 import { BuoyancyCard } from '../../capabilities/buoyancy/BuoyancyCard'
 import { BUOYANCY_CAPABILITY_ID, defaultBuoyancy } from '../../capabilities/buoyancy/defaults'
 import { SplineCard } from '../../capabilities/spline/SplineCard'
@@ -709,20 +710,22 @@ function SceneSettings() {
           </label>
         </Section>
       </Card>
-      <Card id="fog" title={t('inspector.fog')} color="#90a4ae">
-        <Section title={t('inspector.fog')} color="#90a4ae">
-          <label className="field"><span>{t('inspector.enabled')}</span><input type="checkbox" checked={picture.fog} onChange={event => set({ fog: event.target.checked })} /></label>
-          {picture.fog && (
-            <>
-              <ColorField label={t('inspector.fogColor')} value={picture.fogColor} gesture={t('gesture.picture')} onChange={fogColor => set({ fogColor })} />
-              <div className="iv2-pair">
-                <NumberRow label={t('inspector.fogStart')} value={picture.fogNear} min={0} max={200} step={0.5} gesture={t('gesture.picture')} onChange={fogNear => set({ fogNear })} />
-                <NumberRow label={t('inspector.fogEnd')} value={picture.fogFar} min={0} max={400} step={0.5} gesture={t('gesture.picture')} onChange={fogFar => set({ fogFar })} />
-              </div>
-            </>
-          )}
-        </Section>
-      </Card>
+      {!capabilityEnabled(capabilities, 'fog') && (
+        <Card id="fog" title={t('inspector.fog')} color="#90a4ae">
+          <Section title={t('inspector.fog')} color="#90a4ae">
+            <label className="field"><span>{t('inspector.enabled')}</span><input type="checkbox" checked={picture.fog} onChange={event => set({ fog: event.target.checked })} /></label>
+            {picture.fog && (
+              <>
+                <ColorField label={t('inspector.fogColor')} value={picture.fogColor} gesture={t('gesture.picture')} onChange={fogColor => set({ fogColor })} />
+                <div className="iv2-pair">
+                  <NumberRow label={t('inspector.fogStart')} value={picture.fogNear} min={0} max={200} step={0.5} gesture={t('gesture.picture')} onChange={fogNear => set({ fogNear })} />
+                  <NumberRow label={t('inspector.fogEnd')} value={picture.fogFar} min={0} max={400} step={0.5} gesture={t('gesture.picture')} onChange={fogFar => set({ fogFar })} />
+                </div>
+              </>
+            )}
+          </Section>
+        </Card>
+      )}
       {!capabilityEnabled(capabilities, 'sky') && (
         <Card id="environment" title={t('inspector.environment')} color="#ffd36b">
           <Section title={t('inspector.environment')} color="#ffd36b">
@@ -851,6 +854,7 @@ function SceneSettings() {
       )}
       <SceneNavigationCard />
       {capabilityEnabled(capabilities, 'sky') && <SkyCard />}
+      {capabilityEnabled(capabilities, 'fog') && <HeightFogCard />}
       </SceneColumn>
     </>
   )
