@@ -10,6 +10,7 @@ import { diagnoseProject } from '../core/query/diagnose'
 import { readModelArtifact } from '../editor/assets/cache'
 import { useAssetStore, type ProjectAsset, type SceneAsset } from '../editor/assets/library'
 import { applyModelMaterialBindings, getModelTemplate, loadModelTemplate } from '../editor/assets/models'
+import { readUnpremultipliedRgba } from '../runtime/engine/textures'
 import { assetRecord, directoryProjectName, readAssetBytes } from '../editor/project/disk'
 import { electronBridge, joinProjectPath } from '../editor/project/electronBridge'
 import { useEditorStore } from '../editor/scene/store'
@@ -205,6 +206,11 @@ export function collectSceneDependencies(
   return [...collected]
 }
 
+function isPackedOrDataTexture(fileName: string): boolean {
+  const stem = fileName.replace(/\.[^.]+$/, '').trim()
+  return /(?:[_-\s]+)(?:normal|norm|nrm|nor|bump|n|metallicgloss|metallicsmoothness|maskmap|mask|ms|metallicroughness|metalrough|orm|arm|metallic|metalness|metal|roughness|rough|gloss|m|occlusion|ambientocclusion|ao|occ)$/i.test(stem)
+}
+
 async function cookTextureToWebp(
   bytes: Uint8Array,
   fileName: string,
@@ -213,6 +219,8 @@ async function cookTextureToWebp(
 ): Promise<{ bytes: Uint8Array; extOverride?: string } | null> {
   const lower = fileName.toLowerCase()
   if (lower.endsWith('.ktx2') || lower.endsWith('.svg') || lower.endsWith('.tga')) return null
+  // 法线贴图与 Unity MetallicGloss / ORM 通道贴图绝不能经 2D Canvas 有损 WebP 压缩（2D Canvas 预乘 Alpha 会把 A=0 粗糙区域的 RGB 清零，有损 WebP 也会破坏切线法线向量）
+  if (isPackedOrDataTexture(fileName)) return null
   if (!convertToWebp && maxSize <= 0) return null
   if (typeof createImageBitmap !== 'function') return null
 
@@ -224,10 +232,25 @@ async function cookTextureToWebp(
   const copy = new Uint8Array(bytes.byteLength)
   copy.set(bytes)
   const blob = new Blob([copy.buffer], { type: mime })
-  const bitmap = await createImageBitmap(blob).catch(() => null)
+  const bitmap = await createImageBitmap(blob, {
+    imageOrientation: 'none',
+    premultiplyAlpha: 'none',
+    colorSpaceConversion: 'none',
+  }).catch(() => null)
   if (!bitmap) return null
 
   try {
+    // 若贴图含有透明像素（A < 250），跳过 2D Canvas 重编码，防止 2D Canvas 预乘 Alpha 把 A=0 区域的 RGB 清零变成全黑
+    if (!lower.endsWith('.jpg') && !lower.endsWith('.jpeg')) {
+      try {
+        const rgba = readUnpremultipliedRgba(bitmap, bitmap.width, bitmap.height)
+        for (let i = 3; i < rgba.length; i += 16) {
+          if ((rgba[i] ?? 255) < 250) return null
+        }
+      } catch {
+        return null
+      }
+    }
     let targetW = bitmap.width
     let targetH = bitmap.height
     const longest = Math.max(targetW, targetH)

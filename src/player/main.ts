@@ -6,7 +6,6 @@ import {
   AnimationClip,
   AnimationMixer,
   BoxGeometry,
-  CanvasTexture,
   CapsuleGeometry,
   CineonToneMapping,
   Color,
@@ -34,13 +33,10 @@ import {
   Quaternion,
   Raycaster,
   ReinhardToneMapping,
-  RepeatWrapping,
   Scene,
   SphereGeometry,
   SpotLight,
-  SRGBColorSpace,
   Texture,
-  TextureLoader,
   Vector2,
   Vector3,
 } from 'three'
@@ -66,6 +62,7 @@ import {
   readModelSlots,
   type MaterialEngineHost,
 } from '../runtime/engine/materials'
+import { buildUnityMetallicRoughnessTexture, loadUnpremultipliedTexture } from '../runtime/engine/textures'
 import {
   bindGlobalInputListeners,
   injectVirtualInput,
@@ -136,7 +133,6 @@ const DEG_TO_RAD = Math.PI / 180
 
 class PlayerAssetManager {
   private readonly gltfLoader = new GLTFLoader()
-  private readonly texLoader = new TextureLoader()
   private readonly hdrLoader = new RGBELoader()
   private readonly exrLoader = new EXRLoader()
   private readonly modelCache = new Map<string, { scene: Group; clips: AnimationClip[]; slots: PbrSlot[]; humanoid: ModelHumanoid }>()
@@ -173,6 +169,7 @@ class PlayerAssetManager {
     const base = this.texCache.get(assetId)
     if (!base) return null
     const linear = base.clone()
+    linear.source = base.source
     linear.colorSpace = NoColorSpace
     linear.needsUpdate = true
     this.linearTexCache.set(assetId, linear)
@@ -184,46 +181,9 @@ class PlayerAssetManager {
     if (cached) return cached
     const base = this.getTexture(assetId, false)
     if (!base || typeof document === 'undefined') return base
-    const image = base.image as { width?: number; height?: number; naturalWidth?: number; naturalHeight?: number } | undefined
-    const w = image?.naturalWidth || image?.width || 0
-    const h = image?.naturalHeight || image?.height || 0
-    if (!image || w <= 0 || h <= 0) return base
-    try {
-      const canvas = document.createElement('canvas')
-      canvas.width = w
-      canvas.height = h
-      const ctx = canvas.getContext('2d', { willReadFrequently: true })
-      if (!ctx) return base
-      ctx.drawImage(image as CanvasImageSource, 0, 0, w, h)
-      const imgData = ctx.getImageData(0, 0, w, h)
-      const data = imgData.data
-      let hasAlpha = false
-      const firstA = data[3] ?? 255
-      for (let i = 3; i < data.length; i += 4) {
-        if (Math.abs((data[i] ?? 255) - firstA) > 2) { hasAlpha = true; break }
-      }
-      const useA = hasAlpha || firstA < 250
-      for (let i = 0; i < data.length; i += 4) {
-        const r = data[i]!
-        const g = data[i + 1]!
-        const a = data[i + 3]!
-        data[i] = g > 0 ? g : 255
-        data[i + 1] = 255 - (useA ? a : r)
-        data[i + 2] = r
-        data[i + 3] = 255
-      }
-      ctx.putImageData(imgData, 0, 0)
-      const converted = new CanvasTexture(canvas)
-      converted.colorSpace = NoColorSpace
-      converted.flipY = base.flipY
-      converted.wrapS = base.wrapS
-      converted.wrapT = base.wrapT
-      converted.needsUpdate = true
-      this.unityMrCache.set(assetId, converted)
-      return converted
-    } catch {
-      return base
-    }
+    const converted = buildUnityMetallicRoughnessTexture(base)
+    this.unityMrCache.set(assetId, converted)
+    return converted
   }
 
   getEnvironment(assetId: string | null | undefined): Texture | null {
@@ -254,12 +214,7 @@ class PlayerAssetManager {
         } else if (asset.kind === 'texture') {
           const lower = (asset.fileName || asset.url || '').toLowerCase()
           if (lower.endsWith('.ktx2') || lower.endsWith('.tga')) return
-          const tex = await this.texLoader.loadAsync(asset.url!)
-          tex.colorSpace = SRGBColorSpace
-          tex.flipY = false
-          tex.wrapS = RepeatWrapping
-          tex.wrapT = RepeatWrapping
-          tex.needsUpdate = true
+          const tex = await loadUnpremultipliedTexture(asset.url!)
           this.texCache.set(assetId, tex)
         } else if (asset.kind === 'environment') {
           const ext = (asset.fileName || asset.url || '').split('.').pop()?.toLowerCase()

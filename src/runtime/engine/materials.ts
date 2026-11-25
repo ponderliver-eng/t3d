@@ -106,8 +106,31 @@ export function normalizeMaterialKey(raw: string): string {
 
 export function resolveModelSlotWithHost(slot: PbrSlot, host: MaterialEngineHost): SurfaceSlot {
   const linked = host.getMaterialSlot(slot.materialAssetId)
-  if (linked) return { ...normalizeSlot({ ...linked, materialAssetId: null }), name: slot.name }
-  return normalizeSlot(slot)
+  if (linked) {
+    const surface = normalizeSlot({ ...linked, materialAssetId: null })
+    const mapAssetId = surface.mapAssetId ?? slot.mapAssetId ?? null
+    const normalAssetId = surface.normalAssetId ?? slot.normalAssetId ?? null
+    const metallicRoughnessAssetId = surface.metallicRoughnessAssetId ?? packedMetallicRoughness(slot) ?? null
+    const emissiveAssetId = surface.emissiveAssetId ?? slot.emissiveAssetId ?? null
+    const aoAssetId = surface.aoAssetId ?? slot.aoAssetId ?? null
+    const hasMap = Boolean(mapAssetId || normalAssetId || metallicRoughnessAssetId)
+    return {
+      ...surface,
+      name: slot.name,
+      color: hasMap && surface.color === '#000000' ? '#ffffff' : surface.color,
+      mapAssetId,
+      normalAssetId,
+      metallicRoughnessAssetId,
+      emissiveAssetId,
+      aoAssetId,
+    }
+  }
+  const surface = normalizeSlot(slot)
+  const hasMap = Boolean(surface.mapAssetId || surface.normalAssetId || surface.metallicRoughnessAssetId)
+  if (hasMap && surface.color === '#000000') {
+    return { ...surface, color: '#ffffff' }
+  }
+  return surface
 }
 
 export function slotFromNodeWithHost(node: SceneNode, host: MaterialEngineHost): SurfaceSlot {
@@ -365,8 +388,11 @@ export function applyModelMaterialsWithHost(
           painted.userData.t3dSlot = slotIndex
           return painted
         }
-        if (slotIndex < 0) return material
-        const painted = applySlotWithHost(material, resolveModelSlotWithHost(slots[slotIndex]!, host), host)
+        const matchedSlot = (slotIndex >= 0 ? slots[slotIndex] : undefined)
+          ?? (material.name ? slots[indexByName.get(material.name) ?? indexByNormName.get(normalizeMaterialKey(material.name)) ?? -1] : undefined)
+          ?? (slots.length === 1 ? slots[0] : undefined)
+        if (!matchedSlot) return material
+        const painted = applySlotWithHost(material, resolveModelSlotWithHost(matchedSlot, host), host)
         painted.name = material.name
         painted.userData.t3dSlot = slotIndex
         return painted
