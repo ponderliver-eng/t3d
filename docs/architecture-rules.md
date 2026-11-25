@@ -141,15 +141,37 @@
 
 ---
 
-## 8. 独立发布端（Standalone Player）与试玩模式双端同步规范
+## 8. 统一运行时引擎（`src/runtime/engine/`）与双端 100% 行为一致规范
 
-编辑器试玩模式（`EditorViewport`）与打包发布端（`src/player/main.ts` + `src/player/exporter.ts`）共用同一套 `src/runtime/sceneRuntime.ts` 运行时内核，但**资源导出清单、宿主渲染与对象挂载**各自实现。今后新增任何功能或修改能力时，必须同步检查以下三处：
+编辑器试玩模式（`EditorViewport`）与独立发布端（`src/player/main.ts` + `src/player/exporter.ts`）不仅共用 `src/runtime/sceneRuntime.ts` 逻辑步进内核，**渲染与资产层也已统一收敛至 `src/runtime/engine/`**。严禁在编辑器与 Player 中各自维护两套材质、纹理、几何/灯光或骨骼动画实现。
 
+### 8.1 统一引擎模块职责（`src/runtime/engine/`）
+1. **`materials.ts`（材质、切线与蒙皮模型实例化引擎）**
+   - 统一负责 `PbrSlot` 规范化、节点与模型槽位解析（`resolveModelSlotWithHost` / `slotFromNodeWithHost`）、PBR / Toon / Unlit / 自定义 TSL 着色器挂载（`applySlotWithHost` / `applyNodeMaterialWithHost` / `applyModelMaterialsWithHost`）、法线切线自动补齐（`ensureGeometryTangents`）以及蒙皮克隆、骨骼共享与骨骼桶对齐（`instantiateModelScene` / `shareSkeletons` / `padSkeletons`）。
+   - **重要保护**：当模型槽绑定了 `materialAssetId`，但该材质资产自身的贴图槽为空或基础色为 `#000000`（常见于 FBX 导入材质）时，`resolveModelSlotWithHost` 会自动回退保留模型槽原本绑定的贴图 ID，并在存在任何贴图时将全黑底色修正为 `#ffffff`，防止角色与场景变黑。
+2. **`textures.ts`（无损非预乘纹理与通道重打包引擎）**
+   - 统一负责读取未预乘 Alpha 的原始 RGBA 像素（`readUnpremultipliedRgba`，使用 WebGL2 `UNPACK_PREMULTIPLY_ALPHA_WEBGL = false`）、Unity `MetallicGloss`（`R=金属度, G=AO, A=光滑度`）转 glTF 标准 ORM `DataTexture`（`buildUnityMetallicRoughnessTexture`）以及 `createImageBitmap` 无损纹理加载（`loadUnpremultipliedTexture`，`premultiplyAlpha: 'none', colorSpaceConversion: 'none'`, `flipY = false`）。
+3. **`sceneNodes.ts`（基础几何体、光源、色调映射与骨骼挂点引擎）**
+   - 统一负责基础几何体创建（`createPrimitiveGeometry`）、四类光源与阴影相机配置（`createNodeLight`）、色调映射转换（`resolveToneMapping`）以及 `socketBone` 骨骼查找与世界位姿合成（`findModelBoneInScene` / `appendSocketLocalPose`）。
+4. **`animation.ts`（双层动画源解析、跨骨架重定向与相位对齐混合引擎）**
+   - 统一负责身体层/上半身覆盖层播放源计算（`resolveBodyPlaybackSource` / `resolveOverlayPlaybackSource`）、跨骨架人形重定向与遮罩/锁根剪辑生成（`buildPlayableClip`）以及步幅相位对齐（Phase Sync）与显式权重过渡（`beginActionBlend` / `stepActionBlend` / `finishActionBlend`）。
+
+### 8.2 纹理与渲染管线核心注意事项（避坑铁律）
+1. **严禁对法线、通道贴图及含透明像素的贴图直接使用 2D Canvas 重绘或有损重编码**
+   - 浏览器 2D Canvas（`ctx.drawImage` + `getImageData` / `canvas.toBlob`）规范强制执行 **Premultiplied Alpha（预乘透明度）**。一旦贴图中存在 `A = 0` 的像素（例如 Unity 贴图在 Alpha 通道存放光滑度/遮罩，或带透明镂空的贴图），2D Canvas 会将对应像素的 `R/G/B` 全部清零，导致模型变黑或高光/粗糙度彻底损坏。
+   - **Runtime 读取像素**：必须统一调用 `src/runtime/engine/textures.ts` 的 `readUnpremultipliedRgba`。
+   - **导出阶段（`src/player/exporter.ts` 的 `cookTextureToWebp`）**：凡被法线槽（`normalAssetId`）、金属/粗糙/AO 槽引用，或用 `readUnpremultipliedRgba` 检测到任何像素 `A < 250` 的贴图，**必须跳过 Canvas WebP 转换，原样保留原始字节导出**。
+2. **`ImageBitmap` 纹理克隆必须显式复制 `.source`**
+   - 当同一张贴图既作为颜色贴图（`SRGBColorSpace`）又作为线性数据贴图（如法线/粗糙度，`NoColorSpace`）使用时，克隆 `Texture` 后必须显式执行 `linearTex.source = baseTex.source` 再标记 `needsUpdate = true`，否则在 `three/webgpu` 下克隆出的纹理会丢失底层 `ImageBitmap` 图像源。
+3. **能力包与粒子系统的场景挂载对齐**
+   - 独立运行时切换或初始化场景时，必须与编辑器视口一样调用 `mountParticles(scene)`，并在每帧执行 `beforeRenderHooks`（水体平面反射、天空等）后渲染。
+
+### 8.3 导出依赖、外壳构建与 EXE 图标打包注意事项
 1. **导出依赖与载荷同步（`src/player/exporter.ts`）**
-   - 凡是节点、材质、UI、能力包、玩法包或场景属性（`ScenePicture`）新增了资源引用字段（资产 ID、贴图、环境图、动画、预制体、UI 文档等），必须在 `collectSceneDependencies` 中显式收集，并在 `buildExportedProjectPayload` 中导出所需元数据，防止 `stripUnusedAssets` 误删资产。
-2. **宿主环境与渲染同步（`src/player/main.ts`）**
-   - 公共运行时算法、后期管线（`src/runtime/picturePipeline.ts`）、动画重定向（`src/runtime/animation/`）、UI 叠加层（`src/runtime/playerUiOverlay.tsx`）应尽量下沉至 `src/runtime/`，由编辑器与 Player 共同复用，严禁 `src/player/` 引用 `src/editor/`（通过 `npm run check:player-deps` 强制校验）。
-   - 若新增节点种类（`NodeKind`）、灯光类型、材质槽/着色器属性或 `SceneRuntimeHost` 接口方法，必须同步在 `src/player/main.ts` 中实现对应挂载与宿主回调。
-3. **发布构建产物同步**
-   - 修改 `src/player/` 或其依赖的 `src/runtime/`、`src/capabilities/`、`src/gameplay/` 后，发版前需执行 `npm run check:player-deps` 与 `npm run build:player` 更新 `dist-player/` 外壳产物。
+   - 凡是节点（含 `node.effect` 粒子贴图、材质资产关联贴图）、UI、能力包、玩法包或场景属性（`ScenePicture`）新增了资源引用字段，必须在 `collectSceneDependencies` 中显式收集，并在 `buildExportedProjectPayload` 中导出，防止开启 `stripUnusedAssets` 时误删资源。
+2. **修改运行时后必须重编 Player 外壳（`npm run build:player`）**
+   - 桌面端与网页端打包直接复用預构建的 `dist-player/` 静态外壳产物。**凡修改了 `src/runtime/`、`src/capabilities/`、`src/gameplay/` 或 `src/player/` 的代码，在编辑器内点击「构建发布」前，必须先执行 `npm run check:player-deps` 与 `npm run build:player` 刷新 `dist-player/`**，否则导出的包仍会运行旧版代码。
+3. **Windows 桌面版（`.exe`）图标与 GPU 策略**
+   - 发布面板支持从工程贴图资产中选择任意图片作为应用图标（未选择时默认使用内置 `public/tact3d-icon.ico`）；主进程会自动将其缩放合成为包含 `16/32/48/64/128/256` 多分辨率的 `.ico` 并通过 `rcedit` 写入生成的 `<AppName>.exe` 资源表与窗口图标。
+   - 导出构建配置默认开启 `force_high_performance_gpu`（向 Chromium 注入 `--force_high_performance_gpu` 并在 WebGPU/WebGL2 初始化时指定 `powerPreference: 'high-performance'`），运行时可通过 `window.__T3D_GPU_INFO__` 查看实际激活的显卡与后端。
 

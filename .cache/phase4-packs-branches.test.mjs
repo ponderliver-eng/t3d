@@ -22538,7 +22538,7 @@ function transaction(db, storeNames, mode, run2) {
 }
 
 // src/editor/assets/models.ts
-import { Group, Mesh as Mesh4, MeshStandardMaterial as MeshStandardMaterial2, Vector3 as Vector319 } from "three";
+import { Group, Mesh as Mesh4, MeshStandardMaterial as MeshStandardMaterial2, Vector3 as Vector320 } from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { MeshoptDecoder } from "three/addons/libs/meshopt_decoder.module.js";
 import { OBJLoader } from "three/addons/loaders/OBJLoader.js";
@@ -22696,8 +22696,31 @@ function normalizeMaterialKey(raw) {
 }
 function resolveModelSlotWithHost(slot, host) {
   const linked = host.getMaterialSlot(slot.materialAssetId);
-  if (linked) return { ...normalizeSlot({ ...linked, materialAssetId: null }), name: slot.name };
-  return normalizeSlot(slot);
+  if (linked) {
+    const surface2 = normalizeSlot({ ...linked, materialAssetId: null });
+    const mapAssetId = surface2.mapAssetId ?? slot.mapAssetId ?? null;
+    const normalAssetId = surface2.normalAssetId ?? slot.normalAssetId ?? null;
+    const metallicRoughnessAssetId = surface2.metallicRoughnessAssetId ?? packedMetallicRoughness(slot) ?? null;
+    const emissiveAssetId = surface2.emissiveAssetId ?? slot.emissiveAssetId ?? null;
+    const aoAssetId = surface2.aoAssetId ?? slot.aoAssetId ?? null;
+    const hasMap2 = Boolean(mapAssetId || normalAssetId || metallicRoughnessAssetId);
+    return {
+      ...surface2,
+      name: slot.name,
+      color: hasMap2 && surface2.color === "#000000" ? "#ffffff" : surface2.color,
+      mapAssetId,
+      normalAssetId,
+      metallicRoughnessAssetId,
+      emissiveAssetId,
+      aoAssetId
+    };
+  }
+  const surface = normalizeSlot(slot);
+  const hasMap = Boolean(surface.mapAssetId || surface.normalAssetId || surface.metallicRoughnessAssetId);
+  if (hasMap && surface.color === "#000000") {
+    return { ...surface, color: "#ffffff" };
+  }
+  return surface;
 }
 function sideFor(cull) {
   if (cull === "front") return BackSide2;
@@ -22886,8 +22909,9 @@ function applyModelMaterialsWithHost(root2, slots, host, partOverrides) {
           painted2.userData.t3dSlot = slotIndex;
           return painted2;
         }
-        if (slotIndex < 0) return material;
-        const painted = applySlotWithHost(material, resolveModelSlotWithHost(slots[slotIndex], host), host);
+        const matchedSlot = (slotIndex >= 0 ? slots[slotIndex] : void 0) ?? (material.name ? slots[indexByName.get(material.name) ?? indexByNormName.get(normalizeMaterialKey(material.name)) ?? -1] : void 0) ?? (slots.length === 1 ? slots[0] : void 0);
+        if (!matchedSlot) return material;
+        const painted = applySlotWithHost(material, resolveModelSlotWithHost(matchedSlot, host), host);
         painted.name = material.name;
         painted.userData.t3dSlot = slotIndex;
         return painted;
@@ -22973,7 +22997,7 @@ function normalizeSkinIndex(root2) {
 }
 
 // src/editor/assets/textures.ts
-import { CanvasTexture, CompressedTexture, DataTexture as DataTexture3, EquirectangularReflectionMapping, NoColorSpace as NoColorSpace2, RGBA_BPTC_Format, RGBAFormat as RGBAFormat3, SRGBColorSpace, Texture as Texture2, TextureLoader, UnsignedByteType as UnsignedByteType2 } from "three";
+import { CanvasTexture, CompressedTexture, DataTexture as DataTexture4, EquirectangularReflectionMapping, NoColorSpace as NoColorSpace3, RGBA_BPTC_Format, RGBAFormat as RGBAFormat4, SRGBColorSpace as SRGBColorSpace2, Texture as Texture3, TextureLoader as TextureLoader2, UnsignedByteType as UnsignedByteType3 } from "three";
 import { KTX2Loader } from "three/addons/loaders/KTX2Loader.js";
 import { RGBELoader } from "three/addons/loaders/RGBELoader.js";
 import { EXRLoader } from "three/addons/loaders/EXRLoader.js";
@@ -23416,7 +23440,8 @@ function loadImage(url) {
   });
 }
 
-// src/editor/assets/textureResize.ts
+// src/runtime/engine/textures.ts
+import { DataTexture as DataTexture3, NoColorSpace as NoColorSpace2, RepeatWrapping as RepeatWrapping2, RGBAFormat as RGBAFormat3, SRGBColorSpace, Texture as Texture2, TextureLoader, UnsignedByteType as UnsignedByteType2 } from "three";
 var glSampler = null;
 function getGlSampler() {
   if (glSampler) return glSampler;
@@ -23435,15 +23460,20 @@ function getGlSampler() {
     gl.compileShader(shader);
     return shader;
   };
-  const vs = compile(gl.VERTEX_SHADER, `#version 300 es
+  const vs = compile(
+    gl.VERTEX_SHADER,
+    `#version 300 es
     out vec2 vUv;
     void main() {
       vec2 p = vec2((gl_VertexID == 1) ? 3.0 : -1.0, (gl_VertexID == 2) ? 3.0 : -1.0);
       vUv = p * 0.5 + 0.5;
       gl_Position = vec4(p, 0.0, 1.0);
     }
-  `);
-  const fs = compile(gl.FRAGMENT_SHADER, `#version 300 es
+  `
+  );
+  const fs = compile(
+    gl.FRAGMENT_SHADER,
+    `#version 300 es
     precision highp float;
     uniform sampler2D uTex;
     uniform int uFlipX;
@@ -23459,7 +23489,8 @@ function getGlSampler() {
       if (uFlipNormalY == 1) c.g = 1.0 - c.g;
       fragColor = c;
     }
-  `);
+  `
+  );
   const program = gl.createProgram();
   gl.attachShader(program, vs);
   gl.attachShader(program, fs);
@@ -23506,6 +23537,9 @@ function readUnpremultipliedRgba(source, width, height, flipX = false, flipY = f
   gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   return pixels;
 }
+var fallbackLoader = new TextureLoader();
+
+// src/editor/assets/textureResize.ts
 var CRC_TABLE = (() => {
   const table = new Uint32Array(256);
   for (let n = 0; n < 256; n += 1) {
@@ -23532,7 +23566,7 @@ var unityMrInfo = /* @__PURE__ */ new Map();
 var pendingImages = /* @__PURE__ */ new Map();
 var environments = /* @__PURE__ */ new Map();
 var pendingEnvironments = /* @__PURE__ */ new Map();
-var loader = new TextureLoader();
+var loader = new TextureLoader2();
 var hdrLoader = new RGBELoader();
 var exrLoader = new EXRLoader();
 var ktx2 = null;
@@ -23583,14 +23617,14 @@ function textureFor(assetId, colorMap) {
     return null;
   }
   if (colorMap) {
-    texture4.colorSpace = SRGBColorSpace;
+    texture4.colorSpace = SRGBColorSpace2;
     return texture4;
   }
   let linear = linearImages.get(assetId);
   if (!linear) {
     linear = texture4.clone();
     linear.source = texture4.source;
-    linear.colorSpace = NoColorSpace2;
+    linear.colorSpace = NoColorSpace3;
     linear.needsUpdate = true;
     linearImages.set(assetId, linear);
   }
@@ -23677,7 +23711,7 @@ function unpackTextureArtifact(buffer) {
   return { width, height, rgba: new Uint8Array(buffer, 16, expected) };
 }
 function buildDataTexture(width, height, rgba, base) {
-  const tex = new DataTexture3(rgba, width, height, RGBAFormat3, UnsignedByteType2);
+  const tex = new DataTexture4(rgba, width, height, RGBAFormat4, UnsignedByteType3);
   tex.flipY = base ? base.flipY : false;
   if (base) {
     tex.wrapS = base.wrapS;
@@ -23715,7 +23749,7 @@ function scheduleUnityRepack(assetId, base, source, rawBuffer, width, height) {
   const finishWithBuffer = (w, h, buffer, persist2 = true) => {
     const rgba = new Uint8Array(buffer);
     const converted = buildDataTexture(w, h, rgba, base);
-    converted.colorSpace = NoColorSpace2;
+    converted.colorSpace = NoColorSpace3;
     unityMrImages.set(assetId, converted);
     unityMrPending.delete(assetId);
     notifyUnityMrReady(assetId);
@@ -23815,7 +23849,7 @@ function scheduleUnityRepack(assetId, base, source, rawBuffer, width, height) {
         }
         ctx.putImageData(imgData, 0, 0);
         const converted = new CanvasTexture(canvas);
-        converted.colorSpace = NoColorSpace2;
+        converted.colorSpace = NoColorSpace3;
         converted.flipY = base.flipY;
         converted.wrapS = base.wrapS;
         converted.wrapT = base.wrapT;
@@ -23837,7 +23871,7 @@ function scheduleUnityRepack(assetId, base, source, rawBuffer, width, height) {
         const unpackedBc7 = bc7 ? unpackBc7Artifact(bc7) : null;
         if (unpackedBc7) {
           const converted = buildBc7Texture(unpackedBc7.width, unpackedBc7.height, unpackedBc7.mips, base);
-          converted.colorSpace = NoColorSpace2;
+          converted.colorSpace = NoColorSpace3;
           unityMrImages.set(assetId, converted);
           unityMrPending.delete(assetId);
           notifyUnityMrReady(assetId);
@@ -23891,7 +23925,7 @@ function loadUnityMrDirect(asset) {
       return;
     }
     if (texture4) {
-      texture4.colorSpace = NoColorSpace2;
+      texture4.colorSpace = NoColorSpace3;
       unityMrImages.set(assetId, texture4);
       unityMrInfo.set(assetId, { source, bytes, readMs: performance.now() - started2, hash: asset.hash });
       notifyUnityMrReady(assetId);
@@ -23994,7 +24028,7 @@ function loadTextureAsset(asset) {
   if (running) return running;
   const lower = asset.fileName.toLowerCase();
   const finishBitmap = (texture4) => {
-    texture4.colorSpace = SRGBColorSpace;
+    texture4.colorSpace = SRGBColorSpace2;
     images.set(asset.id, texture4);
     imageHashes.set(asset.id, asset.hash);
     linearImages.delete(asset.id);
@@ -24107,7 +24141,7 @@ async function loadBitmapTexture(url) {
           resizeQuality: "high"
         });
       }
-      const texture5 = new Texture2(bitmap);
+      const texture5 = new Texture3(bitmap);
       texture5.flipY = false;
       texture5.needsUpdate = true;
       return texture5;
@@ -24134,7 +24168,7 @@ function loadSvgTexture(assetId, hash, url) {
       }
       context.drawImage(image, 0, 0, size, size);
       const texture4 = new CanvasTexture(canvas);
-      texture4.colorSpace = SRGBColorSpace;
+      texture4.colorSpace = SRGBColorSpace2;
       texture4.flipY = false;
       texture4.needsUpdate = true;
       images.set(assetId, texture4);
@@ -24173,8 +24207,33 @@ function applyModelMaterials(root2, slots, partOverrides) {
   applyModelMaterialsWithHost(root2, slots, editorMaterialHost, partOverrides);
 }
 
+// src/runtime/engine/sceneNodes.ts
+import {
+  ACESFilmicToneMapping,
+  AgXToneMapping,
+  BoxGeometry,
+  CapsuleGeometry,
+  CineonToneMapping,
+  ConeGeometry,
+  CylinderGeometry,
+  DirectionalLight as DirectionalLight3,
+  Euler as Euler4,
+  HemisphereLight,
+  LinearToneMapping,
+  NeutralToneMapping,
+  NoToneMapping,
+  PlaneGeometry as PlaneGeometry2,
+  PointLight,
+  Quaternion as Quaternion8,
+  ReinhardToneMapping,
+  SphereGeometry,
+  SpotLight,
+  Vector3 as Vector316
+} from "three";
+var DEG_TO_RAD = Math.PI / 180;
+
 // src/runtime/animation/humanoidAvatar.ts
-import { Quaternion as Quaternion8, Vector3 as Vector316 } from "three";
+import { Quaternion as Quaternion9, Vector3 as Vector317 } from "three";
 
 // src/runtime/animation/humanoidSlots.ts
 var CORE_HUMANOID_SLOTS = [
@@ -24691,14 +24750,14 @@ import {
   AnimationClip as AnimationClip2,
   InterpolateLinear,
   Matrix4 as Matrix45,
-  Quaternion as Quaternion10,
+  Quaternion as Quaternion11,
   QuaternionKeyframeTrack,
-  Vector3 as Vector318,
+  Vector3 as Vector319,
   VectorKeyframeTrack
 } from "three";
 
 // src/runtime/animation/humanoidRig.ts
-import { Matrix4 as Matrix44, Quaternion as Quaternion9, Vector3 as Vector317 } from "three";
+import { Matrix4 as Matrix44, Quaternion as Quaternion10, Vector3 as Vector318 } from "three";
 var CHILD_SLOT = {
   Spine: "Chest",
   Chest: "UpperChest",
@@ -24762,9 +24821,9 @@ function computeLegMetric(bySlot) {
 function decompose(matrix) {
   if (!matrix || matrix.length !== 16 || !matrix.every(Number.isFinite)) return null;
   const basis = new Matrix44().fromArray(matrix);
-  const position = new Vector317();
-  const rotation = new Quaternion9();
-  const scaling = new Vector317();
+  const position = new Vector318();
+  const rotation = new Quaternion10();
+  const scaling = new Vector318();
   basis.decompose(position, rotation, scaling);
   if (!Number.isFinite(position.x) || !Number.isFinite(rotation.w)) return null;
   rotation.normalize();
@@ -24773,7 +24832,7 @@ function decompose(matrix) {
     rotation,
     scaling,
     worldRotation: rotation.clone(),
-    parentWorldRotation: new Quaternion9()
+    parentWorldRotation: new Quaternion10()
   };
 }
 function fillSkeleton(skeleton, bySlot, byNormName, slotByNormName, boneNameBySlot, originalByNorm, onlyMissing) {
@@ -24786,22 +24845,22 @@ function fillSkeleton(skeleton, bySlot, byNormName, slotByNormName, boneNameBySl
   const compute = (index, visited = /* @__PURE__ */ new Set()) => {
     const hit = world3.get(index);
     if (hit) return hit;
-    if (visited.has(index)) return new Quaternion9();
+    if (visited.has(index)) return new Quaternion10();
     visited.add(index);
-    const rotation = local.get(index)?.rotation.clone() ?? new Quaternion9();
+    const rotation = local.get(index)?.rotation.clone() ?? new Quaternion10();
     const bone = skeleton.bones.find((item) => item.index === index);
     const parent = bone?.parentIndex;
     const result = typeof parent === "number" && parent >= 0 && parent !== index ? compute(parent, visited).clone().multiply(rotation).normalize() : rotation;
     world3.set(index, result);
     return result;
   };
-  const external = new Quaternion9(...skeleton.externalRotation).normalize();
+  const external = new Quaternion10(...skeleton.externalRotation).normalize();
   const hasExternal = Math.abs(external.w) < 0.9995 || Math.abs(external.x) + Math.abs(external.y) + Math.abs(external.z) > 1e-4;
   for (const bone of skeleton.bones) {
     const trs = local.get(bone.index);
     if (!trs) continue;
     const rawWorld = compute(bone.index);
-    const rawParent = typeof bone.parentIndex === "number" && bone.parentIndex >= 0 && bone.parentIndex !== bone.index ? compute(bone.parentIndex) : new Quaternion9();
+    const rawParent = typeof bone.parentIndex === "number" && bone.parentIndex >= 0 && bone.parentIndex !== bone.index ? compute(bone.parentIndex) : new Quaternion10();
     trs.worldRotation = hasExternal ? external.clone().multiply(rawWorld).normalize() : rawWorld;
     trs.parentWorldRotation = hasExternal ? external.clone().multiply(rawParent).normalize() : rawParent;
   }
@@ -24899,7 +24958,7 @@ function externalOf(hips, root2, bones) {
     if (current === root2) break;
     current = current.parent;
   }
-  let rotation = new Quaternion9();
+  let rotation = new Quaternion10();
   let scale = 1;
   for (const node of chain) {
     rotation = rotation.multiply(node.quaternion).normalize();
@@ -24985,12 +25044,12 @@ function captureHumanoidSkeletons(root2) {
     const localBindByBone = /* @__PURE__ */ new Map();
     if (bindWorldByBone.size > 0) {
       let maxAngle = 0;
-      const curPos = new Vector317();
-      const curQuat = new Quaternion9();
-      const curScale = new Vector317();
-      const bindPos = new Vector317();
-      const bindQuat = new Quaternion9();
-      const bindScale = new Vector317();
+      const curPos = new Vector318();
+      const curQuat = new Quaternion10();
+      const curScale = new Vector318();
+      const bindPos = new Vector318();
+      const bindQuat = new Quaternion10();
+      const bindScale = new Vector318();
       for (const bone of bones) {
         const wBind = bindWorldByBone.get(bone);
         if (!wBind) continue;
@@ -25037,7 +25096,7 @@ function captureHumanoidSkeletons(root2) {
         restMatrix: Array.from(matrix.elements)
       };
     });
-    const frame = hips ? externalOf(hips, root2, boneSet) : { rotation: new Quaternion9(), scale: 1 };
+    const frame = hips ? externalOf(hips, root2, boneSet) : { rotation: new Quaternion10(), scale: 1 };
     records2.push({
       bones: listed,
       externalRotation: [frame.rotation.x, frame.rotation.y, frame.rotation.z, frame.rotation.w],
@@ -26111,7 +26170,7 @@ function inferHumanoidImportScale(template) {
   if (!slots?.Hips) return 1;
   const box = boundsOf(template.scene);
   if (box.isEmpty()) return 1;
-  const size = box.getSize(new Vector319());
+  const size = box.getSize(new Vector320());
   const height = Math.max(0, size.y);
   if (height >= 8e-3 && height < 0.04) return 100;
   if (height >= 0.04 && height < 0.45) return 10;
@@ -26127,7 +26186,7 @@ function rememberHumanoidImportScale(assetId, template, forceRecalc = false) {
   const recommended = inferHumanoidImportScale(template);
   if (recommended === 1) return;
   if (existing !== void 0 && existing !== 1) {
-    const rawHeight = Math.max(0, boundsOf(template.scene).getSize(new Vector319()).y);
+    const rawHeight = Math.max(0, boundsOf(template.scene).getSize(new Vector320()).y);
     const effective = rawHeight * existing;
     if (effective >= 0.45 && effective <= 20) return;
   }
@@ -26501,6 +26560,13 @@ function collectSceneDependencies(nodes, picture, assets, extraAssetIds = []) {
       if ("materialHint" in asset && asset.materialHint) {
         scanUnknownRefs(asset.materialHint, assets, collected);
       }
+    } else if (asset.kind === "effect") {
+      if ("materialAssetId" in asset && typeof asset.materialAssetId === "string") {
+        addAsset(asset.materialAssetId);
+      }
+      if ("simulation" in asset && asset.simulation) {
+        scanUnknownRefs(asset.simulation, assets, collected);
+      }
     }
   };
   for (const id of extraAssetIds) addAsset(id);
@@ -26522,6 +26588,11 @@ function collectSceneDependencies(nodes, picture, assets, extraAssetIds = []) {
     if (node.clipAssetId) addAsset(node.clipAssetId);
     if (node.overlayAssetId) addAsset(node.overlayAssetId);
     if (node.screen?.documentId) addAsset(node.screen.documentId);
+    if (node.effect) {
+      if (node.effect.assetId) addAsset(node.effect.assetId);
+      if (node.effect.materialAssetId) addAsset(node.effect.materialAssetId);
+      if (node.effect.simulation) scanUnknownRefs(node.effect.simulation, assets, collected);
+    }
     const effectiveSlots = resolveEffectiveNodeSlots(node);
     if (Array.isArray(effectiveSlots)) {
       for (const slot of effectiveSlots) {
@@ -26546,18 +26617,37 @@ function collectSceneDependencies(nodes, picture, assets, extraAssetIds = []) {
   for (const id of [...collected]) addAsset(id);
   return [...collected];
 }
+function isPackedOrDataTexture(fileName) {
+  const stem = fileName.replace(/\.[^.]+$/, "").trim();
+  return /(?:[_-\s]+)(?:normal|norm|nrm|nor|bump|n|metallicgloss|metallicsmoothness|maskmap|mask|ms|metallicroughness|metalrough|orm|arm|metallic|metalness|metal|roughness|rough|gloss|m|occlusion|ambientocclusion|ao|occ)$/i.test(stem);
+}
 async function cookTextureToWebp(bytes, fileName, maxSize, convertToWebp) {
   const lower = fileName.toLowerCase();
   if (lower.endsWith(".ktx2") || lower.endsWith(".svg") || lower.endsWith(".tga")) return null;
+  if (isPackedOrDataTexture(fileName)) return null;
   if (!convertToWebp && maxSize <= 0) return null;
   if (typeof createImageBitmap !== "function") return null;
   const mime = lower.endsWith(".png") ? "image/png" : lower.endsWith(".webp") ? "image/webp" : "image/jpeg";
   const copy = new Uint8Array(bytes.byteLength);
   copy.set(bytes);
   const blob = new Blob([copy.buffer], { type: mime });
-  const bitmap = await createImageBitmap(blob).catch(() => null);
+  const bitmap = await createImageBitmap(blob, {
+    imageOrientation: "none",
+    premultiplyAlpha: "none",
+    colorSpaceConversion: "none"
+  }).catch(() => null);
   if (!bitmap) return null;
   try {
+    if (!lower.endsWith(".jpg") && !lower.endsWith(".jpeg")) {
+      try {
+        const rgba = readUnpremultipliedRgba(bitmap, bitmap.width, bitmap.height);
+        for (let i = 3; i < rgba.length; i += 16) {
+          if ((rgba[i] ?? 255) < 250) return null;
+        }
+      } catch {
+        return null;
+      }
+    }
     let targetW = bitmap.width;
     let targetH = bitmap.height;
     const longest = Math.max(targetW, targetH);
@@ -32108,25 +32198,25 @@ function registerPictureAndProjectCommands() {
 }
 
 // src/core/commands/domains/scene.ts
-import { Euler as Euler4, Matrix4 as Matrix46, Quaternion as Quaternion11, Vector3 as Vector320 } from "three";
+import { Euler as Euler5, Matrix4 as Matrix46, Quaternion as Quaternion12, Vector3 as Vector321 } from "three";
 var RAD_TO_DEG = 180 / Math.PI;
 function computeLookAtRotationDeg(kind, from, target) {
-  const eye = new Vector320(from[0], from[1], from[2]);
-  const tgt = new Vector320(target[0], target[1], target[2]);
+  const eye = new Vector321(from[0], from[1], from[2]);
+  const tgt = new Vector321(target[0], target[1], target[2]);
   const dir = tgt.clone().sub(eye);
   if (dir.lengthSq() < 1e-8) return [0, 0, 0];
   dir.normalize();
   const round2 = (n) => Math.round(n * 100) / 100;
   if (kind === "directional-light" || kind === "spot-light") {
-    const q = new Quaternion11().setFromUnitVectors(new Vector320(0, -1, 0), dir);
-    const e2 = new Euler4().setFromQuaternion(q, "XYZ");
+    const q = new Quaternion12().setFromUnitVectors(new Vector321(0, -1, 0), dir);
+    const e2 = new Euler5().setFromQuaternion(q, "XYZ");
     return [round2(e2.x * RAD_TO_DEG), round2(e2.y * RAD_TO_DEG), round2(e2.z * RAD_TO_DEG)];
   }
-  const up = Math.abs(dir.y) > 0.99 ? new Vector320(0, 0, 1) : new Vector320(0, 1, 0);
+  const up = Math.abs(dir.y) > 0.99 ? new Vector321(0, 0, 1) : new Vector321(0, 1, 0);
   const mat = new Matrix46();
   if (kind === "camera") mat.lookAt(eye, tgt, up);
   else mat.lookAt(tgt, eye, up);
-  const e = new Euler4().setFromRotationMatrix(mat, "XYZ");
+  const e = new Euler5().setFromRotationMatrix(mat, "XYZ");
   return [round2(e.x * RAD_TO_DEG), round2(e.y * RAD_TO_DEG), round2(e.z * RAD_TO_DEG)];
 }
 var VALID_KINDS = [

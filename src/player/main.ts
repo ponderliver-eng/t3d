@@ -1,41 +1,24 @@
 import {
-  ACESFilmicToneMapping,
-  AgXToneMapping,
   AmbientLight,
   AnimationAction,
   AnimationClip,
   AnimationMixer,
-  BoxGeometry,
-  CapsuleGeometry,
-  CineonToneMapping,
   Color,
-  ConeGeometry,
-  CylinderGeometry,
   DirectionalLight,
   EquirectangularReflectionMapping,
-  Euler,
   Fog,
   Group,
-  HemisphereLight,
-  LinearToneMapping,
   LoopOnce,
   LoopRepeat,
   Mesh,
   MeshStandardMaterial,
-  NeutralToneMapping,
   NoColorSpace,
-  NoToneMapping,
   Object3D,
   PCFShadowMap,
   PerspectiveCamera,
-  PlaneGeometry,
-  PointLight,
   Quaternion,
   Raycaster,
-  ReinhardToneMapping,
   Scene,
-  SphereGeometry,
-  SpotLight,
   Texture,
   Vector2,
   Vector3,
@@ -63,6 +46,14 @@ import {
   type MaterialEngineHost,
 } from '../runtime/engine/materials'
 import { buildUnityMetallicRoughnessTexture, loadUnpremultipliedTexture } from '../runtime/engine/textures'
+import { buildPlayableClip } from '../runtime/engine/animation'
+import {
+  appendSocketLocalPose,
+  createNodeLight,
+  createPrimitiveGeometry,
+  findModelBoneInScene,
+  resolveToneMapping,
+} from '../runtime/engine/sceneNodes'
 import {
   bindGlobalInputListeners,
   injectVirtualInput,
@@ -74,10 +65,8 @@ import type { PbrSlot, SceneNode, ScenePicture, Vec3 } from '../editor/scene/typ
 import type { GameDatabase } from '../gameplay/types'
 import { activeAnimatorState, stepAnimator } from '../runtime/animation/animator'
 import type { HumanoidRetargetAdjust } from '../runtime/animation/humanoidAdjust'
-import { mergedHumanoidSlots, preserveHumanoidAvatarOverrides, type ModelHumanoidAvatar } from '../runtime/animation/humanoidAvatar'
-import { bindHumanoidClip } from '../runtime/animation/humanoidRetarget'
+import type { ModelHumanoidAvatar } from '../runtime/animation/humanoidAvatar'
 import { describeHumanoid, type ModelHumanoid } from '../runtime/animation/humanoidRig'
-import { lockClipInPlace, maskClip } from '../runtime/animation/playback'
 import { attachAudioListener } from '../runtime/audio'
 import '../runtime/camera'
 import '../runtime/character'
@@ -362,13 +351,7 @@ class LoadingOverlay {
 }
 
 function createGeometryForNode(node: SceneNode) {
-  if (node.kind === 'box') return new BoxGeometry(1, 1, 1)
-  if (node.kind === 'sphere') return new SphereGeometry(0.5, 32, 24)
-  if (node.kind === 'cylinder') return new CylinderGeometry(0.5, 0.5, 1, 24)
-  if (node.kind === 'capsule') return new CapsuleGeometry(0.3, 0.5, 6, 16)
-  if (node.kind === 'cone') return new ConeGeometry(0.5, 1, 24)
-  if (node.kind === 'plane') return new PlaneGeometry(1, 1)
-  return null
+  return createPrimitiveGeometry(node.kind)
 }
 
 interface PlayerAnimEntry {
@@ -437,31 +420,22 @@ function buildBoundClip(
   mask: 'full' | 'upper' | 'lower' = 'full',
   inPlace = false,
 ): AnimationClip {
-  let clip = rawClip
-  if (sourceId !== ownerAssetId) {
-    const targetTpl = assetMgr.getModelTemplate(ownerAssetId)
-    const sourceTpl = assetMgr.getModelTemplate(sourceId)
-    const targetAsset = assetMgr.assets[ownerAssetId]
-    const sourceAsset = assetMgr.assets[sourceId]
-    if (targetTpl?.humanoid.profile) {
-      const targetAvatar = preserveHumanoidAvatarOverrides(targetTpl.humanoid.avatar, targetAsset?.humanoidAvatar) ?? targetTpl.humanoid.avatar
-      const sourceAvatar = preserveHumanoidAvatarOverrides(sourceTpl?.humanoid.avatar, sourceAsset?.humanoidAvatar) ?? sourceTpl?.humanoid.avatar
-      const bound = bindHumanoidClip({
-        clip: rawClip,
-        sourceProfile: sourceTpl?.humanoid.profile ?? null,
-        sourceSkeletons: sourceTpl?.humanoid.skeletons ?? [],
-        sourceAvatar,
-        targetProfile: targetTpl.humanoid.profile,
-        targetSlots: mergedHumanoidSlots(targetAvatar),
-        adjust: targetAsset?.humanoidRetarget ?? null,
-      })
-      if (bound) clip = bound
-    }
-  }
-  if (mask === 'upper') clip = maskClip(clip, 'upperBody')
-  else if (mask === 'lower') clip = maskClip(clip, 'lowerBody')
-  if (inPlace) clip = lockClipInPlace(clip)
-  return clip
+  const targetTpl = sourceId !== ownerAssetId ? assetMgr.getModelTemplate(ownerAssetId) : undefined
+  const sourceTpl = sourceId !== ownerAssetId ? assetMgr.getModelTemplate(sourceId) : undefined
+  const targetAsset = assetMgr.assets[ownerAssetId]
+  const sourceAsset = assetMgr.assets[sourceId]
+  return buildPlayableClip({
+    rawClip,
+    sourceId,
+    ownerAssetId,
+    sourceHumanoid: sourceTpl?.humanoid ?? null,
+    targetHumanoid: targetTpl?.humanoid ?? null,
+    sourceAvatarOverride: sourceAsset?.humanoidAvatar ?? null,
+    targetAvatarOverride: targetAsset?.humanoidAvatar ?? null,
+    targetRetargetAdjust: targetAsset?.humanoidRetarget ?? null,
+    mask,
+    inPlace,
+  })
 }
 
 const compiledShaders = new Map<string, CompiledShaderAsset>()
@@ -812,38 +786,14 @@ function buildStandaloneWorld(
 }
 
 function findPlayerModelBone(root: Object3D, key: string): Object3D | null {
-  let found: Object3D | null = null
-  const walk = (object: Object3D, parentPath: string) => {
-    if (found) return
-    const label = object.name || object.type
-    const path = parentPath ? `${parentPath}/${label}` : label
-    const bone = object.type === 'Bone' || (object as { isBone?: boolean }).isBone
-    if (bone && (path === key || object.name === key)) {
-      found = object
-      return
-    }
-    for (const child of object.children) walk(child, object === root ? '' : path)
-  }
-  for (const child of root.children) walk(child, '')
-  return found
+  return findModelBoneInScene(root, key)
 }
 
 function appendPlayerLocalPose(
   parent: { position: Vector3; quaternion: Quaternion; scale: Vector3 },
   node: Pick<SceneNode, 'position' | 'rotation' | 'scale'>,
 ) {
-  const position = new Vector3(node.position[0], node.position[1], node.position[2])
-    .multiply(parent.scale)
-    .applyQuaternion(parent.quaternion)
-    .add(parent.position)
-  const q = new Quaternion().setFromEuler(
-    new Euler(node.rotation[0] * DEG_TO_RAD, node.rotation[1] * DEG_TO_RAD, node.rotation[2] * DEG_TO_RAD, 'XYZ'),
-  )
-  return {
-    position,
-    quaternion: parent.quaternion.clone().multiply(q),
-    scale: parent.scale.clone().multiply(new Vector3(node.scale[0], node.scale[1], node.scale[2])),
-  }
+  return appendSocketLocalPose(parent, node)
 }
 
 function posePlayerSockets(
@@ -947,46 +897,17 @@ function mountSinglePlayerNode(
         })
       }
     }
-    } else if (node.kind === 'directional-light') {
-      const light = new DirectionalLight(node.color || '#ffffff', node.intensity ?? 2)
-      light.castShadow = Boolean(node.castShadow)
-    light.shadow.mapSize.set(2048, 2048)
-    const distance = Math.max(node.range ?? 20, 4)
-    light.shadow.camera.near = 0.5
-    light.shadow.camera.far = distance * 4
-    light.shadow.camera.left = -distance
-    light.shadow.camera.right = distance
-    light.shadow.camera.top = distance
-    light.shadow.camera.bottom = -distance
-    if (typeof node.shadowBias === 'number') light.shadow.bias = node.shadowBias
-    if (typeof node.shadowNormalBias === 'number') light.shadow.normalBias = node.shadowNormalBias
-    light.target.position.set(0, -1, 0)
+    } else if (
+      node.kind === 'directional-light' ||
+      node.kind === 'point-light' ||
+      node.kind === 'spot-light' ||
+      node.kind === 'hemisphere-light'
+    ) {
+      const light = createNodeLight(node)
       group.add(light)
-    group.add(light.target)
-    } else if (node.kind === 'point-light') {
-    const light = new PointLight(node.color || '#ffffff', node.intensity ?? 2, node.range ?? 15, node.decay ?? 2)
-    light.castShadow = Boolean(node.castShadow)
-    if (typeof node.shadowBias === 'number') light.shadow.bias = node.shadowBias
-    if (typeof node.shadowNormalBias === 'number') light.shadow.normalBias = node.shadowNormalBias
-      group.add(light)
-    } else if (node.kind === 'spot-light') {
-    const light = new SpotLight(
-      node.color || '#ffffff',
-      node.intensity ?? 2,
-      node.range ?? 15,
-      ((node.spotAngle ?? 40) * DEG_TO_RAD),
-      node.penumbra ?? 0.25,
-      node.decay ?? 2,
-    )
-    light.castShadow = Boolean(node.castShadow)
-    if (typeof node.shadowBias === 'number') light.shadow.bias = node.shadowBias
-    if (typeof node.shadowNormalBias === 'number') light.shadow.normalBias = node.shadowNormalBias
-    light.target.position.set(0, -1, 0)
-      group.add(light)
-    group.add(light.target)
-    } else if (node.kind === 'hemisphere-light') {
-    const light = new HemisphereLight(node.color || '#dbeafe', node.groundColor || '#334155', node.intensity ?? 1)
-      group.add(light)
+      if ('target' in light && light.target) {
+        group.add(light.target as Object3D)
+      }
     }
 
   mounted.map.set(node.id, group)
@@ -1050,13 +971,7 @@ function attachTouchOverlay(container: HTMLElement) {
 }
 
 function toneMappingOfPlayer(mode: ScenePicture['toneMapping'] | undefined) {
-  if (mode === 'none') return NoToneMapping
-  if (mode === 'linear') return LinearToneMapping
-  if (mode === 'reinhard') return ReinhardToneMapping
-  if (mode === 'cineon') return CineonToneMapping
-  if (mode === 'agx') return AgXToneMapping
-  if (mode === 'neutral') return NeutralToneMapping
-  return ACESFilmicToneMapping
+  return resolveToneMapping(mode)
 }
 
 function applyPlayerPicture(

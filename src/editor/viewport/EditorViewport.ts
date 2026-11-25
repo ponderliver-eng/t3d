@@ -1,18 +1,9 @@
 import {
   ACESFilmicToneMapping,
-  AgXToneMapping,
-  CineonToneMapping,
-  LinearToneMapping,
-  NeutralToneMapping,
-  NoToneMapping,
-  ReinhardToneMapping,
   AmbientLight,
   Box3,
   BoxGeometry,
-  CapsuleGeometry,
   Color,
-  ConeGeometry,
-  CylinderGeometry,
   DirectionalLight,
   Group,
   HemisphereLight,
@@ -24,19 +15,16 @@ import {
   PCFShadowMap,
   PerspectiveCamera,
   Plane,
-  PlaneGeometry,
   PointLight,
   Quaternion,
   Raycaster,
   Scene,
-  SphereGeometry,
   SpotLight,
   SRGBColorSpace,
   Vector2,
   Vector3,
   Fog,
   LoopOnce,
-  LoopRepeat,
   AnimationMixer,
   type AnimationAction,
   type BufferGeometry,
@@ -51,6 +39,15 @@ import { clipDuration, findModelBone, findModelObject, getModelTemplate, instant
 import { clipsForSkeleton, humanoidBindingKey } from '../animation/humanoidPlayback'
 import { activeAnimatorState, stepAnimator } from '../animation/animator'
 import { lockClipInPlace, maskClip } from '../animation/playback'
+import {
+  beginActionBlend,
+  configureAnimationAction,
+  resolveBodyPlaybackSource,
+  resolveOverlayPlaybackSource,
+  stepActionBlend,
+  type ActionBlend,
+} from '../../runtime/engine/animation'
+import { createNodeLight, createPrimitiveGeometry, resolveToneMapping } from '../../runtime/engine/sceneNodes'
 import { useAssetStore } from '../assets/library'
 import { useCodeAssetStore } from '../../core/codeAssets/workspace'
 import { bindTextureRenderer, environmentFor } from '../assets/textures'
@@ -124,15 +121,6 @@ interface ViewData {
   syncedEditing?: boolean
   syncedHelpers?: boolean
   syncedLayerBit?: number
-}
-
-interface ActionBlend {
-  from?: AnimationAction
-  to: AnimationAction
-  start: number
-  duration: number
-  loop: boolean
-  speed: number
 }
 
 interface Baseline {
@@ -2112,13 +2100,7 @@ export class EditorViewport {
   }
 
   private toneMappingOf(mode: ToneMap) {
-    if (mode === 'none') return NoToneMapping
-    if (mode === 'linear') return LinearToneMapping
-    if (mode === 'reinhard') return ReinhardToneMapping
-    if (mode === 'cineon') return CineonToneMapping
-    if (mode === 'agx') return AgXToneMapping
-    if (mode === 'neutral') return NeutralToneMapping
-    return ACESFilmicToneMapping
+    return resolveToneMapping(mode)
   }
 
   private applyPicture() {
@@ -2217,49 +2199,11 @@ export class EditorViewport {
   }
 
   private playbackSource(node: SceneNode) {
-    const animator = node.animator?.enabled ? activeAnimatorState(node.animator) : undefined
-    const overlayOn = Boolean(node.overlayClip && node.overlayPlaying)
-    if (animator) {
-      const mask = animator.mask && animator.mask !== 'full' ? animator.mask : 'full' as const
-      return {
-        sourceId: animator.clipAssetId || node.assetId || '',
-        clip: animator.clip,
-        loop: animator.loop,
-        speed: Number.isFinite(animator.speed) ? animator.speed : 1,
-        fade: node.clipFade ?? 0.15,
-        inPlace: animator.inPlace ?? node.clipInPlace === true,
-        mask: overlayOn && mask === 'full' ? 'lower' as const : mask,
-        playing: node.clipPlaying,
-        time: node.clipTime,
-      }
-    }
-    const mask = node.clipMask === 'upper' || node.clipMask === 'lower' ? node.clipMask : 'full' as const
-    return {
-      sourceId: node.clipAssetId || node.assetId || '',
-      clip: node.clip,
-      loop: node.clipLoop !== false,
-      speed: node.clipSpeed ?? 1,
-      fade: node.clipFade ?? 0.15,
-      inPlace: node.clipInPlace === true,
-      mask: overlayOn && mask === 'full' ? 'lower' as const : mask,
-      playing: node.clipPlaying,
-      time: node.clipTime,
-    }
+    return resolveBodyPlaybackSource(node)
   }
 
   private overlaySource(node: SceneNode) {
-    if (!node.overlayClip) return null
-    return {
-      sourceId: node.overlayAssetId || node.assetId || '',
-      clip: node.overlayClip,
-      loop: node.overlayLoop === true,
-      speed: 1,
-      fade: node.clipFade ?? 0.15,
-      inPlace: true,
-      mask: 'upper' as const,
-      playing: node.overlayPlaying === true,
-      time: node.overlayTime ?? 0,
-    }
+    return resolveOverlayPlaybackSource(node)
   }
 
   private actionKey(ownerId: string, sourceId: string, clipName: string, mask: 'full' | 'upper' | 'lower', inPlace: boolean) {
@@ -2297,9 +2241,7 @@ export class EditorViewport {
   }
 
   private configureAction(action: AnimationAction, loop: boolean, speed: number) {
-    action.setLoop(loop ? LoopRepeat : LoopOnce, loop ? Infinity : 1)
-    action.clampWhenFinished = !loop
-    action.timeScale = speed
+    configureAnimationAction(action, loop, speed)
   }
 
   private beginBlend(
@@ -2311,70 +2253,11 @@ export class EditorViewport {
     fade: number,
     keep?: AnimationAction,
   ) {
-    const duration = Math.max(0, fade)
-    const previousDuration = previous?.getClip().duration || 1
-    const nextDuration = next.getClip().duration || 1
-    const phase = previous ? ((previous.time % previousDuration) + previousDuration) % previousDuration / previousDuration : 0
-    if (data.actions) {
-      for (const item of data.actions.values()) {
-        if (item === previous || item === next || item === keep) continue
-        item.stop()
-      }
-    }
-    this.configureAction(next, loop, speed)
-    next.stopFading()
-    next.enabled = true
-    next.paused = false
-    next.weight = duration > 0 && previous && previous !== next ? 0 : 1
-    next.time = phase * nextDuration
-    next.play()
-    if (previous && previous !== next) {
-      previous.stopFading()
-      previous.enabled = true
-      previous.paused = false
-      previous.weight = 1
-      previous.play()
-    }
-    const blend = { from: previous, to: next, start: data.mixer?.time ?? 0, duration, loop, speed }
-    return duration > 0 && previous && previous !== next ? blend : this.finishBlend(data, blend, keep)
-  }
-
-  /** 淡出结束后把目标动作卸掉再绑上，清掉全身轨残留的混合权重。 */
-  private finishBlend(data: ViewData, blend: ActionBlend, keep?: AnimationAction) {
-    const time = blend.to.time
-    if (data.actions) {
-      for (const item of data.actions.values()) {
-        if (item === keep) continue
-        item.stop()
-      }
-    } else if (blend.from && blend.from !== blend.to && blend.from !== keep) {
-      blend.from.stop()
-    }
-    this.configureAction(blend.to, blend.loop, blend.speed)
-    blend.to.stopFading()
-    blend.to.enabled = true
-    blend.to.paused = false
-    blend.to.weight = 1
-    blend.to.time = time
-    blend.to.play()
-    return undefined
+    return beginActionBlend(data.mixer, data.actions, previous, next, loop, speed, fade, keep)
   }
 
   private stepBlend(data: ViewData, blend: ActionBlend | undefined, keep?: AnimationAction) {
-    if (!blend || !data.mixer) return blend
-    const elapsed = data.mixer.time - blend.start
-    const t = blend.duration <= 0 ? 1 : Math.min(1, elapsed / blend.duration)
-    const from = blend.from
-    if (t < 1 && from && from !== blend.to) {
-      from.enabled = true
-      from.paused = false
-      from.weight = 1 - t
-      blend.to.enabled = true
-      blend.to.paused = false
-      blend.to.weight = t
-      return blend
-    }
-    return this.finishBlend(data, blend, keep)
+    return stepActionBlend(data.mixer, data.actions, blend, keep)
   }
 
   private syncClip(data: ViewData, node: SceneNode) {
@@ -2719,46 +2602,11 @@ function markHelper(object: Object3D, blockRaycast = false) {
 }
 
 function meshGeometry(kind: SceneNode['kind']): BufferGeometry {
-  switch (kind) {
-    case 'sphere': return new SphereGeometry(0.5, 32, 24)
-    case 'plane': return new PlaneGeometry(1, 1)
-    case 'cylinder': return new CylinderGeometry(0.5, 0.5, 1, 24)
-    case 'capsule': return new CapsuleGeometry(0.3, 0.5, 6, 16)
-    case 'cone': return new ConeGeometry(0.5, 1, 24)
-    default: return new BoxGeometry(1, 1, 1)
-  }
+  return createPrimitiveGeometry(kind) ?? new BoxGeometry(1, 1, 1)
 }
 
 function createLight(node: SceneNode): Light {
-  if (node.kind === 'directional-light') {
-    const light = new DirectionalLight(node.color, node.intensity)
-    light.castShadow = node.castShadow
-    light.shadow.mapSize.set(2048, 2048)
-    light.shadow.camera.near = 0.5
-    light.shadow.camera.far = Math.max(node.range, 4) * 4
-    light.shadow.camera.left = -node.range
-    light.shadow.camera.right = node.range
-    light.shadow.camera.top = node.range
-    light.shadow.camera.bottom = -node.range
-    light.shadow.bias = node.shadowBias
-    light.shadow.normalBias = node.shadowNormalBias
-    return light
-  }
-  if (node.kind === 'point-light') {
-    const light = new PointLight(node.color, node.intensity, node.range, node.decay)
-    light.castShadow = node.castShadow
-    light.shadow.bias = node.shadowBias
-    light.shadow.normalBias = node.shadowNormalBias
-    return light
-  }
-  if (node.kind === 'spot-light') {
-    const light = new SpotLight(node.color, node.intensity, node.range, node.spotAngle * DEG, node.penumbra, node.decay)
-    light.castShadow = node.castShadow
-    light.shadow.bias = node.shadowBias
-    light.shadow.normalBias = node.shadowNormalBias
-    return light
-  }
-  return new HemisphereLight(node.color, node.groundColor, node.intensity)
+  return createNodeLight(node)
 }
 
 function mountGuide(group: Group, guide: SceneGuide, nodeId: string) {

@@ -14,6 +14,7 @@ import { patchAssetMeta, readFileBytes, readModelArtifact, writeModelArtifact } 
 import { type FileAsset, type MaterialAsset, useAssetStore } from './library'
 import { applyModelMaterials, editorMaterialHost, normalizeSlot } from './materials'
 import { instantiateModelScene, normalizeMaterialKey as engineNormalizeMaterialKey, normalizeSkinIndex, readModelSlots } from '../../runtime/engine/materials'
+import { findModelBoneInScene } from '../../runtime/engine/sceneNodes'
 import { mergedHumanoidSlots, preserveHumanoidAvatarOverrides } from '../animation/humanoidAvatar'
 import { bindHumanoidClip } from '../animation/humanoidRetarget'
 import { releaseHumanoidPlayback } from '../animation/humanoidPlayback'
@@ -94,20 +95,7 @@ export function slotIndicesOfModelObject(object: Object3D): number[] {
 }
 
 export function findModelBone(root: Object3D, key: string): Object3D | null {
-  let found: Object3D | null = null
-  const walk = (object: Object3D, parentPath: string) => {
-    if (found) return
-    const label = object.name || object.type
-    const path = parentPath ? `${parentPath}/${label}` : label
-    const bone = object.type === 'Bone' || (object as { isBone?: boolean }).isBone
-    if (bone && (path === key || object.name === key)) {
-      found = object
-      return
-    }
-    for (const child of object.children) walk(child, object === root ? '' : path)
-  }
-  for (const child of root.children) walk(child, '')
-  return found
+  return findModelBoneInScene(root, key)
 }
 
 const templates = new Map<string, ModelTemplate>()
