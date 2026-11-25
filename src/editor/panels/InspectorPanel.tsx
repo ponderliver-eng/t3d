@@ -1298,7 +1298,8 @@ function MaterialEditor({ slot, onChange }: { slot: PbrSlot, onChange: (patch: P
     }
     return out
   })()
-  const lit = !isCustom && (shaderKind === 'lit' || shaderKind === 'unity-standard')
+  const lit = !isCustom && (shaderKind === 'lit' || shaderKind === 'physical' || shaderKind === 'unity-standard')
+  const isPhysical = shaderKind === 'physical'
   const isUnity = shaderKind === 'unity-standard'
   const particle = shaderKind === 'particle-unlit'
   const textured = !isCustom && shaderKind !== 'unlit-color'
@@ -1371,6 +1372,138 @@ function MaterialEditor({ slot, onChange }: { slot: PbrSlot, onChange: (patch: P
           </>
         )}
       </Section>}
+      {isPhysical && (
+        <>
+          <Section title={t('material.clearcoatSection')} color="#7dd3fc">
+            <label className="field">
+              <span>{t('material.clearcoatEnabled')}</span>
+              <input
+                type="checkbox"
+                checked={slot.clearcoatEnabled ?? ((slot.clearcoat ?? 0) > 0 || Boolean(slot.clearcoatMapAssetId))}
+                onChange={event => {
+                  const checked = event.target.checked
+                  onChange({
+                    clearcoatEnabled: checked,
+                    ...(checked && (slot.clearcoat ?? 0) <= 0 && !slot.clearcoatMapAssetId ? { clearcoat: 1 } : {}),
+                  })
+                }}
+              />
+            </label>
+            {(slot.clearcoatEnabled ?? ((slot.clearcoat ?? 0) > 0 || Boolean(slot.clearcoatMapAssetId))) && (
+              <>
+                <div className="iv2-pair">
+                  <NumberRow label={t('material.clearcoat')} value={slot.clearcoat ?? 0} min={0} max={1} step={0.01} gesture={t('gesture.material')} onChange={clearcoat => onChange({ clearcoat })} />
+                  <NumberRow label={t('material.clearcoatRoughness')} value={slot.clearcoatRoughness ?? 0} min={0} max={1} step={0.01} gesture={t('gesture.material')} onChange={clearcoatRoughness => onChange({ clearcoatRoughness })} />
+                </div>
+                <MapField label={t('material.clearcoatMap')} value={slot.clearcoatMapAssetId ?? null} onChange={clearcoatMapAssetId => onChange({ clearcoatMapAssetId })} />
+                <MapField label={t('material.clearcoatRoughnessMap')} value={slot.clearcoatRoughnessMapAssetId ?? null} onChange={clearcoatRoughnessMapAssetId => onChange({ clearcoatRoughnessMapAssetId })} />
+                <MapField label={t('material.clearcoatNormalMap')} value={slot.clearcoatNormalMapAssetId ?? null} onChange={clearcoatNormalMapAssetId => onChange({ clearcoatNormalMapAssetId })} />
+              </>
+            )}
+          </Section>
+
+          <Section title={t('material.transmissionSection')} color="#67e8f9">
+            <label className="field">
+              <span>{t('material.transmissionEnabled')}</span>
+              <input
+                type="checkbox"
+                checked={slot.transmissionEnabled ?? ((slot.transmission ?? 0) > 0)}
+                onChange={event => {
+                  const checked = event.target.checked
+                  onChange({
+                    transmissionEnabled: checked,
+                    ...(checked && (slot.transmission ?? 0) <= 0 ? { transmission: 1 } : {}),
+                  })
+                }}
+              />
+            </label>
+            {(slot.transmissionEnabled ?? ((slot.transmission ?? 0) > 0)) && (
+              <>
+                <div className="iv2-pair">
+                  <NumberRow label={t('material.transmission')} value={slot.transmission ?? 0} min={0} max={1} step={0.01} gesture={t('gesture.material')} onChange={transmission => onChange({ transmission })} />
+                  <NumberRow label={t('material.ior')} value={slot.ior ?? 1.5} min={1} max={2.5} step={0.01} gesture={t('gesture.material')} onChange={ior => onChange({ ior })} />
+                  <NumberRow label={t('material.thickness')} value={slot.thickness ?? 0} min={0} max={10} step={0.05} gesture={t('gesture.material')} onChange={thickness => onChange({ thickness })} />
+                  <NumberRow label={t('material.attenuationDistance')} value={slot.attenuationDistance ?? 0} min={0} max={50} step={0.1} gesture={t('gesture.material')} onChange={attenuationDistance => onChange({ attenuationDistance })} />
+                </div>
+                <ColorField label={t('material.attenuationColor')} value={slot.attenuationColor ?? '#ffffff'} gesture={t('gesture.material')} onChange={attenuationColor => onChange({ attenuationColor })} />
+              </>
+            )}
+          </Section>
+
+          <Section title={t('material.sheenSection')} color="#c4b5fd">
+            <label className="field">
+              <span>{t('material.sheenEnabled')}</span>
+              <input
+                type="checkbox"
+                checked={slot.sheenEnabled ?? ((slot.sheen ?? 0) > 0)}
+                onChange={event => {
+                  const checked = event.target.checked
+                  onChange({
+                    sheenEnabled: checked,
+                    ...(checked && (slot.sheen ?? 0) <= 0 ? { sheen: 1 } : {}),
+                  })
+                }}
+              />
+            </label>
+            {(slot.sheenEnabled ?? ((slot.sheen ?? 0) > 0)) && (
+              <>
+                <div className="iv2-pair">
+                  <NumberRow label={t('material.sheen')} value={slot.sheen ?? 0} min={0} max={1} step={0.01} gesture={t('gesture.material')} onChange={sheen => onChange({ sheen })} />
+                  <NumberRow label={t('material.sheenRoughness')} value={slot.sheenRoughness ?? 1} min={0} max={1} step={0.01} gesture={t('gesture.material')} onChange={sheenRoughness => onChange({ sheenRoughness })} />
+                </div>
+                <ColorField label={t('material.sheenColor')} value={slot.sheenColor ?? '#ffffff'} gesture={t('gesture.material')} onChange={sheenColor => onChange({ sheenColor })} />
+              </>
+            )}
+          </Section>
+
+          <Section title={t('material.iridescenceSection')} color="#f9a8d4">
+            <label className="field">
+              <span>{t('material.iridescenceEnabled')}</span>
+              <input
+                type="checkbox"
+                checked={slot.iridescenceEnabled ?? ((slot.iridescence ?? 0) > 0)}
+                onChange={event => {
+                  const checked = event.target.checked
+                  onChange({
+                    iridescenceEnabled: checked,
+                    ...(checked && (slot.iridescence ?? 0) <= 0 ? { iridescence: 1 } : {}),
+                  })
+                }}
+              />
+            </label>
+            {(slot.iridescenceEnabled ?? ((slot.iridescence ?? 0) > 0)) && (
+              <div className="iv2-pair">
+                <NumberRow label={t('material.iridescence')} value={slot.iridescence ?? 0} min={0} max={1} step={0.01} gesture={t('gesture.material')} onChange={iridescence => onChange({ iridescence })} />
+                <NumberRow label={t('material.iridescenceIOR')} value={slot.iridescenceIOR ?? 1.3} min={1} max={2.5} step={0.01} gesture={t('gesture.material')} onChange={iridescenceIOR => onChange({ iridescenceIOR })} />
+                <NumberRow label={t('material.iridescenceThickness')} value={slot.iridescenceThickness ?? 400} min={100} max={1000} step={10} gesture={t('gesture.material')} onChange={iridescenceThickness => onChange({ iridescenceThickness })} />
+              </div>
+            )}
+          </Section>
+
+          <Section title={t('material.specularSection')} color="#fcd34d">
+            <label className="field">
+              <span>{t('material.specularEnabled')}</span>
+              <input
+                type="checkbox"
+                checked={slot.specularEnabled ?? (
+                  (slot.specularIntensity !== undefined && slot.specularIntensity !== 1)
+                  || (slot.specularColor !== undefined && slot.specularColor.toLowerCase() !== '#ffffff')
+                )}
+                onChange={event => onChange({ specularEnabled: event.target.checked })}
+              />
+            </label>
+            {(slot.specularEnabled ?? (
+              (slot.specularIntensity !== undefined && slot.specularIntensity !== 1)
+              || (slot.specularColor !== undefined && slot.specularColor.toLowerCase() !== '#ffffff')
+            )) && (
+              <>
+                <NumberRow label={t('material.specularIntensity')} value={slot.specularIntensity ?? 1} min={0} max={2} step={0.01} gesture={t('gesture.material')} onChange={specularIntensity => onChange({ specularIntensity })} />
+                <ColorField label={t('material.specularColor')} value={slot.specularColor ?? '#ffffff'} gesture={t('gesture.material')} onChange={specularColor => onChange({ specularColor })} />
+              </>
+            )}
+          </Section>
+        </>
+      )}
       {lit && (
         <Section title={t('material.emission')} color="#f2cf7f">
           <ColorField label={t('material.emissionColor')} value={slot.emissive} gesture={t('gesture.material')} onChange={emissive => onChange({ emissive })} />
@@ -2076,6 +2209,7 @@ function ShaderSelect({
 
   const builtinOptions: Array<{ value: SurfaceShader, label: string }> = [
     { value: 'lit', label: t('material.lit') },
+    { value: 'physical', label: t('material.physical') },
     { value: 'unity-standard', label: t('material.unityStandard') },
     { value: 'unlit-color', label: t('material.unlitColor') },
     { value: 'unlit-texture', label: t('material.unlitTexture') },

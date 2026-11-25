@@ -8,6 +8,7 @@ import {
   IntType,
   Mesh,
   MeshBasicMaterial,
+  MeshPhysicalMaterial,
   MeshStandardMaterial,
   MultiplyBlending,
   NormalBlending,
@@ -88,6 +89,32 @@ export function normalizeSlot(slot: Partial<PbrSlot> & Pick<PbrSlot, 'name' | 'c
     depthWrite: slot.depthWrite ?? DEFAULTS.depthWrite,
     wireframe: slot.wireframe ?? DEFAULTS.wireframe,
     particleBlend: slot.particleBlend,
+    clearcoatEnabled: slot.clearcoatEnabled ?? ((slot.clearcoat ?? 0) > 0 || Boolean(slot.clearcoatMapAssetId)),
+    clearcoat: slot.clearcoat ?? 0,
+    clearcoatRoughness: slot.clearcoatRoughness ?? 0,
+    clearcoatMapAssetId: slot.clearcoatMapAssetId ?? null,
+    clearcoatRoughnessMapAssetId: slot.clearcoatRoughnessMapAssetId ?? null,
+    clearcoatNormalMapAssetId: slot.clearcoatNormalMapAssetId ?? null,
+    transmissionEnabled: slot.transmissionEnabled ?? ((slot.transmission ?? 0) > 0),
+    transmission: slot.transmission ?? 0,
+    ior: slot.ior ?? 1.5,
+    thickness: slot.thickness ?? 0,
+    attenuationColor: slot.attenuationColor ?? '#ffffff',
+    attenuationDistance: slot.attenuationDistance ?? 0,
+    sheenEnabled: slot.sheenEnabled ?? ((slot.sheen ?? 0) > 0),
+    sheen: slot.sheen ?? 0,
+    sheenRoughness: slot.sheenRoughness ?? 1,
+    sheenColor: slot.sheenColor ?? '#ffffff',
+    iridescenceEnabled: slot.iridescenceEnabled ?? ((slot.iridescence ?? 0) > 0),
+    iridescence: slot.iridescence ?? 0,
+    iridescenceIOR: slot.iridescenceIOR ?? 1.3,
+    iridescenceThickness: slot.iridescenceThickness ?? 400,
+    specularEnabled: slot.specularEnabled ?? (
+      (slot.specularIntensity !== undefined && slot.specularIntensity !== 1)
+      || (slot.specularColor !== undefined && slot.specularColor.toLowerCase() !== '#ffffff')
+    ),
+    specularIntensity: slot.specularIntensity ?? 1,
+    specularColor: slot.specularColor ?? '#ffffff',
   }
 }
 
@@ -196,11 +223,13 @@ export function materialSlotToken(material: Material | null | undefined): number
 }
 
 function ensureClass(material: Material, slot: SurfaceSlot): Material {
-  const basic = slot.shader !== 'lit' && slot.shader !== 'unity-standard' && !slot.shader.startsWith('custom:')
+  const basic = slot.shader !== 'lit' && slot.shader !== 'physical' && slot.shader !== 'unity-standard' && !slot.shader.startsWith('custom:')
+  const physical = slot.shader === 'physical'
   const wasCustom = Boolean(material.userData?.t3dCustomShaderKey)
   if (!wasCustom && basic && (material as MeshBasicMaterial).isMeshBasicMaterial) return material
-  if (!wasCustom && !basic && (material as MeshStandardMaterial).isMeshStandardMaterial) return material
-  const next = basic ? new MeshBasicMaterial() : new MeshStandardMaterial()
+  if (!wasCustom && physical && (material as MeshPhysicalMaterial).isMeshPhysicalMaterial) return material
+  if (!wasCustom && !basic && !physical && (material as MeshStandardMaterial).isMeshStandardMaterial && !(material as MeshPhysicalMaterial).isMeshPhysicalMaterial) return material
+  const next = basic ? new MeshBasicMaterial() : physical ? new MeshPhysicalMaterial() : new MeshStandardMaterial()
   next.name = material.name
   const token = materialSlotToken(material)
   if (token != null) next.userData.t3dSlot = token
@@ -209,20 +238,29 @@ function ensureClass(material: Material, slot: SurfaceSlot): Material {
 
 function assignMapWithHost(
   material: MeshStandardMaterial | MeshBasicMaterial,
-  key: 'map' | 'normalMap' | 'roughnessMap' | 'metalnessMap' | 'emissiveMap' | 'aoMap',
+  key:
+    | 'map'
+    | 'normalMap'
+    | 'roughnessMap'
+    | 'metalnessMap'
+    | 'emissiveMap'
+    | 'aoMap'
+    | 'clearcoatMap'
+    | 'clearcoatRoughnessMap'
+    | 'clearcoatNormalMap',
   assetId: string | null,
   colorMap: boolean,
   host: MaterialEngineHost,
   unityMetallicGloss = false,
 ) {
   if (!('map' in material) && key !== 'map') return
-  const target = material as MeshStandardMaterial
+  const target = material as MeshPhysicalMaterial
   const embedded = (material.userData as Record<string, unknown>)[`embedded_${key}`]
   if (embedded === undefined) {
     ;(material.userData as Record<string, unknown>)[`embedded_${key}`] = target[key] ?? null
   }
   if (!assetId) {
-    const fallback = ((material.userData as Record<string, unknown>)[`embedded_${key}`] ?? null) as MeshStandardMaterial[typeof key]
+    const fallback = ((material.userData as Record<string, unknown>)[`embedded_${key}`] ?? null) as MeshPhysicalMaterial[typeof key]
     if (target[key] !== fallback) {
       target[key] = fallback
       material.needsUpdate = true
@@ -273,7 +311,7 @@ function paintWithHost(material: Material, slot: SurfaceSlot, host: MaterialEngi
     if (structuralChange) material.needsUpdate = true
     return
   }
-  if (slot.shader === 'lit' || slot.shader === 'unity-standard') {
+  if (slot.shader === 'lit' || slot.shader === 'physical' || slot.shader === 'unity-standard') {
     const isUnity = slot.shader === 'unity-standard'
     const hasMrMap = Boolean(slot.metallicRoughnessAssetId)
     standard.metalness = isUnity && hasMrMap ? 1 : slot.metalness
@@ -289,6 +327,45 @@ function paintWithHost(material: Material, slot: SurfaceSlot, host: MaterialEngi
     assignMapWithHost(standard, 'metalnessMap', slot.metallicRoughnessAssetId, false, host, isUnity)
     assignMapWithHost(standard, 'emissiveMap', slot.emissiveAssetId, true, host)
     assignMapWithHost(standard, 'aoMap', slot.aoAssetId ?? slot.metallicRoughnessAssetId, false, host, isUnity && !slot.aoAssetId)
+    if (slot.shader === 'physical' && (standard as MeshPhysicalMaterial).isMeshPhysicalMaterial) {
+      const phys = standard as MeshPhysicalMaterial
+      const nextClearcoat = slot.clearcoatEnabled ? (slot.clearcoat ?? 0) : 0
+      const nextTransmission = slot.transmissionEnabled ? (slot.transmission ?? 0) : 0
+      const nextSheen = slot.sheenEnabled ? (slot.sheen ?? 0) : 0
+      const nextIridescence = slot.iridescenceEnabled ? (slot.iridescence ?? 0) : 0
+      if (
+        (phys.clearcoat > 0) !== (nextClearcoat > 0)
+        || (phys.transmission > 0) !== (nextTransmission > 0)
+        || (phys.sheen > 0) !== (nextSheen > 0)
+        || (phys.iridescence > 0) !== (nextIridescence > 0)
+      ) {
+        structuralChange = true
+      }
+
+      phys.clearcoat = nextClearcoat
+      phys.clearcoatRoughness = slot.clearcoatEnabled ? (slot.clearcoatRoughness ?? 0) : 0
+      assignMapWithHost(phys, 'clearcoatMap', slot.clearcoatEnabled ? (slot.clearcoatMapAssetId ?? null) : null, false, host)
+      assignMapWithHost(phys, 'clearcoatRoughnessMap', slot.clearcoatEnabled ? (slot.clearcoatRoughnessMapAssetId ?? null) : null, false, host)
+      assignMapWithHost(phys, 'clearcoatNormalMap', slot.clearcoatEnabled ? (slot.clearcoatNormalMapAssetId ?? null) : null, false, host)
+
+      phys.transmission = nextTransmission
+      phys.ior = slot.transmissionEnabled ? (slot.ior ?? 1.5) : 1.5
+      phys.thickness = slot.transmissionEnabled ? (slot.thickness ?? 0) : 0
+      phys.attenuationColor.set(slot.transmissionEnabled ? (slot.attenuationColor ?? '#ffffff') : '#ffffff')
+      phys.attenuationDistance = slot.transmissionEnabled && (slot.attenuationDistance ?? 0) > 0 ? slot.attenuationDistance! : Infinity
+
+      phys.sheen = nextSheen
+      phys.sheenRoughness = slot.sheenEnabled ? (slot.sheenRoughness ?? 1) : 1
+      phys.sheenColor.set(slot.sheenEnabled ? (slot.sheenColor ?? '#ffffff') : '#ffffff')
+
+      phys.iridescence = nextIridescence
+      phys.iridescenceIOR = slot.iridescenceEnabled ? (slot.iridescenceIOR ?? 1.3) : 1.3
+      const iriThick = slot.iridescenceThickness ?? 400
+      phys.iridescenceThicknessRange = [100, Math.max(100, iriThick)]
+
+      phys.specularIntensity = slot.specularEnabled ? (slot.specularIntensity ?? 1) : 1
+      phys.specularColor.set(slot.specularEnabled ? (slot.specularColor ?? '#ffffff') : '#ffffff')
+    }
   } else {
     assignMapWithHost(basic, 'map', slot.mapAssetId, true, host)
   }

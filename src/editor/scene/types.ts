@@ -22,7 +22,7 @@ export type NodeKind =
   | 'screen'
   | 'spline'
 
-export type BuiltinSurfaceShader = 'lit' | 'unity-standard' | 'unlit-color' | 'unlit-texture' | 'particle-unlit'
+export type BuiltinSurfaceShader = 'lit' | 'physical' | 'unity-standard' | 'unlit-color' | 'unlit-texture' | 'particle-unlit'
 export type SurfaceShader = BuiltinSurfaceShader | `custom:${string}`
 export type ParticleBlend = 'alpha' | 'premultiply' | 'additive' | 'multiply'
 export type AlphaMode = 'opaque' | 'blend' | 'clip'
@@ -75,6 +75,30 @@ export interface PbrSlot {
   wireframe?: boolean
   /** 粒子无光材质的混合。其它着色器忽略。 */
   particleBlend?: ParticleBlend
+  /** 高级物理 PBR（physical）扩展参数：清漆、透射、丝绒、虹彩、高光。 */
+  clearcoatEnabled?: boolean
+  clearcoat?: number
+  clearcoatRoughness?: number
+  clearcoatMapAssetId?: string | null
+  clearcoatRoughnessMapAssetId?: string | null
+  clearcoatNormalMapAssetId?: string | null
+  transmissionEnabled?: boolean
+  transmission?: number
+  ior?: number
+  thickness?: number
+  attenuationColor?: string
+  attenuationDistance?: number
+  sheenEnabled?: boolean
+  sheen?: number
+  sheenRoughness?: number
+  sheenColor?: string
+  iridescenceEnabled?: boolean
+  iridescence?: number
+  iridescenceIOR?: number
+  iridescenceThickness?: number
+  specularEnabled?: boolean
+  specularIntensity?: number
+  specularColor?: string
 }
 
 export interface NavSettings {

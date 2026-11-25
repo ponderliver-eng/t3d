@@ -49,6 +49,9 @@ const SLOT_TEX_KEYS: Array<keyof PbrSlot> = [
   'metalnessAssetId',
   'emissiveAssetId',
   'aoAssetId',
+  'clearcoatMapAssetId',
+  'clearcoatRoughnessMapAssetId',
+  'clearcoatNormalMapAssetId',
 ]
 
 function scanUnknownRefs(val: unknown, assets: Record<string, ProjectAsset>, out: Set<string>, depth = 0): void {
