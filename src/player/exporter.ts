@@ -7,9 +7,11 @@ import {
   type BuildSettings,
 } from '../core/project/buildSettings'
 import { diagnoseProject } from '../core/query/diagnose'
-import { readModelArtifact } from '../editor/assets/cache'
+import { readModelArtifact, readTextureArtifact } from '../editor/assets/cache'
 import { useAssetStore, type ProjectAsset, type SceneAsset } from '../editor/assets/library'
 import { applyModelMaterialBindings, getModelTemplate, loadModelTemplate } from '../editor/assets/models'
+import { bakeTextureArtifact } from '../editor/assets/textures'
+import { trimBc7ArtifactToMaxSize } from '../runtime/engine/bc7'
 import { readUnpremultipliedRgba } from '../runtime/engine/textures'
 import { assetRecord, directoryProjectName, readAssetBytes } from '../editor/project/disk'
 import { electronBridge, joinProjectPath } from '../editor/project/electronBridge'
@@ -329,6 +331,7 @@ export function buildExportedProjectPayload(
   assetExtOverrides?: Record<string, string>,
   settingsOverride?: BuildSettings,
   includedAssetIds?: Set<string>,
+  assetBc7Overrides?: Record<string, { bc7Url?: string; unityMrBc7Url?: string }>,
 ) {
   const editor = useEditorStore.getState()
   const settings = settingsOverride ?? useBuildSettingsStore.getState().settings
@@ -347,11 +350,14 @@ export function buildExportedProjectPayload(
     const nextFileName = origFileName && assetExtOverrides?.[id]
       ? origFileName.replace(/\.[^.]+$/, '') + assetExtOverrides[id]
       : origFileName
+    const bc7Info = assetBc7Overrides?.[id]
     assetSummary[id] = {
       id: asset.id,
       name: asset.name,
       kind: asset.kind,
       url: rawUrl,
+      ...(bc7Info?.bc7Url ? { bc7Url: bc7Info.bc7Url } : {}),
+      ...(bc7Info?.unityMrBc7Url ? { unityMrBc7Url: bc7Info.unityMrBc7Url } : {}),
       fileName: nextFileName,
       clipCatalog: 'clipCatalog' in asset ? asset.clipCatalog : undefined,
       importScale: 'importScale' in asset ? asset.importScale : undefined,
@@ -549,6 +555,7 @@ export async function exportWebPlayerBundle(
   // 拷贝 & 烘焙资产到 contentDir/project-assets/
   const assetUrlOverrides: Record<string, string> = {}
   const assetExtOverrides: Record<string, string> = {}
+  const assetBc7Overrides: Record<string, { bc7Url?: string; unityMrBc7Url?: string }> = {}
   const totalCount = Math.max(1, targetAssets.length)
 
   for (let i = 0; i < targetAssets.length; i += 1) {
@@ -623,11 +630,48 @@ export async function exportWebPlayerBundle(
     await bridge.fs.writeBinaryFile(destPath, writeBuf)
     assetUrlOverrides[asset.id] = `./project-assets/${rel}`
     files.push(destPath)
+
+    // 桌面端额外带上 BC7 压缩成品（原图仍保留作回退：用于启动封面/图标，以及不支持 BC7 的显卡）
+    if (
+      settings.target === 'electron'
+      && settings.desktopBc7Textures
+      && asset.kind === 'texture'
+      && 'hash' in asset && asset.hash
+      && 'fileName' in asset
+    ) {
+      let bc7Buf = await readTextureArtifact(asset.hash, 'bc7').catch(() => null)
+      if (!bc7Buf) {
+        // 缓存里还没有压缩成品：用工程里的原始文件烘一份（不能用上面转成 WebP 的有损结果，成品缓存是编辑器共用的）
+        const source = await readAssetBytes(asset.id).catch(() => null)
+        if (source) {
+          await bakeTextureArtifact(asset, new Blob([source])).catch(() => false)
+          bc7Buf = await readTextureArtifact(asset.hash, 'bc7').catch(() => null)
+        }
+      }
+      const trimmedBc7 = bc7Buf ? trimBc7ArtifactToMaxSize(bc7Buf, settings.textureMaxSize) : null
+      if (trimmedBc7 && trimmedBc7.byteLength > 0) {
+        // 直接在原文件名后面加后缀，避免 a.png 和 a.jpg 的压缩成品重名
+        const bc7Rel = `${rel}.bc7`
+        const bc7Dest = joinProjectPath(contentDir, `project-assets/${bc7Rel}`)
+        await bridge.fs.writeBinaryFile(bc7Dest, trimmedBc7)
+        assetBc7Overrides[asset.id] = { ...(assetBc7Overrides[asset.id] ?? {}), bc7Url: `./project-assets/${bc7Rel}` }
+        files.push(bc7Dest)
+      }
+      const mrBc7Buf = await readTextureArtifact(asset.hash, 'unity-mr-bc7').catch(() => null)
+      const trimmedMrBc7 = mrBc7Buf ? trimBc7ArtifactToMaxSize(mrBc7Buf, settings.textureMaxSize) : null
+      if (trimmedMrBc7 && trimmedMrBc7.byteLength > 0) {
+        const mrRel = `${rel}.unity-mr.bc7`
+        const mrDest = joinProjectPath(contentDir, `project-assets/${mrRel}`)
+        await bridge.fs.writeBinaryFile(mrDest, trimmedMrBc7)
+        assetBc7Overrides[asset.id] = { ...(assetBc7Overrides[asset.id] ?? {}), unityMrBc7Url: `./project-assets/${mrRel}` }
+        files.push(mrDest)
+      }
+    }
   }
 
   reportProgress?.({ phase: 'write', current: 1, total: 1, label: '正在写入工程配置与清单…' })
   const includedIds = settings.stripUnusedAssets ? requiredSet : undefined
-  const payload = buildExportedProjectPayload(assetUrlOverrides, assetExtOverrides, settings, includedIds)
+  const payload = buildExportedProjectPayload(assetUrlOverrides, assetExtOverrides, settings, includedIds, assetBc7Overrides)
   const projectFile = joinProjectPath(contentDir, 'project.t3d.json')
   const inputFile = joinProjectPath(contentDir, 'input.json')
   const manifestFile = joinProjectPath(contentDir, 'export-manifest.json')

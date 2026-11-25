@@ -4633,11 +4633,11 @@ function setCrowdFormation(nodeIds, center, options) {
   const spacing = Math.max(0.5, options?.spacing ?? 1.8);
   const yaw = options?.facingYaw ?? 0;
   const cos3 = Math.cos(yaw);
-  const sin4 = Math.sin(yaw);
+  const sin3 = Math.sin(yaw);
   const rotateOffset = (lx, lz) => ({
-    x: center.x + lx * cos3 + lz * sin4,
+    x: center.x + lx * cos3 + lz * sin3,
     y: center.y,
-    z: center.z - lx * sin4 + lz * cos3
+    z: center.z - lx * sin3 + lz * cos3
   });
   if (formation === "line") {
     const half = (count - 1) * 0.5;
@@ -5887,21 +5887,29 @@ function defaultHeightFogSettings() {
     opacity: 1,
     affectSky: false,
     heightEnabled: true,
-    heightColor: "#8fa8c8",
-    heightBase: 0,
-    heightRange: 16,
+    heightGradient: true,
+    heightColor: "#5c789c",
+    heightMidColor: "#8fa8c8",
+    heightTopColor: "#c7d9ee",
+    heightBase: 0.3,
+    heightRange: 2,
     heightDensity: 0.85,
     heightFalloff: 1.2,
+    heightNoiseEnabled: false,
+    heightNoiseScale: 0.35,
+    heightNoiseIntensity: 0.4,
+    heightNoiseSpeed: 0.3,
     distanceEnabled: true,
-    distanceColor: "#c9d6e6",
-    distanceStart: 15,
-    distanceEnd: 120,
-    distanceTransition: 30,
+    distanceNearColor: "#b8cbe0",
+    distanceFarColor: "#6f89ab",
+    distanceStart: 5,
+    distanceEnd: 50,
+    distanceTransition: 15,
     distanceDensity: 0.9,
-    noiseEnabled: false,
-    noiseScale: 0.06,
-    noiseIntensity: 0.4,
-    noiseSpeed: 0.3
+    distanceNoiseEnabled: false,
+    distanceNoiseScale: 0.08,
+    distanceNoiseIntensity: 0.35,
+    distanceNoiseSpeed: 0.25
   };
 }
 function clamp4(value, fallback, min4, max5) {
@@ -5919,26 +5927,37 @@ function normalizeHeightFogSettings(value) {
   const raw = value;
   const distanceStart = clamp4(raw.distanceStart, base.distanceStart, 0, 2e3);
   const distanceEnd = Math.max(distanceStart + 0.1, clamp4(raw.distanceEnd, base.distanceEnd, 0.1, 4e3));
+  const legacyNoiseEnabled = typeof raw.noiseEnabled === "boolean" ? raw.noiseEnabled : void 0;
+  const heightColor = colorHex(raw.heightColor, base.heightColor);
+  const legacyDistColor = typeof raw.distanceColor === "string" ? colorHex(raw.distanceColor, base.distanceNearColor) : null;
   return {
     enabled: typeof raw.enabled === "boolean" ? raw.enabled : base.enabled,
     opacity: clamp4(raw.opacity, base.opacity, 0, 1),
     affectSky: typeof raw.affectSky === "boolean" ? raw.affectSky : base.affectSky,
     heightEnabled: typeof raw.heightEnabled === "boolean" ? raw.heightEnabled : base.heightEnabled,
-    heightColor: colorHex(raw.heightColor, base.heightColor),
-    heightBase: clamp4(raw.heightBase, base.heightBase, -1e3, 2e3),
-    heightRange: clamp4(raw.heightRange, base.heightRange, 0.1, 2e3),
+    heightGradient: typeof raw.heightGradient === "boolean" ? raw.heightGradient : base.heightGradient,
+    heightColor,
+    heightMidColor: colorHex(raw.heightMidColor, base.heightMidColor),
+    heightTopColor: colorHex(raw.heightTopColor, base.heightTopColor),
+    heightBase: clamp4(raw.heightBase, base.heightBase, -200, 500),
+    heightRange: clamp4(raw.heightRange, base.heightRange, 0.05, 500),
     heightDensity: clamp4(raw.heightDensity, base.heightDensity, 0, 1),
     heightFalloff: clamp4(raw.heightFalloff, base.heightFalloff, 0.2, 4),
+    heightNoiseEnabled: typeof raw.heightNoiseEnabled === "boolean" ? raw.heightNoiseEnabled : legacyNoiseEnabled ?? base.heightNoiseEnabled,
+    heightNoiseScale: clamp4(raw.heightNoiseScale ?? raw.noiseScale, base.heightNoiseScale, 0.01, 5),
+    heightNoiseIntensity: clamp4(raw.heightNoiseIntensity ?? raw.noiseIntensity, base.heightNoiseIntensity, 0, 1),
+    heightNoiseSpeed: clamp4(raw.heightNoiseSpeed ?? raw.noiseSpeed, base.heightNoiseSpeed, 0, 5),
     distanceEnabled: typeof raw.distanceEnabled === "boolean" ? raw.distanceEnabled : base.distanceEnabled,
-    distanceColor: colorHex(raw.distanceColor, base.distanceColor),
+    distanceNearColor: colorHex(raw.distanceNearColor, legacyDistColor ?? base.distanceNearColor),
+    distanceFarColor: colorHex(raw.distanceFarColor, legacyDistColor ?? base.distanceFarColor),
     distanceStart,
     distanceEnd,
     distanceTransition: clamp4(raw.distanceTransition, base.distanceTransition, 0, 2e3),
     distanceDensity: clamp4(raw.distanceDensity, base.distanceDensity, 0, 1),
-    noiseEnabled: typeof raw.noiseEnabled === "boolean" ? raw.noiseEnabled : base.noiseEnabled,
-    noiseScale: clamp4(raw.noiseScale, base.noiseScale, 2e-3, 1),
-    noiseIntensity: clamp4(raw.noiseIntensity, base.noiseIntensity, 0, 1),
-    noiseSpeed: clamp4(raw.noiseSpeed, base.noiseSpeed, 0, 5)
+    distanceNoiseEnabled: typeof raw.distanceNoiseEnabled === "boolean" ? raw.distanceNoiseEnabled : base.distanceNoiseEnabled,
+    distanceNoiseScale: clamp4(raw.distanceNoiseScale, base.distanceNoiseScale, 5e-3, 5),
+    distanceNoiseIntensity: clamp4(raw.distanceNoiseIntensity, base.distanceNoiseIntensity, 0, 1),
+    distanceNoiseSpeed: clamp4(raw.distanceNoiseSpeed, base.distanceNoiseSpeed, 0, 5)
   };
 }
 var HEIGHT_FOG_CAPABILITY_ID;
@@ -5960,7 +5979,6 @@ __export(session_exports8, {
 });
 import { Color as Color5, Matrix4 as Matrix42 } from "three";
 import {
-  cameraProjectionMatrixInverse,
   clamp as clamp5,
   dot as dot2,
   float as float3,
@@ -5975,7 +5993,6 @@ import {
   pow as pow2,
   screenUV as screenUV2,
   select as select2,
-  sin as sin2,
   smoothstep as smoothstep3,
   uniform as uniform4,
   vec3 as vec33,
@@ -6019,23 +6036,27 @@ function heightFogActive(picture) {
 function heightFogPipelineKey(picture) {
   if (!heightFogActive(picture)) return "off";
   const s = currentSettings(picture);
-  return `on:${s.noiseEnabled ? 1 : 0}`;
+  const hNoise = s.heightEnabled && s.heightNoiseEnabled ? 1 : 0;
+  const dNoise = s.distanceEnabled && s.distanceNoiseEnabled ? 1 : 0;
+  return `on:${hNoise}:${dNoise}`;
 }
-function hash3(p) {
-  return fract2(sin2(dot2(p, vec33(127.1, 311.7, 74.7))).mul(43758.5453123));
+function fastHash13(p) {
+  const q = fract2(vec33(p).mul(0.1031));
+  const r = q.add(dot2(q, q.yzx.add(33.33)));
+  return fract2(r.x.add(r.y).mul(r.z));
 }
-function valueNoise3D(p) {
+function fastValueNoise3D(p) {
   const i = floor2(p);
   const f = fract2(p);
   const u = f.mul(f).mul(vec33(3, 3, 3).sub(f.mul(2)));
-  const n000 = hash3(i);
-  const n100 = hash3(i.add(vec33(1, 0, 0)));
-  const n010 = hash3(i.add(vec33(0, 1, 0)));
-  const n110 = hash3(i.add(vec33(1, 1, 0)));
-  const n001 = hash3(i.add(vec33(0, 0, 1)));
-  const n101 = hash3(i.add(vec33(1, 0, 1)));
-  const n011 = hash3(i.add(vec33(0, 1, 1)));
-  const n111 = hash3(i.add(vec33(1, 1, 1)));
+  const n000 = fastHash13(i);
+  const n100 = fastHash13(i.add(vec33(1, 0, 0)));
+  const n010 = fastHash13(i.add(vec33(0, 1, 0)));
+  const n110 = fastHash13(i.add(vec33(1, 1, 0)));
+  const n001 = fastHash13(i.add(vec33(0, 0, 1)));
+  const n101 = fastHash13(i.add(vec33(1, 0, 1)));
+  const n011 = fastHash13(i.add(vec33(0, 1, 1)));
+  const n111 = fastHash13(i.add(vec33(1, 1, 1)));
   const nx00 = mix5(n000, n100, u.x);
   const nx10 = mix5(n010, n110, u.x);
   const nx01 = mix5(n001, n101, u.x);
@@ -6044,28 +6065,35 @@ function valueNoise3D(p) {
   const nxy1 = mix5(nx01, nx11, u.y);
   return mix5(nxy0, nxy1, u.z);
 }
-function buildHeightFogPass(colorNode, scenePass, withNoise) {
+function buildHeightFogPass(colorNode, scenePass, options) {
   const uCameraWorldMatrix = uniform4(new Matrix42());
+  const uCameraProjInverse = uniform4(new Matrix42());
   const uOpacity = uniform4(1);
   const uAffectSky = uniform4(0);
   const uHeightEnabled = uniform4(1);
-  const uHeightColor = uniform4(new Color5("#8fa8c8"));
-  const uHeightBase = uniform4(0);
-  const uHeightRange = uniform4(16);
+  const uHeightBottomColor = uniform4(new Color5("#5c789c"));
+  const uHeightMidColor = uniform4(new Color5("#8fa8c8"));
+  const uHeightTopColor = uniform4(new Color5("#c7d9ee"));
+  const uHeightBase = uniform4(0.3);
+  const uHeightRange = uniform4(2);
   const uHeightDensity = uniform4(0.85);
   const uHeightFalloff = uniform4(1.2);
+  const uHeightNoiseScale = uniform4(0.35);
+  const uHeightNoiseIntensity = uniform4(0.4);
+  const uHeightNoiseTime = uniform4(0);
   const uDistEnabled = uniform4(1);
-  const uDistColor = uniform4(new Color5("#c9d6e6"));
-  const uDistStart = uniform4(15);
-  const uDistEnd = uniform4(120);
-  const uDistTrans = uniform4(30);
+  const uDistNearColor = uniform4(new Color5("#b8cbe0"));
+  const uDistFarColor = uniform4(new Color5("#6f89ab"));
+  const uDistStart = uniform4(5);
+  const uDistEnd = uniform4(50);
+  const uDistTrans = uniform4(15);
   const uDistDensity = uniform4(0.9);
-  const uNoiseScale = uniform4(0.06);
-  const uNoiseIntensity = uniform4(0.4);
-  const uNoiseTime = uniform4(0);
+  const uDistNoiseScale = uniform4(0.08);
+  const uDistNoiseIntensity = uniform4(0.35);
+  const uDistNoiseTime = uniform4(0);
   const depthNode = scenePass.getTextureNode("depth");
   const isBg = isBackgroundDepth(depthNode);
-  const viewPos = getViewPosition(screenUV2, depthNode, cameraProjectionMatrixInverse);
+  const viewPos = getViewPosition(screenUV2, depthNode, uCameraProjInverse);
   const viewDist = length3(viewPos);
   const worldPos = uCameraWorldMatrix.mul(vec44(viewPos, 1)).xyz;
   const hNorm = clamp5(worldPos.y.sub(uHeightBase).div(max3(uHeightRange, float3(1e-3))), 0, 1);
@@ -6075,22 +6103,29 @@ function buildHeightFogPass(colorNode, scenePass, withNoise) {
   const dRamp = smoothstep3(uDistStart, uDistStart.add(max3(uDistTrans, float3(0.01))), viewDist);
   const dBaseWeight = dMain.mul(mix5(float3(1), dRamp, clamp5(uDistTrans.div(max3(uDistEnd.sub(uDistStart), float3(0.01))), 0, 1))).mul(uDistDensity).mul(uDistEnabled);
   let hWeight = hBaseWeight;
+  if (options.heightNoise) {
+    const hSamplePos = worldPos.mul(uHeightNoiseScale).add(vec33(uHeightNoiseTime, uHeightNoiseTime.mul(0.37), uHeightNoiseTime.mul(0.71)));
+    const hNoise = fastValueNoise3D(hSamplePos);
+    const hMod = mix5(float3(1), clamp5(hNoise.mul(1.7).add(0.15), 0, 1.5), uHeightNoiseIntensity);
+    hWeight = clamp5(hBaseWeight.mul(hMod), 0, 1);
+  }
   let dWeight = dBaseWeight;
-  if (withNoise) {
-    const samplePos = worldPos.mul(uNoiseScale).add(vec33(uNoiseTime, uNoiseTime.mul(0.37), uNoiseTime.mul(0.71)));
-    const n1 = valueNoise3D(samplePos);
-    const n2 = valueNoise3D(samplePos.mul(2.07).add(vec33(13.1, 7.7, 5.3)));
-    const fbm = n1.mul(0.65).add(n2.mul(0.35));
-    const noiseMod = mix5(float3(1), clamp5(fbm.mul(1.7).add(0.15), 0, 1.5), uNoiseIntensity);
-    hWeight = clamp5(hBaseWeight.mul(noiseMod), 0, 1);
-    dWeight = clamp5(dBaseWeight.mul(mix5(float3(1), noiseMod, 0.7)), 0, 1);
+  if (options.distanceNoise) {
+    const dSamplePos = worldPos.mul(uDistNoiseScale).add(vec33(uDistNoiseTime.mul(0.83), uDistNoiseTime.mul(0.29), uDistNoiseTime));
+    const dNoise = fastValueNoise3D(dSamplePos);
+    const dMod = mix5(float3(1), clamp5(dNoise.mul(1.7).add(0.15), 0, 1.5), uDistNoiseIntensity);
+    dWeight = clamp5(dBaseWeight.mul(dMod), 0, 1);
   }
   const combinedRaw = clamp5(max3(hWeight, dWeight).add(min2(hWeight, dWeight).mul(0.35)), 0, 1);
   const skyFogAmount = clamp5(dWeight.mul(uDistEnabled).add(hWeight.mul(0.25).mul(uHeightEnabled)), 0, 1).mul(uAffectSky);
   const fogFactor = select2(isBg, skyFogAmount, combinedRaw).mul(uOpacity);
   const weightSum = max3(hWeight.add(dWeight), float3(1e-4));
   const distRatio = dWeight.div(weightSum);
-  const blendedFogColor = mix5(uHeightColor, uDistColor, distRatio);
+  const hMidT = clamp5(hNorm.mul(2), 0, 1);
+  const hTopT = clamp5(hNorm.mul(2).sub(1), 0, 1);
+  const heightGradColor = mix5(mix5(uHeightBottomColor, uHeightMidColor, hMidT), uHeightTopColor, hTopT);
+  const distGradColor = mix5(uDistNearColor, uDistFarColor, dMain);
+  const blendedFogColor = mix5(heightGradColor, distGradColor, distRatio);
   const outRgb = mix5(colorNode.rgb, blendedFogColor, fogFactor);
   const node = vec44(outRgb, colorNode.a);
   return {
@@ -6099,24 +6134,33 @@ function buildHeightFogPass(colorNode, scenePass, withNoise) {
       const s = currentSettings(picture);
       camera.updateMatrixWorld();
       uCameraWorldMatrix.value.copy(camera.matrixWorld);
+      uCameraProjInverse.value.copy(camera.projectionMatrixInverse);
       uOpacity.value = s.enabled ? s.opacity : 0;
       uAffectSky.value = s.affectSky ? 1 : 0;
       uHeightEnabled.value = s.heightEnabled ? 1 : 0;
-      uHeightColor.value.set(s.heightColor);
+      uHeightBottomColor.value.set(s.heightColor);
+      uHeightMidColor.value.set(s.heightGradient ? s.heightMidColor : s.heightColor);
+      uHeightTopColor.value.set(s.heightGradient ? s.heightTopColor : s.heightColor);
       uHeightBase.value = s.heightBase;
       uHeightRange.value = s.heightRange;
       uHeightDensity.value = s.heightDensity;
       uHeightFalloff.value = s.heightFalloff;
+      if (options.heightNoise) {
+        uHeightNoiseScale.value = s.heightNoiseScale;
+        uHeightNoiseIntensity.value = s.heightNoiseIntensity;
+        uHeightNoiseTime.value = elapsedTime * s.heightNoiseSpeed;
+      }
       uDistEnabled.value = s.distanceEnabled ? 1 : 0;
-      uDistColor.value.set(s.distanceColor);
+      uDistNearColor.value.set(s.distanceNearColor);
+      uDistFarColor.value.set(s.distanceFarColor);
       uDistStart.value = s.distanceStart;
       uDistEnd.value = s.distanceEnd;
       uDistTrans.value = s.distanceTransition;
       uDistDensity.value = s.distanceDensity;
-      if (withNoise) {
-        uNoiseScale.value = s.noiseScale;
-        uNoiseIntensity.value = s.noiseIntensity;
-        uNoiseTime.value = elapsedTime * s.noiseSpeed;
+      if (options.distanceNoise) {
+        uDistNoiseScale.value = s.distanceNoiseScale;
+        uDistNoiseIntensity.value = s.distanceNoiseIntensity;
+        uDistNoiseTime.value = elapsedTime * s.distanceNoiseSpeed;
       }
     }
   };
@@ -8987,11 +9031,11 @@ function facingBasis(spec, selfId, nodes, x, z, cameraYaw, host) {
   return { moveYaw: cameraYaw, faceYaw: cameraYaw, lock: false };
 }
 function rotate(x, z, yaw) {
-  const sin4 = Math.sin(yaw);
+  const sin3 = Math.sin(yaw);
   const cos3 = Math.cos(yaw);
   return {
-    x: x * cos3 - z * sin4,
-    z: -x * sin4 - z * cos3
+    x: x * cos3 - z * sin3,
+    z: -x * sin3 - z * cos3
   };
 }
 function faceYaw(spec, basis, wish, moveX, moveZ, dodging, live) {
@@ -9003,12 +9047,12 @@ function faceYaw(spec, basis, wish, moveX, moveZ, dodging, live) {
 function capsuleShift(spec, q) {
   const offset = spec.capsuleOffset ?? [0, 0, 0];
   const yaw = yawOf2(q);
-  const sin4 = Math.sin(yaw);
+  const sin3 = Math.sin(yaw);
   const cos3 = Math.cos(yaw);
   return {
-    x: offset[0] * cos3 + offset[2] * sin4,
+    x: offset[0] * cos3 + offset[2] * sin3,
     y: offset[1],
-    z: -offset[0] * sin4 + offset[2] * cos3
+    z: -offset[0] * sin3 + offset[2] * cos3
   };
 }
 function yawOf2(q) {
@@ -11614,12 +11658,12 @@ function viewRelativeMove(action, host) {
   if (length5 < 1e-4) return { x: 0, y: 0, z: 0 };
   const scale = length5 > 1 ? 1 / length5 : 1;
   const yaw = host.yaw?.() ?? 0;
-  const sin4 = Math.sin(yaw);
+  const sin3 = Math.sin(yaw);
   const cos3 = Math.cos(yaw);
   return {
-    x: (axis.x * cos3 - axis.y * sin4) * scale,
+    x: (axis.x * cos3 - axis.y * sin3) * scale,
     y: 0,
-    z: (-axis.x * sin4 - axis.y * cos3) * scale
+    z: (-axis.x * sin3 - axis.y * cos3) * scale
   };
 }
 function clearScriptRuntimeState() {

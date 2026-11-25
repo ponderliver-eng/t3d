@@ -790,7 +790,9 @@ var RECIPES = [
   {
     id: "third-person-controller",
     title: "\u7B2C\u4E09\u4EBA\u79F0\u89D2\u8272\u63A7\u5236\uFF08\u79FB\u52A8 / \u8DF3\u8DC3 / \u52A8\u753B\u5207\u6362\uFF09",
+    titleEn: "Third-person character (move / jump / animation)",
     summary: "WASD \u76F8\u5BF9\u76F8\u673A\u79FB\u52A8\u3001\u7A7A\u683C\u8DF3\u8DC3\u3001Shift \u5954\u8DD1\uFF0C\u6309\u72B6\u6001\u5207\u6362\u5F85\u673A/\u884C\u8D70/\u5954\u8DD1\u526A\u8F91",
+    summaryEn: "WASD moves relative to the camera, Space jumps, Shift sprints, and idle/walk/run clips follow the state",
     setup: [
       '\u89D2\u8272\u8282\u70B9\uFF1A\u5DF2\u6709\u8499\u76AE\u6A21\u578B\u5C31\u7528 kind:"model"\uFF1B\u6CA1\u6709\u6A21\u578B\u5C31\u7528 kind:"capsule"\uFF08\u6B64\u65F6\u4E09\u4E2A\u526A\u8F91\u53C2\u6570\u7559\u7A7A\u5373\u53EF\uFF09\u3002',
       "\u573A\u666F\u91CC\u8981\u6709\u4E00\u4E2A\u76F8\u673A\u8282\u70B9\uFF08\u5EFA\u8BAE\u540C\u65F6\u6302 follow-camera \u8303\u4F8B\uFF09\u3002",
@@ -809,7 +811,9 @@ var RECIPES = [
   {
     id: "follow-camera",
     title: "\u8DDF\u968F\u76F8\u673A\uFF08\u5E73\u6ED1\u8DDF\u968F + \u53F3\u952E\u73AF\u7ED5\uFF09",
+    titleEn: "Follow camera (smooth follow + right-drag orbit)",
     summary: "\u76F8\u673A\u5E73\u6ED1\u8DDF\u5728\u76EE\u6807\u8EAB\u540E\u5E76\u59CB\u7EC8\u6CE8\u89C6\u76EE\u6807",
+    summaryEn: "The camera stays smoothly behind the target and always looks at it",
     setup: [
       '\u521B\u5EFA kind:"camera" \u8282\u70B9\uFF0C\u521D\u59CB\u4F4D\u7F6E\u653E\u5728\u76EE\u6807\u540E\u4E0A\u65B9\u5373\u53EF\uFF08\u811A\u672C\u4F1A\u63A5\u7BA1\u4F4D\u7F6E\u4E0E\u671D\u5411\uFF09\u3002',
       "script__attach \u5230\u76F8\u673A\u8282\u70B9\uFF0Cparams.target \u4F20\u88AB\u8DDF\u968F\u7684\u8282\u70B9\u3002"
@@ -821,7 +825,9 @@ var RECIPES = [
   {
     id: "enemy-wave",
     title: "\u6CE2\u6B21\u5237\u602A + \u8FFD\u51FB\u654C\u4EBA\uFF08\u5BF9\u8C61\u6C60\uFF09",
+    titleEn: "Enemy waves + chase (object pool)",
     summary: "\u4ECE\u4E00\u4E2A\u9690\u85CF\u6A21\u677F\u8282\u70B9\u6C60\u5316\u751F\u6210\u654C\u4EBA\uFF0C\u654C\u4EBA\u8FFD\u51FB\u5E76\u653B\u51FB\u73A9\u5BB6\uFF0C\u53EF\u88AB hit \u6D88\u606F\u51FB\u6740",
+    summaryEn: "Spawns enemies from a hidden template through the pool; they chase and attack the player and die on a hit message",
     setup: [
       "\u654C\u4EBA\u6A21\u677F\uFF1A\u521B\u5EFA\u4E00\u4E2A\u654C\u4EBA\u8282\u70B9\uFF08\u6A21\u578B\u6216\u57FA\u7840\u51E0\u4F55\u4F53\uFF09\uFF0C\u6302 ChaseEnemy\uFF0C\u7136\u540E\u628A\u6A21\u677F\u7684 visible \u8BBE\u4E3A false \u5E76\u653E\u5728\u573A\u666F\u5916\u4FA7\u3002",
       '\u5237\u602A\u70B9\uFF1A\u521B\u5EFA kind:"empty" \u8282\u70B9\u653E\u5728\u6218\u573A\u4E2D\u5FC3\uFF0C\u6302 WaveSpawner\uFF0Cparams.template \u4F20\u654C\u4EBA\u6A21\u677F\u8282\u70B9\u3002',
@@ -840,7 +846,9 @@ var RECIPES = [
   {
     id: "shooting",
     title: "\u5C04\u51FB\uFF08\u73A9\u5BB6\u5F00\u706B + \u6C60\u5316\u5B50\u5F39\uFF09",
+    titleEn: "Shooting (player fire + pooled bullets)",
     summary: '\u6309\u4F4F\u653B\u51FB\u952E\u6CBF\u89D2\u8272\u671D\u5411\u53D1\u5C04\u5B50\u5F39\uFF0C\u5B50\u5F39\u547D\u4E2D\u5E26 "enemy" \u6807\u7B7E\u7684\u8282\u70B9\u540E\u53D1\u9001 hit \u6D88\u606F',
+    summaryEn: 'Hold attack to fire bullets along the character facing; hitting a node tagged "enemy" sends a hit message',
     setup: [
       "\u5B50\u5F39\u6A21\u677F\uFF1A\u521B\u5EFA\u4E00\u4E2A\u5C0F\u7403/\u5C0F\u80F6\u56CA\u8282\u70B9\uFF0C\u6302 Bullet\uFF0Cvisible \u8BBE\u4E3A false\u3002",
       "script__attach PlayerShooter \u5230\u73A9\u5BB6\u8282\u70B9\uFF0Cparams.bullet \u4F20\u5B50\u5F39\u6A21\u677F\u8282\u70B9\u3002",
@@ -855,7 +863,9 @@ var RECIPES = [
   {
     id: "health-score-hud",
     title: "\u751F\u547D\u503C + \u5F97\u5206 + HUD / \u7ED3\u7B97\u754C\u9762",
+    titleEn: "Health + score + HUD / result screen",
     summary: "\u73A9\u5BB6\u53D7\u51FB\u6263\u8840\u3001\u51FB\u6740\u4E0E\u62FE\u53D6\u52A0\u5206\uFF0C\u6570\u636E\u9A71\u52A8 HUD\uFF0C\u6B7B\u4EA1\u6216\u8FBE\u6807\u65F6\u5F39\u51FA\u7ED3\u7B97\u754C\u9762",
+    summaryEn: "Hits reduce health, kills and pickups add score, the HUD is data-driven, and a result screen appears on death or when the goal is reached",
     setup: [
       'HUD\uFF1Aui__createFromTemplate({ template:"hud", varKey:"hp", scoreVarKey:"score" })\u3002',
       '\u7ED3\u7B97\uFF1Aui__createFromTemplate({ template:"result", name:"\u7ED3\u7B97\u754C\u9762", scoreVarKey:"score" })\uFF0C\u6807\u9898\u6587\u672C\u53EF\u7528 ui__patchNode \u7ED1\u5B9A\u5230\u53D8\u91CF resultTitle\u3002',
@@ -874,7 +884,9 @@ var RECIPES = [
   {
     id: "collectible",
     title: "\u53EF\u62FE\u53D6\u7269\uFF08\u91D1\u5E01 / \u9053\u5177\uFF09",
+    titleEn: "Collectible (coin / item)",
     summary: "\u65CB\u8F6C\u6D6E\u52A8\u7684\u62FE\u53D6\u7269\uFF0C\u73A9\u5BB6\u9760\u8FD1\u540E\u52A0\u5206\u5E76\u6D88\u5931",
+    summaryEn: "A spinning, bobbing pickup that awards score and disappears when the player gets close",
     setup: [
       "\u521B\u5EFA\u62FE\u53D6\u7269\u8282\u70B9\uFF08\u7403\u4F53/\u5706\u67F1\u6216\u6A21\u578B\uFF09\uFF0C\u6302 Collectible\uFF1B\u9700\u8981\u591A\u4E2A\u65F6\u76F4\u63A5\u590D\u5236\u8282\u70B9\u6216\u505A\u6210\u9884\u5236\u4F53\u3002",
       "\u914D\u5408 health-score-hud \u8303\u4F8B\u7684 GameManager \u7EDF\u8BA1\u5F97\u5206\uFF08\u5B83\u4F1A\u5904\u7406 collected \u6D88\u606F\uFF09\u3002"
@@ -897,7 +909,9 @@ function recipeToKnowledgeEntry(recipe) {
     kind: "skill",
     source: "builtin",
     name: recipe.title,
+    nameEn: recipe.titleEn,
     description: recipe.summary,
+    descriptionEn: recipe.summaryEn,
     body,
     files: recipe.files.map((file) => ({
       path: `${file.scriptId}.ts`,

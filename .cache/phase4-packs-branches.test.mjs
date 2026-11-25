@@ -5435,11 +5435,11 @@ function setCrowdFormation(nodeIds, center, options) {
   const spacing = Math.max(0.5, options?.spacing ?? 1.8);
   const yaw = options?.facingYaw ?? 0;
   const cos3 = Math.cos(yaw);
-  const sin4 = Math.sin(yaw);
+  const sin3 = Math.sin(yaw);
   const rotateOffset = (lx, lz) => ({
-    x: center.x + lx * cos3 + lz * sin4,
+    x: center.x + lx * cos3 + lz * sin3,
     y: center.y,
-    z: center.z - lx * sin4 + lz * cos3
+    z: center.z - lx * sin3 + lz * cos3
   });
   if (formation === "line") {
     const half = (count - 1) * 0.5;
@@ -6741,21 +6741,29 @@ function defaultHeightFogSettings() {
     opacity: 1,
     affectSky: false,
     heightEnabled: true,
-    heightColor: "#8fa8c8",
-    heightBase: 0,
-    heightRange: 16,
+    heightGradient: true,
+    heightColor: "#5c789c",
+    heightMidColor: "#8fa8c8",
+    heightTopColor: "#c7d9ee",
+    heightBase: 0.3,
+    heightRange: 2,
     heightDensity: 0.85,
     heightFalloff: 1.2,
+    heightNoiseEnabled: false,
+    heightNoiseScale: 0.35,
+    heightNoiseIntensity: 0.4,
+    heightNoiseSpeed: 0.3,
     distanceEnabled: true,
-    distanceColor: "#c9d6e6",
-    distanceStart: 15,
-    distanceEnd: 120,
-    distanceTransition: 30,
+    distanceNearColor: "#b8cbe0",
+    distanceFarColor: "#6f89ab",
+    distanceStart: 5,
+    distanceEnd: 50,
+    distanceTransition: 15,
     distanceDensity: 0.9,
-    noiseEnabled: false,
-    noiseScale: 0.06,
-    noiseIntensity: 0.4,
-    noiseSpeed: 0.3
+    distanceNoiseEnabled: false,
+    distanceNoiseScale: 0.08,
+    distanceNoiseIntensity: 0.35,
+    distanceNoiseSpeed: 0.25
   };
 }
 function clamp4(value, fallback, min4, max5) {
@@ -6773,26 +6781,37 @@ function normalizeHeightFogSettings(value) {
   const raw = value;
   const distanceStart = clamp4(raw.distanceStart, base.distanceStart, 0, 2e3);
   const distanceEnd = Math.max(distanceStart + 0.1, clamp4(raw.distanceEnd, base.distanceEnd, 0.1, 4e3));
+  const legacyNoiseEnabled = typeof raw.noiseEnabled === "boolean" ? raw.noiseEnabled : void 0;
+  const heightColor = colorHex(raw.heightColor, base.heightColor);
+  const legacyDistColor = typeof raw.distanceColor === "string" ? colorHex(raw.distanceColor, base.distanceNearColor) : null;
   return {
     enabled: typeof raw.enabled === "boolean" ? raw.enabled : base.enabled,
     opacity: clamp4(raw.opacity, base.opacity, 0, 1),
     affectSky: typeof raw.affectSky === "boolean" ? raw.affectSky : base.affectSky,
     heightEnabled: typeof raw.heightEnabled === "boolean" ? raw.heightEnabled : base.heightEnabled,
-    heightColor: colorHex(raw.heightColor, base.heightColor),
-    heightBase: clamp4(raw.heightBase, base.heightBase, -1e3, 2e3),
-    heightRange: clamp4(raw.heightRange, base.heightRange, 0.1, 2e3),
+    heightGradient: typeof raw.heightGradient === "boolean" ? raw.heightGradient : base.heightGradient,
+    heightColor,
+    heightMidColor: colorHex(raw.heightMidColor, base.heightMidColor),
+    heightTopColor: colorHex(raw.heightTopColor, base.heightTopColor),
+    heightBase: clamp4(raw.heightBase, base.heightBase, -200, 500),
+    heightRange: clamp4(raw.heightRange, base.heightRange, 0.05, 500),
     heightDensity: clamp4(raw.heightDensity, base.heightDensity, 0, 1),
     heightFalloff: clamp4(raw.heightFalloff, base.heightFalloff, 0.2, 4),
+    heightNoiseEnabled: typeof raw.heightNoiseEnabled === "boolean" ? raw.heightNoiseEnabled : legacyNoiseEnabled ?? base.heightNoiseEnabled,
+    heightNoiseScale: clamp4(raw.heightNoiseScale ?? raw.noiseScale, base.heightNoiseScale, 0.01, 5),
+    heightNoiseIntensity: clamp4(raw.heightNoiseIntensity ?? raw.noiseIntensity, base.heightNoiseIntensity, 0, 1),
+    heightNoiseSpeed: clamp4(raw.heightNoiseSpeed ?? raw.noiseSpeed, base.heightNoiseSpeed, 0, 5),
     distanceEnabled: typeof raw.distanceEnabled === "boolean" ? raw.distanceEnabled : base.distanceEnabled,
-    distanceColor: colorHex(raw.distanceColor, base.distanceColor),
+    distanceNearColor: colorHex(raw.distanceNearColor, legacyDistColor ?? base.distanceNearColor),
+    distanceFarColor: colorHex(raw.distanceFarColor, legacyDistColor ?? base.distanceFarColor),
     distanceStart,
     distanceEnd,
     distanceTransition: clamp4(raw.distanceTransition, base.distanceTransition, 0, 2e3),
     distanceDensity: clamp4(raw.distanceDensity, base.distanceDensity, 0, 1),
-    noiseEnabled: typeof raw.noiseEnabled === "boolean" ? raw.noiseEnabled : base.noiseEnabled,
-    noiseScale: clamp4(raw.noiseScale, base.noiseScale, 2e-3, 1),
-    noiseIntensity: clamp4(raw.noiseIntensity, base.noiseIntensity, 0, 1),
-    noiseSpeed: clamp4(raw.noiseSpeed, base.noiseSpeed, 0, 5)
+    distanceNoiseEnabled: typeof raw.distanceNoiseEnabled === "boolean" ? raw.distanceNoiseEnabled : base.distanceNoiseEnabled,
+    distanceNoiseScale: clamp4(raw.distanceNoiseScale, base.distanceNoiseScale, 5e-3, 5),
+    distanceNoiseIntensity: clamp4(raw.distanceNoiseIntensity, base.distanceNoiseIntensity, 0, 1),
+    distanceNoiseSpeed: clamp4(raw.distanceNoiseSpeed, base.distanceNoiseSpeed, 0, 5)
   };
 }
 var HEIGHT_FOG_CAPABILITY_ID;
@@ -6814,7 +6833,6 @@ __export(session_exports8, {
 });
 import { Color as Color5, Matrix4 as Matrix42 } from "three";
 import {
-  cameraProjectionMatrixInverse,
   clamp as clamp5,
   dot as dot2,
   float as float3,
@@ -6829,7 +6847,6 @@ import {
   pow as pow2,
   screenUV as screenUV2,
   select as select2,
-  sin as sin2,
   smoothstep as smoothstep3,
   uniform as uniform4,
   vec3 as vec33,
@@ -6873,23 +6890,27 @@ function heightFogActive(picture) {
 function heightFogPipelineKey(picture) {
   if (!heightFogActive(picture)) return "off";
   const s = currentSettings(picture);
-  return `on:${s.noiseEnabled ? 1 : 0}`;
+  const hNoise = s.heightEnabled && s.heightNoiseEnabled ? 1 : 0;
+  const dNoise = s.distanceEnabled && s.distanceNoiseEnabled ? 1 : 0;
+  return `on:${hNoise}:${dNoise}`;
 }
-function hash3(p) {
-  return fract2(sin2(dot2(p, vec33(127.1, 311.7, 74.7))).mul(43758.5453123));
+function fastHash13(p) {
+  const q = fract2(vec33(p).mul(0.1031));
+  const r = q.add(dot2(q, q.yzx.add(33.33)));
+  return fract2(r.x.add(r.y).mul(r.z));
 }
-function valueNoise3D(p) {
+function fastValueNoise3D(p) {
   const i = floor2(p);
   const f = fract2(p);
   const u = f.mul(f).mul(vec33(3, 3, 3).sub(f.mul(2)));
-  const n000 = hash3(i);
-  const n100 = hash3(i.add(vec33(1, 0, 0)));
-  const n010 = hash3(i.add(vec33(0, 1, 0)));
-  const n110 = hash3(i.add(vec33(1, 1, 0)));
-  const n001 = hash3(i.add(vec33(0, 0, 1)));
-  const n101 = hash3(i.add(vec33(1, 0, 1)));
-  const n011 = hash3(i.add(vec33(0, 1, 1)));
-  const n111 = hash3(i.add(vec33(1, 1, 1)));
+  const n000 = fastHash13(i);
+  const n100 = fastHash13(i.add(vec33(1, 0, 0)));
+  const n010 = fastHash13(i.add(vec33(0, 1, 0)));
+  const n110 = fastHash13(i.add(vec33(1, 1, 0)));
+  const n001 = fastHash13(i.add(vec33(0, 0, 1)));
+  const n101 = fastHash13(i.add(vec33(1, 0, 1)));
+  const n011 = fastHash13(i.add(vec33(0, 1, 1)));
+  const n111 = fastHash13(i.add(vec33(1, 1, 1)));
   const nx00 = mix5(n000, n100, u.x);
   const nx10 = mix5(n010, n110, u.x);
   const nx01 = mix5(n001, n101, u.x);
@@ -6898,28 +6919,35 @@ function valueNoise3D(p) {
   const nxy1 = mix5(nx01, nx11, u.y);
   return mix5(nxy0, nxy1, u.z);
 }
-function buildHeightFogPass(colorNode, scenePass, withNoise) {
+function buildHeightFogPass(colorNode, scenePass, options) {
   const uCameraWorldMatrix = uniform4(new Matrix42());
+  const uCameraProjInverse = uniform4(new Matrix42());
   const uOpacity = uniform4(1);
   const uAffectSky = uniform4(0);
   const uHeightEnabled = uniform4(1);
-  const uHeightColor = uniform4(new Color5("#8fa8c8"));
-  const uHeightBase = uniform4(0);
-  const uHeightRange = uniform4(16);
+  const uHeightBottomColor = uniform4(new Color5("#5c789c"));
+  const uHeightMidColor = uniform4(new Color5("#8fa8c8"));
+  const uHeightTopColor = uniform4(new Color5("#c7d9ee"));
+  const uHeightBase = uniform4(0.3);
+  const uHeightRange = uniform4(2);
   const uHeightDensity = uniform4(0.85);
   const uHeightFalloff = uniform4(1.2);
+  const uHeightNoiseScale = uniform4(0.35);
+  const uHeightNoiseIntensity = uniform4(0.4);
+  const uHeightNoiseTime = uniform4(0);
   const uDistEnabled = uniform4(1);
-  const uDistColor = uniform4(new Color5("#c9d6e6"));
-  const uDistStart = uniform4(15);
-  const uDistEnd = uniform4(120);
-  const uDistTrans = uniform4(30);
+  const uDistNearColor = uniform4(new Color5("#b8cbe0"));
+  const uDistFarColor = uniform4(new Color5("#6f89ab"));
+  const uDistStart = uniform4(5);
+  const uDistEnd = uniform4(50);
+  const uDistTrans = uniform4(15);
   const uDistDensity = uniform4(0.9);
-  const uNoiseScale = uniform4(0.06);
-  const uNoiseIntensity = uniform4(0.4);
-  const uNoiseTime = uniform4(0);
+  const uDistNoiseScale = uniform4(0.08);
+  const uDistNoiseIntensity = uniform4(0.35);
+  const uDistNoiseTime = uniform4(0);
   const depthNode = scenePass.getTextureNode("depth");
   const isBg = isBackgroundDepth(depthNode);
-  const viewPos = getViewPosition(screenUV2, depthNode, cameraProjectionMatrixInverse);
+  const viewPos = getViewPosition(screenUV2, depthNode, uCameraProjInverse);
   const viewDist = length3(viewPos);
   const worldPos = uCameraWorldMatrix.mul(vec44(viewPos, 1)).xyz;
   const hNorm = clamp5(worldPos.y.sub(uHeightBase).div(max3(uHeightRange, float3(1e-3))), 0, 1);
@@ -6929,22 +6957,29 @@ function buildHeightFogPass(colorNode, scenePass, withNoise) {
   const dRamp = smoothstep3(uDistStart, uDistStart.add(max3(uDistTrans, float3(0.01))), viewDist);
   const dBaseWeight = dMain.mul(mix5(float3(1), dRamp, clamp5(uDistTrans.div(max3(uDistEnd.sub(uDistStart), float3(0.01))), 0, 1))).mul(uDistDensity).mul(uDistEnabled);
   let hWeight = hBaseWeight;
+  if (options.heightNoise) {
+    const hSamplePos = worldPos.mul(uHeightNoiseScale).add(vec33(uHeightNoiseTime, uHeightNoiseTime.mul(0.37), uHeightNoiseTime.mul(0.71)));
+    const hNoise = fastValueNoise3D(hSamplePos);
+    const hMod = mix5(float3(1), clamp5(hNoise.mul(1.7).add(0.15), 0, 1.5), uHeightNoiseIntensity);
+    hWeight = clamp5(hBaseWeight.mul(hMod), 0, 1);
+  }
   let dWeight = dBaseWeight;
-  if (withNoise) {
-    const samplePos = worldPos.mul(uNoiseScale).add(vec33(uNoiseTime, uNoiseTime.mul(0.37), uNoiseTime.mul(0.71)));
-    const n1 = valueNoise3D(samplePos);
-    const n2 = valueNoise3D(samplePos.mul(2.07).add(vec33(13.1, 7.7, 5.3)));
-    const fbm = n1.mul(0.65).add(n2.mul(0.35));
-    const noiseMod = mix5(float3(1), clamp5(fbm.mul(1.7).add(0.15), 0, 1.5), uNoiseIntensity);
-    hWeight = clamp5(hBaseWeight.mul(noiseMod), 0, 1);
-    dWeight = clamp5(dBaseWeight.mul(mix5(float3(1), noiseMod, 0.7)), 0, 1);
+  if (options.distanceNoise) {
+    const dSamplePos = worldPos.mul(uDistNoiseScale).add(vec33(uDistNoiseTime.mul(0.83), uDistNoiseTime.mul(0.29), uDistNoiseTime));
+    const dNoise = fastValueNoise3D(dSamplePos);
+    const dMod = mix5(float3(1), clamp5(dNoise.mul(1.7).add(0.15), 0, 1.5), uDistNoiseIntensity);
+    dWeight = clamp5(dBaseWeight.mul(dMod), 0, 1);
   }
   const combinedRaw = clamp5(max3(hWeight, dWeight).add(min2(hWeight, dWeight).mul(0.35)), 0, 1);
   const skyFogAmount = clamp5(dWeight.mul(uDistEnabled).add(hWeight.mul(0.25).mul(uHeightEnabled)), 0, 1).mul(uAffectSky);
   const fogFactor = select2(isBg, skyFogAmount, combinedRaw).mul(uOpacity);
   const weightSum = max3(hWeight.add(dWeight), float3(1e-4));
   const distRatio = dWeight.div(weightSum);
-  const blendedFogColor = mix5(uHeightColor, uDistColor, distRatio);
+  const hMidT = clamp5(hNorm.mul(2), 0, 1);
+  const hTopT = clamp5(hNorm.mul(2).sub(1), 0, 1);
+  const heightGradColor = mix5(mix5(uHeightBottomColor, uHeightMidColor, hMidT), uHeightTopColor, hTopT);
+  const distGradColor = mix5(uDistNearColor, uDistFarColor, dMain);
+  const blendedFogColor = mix5(heightGradColor, distGradColor, distRatio);
   const outRgb = mix5(colorNode.rgb, blendedFogColor, fogFactor);
   const node = vec44(outRgb, colorNode.a);
   return {
@@ -6953,24 +6988,33 @@ function buildHeightFogPass(colorNode, scenePass, withNoise) {
       const s = currentSettings(picture);
       camera.updateMatrixWorld();
       uCameraWorldMatrix.value.copy(camera.matrixWorld);
+      uCameraProjInverse.value.copy(camera.projectionMatrixInverse);
       uOpacity.value = s.enabled ? s.opacity : 0;
       uAffectSky.value = s.affectSky ? 1 : 0;
       uHeightEnabled.value = s.heightEnabled ? 1 : 0;
-      uHeightColor.value.set(s.heightColor);
+      uHeightBottomColor.value.set(s.heightColor);
+      uHeightMidColor.value.set(s.heightGradient ? s.heightMidColor : s.heightColor);
+      uHeightTopColor.value.set(s.heightGradient ? s.heightTopColor : s.heightColor);
       uHeightBase.value = s.heightBase;
       uHeightRange.value = s.heightRange;
       uHeightDensity.value = s.heightDensity;
       uHeightFalloff.value = s.heightFalloff;
+      if (options.heightNoise) {
+        uHeightNoiseScale.value = s.heightNoiseScale;
+        uHeightNoiseIntensity.value = s.heightNoiseIntensity;
+        uHeightNoiseTime.value = elapsedTime * s.heightNoiseSpeed;
+      }
       uDistEnabled.value = s.distanceEnabled ? 1 : 0;
-      uDistColor.value.set(s.distanceColor);
+      uDistNearColor.value.set(s.distanceNearColor);
+      uDistFarColor.value.set(s.distanceFarColor);
       uDistStart.value = s.distanceStart;
       uDistEnd.value = s.distanceEnd;
       uDistTrans.value = s.distanceTransition;
       uDistDensity.value = s.distanceDensity;
-      if (withNoise) {
-        uNoiseScale.value = s.noiseScale;
-        uNoiseIntensity.value = s.noiseIntensity;
-        uNoiseTime.value = elapsedTime * s.noiseSpeed;
+      if (options.distanceNoise) {
+        uDistNoiseScale.value = s.distanceNoiseScale;
+        uDistNoiseIntensity.value = s.distanceNoiseIntensity;
+        uDistNoiseTime.value = elapsedTime * s.distanceNoiseSpeed;
       }
     }
   };
@@ -7986,21 +8030,29 @@ var CAPABILITY_META = {
       opacity: "number (0~1)\uFF0C\u6574\u4F53\u6700\u5927\u4E0D\u900F\u660E\u5EA6",
       affectSky: "boolean\uFF0C\u662F\u5426\u4F5C\u7528\u4E8E\u5929\u7A7A/\u80CC\u666F",
       heightEnabled: "boolean\uFF0C\u662F\u5426\u5F00\u542F\u9AD8\u5EA6\u96FE",
-      heightColor: "string\uFF0C\u9AD8\u5EA6\u96FE\u989C\u8272",
+      heightGradient: "boolean\uFF0C\u662F\u5426\u5F00\u542F\u9AD8\u5EA6\u96FE\u4E09\u8272\u5782\u76F4\u6E10\u53D8",
+      heightColor: "string\uFF0C\u9AD8\u5EA6\u96FE\u5E95\u5C42\u989C\u8272\uFF08\u5173\u95ED\u6E10\u53D8\u65F6\u4E3A\u5355\u8272\uFF09",
+      heightMidColor: "string\uFF0C\u9AD8\u5EA6\u96FE\u4E2D\u5C42\u989C\u8272",
+      heightTopColor: "string\uFF0C\u9AD8\u5EA6\u96FE\u9876\u5C42\u989C\u8272",
       heightBase: "number\uFF0C\u9AD8\u5EA6\u6807\u51C6\u7EBF\uFF08\u7C73\uFF09",
       heightRange: "number\uFF0C\u9AD8\u5EA6\u8FC7\u6E21\u8303\u56F4\uFF08\u7C73\uFF09",
       heightDensity: "number (0~1)\uFF0C\u9AD8\u5EA6\u96FE\u6D53\u5EA6",
       heightFalloff: "number (0.2~4)\uFF0C\u9AD8\u5EA6\u8870\u51CF\u66F2\u7EBF",
+      heightNoiseEnabled: "boolean\uFF0C\u9AD8\u5EA6\u96FE\u968F\u673A\u566A\u70B9\u5F00\u5173",
+      heightNoiseScale: "number\uFF0C\u9AD8\u5EA6\u96FE\u566A\u70B9\u7A7A\u95F4\u5C3A\u5EA6",
+      heightNoiseIntensity: "number (0~1)\uFF0C\u9AD8\u5EA6\u96FE\u566A\u70B9\u6270\u52A8\u5F3A\u5EA6",
+      heightNoiseSpeed: "number\uFF0C\u9AD8\u5EA6\u96FE\u566A\u70B9\u98D8\u52A8\u901F\u5EA6",
       distanceEnabled: "boolean\uFF0C\u662F\u5426\u5F00\u542F\u8FDC\u8FD1\u96FE",
-      distanceColor: "string\uFF0C\u8FDC\u8FD1\u96FE\u989C\u8272",
+      distanceNearColor: "string\uFF0C\u8FDC\u8FD1\u96FE\u8FD1\u7AEF\u989C\u8272",
+      distanceFarColor: "string\uFF0C\u8FDC\u8FD1\u96FE\u8FDC\u7AEF\u989C\u8272",
       distanceStart: "number\uFF0C\u8FDC\u8FD1\u96FE\u8D77\u70B9\uFF08\u7C73\uFF09",
       distanceEnd: "number\uFF0C\u8FDC\u8FD1\u96FE\u7EC8\u70B9\uFF08\u7C73\uFF09",
       distanceTransition: "number\uFF0C\u8FDC\u8FD1\u96FE\u8FC7\u6E21\u8303\u56F4\uFF08\u7C73\uFF09",
       distanceDensity: "number (0~1)\uFF0C\u8FDC\u8FD1\u96FE\u6D53\u5EA6",
-      noiseEnabled: "boolean\uFF0C\u968F\u673A\u566A\u70B9\u5F00\u5173",
-      noiseScale: "number\uFF0C\u566A\u70B9\u7A7A\u95F4\u5C3A\u5EA6",
-      noiseIntensity: "number (0~1)\uFF0C\u566A\u70B9\u6270\u52A8\u5F3A\u5EA6",
-      noiseSpeed: "number\uFF0C\u566A\u70B9\u98D8\u52A8\u901F\u5EA6"
+      distanceNoiseEnabled: "boolean\uFF0C\u8FDC\u8FD1\u96FE\u968F\u673A\u566A\u70B9\u5F00\u5173",
+      distanceNoiseScale: "number\uFF0C\u8FDC\u8FD1\u96FE\u566A\u70B9\u7A7A\u95F4\u5C3A\u5EA6",
+      distanceNoiseIntensity: "number (0~1)\uFF0C\u8FDC\u8FD1\u96FE\u566A\u70B9\u6270\u52A8\u5F3A\u5EA6",
+      distanceNoiseSpeed: "number\uFF0C\u8FDC\u8FD1\u96FE\u566A\u70B9\u98D8\u52A8\u901F\u5EA6"
     }
   },
   postEffects: {
@@ -11158,11 +11210,11 @@ function facingBasis(spec, selfId, nodes, x, z, cameraYaw, host) {
   return { moveYaw: cameraYaw, faceYaw: cameraYaw, lock: false };
 }
 function rotate(x, z, yaw) {
-  const sin4 = Math.sin(yaw);
+  const sin3 = Math.sin(yaw);
   const cos3 = Math.cos(yaw);
   return {
-    x: x * cos3 - z * sin4,
-    z: -x * sin4 - z * cos3
+    x: x * cos3 - z * sin3,
+    z: -x * sin3 - z * cos3
   };
 }
 function faceYaw(spec, basis, wish, moveX, moveZ, dodging, live) {
@@ -11174,12 +11226,12 @@ function faceYaw(spec, basis, wish, moveX, moveZ, dodging, live) {
 function capsuleShift(spec, q) {
   const offset = spec.capsuleOffset ?? [0, 0, 0];
   const yaw = yawOf2(q);
-  const sin4 = Math.sin(yaw);
+  const sin3 = Math.sin(yaw);
   const cos3 = Math.cos(yaw);
   return {
-    x: offset[0] * cos3 + offset[2] * sin4,
+    x: offset[0] * cos3 + offset[2] * sin3,
     y: offset[1],
-    z: -offset[0] * sin4 + offset[2] * cos3
+    z: -offset[0] * sin3 + offset[2] * cos3
   };
 }
 function yawOf2(q) {
@@ -14507,12 +14559,12 @@ function viewRelativeMove(action, host) {
   if (length5 < 1e-4) return { x: 0, y: 0, z: 0 };
   const scale = length5 > 1 ? 1 / length5 : 1;
   const yaw = host.yaw?.() ?? 0;
-  const sin4 = Math.sin(yaw);
+  const sin3 = Math.sin(yaw);
   const cos3 = Math.cos(yaw);
   return {
-    x: (axis.x * cos3 - axis.y * sin4) * scale,
+    x: (axis.x * cos3 - axis.y * sin3) * scale,
     y: 0,
-    z: (-axis.x * sin4 - axis.y * cos3) * scale
+    z: (-axis.x * sin3 - axis.y * cos3) * scale
   };
 }
 function snapshotStateValue(value, depth) {
@@ -15949,7 +16001,36 @@ var zh = {
   "inspector.linkedNote": "\u8FD9\u4E2A\u69FD\u5F15\u7528\u6750\u8D28\u8D44\u6E90\u3002\u8FD9\u91CC\u7684\u4FEE\u6539\u4F1A\u4F5C\u7528\u5230\u6240\u6709\u4F7F\u7528\u5B83\u7684\u7269\u4F53\u3002",
   "material.shader": "\u7740\u8272\u5668",
   "material.lit": "\u6807\u51C6\u5149\u7167",
-  "material.unityStandard": "Unity \u6807\u51C6 (R\u91D1\u5C5E / A\u5149\u6ED1)",
+  "material.unityStandard": "Unity \u6807\u51C6",
+  "material.physical": "PBR Advanced",
+  "material.clearcoatSection": "\u6E05\u6F06 (Clearcoat)",
+  "material.clearcoatEnabled": "\u542F\u7528\u6E05\u6F06",
+  "material.clearcoat": "\u6E05\u6F06\u5F3A\u5EA6",
+  "material.clearcoatRoughness": "\u6E05\u6F06\u7C97\u7CD9\u5EA6",
+  "material.clearcoatMap": "\u6E05\u6F06\u8D34\u56FE",
+  "material.clearcoatRoughnessMap": "\u6E05\u6F06\u7C97\u7CD9\u56FE",
+  "material.clearcoatNormalMap": "\u6E05\u6F06\u6CD5\u7EBF\u56FE",
+  "material.transmissionSection": "\u900F\u5C04 / \u73BB\u7483 (Transmission)",
+  "material.transmissionEnabled": "\u542F\u7528\u900F\u5C04",
+  "material.transmission": "\u900F\u5C04\u5F3A\u5EA6",
+  "material.ior": "\u6298\u5C04\u7387 (IOR)",
+  "material.thickness": "\u4ECB\u8D28\u539A\u5EA6",
+  "material.attenuationColor": "\u8870\u51CF\u989C\u8272",
+  "material.attenuationDistance": "\u8870\u51CF\u8DDD\u79BB",
+  "material.sheenSection": "\u4E1D\u7ED2 / \u5E03\u6599 (Sheen)",
+  "material.sheenEnabled": "\u542F\u7528\u4E1D\u7ED2",
+  "material.sheen": "\u4E1D\u7ED2\u5F3A\u5EA6",
+  "material.sheenRoughness": "\u4E1D\u7ED2\u7C97\u7CD9\u5EA6",
+  "material.sheenColor": "\u4E1D\u7ED2\u989C\u8272",
+  "material.iridescenceSection": "\u8679\u5F69\u8584\u819C (Iridescence)",
+  "material.iridescenceEnabled": "\u542F\u7528\u8679\u5F69",
+  "material.iridescence": "\u8679\u5F69\u5F3A\u5EA6",
+  "material.iridescenceIOR": "\u8679\u5F69\u6298\u5C04\u7387",
+  "material.iridescenceThickness": "\u8679\u5F69\u819C\u539A (nm)",
+  "material.specularSection": "\u9AD8\u5149\u53CD\u5C04 (Specular)",
+  "material.specularEnabled": "\u542F\u7528\u9AD8\u5149\u5FAE\u8C03",
+  "material.specularIntensity": "\u9AD8\u5149\u5F3A\u5EA6",
+  "material.specularColor": "\u9AD8\u5149\u989C\u8272",
   "material.unityMetallicGloss": "\u91D1\u5C5E\u5149\u6ED1",
   "material.unityMetallicGlossHint": "Unity \u8D34\u56FE\u7EA6\u5B9A\uFF1A\u7EA2\u901A\u9053\u91D1\u5C5E\uFF0CAlpha \u901A\u9053\u5149\u6ED1\u5EA6\uFF081-\u7C97\u7CD9\uFF09\uFF0C\u7EFF\u901A\u9053\u906E\u853D",
   "material.particle": "\u7C92\u5B50\u65E0\u5149",
@@ -16515,13 +16596,18 @@ var zh = {
   "fog.heightGroup": "\u9AD8\u5EA6\u96FE",
   "fog.heightEnabled": "\u542F\u7528\u9AD8\u5EA6\u96FE",
   "fog.heightColor": "\u9AD8\u5EA6\u96FE\u989C\u8272",
+  "fog.heightGradient": "\u4E09\u8272\u5782\u76F4\u6E10\u53D8",
+  "fog.heightBottomColor": "\u5E95\u5C42\u989C\u8272",
+  "fog.heightMidColor": "\u4E2D\u5C42\u989C\u8272",
+  "fog.heightTopColor": "\u9876\u5C42\u989C\u8272",
   "fog.heightBase": "\u9AD8\u5EA6\u6807\u51C6\u7EBF",
   "fog.heightRange": "\u9AD8\u5EA6\u8FC7\u6E21\u8303\u56F4",
   "fog.heightDensity": "\u6D53\u5EA6",
   "fog.heightFalloff": "\u8870\u51CF\u66F2\u7EBF",
   "fog.distanceGroup": "\u8FDC\u8FD1\u96FE",
   "fog.distanceEnabled": "\u542F\u7528\u8FDC\u8FD1\u96FE",
-  "fog.distanceColor": "\u8FDC\u8FD1\u96FE\u989C\u8272",
+  "fog.distanceNearColor": "\u8FD1\u7AEF\u989C\u8272",
+  "fog.distanceFarColor": "\u8FDC\u7AEF\u989C\u8272",
   "fog.distanceStart": "\u8D77\u70B9\u8DDD\u79BB",
   "fog.distanceEnd": "\u7EC8\u70B9\u8DDD\u79BB",
   "fog.distanceTransition": "\u8FC7\u6E21\u8303\u56F4",
@@ -16827,6 +16913,17 @@ var zh = {
   "pkg.scanning": "\u6B63\u5728\u626B\u63CF\u53EF\u63D0\u53D6\u8D44\u6E90\u2026",
   "pkg.scanningSlow": "\u8D44\u6E90\u5305\u8F83\u5927\uFF0C\u6B63\u5728\u89E3\u538B\u548C\u5EFA\u7ACB\u7D22\u5F15\u3002\u7A97\u53E3\u6CA1\u6709\u5361\u6B7B\uFF0C\u5B8C\u6210\u540E\u4F1A\u663E\u793A\u53EF\u63D0\u53D6\u8D44\u6E90\u3002",
   "pkg.scanFailed": "\u626B\u63CF\u5931\u8D25\uFF1A{detail}",
+  "pkg.scanProgress": "\u6B63\u5728\u89E3\u538B\u5E76\u5EFA\u7ACB\u7D22\u5F15 {percent}%\uFF08{done} / {total}\uFF09",
+  "pkg.tooLargeForBrowser": "\u8D44\u6E90\u5305\u592A\u5927\uFF08{size}\uFF09\uFF0C\u7F51\u9875\u7248\u65E0\u6CD5\u5BFC\u5165\uFF0C\u8BF7\u5728\u684C\u9762\u7248\u91CC\u5BFC\u5165\u3002",
+  "pkg.cancelled": "\u5DF2\u53D6\u6D88\u63D0\u53D6\uFF0C\u5B8C\u6210\u4E86 {count} \u9879\u3002",
+  "pkg.cancel": "\u53D6\u6D88",
+  "pkg.failedList": "\u4EE5\u4E0B {count} \u9879\u5931\u8D25\uFF1A",
+  "memory.sweepDone": "\u5DF2\u91CA\u653E\u573A\u666F\u6CA1\u7528\u5230\u7684\u8D44\u6E90\uFF1A{textures} \u5F20\u8D34\u56FE\u3001{models} \u4E2A\u6A21\u578B\uFF0C\u7EA6 {freed}\u3002\u8D34\u56FE\u663E\u5B58\u4F30\u7B97 {used} / \u9884\u7B97 {budget}\u3002",
+  "memory.sweepWhilePlaying": "\u8BD5\u73A9\u671F\u95F4\u4E0D\u56DE\u6536\u8D44\u6E90\uFF0C\u8BF7\u5148\u505C\u6B62\u8BD5\u73A9\u3002",
+  "memory.overBudget": "\u8D34\u56FE\u663E\u5B58\u4F30\u7B97 {used} \u5DF2\u8D85\u8FC7\u9884\u7B97 {budget}\uFF0C\u5F53\u524D\u573A\u666F\u7528\u5230\u7684\u8D34\u56FE\u592A\u591A\u3002\u4E4B\u540E\u52A0\u8F7D\u7684\u8D34\u56FE\u4F1A\u81EA\u52A8\u964D\u4F4E\u6E05\u6670\u5EA6\u4EE5\u907F\u514D\u663E\u5B58\u8017\u5C3D\u3002",
+  "memory.loadFailed": "{kind}\u300C{name}\u300D\u591A\u6B21\u52A0\u8F7D\u5931\u8D25\uFF0C\u5DF2\u505C\u6B62\u81EA\u52A8\u91CD\u8BD5\uFF1A{message}\u3002\u4FEE\u597D\u6587\u4EF6\u540E\u91CD\u65B0\u5BFC\u5165\u5373\u53EF\u3002",
+  "memory.bulkImport": "\u672C\u6B21\u5BFC\u5165 {count} \u4E2A\u6587\u4EF6\uFF0C\u5DF2\u5207\u6362\u4E3A\u6279\u91CF\u6A21\u5F0F\uFF1A\u53EA\u5199\u5165\u5DE5\u7A0B\u5E76\u751F\u6210\u7F29\u7565\u56FE\uFF0C\u7528\u5230\u65F6\u518D\u52A0\u8F7D\u3002",
+  "menu.releaseUnused": "\u91CA\u653E\u672A\u5F15\u7528\u8D44\u6E90",
   "pkg.empty": "\u6CA1\u6709\u627E\u5230\u53EF\u63D0\u53D6\u7684\u6A21\u578B\u3001\u8D34\u56FE\u3001\u52A8\u753B\u6216\u6750\u8D28\u3002",
   "pkg.models": "\u6A21\u578B",
   "pkg.textures": "\u8D34\u56FE",
@@ -17966,7 +18063,36 @@ var en = {
   "inspector.linkedNote": "This slot references a material asset. Edits apply to every object using it.",
   "material.shader": "Shader",
   "material.lit": "Lit",
-  "material.unityStandard": "Unity Standard (R Metallic / A Smoothness)",
+  "material.unityStandard": "Unity Standard",
+  "material.physical": "PBR Advanced",
+  "material.clearcoatSection": "Clearcoat",
+  "material.clearcoatEnabled": "Enable clearcoat",
+  "material.clearcoat": "Clearcoat",
+  "material.clearcoatRoughness": "Coat Roughness",
+  "material.clearcoatMap": "Clearcoat Map",
+  "material.clearcoatRoughnessMap": "Coat Roughness Map",
+  "material.clearcoatNormalMap": "Coat Normal Map",
+  "material.transmissionSection": "Transmission (Glass)",
+  "material.transmissionEnabled": "Enable transmission",
+  "material.transmission": "Transmission",
+  "material.ior": "IOR",
+  "material.thickness": "Thickness",
+  "material.attenuationColor": "Attenuation Color",
+  "material.attenuationDistance": "Attenuation Dist",
+  "material.sheenSection": "Sheen (Fabric)",
+  "material.sheenEnabled": "Enable sheen",
+  "material.sheen": "Sheen",
+  "material.sheenRoughness": "Sheen Roughness",
+  "material.sheenColor": "Sheen Color",
+  "material.iridescenceSection": "Iridescence",
+  "material.iridescenceEnabled": "Enable iridescence",
+  "material.iridescence": "Iridescence",
+  "material.iridescenceIOR": "Iridescence IOR",
+  "material.iridescenceThickness": "Film Thickness (nm)",
+  "material.specularSection": "Specular",
+  "material.specularEnabled": "Enable specular override",
+  "material.specularIntensity": "Specular Intensity",
+  "material.specularColor": "Specular Color",
   "material.unityMetallicGloss": "Metallic Smoothness",
   "material.unityMetallicGlossHint": "Unity convention: Red is metallic, Alpha is smoothness (1-roughness), Green is occlusion",
   "material.particle": "Particle Unlit",
@@ -18532,13 +18658,18 @@ var en = {
   "fog.heightGroup": "Height Fog",
   "fog.heightEnabled": "Enable height fog",
   "fog.heightColor": "Height color",
+  "fog.heightGradient": "3-color vertical gradient",
+  "fog.heightBottomColor": "Bottom color",
+  "fog.heightMidColor": "Mid color",
+  "fog.heightTopColor": "Top color",
   "fog.heightBase": "Base height",
   "fog.heightRange": "Height range",
   "fog.heightDensity": "Density",
   "fog.heightFalloff": "Falloff curve",
   "fog.distanceGroup": "Distance Fog",
   "fog.distanceEnabled": "Enable distance fog",
-  "fog.distanceColor": "Distance color",
+  "fog.distanceNearColor": "Near color",
+  "fog.distanceFarColor": "Far color",
   "fog.distanceStart": "Start distance",
   "fog.distanceEnd": "End distance",
   "fog.distanceTransition": "Transition range",
@@ -18844,6 +18975,17 @@ var en = {
   "pkg.scanning": "Scanning extractable assets\u2026",
   "pkg.scanningSlow": "This package is large. The window is still working.",
   "pkg.scanFailed": "Scan failed: {detail}",
+  "pkg.scanProgress": "Unpacking and indexing {percent}% ({done} / {total})",
+  "pkg.tooLargeForBrowser": "This package is too large ({size}) for the web version. Import it in the desktop app.",
+  "pkg.cancelled": "Extraction cancelled after {count} items.",
+  "pkg.cancel": "Cancel",
+  "pkg.failedList": "{count} items failed:",
+  "memory.sweepDone": "Released unused assets: {textures} textures, {models} models, about {freed}. Estimated texture memory {used} / budget {budget}.",
+  "memory.sweepWhilePlaying": "Assets are not released while playing. Stop the playtest first.",
+  "memory.overBudget": "Estimated texture memory {used} exceeds the budget {budget}: this scene uses too many textures. Textures loaded from now on use a lower resolution to avoid running out of video memory.",
+  "memory.loadFailed": '{kind} "{name}" failed to load several times and will not be retried: {message}. Fix the file and reimport it.',
+  "memory.bulkImport": "Importing {count} files in bulk mode: files are written to the project with thumbnails and loaded on first use.",
+  "menu.releaseUnused": "Release Unused Assets",
   "pkg.empty": "No extractable models, textures, animations, or materials.",
   "pkg.models": "Models",
   "pkg.textures": "Textures",
@@ -22536,6 +22678,7 @@ function createDefaultBuildSettings(projectName2 = "Tact3D Game") {
     bakeModelsToGlb: true,
     textureMode: "webp",
     textureMaxSize: 0,
+    desktopBc7Textures: true,
     preloadMode: "entry-scene",
     loading: {
       enabled: true,
@@ -22599,6 +22742,7 @@ function normalizeBuildSettings(raw, availableSceneIds, activeSceneId, projectNa
     bakeModelsToGlb: raw.bakeModelsToGlb !== false,
     textureMode: raw.textureMode === "original" ? "original" : "webp",
     textureMaxSize: raw.textureMaxSize === 2048 || raw.textureMaxSize === 1024 || raw.textureMaxSize === 512 ? raw.textureMaxSize : 0,
+    desktopBc7Textures: raw.desktopBc7Textures !== false,
     preloadMode: raw.preloadMode === "all-scenes" || raw.preloadMode === "minimal" ? raw.preloadMode : "entry-scene",
     loading: {
       enabled: rawLoading.enabled !== false,
@@ -22967,6 +23111,46 @@ function boundsOf(root2) {
   }
 }
 
+// src/editor/assets/loadFailures.ts
+var MAX_ATTEMPTS = 3;
+var BASE_DELAY_MS = 2e3;
+var reporter = null;
+var gates = [];
+function createLoadFailureGate(kind, now = () => Date.now()) {
+  const records2 = /* @__PURE__ */ new Map();
+  const gate = {
+    shouldTry(assetId, hash) {
+      const record = records2.get(assetId);
+      if (!record) return true;
+      if (record.hash !== hash) {
+        records2.delete(assetId);
+        return true;
+      }
+      if (record.count >= MAX_ATTEMPTS) return false;
+      return now() >= record.retryAt;
+    },
+    fail(assetId, hash, name, error) {
+      const previous = records2.get(assetId);
+      const count = previous && previous.hash === hash ? previous.count + 1 : 1;
+      const message = error instanceof Error ? error.message : String(error);
+      records2.set(assetId, { hash, count, retryAt: now() + BASE_DELAY_MS * 4 ** (count - 1), message });
+      if (count === MAX_ATTEMPTS) reporter?.({ assetId, kind, name, message });
+    },
+    clear(assetId) {
+      records2.delete(assetId);
+    },
+    failed() {
+      const out = [];
+      for (const [assetId, record] of records2) {
+        if (record.count >= MAX_ATTEMPTS) out.push({ assetId, message: record.message });
+      }
+      return out;
+    }
+  };
+  gates.push(gate);
+  return gate;
+}
+
 // src/runtime/engine/materials.ts
 import {
   AdditiveBlending as AdditiveBlending3,
@@ -22977,6 +23161,7 @@ import {
   FrontSide as FrontSide2,
   IntType,
   MeshBasicMaterial as MeshBasicMaterial2,
+  MeshPhysicalMaterial,
   MeshStandardMaterial,
   MultiplyBlending as MultiplyBlending3,
   NormalBlending as NormalBlending3,
@@ -23025,7 +23210,30 @@ function normalizeSlot(slot) {
     cull: slot.cull ?? DEFAULTS.cull,
     depthWrite: slot.depthWrite ?? DEFAULTS.depthWrite,
     wireframe: slot.wireframe ?? DEFAULTS.wireframe,
-    particleBlend: slot.particleBlend
+    particleBlend: slot.particleBlend,
+    clearcoatEnabled: slot.clearcoatEnabled ?? ((slot.clearcoat ?? 0) > 0 || Boolean(slot.clearcoatMapAssetId)),
+    clearcoat: slot.clearcoat ?? 0,
+    clearcoatRoughness: slot.clearcoatRoughness ?? 0,
+    clearcoatMapAssetId: slot.clearcoatMapAssetId ?? null,
+    clearcoatRoughnessMapAssetId: slot.clearcoatRoughnessMapAssetId ?? null,
+    clearcoatNormalMapAssetId: slot.clearcoatNormalMapAssetId ?? null,
+    transmissionEnabled: slot.transmissionEnabled ?? (slot.transmission ?? 0) > 0,
+    transmission: slot.transmission ?? 0,
+    ior: slot.ior ?? 1.5,
+    thickness: slot.thickness ?? 0,
+    attenuationColor: slot.attenuationColor ?? "#ffffff",
+    attenuationDistance: slot.attenuationDistance ?? 0,
+    sheenEnabled: slot.sheenEnabled ?? (slot.sheen ?? 0) > 0,
+    sheen: slot.sheen ?? 0,
+    sheenRoughness: slot.sheenRoughness ?? 1,
+    sheenColor: slot.sheenColor ?? "#ffffff",
+    iridescenceEnabled: slot.iridescenceEnabled ?? (slot.iridescence ?? 0) > 0,
+    iridescence: slot.iridescence ?? 0,
+    iridescenceIOR: slot.iridescenceIOR ?? 1.3,
+    iridescenceThickness: slot.iridescenceThickness ?? 400,
+    specularEnabled: slot.specularEnabled ?? (slot.specularIntensity !== void 0 && slot.specularIntensity !== 1 || slot.specularColor !== void 0 && slot.specularColor.toLowerCase() !== "#ffffff"),
+    specularIntensity: slot.specularIntensity ?? 1,
+    specularColor: slot.specularColor ?? "#ffffff"
   };
 }
 function normalizeMaterialKey(raw) {
@@ -23059,6 +23267,36 @@ function resolveModelSlotWithHost(slot, host) {
   }
   return surface;
 }
+function slotFromNodeWithHost(node, host) {
+  const linked = host.getMaterialSlot(node.materialAssetId);
+  if (linked) return { ...normalizeSlot({ ...linked, materialAssetId: null }), name: node.name };
+  return normalizeSlot({
+    name: node.name,
+    color: node.color,
+    metalness: node.metalness,
+    roughness: node.roughness,
+    emissive: node.emissive,
+    emissiveIntensity: node.emissiveIntensity,
+    opacity: node.opacity,
+    ao: node.ao,
+    mapAssetId: node.mapAssetId,
+    normalAssetId: node.normalAssetId,
+    metallicRoughnessAssetId: node.metallicRoughnessAssetId,
+    roughnessAssetId: node.roughnessAssetId,
+    metalnessAssetId: node.metalnessAssetId,
+    emissiveAssetId: node.emissiveAssetId,
+    aoAssetId: node.aoAssetId,
+    shader: node.shader,
+    shaderParams: node.capabilities?.__materialShaderParams ?? void 0,
+    particleBlend: node.particleBlend,
+    normalScale: node.normalScale,
+    alphaMode: node.alphaMode,
+    alphaCutoff: node.alphaCutoff,
+    cull: node.cull,
+    depthWrite: node.depthWrite,
+    wireframe: node.wireframe
+  });
+}
 function sideFor(cull) {
   if (cull === "front") return BackSide2;
   if (cull === "off") return DoubleSide4;
@@ -23087,11 +23325,13 @@ function materialSlotToken(material) {
   return typeof value === "number" && Number.isFinite(value) && value >= 0 ? Math.floor(value) : null;
 }
 function ensureClass(material, slot) {
-  const basic = slot.shader !== "lit" && slot.shader !== "unity-standard" && !slot.shader.startsWith("custom:");
+  const basic = slot.shader !== "lit" && slot.shader !== "physical" && slot.shader !== "unity-standard" && !slot.shader.startsWith("custom:");
+  const physical = slot.shader === "physical";
   const wasCustom = Boolean(material.userData?.t3dCustomShaderKey);
   if (!wasCustom && basic && material.isMeshBasicMaterial) return material;
-  if (!wasCustom && !basic && material.isMeshStandardMaterial) return material;
-  const next = basic ? new MeshBasicMaterial2() : new MeshStandardMaterial();
+  if (!wasCustom && physical && material.isMeshPhysicalMaterial) return material;
+  if (!wasCustom && !basic && !physical && material.isMeshStandardMaterial && !material.isMeshPhysicalMaterial) return material;
+  const next = basic ? new MeshBasicMaterial2() : physical ? new MeshPhysicalMaterial() : new MeshStandardMaterial();
   next.name = material.name;
   const token = materialSlotToken(material);
   if (token != null) next.userData.t3dSlot = token;
@@ -23153,7 +23393,7 @@ function paintWithHost(material, slot, host) {
     if (structuralChange) material.needsUpdate = true;
     return;
   }
-  if (slot.shader === "lit" || slot.shader === "unity-standard") {
+  if (slot.shader === "lit" || slot.shader === "physical" || slot.shader === "unity-standard") {
     const isUnity = slot.shader === "unity-standard";
     const hasMrMap = Boolean(slot.metallicRoughnessAssetId);
     standard.metalness = isUnity && hasMrMap ? 1 : slot.metalness;
@@ -23169,6 +23409,35 @@ function paintWithHost(material, slot, host) {
     assignMapWithHost(standard, "metalnessMap", slot.metallicRoughnessAssetId, false, host, isUnity);
     assignMapWithHost(standard, "emissiveMap", slot.emissiveAssetId, true, host);
     assignMapWithHost(standard, "aoMap", slot.aoAssetId ?? slot.metallicRoughnessAssetId, false, host, isUnity && !slot.aoAssetId);
+    if (slot.shader === "physical" && standard.isMeshPhysicalMaterial) {
+      const phys = standard;
+      const nextClearcoat = slot.clearcoatEnabled ? slot.clearcoat ?? 0 : 0;
+      const nextTransmission = slot.transmissionEnabled ? slot.transmission ?? 0 : 0;
+      const nextSheen = slot.sheenEnabled ? slot.sheen ?? 0 : 0;
+      const nextIridescence = slot.iridescenceEnabled ? slot.iridescence ?? 0 : 0;
+      if (phys.clearcoat > 0 !== nextClearcoat > 0 || phys.transmission > 0 !== nextTransmission > 0 || phys.sheen > 0 !== nextSheen > 0 || phys.iridescence > 0 !== nextIridescence > 0) {
+        structuralChange = true;
+      }
+      phys.clearcoat = nextClearcoat;
+      phys.clearcoatRoughness = slot.clearcoatEnabled ? slot.clearcoatRoughness ?? 0 : 0;
+      assignMapWithHost(phys, "clearcoatMap", slot.clearcoatEnabled ? slot.clearcoatMapAssetId ?? null : null, false, host);
+      assignMapWithHost(phys, "clearcoatRoughnessMap", slot.clearcoatEnabled ? slot.clearcoatRoughnessMapAssetId ?? null : null, false, host);
+      assignMapWithHost(phys, "clearcoatNormalMap", slot.clearcoatEnabled ? slot.clearcoatNormalMapAssetId ?? null : null, false, host);
+      phys.transmission = nextTransmission;
+      phys.ior = slot.transmissionEnabled ? slot.ior ?? 1.5 : 1.5;
+      phys.thickness = slot.transmissionEnabled ? slot.thickness ?? 0 : 0;
+      phys.attenuationColor.set(slot.transmissionEnabled ? slot.attenuationColor ?? "#ffffff" : "#ffffff");
+      phys.attenuationDistance = slot.transmissionEnabled && (slot.attenuationDistance ?? 0) > 0 ? slot.attenuationDistance : Infinity;
+      phys.sheen = nextSheen;
+      phys.sheenRoughness = slot.sheenEnabled ? slot.sheenRoughness ?? 1 : 1;
+      phys.sheenColor.set(slot.sheenEnabled ? slot.sheenColor ?? "#ffffff" : "#ffffff");
+      phys.iridescence = nextIridescence;
+      phys.iridescenceIOR = slot.iridescenceEnabled ? slot.iridescenceIOR ?? 1.3 : 1.3;
+      const iriThick = slot.iridescenceThickness ?? 400;
+      phys.iridescenceThicknessRange = [100, Math.max(100, iriThick)];
+      phys.specularIntensity = slot.specularEnabled ? slot.specularIntensity ?? 1 : 1;
+      phys.specularColor.set(slot.specularEnabled ? slot.specularColor ?? "#ffffff" : "#ffffff");
+    }
   } else {
     assignMapWithHost(basic, "map", slot.mapAssetId, true, host);
   }
@@ -23334,13 +23603,80 @@ function normalizeSkinIndex(root2) {
 }
 
 // src/editor/assets/textures.ts
-import { CanvasTexture, CompressedTexture, DataTexture as DataTexture4, EquirectangularReflectionMapping, NoColorSpace as NoColorSpace3, RGBA_BPTC_Format, RGBAFormat as RGBAFormat4, SRGBColorSpace as SRGBColorSpace2, Texture as Texture3, TextureLoader as TextureLoader2, UnsignedByteType as UnsignedByteType3 } from "three";
+import { CanvasTexture, CompressedTexture as CompressedTexture2, DataTexture as DataTexture4, EquirectangularReflectionMapping, NoColorSpace as NoColorSpace4, RGBA_BPTC_Format as RGBA_BPTC_Format2, RGBAFormat as RGBAFormat4, SRGBColorSpace as SRGBColorSpace3, Texture as Texture3, TextureLoader as TextureLoader2, UnsignedByteType as UnsignedByteType3 } from "three";
 import { KTX2Loader } from "three/addons/loaders/KTX2Loader.js";
 import { RGBELoader } from "three/addons/loaders/RGBELoader.js";
 import { EXRLoader } from "three/addons/loaders/EXRLoader.js";
 
-// src/editor/assets/bc7Compress.ts
+// src/runtime/engine/bc7.ts
+import { CompressedTexture, NoColorSpace as NoColorSpace2, RepeatWrapping as RepeatWrapping2, RGBA_BPTC_Format, SRGBColorSpace } from "three";
 var BC7_MAGIC = 927154772;
+function packBc7Artifact(width, _height, mips) {
+  let payloadBytes = 0;
+  for (const mip of mips) payloadBytes += 12 + mip.data.byteLength;
+  const out = new Uint8Array(16 + payloadBytes);
+  const view = new DataView(out.buffer);
+  view.setUint32(0, BC7_MAGIC, true);
+  view.setUint32(4, 1, true);
+  view.setUint32(8, width, true);
+  view.setUint32(12, mips.length, true);
+  let offset = 16;
+  for (const mip of mips) {
+    view.setUint32(offset, mip.width, true);
+    view.setUint32(offset + 4, mip.height, true);
+    view.setUint32(offset + 8, mip.data.byteLength, true);
+    out.set(mip.data, offset + 12);
+    offset += 12 + mip.data.byteLength;
+  }
+  return out.buffer;
+}
+function unpackBc7Artifact(buffer) {
+  if (buffer.byteLength < 16) return null;
+  const view = new DataView(buffer);
+  if (view.getUint32(0, true) !== BC7_MAGIC || view.getUint32(4, true) !== 1) return null;
+  const width = view.getUint32(8, true);
+  const mipCount = view.getUint32(12, true);
+  if (width <= 0 || mipCount <= 0 || mipCount > 16) return null;
+  const mips = [];
+  let offset = 16;
+  for (let i = 0; i < mipCount; i += 1) {
+    if (offset + 12 > buffer.byteLength) return null;
+    const w = view.getUint32(offset, true);
+    const h = view.getUint32(offset + 4, true);
+    const byteLen = view.getUint32(offset + 8, true);
+    offset += 12;
+    if (offset + byteLen > buffer.byteLength) return null;
+    mips.push({ width: w, height: h, data: new Uint8Array(buffer, offset, byteLen) });
+    offset += byteLen;
+  }
+  if (mips.length === 0) return null;
+  return { width, height: mips[0].height, mips };
+}
+function trimBc7ArtifactToMaxSize(buffer, maxSize) {
+  if (maxSize <= 0) return buffer;
+  const unpacked = unpackBc7Artifact(buffer);
+  if (!unpacked) return null;
+  let skip = 0;
+  while (skip + 1 < unpacked.mips.length && Math.max(unpacked.mips[skip].width, unpacked.mips[skip].height) > maxSize && unpacked.mips[skip + 1].width >= 4 && unpacked.mips[skip + 1].height >= 4 && unpacked.mips[skip + 1].width % 4 === 0 && unpacked.mips[skip + 1].height % 4 === 0) {
+    skip += 1;
+  }
+  if (skip === 0) return buffer;
+  const rest = unpacked.mips.slice(skip);
+  return packBc7Artifact(rest[0].width, rest[0].height, rest);
+}
+function checkWebGlBptcSupport() {
+  if (typeof document === "undefined") return false;
+  try {
+    const canvas = document.createElement("canvas");
+    const gl = canvas.getContext("webgl2");
+    if (!gl) return false;
+    return Boolean(gl.getExtension("EXT_texture_compression_bptc"));
+  } catch {
+    return false;
+  }
+}
+
+// src/editor/assets/bc7Compress.ts
 var GPU_STAGE_COMPUTE = 4;
 var GPU_BUF_MAP_READ = 1;
 var GPU_BUF_COPY_SRC = 4;
@@ -23525,17 +23861,6 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
 }
 `
 );
-function checkWebGlBptcSupport() {
-  if (typeof document === "undefined") return false;
-  try {
-    const canvas = document.createElement("canvas");
-    const gl = canvas.getContext("webgl2");
-    if (!gl) return false;
-    return Boolean(gl.getExtension("EXT_texture_compression_bptc"));
-  } catch {
-    return false;
-  }
-}
 function isBc7Supported() {
   return bc7Supported && gpuDevice !== null;
 }
@@ -23667,47 +23992,6 @@ async function compressRgbaToBc7Mips(rgba, width, height) {
   }
   return mips;
 }
-function packBc7Artifact(width, _height, mips) {
-  let payloadBytes = 0;
-  for (const mip of mips) payloadBytes += 12 + mip.data.byteLength;
-  const out = new Uint8Array(16 + payloadBytes);
-  const view = new DataView(out.buffer);
-  view.setUint32(0, BC7_MAGIC, true);
-  view.setUint32(4, 1, true);
-  view.setUint32(8, width, true);
-  view.setUint32(12, mips.length, true);
-  let offset = 16;
-  for (const mip of mips) {
-    view.setUint32(offset, mip.width, true);
-    view.setUint32(offset + 4, mip.height, true);
-    view.setUint32(offset + 8, mip.data.byteLength, true);
-    out.set(mip.data, offset + 12);
-    offset += 12 + mip.data.byteLength;
-  }
-  return out.buffer;
-}
-function unpackBc7Artifact(buffer) {
-  if (buffer.byteLength < 16) return null;
-  const view = new DataView(buffer);
-  if (view.getUint32(0, true) !== BC7_MAGIC || view.getUint32(4, true) !== 1) return null;
-  const width = view.getUint32(8, true);
-  const mipCount = view.getUint32(12, true);
-  if (width <= 0 || mipCount <= 0 || mipCount > 16) return null;
-  const mips = [];
-  let offset = 16;
-  for (let i = 0; i < mipCount; i += 1) {
-    if (offset + 12 > buffer.byteLength) return null;
-    const w = view.getUint32(offset, true);
-    const h = view.getUint32(offset + 4, true);
-    const byteLen = view.getUint32(offset + 8, true);
-    offset += 12;
-    if (offset + byteLen > buffer.byteLength) return null;
-    mips.push({ width: w, height: h, data: new Uint8Array(buffer, offset, byteLen) });
-    offset += byteLen;
-  }
-  if (mips.length === 0) return null;
-  return { width, height: mips[0].height, mips };
-}
 
 // src/editor/assets/thumbs.ts
 import {
@@ -23778,7 +24062,7 @@ function loadImage(url) {
 }
 
 // src/runtime/engine/textures.ts
-import { DataTexture as DataTexture3, NoColorSpace as NoColorSpace2, RepeatWrapping as RepeatWrapping2, RGBAFormat as RGBAFormat3, SRGBColorSpace, Texture as Texture2, TextureLoader, UnsignedByteType as UnsignedByteType2 } from "three";
+import { DataTexture as DataTexture3, NoColorSpace as NoColorSpace3, RepeatWrapping as RepeatWrapping3, RGBAFormat as RGBAFormat3, SRGBColorSpace as SRGBColorSpace2, Texture as Texture2, TextureLoader, UnsignedByteType as UnsignedByteType2 } from "three";
 var glSampler = null;
 function getGlSampler() {
   if (glSampler) return glSampler;
@@ -23887,6 +24171,39 @@ var CRC_TABLE = (() => {
   return table;
 })();
 
+// src/editor/assets/memoryBudget.ts
+var BUDGET_KEY = "t3d.memory.textureBudgetMb";
+var DEFAULT_BUDGET_MB = 3072;
+var MIN_BUDGET_MB = 256;
+var MIN_DEGRADED_SIZE = 256;
+function textureBudgetBytes() {
+  let mb = DEFAULT_BUDGET_MB;
+  try {
+    const raw = typeof localStorage !== "undefined" ? localStorage.getItem(BUDGET_KEY) : null;
+    const parsed = raw ? Number(raw) : Number.NaN;
+    if (Number.isFinite(parsed) && parsed >= MIN_BUDGET_MB) mb = parsed;
+  } catch {
+  }
+  return mb * 1024 * 1024;
+}
+function estimateRgbaBytes(width, height, mipmaps, bytesPerPixel = 4) {
+  const base = Math.max(0, width) * Math.max(0, height) * bytesPerPixel;
+  return mipmaps ? Math.round(base * 4 / 3) : base;
+}
+function chooseMipSkip(usedBytes, budgetBytes, levels) {
+  if (budgetBytes <= 0 || levels.length <= 1) return 0;
+  const ratio = usedBytes / budgetBytes;
+  let skip = ratio >= 1.25 ? 2 : ratio >= 1 ? 1 : 0;
+  skip = Math.min(skip, levels.length - 1);
+  while (skip > 0) {
+    const level = levels[skip];
+    const usable = level.width % 4 === 0 && level.height % 4 === 0 && Math.max(level.width, level.height) >= MIN_DEGRADED_SIZE;
+    if (usable) break;
+    skip -= 1;
+  }
+  return skip;
+}
+
 // src/editor/assets/textures.ts
 init_frameProfile();
 var images = /* @__PURE__ */ new Map();
@@ -23911,6 +24228,52 @@ var bumpTimer = 0;
 var warmBumpDeferred = false;
 var warmBumpPending = false;
 var unityMrWaiters = /* @__PURE__ */ new Map();
+var imageFailures = createLoadFailureGate("\u8D34\u56FE");
+var environmentFailures = createLoadFailureGate("\u73AF\u5883\u8D34\u56FE");
+var degradedTextures = /* @__PURE__ */ new Map();
+var memoryPressureHandler = null;
+var lastPressureAt = 0;
+function estimateTextureBytes(texture4) {
+  const compressed = texture4;
+  if (compressed.isCompressedTexture && compressed.mipmaps?.length) {
+    let bytes = 0;
+    for (const mip of compressed.mipmaps) bytes += mip.data?.byteLength ?? 0;
+    return bytes;
+  }
+  const image = texture4.image;
+  const width = image?.naturalWidth || image?.width || 0;
+  const height = image?.naturalHeight || image?.height || 0;
+  const bytesPerPixel = texture4.type === UnsignedByteType3 ? 4 : 8;
+  return estimateRgbaBytes(width, height, texture4.generateMipmaps, bytesPerPixel);
+}
+function textureBytesOf(assetId) {
+  let bytes = 0;
+  const image = images.get(assetId);
+  if (image) bytes += estimateTextureBytes(image);
+  const packed = unityMrImages.get(assetId);
+  if (packed) bytes += estimateTextureBytes(packed);
+  const env = environments.get(assetId);
+  if (env) bytes += estimateTextureBytes(env);
+  return bytes;
+}
+function loadedTextureIds() {
+  return [.../* @__PURE__ */ new Set([...images.keys(), ...unityMrImages.keys(), ...environments.keys()])];
+}
+function textureMemoryStats() {
+  const ids = loadedTextureIds();
+  let bytes = 0;
+  for (const id of ids) bytes += textureBytesOf(id);
+  return { bytes, count: ids.length, degraded: degradedTextures.size, budgetBytes: textureBudgetBytes() };
+}
+function noteTextureStored() {
+  if (!memoryPressureHandler) return;
+  const now = performance.now();
+  if (now - lastPressureAt < 5e3) return;
+  const stats = textureMemoryStats();
+  if (stats.bytes <= stats.budgetBytes) return;
+  lastPressureAt = now;
+  memoryPressureHandler({ usedBytes: stats.bytes, budgetBytes: stats.budgetBytes });
+}
 function scheduleBump() {
   if (warmBumpDeferred) {
     warmBumpPending = true;
@@ -23950,18 +24313,20 @@ function textureFor(assetId, colorMap) {
   }
   const texture4 = images.get(assetId);
   if (!texture4) {
-    if (asset && asset.kind === "texture") void loadTextureAsset(asset).catch(() => void 0);
+    if (asset && asset.kind === "texture" && imageFailures.shouldTry(assetId, asset.hash)) {
+      void loadTextureAsset(asset).catch(() => void 0);
+    }
     return null;
   }
   if (colorMap) {
-    texture4.colorSpace = SRGBColorSpace2;
+    texture4.colorSpace = SRGBColorSpace3;
     return texture4;
   }
   let linear = linearImages.get(assetId);
   if (!linear) {
     linear = texture4.clone();
     linear.source = texture4.source;
-    linear.colorSpace = NoColorSpace3;
+    linear.colorSpace = NoColorSpace4;
     linear.needsUpdate = true;
     linearImages.set(assetId, linear);
   }
@@ -24058,8 +24423,19 @@ function buildDataTexture(width, height, rgba, base) {
   tex.needsUpdate = true;
   return tex;
 }
-function buildBc7Texture(width, height, mips, base) {
-  const tex = new CompressedTexture(mips, width, height, RGBA_BPTC_Format);
+function buildBc7Texture(width, height, allMips, base, degradeKey) {
+  let mips = allMips;
+  if (degradeKey) {
+    const stats = textureMemoryStats();
+    const skip = chooseMipSkip(stats.bytes, stats.budgetBytes, allMips);
+    if (skip > 0) {
+      mips = allMips.slice(skip);
+      width = mips[0].width;
+      height = mips[0].height;
+      degradedTextures.set(degradeKey, Math.max(skip, degradedTextures.get(degradeKey) ?? 0));
+    }
+  }
+  const tex = new CompressedTexture2(mips, width, height, RGBA_BPTC_Format2);
   tex.flipY = base ? base.flipY : false;
   if (base) {
     tex.wrapS = base.wrapS;
@@ -24086,7 +24462,7 @@ function scheduleUnityRepack(assetId, base, source, rawBuffer, width, height) {
   const finishWithBuffer = (w, h, buffer, persist2 = true) => {
     const rgba = new Uint8Array(buffer);
     const converted = buildDataTexture(w, h, rgba, base);
-    converted.colorSpace = NoColorSpace3;
+    converted.colorSpace = NoColorSpace4;
     unityMrImages.set(assetId, converted);
     unityMrPending.delete(assetId);
     notifyUnityMrReady(assetId);
@@ -24186,7 +24562,7 @@ function scheduleUnityRepack(assetId, base, source, rawBuffer, width, height) {
         }
         ctx.putImageData(imgData, 0, 0);
         const converted = new CanvasTexture(canvas);
-        converted.colorSpace = NoColorSpace3;
+        converted.colorSpace = NoColorSpace4;
         converted.flipY = base.flipY;
         converted.wrapS = base.wrapS;
         converted.wrapT = base.wrapT;
@@ -24207,12 +24583,13 @@ function scheduleUnityRepack(assetId, base, source, rawBuffer, width, height) {
         const bc7 = await readTextureArtifact(assetHash, "unity-mr-bc7").catch(() => null);
         const unpackedBc7 = bc7 ? unpackBc7Artifact(bc7) : null;
         if (unpackedBc7) {
-          const converted = buildBc7Texture(unpackedBc7.width, unpackedBc7.height, unpackedBc7.mips, base);
-          converted.colorSpace = NoColorSpace3;
+          const converted = buildBc7Texture(unpackedBc7.width, unpackedBc7.height, unpackedBc7.mips, base, assetId);
+          converted.colorSpace = NoColorSpace4;
           unityMrImages.set(assetId, converted);
           unityMrPending.delete(assetId);
           notifyUnityMrReady(assetId);
           scheduleBump();
+          noteTextureStored();
           return;
         }
       }
@@ -24240,7 +24617,7 @@ function loadUnityMrDirect(asset) {
       const bc7 = await readTextureArtifact(asset.hash, "unity-mr-bc7").catch(() => null);
       const unpacked = bc7 ? unpackBc7Artifact(bc7) : null;
       if (unpacked) {
-        texture4 = buildBc7Texture(unpacked.width, unpacked.height, unpacked.mips);
+        texture4 = buildBc7Texture(unpacked.width, unpacked.height, unpacked.mips, void 0, assetId);
         source = "bc7";
         bytes = bc7.byteLength;
       }
@@ -24262,11 +24639,12 @@ function loadUnityMrDirect(asset) {
       return;
     }
     if (texture4) {
-      texture4.colorSpace = NoColorSpace3;
+      texture4.colorSpace = NoColorSpace4;
       unityMrImages.set(assetId, texture4);
       unityMrInfo.set(assetId, { source, bytes, readMs: performance.now() - started2, hash: asset.hash });
       notifyUnityMrReady(assetId);
       scheduleBump();
+      noteTextureStored();
       return;
     }
     unityMrDirectMiss.add(assetId);
@@ -24333,6 +24711,7 @@ function releaseTexture(assetId) {
   environments.get(assetId)?.dispose();
   environments.delete(assetId);
   pendingEnvironments.delete(assetId);
+  degradedTextures.delete(assetId);
 }
 function loadEnvironmentAsset(asset) {
   if (environments.has(asset.id)) return Promise.resolve();
@@ -24346,10 +24725,12 @@ function loadEnvironmentAsset(asset) {
       texture4.mapping = EquirectangularReflectionMapping;
       environments.set(asset.id, texture4);
       pendingEnvironments.delete(asset.id);
+      environmentFailures.clear(asset.id);
       scheduleBump();
     });
   }).catch((error) => {
     pendingEnvironments.delete(asset.id);
+    environmentFailures.fail(asset.id, asset.hash, asset.name, error);
     throw error;
   });
   pendingEnvironments.set(asset.id, task);
@@ -24365,7 +24746,7 @@ function loadTextureAsset(asset) {
   if (running) return running;
   const lower = asset.fileName.toLowerCase();
   const finishBitmap = (texture4) => {
-    texture4.colorSpace = SRGBColorSpace2;
+    texture4.colorSpace = SRGBColorSpace3;
     images.set(asset.id, texture4);
     imageHashes.set(asset.id, asset.hash);
     linearImages.delete(asset.id);
@@ -24376,7 +24757,9 @@ function loadTextureAsset(asset) {
       unityMrPending.delete(asset.id);
     }
     pendingImages.delete(asset.id);
+    imageFailures.clear(asset.id);
     scheduleBump();
+    noteTextureStored();
   };
   const task = (async () => {
     if (lower.endsWith(".ktx2")) {
@@ -24409,7 +24792,7 @@ function loadTextureAsset(asset) {
           imageSources.set(asset.id, "bc7");
           imageArtifactBytes.set(asset.id, bc7.byteLength);
           imageReadMs.set(asset.id, readDt);
-          finishBitmap(buildBc7Texture(unpackedBc7.width, unpackedBc7.height, unpackedBc7.mips));
+          finishBitmap(buildBc7Texture(unpackedBc7.width, unpackedBc7.height, unpackedBc7.mips, void 0, asset.id));
           return;
         }
       }
@@ -24424,7 +24807,7 @@ function loadTextureAsset(asset) {
       }
     }
     const url = await ensureAssetUrl(asset.id);
-    const texture4 = await loadBitmapTexture(url);
+    const texture4 = await withDecodeSlot(() => loadBitmapTexture(url));
     imageSources.set(asset.id, "source");
     finishBitmap(texture4);
     if (asset.hash) {
@@ -24446,38 +24829,73 @@ function loadTextureAsset(asset) {
     }
   })().catch((error) => {
     pendingImages.delete(asset.id);
+    imageFailures.fail(asset.id, asset.hash, asset.name, error);
     throw error;
   });
   pendingImages.set(asset.id, task);
   return task;
 }
 var MAX_TEXTURE_SIZE = 2048;
+var MAX_CONCURRENT_DECODES = 3;
+var activeDecodes = 0;
+var decodeWaiters = [];
+async function withDecodeSlot(run2) {
+  if (activeDecodes >= MAX_CONCURRENT_DECODES) {
+    await new Promise((resolve) => decodeWaiters.push(resolve));
+  } else {
+    activeDecodes += 1;
+  }
+  try {
+    return await run2();
+  } finally {
+    const next = decodeWaiters.shift();
+    if (next) next();
+    else activeDecodes -= 1;
+  }
+}
+async function decodeBitmap(blob) {
+  const probe = await createImageBitmap(blob, {
+    imageOrientation: "none",
+    premultiplyAlpha: "none",
+    colorSpaceConversion: "none"
+  });
+  const maxDim = Math.max(probe.width, probe.height);
+  if (maxDim <= MAX_TEXTURE_SIZE) return probe;
+  const scale = MAX_TEXTURE_SIZE / maxDim;
+  const targetW = Math.max(1, Math.round(probe.width * scale));
+  const targetH = Math.max(1, Math.round(probe.height * scale));
+  probe.close();
+  return createImageBitmap(blob, {
+    imageOrientation: "none",
+    premultiplyAlpha: "none",
+    colorSpaceConversion: "none",
+    resizeWidth: targetW,
+    resizeHeight: targetH,
+    resizeQuality: "high"
+  });
+}
+async function bakeTextureArtifact(asset, blob) {
+  const lower = asset.fileName.toLowerCase();
+  if (!asset.hash || lower.endsWith(".ktx2") || lower.endsWith(".svg")) return false;
+  if (typeof createImageBitmap !== "function" || !isBc7Supported()) return false;
+  return withDecodeSlot(async () => {
+    const bitmap = await decodeBitmap(blob);
+    try {
+      if (bitmap.width < 4 || bitmap.height < 4 || bitmap.width % 4 !== 0 || bitmap.height % 4 !== 0) return false;
+      const rgba = readUnpremultipliedRgba(bitmap, bitmap.width, bitmap.height);
+      await persistTextureCache(asset.hash, bitmap.width, bitmap.height, rgba, "base", "bc7");
+      return true;
+    } finally {
+      bitmap.close();
+    }
+  });
+}
 async function loadBitmapTexture(url) {
   if (typeof createImageBitmap === "function") {
     try {
       const response = await fetch(url);
       const blob = await response.blob();
-      const probe = await createImageBitmap(blob, {
-        imageOrientation: "none",
-        premultiplyAlpha: "none",
-        colorSpaceConversion: "none"
-      });
-      let bitmap = probe;
-      const maxDim = Math.max(probe.width, probe.height);
-      if (maxDim > MAX_TEXTURE_SIZE) {
-        const scale = MAX_TEXTURE_SIZE / maxDim;
-        const targetW = Math.max(1, Math.round(probe.width * scale));
-        const targetH = Math.max(1, Math.round(probe.height * scale));
-        probe.close();
-        bitmap = await createImageBitmap(blob, {
-          imageOrientation: "none",
-          premultiplyAlpha: "none",
-          colorSpaceConversion: "none",
-          resizeWidth: targetW,
-          resizeHeight: targetH,
-          resizeQuality: "high"
-        });
-      }
+      const bitmap = await decodeBitmap(blob);
       const texture5 = new Texture3(bitmap);
       texture5.flipY = false;
       texture5.needsUpdate = true;
@@ -24505,7 +24923,7 @@ function loadSvgTexture(assetId, hash, url) {
       }
       context.drawImage(image, 0, 0, size, size);
       const texture4 = new CanvasTexture(canvas);
-      texture4.colorSpace = SRGBColorSpace2;
+      texture4.colorSpace = SRGBColorSpace3;
       texture4.flipY = false;
       texture4.needsUpdate = true;
       images.set(assetId, texture4);
@@ -24540,6 +24958,9 @@ var editorMaterialHost = {
   },
   getAssetRevision: () => useAssetStore.getState().revision
 };
+function slotFromNode(node) {
+  return slotFromNodeWithHost(node, editorMaterialHost);
+}
 function applyModelMaterials(root2, slots, partOverrides) {
   applyModelMaterialsWithHost(root2, slots, editorMaterialHost, partOverrides);
 }
@@ -26204,25 +26625,58 @@ var templates = /* @__PURE__ */ new Map();
 var pending3 = /* @__PURE__ */ new Map();
 var revisions = /* @__PURE__ */ new Map();
 var listeners2 = /* @__PURE__ */ new Set();
+var loadFailures = createLoadFailureGate("\u6A21\u578B");
+var sessionEdited = /* @__PURE__ */ new Set();
+var artifactWrites = /* @__PURE__ */ new Map();
 function getModelTemplate(assetId) {
   const existing = templates.get(assetId);
   if (existing) return existing;
   const asset = useAssetStore.getState().assets[assetId];
   if (asset && (asset.kind === "model" || asset.kind === "animation")) {
+    if (!loadFailures.shouldTry(assetId, asset.hash)) return void 0;
     void loadModelTemplate(asset).catch(() => void 0);
   }
   return void 0;
 }
-function releaseModel(assetId) {
+function releaseModel(assetId, options = {}) {
+  const template = templates.get(assetId);
+  if (template && options.dispose) disposeTemplate(template);
   templates.delete(assetId);
   pending3.delete(assetId);
+  sessionEdited.delete(assetId);
+  artifactLoaded.delete(assetId);
   forgetHumanoidSkeletons(assetId);
   releaseHumanoidPlayback(assetId);
+}
+function disposeTemplate(template) {
+  template.scene.traverse((child) => {
+    const mesh = child;
+    if (!mesh.isMesh) return;
+    mesh.geometry?.dispose();
+    const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+    for (const material of materials) {
+      if (!material) continue;
+      for (const value of Object.values(material)) {
+        if (value?.isTexture) value.dispose();
+      }
+      material.dispose();
+    }
+  });
+}
+function waitForModelArtifact(assetId) {
+  return artifactWrites.get(assetId) ?? Promise.resolve();
+}
+function trackArtifactWrite(assetId, task) {
+  const tracked = task.finally(() => {
+    if (artifactWrites.get(assetId) === tracked) artifactWrites.delete(assetId);
+  });
+  artifactWrites.set(assetId, tracked);
 }
 function loadModelTemplate(asset, forceSource = false) {
   if (forceSource) {
     templates.delete(asset.id);
     pending3.delete(asset.id);
+    loadFailures.clear(asset.id);
   }
   const cached = templates.get(asset.id);
   if (cached) return Promise.resolve(cached);
@@ -26244,12 +26698,14 @@ function loadModelTemplate(asset, forceSource = false) {
     rememberHumanoidAvatar(asset.id, nextTemplate.humanoid.avatar);
     rememberHumanoidImportScale(asset.id, nextTemplate, forceSource);
     rememberClipCatalog(asset.id, nextTemplate.clips);
+    loadFailures.clear(asset.id);
     syncLoadedModelNodes(asset.id, resolvedSlots);
     useAssetStore.getState().bump();
     listeners2.forEach((listener2) => listener2());
     return nextTemplate;
   }).catch((error) => {
     pending3.delete(asset.id);
+    loadFailures.fail(asset.id, asset.hash, asset.name, error);
     throw error;
   });
   pending3.set(asset.id, promise);
@@ -26323,7 +26779,7 @@ function loadCachedOrSource(asset) {
 function loadFromSource(asset) {
   return ensureSourceUrl(asset).then((source) => loadByExtension(source)).then((template) => {
     const ext = asset.fileName.split(".").pop()?.toLowerCase();
-    if (asset.hash && ext !== "fbx") void storeModelArtifact(asset, template);
+    if (asset.hash && ext !== "fbx") trackArtifactWrite(asset.id, storeModelArtifact(asset, template));
     return template;
   });
 }
@@ -26454,12 +26910,12 @@ async function loadFbxWithUfbx(asset) {
   });
   const template = await parseArtifact(glb);
   if (asset.hash) {
-    void compressMeshopt(glb).then(async (compressed) => {
+    trackArtifactWrite(asset.id, compressMeshopt(glb).then(async (compressed) => {
       await writeModelArtifact(asset.hash, compressed);
       await patchAssetMeta(asset.id, { artifactReady: true });
     }).catch((error) => {
       console.warn("[cache] FBX \u6210\u54C1\u5199\u5165\u5931\u8D25", error);
-    });
+    }));
   }
   return template;
 }
@@ -26815,7 +27271,10 @@ var SLOT_TEX_KEYS = [
   "roughnessAssetId",
   "metalnessAssetId",
   "emissiveAssetId",
-  "aoAssetId"
+  "aoAssetId",
+  "clearcoatMapAssetId",
+  "clearcoatRoughnessMapAssetId",
+  "clearcoatNormalMapAssetId"
 ];
 function scanUnknownRefs(val, assets, out, depth = 0) {
   if (depth > 5 || val === null || val === void 0) return;
@@ -27048,7 +27507,7 @@ function resolveScenesForBuild(settings) {
   }
   return result;
 }
-function buildExportedProjectPayload(assetUrlOverrides, assetExtOverrides, settingsOverride, includedAssetIds) {
+function buildExportedProjectPayload(assetUrlOverrides, assetExtOverrides, settingsOverride, includedAssetIds, assetBc7Overrides) {
   const editor = useEditorStore.getState();
   const settings = settingsOverride ?? useBuildSettingsStore.getState().settings;
   const builtScenes = resolveScenesForBuild(settings);
@@ -27061,11 +27520,14 @@ function buildExportedProjectPayload(assetUrlOverrides, assetExtOverrides, setti
     const rawUrl = assetUrlOverrides?.[id] ?? ("url" in asset ? asset.url : void 0);
     const origFileName = "fileName" in asset ? asset.fileName : void 0;
     const nextFileName = origFileName && assetExtOverrides?.[id] ? origFileName.replace(/\.[^.]+$/, "") + assetExtOverrides[id] : origFileName;
+    const bc7Info = assetBc7Overrides?.[id];
     assetSummary[id] = {
       id: asset.id,
       name: asset.name,
       kind: asset.kind,
       url: rawUrl,
+      ...bc7Info?.bc7Url ? { bc7Url: bc7Info.bc7Url } : {},
+      ...bc7Info?.unityMrBc7Url ? { unityMrBc7Url: bc7Info.unityMrBc7Url } : {},
       fileName: nextFileName,
       clipCatalog: "clipCatalog" in asset ? asset.clipCatalog : void 0,
       importScale: "importScale" in asset ? asset.importScale : void 0,
@@ -27235,6 +27697,7 @@ async function exportWebPlayerBundle(targetDir, options) {
   });
   const assetUrlOverrides = {};
   const assetExtOverrides = {};
+  const assetBc7Overrides = {};
   const totalCount = Math.max(1, targetAssets.length);
   for (let i = 0; i < targetAssets.length; i += 1) {
     const asset = targetAssets[i];
@@ -27302,10 +27765,37 @@ async function exportWebPlayerBundle(targetDir, options) {
     await bridge.fs.writeBinaryFile(destPath, writeBuf);
     assetUrlOverrides[asset.id] = `./project-assets/${rel}`;
     files.push(destPath);
+    if (settings.target === "electron" && settings.desktopBc7Textures && asset.kind === "texture" && "hash" in asset && asset.hash && "fileName" in asset) {
+      let bc7Buf = await readTextureArtifact(asset.hash, "bc7").catch(() => null);
+      if (!bc7Buf) {
+        const source = await readAssetBytes(asset.id).catch(() => null);
+        if (source) {
+          await bakeTextureArtifact(asset, new Blob([source])).catch(() => false);
+          bc7Buf = await readTextureArtifact(asset.hash, "bc7").catch(() => null);
+        }
+      }
+      const trimmedBc7 = bc7Buf ? trimBc7ArtifactToMaxSize(bc7Buf, settings.textureMaxSize) : null;
+      if (trimmedBc7 && trimmedBc7.byteLength > 0) {
+        const bc7Rel = `${rel}.bc7`;
+        const bc7Dest = joinProjectPath(contentDir, `project-assets/${bc7Rel}`);
+        await bridge.fs.writeBinaryFile(bc7Dest, trimmedBc7);
+        assetBc7Overrides[asset.id] = { ...assetBc7Overrides[asset.id] ?? {}, bc7Url: `./project-assets/${bc7Rel}` };
+        files.push(bc7Dest);
+      }
+      const mrBc7Buf = await readTextureArtifact(asset.hash, "unity-mr-bc7").catch(() => null);
+      const trimmedMrBc7 = mrBc7Buf ? trimBc7ArtifactToMaxSize(mrBc7Buf, settings.textureMaxSize) : null;
+      if (trimmedMrBc7 && trimmedMrBc7.byteLength > 0) {
+        const mrRel = `${rel}.unity-mr.bc7`;
+        const mrDest = joinProjectPath(contentDir, `project-assets/${mrRel}`);
+        await bridge.fs.writeBinaryFile(mrDest, trimmedMrBc7);
+        assetBc7Overrides[asset.id] = { ...assetBc7Overrides[asset.id] ?? {}, unityMrBc7Url: `./project-assets/${mrRel}` };
+        files.push(mrDest);
+      }
+    }
   }
   reportProgress?.({ phase: "write", current: 1, total: 1, label: "\u6B63\u5728\u5199\u5165\u5DE5\u7A0B\u914D\u7F6E\u4E0E\u6E05\u5355\u2026" });
   const includedIds = settings.stripUnusedAssets ? requiredSet : void 0;
-  const payload = buildExportedProjectPayload(assetUrlOverrides, assetExtOverrides, settings, includedIds);
+  const payload = buildExportedProjectPayload(assetUrlOverrides, assetExtOverrides, settings, includedIds, assetBc7Overrides);
   const projectFile = joinProjectPath(contentDir, "project.t3d.json");
   const inputFile = joinProjectPath(contentDir, "input.json");
   const manifestFile = joinProjectPath(contentDir, "export-manifest.json");
@@ -28531,7 +29021,9 @@ var RECIPES = [
   {
     id: "third-person-controller",
     title: "\u7B2C\u4E09\u4EBA\u79F0\u89D2\u8272\u63A7\u5236\uFF08\u79FB\u52A8 / \u8DF3\u8DC3 / \u52A8\u753B\u5207\u6362\uFF09",
+    titleEn: "Third-person character (move / jump / animation)",
     summary: "WASD \u76F8\u5BF9\u76F8\u673A\u79FB\u52A8\u3001\u7A7A\u683C\u8DF3\u8DC3\u3001Shift \u5954\u8DD1\uFF0C\u6309\u72B6\u6001\u5207\u6362\u5F85\u673A/\u884C\u8D70/\u5954\u8DD1\u526A\u8F91",
+    summaryEn: "WASD moves relative to the camera, Space jumps, Shift sprints, and idle/walk/run clips follow the state",
     setup: [
       '\u89D2\u8272\u8282\u70B9\uFF1A\u5DF2\u6709\u8499\u76AE\u6A21\u578B\u5C31\u7528 kind:"model"\uFF1B\u6CA1\u6709\u6A21\u578B\u5C31\u7528 kind:"capsule"\uFF08\u6B64\u65F6\u4E09\u4E2A\u526A\u8F91\u53C2\u6570\u7559\u7A7A\u5373\u53EF\uFF09\u3002',
       "\u573A\u666F\u91CC\u8981\u6709\u4E00\u4E2A\u76F8\u673A\u8282\u70B9\uFF08\u5EFA\u8BAE\u540C\u65F6\u6302 follow-camera \u8303\u4F8B\uFF09\u3002",
@@ -28550,7 +29042,9 @@ var RECIPES = [
   {
     id: "follow-camera",
     title: "\u8DDF\u968F\u76F8\u673A\uFF08\u5E73\u6ED1\u8DDF\u968F + \u53F3\u952E\u73AF\u7ED5\uFF09",
+    titleEn: "Follow camera (smooth follow + right-drag orbit)",
     summary: "\u76F8\u673A\u5E73\u6ED1\u8DDF\u5728\u76EE\u6807\u8EAB\u540E\u5E76\u59CB\u7EC8\u6CE8\u89C6\u76EE\u6807",
+    summaryEn: "The camera stays smoothly behind the target and always looks at it",
     setup: [
       '\u521B\u5EFA kind:"camera" \u8282\u70B9\uFF0C\u521D\u59CB\u4F4D\u7F6E\u653E\u5728\u76EE\u6807\u540E\u4E0A\u65B9\u5373\u53EF\uFF08\u811A\u672C\u4F1A\u63A5\u7BA1\u4F4D\u7F6E\u4E0E\u671D\u5411\uFF09\u3002',
       "script__attach \u5230\u76F8\u673A\u8282\u70B9\uFF0Cparams.target \u4F20\u88AB\u8DDF\u968F\u7684\u8282\u70B9\u3002"
@@ -28562,7 +29056,9 @@ var RECIPES = [
   {
     id: "enemy-wave",
     title: "\u6CE2\u6B21\u5237\u602A + \u8FFD\u51FB\u654C\u4EBA\uFF08\u5BF9\u8C61\u6C60\uFF09",
+    titleEn: "Enemy waves + chase (object pool)",
     summary: "\u4ECE\u4E00\u4E2A\u9690\u85CF\u6A21\u677F\u8282\u70B9\u6C60\u5316\u751F\u6210\u654C\u4EBA\uFF0C\u654C\u4EBA\u8FFD\u51FB\u5E76\u653B\u51FB\u73A9\u5BB6\uFF0C\u53EF\u88AB hit \u6D88\u606F\u51FB\u6740",
+    summaryEn: "Spawns enemies from a hidden template through the pool; they chase and attack the player and die on a hit message",
     setup: [
       "\u654C\u4EBA\u6A21\u677F\uFF1A\u521B\u5EFA\u4E00\u4E2A\u654C\u4EBA\u8282\u70B9\uFF08\u6A21\u578B\u6216\u57FA\u7840\u51E0\u4F55\u4F53\uFF09\uFF0C\u6302 ChaseEnemy\uFF0C\u7136\u540E\u628A\u6A21\u677F\u7684 visible \u8BBE\u4E3A false \u5E76\u653E\u5728\u573A\u666F\u5916\u4FA7\u3002",
       '\u5237\u602A\u70B9\uFF1A\u521B\u5EFA kind:"empty" \u8282\u70B9\u653E\u5728\u6218\u573A\u4E2D\u5FC3\uFF0C\u6302 WaveSpawner\uFF0Cparams.template \u4F20\u654C\u4EBA\u6A21\u677F\u8282\u70B9\u3002',
@@ -28581,7 +29077,9 @@ var RECIPES = [
   {
     id: "shooting",
     title: "\u5C04\u51FB\uFF08\u73A9\u5BB6\u5F00\u706B + \u6C60\u5316\u5B50\u5F39\uFF09",
+    titleEn: "Shooting (player fire + pooled bullets)",
     summary: '\u6309\u4F4F\u653B\u51FB\u952E\u6CBF\u89D2\u8272\u671D\u5411\u53D1\u5C04\u5B50\u5F39\uFF0C\u5B50\u5F39\u547D\u4E2D\u5E26 "enemy" \u6807\u7B7E\u7684\u8282\u70B9\u540E\u53D1\u9001 hit \u6D88\u606F',
+    summaryEn: 'Hold attack to fire bullets along the character facing; hitting a node tagged "enemy" sends a hit message',
     setup: [
       "\u5B50\u5F39\u6A21\u677F\uFF1A\u521B\u5EFA\u4E00\u4E2A\u5C0F\u7403/\u5C0F\u80F6\u56CA\u8282\u70B9\uFF0C\u6302 Bullet\uFF0Cvisible \u8BBE\u4E3A false\u3002",
       "script__attach PlayerShooter \u5230\u73A9\u5BB6\u8282\u70B9\uFF0Cparams.bullet \u4F20\u5B50\u5F39\u6A21\u677F\u8282\u70B9\u3002",
@@ -28596,7 +29094,9 @@ var RECIPES = [
   {
     id: "health-score-hud",
     title: "\u751F\u547D\u503C + \u5F97\u5206 + HUD / \u7ED3\u7B97\u754C\u9762",
+    titleEn: "Health + score + HUD / result screen",
     summary: "\u73A9\u5BB6\u53D7\u51FB\u6263\u8840\u3001\u51FB\u6740\u4E0E\u62FE\u53D6\u52A0\u5206\uFF0C\u6570\u636E\u9A71\u52A8 HUD\uFF0C\u6B7B\u4EA1\u6216\u8FBE\u6807\u65F6\u5F39\u51FA\u7ED3\u7B97\u754C\u9762",
+    summaryEn: "Hits reduce health, kills and pickups add score, the HUD is data-driven, and a result screen appears on death or when the goal is reached",
     setup: [
       'HUD\uFF1Aui__createFromTemplate({ template:"hud", varKey:"hp", scoreVarKey:"score" })\u3002',
       '\u7ED3\u7B97\uFF1Aui__createFromTemplate({ template:"result", name:"\u7ED3\u7B97\u754C\u9762", scoreVarKey:"score" })\uFF0C\u6807\u9898\u6587\u672C\u53EF\u7528 ui__patchNode \u7ED1\u5B9A\u5230\u53D8\u91CF resultTitle\u3002',
@@ -28615,7 +29115,9 @@ var RECIPES = [
   {
     id: "collectible",
     title: "\u53EF\u62FE\u53D6\u7269\uFF08\u91D1\u5E01 / \u9053\u5177\uFF09",
+    titleEn: "Collectible (coin / item)",
     summary: "\u65CB\u8F6C\u6D6E\u52A8\u7684\u62FE\u53D6\u7269\uFF0C\u73A9\u5BB6\u9760\u8FD1\u540E\u52A0\u5206\u5E76\u6D88\u5931",
+    summaryEn: "A spinning, bobbing pickup that awards score and disappears when the player gets close",
     setup: [
       "\u521B\u5EFA\u62FE\u53D6\u7269\u8282\u70B9\uFF08\u7403\u4F53/\u5706\u67F1\u6216\u6A21\u578B\uFF09\uFF0C\u6302 Collectible\uFF1B\u9700\u8981\u591A\u4E2A\u65F6\u76F4\u63A5\u590D\u5236\u8282\u70B9\u6216\u505A\u6210\u9884\u5236\u4F53\u3002",
       "\u914D\u5408 health-score-hud \u8303\u4F8B\u7684 GameManager \u7EDF\u8BA1\u5F97\u5206\uFF08\u5B83\u4F1A\u5904\u7406 collected \u6D88\u606F\uFF09\u3002"
@@ -28638,7 +29140,9 @@ function recipeToKnowledgeEntry(recipe) {
     kind: "skill",
     source: "builtin",
     name: recipe.title,
+    nameEn: recipe.titleEn,
     description: recipe.summary,
+    descriptionEn: recipe.summaryEn,
     body,
     files: recipe.files.map((file) => ({
       path: `${file.scriptId}.ts`,
@@ -29780,11 +30284,38 @@ function readDocument(assetId) {
 }
 
 // src/editor/assets/import.ts
-async function ingest(asset, bytes, dir) {
+var BULK_IMPORT_BYTES = 256 * 1024 * 1024;
+var unsavedSources = /* @__PURE__ */ new Set();
+async function persistSource(record) {
+  try {
+    await rememberFile(record);
+    unsavedSources.delete(record.id);
+  } catch (error) {
+    unsavedSources.add(record.id);
+    console.warn("[cache] \u5199\u5165\u5931\u8D25", error);
+  }
+}
+async function settleBulkAsset(id) {
+  const asset = useAssetStore.getState().assets[id];
+  if (!asset || !("fileName" in asset)) return;
+  const isModel = asset.kind === "model" || asset.kind === "animation";
+  if (isModel) await waitForModelArtifact(id);
+  if (referencedBy(id).length > 0) return;
+  if (isModel) releaseModel(id, { dispose: true });
+  if (asset.kind === "texture" || asset.kind === "environment") releaseTexture(id);
+  const current = useAssetStore.getState().assets[id];
+  if (!current || !("fileName" in current) || unsavedSources.has(id)) return;
+  if (current.kind === "audio" || current.kind === "document" || !current.url.startsWith("blob:")) return;
+  URL.revokeObjectURL(current.url);
+  useAssetStore.getState().patch(id, { url: "" });
+}
+async function ingest(asset, bytes, dir, options = {}) {
   try {
     useAssetStore.getState().add(asset);
     if (dir) useAssetStore.getState().place(asset.id, dir);
-    if (asset.kind === "model") {
+    if (options.bulk && (asset.kind === "texture" || asset.kind === "environment")) {
+      if (asset.kind === "texture") await bakeTextureArtifact(asset, new Blob([bytes]));
+    } else if (asset.kind === "model") {
       const template = await loadModelTemplate(asset);
       if (!hasMesh(template.scene) && template.clips.length > 0) {
         asset = { ...asset, kind: "animation" };
@@ -29805,16 +30336,15 @@ async function ingest(asset, bytes, dir) {
     } else {
       useEditorStore.getState().log("info", translate("log.importedAudio", { name: asset.name }));
     }
-    await rememberFile({ ...asset, bytes }).catch((error) => {
-      console.warn("[cache] \u5199\u5165\u5931\u8D25", error);
-    });
+    await persistSource({ ...asset, bytes });
     if (asset.kind === "texture") await attachThumb(asset.id);
     else void attachThumb(asset.id);
+    if (options.bulk) await settleBulkAsset(asset.id);
     return true;
   } catch (error) {
     useAssetStore.getState().remove(asset.id);
     URL.revokeObjectURL(asset.url);
-    releaseModel(asset.id);
+    releaseModel(asset.id, { dispose: true });
     releaseTexture(asset.id);
     const message = error instanceof Error ? error.message : String(error);
     useEditorStore.getState().log("error", translate("log.importFail", { name: asset.fileName, message }));
@@ -29901,6 +30431,42 @@ function hasMesh(root2) {
     if (child.isMesh) found = true;
   });
   return found;
+}
+function referencedBy(assetId) {
+  const users = [];
+  for (const node of Object.values(useEditorStore.getState().nodes)) {
+    if (usesAsset(node, assetId)) users.push({ name: node.name });
+  }
+  for (const asset of Object.values(useAssetStore.getState().assets)) {
+    if (asset.kind === "prefab" && Object.values(readPrefab(asset).nodes).some((node) => usesAsset(node, assetId) || node.nestedPrefabId === assetId)) users.push({ name: asset.name, assetId: asset.id });
+    if (asset.kind === "scene") {
+      for (const node of Object.values(asset.nodes)) {
+        if (usesAsset(node, assetId)) {
+          users.push({ name: asset.name, assetId: asset.id });
+          break;
+        }
+      }
+    }
+    if (asset.kind === "material" && slotUses(asset.slot, assetId)) users.push({ name: asset.name, assetId: asset.id });
+    if (asset.kind === "effect" && asset.materialAssetId === assetId) users.push({ name: asset.name, assetId: asset.id });
+    if (asset.kind === "ui") {
+      const images2 = /* @__PURE__ */ new Set();
+      collectUiImageIds(asset.document.root, images2);
+      if (images2.has(assetId)) users.push({ name: asset.name, assetId: asset.id });
+    }
+  }
+  return users;
+}
+function usesAsset(node, assetId) {
+  if (node.assetId === assetId || node.clipAssetId === assetId || node.overlayAssetId === assetId || node.materialAssetId === assetId) return true;
+  if (node.animator?.states.some((state) => state.clipAssetId === assetId)) return true;
+  if (node.effect?.assetId === assetId || node.effect?.materialAssetId === assetId) return true;
+  if (node.screen?.documentId === assetId) return true;
+  if (slotUses(slotFromNode(node), assetId)) return true;
+  return node.slots.some((slot) => slot.materialAssetId === assetId || slotUses(slot, assetId));
+}
+function slotUses(slot, assetId) {
+  return [slot.mapAssetId, slot.normalAssetId, slot.metallicRoughnessAssetId, slot.roughnessAssetId, slot.metalnessAssetId, slot.emissiveAssetId, slot.aoAssetId].includes(assetId);
 }
 
 // src/core/commands/domains/assetAndUi.ts

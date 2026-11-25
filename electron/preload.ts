@@ -1,6 +1,6 @@
 import * as electron from 'electron'
 
-const { contextBridge, ipcRenderer } = electron
+const { contextBridge, ipcRenderer, webUtils } = electron
 
 contextBridge.exposeInMainWorld('__electron', {
   fs: {
@@ -25,6 +25,21 @@ contextBridge.exposeInMainWorld('__electron', {
   },
   app: {
     userLibraryRoot: () => ipcRenderer.invoke('app:userLibraryRoot'),
+  },
+  package: {
+    // 本地路径只在预加载脚本里取，不交给网页内容
+    open: (sessionId: string, file: File) => {
+      const packagePath = webUtils.getPathForFile(file)
+      if (!packagePath) return Promise.reject(new Error('拿不到资源包的本地路径'))
+      return ipcRenderer.invoke('package:open', sessionId, packagePath)
+    },
+    read: (sessionId: string, offset: number, size: number) => ipcRenderer.invoke('package:read', sessionId, offset, size),
+    close: (sessionId: string) => ipcRenderer.invoke('package:close', sessionId),
+    onProgress: (handler: (payload: { sessionId: string; done: number; total: number }) => void) => {
+      const listener = (_event: unknown, payload: { sessionId: string; done: number; total: number }) => handler(payload)
+      ipcRenderer.on('package:progress', listener)
+      return () => ipcRenderer.removeListener('package:progress', listener)
+    },
   },
   player: {
     copyShell: (targetDir: string) => ipcRenderer.invoke('player:copyShell', targetDir),

@@ -6,6 +6,7 @@ import fsSync from 'node:fs'
 import { execFile, spawn } from 'node:child_process'
 import { promisify } from 'node:util'
 import { PathGuard } from './services/pathGuard'
+import { PackageArchiveSessions } from './services/packageArchive'
 import { SecretStore } from './services/secretStore'
 import { invokeModelChat, type ChatRequest } from './services/modelProviders'
 
@@ -233,6 +234,20 @@ function registerIpc() {
   })
 
   ipcMain.handle('app:userLibraryRoot', () => userLibraryRoot)
+
+  // 大体积资源包：主进程流式解压并建索引，渲染进程按偏移一次只取一个文件
+  const packageSessions = new PackageArchiveSessions(path.join(app.getPath('temp'), 'T3D-pkg-staging'))
+  void packageSessions.purgeStale()
+  app.on('will-quit', () => packageSessions.closeAllSync())
+  ipcMain.handle('package:open', (event, sessionId: string, packagePath: string) => {
+    return packageSessions.open(sessionId, packagePath, (done, total) => {
+      if (!event.sender.isDestroyed()) event.sender.send('package:progress', { sessionId, done, total })
+    })
+  })
+  ipcMain.handle('package:read', (_event, sessionId: string, offset: number, size: number) => {
+    return packageSessions.read(sessionId, offset, size)
+  })
+  ipcMain.handle('package:close', (_event, sessionId: string) => packageSessions.close(sessionId))
 
   ipcMain.handle('fs:authorizeRoot', (_event, dirPath: string) => {
     return pathGuard.authorizeRoot(dirPath)

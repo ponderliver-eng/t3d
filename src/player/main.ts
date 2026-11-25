@@ -46,6 +46,7 @@ import {
   type MaterialEngineHost,
 } from '../runtime/engine/materials'
 import { buildUnityMetallicRoughnessTexture, loadUnpremultipliedTexture } from '../runtime/engine/textures'
+import { loadBc7TextureFromUrl, rendererSupportsBc7 } from '../runtime/engine/bc7'
 import { buildPlayableClip } from '../runtime/engine/animation'
 import {
   appendSocketLocalPose,
@@ -82,6 +83,8 @@ import { setRuntimeWorld, type RuntimeAssetSummary, type RuntimeRenderContext, t
 
 interface ExportedAssetEntry extends RuntimeAssetSummary {
   fileName?: string
+  bc7Url?: string
+  unityMrBc7Url?: string
   importScale?: number
   humanoidAvatar?: ModelHumanoidAvatar | null
   humanoidRetarget?: HumanoidRetargetAdjust | null
@@ -119,6 +122,119 @@ interface ExportedProjectPayload {
 }
 
 const DEG_TO_RAD = Math.PI / 180
+/** 工程里可加载资源超过这个数量时，不再在后台把别的场景全预热进内存，留到切场景时再加载。 */
+const IDLE_WARMUP_MAX_ASSETS = 48
+
+function collectPlayerNodeDeps(
+  nodes: Record<string, SceneNode>,
+  picture: ScenePicture | undefined,
+  assets: Record<string, ExportedAssetEntry>,
+  out: Set<string>,
+) {
+  const visited = new Set<string>()
+  const scanUnknown = (val: unknown, depth = 0) => {
+    if (depth > 5 || val === null || val === undefined) return
+    if (typeof val === 'string') {
+      if (val in assets) addAsset(val)
+      return
+    }
+    if (Array.isArray(val)) {
+      for (const item of val) scanUnknown(item, depth + 1)
+      return
+    }
+    if (typeof val === 'object') {
+      for (const v of Object.values(val as Record<string, unknown>)) scanUnknown(v, depth + 1)
+    }
+  }
+  const addSlot = (slot: PbrSlot | undefined) => {
+    if (!slot) return
+    if (slot.materialAssetId) addAsset(slot.materialAssetId)
+    for (const key of [
+      'mapAssetId',
+      'normalAssetId',
+      'metallicRoughnessAssetId',
+      'roughnessAssetId',
+      'metalnessAssetId',
+      'emissiveAssetId',
+      'aoAssetId',
+      'clearcoatMapAssetId',
+      'clearcoatRoughnessMapAssetId',
+      'clearcoatNormalMapAssetId',
+    ] as const) {
+      const ref = slot[key]
+      if (typeof ref === 'string') addAsset(ref)
+    }
+    if (slot.shaderParams) scanUnknown(slot.shaderParams)
+  }
+  function addAsset(id: string | null | undefined) {
+    if (!id || !(id in assets)) return
+    out.add(id)
+    if (visited.has(id)) return
+    visited.add(id)
+    const asset = assets[id]
+    if (!asset) return
+    if (asset.kind === 'material') addSlot(asset.slot)
+    else if (asset.kind === 'model' && Array.isArray(asset.slots)) {
+      for (const slot of asset.slots) addSlot(slot)
+    } else if (asset.kind === 'effect') {
+      if (asset.materialAssetId) addAsset(asset.materialAssetId)
+      if (asset.simulation) scanUnknown(asset.simulation)
+    } else if (asset.kind === 'ui' && asset.document) {
+      scanUnknown(asset.document)
+    } else if (asset.kind === 'prefab' && asset.nodes) {
+      const map = Array.isArray(asset.nodes)
+        ? Object.fromEntries((asset.nodes as SceneNode[]).map((n) => [n.id, n]))
+        : asset.nodes
+      collectPlayerNodeDeps(map, undefined, assets, out)
+    }
+  }
+  if (picture) {
+    if ('envAssetId' in picture && typeof picture.envAssetId === 'string') addAsset(picture.envAssetId)
+    if ('environmentAssetId' in picture && typeof (picture as { environmentAssetId?: unknown }).environmentAssetId === 'string') {
+      addAsset((picture as { environmentAssetId: string }).environmentAssetId)
+    }
+    if (picture.capabilities) scanUnknown(picture.capabilities)
+  }
+  for (const node of Object.values(nodes)) {
+    addAsset(node.assetId)
+    addAsset(node.materialAssetId)
+    addAsset(node.mapAssetId)
+    addAsset(node.normalAssetId)
+    addAsset(node.metallicRoughnessAssetId)
+    addAsset(node.roughnessAssetId)
+    addAsset(node.metalnessAssetId)
+    addAsset(node.emissiveAssetId)
+    addAsset(node.aoAssetId)
+    addAsset(node.clipAssetId)
+    addAsset(node.overlayAssetId)
+    addAsset(node.screen?.documentId)
+    if (node.effect) {
+      addAsset(node.effect.assetId)
+      addAsset(node.effect.materialAssetId)
+      if (node.effect.simulation) scanUnknown(node.effect.simulation)
+    }
+    if (Array.isArray(node.slots)) {
+      for (const slot of node.slots) addSlot(slot)
+    }
+    if (node.partOverrides) {
+      for (const ov of Object.values(node.partOverrides)) addAsset(ov.materialAssetId)
+    }
+    if (node.animator) scanUnknown(node.animator)
+    if (node.capabilities) scanUnknown(node.capabilities)
+    if (node.gameplay) scanUnknown(node.gameplay)
+  }
+}
+
+function disposeSceneBranch(root: Object3D) {
+  root.traverse((child) => {
+    const mesh = child as Mesh
+    if (!mesh.isMesh) return
+    // 基础几何体是每个节点自己建的，要一起释放；模型网格与模板共用几何体，交给 releaseUnreferenced
+    if (mesh.userData.t3dOwnGeometry) mesh.geometry?.dispose()
+    const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material]
+    for (const mat of materials) mat?.dispose?.()
+  })
+}
 
 class PlayerAssetManager {
   private readonly gltfLoader = new GLTFLoader()
@@ -128,16 +244,86 @@ class PlayerAssetManager {
   private readonly texCache = new Map<string, Texture>()
   private readonly linearTexCache = new Map<string, Texture>()
   private readonly unityMrCache = new Map<string, Texture>()
+  private readonly unityMrInflight = new Set<string>()
   private readonly envCache = new Map<string, Texture>()
   private readonly pending = new Map<string, Promise<void>>()
+  private readonly failedIds = new Set<string>()
+  /** 不支持直接加载的格式（ktx2 / tga），记下来避免每次访问都重新发起一次空加载 */
+  private readonly skippedIds = new Set<string>()
+  private readonly unityMrBc7Failed = new Set<string>()
+  /** 场景挂载时还没加载好、之后才按需加载的资源；加载完成后要把它们补到已挂载的场景上 */
+  private readonly lazyWanted = new Set<string>()
+  private lazyReady = false
+  private bc7Supported = false
+  private onAssetFailed: ((name: string) => void) | null = null
 
   constructor(readonly assets: Record<string, ExportedAssetEntry>) {
     this.gltfLoader.setMeshoptDecoder(MeshoptDecoder)
   }
 
+  setBc7Supported(supported: boolean) {
+    this.bc7Supported = supported
+  }
+
+  setFailureHandler(handler: ((name: string) => void) | null) {
+    this.onAssetFailed = handler
+  }
+
+  /** 有按需加载的资源刚到位时返回 true（只返回一次），调用方据此刷新已挂载的场景。 */
+  consumeLazyReady(): boolean {
+    const ready = this.lazyReady
+    this.lazyReady = false
+    return ready
+  }
+
+  /** 切换场景时清掉失败记录，给临时性的失败（比如网络抖动）一次重试机会。 */
+  resetFailures() {
+    this.failedIds.clear()
+    this.unityMrBc7Failed.clear()
+  }
+
+  /** 当前留在内存里的资源数量与贴图显存估算，挂在 window.__T3D_ASSET_STATS__ 上供排查用。 */
+  stats() {
+    let textureBytes = 0
+    let compressed = 0
+    const measure = (tex: Texture) => {
+      const mips = (tex as { isCompressedTexture?: boolean; mipmaps?: Array<{ data?: { byteLength?: number } }> })
+      if (mips.isCompressedTexture && mips.mipmaps?.length) {
+        compressed += 1
+        for (const mip of mips.mipmaps) textureBytes += mip.data?.byteLength ?? 0
+        return
+      }
+      const img = tex.image as { width?: number; height?: number } | undefined
+      textureBytes += Math.round((img?.width ?? 0) * (img?.height ?? 0) * 4 * 4 / 3)
+    }
+    for (const tex of this.texCache.values()) measure(tex)
+    for (const tex of this.unityMrCache.values()) measure(tex)
+    return {
+      textures: this.texCache.size,
+      unityMr: this.unityMrCache.size,
+      environments: this.envCache.size,
+      models: this.modelCache.size,
+      compressedTextures: compressed,
+      textureBytes,
+      failed: [...this.failedIds],
+      bc7Supported: this.bc7Supported,
+    }
+  }
+
+  private requestLazy(assetId: string, kinds: readonly string[]) {
+    const asset = this.assets[assetId]
+    if (!asset?.url || !kinds.includes(asset.kind)) return
+    if (this.failedIds.has(assetId) || this.skippedIds.has(assetId)) return
+    this.lazyWanted.add(assetId)
+    void this.ensureAsset(assetId)
+  }
+
   getModelClone(assetId: string, host: MaterialEngineHost): { scene: Object3D; clips: AnimationClip[]; slots: PbrSlot[]; humanoid: ModelHumanoid } | null {
     const tpl = this.modelCache.get(assetId)
-    if (!tpl) return null
+    if (!tpl) {
+      this.requestLazy(assetId, ['model'])
+      return null
+    }
     const mergedSlots = resolveMergedModelSlots({ id: '', name: '', kind: 'model', position: [0, 0, 0], rotation: [0, 0, 0], scale: [1, 1, 1], color: '#ffffff', roughness: 0.7, metalness: 0.1, visible: true, parentId: null, assetId, slots: [] } as unknown as SceneNode, this.assets, tpl.slots)
     const object = instantiateModelScene(tpl.scene, mergedSlots, host, cloneSkinned)
     return { scene: object, clips: tpl.clips, slots: mergedSlots, humanoid: tpl.humanoid }
@@ -152,11 +338,19 @@ class PlayerAssetManager {
   }
 
   getTexture(assetId: string, srgb = true): Texture | null {
-    if (srgb) return this.texCache.get(assetId) ?? null
+    if (srgb) {
+      const hit = this.texCache.get(assetId)
+      if (hit) return hit
+      this.requestLazy(assetId, ['texture'])
+      return null
+    }
     const cached = this.linearTexCache.get(assetId)
     if (cached) return cached
     const base = this.texCache.get(assetId)
-    if (!base) return null
+    if (!base) {
+      this.requestLazy(assetId, ['texture'])
+      return null
+    }
     const linear = base.clone()
     linear.source = base.source
     linear.colorSpace = NoColorSpace
@@ -168,8 +362,46 @@ class PlayerAssetManager {
   getUnityMetallicRoughnessTexture(assetId: string): Texture | null {
     const cached = this.unityMrCache.get(assetId)
     if (cached) return cached
+    const asset = this.assets[assetId]
+    if (this.bc7Supported && asset?.unityMrBc7Url && !this.unityMrBc7Failed.has(assetId) && !this.unityMrInflight.has(assetId)) {
+      this.unityMrInflight.add(assetId)
+      void loadBc7TextureFromUrl(asset.unityMrBc7Url, false)
+        .catch(() => null)
+        .then((tex) => {
+          this.unityMrInflight.delete(assetId)
+          if (tex) this.unityMrCache.set(assetId, tex)
+          else this.unityMrBc7Failed.add(assetId)
+          // 成功就换上压缩成品；失败也要刷新一次，让下面的「从原图重排」接手
+          this.lazyReady = true
+        })
+    }
     const base = this.getTexture(assetId, false)
     if (!base || typeof document === 'undefined') return base
+    // 主图本身是 BC7 压缩贴图时没有像素数组可供重排：若有重排好的 BC7 就等上面异步读回，否则从原图解一次做重排
+    if ((base as { isCompressedTexture?: boolean }).isCompressedTexture) {
+      if (!this.unityMrInflight.has(assetId) && asset?.url && !this.failedIds.has(`${assetId}#unity-mr`)) {
+        this.unityMrInflight.add(assetId)
+        void loadUnpremultipliedTexture(asset.url)
+          .then((rawTex) => {
+            this.unityMrInflight.delete(assetId)
+            const converted = buildUnityMetallicRoughnessTexture(rawTex)
+            if (converted !== rawTex) {
+              const img = rawTex.image as { close?: () => void } | undefined
+              rawTex.dispose()
+              if (typeof img?.close === 'function') img.close()
+            }
+            this.unityMrCache.set(assetId, converted)
+            this.lazyReady = true
+          })
+          .catch(() => {
+            // 原图也读不出来：记为失败，不再反复尝试
+            this.unityMrInflight.delete(assetId)
+            this.unityMrBc7Failed.add(assetId)
+            this.failedIds.add(`${assetId}#unity-mr`)
+          })
+      }
+      return null
+    }
     const converted = buildUnityMetallicRoughnessTexture(base)
     this.unityMrCache.set(assetId, converted)
     return converted
@@ -177,11 +409,69 @@ class PlayerAssetManager {
 
   getEnvironment(assetId: string | null | undefined): Texture | null {
     if (!assetId) return null
-    return this.envCache.get(assetId) ?? null
+    const hit = this.envCache.get(assetId)
+    if (hit) return hit
+    this.requestLazy(assetId, ['environment'])
+    return null
+  }
+
+  /** 切换场景后释放新场景不再引用的模型、贴图与环境贴图。 */
+  releaseUnreferenced(keepIds: ReadonlySet<string>): { textures: number; models: number } {
+    let textures = 0
+    let models = 0
+    for (const [id, tex] of this.texCache) {
+      if (keepIds.has(id) || this.pending.has(id)) continue
+      const linear = this.linearTexCache.get(id)
+      const mr = this.unityMrCache.get(id)
+      linear?.dispose()
+      if (mr && mr !== linear && mr !== tex) mr.dispose()
+      const img = tex.image as { close?: () => void } | undefined
+      tex.dispose()
+      if (typeof img?.close === 'function') {
+        try { img.close() } catch { /* ignore */ }
+      }
+      this.texCache.delete(id)
+      this.linearTexCache.delete(id)
+      this.unityMrCache.delete(id)
+      textures += 1
+    }
+    for (const [id, mr] of this.unityMrCache) {
+      if (keepIds.has(id) || this.pending.has(id)) continue
+      mr.dispose()
+      this.unityMrCache.delete(id)
+      textures += 1
+    }
+    for (const [id, env] of this.envCache) {
+      if (keepIds.has(id) || this.pending.has(id)) continue
+      env.dispose()
+      this.envCache.delete(id)
+      textures += 1
+    }
+    for (const [id, tpl] of this.modelCache) {
+      if (keepIds.has(id) || this.pending.has(id)) continue
+      tpl.scene.traverse((child) => {
+        const mesh = child as Mesh
+        if (!mesh.isMesh) return
+        mesh.geometry?.dispose()
+        const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material]
+        for (const mat of mats) {
+          if (!mat) continue
+          // 模型文件里内嵌的贴图只挂在模板材质上，要一起释放
+          for (const value of Object.values(mat)) {
+            if ((value as { isTexture?: boolean } | null)?.isTexture) (value as Texture).dispose()
+          }
+          mat.dispose()
+        }
+      })
+      this.modelCache.delete(id)
+      models += 1
+    }
+    return { textures, models }
   }
 
   async ensureAsset(assetId: string): Promise<void> {
     if (this.modelCache.has(assetId) || this.texCache.has(assetId) || this.envCache.has(assetId)) return
+    if (this.failedIds.has(assetId)) return
     const inflight = this.pending.get(assetId)
     if (inflight) return inflight
 
@@ -202,9 +492,22 @@ class PlayerAssetManager {
           this.modelCache.set(assetId, { scene: gltf.scene, clips, slots, humanoid })
         } else if (asset.kind === 'texture') {
           const lower = (asset.fileName || asset.url || '').toLowerCase()
-          if (lower.endsWith('.ktx2') || lower.endsWith('.tga')) return
-          const tex = await loadUnpremultipliedTexture(asset.url!)
-          this.texCache.set(assetId, tex)
+          if (lower.endsWith('.ktx2') || lower.endsWith('.tga')) {
+            this.skippedIds.add(assetId)
+            return
+          }
+          if (this.bc7Supported && asset.unityMrBc7Url && !this.unityMrCache.has(assetId)) {
+            const mrTex = await loadBc7TextureFromUrl(asset.unityMrBc7Url, false).catch(() => null)
+            if (mrTex) this.unityMrCache.set(assetId, mrTex)
+            else this.unityMrBc7Failed.add(assetId)
+          }
+          // 主图：显卡支持就读压缩成品（显存是未压缩的 1/4），读不到再退回原图
+          let base: Texture | null = null
+          if (this.bc7Supported && asset.bc7Url) {
+            base = await loadBc7TextureFromUrl(asset.bc7Url, true).catch(() => null)
+          }
+          if (!base) base = await loadUnpremultipliedTexture(asset.url!)
+          this.texCache.set(assetId, base)
         } else if (asset.kind === 'environment') {
           const ext = (asset.fileName || asset.url || '').split('.').pop()?.toLowerCase()
           const primary = ext === 'exr' ? this.exrLoader.loadAsync(asset.url!) : this.hdrLoader.loadAsync(asset.url!)
@@ -213,9 +516,12 @@ class PlayerAssetManager {
           this.envCache.set(assetId, tex)
         }
       } catch (err) {
+        this.failedIds.add(assetId)
         console.warn(`[T3D Player] 资源加载失败 (${asset.name}):`, err)
+        this.onAssetFailed?.(asset.name || assetId)
       } finally {
         this.pending.delete(assetId)
+        if (this.lazyWanted.delete(assetId)) this.lazyReady = true
       }
     })()
 
@@ -738,7 +1044,10 @@ function buildStandaloneWorld(
       forcedCameraUntil = 0
     },
     instantiatePrefab: instantiatePrefabTree,
-    resolveTexture: (assetId) => Promise.resolve(assetMgr.getTexture(assetId, false)),
+    resolveTexture: async (assetId) => {
+      await assetMgr.ensureAsset(assetId)
+      return assetMgr.getTexture(assetId, false)
+    },
     getTexture: (assetId, srgb = false) => assetMgr.getTexture(assetId, srgb),
     resolveParticleDesc: (materialId) =>
       particleDescForWithHost(materialId ?? null, createPlayerMaterialHost(assetMgr, assets)),
@@ -848,6 +1157,8 @@ function mountSinglePlayerNode(
     if (geo) {
       const mesh = new Mesh(geo, new MeshStandardMaterial())
       applyNodeMaterialWithHost(mesh, node, matHost)
+      mesh.userData.t3dOwnGeometry = true
+      mesh.userData.t3dAppliedMaterial = mesh.material
       mesh.castShadow = Boolean(node.castShadow)
       mesh.receiveShadow = node.receiveShadow !== false
       group.add(mesh)
@@ -953,6 +1264,64 @@ function mountSceneObjects(
   }
 
   return mounted
+}
+
+function applyMountedTextures(
+  mounted: { root: Group; map: Map<string, Group>; mixers: AnimationMixer[]; animEntries: Map<string, PlayerAnimEntry>; modelRoots: Map<string, Object3D> },
+  nodes: Record<string, SceneNode>,
+  assetMgr: PlayerAssetManager,
+  assets: Record<string, ExportedAssetEntry>,
+) {
+  const matHost = createPlayerMaterialHost(assetMgr, assets)
+  for (const node of Object.values(nodes)) {
+    const group = mounted.map.get(node.id)
+    if (!group) continue
+    if (node.kind === 'model' && node.assetId) {
+      let modelRoot = mounted.modelRoots.get(node.id)
+      // 懒加载模式下模型加载完成前组里还是空的，这里补挂上去
+      if (!modelRoot && assetMgr.getModelTemplate(node.assetId)) {
+        mounted.map.delete(node.id)
+        const rebuilt = mountSinglePlayerNode(node, mounted, assetMgr, assets)
+        group.add(...rebuilt.children)
+        mounted.map.set(node.id, group)
+        modelRoot = mounted.modelRoots.get(node.id)
+      }
+      if (modelRoot) {
+        const tpl = assetMgr.getModelTemplate(node.assetId)
+        applyPlayerModelMaterials(modelRoot, node, tpl?.slots ?? [], matHost, assets)
+      }
+      continue
+    }
+    const first = group.children[0] as Mesh | undefined
+    // 材质已被能力包换掉（比如水面）的网格不动，否则会把它的材质冲掉
+    if (first?.isMesh && first.userData.t3dOwnGeometry && first.material === first.userData.t3dAppliedMaterial) {
+      applyNodeMaterialWithHost(first, node, matHost)
+      first.userData.t3dAppliedMaterial = first.material
+    }
+  }
+}
+
+function attachFailureToast(container: HTMLElement) {
+  let banner: HTMLDivElement | null = null
+  let hideTimer = 0
+  const failed = new Set<string>()
+  return (name: string) => {
+    failed.add(name)
+    if (!banner) {
+      banner = document.createElement('div')
+      banner.style.cssText =
+        'position:fixed;left:16px;bottom:16px;z-index:45;max-width:420px;padding:8px 12px;border-radius:8px;background:rgba(127,29,29,0.88);border:1px solid rgba(248,113,113,0.45);color:#fecaca;font-family:"Segoe UI",sans-serif;font-size:12px;line-height:1.5;pointer-events:none;transition:opacity 200ms ease;'
+      container.appendChild(banner)
+    }
+    const names = [...failed]
+    const head = names.slice(0, 3).join('、')
+    banner.textContent = names.length > 3 ? `资源加载失败：${head} 等 ${names.length} 项` : `资源加载失败：${head}`
+    banner.style.opacity = '1'
+    if (hideTimer) window.clearTimeout(hideTimer)
+    hideTimer = window.setTimeout(() => {
+      if (banner) banner.style.opacity = '0'
+    }, 6000)
+  }
 }
 
 function attachTouchOverlay(container: HTMLElement) {
@@ -1144,6 +1513,11 @@ async function boot() {
   await syncCapabilityRuntimes(world.getCapabilities())
 
   const { renderer, canvas } = await createRenderer(rootEl, canvasStyle)
+  assetMgr.setBc7Supported(rendererSupportsBc7(renderer))
+  // 提示条只在构建设置里打开调试开关时显示；默认玩家看不到，失败只写控制台
+  if (payload.buildSettings?.showLoadFailures === true) {
+    assetMgr.setFailureHandler(attachFailureToast(rootEl))
+  }
   const picturePipeline = new RuntimePicturePipeline(renderer, {
     onError: (msg) => console.error('[T3D Player]', msg),
   })
@@ -1156,6 +1530,8 @@ async function boot() {
   camera.lookAt(0, 1, 0)
   attachAudioListener(camera)
   mountPlayerUiOverlay(rootEl)
+  ;(window as unknown as { __T3D_ASSET_STATS__?: () => unknown }).__T3D_ASSET_STATS__ = () => assetMgr.stats()
+  let switchingScene = false
 
   const preloadMode = payload.buildSettings?.preloadMode ?? 'entry-scene'
   const entryId = payload.entrySceneId ?? payload.activeSceneId ?? 'default'
@@ -1164,6 +1540,14 @@ async function boot() {
     const sc = payload.scenes?.[sceneId]
     if (sc?.requiredAssetIds) return sc.requiredAssetIds
     return Object.keys(assets)
+  }
+
+  const keepIdsForScene = (sceneId: string, nodes: Record<string, SceneNode>, pic: ScenePicture | undefined): Set<string> => {
+    const keep = new Set<string>(getPreloadIdsForScene(sceneId))
+    if (loadingCfg.logoAssetId) keep.add(loadingCfg.logoAssetId)
+    if (loadingCfg.backgroundAssetId) keep.add(loadingCfg.backgroundAssetId)
+    collectPlayerNodeDeps(nodes, pic, assets, keep)
+    return keep
   }
 
   const initialPreloadIds = preloadMode === 'minimal'
@@ -1206,19 +1590,25 @@ async function boot() {
   overlay.setProgress(1, '')
   await overlay.hide()
 
-  // 若选择仅预加载初始场景，则进入后在空闲时后台预热其余场景资源
-  if (preloadMode === 'entry-scene' && payload.scenes) {
+  // 小工程才在空闲时把其余场景后台预热；资源多的大工程留到切场景时再按需加载，避免把整包全塞进显存
+  const loadableCount = Object.values(assets).filter(
+    (a) => a.url && (a.kind === 'model' || a.kind === 'animation' || a.kind === 'texture' || a.kind === 'environment'),
+  ).length
+  if (preloadMode === 'entry-scene' && payload.scenes && loadableCount <= IDLE_WARMUP_MAX_ASSETS) {
     const otherIds = Object.keys(payload.scenes).filter((id) => id !== entryId)
     const restAssets = [...new Set(otherIds.flatMap((id) => getPreloadIdsForScene(id)))]
     if (restAssets.length > 0) {
       const idle = (globalThis as { requestIdleCallback?: (cb: () => void) => void }).requestIdleCallback
-      const warmup = () => { void assetMgr.preloadList(restAssets) }
+      const warmup = () => {
+        if (!switchingScene && world.getActiveSceneId() === entryId) {
+          void assetMgr.preloadList(restAssets)
+        }
+      }
       if (typeof idle === 'function') idle(warmup)
       else setTimeout(warmup, 1200)
     }
   }
 
-  let switchingScene = false
   window.addEventListener('t3d:load-scene', (ev) => {
     const detail = (ev as CustomEvent<{ sceneId?: string; spawnPoint?: string }>).detail
     const nextId = detail?.sceneId
@@ -1231,6 +1621,7 @@ async function boot() {
     switchingScene = true
     void (async () => {
       try {
+        assetMgr.resetFailures()
         if (loadingCfg.enabled && loadingCfg.showOnSceneSwitch) {
           overlay.show(`正在切换场景：${nextScene.name}`)
         }
@@ -1238,7 +1629,11 @@ async function boot() {
           overlay.setProgress(loaded / Math.max(1, total), category)
         })
         disposeParticles()
-        if (mounted) scene.remove(mounted.root)
+        if (mounted) {
+          for (const mixer of mounted.mixers) mixer.stopAllAction()
+          scene.remove(mounted.root)
+          disposeSceneBranch(mounted.root)
+        }
         clearScriptRuntimeState()
         switchSceneData(nextId, nextScene.nodes, nextScene.picture)
         for (const script of payload.scripts ?? []) {
@@ -1248,6 +1643,10 @@ async function boot() {
         applyInitialSceneCamera(camera, world.getNodes(), mounted.map)
         applyPlayerPicture(renderer, scene, world.getPicture(), assetMgr, world.getCapabilities(), volume)
         bumpPlayerUiScene()
+        // 新场景挂载完后再释放上一场景不再引用的模型与贴图
+        assetMgr.releaseUnreferenced(keepIdsForScene(nextId, world.getNodes(), world.getPicture()))
+        // 切换期间到位的按需资源已经随新场景一起挂上了，不用再刷一遍
+        assetMgr.consumeLazyReady()
         const pic = world.getPicture()
         const useFx = picturePipeline.usesEffects(pic)
         if (useFx) {
@@ -1552,6 +1951,11 @@ async function boot() {
     lastTime = now
     for (const item of beforeRenderHooks) {
       item.hook({ renderer, scene, camera, dt })
+    }
+    // 按需加载的资源到位后把它们补到场景上（每帧最多一次，切场景途中不处理）
+    if (!switchingScene && mounted && assetMgr.consumeLazyReady()) {
+      applyMountedTextures(mounted, world.getNodes(), assetMgr, assets)
+      applyPlayerPicture(renderer, scene, world.getPicture(), assetMgr, world.getCapabilities(), volume)
     }
     if (!switchingScene) {
       stepSceneRuntime(dt, host)

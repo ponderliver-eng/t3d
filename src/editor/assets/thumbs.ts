@@ -29,6 +29,19 @@ export async function imageThumb(url: string): Promise<string | null> {
   }
 }
 
+/** 用一段图片字节（比如资源包自带的预览图）生成缩略图。 */
+export async function bytesThumb(bytes: Uint8Array): Promise<string | null> {
+  if (bytes.byteLength === 0) return null
+  const copy = new Uint8Array(bytes.byteLength)
+  copy.set(bytes)
+  const url = URL.createObjectURL(new Blob([copy.buffer]))
+  try {
+    return await imageThumb(url)
+  } finally {
+    URL.revokeObjectURL(url)
+  }
+}
+
 export function labelThumb(text: string): string {
   const canvas = document.createElement('canvas')
   canvas.width = 96

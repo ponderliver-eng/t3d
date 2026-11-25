@@ -1,11 +1,11 @@
 import { getSpawn } from '../scene/spawn'
 import { useEditorStore } from '../scene/store'
 import { normalizeSlot, resolveModelSlot, slotFromNode } from './materials'
-import { applyModelMaterialBindings, clipNamesFor, getModelTemplate, loadModelTemplate, releaseModel, withFbxCompanions, type ModelMaterialHint } from './models'
+import { applyModelMaterialBindings, clipNamesFor, getModelTemplate, loadModelTemplate, releaseModel, waitForModelArtifact, withFbxCompanions, type ModelMaterialHint } from './models'
 import { importUnityMatText } from './unityMaterial'
-import { loadEnvironmentAsset, loadTextureAsset, releaseTexture, ensureAssetUrl } from './textures'
+import { bakeTextureArtifact, loadEnvironmentAsset, loadTextureAsset, releaseTexture, ensureAssetUrl } from './textures'
 import { deleteModelArtifact, forgetFile, patchAssetMeta, readFileBytes, rememberFile, sha256, updateCachedThumb } from './cache'
-import { imageThumb, renderModelThumb } from './thumbs'
+import { bytesThumb, imageThumb, renderModelThumb } from './thumbs'
 import { readPrefab } from './prefab'
 import { translate } from '../i18n'
 import { QUARKS_VERSION } from '../../capabilities/particles/defaults'
@@ -36,12 +36,60 @@ export function openImport() {
   input?.click()
 }
 
+export interface ImportOptions {
+  /**
+   * 批量模式：只把文件写进工程、出缩略图、烘好成品，不把资源留在内存和显存里；
+   * 之后场景用到时再从成品加载。导入几百上千个文件时内存占用只取决于最大的那一个文件。
+   */
+  bulk?: boolean
+  /** 资源包自带的预览图，直接当模型缩略图用，省掉一次离屏渲染。 */
+  previewPng?: Uint8Array
+}
+
+/** 一次拖进来的文件数或总大小超过这两个值，就自动按批量模式导入。 */
+const BULK_IMPORT_FILE_COUNT = 12
+const BULK_IMPORT_BYTES = 256 * 1024 * 1024
+
+/** 源文件没能写进工程的资源：内存里那份是唯一副本，不能释放。 */
+const unsavedSources = new Set<string>()
+
+async function persistSource(record: Parameters<typeof rememberFile>[0]): Promise<void> {
+  try {
+    await rememberFile(record)
+    unsavedSources.delete(record.id)
+  } catch (error) {
+    unsavedSources.add(record.id)
+    console.warn('[cache] 写入失败', error)
+  }
+}
+
+/**
+ * 批量导入的收尾：成品写完后，把这个资源在内存里的副本放掉。
+ * 已经被场景或其他资源引用的（比如和已有文件内容相同）保持原样。
+ */
+async function settleBulkAsset(id: string) {
+  const asset = useAssetStore.getState().assets[id]
+  if (!asset || !('fileName' in asset)) return
+  const isModel = asset.kind === 'model' || asset.kind === 'animation'
+  if (isModel) await waitForModelArtifact(id)
+  if (referencedBy(id).length > 0) return
+  if (isModel) releaseModel(id, { dispose: true })
+  if (asset.kind === 'texture' || asset.kind === 'environment') releaseTexture(id)
+  // 音频和文档的播放/编辑直接用这个地址，保留；其余类型用到时会从工程文件重新读
+  const current = useAssetStore.getState().assets[id]
+  if (!current || !('fileName' in current) || unsavedSources.has(id)) return
+  if (current.kind === 'audio' || current.kind === 'document' || !current.url.startsWith('blob:')) return
+  URL.revokeObjectURL(current.url)
+  useAssetStore.getState().patch(id, { url: '' })
+}
+
 export async function importExtractedBytes(
   fileName: string,
   bytes: Uint8Array,
   dir: string,
   companions: ReadonlyArray<{ name: string; data: Uint8Array }> = [],
   materialHint?: ModelMaterialHint,
+  options: ImportOptions = {},
 ): Promise<string | null> {
     const kind = fileKindFor(fileName)
   if (!kind) return null
@@ -59,6 +107,7 @@ export async function importExtractedBytes(
         const nextSlots = applyModelMaterialBindings(existing.id, materialHint)
         if (nextSlots) syncReimportedModelNodes(existing.id, nextSlots, clipNamesFor(existing.id))
       }
+      if (options.bulk) await settleBulkAsset(existing.id)
     }
     return existing.id
   }
@@ -74,13 +123,11 @@ export async function importExtractedBytes(
   if (kind === 'model') {
     useAssetStore.getState().add(asset)
     useAssetStore.getState().place(asset.id, dir)
-    await rememberFile({ ...asset, bytes: copy }).catch(error => {
-      console.warn('[cache] 写入失败', error)
-    })
-    const ok = await withFbxCompanions(asset.id, companions, () => ingestModelAfterRegister(asset), materialHint)
+    await persistSource({ ...asset, bytes: copy })
+    const ok = await withFbxCompanions(asset.id, companions, () => ingestModelAfterRegister(asset, options), materialHint)
     return ok ? asset.id : null
   }
-  const stored = await ingest(asset, copy, dir)
+  const stored = await ingest(asset, copy, dir, options)
   return stored ? asset.id : null
 }
 
@@ -89,19 +136,31 @@ export async function importFiles(files: File[], dir = useAssetStore.getState().
   const modelsToLoad: FileAsset[] = []
   const matFiles = files.filter(file => file.name.toLowerCase().endsWith('.mat'))
   const otherFiles = files.filter(file => !file.name.toLowerCase().endsWith('.mat'))
-  for (const file of otherFiles) {
+  const totalBytes = files.reduce((sum, file) => sum + file.size, 0)
+  const bulk = files.length > BULK_IMPORT_FILE_COUNT || totalBytes > BULK_IMPORT_BYTES
+  const options: ImportOptions = { bulk }
+  if (bulk) useEditorStore.getState().log('info', translate('memory.bulkImport', { count: files.length }))
+  const isModelFile = (file: File) => fileKindFor(file.name) === 'model'
+  // 批量时模型排到材质之后逐个处理（绑定材质需要材质先入库），而且不提前把所有模型字节读进内存
+  const firstPass = bulk ? otherFiles.filter(file => !isModelFile(file)) : otherFiles
+  const laterModels = bulk ? otherFiles.filter(isModelFile) : []
+  let handled = 0
+  const importOne = async (file: File) => {
+    // 批量时隔几个文件让一次界面，窗口不至于长时间没响应
+    handled += 1
+    if (bulk && handled % 4 === 0) await new Promise<void>(resolve => window.setTimeout(resolve, 0))
     if (file.name.toLowerCase().endsWith('.json')) {
       const effectId = await importEffectJson(file, dir)
       if (effectId) {
         created.push(effectId)
-        continue
+        return
       }
       // 非 Quarks 粒子特效的 JSON 作为普通文本文档导入
     }
     const kind = fileKindFor(file.name)
     if (!kind) {
       useEditorStore.getState().log('warn', translate('log.unknownFile', { name: file.name }))
-      continue
+      return
     }
     try {
       const bytes = await file.arrayBuffer()
@@ -110,7 +169,7 @@ export async function importFiles(files: File[], dir = useAssetStore.getState().
       if (existing) {
         useEditorStore.getState().log('info', translate('log.already', { name: existing.name }))
         created.push(existing.id)
-        continue
+        return
       }
       const asset: FileAsset = {
         id: crypto.randomUUID(),
@@ -124,20 +183,23 @@ export async function importFiles(files: File[], dir = useAssetStore.getState().
       if (kind === 'model') {
         useAssetStore.getState().add(asset)
         useAssetStore.getState().place(asset.id, dir)
-        await rememberFile({ ...asset, bytes }).catch(error => {
-          console.warn('[cache] 写入失败', error)
-        })
+        await persistSource({ ...asset, bytes })
+        if (bulk) {
+          if (await ingestModelAfterRegister(asset, options)) created.push(asset.id)
+          return
+        }
         modelsToLoad.push(asset)
         created.push(asset.id)
-        continue
+        return
       }
-      const stored = await ingest(asset, bytes, dir)
+      const stored = await ingest(asset, bytes, dir, options)
       if (stored) created.push(asset.id)
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       useEditorStore.getState().log('error', translate('log.importFail', { name: file.name, message }))
     }
   }
+  for (const file of firstPass) await importOne(file)
   for (const matFile of matFiles) {
     try {
       const text = await matFile.text()
@@ -148,6 +210,7 @@ export async function importFiles(files: File[], dir = useAssetStore.getState().
       useEditorStore.getState().log('error', translate('log.importFail', { name: matFile.name, message }))
     }
   }
+  for (const file of laterModels) await importOne(file)
   for (const modelAsset of modelsToLoad) {
     const ok = await ingestModelAfterRegister(modelAsset)
     if (!ok) {
@@ -167,22 +230,33 @@ function revealImported(id: string) {
   selectTab('tab-project')
 }
 
-async function ingestModelAfterRegister(asset: FileAsset): Promise<boolean> {
+async function ingestModelAfterRegister(asset: FileAsset, options: ImportOptions = {}): Promise<boolean> {
   try {
     const template = await loadModelTemplate(asset, true)
-    if (!hasMesh(template.scene) && template.clips.length > 0) {
+    const animationOnly = !hasMesh(template.scene) && template.clips.length > 0
+    if (animationOnly) {
       useAssetStore.getState().patch(asset.id, { kind: 'animation' })
       void patchAssetMeta(asset.id, { kind: 'animation' })
-      useEditorStore.getState().log('info', translate('log.importedAnim', { name: asset.name }))
-    } else {
+      if (!options.bulk) useEditorStore.getState().log('info', translate('log.importedAnim', { name: asset.name }))
+    } else if (!options.bulk) {
       useEditorStore.getState().log('info', translate('log.importedModel', { name: asset.name, count: template.clips.length }))
     }
-    void attachThumb(asset.id, true)
+    const packaged = !animationOnly && options.previewPng ? await bytesThumb(options.previewPng) : null
+    if (packaged) {
+      useAssetStore.getState().patch(asset.id, { thumb: packaged })
+      await updateCachedThumb(asset.id, packaged).catch(() => undefined)
+    } else if (options.bulk) {
+      // 批量时要等缩略图出完才能放掉模板
+      await attachThumb(asset.id, true)
+    } else {
+      void attachThumb(asset.id, true)
+    }
+    if (options.bulk) await settleBulkAsset(asset.id)
     return true
   } catch (error) {
     useAssetStore.getState().remove(asset.id)
     URL.revokeObjectURL(asset.url)
-    releaseModel(asset.id)
+    releaseModel(asset.id, { dispose: true })
     void forgetFile(asset.id).catch(() => undefined)
     const message = error instanceof Error ? error.message : String(error)
     useEditorStore.getState().log('error', translate('log.importFail', { name: asset.fileName, message }))
@@ -190,11 +264,14 @@ async function ingestModelAfterRegister(asset: FileAsset): Promise<boolean> {
   }
 }
 
-async function ingest(asset: FileAsset, bytes: ArrayBuffer, dir?: string): Promise<boolean> {
+async function ingest(asset: FileAsset, bytes: ArrayBuffer, dir?: string, options: ImportOptions = {}): Promise<boolean> {
   try {
     useAssetStore.getState().add(asset)
     if (dir) useAssetStore.getState().place(asset.id, dir)
-    if (asset.kind === 'model') {
+    if (options.bulk && (asset.kind === 'texture' || asset.kind === 'environment')) {
+      // 批量：贴图只解码一次烘成压缩成品就放掉，不留在内存和显存里；解码失败说明文件是坏的，按导入失败处理
+      if (asset.kind === 'texture') await bakeTextureArtifact(asset, new Blob([bytes]))
+    } else if (asset.kind === 'model') {
       const template = await loadModelTemplate(asset)
       if (!hasMesh(template.scene) && template.clips.length > 0) {
         asset = { ...asset, kind: 'animation' }
@@ -215,16 +292,15 @@ async function ingest(asset: FileAsset, bytes: ArrayBuffer, dir?: string): Promi
     } else {
       useEditorStore.getState().log('info', translate('log.importedAudio', { name: asset.name }))
     }
-    await rememberFile({ ...asset, bytes }).catch(error => {
-      console.warn('[cache] 写入失败', error)
-    })
+    await persistSource({ ...asset, bytes })
     if (asset.kind === 'texture') await attachThumb(asset.id)
     else void attachThumb(asset.id)
+    if (options.bulk) await settleBulkAsset(asset.id)
     return true
   } catch (error) {
     useAssetStore.getState().remove(asset.id)
     URL.revokeObjectURL(asset.url)
-    releaseModel(asset.id)
+    releaseModel(asset.id, { dispose: true })
     releaseTexture(asset.id)
     const message = error instanceof Error ? error.message : String(error)
     useEditorStore.getState().log('error', translate('log.importFail', { name: asset.fileName, message }))
@@ -376,7 +452,7 @@ export function deleteAsset(id: string) {
     return
   }
   if (asset && 'url' in asset) URL.revokeObjectURL(asset.url)
-  releaseModel(id)
+  releaseModel(id, { dispose: true })
   releaseTexture(id)
   useAssetStore.getState().remove(id)
   void forgetFile(id).catch(() => undefined)

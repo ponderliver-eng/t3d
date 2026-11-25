@@ -10,6 +10,7 @@ import { LIGHT_KINDS, MESH_KINDS } from '../scene/kinds'
 import { useI18n, translate, type MessageKey } from '../i18n'
 import { usePrefsStore } from '../prefs/store'
 import { openImport } from '../assets/import'
+import { initAssetMemory, releaseUnreferencedAssetsWithLog } from '../assets/assetMemory'
 import { createDirectoryProject, notifyProjectSaved, openDirectoryProject, openRecentProject, saveCacheAsDirectoryProject, saveProjectNow } from '../assets/project'
 import { useManagerModalStore } from '../../core/project/ProjectManagerModal'
 import { RecentProjectService, type RecentProject } from '../project/recents'
@@ -58,6 +59,7 @@ export default function MenuBar() {
     bindPackagePicker(() => packageInputRef.current?.click())
     return () => bindPackagePicker(null)
   }, [])
+  useEffect(() => { initAssetMemory() }, [])
   const create = (kind: NodeKind) => useEditorStore.getState().createNode(kind)
   const createDevice = (device: DeviceKind) => useEditorStore.getState().createDevice(device)
   const view = (next: CameraView) => useEditorStore.getState().requestView(next)
@@ -117,6 +119,7 @@ export default function MenuBar() {
           <Sep />
           <Item icon={<Upload size={13} />} onClick={openImport}>{t('menu.import')}</Item>
           <Item icon={<PackageOpen size={13} />} onClick={openPackagePicker}>{t('menu.extractPackage')}</Item>
+          <Item icon={<Trash2 size={13} />} disabled={playing} onClick={() => { releaseUnreferencedAssetsWithLog() }}>{t('menu.releaseUnused')}</Item>
           <Sep />
           <Item icon={<Hammer size={13} />} disabled={playing} onClick={() => useManagerModalStore.getState().openModal('publish')}>{t('menu.exportWeb')}</Item>
         </Dropdown>

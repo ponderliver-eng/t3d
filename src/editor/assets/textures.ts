@@ -7,6 +7,8 @@ import { compressRgbaToBc7Mips, ensureBc7Readable, initBc7Compressor, isBc7Suppo
 import { readFileBytes, readTextureArtifact, writeTextureArtifact } from './cache'
 import { type FileAsset, useAssetStore } from './library'
 import { readUnpremultipliedRgba } from './textureResize'
+import { createLoadFailureGate } from './loadFailures'
+import { canRestoreDegraded, chooseMipSkip, estimateRgbaBytes, textureBudgetBytes } from './memoryBudget'
 import { watchGpuDevice } from '../../runtime/frameProfile'
 
 const images = new Map<string, Texture>()
@@ -33,6 +35,92 @@ let bumpTimer = 0
 let warmBumpDeferred = false
 let warmBumpPending = false
 const unityMrWaiters = new Map<string, Array<() => void>>()
+const imageFailures = createLoadFailureGate('贴图')
+const environmentFailures = createLoadFailureGate('环境贴图')
+/** 因为显存估算超预算而少加载了几级清晰度的贴图：资源 -> 跳过的级数。 */
+const degradedTextures = new Map<string, number>()
+let memoryPressureHandler: ((info: { usedBytes: number, budgetBytes: number }) => void) | null = null
+let lastPressureAt = 0
+
+/** 显存估算超过预算时的回调（编辑器用它去回收场景没用到的资源）。 */
+export function setTextureMemoryPressureHandler(handler: ((info: { usedBytes: number, budgetBytes: number }) => void) | null) {
+  memoryPressureHandler = handler
+}
+
+function estimateTextureBytes(texture: Texture): number {
+  const compressed = texture as { isCompressedTexture?: boolean, mipmaps?: Array<{ data?: { byteLength?: number } }> }
+  if (compressed.isCompressedTexture && compressed.mipmaps?.length) {
+    let bytes = 0
+    for (const mip of compressed.mipmaps) bytes += mip.data?.byteLength ?? 0
+    return bytes
+  }
+  const image = texture.image as { width?: number, height?: number, naturalWidth?: number, naturalHeight?: number } | undefined
+  const width = image?.naturalWidth || image?.width || 0
+  const height = image?.naturalHeight || image?.height || 0
+  // 浮点环境贴图按每像素 8 字节（半浮点 RGBA）估
+  const bytesPerPixel = texture.type === UnsignedByteType ? 4 : 8
+  return estimateRgbaBytes(width, height, texture.generateMipmaps, bytesPerPixel)
+}
+
+function textureBytesOf(assetId: string): number {
+  let bytes = 0
+  const image = images.get(assetId)
+  if (image) bytes += estimateTextureBytes(image)
+  const packed = unityMrImages.get(assetId)
+  if (packed) bytes += estimateTextureBytes(packed)
+  const env = environments.get(assetId)
+  if (env) bytes += estimateTextureBytes(env)
+  return bytes
+}
+
+/** 当前留在内存里的贴图（含环境贴图和重排后的金属光滑图）。 */
+export function loadedTextureIds(): string[] {
+  return [...new Set([...images.keys(), ...unityMrImages.keys(), ...environments.keys()])]
+}
+
+/** 贴图是否正在加载或重排（这时不能回收）。 */
+export function isTextureBusy(assetId: string): boolean {
+  return pendingImages.has(assetId) || pendingEnvironments.has(assetId) || unityMrPending.has(assetId) || unityMrDirect.has(assetId)
+}
+
+/** 贴图显存的估算统计。数字是按尺寸和格式算的，不是显卡的真实读数。 */
+export function textureMemoryStats(): { bytes: number, count: number, degraded: number, budgetBytes: number } {
+  const ids = loadedTextureIds()
+  let bytes = 0
+  for (const id of ids) bytes += textureBytesOf(id)
+  return { bytes, count: ids.length, degraded: degradedTextures.size, budgetBytes: textureBudgetBytes() }
+}
+
+/** 单个贴图资源的估算字节数（没加载时为 0）。 */
+export function textureMemoryBytes(assetId: string): number {
+  return textureBytesOf(assetId)
+}
+
+function noteTextureStored() {
+  if (!memoryPressureHandler) return
+  const now = performance.now()
+  if (now - lastPressureAt < 5000) return
+  const stats = textureMemoryStats()
+  if (stats.bytes <= stats.budgetBytes) return
+  lastPressureAt = now
+  memoryPressureHandler({ usedBytes: stats.bytes, budgetBytes: stats.budgetBytes })
+}
+
+/**
+ * 预算有余量时，把之前降过清晰度的贴图放掉重新加载成全清晰度。
+ * 返回恢复的贴图数。
+ */
+export function restoreDegradedTextures(): number {
+  if (degradedTextures.size === 0) return 0
+  const stats = textureMemoryStats()
+  const degraded = [...degradedTextures].map(([id, skip]) => ({ bytes: textureBytesOf(id), skip }))
+  if (!canRestoreDegraded(stats.bytes, stats.budgetBytes, degraded)) return 0
+  const ids = [...degradedTextures.keys()]
+  for (const id of ids) releaseTexture(id)
+  // 视口下一次同步会重新来要这些贴图
+  scheduleBump()
+  return ids.length
+}
 
 export function setWarmBumpDeferred(deferred: boolean) {
   warmBumpDeferred = deferred
@@ -130,7 +218,9 @@ export function textureFor(assetId: string | null, colorMap: boolean): Texture |
   }
   const texture = images.get(assetId)
   if (!texture) {
-    if (asset && asset.kind === 'texture') void loadTextureAsset(asset).catch(() => undefined)
+    if (asset && asset.kind === 'texture' && imageFailures.shouldTry(assetId, asset.hash)) {
+      void loadTextureAsset(asset).catch(() => undefined)
+    }
     return null
   }
   if (colorMap) {
@@ -246,7 +336,22 @@ function buildDataTexture(width: number, height: number, rgba: Uint8Array, base?
   return tex
 }
 
-function buildBc7Texture(width: number, height: number, mips: Bc7Mip[], base?: Texture): CompressedTexture {
+/**
+ * degradeKey 给了资源编号时，显存估算超预算就跳过最清晰的一两级 mip（成品里本来就存着整条 mip 链），
+ * 画面变糊但不会因为显存耗尽而出错；预算有余量后由 restoreDegradedTextures 恢复。
+ */
+function buildBc7Texture(width: number, height: number, allMips: Bc7Mip[], base?: Texture, degradeKey?: string): CompressedTexture {
+  let mips = allMips
+  if (degradeKey) {
+    const stats = textureMemoryStats()
+    const skip = chooseMipSkip(stats.bytes, stats.budgetBytes, allMips)
+    if (skip > 0) {
+      mips = allMips.slice(skip)
+      width = mips[0]!.width
+      height = mips[0]!.height
+      degradedTextures.set(degradeKey, Math.max(skip, degradedTextures.get(degradeKey) ?? 0))
+    }
+  }
   const tex = new CompressedTexture(mips as unknown as ImageData[], width, height, RGBA_BPTC_Format)
   tex.flipY = base ? base.flipY : false
   if (base) {
@@ -386,12 +491,13 @@ function scheduleUnityRepack(
         const bc7 = await readTextureArtifact(assetHash, 'unity-mr-bc7').catch(() => null)
         const unpackedBc7 = bc7 ? unpackBc7Artifact(bc7) : null
         if (unpackedBc7) {
-          const converted = buildBc7Texture(unpackedBc7.width, unpackedBc7.height, unpackedBc7.mips, base)
+          const converted = buildBc7Texture(unpackedBc7.width, unpackedBc7.height, unpackedBc7.mips, base, assetId)
           converted.colorSpace = NoColorSpace
           unityMrImages.set(assetId, converted)
           unityMrPending.delete(assetId)
           notifyUnityMrReady(assetId)
           scheduleBump()
+          noteTextureStored()
           return
         }
       }
@@ -421,7 +527,7 @@ function loadUnityMrDirect(asset: FileAsset) {
       const bc7 = await readTextureArtifact(asset.hash, 'unity-mr-bc7').catch(() => null)
       const unpacked = bc7 ? unpackBc7Artifact(bc7) : null
       if (unpacked) {
-        texture = buildBc7Texture(unpacked.width, unpacked.height, unpacked.mips)
+        texture = buildBc7Texture(unpacked.width, unpacked.height, unpacked.mips, undefined, assetId)
         source = 'bc7'
         bytes = bc7!.byteLength
       }
@@ -449,6 +555,7 @@ function loadUnityMrDirect(asset: FileAsset) {
       unityMrInfo.set(assetId, { source, bytes, readMs: performance.now() - started, hash: asset.hash })
       notifyUnityMrReady(assetId)
       scheduleBump()
+      noteTextureStored()
       return
     }
     // 没有成品（第一次导入）：加载原图后重排，重排完成时会通知等待方并写入成品
@@ -517,7 +624,9 @@ export function environmentFor(assetId: string | null): Texture | null {
   const env = environments.get(assetId)
   if (!env) {
     const asset = useAssetStore.getState().assets[assetId]
-    if (asset && asset.kind === 'environment') void loadEnvironmentAsset(asset).catch(() => undefined)
+    if (asset && asset.kind === 'environment' && environmentFailures.shouldTry(assetId, asset.hash)) {
+      void loadEnvironmentAsset(asset).catch(() => undefined)
+    }
     return null
   }
   return env
@@ -554,6 +663,7 @@ export function releaseTexture(assetId: string) {
   environments.get(assetId)?.dispose()
   environments.delete(assetId)
   pendingEnvironments.delete(assetId)
+  degradedTextures.delete(assetId)
 }
 
 export function loadEnvironmentAsset(asset: FileAsset): Promise<void> {
@@ -570,10 +680,12 @@ export function loadEnvironmentAsset(asset: FileAsset): Promise<void> {
       texture.mapping = EquirectangularReflectionMapping
       environments.set(asset.id, texture)
       pendingEnvironments.delete(asset.id)
+      environmentFailures.clear(asset.id)
       scheduleBump()
     })
   }).catch(error => {
     pendingEnvironments.delete(asset.id)
+    environmentFailures.fail(asset.id, asset.hash, asset.name, error)
     throw error
   })
   pendingEnvironments.set(asset.id, task)
@@ -602,7 +714,9 @@ export function loadTextureAsset(asset: FileAsset): Promise<void> {
       unityMrPending.delete(asset.id)
     }
     pendingImages.delete(asset.id)
+    imageFailures.clear(asset.id)
     scheduleBump()
+    noteTextureStored()
   }
   const task = (async () => {
     if (lower.endsWith('.ktx2')) {
@@ -635,7 +749,7 @@ export function loadTextureAsset(asset: FileAsset): Promise<void> {
           imageSources.set(asset.id, 'bc7')
           imageArtifactBytes.set(asset.id, bc7!.byteLength)
           imageReadMs.set(asset.id, readDt)
-          finishBitmap(buildBc7Texture(unpackedBc7.width, unpackedBc7.height, unpackedBc7.mips))
+          finishBitmap(buildBc7Texture(unpackedBc7.width, unpackedBc7.height, unpackedBc7.mips, undefined, asset.id))
           return
         }
       }
@@ -650,7 +764,8 @@ export function loadTextureAsset(asset: FileAsset): Promise<void> {
       }
     }
     const url = await ensureAssetUrl(asset.id)
-    const texture = await loadBitmapTexture(url)
+    // 解码原图瞬时占用大（一张 4K 图 64MB），同时解码的数量要限住
+    const texture = await withDecodeSlot(() => loadBitmapTexture(url))
     imageSources.set(asset.id, 'source')
     finishBitmap(texture)
     if (asset.hash) {
@@ -672,6 +787,7 @@ export function loadTextureAsset(asset: FileAsset): Promise<void> {
     }
   })().catch(error => {
     pendingImages.delete(asset.id)
+    imageFailures.fail(asset.id, asset.hash, asset.name, error)
     throw error
   })
   pendingImages.set(asset.id, task)
@@ -679,33 +795,79 @@ export function loadTextureAsset(asset: FileAsset): Promise<void> {
 }
 
 const MAX_TEXTURE_SIZE = 2048
+const MAX_CONCURRENT_DECODES = 3
+let activeDecodes = 0
+const decodeWaiters: Array<() => void> = []
+
+/** 限制同时解码原图的数量，避免一次要几十张贴图时内存瞬间冲高。 */
+async function withDecodeSlot<T>(run: () => Promise<T>): Promise<T> {
+  if (activeDecodes >= MAX_CONCURRENT_DECODES) {
+    await new Promise<void>(resolve => decodeWaiters.push(resolve))
+  } else {
+    activeDecodes += 1
+  }
+  try {
+    return await run()
+  } finally {
+    const next = decodeWaiters.shift()
+    // 名额直接交给下一个等待者，不经过计数增减
+    if (next) next()
+    else activeDecodes -= 1
+  }
+}
+
+/** 解码成不预乘、不做色彩转换的位图，超过上限尺寸时直接解成缩小后的尺寸。 */
+async function decodeBitmap(blob: Blob): Promise<ImageBitmap> {
+  const probe = await createImageBitmap(blob, {
+    imageOrientation: 'none',
+    premultiplyAlpha: 'none',
+    colorSpaceConversion: 'none',
+  })
+  const maxDim = Math.max(probe.width, probe.height)
+  if (maxDim <= MAX_TEXTURE_SIZE) return probe
+  const scale = MAX_TEXTURE_SIZE / maxDim
+  const targetW = Math.max(1, Math.round(probe.width * scale))
+  const targetH = Math.max(1, Math.round(probe.height * scale))
+  probe.close()
+  return createImageBitmap(blob, {
+    imageOrientation: 'none',
+    premultiplyAlpha: 'none',
+    colorSpaceConversion: 'none',
+    resizeWidth: targetW,
+    resizeHeight: targetH,
+    resizeQuality: 'high',
+  })
+}
+
+/**
+ * 批量导入用：不把贴图留在内存和显存里，只解码一次、压成 BC7 成品写盘就放掉。
+ * 之后第一次用到这张贴图时直接读压缩成品（显存是未压缩的 1/4），不用再解码原图。
+ * 显卡不支持 BC7、或是 KTX2 / SVG 时不烘，留到第一次使用时按老流程处理。
+ */
+export async function bakeTextureArtifact(asset: FileAsset, blob: Blob): Promise<boolean> {
+  const lower = asset.fileName.toLowerCase()
+  if (!asset.hash || lower.endsWith('.ktx2') || lower.endsWith('.svg')) return false
+  if (typeof createImageBitmap !== 'function' || !isBc7Supported()) return false
+  return withDecodeSlot(async () => {
+    const bitmap = await decodeBitmap(blob)
+    try {
+      // 宽高不是 4 的倍数压不了 BC7，只能存未压缩成品（一张 2K 图 16MB）；批量导入时不为没用到的贴图占这个盘
+      if (bitmap.width < 4 || bitmap.height < 4 || bitmap.width % 4 !== 0 || bitmap.height % 4 !== 0) return false
+      const rgba = readUnpremultipliedRgba(bitmap, bitmap.width, bitmap.height)
+      await persistTextureCache(asset.hash, bitmap.width, bitmap.height, rgba, 'base', 'bc7')
+      return true
+    } finally {
+      bitmap.close()
+    }
+  })
+}
 
 async function loadBitmapTexture(url: string): Promise<Texture> {
   if (typeof createImageBitmap === 'function') {
     try {
       const response = await fetch(url)
       const blob = await response.blob()
-      const probe = await createImageBitmap(blob, {
-        imageOrientation: 'none',
-        premultiplyAlpha: 'none',
-        colorSpaceConversion: 'none',
-      })
-      let bitmap = probe
-      const maxDim = Math.max(probe.width, probe.height)
-      if (maxDim > MAX_TEXTURE_SIZE) {
-        const scale = MAX_TEXTURE_SIZE / maxDim
-        const targetW = Math.max(1, Math.round(probe.width * scale))
-        const targetH = Math.max(1, Math.round(probe.height * scale))
-        probe.close()
-        bitmap = await createImageBitmap(blob, {
-          imageOrientation: 'none',
-          premultiplyAlpha: 'none',
-          colorSpaceConversion: 'none',
-          resizeWidth: targetW,
-          resizeHeight: targetH,
-          resizeQuality: 'high',
-        })
-      }
+      const bitmap = await decodeBitmap(blob)
       const texture = new Texture(bitmap)
       texture.flipY = false
       texture.needsUpdate = true

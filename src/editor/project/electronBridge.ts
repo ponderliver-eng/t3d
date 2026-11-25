@@ -28,6 +28,17 @@ export interface ElectronBridge {
     /** 用户级资料库根目录（`<userData>/T3D`），已在主进程路径白名单内 */
     userLibraryRoot: () => Promise<string>
   }
+  /** 大体积资源包的流式读取：主进程解压建索引，这里按偏移一次取一个文件 */
+  package?: {
+    open: (sessionId: string, file: File) => Promise<{
+      sessionId: string
+      tarBytes: number
+      entries: Array<{ path: string; type: string; offset: number; size: number; inline?: Uint8Array }>
+    }>
+    read: (sessionId: string, offset: number, size: number) => Promise<ArrayBuffer>
+    close: (sessionId: string) => Promise<void>
+    onProgress: (handler: (payload: { sessionId: string; done: number; total: number }) => void) => () => void
+  }
   player?: {
     copyShell: (targetDir: string) => Promise<{ ok: boolean; copiedFiles: string[]; message: string }>
     buildElectron?: (

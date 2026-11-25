@@ -1,4 +1,7 @@
-const BC7_MAGIC = 0x37434254 // 'TBC7'
+import { checkWebGlBptcSupport, packBc7Artifact, unpackBc7Artifact, type Bc7Mip } from '../../runtime/engine/bc7'
+
+export { packBc7Artifact, unpackBc7Artifact, type Bc7Mip }
+
 const GPU_STAGE_COMPUTE = 0x4
 const GPU_BUF_MAP_READ = 0x0001
 const GPU_BUF_COPY_SRC = 0x0004
@@ -36,12 +39,6 @@ interface WebGpuBufferLike {
   getMappedRange: () => ArrayBuffer
   unmap: () => void
   destroy: () => void
-}
-
-export interface Bc7Mip {
-  width: number
-  height: number
-  data: Uint8Array
 }
 
 let gpuDevice: WebGpuDeviceLike | null = null
@@ -220,18 +217,6 @@ fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
 }
 `
 
-function checkWebGlBptcSupport(): boolean {
-  if (typeof document === 'undefined') return false
-  try {
-    const canvas = document.createElement('canvas')
-    const gl = canvas.getContext('webgl2')
-    if (!gl) return false
-    return Boolean(gl.getExtension('EXT_texture_compression_bptc'))
-  } catch {
-    return false
-  }
-}
-
 export function initBc7Compressor(device: WebGpuDeviceLike | null | undefined) {
   if (!device || !device.features.has('texture-compression-bc') || !checkWebGlBptcSupport()) {
     gpuDevice = null
@@ -393,45 +378,3 @@ export async function compressRgbaToBc7Mips(rgba: Uint8Array, width: number, hei
   return mips
 }
 
-export function packBc7Artifact(width: number, _height: number, mips: Bc7Mip[]): ArrayBuffer {
-  let payloadBytes = 0
-  for (const mip of mips) payloadBytes += 12 + mip.data.byteLength
-  const out = new Uint8Array(16 + payloadBytes)
-  const view = new DataView(out.buffer)
-  view.setUint32(0, BC7_MAGIC, true)
-  view.setUint32(4, 1, true)
-  view.setUint32(8, width, true)
-  view.setUint32(12, mips.length, true)
-  let offset = 16
-  for (const mip of mips) {
-    view.setUint32(offset, mip.width, true)
-    view.setUint32(offset + 4, mip.height, true)
-    view.setUint32(offset + 8, mip.data.byteLength, true)
-    out.set(mip.data, offset + 12)
-    offset += 12 + mip.data.byteLength
-  }
-  return out.buffer
-}
-
-export function unpackBc7Artifact(buffer: ArrayBuffer): { width: number, height: number, mips: Bc7Mip[] } | null {
-  if (buffer.byteLength < 16) return null
-  const view = new DataView(buffer)
-  if (view.getUint32(0, true) !== BC7_MAGIC || view.getUint32(4, true) !== 1) return null
-  const width = view.getUint32(8, true)
-  const mipCount = view.getUint32(12, true)
-  if (width <= 0 || mipCount <= 0 || mipCount > 16) return null
-  const mips: Bc7Mip[] = []
-  let offset = 16
-  for (let i = 0; i < mipCount; i += 1) {
-    if (offset + 12 > buffer.byteLength) return null
-    const w = view.getUint32(offset, true)
-    const h = view.getUint32(offset + 4, true)
-    const byteLen = view.getUint32(offset + 8, true)
-    offset += 12
-    if (offset + byteLen > buffer.byteLength) return null
-    mips.push({ width: w, height: h, data: new Uint8Array(buffer, offset, byteLen) })
-    offset += byteLen
-  }
-  if (mips.length === 0) return null
-  return { width, height: mips[0]!.height, mips }
-}

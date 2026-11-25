@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { Box, Clapperboard, Image, Minus, Palette, Plus, Search, X } from 'lucide-react'
-import { scanPackageAssets, type PackageAssetScannerDirectory, type PackageAssetScannerEntry, type PackageAssetScannerResult, type PackageExtractableAssetKind } from '../assets/package/packageAssetScanner'
+import { scanPackageArchive, scanPackageAssets, type PackageAssetScannerDirectory, type PackageAssetScannerEntry, type PackageAssetScannerResult, type PackageExtractableAssetKind } from '../assets/package/packageAssetScanner'
 import { extractPackageEntries, withReferencedTextures, type PackageExtractionProgress } from '../assets/package/extractPackage'
 import type { PackageModelAssetRole } from '../assets/package/packageAssetRoleGuess'
 import { normalizeDir } from '../assets/folders'
 import { useAssetStore } from '../assets/library'
 import { selectTab } from '../layout/events'
 import { useEditorStore } from '../scene/store'
+import { electronBridge } from '../project/electronBridge'
 import { useI18n, type MessageKey } from '../i18n'
 import './PackageExtractDialog.css'
 
@@ -22,7 +23,9 @@ export function PackageExtractDialog({ file, open, onClose }: { file: File | nul
   const [extracting, setExtracting] = useState(false)
   const [progress, setProgress] = useState<PackageExtractionProgress | null>(null)
   const [slowScan, setSlowScan] = useState(false)
+  const [scanProgress, setScanProgress] = useState<{ done: number; total: number } | null>(null)
   const [query, setQuery] = useState('')
+  const abortRef = useRef<AbortController | null>(null)
 
   useEffect(() => {
     if (!open || !file) return
@@ -38,9 +41,37 @@ export function PackageExtractDialog({ file, open, onClose }: { file: File | nul
     setDiagnosticsOpen(false)
     setExtracting(false)
     setProgress(null)
+    setScanProgress(null)
     setQuery('')
-    file.arrayBuffer()
-      .then(buffer => scanPackageAssets(buffer))
+    // 桌面版：主进程流式解压建索引，整包不进内存；这个会话要一直留到对话框关闭（提取时按偏移读文件）
+    const packageBridge = electronBridge()?.package
+    const sessionId = `pkg_${crypto.randomUUID().replace(/-/g, '')}`
+    const stopProgress = packageBridge?.onProgress(payload => {
+      if (!cancelled && payload.sessionId === sessionId) setScanProgress({ done: payload.done, total: payload.total })
+    })
+    const scanInMemory = async () => {
+      if (file.size > BROWSER_PACKAGE_LIMIT) throw new Error(t('pkg.tooLargeForBrowser', { size: formatSize(file.size) }))
+      return scanPackageAssets(await file.arrayBuffer())
+    }
+    const scan = async () => {
+      if (!packageBridge) return scanInMemory()
+      let opened: Awaited<ReturnType<typeof packageBridge.open>>
+      try {
+        opened = await packageBridge.open(sessionId, file)
+      } catch (err) {
+        // 文件不是从本地磁盘选的（拿不到路径）时退回整包读进内存的老路
+        if (err instanceof Error && err.message.includes('本地路径')) return scanInMemory()
+        throw err
+      }
+      return scanPackageArchive(opened.entries.map(entry => ({
+        path: entry.path,
+        type: entry.type,
+        size: entry.size,
+        inline: entry.inline,
+        read: async () => new Uint8Array(await packageBridge.read(sessionId, entry.offset, entry.size)),
+      })))
+    }
+    scan()
       .then(next => {
         if (cancelled) return
         setResult(next)
@@ -49,9 +80,16 @@ export function PackageExtractDialog({ file, open, onClose }: { file: File | nul
       .catch(err => { if (!cancelled) setError(err instanceof Error ? err.message : String(err)) })
       .finally(() => {
         window.clearTimeout(slowTimer)
-        if (!cancelled) { setLoading(false); setSlowScan(false) }
+        if (!cancelled) { setLoading(false); setSlowScan(false); setScanProgress(null) }
       })
-    return () => { cancelled = true; window.clearTimeout(slowTimer) }
+    return () => {
+      cancelled = true
+      window.clearTimeout(slowTimer)
+      stopProgress?.()
+      abortRef.current?.abort()
+      void packageBridge?.close(sessionId).catch(() => undefined)
+    }
+    // 依赖里不放 t：它只用来拼报错文案，切换语言不应该重新扫描一遍
   }, [file, open])
 
   const entries = result?.entries ?? []
@@ -72,8 +110,14 @@ export function PackageExtractDialog({ file, open, onClose }: { file: File | nul
     if (expanded.length === 0 || extracting) return
     setExtracting(true)
     setProgress({ phase: 'textures', completed: 0, total: expanded.length })
+    const abort = new AbortController()
+    abortRef.current = abort
+    const totalBytes = expanded.reduce((sum, entry) => sum + entry.sizeBytes, 0)
     try {
       const done = await extractPackageEntries(expanded, {
+        // 文件多或体积大时走批量模式：入库后立刻放掉内存里的副本，用到时再加载
+        bulk: expanded.length > BULK_FILE_COUNT || totalBytes > BULK_BYTES,
+        signal: abort.signal,
         targetDirectory: normalizeDir(targetDirectory),
         directoryMode,
         mergeAnimations: false,
@@ -89,9 +133,18 @@ export function PackageExtractDialog({ file, open, onClose }: { file: File | nul
         editor.inspectAsset(null)
         selectTab('tab-project')
       }
-      if (done.failed.length) editor.log('error', t('pkg.extractFailed', { count: done.failed.length }))
-      if (done.failed.length === 0) onClose()
+      if (done.cancelled) editor.log('warn', t('pkg.cancelled', { count: done.imported.length }))
+      if (done.failed.length) {
+        editor.log('error', t('pkg.extractFailed', { count: done.failed.length }))
+        // 逐条列出失败的文件和原因，不让失败悄悄过去
+        const shown = done.failed.slice(0, 20).map(item => `${item.name}：${item.error}`).join('\n')
+        editor.log('error', `${t('pkg.failedList', { count: done.failed.length })}\n${shown}${done.failed.length > 20 ? '\n…' : ''}`)
+      }
+      if (done.failed.length === 0 && !done.cancelled) onClose()
+    } catch (err) {
+      useEditorStore.getState().log('error', t('pkg.scanFailed', { detail: err instanceof Error ? err.message : String(err) }))
     } finally {
+      abortRef.current = null
       setExtracting(false)
       setProgress(null)
     }
@@ -117,7 +170,19 @@ export function PackageExtractDialog({ file, open, onClose }: { file: File | nul
           <Summary label={t('pkg.unsupported')} value={result?.stats.unsupported ?? 0} />
         </section>
         <main className="pkg-extract__body">
-          {loading && <div className="pkg-extract__empty"><span>{t('pkg.scanning')}</span>{slowScan && <small>{t('pkg.scanningSlow')}</small>}</div>}
+          {loading && (
+            <div className="pkg-extract__empty">
+              <span>{t('pkg.scanning')}</span>
+              {scanProgress && scanProgress.total > 0 && (
+                <small>{t('pkg.scanProgress', {
+                  percent: Math.min(100, Math.round(scanProgress.done / scanProgress.total * 100)),
+                  done: formatSize(scanProgress.done),
+                  total: formatSize(scanProgress.total),
+                })}</small>
+              )}
+              {slowScan && <small>{t('pkg.scanningSlow')}</small>}
+            </div>
+          )}
           {error && <div className="pkg-extract__error">{t('pkg.scanFailed', { detail: error })}</div>}
           {!loading && !error && result && entries.length === 0 && <div className="pkg-extract__empty">{t('pkg.empty')}</div>}
           {!loading && !error && result && entries.length > 0 && (
@@ -201,12 +266,24 @@ export function PackageExtractDialog({ file, open, onClose }: { file: File | nul
                 </div>
               </div>
               <p>{progress ? `${t(`pkg.phase.${progress.phase}` as MessageKey)}${progress.fileName ? ` · ${progress.fileName}` : ''}` : ''}</p>
+              <button type="button" className="pkg-extract__secondary" onClick={() => abortRef.current?.abort()}>{t('pkg.cancel')}</button>
             </div>
           </div>
         )}
       </div>
     </div>
   )
+}
+
+/** 网页版只能把整包读进内存，超过这个大小直接拒绝，避免浏览器崩溃。 */
+const BROWSER_PACKAGE_LIMIT = 1024 * 1024 * 1024
+/** 超过这两个值按批量模式导入（和直接拖文件导入的阈值一致）。 */
+const BULK_FILE_COUNT = 12
+const BULK_BYTES = 256 * 1024 * 1024
+
+function formatSize(bytes: number): string {
+  if (bytes >= 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024 / 1024).toFixed(1)}GB`
+  return `${Math.round(bytes / 1024 / 1024)}MB`
 }
 
 const KIND_MARK: Record<PackageExtractableAssetKind, typeof Box> = {

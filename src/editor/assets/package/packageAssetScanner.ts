@@ -13,9 +13,13 @@ export interface PackageAssetScannerEntry {
   conversionNote?: string
   packageRecordPath: string
   sizeBytes: number
-  assetBytes: Uint8Array
+  /** 只有材质这类小文本条目在扫描时就读进内存；模型、贴图一律用 readAsset 按需读取。 */
+  assetBytes?: Uint8Array
+  /** 读取条目内容。大包模式下每次调用都从临时文件读一次，用完不要长期持有。 */
+  readAsset: () => Promise<Uint8Array>
+  /** 包里自带的预览图（Unity 导出时生成的 preview.png） */
+  readPreview?: () => Promise<Uint8Array>
   metaBytes?: Uint8Array
-  previewBytes?: Uint8Array
   companionFiles: PackageAssetScannerCompanionFile[]
   warnings: string[]
   roleGuess?: PackageModelAssetRoleGuess
@@ -34,7 +38,7 @@ export interface PackageAssetScannerCompanionFile {
   fileName: string
   extension: string
   sizeBytes: number
-  bytes: Uint8Array
+  read: () => Promise<Uint8Array>
   reason: 'obj-mtl' | 'same-folder-texture' | 'referenced-texture'
 }
 
@@ -68,13 +72,31 @@ export interface PackageAssetScannerDiagnostic {
   details?: unknown
 }
 
+/** 按需读取的一段内容：只知道大小，真正用到时才读。 */
+interface LazyBytes {
+  size: number
+  read: () => Promise<Uint8Array>
+}
+
+/**
+ * 资源包里的一个文件。内存模式下 read 直接返回已解压内容的切片；
+ * 大包模式下 read 通过主进程按偏移从临时文件读取。
+ */
+export interface PackageArchiveEntrySource {
+  path: string
+  type?: string
+  size: number
+  /** 扫描时已经拿到的内容（路径名、.meta） */
+  inline?: Uint8Array
+  read: () => Promise<Uint8Array>
+}
+
 interface PackageArchiveRecord {
   recordPath: string
-  asset?: Uint8Array
+  asset?: LazyBytes
   meta?: Uint8Array
   pathname?: string
-  preview?: Uint8Array
-  extraFiles: Map<string, Uint8Array>
+  preview?: LazyBytes
 }
 
 interface TarEntry {
@@ -86,7 +108,17 @@ interface TarEntry {
 interface PackageAssetCandidate {
   originalPath: string
   extension: string
-  assetBytes: Uint8Array
+  asset: LazyBytes
+  /** 扫描时就读进内存的小文本（.mtl） */
+  eager?: Uint8Array
+}
+
+/** 扫描时需要直接读内容的文本类文件及其大小上限（超过就跳过并记入诊断）。 */
+const EAGER_TEXT_LIMITS: Record<string, number> = {
+  mat: 8 * 1024 * 1024,
+  mtl: 8 * 1024 * 1024,
+  prefab: 48 * 1024 * 1024,
+  unity: 48 * 1024 * 1024,
 }
 
 const MODEL_EXTENSIONS = new Set(['fbx', 'obj', 'dae', '3ds', 'stl', 'glb', 'gltf'])
@@ -108,11 +140,23 @@ const HIDDEN_EXTENSIONS = new Set([
   'xml',
 ])
 
+/** 内存模式：整包已经在内存里（网页版或小包）。 */
 export async function scanPackageAssets(input: Uint8Array | ArrayBuffer): Promise<PackageAssetScannerResult> {
   const bytes = input instanceof Uint8Array ? input : new Uint8Array(input)
   const tarBytes = await maybeGunzip(bytes)
   const tarEntries = await parseTarAsync(tarBytes)
-  const records = collectPackageArchiveRecords(tarEntries)
+  return scanPackageArchive(tarEntries.map(entry => ({
+    path: entry.path,
+    type: entry.type,
+    size: entry.data.byteLength,
+    inline: entry.data,
+    read: () => Promise.resolve(entry.data),
+  })))
+}
+
+/** 通用入口：只要给出「路径 + 大小 + 读取方法」的文件列表就能扫描，不要求内容在内存里。 */
+export async function scanPackageArchive(sources: readonly PackageArchiveEntrySource[]): Promise<PackageAssetScannerResult> {
+  const records = await collectPackageArchiveRecords(sources)
   return buildScannerResult(records)
 }
 
@@ -163,24 +207,22 @@ async function parseTarAsync(bytes: Uint8Array): Promise<TarEntry[]> {
   return entries
 }
 
-function collectPackageArchiveRecords(entries: TarEntry[]): PackageArchiveRecord[] {
+async function collectPackageArchiveRecords(entries: readonly PackageArchiveEntrySource[]): Promise<PackageArchiveRecord[]> {
   const byRoot = new Map<string, PackageArchiveRecord>()
   const directRecords: PackageArchiveRecord[] = []
   for (const entry of entries) {
+    if (entry.type === '5') continue
+    const lazy: LazyBytes = { size: entry.size, read: entry.read }
     const parts = entry.path.split('/').filter(Boolean)
     if (parts.length >= 2 && isPackageArchiveRecordLeaf(parts.slice(1).join('/'))) {
       const root = parts[0]!
       const leaf = parts.slice(1).join('/')
-      const record = byRoot.get(root) ?? {
-        recordPath: root,
-        extraFiles: new Map<string, Uint8Array>(),
-      }
+      const record = byRoot.get(root) ?? { recordPath: root }
       byRoot.set(root, record)
-      if (leaf === 'asset') record.asset = entry.data
-      else if (leaf === 'asset.meta') record.meta = entry.data
-      else if (leaf === 'pathname') record.pathname = decodePackagePathname(entry.data)
-      else if (leaf === 'preview.png') record.preview = entry.data
-      else record.extraFiles.set(leaf, entry.data)
+      if (leaf === 'asset') record.asset = lazy
+      else if (leaf === 'asset.meta') record.meta = entry.inline ?? await entry.read()
+      else if (leaf === 'pathname') record.pathname = decodePackagePathname(entry.inline ?? await entry.read())
+      else if (leaf === 'preview.png') record.preview = lazy
       continue
     }
 
@@ -188,18 +230,48 @@ function collectPackageArchiveRecords(entries: TarEntry[]): PackageArchiveRecord
     directRecords.push({
       recordPath: path,
       pathname: path,
-      asset: entry.data,
-      extraFiles: new Map<string, Uint8Array>(),
+      asset: lazy,
     })
   }
   return [...byRoot.values(), ...directRecords]
 }
 
-function buildScannerResult(records: PackageArchiveRecord[]): PackageAssetScannerResult {
+/** 读取扫描阶段必须看内容的小文本；过大时返回 null 并记入诊断。 */
+async function readEagerText(
+  asset: LazyBytes,
+  extension: string,
+  path: string,
+  diagnostics: PackageAssetScannerDiagnostic[],
+): Promise<Uint8Array | null> {
+  const limit = EAGER_TEXT_LIMITS[extension]
+  if (limit === undefined) return null
+  if (asset.size > limit) {
+    diagnostics.push({
+      code: 'text-too-large',
+      severity: 'warning',
+      message: `文件过大（${Math.round(asset.size / 1024 / 1024)}MB），扫描时跳过了其中的材质绑定信息。`,
+      path,
+    })
+    return null
+  }
+  try {
+    return await asset.read()
+  } catch (error) {
+    diagnostics.push({
+      code: 'text-read-failed',
+      severity: 'warning',
+      message: error instanceof Error ? error.message : String(error),
+      path,
+    })
+    return null
+  }
+}
+
+async function buildScannerResult(records: PackageArchiveRecord[]): Promise<PackageAssetScannerResult> {
   const diagnostics: PackageAssetScannerDiagnostic[] = []
   const entries: PackageAssetScannerEntry[] = []
   const materialBindingSources: PackageMaterialBindingSource[] = []
-  const candidates = collectAssetCandidates(records)
+  const candidates = await collectAssetCandidates(records, diagnostics)
   let hidden = 0
   let unsupported = 0
   let missingPathname = 0
@@ -216,7 +288,7 @@ function buildScannerResult(records: PackageArchiveRecord[]): PackageAssetScanne
       })
       continue
     }
-    if (!record.asset || record.asset.byteLength === 0) {
+    if (!record.asset || record.asset.size === 0) {
       missingAssetBytes += 1
       diagnostics.push({
         code: 'missing-asset-bytes',
@@ -229,14 +301,17 @@ function buildScannerResult(records: PackageArchiveRecord[]): PackageAssetScanne
 
     const originalPath = normalizePackagePath(record.pathname)
     const extension = extensionOf(originalPath)
-    if ((extension === 'prefab' || extension === 'unity') && record.asset.byteLength > 0) {
-      materialBindingSources.push({
-        originalPath,
-        extension,
-        packageRecordPath: record.recordPath,
-        assetBytes: record.asset,
-        metaBytes: record.meta,
-      })
+    if (extension === 'prefab' || extension === 'unity') {
+      const text = await readEagerText(record.asset, extension, originalPath, diagnostics)
+      if (text) {
+        materialBindingSources.push({
+          originalPath,
+          extension,
+          packageRecordPath: record.recordPath,
+          assetBytes: text,
+          metaBytes: record.meta,
+        })
+      }
     }
     const classified = classifyExtractableAsset(originalPath, extension)
     if (!classified) {
@@ -254,10 +329,13 @@ function buildScannerResult(records: PackageArchiveRecord[]): PackageAssetScanne
       outputExtension: classified.outputExtension,
       conversionNote: classified.conversionNote,
       packageRecordPath: record.recordPath,
-      sizeBytes: record.asset.byteLength,
-      assetBytes: record.asset,
+      sizeBytes: record.asset.size,
+      ...(classified.kind === 'material'
+        ? { assetBytes: await readEagerText(record.asset, extension, originalPath, diagnostics) ?? undefined }
+        : {}),
+      readAsset: record.asset.read,
+      ...(record.preview && record.preview.size > 0 ? { readPreview: record.preview.read } : {}),
       metaBytes: record.meta,
-      previewBytes: record.preview,
       companionFiles: companionFilesForAsset(originalPath, extension, candidates),
       warnings: classified.warnings,
     })
@@ -281,15 +359,21 @@ function buildScannerResult(records: PackageArchiveRecord[]): PackageAssetScanne
   }
 }
 
-function collectAssetCandidates(records: PackageArchiveRecord[]): PackageAssetCandidate[] {
+async function collectAssetCandidates(
+  records: PackageArchiveRecord[],
+  diagnostics: PackageAssetScannerDiagnostic[],
+): Promise<PackageAssetCandidate[]> {
   const candidates: PackageAssetCandidate[] = []
   for (const record of records) {
-    if (!record.pathname || !record.asset || record.asset.byteLength === 0) continue
+    if (!record.pathname || !record.asset || record.asset.size === 0) continue
     const originalPath = normalizePackagePath(record.pathname)
+    const extension = extensionOf(originalPath)
+    const eager = extension === 'mtl' ? await readEagerText(record.asset, extension, originalPath, diagnostics) : null
     candidates.push({
       originalPath,
-      extension: extensionOf(originalPath),
-      assetBytes: record.asset,
+      extension,
+      asset: record.asset,
+      ...(eager ? { eager } : {}),
     })
   }
   return candidates
@@ -318,7 +402,8 @@ function companionFilesForAsset(
       seen.add(candidate.originalPath)
     }
     for (const mtl of mtlCandidates) {
-      for (const texturePath of referencedTexturePathsFromMtl(mtl.assetBytes)) {
+      if (!mtl.eager) continue
+      for (const texturePath of referencedTexturePathsFromMtl(mtl.eager)) {
         const matched = findCandidateByTextureReference(texturePath, directoryOf(mtl.originalPath), candidates)
         if (!matched || matched.originalPath === originalPath || seen.has(matched.originalPath)) continue
         companions.push(companionFile(matched, 'referenced-texture'))
@@ -351,8 +436,8 @@ function companionFile(
     originalPath: candidate.originalPath,
     fileName: fileNameOf(candidate.originalPath),
     extension: candidate.extension,
-    sizeBytes: candidate.assetBytes.byteLength,
-    bytes: candidate.assetBytes,
+    sizeBytes: candidate.asset.size,
+    read: candidate.asset.read,
     reason,
   }
 }

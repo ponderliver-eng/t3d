@@ -997,6 +997,23 @@ export function ProjectManagerModal() {
                         />
                         <span>自动剔除未引用冗余资源</span>
                       </label>
+                      <label className="pm-check">
+                        <input
+                          type="checkbox"
+                          checked={buildSettings.desktopBc7Textures}
+                          disabled={buildSettings.target !== 'electron'}
+                          onChange={(e) => updateBuild((p) => ({ ...p, desktopBc7Textures: e.target.checked }))}
+                        />
+                        <span>桌面端附带 BC7 压缩贴图（贴图显存约降为 1/4，包体会变大）</span>
+                      </label>
+                      <label className="pm-check">
+                        <input
+                          type="checkbox"
+                          checked={buildSettings.showLoadFailures}
+                          onChange={(e) => updateBuild((p) => ({ ...p, showLoadFailures: e.target.checked }))}
+                        />
+                        <span>画面上提示资源加载失败（调试用，发给玩家的包请关闭）</span>
+                      </label>
                     </div>
                   </div>
 

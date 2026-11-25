@@ -12,6 +12,7 @@ import { useEditorStore } from '../scene/store'
 import { boundsOf } from '../scene/bounds'
 import { patchAssetMeta, readFileBytes, readModelArtifact, writeModelArtifact } from './cache'
 import { type FileAsset, type MaterialAsset, useAssetStore } from './library'
+import { createLoadFailureGate } from './loadFailures'
 import { applyModelMaterials, editorMaterialHost, normalizeSlot } from './materials'
 import { instantiateModelScene, normalizeMaterialKey as engineNormalizeMaterialKey, normalizeSkinIndex, readModelSlots } from '../../runtime/engine/materials'
 import { findModelBoneInScene } from '../../runtime/engine/sceneNodes'
@@ -114,21 +115,99 @@ export function subscribeModels(listener: () => void) {
   }
 }
 
+/** 自动加载失败的记录：同一份内容连续失败几次后不再重试，避免每次同步都重新解析一遍坏文件。 */
+const loadFailures = createLoadFailureGate('模型')
+/** 本次会话里在内存中被改过（比如并入了重定向动画）的模板：回收后改动会丢，所以不参与自动回收。 */
+const sessionEdited = new Set<string>()
+/** 还没写完的模型成品。批量导入时要等它写完才能释放源文件。 */
+const artifactWrites = new Map<string, Promise<void>>()
+
 export function getModelTemplate(assetId: string): ModelTemplate | undefined {
   const existing = templates.get(assetId)
   if (existing) return existing
   const asset = useAssetStore.getState().assets[assetId]
   if (asset && (asset.kind === 'model' || asset.kind === 'animation')) {
+    if (!loadFailures.shouldTry(assetId, asset.hash)) return undefined
     void loadModelTemplate(asset).catch(() => undefined)
   }
   return undefined
 }
 
-export function releaseModel(assetId: string) {
+/**
+ * 把模板从内存里拿掉。dispose 为 true 时同时释放它占的显存
+ * （只在确认场景里没有实例在用时这样做：删除资源、回收未引用资源、批量导入）。
+ */
+export function releaseModel(assetId: string, options: { dispose?: boolean } = {}) {
+  const template = templates.get(assetId)
+  if (template && options.dispose) disposeTemplate(template)
   templates.delete(assetId)
   pending.delete(assetId)
+  sessionEdited.delete(assetId)
+  artifactLoaded.delete(assetId)
   forgetHumanoidSkeletons(assetId)
   releaseHumanoidPlayback(assetId)
+}
+
+function disposeTemplate(template: ModelTemplate) {
+  template.scene.traverse(child => {
+    const mesh = child as Mesh
+    if (!mesh.isMesh) return
+    mesh.geometry?.dispose()
+    const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material]
+    for (const material of materials) {
+      if (!material) continue
+      // 模型文件里内嵌的贴图只挂在模板材质上，不释放就一直占着显存
+      for (const value of Object.values(material)) {
+        if ((value as { isTexture?: boolean } | null)?.isTexture) (value as { dispose: () => void }).dispose()
+      }
+      material.dispose()
+    }
+  })
+}
+
+/** 当前留在内存里的模型模板。 */
+export function loadedModelIds(): string[] {
+  return [...templates.keys()]
+}
+
+/** 已加载模板的材质槽（没加载时不触发加载，返回 undefined）。 */
+export function loadedModelSlots(assetId: string): PbrSlot[] | undefined {
+  return templates.get(assetId)?.slots
+}
+
+/** 模板是否正在加载，或带有只存在于内存里的改动（这两种情况都不能回收）。 */
+export function isModelBusy(assetId: string): boolean {
+  return pending.has(assetId) || sessionEdited.has(assetId) || artifactWrites.has(assetId)
+}
+
+/** 粗略估算一个模板的顶点数据字节数（内存和显存各占一份）。 */
+export function modelGeometryBytes(assetId: string): number {
+  const template = templates.get(assetId)
+  if (!template) return 0
+  const seen = new Set<BufferGeometry>()
+  let bytes = 0
+  template.scene.traverse(child => {
+    const geometry = (child as Mesh).geometry as BufferGeometry | undefined
+    if (!geometry || seen.has(geometry)) return
+    seen.add(geometry)
+    for (const attribute of Object.values(geometry.attributes)) {
+      bytes += (attribute.array as { byteLength?: number } | undefined)?.byteLength ?? 0
+    }
+    bytes += (geometry.index?.array as { byteLength?: number } | undefined)?.byteLength ?? 0
+  })
+  return bytes
+}
+
+/** 等这个模型的成品写完（没有在写时立即返回）。 */
+export function waitForModelArtifact(assetId: string): Promise<void> {
+  return artifactWrites.get(assetId) ?? Promise.resolve()
+}
+
+function trackArtifactWrite(assetId: string, task: Promise<void>) {
+  const tracked = task.finally(() => {
+    if (artifactWrites.get(assetId) === tracked) artifactWrites.delete(assetId)
+  })
+  artifactWrites.set(assetId, tracked)
 }
 
 export interface ProjectClip {
@@ -188,6 +267,7 @@ export function loadModelTemplate(asset: FileAsset, forceSource = false): Promis
   if (forceSource) {
     templates.delete(asset.id)
     pending.delete(asset.id)
+    loadFailures.clear(asset.id)
   }
   const cached = templates.get(asset.id)
   if (cached) return Promise.resolve(cached)
@@ -209,12 +289,14 @@ export function loadModelTemplate(asset: FileAsset, forceSource = false): Promis
       rememberHumanoidAvatar(asset.id, nextTemplate.humanoid.avatar)
       rememberHumanoidImportScale(asset.id, nextTemplate, forceSource)
       rememberClipCatalog(asset.id, nextTemplate.clips)
+      loadFailures.clear(asset.id)
       syncLoadedModelNodes(asset.id, resolvedSlots)
       useAssetStore.getState().bump()
       listeners.forEach(listener => listener())
       return nextTemplate
   }).catch(error => {
     pending.delete(asset.id)
+    loadFailures.fail(asset.id, asset.hash, asset.name, error)
     throw error
   })
   pending.set(asset.id, promise)
@@ -292,6 +374,7 @@ export function retargetClipsOntoModel(bodyId: string, sourceId: string, preferr
     added += 1
   }
   if (added > 0) {
+    sessionEdited.add(bodyId)
     rememberClipCatalog(bodyId, body.clips)
     revisions.set(bodyId, (revisions.get(bodyId) ?? 0) + 1)
     useAssetStore.getState().bump()
@@ -388,7 +471,7 @@ function loadCachedOrSource(asset: FileAsset): Promise<ModelTemplate> {
 function loadFromSource(asset: FileAsset): Promise<ModelTemplate> {
   return ensureSourceUrl(asset).then(source => loadByExtension(source)).then(template => {
     const ext = asset.fileName.split('.').pop()?.toLowerCase()
-    if (asset.hash && ext !== 'fbx') void storeModelArtifact(asset, template)
+    if (asset.hash && ext !== 'fbx') trackArtifactWrite(asset.id, storeModelArtifact(asset, template))
     return template
   })
 }
@@ -539,12 +622,12 @@ async function loadFbxWithUfbx(asset: FileAsset): Promise<ModelTemplate> {
   })
   const template = await parseArtifact(glb)
   if (asset.hash) {
-    void compressMeshopt(glb).then(async compressed => {
+    trackArtifactWrite(asset.id, compressMeshopt(glb).then(async compressed => {
       await writeModelArtifact(asset.hash, compressed)
       await patchAssetMeta(asset.id, { artifactReady: true })
     }).catch(error => {
       console.warn('[cache] FBX 成品写入失败', error)
-    })
+    }))
   }
   return template
 }

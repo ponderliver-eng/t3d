@@ -891,9 +891,9 @@ function normalizeWater(raw) {
     foamMapAssetId: typeof record.foamMapAssetId === "string" ? record.foamMapAssetId : null
   };
 }
-function finite(value, fallback, min3, max4) {
+function finite(value, fallback, min4, max5) {
   if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
-  return Math.min(max4, Math.max(min3, value));
+  return Math.min(max5, Math.max(min4, value));
 }
 var WATER_CAPABILITY_ID, WATER_DEBUG_VIEWS, WATER_QUALITY_PRESETS, WATER_STYLE_PRESETS;
 var init_defaults = __esm({
@@ -1314,14 +1314,14 @@ var init_proceduralTextures = __esm({
 function swellGroupInfo(group) {
   const a = VERTEX_WAVES[group * 2];
   const b = VERTEX_WAVES[group * 2 + 1] ?? a;
-  const length4 = (a.length + b.length) / 2;
-  const k = Math.PI * 2 / length4;
+  const length5 = (a.length + b.length) / 2;
+  const k = Math.PI * 2 / length5;
   const speed = Math.sqrt(GRAVITY / k);
   return {
     crestSpeed: speed,
     overtake: speed * PACKET_OVERTAKE,
-    kAlong: Math.PI * 2 / (length4 * PACKET_SPACING),
-    kAcross: Math.PI * 2 / (length4 * PACKET_WIDTH)
+    kAlong: Math.PI * 2 / (length5 * PACKET_SPACING),
+    kAcross: Math.PI * 2 / (length5 * PACKET_WIDTH)
   };
 }
 function smoothstep(edge0, edge1, x) {
@@ -2506,8 +2506,8 @@ function defaultBuoyancy() {
     draftDepth: 0
   };
 }
-function clamp2(value, min3, max4) {
-  return Math.max(min3, Math.min(max4, value));
+function clamp2(value, min4, max5) {
+  return Math.max(min4, Math.min(max5, value));
 }
 function finite2(value, fallback) {
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
@@ -4027,7 +4027,7 @@ var init_sceneRuntime = __esm({
   "src/runtime/sceneRuntime.ts"() {
     "use strict";
     init_session();
-    init_session10();
+    init_session11();
     init_session4();
     init_juiceClock();
     init_actionMap();
@@ -5466,9 +5466,9 @@ function normalizeSkySettings(value) {
     mirrorBelowHorizon: bool(raw.mirrorBelowHorizon, base.mirrorBelowHorizon)
   };
 }
-function clamp3(value, fallback, min3, max4) {
+function clamp3(value, fallback, min4, max5) {
   const next = typeof value === "number" && Number.isFinite(value) ? value : fallback;
-  return Math.min(max4, Math.max(min3, next));
+  return Math.min(max5, Math.max(min4, next));
 }
 function bool(value, fallback) {
   return typeof value === "boolean" ? value : fallback;
@@ -5920,6 +5920,304 @@ var init_session9 = __esm({
   }
 });
 
+// src/capabilities/fog/defaults.ts
+function defaultHeightFogSettings() {
+  return {
+    enabled: false,
+    opacity: 1,
+    affectSky: false,
+    heightEnabled: true,
+    heightGradient: true,
+    heightColor: "#5c789c",
+    heightMidColor: "#8fa8c8",
+    heightTopColor: "#c7d9ee",
+    heightBase: 0.3,
+    heightRange: 2,
+    heightDensity: 0.85,
+    heightFalloff: 1.2,
+    heightNoiseEnabled: false,
+    heightNoiseScale: 0.35,
+    heightNoiseIntensity: 0.4,
+    heightNoiseSpeed: 0.3,
+    distanceEnabled: true,
+    distanceNearColor: "#b8cbe0",
+    distanceFarColor: "#6f89ab",
+    distanceStart: 5,
+    distanceEnd: 50,
+    distanceTransition: 15,
+    distanceDensity: 0.9,
+    distanceNoiseEnabled: false,
+    distanceNoiseScale: 0.08,
+    distanceNoiseIntensity: 0.35,
+    distanceNoiseSpeed: 0.25
+  };
+}
+function clamp4(value, fallback, min4, max5) {
+  if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
+  return Math.max(min4, Math.min(max5, value));
+}
+function colorHex(value, fallback) {
+  if (typeof value !== "string") return fallback;
+  const trimmed = value.trim();
+  return /^#[0-9a-fA-F]{6}$/.test(trimmed) ? trimmed : fallback;
+}
+function normalizeHeightFogSettings(value) {
+  const base = defaultHeightFogSettings();
+  if (!value || typeof value !== "object") return base;
+  const raw = value;
+  const distanceStart = clamp4(raw.distanceStart, base.distanceStart, 0, 2e3);
+  const distanceEnd = Math.max(distanceStart + 0.1, clamp4(raw.distanceEnd, base.distanceEnd, 0.1, 4e3));
+  const legacyNoiseEnabled = typeof raw.noiseEnabled === "boolean" ? raw.noiseEnabled : void 0;
+  const heightColor = colorHex(raw.heightColor, base.heightColor);
+  const legacyDistColor = typeof raw.distanceColor === "string" ? colorHex(raw.distanceColor, base.distanceNearColor) : null;
+  return {
+    enabled: typeof raw.enabled === "boolean" ? raw.enabled : base.enabled,
+    opacity: clamp4(raw.opacity, base.opacity, 0, 1),
+    affectSky: typeof raw.affectSky === "boolean" ? raw.affectSky : base.affectSky,
+    heightEnabled: typeof raw.heightEnabled === "boolean" ? raw.heightEnabled : base.heightEnabled,
+    heightGradient: typeof raw.heightGradient === "boolean" ? raw.heightGradient : base.heightGradient,
+    heightColor,
+    heightMidColor: colorHex(raw.heightMidColor, base.heightMidColor),
+    heightTopColor: colorHex(raw.heightTopColor, base.heightTopColor),
+    heightBase: clamp4(raw.heightBase, base.heightBase, -200, 500),
+    heightRange: clamp4(raw.heightRange, base.heightRange, 0.05, 500),
+    heightDensity: clamp4(raw.heightDensity, base.heightDensity, 0, 1),
+    heightFalloff: clamp4(raw.heightFalloff, base.heightFalloff, 0.2, 4),
+    heightNoiseEnabled: typeof raw.heightNoiseEnabled === "boolean" ? raw.heightNoiseEnabled : legacyNoiseEnabled ?? base.heightNoiseEnabled,
+    heightNoiseScale: clamp4(raw.heightNoiseScale ?? raw.noiseScale, base.heightNoiseScale, 0.01, 5),
+    heightNoiseIntensity: clamp4(raw.heightNoiseIntensity ?? raw.noiseIntensity, base.heightNoiseIntensity, 0, 1),
+    heightNoiseSpeed: clamp4(raw.heightNoiseSpeed ?? raw.noiseSpeed, base.heightNoiseSpeed, 0, 5),
+    distanceEnabled: typeof raw.distanceEnabled === "boolean" ? raw.distanceEnabled : base.distanceEnabled,
+    distanceNearColor: colorHex(raw.distanceNearColor, legacyDistColor ?? base.distanceNearColor),
+    distanceFarColor: colorHex(raw.distanceFarColor, legacyDistColor ?? base.distanceFarColor),
+    distanceStart,
+    distanceEnd,
+    distanceTransition: clamp4(raw.distanceTransition, base.distanceTransition, 0, 2e3),
+    distanceDensity: clamp4(raw.distanceDensity, base.distanceDensity, 0, 1),
+    distanceNoiseEnabled: typeof raw.distanceNoiseEnabled === "boolean" ? raw.distanceNoiseEnabled : base.distanceNoiseEnabled,
+    distanceNoiseScale: clamp4(raw.distanceNoiseScale, base.distanceNoiseScale, 5e-3, 5),
+    distanceNoiseIntensity: clamp4(raw.distanceNoiseIntensity, base.distanceNoiseIntensity, 0, 1),
+    distanceNoiseSpeed: clamp4(raw.distanceNoiseSpeed, base.distanceNoiseSpeed, 0, 5)
+  };
+}
+var HEIGHT_FOG_CAPABILITY_ID;
+var init_defaults4 = __esm({
+  "src/capabilities/fog/defaults.ts"() {
+    "use strict";
+    HEIGHT_FOG_CAPABILITY_ID = "fog";
+  }
+});
+
+// src/capabilities/fog/session.ts
+var session_exports8 = {};
+__export(session_exports8, {
+  buildHeightFogPass: () => buildHeightFogPass,
+  dispose: () => dispose8,
+  heightFogActive: () => heightFogActive,
+  heightFogPipelineKey: () => heightFogPipelineKey,
+  mount: () => mount8
+});
+import { Color as Color5, Matrix4 as Matrix42 } from "three";
+import {
+  clamp as clamp5,
+  dot as dot2,
+  float as float3,
+  floor as floor2,
+  fract as fract2,
+  getViewPosition,
+  isBackgroundDepth,
+  length as length3,
+  max as max3,
+  min as min2,
+  mix as mix5,
+  pow as pow2,
+  screenUV as screenUV2,
+  select as select2,
+  smoothstep as smoothstep3,
+  uniform as uniform4,
+  vec3 as vec33,
+  vec4 as vec44
+} from "three/tsl";
+function currentSettings(pictureOverride) {
+  try {
+    const world3 = getRuntimeWorld();
+    if (!capabilityEnabled(world3.getCapabilities(), HEIGHT_FOG_CAPABILITY_ID)) {
+      return defaultHeightFogSettings();
+    }
+    const picture = pictureOverride ?? world3.getPicture();
+    return normalizeHeightFogSettings(picture.capabilities?.[HEIGHT_FOG_CAPABILITY_ID]);
+  } catch {
+    if (!pictureOverride) return defaultHeightFogSettings();
+    return normalizeHeightFogSettings(pictureOverride.capabilities?.[HEIGHT_FOG_CAPABILITY_ID]);
+  }
+}
+function mount8() {
+  if (mounted) return () => shutdown2();
+  mounted = true;
+  elapsedTime = 0;
+  removeHook2 = getRuntimeWorld().registerBeforeRenderHook?.(HEIGHT_FOG_CAPABILITY_ID, 25, (ctx) => {
+    elapsedTime += ctx.dt;
+  }) ?? null;
+  return () => shutdown2();
+}
+function dispose8() {
+  shutdown2();
+}
+function shutdown2() {
+  mounted = false;
+  removeHook2?.();
+  removeHook2 = null;
+}
+function heightFogActive(picture) {
+  if (!mounted) return false;
+  const s = currentSettings(picture);
+  return s.enabled && s.opacity > 0 && (s.heightEnabled || s.distanceEnabled);
+}
+function heightFogPipelineKey(picture) {
+  if (!heightFogActive(picture)) return "off";
+  const s = currentSettings(picture);
+  const hNoise = s.heightEnabled && s.heightNoiseEnabled ? 1 : 0;
+  const dNoise = s.distanceEnabled && s.distanceNoiseEnabled ? 1 : 0;
+  return `on:${hNoise}:${dNoise}`;
+}
+function fastHash13(p) {
+  const q = fract2(vec33(p).mul(0.1031));
+  const r = q.add(dot2(q, q.yzx.add(33.33)));
+  return fract2(r.x.add(r.y).mul(r.z));
+}
+function fastValueNoise3D(p) {
+  const i = floor2(p);
+  const f = fract2(p);
+  const u = f.mul(f).mul(vec33(3, 3, 3).sub(f.mul(2)));
+  const n000 = fastHash13(i);
+  const n100 = fastHash13(i.add(vec33(1, 0, 0)));
+  const n010 = fastHash13(i.add(vec33(0, 1, 0)));
+  const n110 = fastHash13(i.add(vec33(1, 1, 0)));
+  const n001 = fastHash13(i.add(vec33(0, 0, 1)));
+  const n101 = fastHash13(i.add(vec33(1, 0, 1)));
+  const n011 = fastHash13(i.add(vec33(0, 1, 1)));
+  const n111 = fastHash13(i.add(vec33(1, 1, 1)));
+  const nx00 = mix5(n000, n100, u.x);
+  const nx10 = mix5(n010, n110, u.x);
+  const nx01 = mix5(n001, n101, u.x);
+  const nx11 = mix5(n011, n111, u.x);
+  const nxy0 = mix5(nx00, nx10, u.y);
+  const nxy1 = mix5(nx01, nx11, u.y);
+  return mix5(nxy0, nxy1, u.z);
+}
+function buildHeightFogPass(colorNode, scenePass, options) {
+  const uCameraWorldMatrix = uniform4(new Matrix42());
+  const uCameraProjInverse = uniform4(new Matrix42());
+  const uOpacity = uniform4(1);
+  const uAffectSky = uniform4(0);
+  const uHeightEnabled = uniform4(1);
+  const uHeightBottomColor = uniform4(new Color5("#5c789c"));
+  const uHeightMidColor = uniform4(new Color5("#8fa8c8"));
+  const uHeightTopColor = uniform4(new Color5("#c7d9ee"));
+  const uHeightBase = uniform4(0.3);
+  const uHeightRange = uniform4(2);
+  const uHeightDensity = uniform4(0.85);
+  const uHeightFalloff = uniform4(1.2);
+  const uHeightNoiseScale = uniform4(0.35);
+  const uHeightNoiseIntensity = uniform4(0.4);
+  const uHeightNoiseTime = uniform4(0);
+  const uDistEnabled = uniform4(1);
+  const uDistNearColor = uniform4(new Color5("#b8cbe0"));
+  const uDistFarColor = uniform4(new Color5("#6f89ab"));
+  const uDistStart = uniform4(5);
+  const uDistEnd = uniform4(50);
+  const uDistTrans = uniform4(15);
+  const uDistDensity = uniform4(0.9);
+  const uDistNoiseScale = uniform4(0.08);
+  const uDistNoiseIntensity = uniform4(0.35);
+  const uDistNoiseTime = uniform4(0);
+  const depthNode = scenePass.getTextureNode("depth");
+  const isBg = isBackgroundDepth(depthNode);
+  const viewPos = getViewPosition(screenUV2, depthNode, uCameraProjInverse);
+  const viewDist = length3(viewPos);
+  const worldPos = uCameraWorldMatrix.mul(vec44(viewPos, 1)).xyz;
+  const hNorm = clamp5(worldPos.y.sub(uHeightBase).div(max3(uHeightRange, float3(1e-3))), 0, 1);
+  const hCurve = pow2(float3(1).sub(hNorm), max3(uHeightFalloff, float3(0.05)));
+  const hBaseWeight = hCurve.mul(uHeightDensity).mul(uHeightEnabled);
+  const dMain = smoothstep3(uDistStart, max3(uDistStart.add(0.01), uDistEnd), viewDist);
+  const dRamp = smoothstep3(uDistStart, uDistStart.add(max3(uDistTrans, float3(0.01))), viewDist);
+  const dBaseWeight = dMain.mul(mix5(float3(1), dRamp, clamp5(uDistTrans.div(max3(uDistEnd.sub(uDistStart), float3(0.01))), 0, 1))).mul(uDistDensity).mul(uDistEnabled);
+  let hWeight = hBaseWeight;
+  if (options.heightNoise) {
+    const hSamplePos = worldPos.mul(uHeightNoiseScale).add(vec33(uHeightNoiseTime, uHeightNoiseTime.mul(0.37), uHeightNoiseTime.mul(0.71)));
+    const hNoise = fastValueNoise3D(hSamplePos);
+    const hMod = mix5(float3(1), clamp5(hNoise.mul(1.7).add(0.15), 0, 1.5), uHeightNoiseIntensity);
+    hWeight = clamp5(hBaseWeight.mul(hMod), 0, 1);
+  }
+  let dWeight = dBaseWeight;
+  if (options.distanceNoise) {
+    const dSamplePos = worldPos.mul(uDistNoiseScale).add(vec33(uDistNoiseTime.mul(0.83), uDistNoiseTime.mul(0.29), uDistNoiseTime));
+    const dNoise = fastValueNoise3D(dSamplePos);
+    const dMod = mix5(float3(1), clamp5(dNoise.mul(1.7).add(0.15), 0, 1.5), uDistNoiseIntensity);
+    dWeight = clamp5(dBaseWeight.mul(dMod), 0, 1);
+  }
+  const combinedRaw = clamp5(max3(hWeight, dWeight).add(min2(hWeight, dWeight).mul(0.35)), 0, 1);
+  const skyFogAmount = clamp5(dWeight.mul(uDistEnabled).add(hWeight.mul(0.25).mul(uHeightEnabled)), 0, 1).mul(uAffectSky);
+  const fogFactor = select2(isBg, skyFogAmount, combinedRaw).mul(uOpacity);
+  const weightSum = max3(hWeight.add(dWeight), float3(1e-4));
+  const distRatio = dWeight.div(weightSum);
+  const hMidT = clamp5(hNorm.mul(2), 0, 1);
+  const hTopT = clamp5(hNorm.mul(2).sub(1), 0, 1);
+  const heightGradColor = mix5(mix5(uHeightBottomColor, uHeightMidColor, hMidT), uHeightTopColor, hTopT);
+  const distGradColor = mix5(uDistNearColor, uDistFarColor, dMain);
+  const blendedFogColor = mix5(heightGradColor, distGradColor, distRatio);
+  const outRgb = mix5(colorNode.rgb, blendedFogColor, fogFactor);
+  const node = vec44(outRgb, colorNode.a);
+  return {
+    node,
+    sync: (picture, camera) => {
+      const s = currentSettings(picture);
+      camera.updateMatrixWorld();
+      uCameraWorldMatrix.value.copy(camera.matrixWorld);
+      uCameraProjInverse.value.copy(camera.projectionMatrixInverse);
+      uOpacity.value = s.enabled ? s.opacity : 0;
+      uAffectSky.value = s.affectSky ? 1 : 0;
+      uHeightEnabled.value = s.heightEnabled ? 1 : 0;
+      uHeightBottomColor.value.set(s.heightColor);
+      uHeightMidColor.value.set(s.heightGradient ? s.heightMidColor : s.heightColor);
+      uHeightTopColor.value.set(s.heightGradient ? s.heightTopColor : s.heightColor);
+      uHeightBase.value = s.heightBase;
+      uHeightRange.value = s.heightRange;
+      uHeightDensity.value = s.heightDensity;
+      uHeightFalloff.value = s.heightFalloff;
+      if (options.heightNoise) {
+        uHeightNoiseScale.value = s.heightNoiseScale;
+        uHeightNoiseIntensity.value = s.heightNoiseIntensity;
+        uHeightNoiseTime.value = elapsedTime * s.heightNoiseSpeed;
+      }
+      uDistEnabled.value = s.distanceEnabled ? 1 : 0;
+      uDistNearColor.value.set(s.distanceNearColor);
+      uDistFarColor.value.set(s.distanceFarColor);
+      uDistStart.value = s.distanceStart;
+      uDistEnd.value = s.distanceEnd;
+      uDistTrans.value = s.distanceTransition;
+      uDistDensity.value = s.distanceDensity;
+      if (options.distanceNoise) {
+        uDistNoiseScale.value = s.distanceNoiseScale;
+        uDistNoiseIntensity.value = s.distanceNoiseIntensity;
+        uDistNoiseTime.value = elapsedTime * s.distanceNoiseSpeed;
+      }
+    }
+  };
+}
+var mounted, removeHook2, elapsedTime;
+var init_session10 = __esm({
+  "src/capabilities/fog/session.ts"() {
+    "use strict";
+    init_world();
+    init_registry2();
+    init_defaults4();
+    mounted = false;
+    removeHook2 = null;
+    elapsedTime = 0;
+  }
+});
+
 // src/capabilities/registry.ts
 function allCapabilityManifests() {
   return [...CAPABILITIES, ...dynamicCapabilities.values()];
@@ -5954,6 +6252,7 @@ var init_registry2 = __esm({
       { id: "projectile", defaultEnabled: true, category: "physics", loadRuntime: () => Promise.resolve().then(() => (init_session8(), session_exports6)) },
       { id: "particles", defaultEnabled: false, category: "scene-object" },
       { id: "sky", defaultEnabled: false, category: "environment", loadRuntime: () => Promise.resolve().then(() => (init_session9(), session_exports7)) },
+      { id: "fog", defaultEnabled: true, category: "environment", loadRuntime: () => Promise.resolve().then(() => (init_session10(), session_exports8)) },
       { id: "water", defaultEnabled: false, category: "environment", loadRuntime: () => Promise.resolve().then(() => (init_session2(), session_exports)) }
     ];
     dynamicCapabilities = /* @__PURE__ */ new Map();
@@ -5983,7 +6282,7 @@ var init_archive = __esm({
 });
 
 // src/capabilities/navigation/defaults.ts
-var init_defaults4 = __esm({
+var init_defaults5 = __esm({
   "src/capabilities/navigation/defaults.ts"() {
     "use strict";
   }
@@ -6285,14 +6584,14 @@ function abortError2() {
   return error;
 }
 var useNavUi, instance, opening, life, loadedScene, seenEpoch, activating, controller, pending2, obstacleKey, debugMesh;
-var init_session10 = __esm({
+var init_session11 = __esm({
   "src/capabilities/navigation/session.ts"() {
     "use strict";
     init_registry2();
     init_transform();
     init_world();
     init_archive();
-    init_defaults4();
+    init_defaults5();
     useNavUi = create(() => ({
       phase: "idle",
       text: "",
@@ -6319,7 +6618,7 @@ import test from "node:test";
 import { Group } from "three";
 
 // src/core/codeAssets/scriptRuntime.ts
-init_session10();
+init_session11();
 init_runtimeTags();
 init_session7();
 init_session8();
@@ -6436,16 +6735,16 @@ async function start(id, options, ticket) {
   }
   const latestWorld = getRuntimeWorld();
   if (options.bus === "music" && latestWorld.getPlayState() !== "playing") return;
-  const mix6 = readAudioMix(latestWorld.getPicture());
-  applyMix(mix6);
+  const mix7 = readAudioMix(latestWorld.getPicture());
+  applyMix(mix7);
   const bus = options.bus ?? "sfx";
   if (bus === "sfx") trimSfx();
   const ear = ensureListener();
   const audio = options.parent ? guardAudioMatrixUpdate(new PositionalAudio(ear)) : new Audio(ear);
   audio.setBuffer(buffer);
   audio.setLoop(options.loop === true);
-  const local = clamp4(options.volume ?? 1, 0, 4);
-  audio.setVolume(local * (bus === "music" ? mix6.music : mix6.sfx));
+  const local = clamp6(options.volume ?? 1, 0, 4);
+  audio.setVolume(local * (bus === "music" ? mix7.music : mix7.sfx));
   if (options.playbackRate && options.playbackRate > 0) audio.setPlaybackRate(options.playbackRate);
   if (audio instanceof PositionalAudio && options.parent) {
     audio.setRefDistance(Math.max(0.05, options.refDistance ?? 2));
@@ -6521,22 +6820,22 @@ function stopVoice(voice) {
   voice.audio.disconnect();
 }
 var appliedMix = "";
-function applyMix(mix6) {
-  const key = `${mix6.master}|${mix6.music}|${mix6.sfx}`;
+function applyMix(mix7) {
+  const key = `${mix7.master}|${mix7.music}|${mix7.sfx}`;
   if (key === appliedMix) return;
   appliedMix = key;
   const ear = listener;
-  if (ear) ear.gain.gain.value = mix6.master;
+  if (ear) ear.gain.gain.value = mix7.master;
   for (const voice of voices) {
-    voice.audio.setVolume(voice.local * (voice.bus === "music" ? mix6.music : mix6.sfx));
+    voice.audio.setVolume(voice.local * (voice.bus === "music" ? mix7.music : mix7.sfx));
   }
 }
 function unit(value, fallback) {
   const number = typeof value === "number" ? value : Number(value);
-  return Number.isFinite(number) ? clamp4(number, 0, 1) : fallback;
+  return Number.isFinite(number) ? clamp6(number, 0, 1) : fallback;
 }
-function clamp4(value, min3, max4) {
-  return Math.min(max4, Math.max(min3, value));
+function clamp6(value, min4, max5) {
+  return Math.min(max5, Math.max(min4, value));
 }
 var contextChain = Promise.resolve();
 function settleContext(paused) {
@@ -6575,7 +6874,7 @@ registerRuntimeSystem("core.audio", 44, () => {
 installUnlock();
 
 // src/runtime/character.ts
-init_session10();
+init_session11();
 init_session();
 init_session2();
 init_runtimeTags();
@@ -7258,8 +7557,8 @@ function gather(node, step2, host) {
     if (dx * dx + dz * dz > radius * radius) continue;
     if (limit < Math.PI * 2) {
       const len = Math.hypot(dx, dz) || 1;
-      const dot3 = (forward.x * dx + forward.z * dz) / len;
-      if (Math.acos(Math.min(1, Math.max(-1, dot3))) > limit / 2) continue;
+      const dot4 = (forward.x * dx + forward.z * dz) / len;
+      if (Math.acos(Math.min(1, Math.max(-1, dot4))) > limit / 2) continue;
     }
     hits.push(other.id);
   }
@@ -8150,12 +8449,12 @@ function groundUnder(host, x, y, z, id, spec) {
 function slide(host, x, y, z, nextX, nextZ, id, radius) {
   const dx = nextX - x;
   const dz = nextZ - z;
-  const length4 = Math.hypot(dx, dz);
-  if (length4 < 1e-5 || !host.probe) return { x: nextX, z: nextZ };
-  const hit = host.probe([x, y, z], [dx / length4, 0, dz / length4], length4 + radius, id);
-  if (hit === null || hit > length4 + radius * 0.2) return { x: nextX, z: nextZ };
+  const length5 = Math.hypot(dx, dz);
+  if (length5 < 1e-5 || !host.probe) return { x: nextX, z: nextZ };
+  const hit = host.probe([x, y, z], [dx / length5, 0, dz / length5], length5 + radius, id);
+  if (hit === null || hit > length5 + radius * 0.2) return { x: nextX, z: nextZ };
   const allowed = Math.max(0, hit - radius);
-  return { x: x + dx / length4 * allowed, z: z + dz / length4 * allowed };
+  return { x: x + dx / length5 * allowed, z: z + dz / length5 * allowed };
 }
 registerRuntimeSystem("core.character", RUNTIME_STAGE.POST_PHYSICS, stepCharacters);
 
@@ -8164,7 +8463,7 @@ init_fieldSchema();
 import {
   AdditiveBlending as AdditiveBlending2,
   BackSide,
-  Color as Color5,
+  Color as Color6,
   DataTexture as DataTexture2,
   DoubleSide as DoubleSide3,
   FrontSide,
@@ -8961,7 +9260,7 @@ function coerceUniformValue(schema, raw) {
   const value = raw !== void 0 ? raw : defaultForSchema(schema);
   if (schema.type === "number") return Number(value) || 0;
   if (schema.type === "boolean") return value ? 1 : 0;
-  if (schema.type === "color") return new Color5(typeof value === "string" ? value : "#ffffff");
+  if (schema.type === "color") return new Color6(typeof value === "string" ? value : "#ffffff");
   if (schema.type === "vec2") {
     const arr = Array.isArray(value) ? value : [0, 0];
     return new Vector23(Number(arr[0]) || 0, Number(arr[1]) || 0);
@@ -9594,25 +9893,57 @@ function resolvePoolKey(templateOrPrefab) {
   }
   return null;
 }
+function resolveParamValue(schema, rawVal, host) {
+  if (schema.type === "vec2" && Array.isArray(rawVal)) {
+    return { x: Number(rawVal[0]) || 0, y: Number(rawVal[1]) || 0 };
+  }
+  if (schema.type === "vec3" && Array.isArray(rawVal)) {
+    return { x: Number(rawVal[0]) || 0, y: Number(rawVal[1]) || 0, z: Number(rawVal[2]) || 0 };
+  }
+  if (schema.type === "ref" && schema.target === "node" && typeof rawVal === "string") {
+    return makeNodeHandle(rawVal, host);
+  }
+  return rawVal;
+}
 function buildScriptContext(node, scriptId, rawParams, stateObj, host) {
   const world3 = getRuntimeWorld();
   const def = compiledBehaviors.get(scriptId);
-  const resolvedParams = {};
-  const inputRecord = rawParams && typeof rawParams === "object" ? rawParams : {};
-  for (const [k, schema] of Object.entries(def?.params ?? {})) {
-    const val = k in inputRecord ? inputRecord[k] : defaultForSchema(schema);
-    if (schema.type === "vec2" && Array.isArray(val)) resolvedParams[k] = { x: Number(val[0]) || 0, y: Number(val[1]) || 0 };
-    else if (schema.type === "vec3" && Array.isArray(val)) resolvedParams[k] = { x: Number(val[0]) || 0, y: Number(val[1]) || 0, z: Number(val[2]) || 0 };
-    else if (schema.type === "ref" && schema.target === "node" && typeof val === "string") resolvedParams[k] = makeNodeHandle(val, host);
-    else resolvedParams[k] = val;
-  }
+  const paramSchemas = def?.params ?? {};
+  const readLatestInputRecord = () => {
+    const liveNode = world3.getNodes()[node.id];
+    const liveRaw = liveNode?.gameplay?.packs?.__project__?.[scriptId];
+    const chosen = liveRaw !== void 0 ? liveRaw : rawParams;
+    return chosen && typeof chosen === "object" ? chosen : {};
+  };
+  const liveParams = new Proxy(paramSchemas, {
+    get(_target, prop) {
+      if (typeof prop !== "string") return void 0;
+      const schema = paramSchemas[prop];
+      if (!schema) return void 0;
+      const inputRecord = readLatestInputRecord();
+      const val = prop in inputRecord ? inputRecord[prop] : defaultForSchema(schema);
+      return resolveParamValue(schema, val, host);
+    },
+    has(_target, prop) {
+      return typeof prop === "string" && prop in paramSchemas;
+    },
+    ownKeys() {
+      return Object.keys(paramSchemas);
+    },
+    getOwnPropertyDescriptor(_target, prop) {
+      if (typeof prop !== "string" || !(prop in paramSchemas)) return void 0;
+      return { enumerable: true, configurable: true };
+    }
+  });
   const handle = makeNodeHandle(node.id, host);
   const obj = host.resolveObject(node.id);
   return {
     node: handle,
-    params: resolvedParams,
+    params: liveParams,
     state: stateObj,
-    elapsedTime: simElapsed,
+    get elapsedTime() {
+      return simElapsed;
+    },
     get position() {
       return handle.position;
     },
@@ -9638,7 +9969,7 @@ function buildScriptContext(node, scriptId, rawParams, stateObj, host) {
       handle.visible = v;
     },
     get enabled() {
-      return inputRecord.__enabled !== false;
+      return readLatestInputRecord().__enabled !== false;
     },
     hasTag: (tag) => handle.hasTag(tag),
     addTag: (tag) => handle.addTag(tag),
@@ -10845,9 +11176,9 @@ function compileAndRegisterScript(id, fileName, source) {
 }
 function viewRelativeMove(action, host) {
   const axis = getActionAxis2D(action);
-  const length4 = Math.hypot(axis.x, axis.y);
-  if (length4 < 1e-4) return { x: 0, y: 0, z: 0 };
-  const scale = length4 > 1 ? 1 / length4 : 1;
+  const length5 = Math.hypot(axis.x, axis.y);
+  if (length5 < 1e-4) return { x: 0, y: 0, z: 0 };
+  const scale = length5 > 1 ? 1 / length5 : 1;
   const yaw = host.yaw?.() ?? 0;
   const sin3 = Math.sin(yaw);
   const cos3 = Math.cos(yaw);
@@ -11805,7 +12136,9 @@ var RECIPES = [
   {
     id: "third-person-controller",
     title: "\u7B2C\u4E09\u4EBA\u79F0\u89D2\u8272\u63A7\u5236\uFF08\u79FB\u52A8 / \u8DF3\u8DC3 / \u52A8\u753B\u5207\u6362\uFF09",
+    titleEn: "Third-person character (move / jump / animation)",
     summary: "WASD \u76F8\u5BF9\u76F8\u673A\u79FB\u52A8\u3001\u7A7A\u683C\u8DF3\u8DC3\u3001Shift \u5954\u8DD1\uFF0C\u6309\u72B6\u6001\u5207\u6362\u5F85\u673A/\u884C\u8D70/\u5954\u8DD1\u526A\u8F91",
+    summaryEn: "WASD moves relative to the camera, Space jumps, Shift sprints, and idle/walk/run clips follow the state",
     setup: [
       '\u89D2\u8272\u8282\u70B9\uFF1A\u5DF2\u6709\u8499\u76AE\u6A21\u578B\u5C31\u7528 kind:"model"\uFF1B\u6CA1\u6709\u6A21\u578B\u5C31\u7528 kind:"capsule"\uFF08\u6B64\u65F6\u4E09\u4E2A\u526A\u8F91\u53C2\u6570\u7559\u7A7A\u5373\u53EF\uFF09\u3002',
       "\u573A\u666F\u91CC\u8981\u6709\u4E00\u4E2A\u76F8\u673A\u8282\u70B9\uFF08\u5EFA\u8BAE\u540C\u65F6\u6302 follow-camera \u8303\u4F8B\uFF09\u3002",
@@ -11824,7 +12157,9 @@ var RECIPES = [
   {
     id: "follow-camera",
     title: "\u8DDF\u968F\u76F8\u673A\uFF08\u5E73\u6ED1\u8DDF\u968F + \u53F3\u952E\u73AF\u7ED5\uFF09",
+    titleEn: "Follow camera (smooth follow + right-drag orbit)",
     summary: "\u76F8\u673A\u5E73\u6ED1\u8DDF\u5728\u76EE\u6807\u8EAB\u540E\u5E76\u59CB\u7EC8\u6CE8\u89C6\u76EE\u6807",
+    summaryEn: "The camera stays smoothly behind the target and always looks at it",
     setup: [
       '\u521B\u5EFA kind:"camera" \u8282\u70B9\uFF0C\u521D\u59CB\u4F4D\u7F6E\u653E\u5728\u76EE\u6807\u540E\u4E0A\u65B9\u5373\u53EF\uFF08\u811A\u672C\u4F1A\u63A5\u7BA1\u4F4D\u7F6E\u4E0E\u671D\u5411\uFF09\u3002',
       "script__attach \u5230\u76F8\u673A\u8282\u70B9\uFF0Cparams.target \u4F20\u88AB\u8DDF\u968F\u7684\u8282\u70B9\u3002"
@@ -11836,7 +12171,9 @@ var RECIPES = [
   {
     id: "enemy-wave",
     title: "\u6CE2\u6B21\u5237\u602A + \u8FFD\u51FB\u654C\u4EBA\uFF08\u5BF9\u8C61\u6C60\uFF09",
+    titleEn: "Enemy waves + chase (object pool)",
     summary: "\u4ECE\u4E00\u4E2A\u9690\u85CF\u6A21\u677F\u8282\u70B9\u6C60\u5316\u751F\u6210\u654C\u4EBA\uFF0C\u654C\u4EBA\u8FFD\u51FB\u5E76\u653B\u51FB\u73A9\u5BB6\uFF0C\u53EF\u88AB hit \u6D88\u606F\u51FB\u6740",
+    summaryEn: "Spawns enemies from a hidden template through the pool; they chase and attack the player and die on a hit message",
     setup: [
       "\u654C\u4EBA\u6A21\u677F\uFF1A\u521B\u5EFA\u4E00\u4E2A\u654C\u4EBA\u8282\u70B9\uFF08\u6A21\u578B\u6216\u57FA\u7840\u51E0\u4F55\u4F53\uFF09\uFF0C\u6302 ChaseEnemy\uFF0C\u7136\u540E\u628A\u6A21\u677F\u7684 visible \u8BBE\u4E3A false \u5E76\u653E\u5728\u573A\u666F\u5916\u4FA7\u3002",
       '\u5237\u602A\u70B9\uFF1A\u521B\u5EFA kind:"empty" \u8282\u70B9\u653E\u5728\u6218\u573A\u4E2D\u5FC3\uFF0C\u6302 WaveSpawner\uFF0Cparams.template \u4F20\u654C\u4EBA\u6A21\u677F\u8282\u70B9\u3002',
@@ -11855,7 +12192,9 @@ var RECIPES = [
   {
     id: "shooting",
     title: "\u5C04\u51FB\uFF08\u73A9\u5BB6\u5F00\u706B + \u6C60\u5316\u5B50\u5F39\uFF09",
+    titleEn: "Shooting (player fire + pooled bullets)",
     summary: '\u6309\u4F4F\u653B\u51FB\u952E\u6CBF\u89D2\u8272\u671D\u5411\u53D1\u5C04\u5B50\u5F39\uFF0C\u5B50\u5F39\u547D\u4E2D\u5E26 "enemy" \u6807\u7B7E\u7684\u8282\u70B9\u540E\u53D1\u9001 hit \u6D88\u606F',
+    summaryEn: 'Hold attack to fire bullets along the character facing; hitting a node tagged "enemy" sends a hit message',
     setup: [
       "\u5B50\u5F39\u6A21\u677F\uFF1A\u521B\u5EFA\u4E00\u4E2A\u5C0F\u7403/\u5C0F\u80F6\u56CA\u8282\u70B9\uFF0C\u6302 Bullet\uFF0Cvisible \u8BBE\u4E3A false\u3002",
       "script__attach PlayerShooter \u5230\u73A9\u5BB6\u8282\u70B9\uFF0Cparams.bullet \u4F20\u5B50\u5F39\u6A21\u677F\u8282\u70B9\u3002",
@@ -11870,7 +12209,9 @@ var RECIPES = [
   {
     id: "health-score-hud",
     title: "\u751F\u547D\u503C + \u5F97\u5206 + HUD / \u7ED3\u7B97\u754C\u9762",
+    titleEn: "Health + score + HUD / result screen",
     summary: "\u73A9\u5BB6\u53D7\u51FB\u6263\u8840\u3001\u51FB\u6740\u4E0E\u62FE\u53D6\u52A0\u5206\uFF0C\u6570\u636E\u9A71\u52A8 HUD\uFF0C\u6B7B\u4EA1\u6216\u8FBE\u6807\u65F6\u5F39\u51FA\u7ED3\u7B97\u754C\u9762",
+    summaryEn: "Hits reduce health, kills and pickups add score, the HUD is data-driven, and a result screen appears on death or when the goal is reached",
     setup: [
       'HUD\uFF1Aui__createFromTemplate({ template:"hud", varKey:"hp", scoreVarKey:"score" })\u3002',
       '\u7ED3\u7B97\uFF1Aui__createFromTemplate({ template:"result", name:"\u7ED3\u7B97\u754C\u9762", scoreVarKey:"score" })\uFF0C\u6807\u9898\u6587\u672C\u53EF\u7528 ui__patchNode \u7ED1\u5B9A\u5230\u53D8\u91CF resultTitle\u3002',
@@ -11889,7 +12230,9 @@ var RECIPES = [
   {
     id: "collectible",
     title: "\u53EF\u62FE\u53D6\u7269\uFF08\u91D1\u5E01 / \u9053\u5177\uFF09",
+    titleEn: "Collectible (coin / item)",
     summary: "\u65CB\u8F6C\u6D6E\u52A8\u7684\u62FE\u53D6\u7269\uFF0C\u73A9\u5BB6\u9760\u8FD1\u540E\u52A0\u5206\u5E76\u6D88\u5931",
+    summaryEn: "A spinning, bobbing pickup that awards score and disappears when the player gets close",
     setup: [
       "\u521B\u5EFA\u62FE\u53D6\u7269\u8282\u70B9\uFF08\u7403\u4F53/\u5706\u67F1\u6216\u6A21\u578B\uFF09\uFF0C\u6302 Collectible\uFF1B\u9700\u8981\u591A\u4E2A\u65F6\u76F4\u63A5\u590D\u5236\u8282\u70B9\u6216\u505A\u6210\u9884\u5236\u4F53\u3002",
       "\u914D\u5408 health-score-hud \u8303\u4F8B\u7684 GameManager \u7EDF\u8BA1\u5F97\u5206\uFF08\u5B83\u4F1A\u5904\u7406 collected \u6D88\u606F\uFF09\u3002"

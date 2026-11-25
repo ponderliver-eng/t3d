@@ -43,6 +43,10 @@ export interface BuildSettings {
   bakeModelsToGlb: boolean
   textureMode: TextureBuildMode
   textureMaxSize: TextureMaxSize
+  /** 桌面端构建额外带上 BC7 压缩贴图：运行时贴图显存约为未压缩的 1/4，代价是包体变大。 */
+  desktopBc7Textures: boolean
+  /** 调试用：资源加载失败时在画面左下角弹提示条。默认关，正式发给玩家的包不显示（失败仍会写进控制台）。 */
+  showLoadFailures: boolean
   preloadMode: PreloadMode
   loading: BuildLoadingConfig
   electron: BuildElectronConfig
@@ -58,6 +62,8 @@ export function createDefaultBuildSettings(projectName = 'Tact3D Game'): BuildSe
     bakeModelsToGlb: true,
     textureMode: 'webp',
     textureMaxSize: 0,
+    desktopBc7Textures: true,
+    showLoadFailures: false,
     preloadMode: 'entry-scene',
     loading: {
       enabled: true,
@@ -136,6 +142,8 @@ export function normalizeBuildSettings(
     bakeModelsToGlb: raw.bakeModelsToGlb !== false,
     textureMode: raw.textureMode === 'original' ? 'original' : 'webp',
     textureMaxSize: raw.textureMaxSize === 2048 || raw.textureMaxSize === 1024 || raw.textureMaxSize === 512 ? raw.textureMaxSize : 0,
+    desktopBc7Textures: raw.desktopBc7Textures !== false,
+    showLoadFailures: raw.showLoadFailures === true,
     preloadMode: raw.preloadMode === 'all-scenes' || raw.preloadMode === 'minimal' ? raw.preloadMode : 'entry-scene',
     loading: {
       enabled: rawLoading.enabled !== false,

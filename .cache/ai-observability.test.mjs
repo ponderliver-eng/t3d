@@ -891,9 +891,9 @@ function normalizeWater(raw) {
     foamMapAssetId: typeof record.foamMapAssetId === "string" ? record.foamMapAssetId : null
   };
 }
-function finite(value, fallback, min3, max4) {
+function finite(value, fallback, min4, max5) {
   if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
-  return Math.min(max4, Math.max(min3, value));
+  return Math.min(max5, Math.max(min4, value));
 }
 var WATER_CAPABILITY_ID, WATER_DEBUG_VIEWS, WATER_QUALITY_PRESETS, WATER_STYLE_PRESETS;
 var init_defaults = __esm({
@@ -1314,14 +1314,14 @@ var init_proceduralTextures = __esm({
 function swellGroupInfo(group) {
   const a = VERTEX_WAVES[group * 2];
   const b = VERTEX_WAVES[group * 2 + 1] ?? a;
-  const length4 = (a.length + b.length) / 2;
-  const k = Math.PI * 2 / length4;
+  const length5 = (a.length + b.length) / 2;
+  const k = Math.PI * 2 / length5;
   const speed = Math.sqrt(GRAVITY / k);
   return {
     crestSpeed: speed,
     overtake: speed * PACKET_OVERTAKE,
-    kAlong: Math.PI * 2 / (length4 * PACKET_SPACING),
-    kAcross: Math.PI * 2 / (length4 * PACKET_WIDTH)
+    kAlong: Math.PI * 2 / (length5 * PACKET_SPACING),
+    kAcross: Math.PI * 2 / (length5 * PACKET_WIDTH)
   };
 }
 function smoothstep(edge0, edge1, x) {
@@ -2506,8 +2506,8 @@ function defaultBuoyancy() {
     draftDepth: 0
   };
 }
-function clamp2(value, min3, max4) {
-  return Math.max(min3, Math.min(max4, value));
+function clamp2(value, min4, max5) {
+  return Math.max(min4, Math.min(max5, value));
 }
 function finite2(value, fallback) {
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
@@ -4182,7 +4182,7 @@ var init_sceneRuntime = __esm({
   "src/runtime/sceneRuntime.ts"() {
     "use strict";
     init_session();
-    init_session10();
+    init_session11();
     init_session4();
     init_juiceClock();
     init_actionMap();
@@ -5663,9 +5663,9 @@ function normalizeSkySettings(value) {
     mirrorBelowHorizon: bool(raw.mirrorBelowHorizon, base.mirrorBelowHorizon)
   };
 }
-function clamp3(value, fallback, min3, max4) {
+function clamp3(value, fallback, min4, max5) {
   const next = typeof value === "number" && Number.isFinite(value) ? value : fallback;
-  return Math.min(max4, Math.max(min3, next));
+  return Math.min(max5, Math.max(min4, next));
 }
 function bool(value, fallback) {
   return typeof value === "boolean" ? value : fallback;
@@ -6117,6 +6117,304 @@ var init_session9 = __esm({
   }
 });
 
+// src/capabilities/fog/defaults.ts
+function defaultHeightFogSettings() {
+  return {
+    enabled: false,
+    opacity: 1,
+    affectSky: false,
+    heightEnabled: true,
+    heightGradient: true,
+    heightColor: "#5c789c",
+    heightMidColor: "#8fa8c8",
+    heightTopColor: "#c7d9ee",
+    heightBase: 0.3,
+    heightRange: 2,
+    heightDensity: 0.85,
+    heightFalloff: 1.2,
+    heightNoiseEnabled: false,
+    heightNoiseScale: 0.35,
+    heightNoiseIntensity: 0.4,
+    heightNoiseSpeed: 0.3,
+    distanceEnabled: true,
+    distanceNearColor: "#b8cbe0",
+    distanceFarColor: "#6f89ab",
+    distanceStart: 5,
+    distanceEnd: 50,
+    distanceTransition: 15,
+    distanceDensity: 0.9,
+    distanceNoiseEnabled: false,
+    distanceNoiseScale: 0.08,
+    distanceNoiseIntensity: 0.35,
+    distanceNoiseSpeed: 0.25
+  };
+}
+function clamp4(value, fallback, min4, max5) {
+  if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
+  return Math.max(min4, Math.min(max5, value));
+}
+function colorHex(value, fallback) {
+  if (typeof value !== "string") return fallback;
+  const trimmed = value.trim();
+  return /^#[0-9a-fA-F]{6}$/.test(trimmed) ? trimmed : fallback;
+}
+function normalizeHeightFogSettings(value) {
+  const base = defaultHeightFogSettings();
+  if (!value || typeof value !== "object") return base;
+  const raw = value;
+  const distanceStart = clamp4(raw.distanceStart, base.distanceStart, 0, 2e3);
+  const distanceEnd = Math.max(distanceStart + 0.1, clamp4(raw.distanceEnd, base.distanceEnd, 0.1, 4e3));
+  const legacyNoiseEnabled = typeof raw.noiseEnabled === "boolean" ? raw.noiseEnabled : void 0;
+  const heightColor = colorHex(raw.heightColor, base.heightColor);
+  const legacyDistColor = typeof raw.distanceColor === "string" ? colorHex(raw.distanceColor, base.distanceNearColor) : null;
+  return {
+    enabled: typeof raw.enabled === "boolean" ? raw.enabled : base.enabled,
+    opacity: clamp4(raw.opacity, base.opacity, 0, 1),
+    affectSky: typeof raw.affectSky === "boolean" ? raw.affectSky : base.affectSky,
+    heightEnabled: typeof raw.heightEnabled === "boolean" ? raw.heightEnabled : base.heightEnabled,
+    heightGradient: typeof raw.heightGradient === "boolean" ? raw.heightGradient : base.heightGradient,
+    heightColor,
+    heightMidColor: colorHex(raw.heightMidColor, base.heightMidColor),
+    heightTopColor: colorHex(raw.heightTopColor, base.heightTopColor),
+    heightBase: clamp4(raw.heightBase, base.heightBase, -200, 500),
+    heightRange: clamp4(raw.heightRange, base.heightRange, 0.05, 500),
+    heightDensity: clamp4(raw.heightDensity, base.heightDensity, 0, 1),
+    heightFalloff: clamp4(raw.heightFalloff, base.heightFalloff, 0.2, 4),
+    heightNoiseEnabled: typeof raw.heightNoiseEnabled === "boolean" ? raw.heightNoiseEnabled : legacyNoiseEnabled ?? base.heightNoiseEnabled,
+    heightNoiseScale: clamp4(raw.heightNoiseScale ?? raw.noiseScale, base.heightNoiseScale, 0.01, 5),
+    heightNoiseIntensity: clamp4(raw.heightNoiseIntensity ?? raw.noiseIntensity, base.heightNoiseIntensity, 0, 1),
+    heightNoiseSpeed: clamp4(raw.heightNoiseSpeed ?? raw.noiseSpeed, base.heightNoiseSpeed, 0, 5),
+    distanceEnabled: typeof raw.distanceEnabled === "boolean" ? raw.distanceEnabled : base.distanceEnabled,
+    distanceNearColor: colorHex(raw.distanceNearColor, legacyDistColor ?? base.distanceNearColor),
+    distanceFarColor: colorHex(raw.distanceFarColor, legacyDistColor ?? base.distanceFarColor),
+    distanceStart,
+    distanceEnd,
+    distanceTransition: clamp4(raw.distanceTransition, base.distanceTransition, 0, 2e3),
+    distanceDensity: clamp4(raw.distanceDensity, base.distanceDensity, 0, 1),
+    distanceNoiseEnabled: typeof raw.distanceNoiseEnabled === "boolean" ? raw.distanceNoiseEnabled : base.distanceNoiseEnabled,
+    distanceNoiseScale: clamp4(raw.distanceNoiseScale, base.distanceNoiseScale, 5e-3, 5),
+    distanceNoiseIntensity: clamp4(raw.distanceNoiseIntensity, base.distanceNoiseIntensity, 0, 1),
+    distanceNoiseSpeed: clamp4(raw.distanceNoiseSpeed, base.distanceNoiseSpeed, 0, 5)
+  };
+}
+var HEIGHT_FOG_CAPABILITY_ID;
+var init_defaults4 = __esm({
+  "src/capabilities/fog/defaults.ts"() {
+    "use strict";
+    HEIGHT_FOG_CAPABILITY_ID = "fog";
+  }
+});
+
+// src/capabilities/fog/session.ts
+var session_exports8 = {};
+__export(session_exports8, {
+  buildHeightFogPass: () => buildHeightFogPass,
+  dispose: () => dispose8,
+  heightFogActive: () => heightFogActive,
+  heightFogPipelineKey: () => heightFogPipelineKey,
+  mount: () => mount8
+});
+import { Color as Color5, Matrix4 as Matrix42 } from "three";
+import {
+  clamp as clamp5,
+  dot as dot2,
+  float as float3,
+  floor as floor2,
+  fract as fract2,
+  getViewPosition,
+  isBackgroundDepth,
+  length as length3,
+  max as max3,
+  min as min2,
+  mix as mix5,
+  pow as pow2,
+  screenUV as screenUV2,
+  select as select2,
+  smoothstep as smoothstep3,
+  uniform as uniform4,
+  vec3 as vec33,
+  vec4 as vec44
+} from "three/tsl";
+function currentSettings(pictureOverride) {
+  try {
+    const world3 = getRuntimeWorld();
+    if (!capabilityEnabled(world3.getCapabilities(), HEIGHT_FOG_CAPABILITY_ID)) {
+      return defaultHeightFogSettings();
+    }
+    const picture = pictureOverride ?? world3.getPicture();
+    return normalizeHeightFogSettings(picture.capabilities?.[HEIGHT_FOG_CAPABILITY_ID]);
+  } catch {
+    if (!pictureOverride) return defaultHeightFogSettings();
+    return normalizeHeightFogSettings(pictureOverride.capabilities?.[HEIGHT_FOG_CAPABILITY_ID]);
+  }
+}
+function mount8() {
+  if (mounted) return () => shutdown2();
+  mounted = true;
+  elapsedTime = 0;
+  removeHook2 = getRuntimeWorld().registerBeforeRenderHook?.(HEIGHT_FOG_CAPABILITY_ID, 25, (ctx) => {
+    elapsedTime += ctx.dt;
+  }) ?? null;
+  return () => shutdown2();
+}
+function dispose8() {
+  shutdown2();
+}
+function shutdown2() {
+  mounted = false;
+  removeHook2?.();
+  removeHook2 = null;
+}
+function heightFogActive(picture) {
+  if (!mounted) return false;
+  const s = currentSettings(picture);
+  return s.enabled && s.opacity > 0 && (s.heightEnabled || s.distanceEnabled);
+}
+function heightFogPipelineKey(picture) {
+  if (!heightFogActive(picture)) return "off";
+  const s = currentSettings(picture);
+  const hNoise = s.heightEnabled && s.heightNoiseEnabled ? 1 : 0;
+  const dNoise = s.distanceEnabled && s.distanceNoiseEnabled ? 1 : 0;
+  return `on:${hNoise}:${dNoise}`;
+}
+function fastHash13(p) {
+  const q = fract2(vec33(p).mul(0.1031));
+  const r = q.add(dot2(q, q.yzx.add(33.33)));
+  return fract2(r.x.add(r.y).mul(r.z));
+}
+function fastValueNoise3D(p) {
+  const i = floor2(p);
+  const f = fract2(p);
+  const u = f.mul(f).mul(vec33(3, 3, 3).sub(f.mul(2)));
+  const n000 = fastHash13(i);
+  const n100 = fastHash13(i.add(vec33(1, 0, 0)));
+  const n010 = fastHash13(i.add(vec33(0, 1, 0)));
+  const n110 = fastHash13(i.add(vec33(1, 1, 0)));
+  const n001 = fastHash13(i.add(vec33(0, 0, 1)));
+  const n101 = fastHash13(i.add(vec33(1, 0, 1)));
+  const n011 = fastHash13(i.add(vec33(0, 1, 1)));
+  const n111 = fastHash13(i.add(vec33(1, 1, 1)));
+  const nx00 = mix5(n000, n100, u.x);
+  const nx10 = mix5(n010, n110, u.x);
+  const nx01 = mix5(n001, n101, u.x);
+  const nx11 = mix5(n011, n111, u.x);
+  const nxy0 = mix5(nx00, nx10, u.y);
+  const nxy1 = mix5(nx01, nx11, u.y);
+  return mix5(nxy0, nxy1, u.z);
+}
+function buildHeightFogPass(colorNode, scenePass, options) {
+  const uCameraWorldMatrix = uniform4(new Matrix42());
+  const uCameraProjInverse = uniform4(new Matrix42());
+  const uOpacity = uniform4(1);
+  const uAffectSky = uniform4(0);
+  const uHeightEnabled = uniform4(1);
+  const uHeightBottomColor = uniform4(new Color5("#5c789c"));
+  const uHeightMidColor = uniform4(new Color5("#8fa8c8"));
+  const uHeightTopColor = uniform4(new Color5("#c7d9ee"));
+  const uHeightBase = uniform4(0.3);
+  const uHeightRange = uniform4(2);
+  const uHeightDensity = uniform4(0.85);
+  const uHeightFalloff = uniform4(1.2);
+  const uHeightNoiseScale = uniform4(0.35);
+  const uHeightNoiseIntensity = uniform4(0.4);
+  const uHeightNoiseTime = uniform4(0);
+  const uDistEnabled = uniform4(1);
+  const uDistNearColor = uniform4(new Color5("#b8cbe0"));
+  const uDistFarColor = uniform4(new Color5("#6f89ab"));
+  const uDistStart = uniform4(5);
+  const uDistEnd = uniform4(50);
+  const uDistTrans = uniform4(15);
+  const uDistDensity = uniform4(0.9);
+  const uDistNoiseScale = uniform4(0.08);
+  const uDistNoiseIntensity = uniform4(0.35);
+  const uDistNoiseTime = uniform4(0);
+  const depthNode = scenePass.getTextureNode("depth");
+  const isBg = isBackgroundDepth(depthNode);
+  const viewPos = getViewPosition(screenUV2, depthNode, uCameraProjInverse);
+  const viewDist = length3(viewPos);
+  const worldPos = uCameraWorldMatrix.mul(vec44(viewPos, 1)).xyz;
+  const hNorm = clamp5(worldPos.y.sub(uHeightBase).div(max3(uHeightRange, float3(1e-3))), 0, 1);
+  const hCurve = pow2(float3(1).sub(hNorm), max3(uHeightFalloff, float3(0.05)));
+  const hBaseWeight = hCurve.mul(uHeightDensity).mul(uHeightEnabled);
+  const dMain = smoothstep3(uDistStart, max3(uDistStart.add(0.01), uDistEnd), viewDist);
+  const dRamp = smoothstep3(uDistStart, uDistStart.add(max3(uDistTrans, float3(0.01))), viewDist);
+  const dBaseWeight = dMain.mul(mix5(float3(1), dRamp, clamp5(uDistTrans.div(max3(uDistEnd.sub(uDistStart), float3(0.01))), 0, 1))).mul(uDistDensity).mul(uDistEnabled);
+  let hWeight = hBaseWeight;
+  if (options.heightNoise) {
+    const hSamplePos = worldPos.mul(uHeightNoiseScale).add(vec33(uHeightNoiseTime, uHeightNoiseTime.mul(0.37), uHeightNoiseTime.mul(0.71)));
+    const hNoise = fastValueNoise3D(hSamplePos);
+    const hMod = mix5(float3(1), clamp5(hNoise.mul(1.7).add(0.15), 0, 1.5), uHeightNoiseIntensity);
+    hWeight = clamp5(hBaseWeight.mul(hMod), 0, 1);
+  }
+  let dWeight = dBaseWeight;
+  if (options.distanceNoise) {
+    const dSamplePos = worldPos.mul(uDistNoiseScale).add(vec33(uDistNoiseTime.mul(0.83), uDistNoiseTime.mul(0.29), uDistNoiseTime));
+    const dNoise = fastValueNoise3D(dSamplePos);
+    const dMod = mix5(float3(1), clamp5(dNoise.mul(1.7).add(0.15), 0, 1.5), uDistNoiseIntensity);
+    dWeight = clamp5(dBaseWeight.mul(dMod), 0, 1);
+  }
+  const combinedRaw = clamp5(max3(hWeight, dWeight).add(min2(hWeight, dWeight).mul(0.35)), 0, 1);
+  const skyFogAmount = clamp5(dWeight.mul(uDistEnabled).add(hWeight.mul(0.25).mul(uHeightEnabled)), 0, 1).mul(uAffectSky);
+  const fogFactor = select2(isBg, skyFogAmount, combinedRaw).mul(uOpacity);
+  const weightSum = max3(hWeight.add(dWeight), float3(1e-4));
+  const distRatio = dWeight.div(weightSum);
+  const hMidT = clamp5(hNorm.mul(2), 0, 1);
+  const hTopT = clamp5(hNorm.mul(2).sub(1), 0, 1);
+  const heightGradColor = mix5(mix5(uHeightBottomColor, uHeightMidColor, hMidT), uHeightTopColor, hTopT);
+  const distGradColor = mix5(uDistNearColor, uDistFarColor, dMain);
+  const blendedFogColor = mix5(heightGradColor, distGradColor, distRatio);
+  const outRgb = mix5(colorNode.rgb, blendedFogColor, fogFactor);
+  const node = vec44(outRgb, colorNode.a);
+  return {
+    node,
+    sync: (picture, camera) => {
+      const s = currentSettings(picture);
+      camera.updateMatrixWorld();
+      uCameraWorldMatrix.value.copy(camera.matrixWorld);
+      uCameraProjInverse.value.copy(camera.projectionMatrixInverse);
+      uOpacity.value = s.enabled ? s.opacity : 0;
+      uAffectSky.value = s.affectSky ? 1 : 0;
+      uHeightEnabled.value = s.heightEnabled ? 1 : 0;
+      uHeightBottomColor.value.set(s.heightColor);
+      uHeightMidColor.value.set(s.heightGradient ? s.heightMidColor : s.heightColor);
+      uHeightTopColor.value.set(s.heightGradient ? s.heightTopColor : s.heightColor);
+      uHeightBase.value = s.heightBase;
+      uHeightRange.value = s.heightRange;
+      uHeightDensity.value = s.heightDensity;
+      uHeightFalloff.value = s.heightFalloff;
+      if (options.heightNoise) {
+        uHeightNoiseScale.value = s.heightNoiseScale;
+        uHeightNoiseIntensity.value = s.heightNoiseIntensity;
+        uHeightNoiseTime.value = elapsedTime * s.heightNoiseSpeed;
+      }
+      uDistEnabled.value = s.distanceEnabled ? 1 : 0;
+      uDistNearColor.value.set(s.distanceNearColor);
+      uDistFarColor.value.set(s.distanceFarColor);
+      uDistStart.value = s.distanceStart;
+      uDistEnd.value = s.distanceEnd;
+      uDistTrans.value = s.distanceTransition;
+      uDistDensity.value = s.distanceDensity;
+      if (options.distanceNoise) {
+        uDistNoiseScale.value = s.distanceNoiseScale;
+        uDistNoiseIntensity.value = s.distanceNoiseIntensity;
+        uDistNoiseTime.value = elapsedTime * s.distanceNoiseSpeed;
+      }
+    }
+  };
+}
+var mounted, removeHook2, elapsedTime;
+var init_session10 = __esm({
+  "src/capabilities/fog/session.ts"() {
+    "use strict";
+    init_world();
+    init_registry2();
+    init_defaults4();
+    mounted = false;
+    removeHook2 = null;
+    elapsedTime = 0;
+  }
+});
+
 // src/capabilities/registry.ts
 function allCapabilityManifests() {
   return [...CAPABILITIES, ...dynamicCapabilities.values()];
@@ -6165,6 +6463,7 @@ var init_registry2 = __esm({
       { id: "projectile", defaultEnabled: true, category: "physics", loadRuntime: () => Promise.resolve().then(() => (init_session8(), session_exports6)) },
       { id: "particles", defaultEnabled: false, category: "scene-object" },
       { id: "sky", defaultEnabled: false, category: "environment", loadRuntime: () => Promise.resolve().then(() => (init_session9(), session_exports7)) },
+      { id: "fog", defaultEnabled: true, category: "environment", loadRuntime: () => Promise.resolve().then(() => (init_session10(), session_exports8)) },
       { id: "water", defaultEnabled: false, category: "environment", loadRuntime: () => Promise.resolve().then(() => (init_session2(), session_exports)) }
     ];
     dynamicCapabilities = /* @__PURE__ */ new Map();
@@ -6220,7 +6519,7 @@ var init_archive = __esm({
 });
 
 // src/capabilities/navigation/defaults.ts
-var init_defaults4 = __esm({
+var init_defaults5 = __esm({
   "src/capabilities/navigation/defaults.ts"() {
     "use strict";
   }
@@ -6526,14 +6825,14 @@ function abortError2() {
   return error;
 }
 var useNavUi, instance, opening, life, loadedScene, seenEpoch, activating, controller, pending2, obstacleKey, debugMesh;
-var init_session10 = __esm({
+var init_session11 = __esm({
   "src/capabilities/navigation/session.ts"() {
     "use strict";
     init_registry2();
     init_transform();
     init_world();
     init_archive();
-    init_defaults4();
+    init_defaults5();
     useNavUi = create(() => ({
       phase: "idle",
       text: "",
@@ -6560,7 +6859,7 @@ import test from "node:test";
 import { Group as Group2 } from "three";
 
 // src/core/codeAssets/scriptRuntime.ts
-init_session10();
+init_session11();
 init_runtimeTags();
 init_session7();
 init_session8();
@@ -6677,16 +6976,16 @@ async function start(id, options, ticket) {
   }
   const latestWorld = getRuntimeWorld();
   if (options.bus === "music" && latestWorld.getPlayState() !== "playing") return;
-  const mix6 = readAudioMix(latestWorld.getPicture());
-  applyMix(mix6);
+  const mix7 = readAudioMix(latestWorld.getPicture());
+  applyMix(mix7);
   const bus = options.bus ?? "sfx";
   if (bus === "sfx") trimSfx();
   const ear = ensureListener();
   const audio = options.parent ? guardAudioMatrixUpdate(new PositionalAudio(ear)) : new Audio(ear);
   audio.setBuffer(buffer);
   audio.setLoop(options.loop === true);
-  const local = clamp4(options.volume ?? 1, 0, 4);
-  audio.setVolume(local * (bus === "music" ? mix6.music : mix6.sfx));
+  const local = clamp6(options.volume ?? 1, 0, 4);
+  audio.setVolume(local * (bus === "music" ? mix7.music : mix7.sfx));
   if (options.playbackRate && options.playbackRate > 0) audio.setPlaybackRate(options.playbackRate);
   if (audio instanceof PositionalAudio && options.parent) {
     audio.setRefDistance(Math.max(0.05, options.refDistance ?? 2));
@@ -6762,22 +7061,22 @@ function stopVoice(voice) {
   voice.audio.disconnect();
 }
 var appliedMix = "";
-function applyMix(mix6) {
-  const key = `${mix6.master}|${mix6.music}|${mix6.sfx}`;
+function applyMix(mix7) {
+  const key = `${mix7.master}|${mix7.music}|${mix7.sfx}`;
   if (key === appliedMix) return;
   appliedMix = key;
   const ear = listener;
-  if (ear) ear.gain.gain.value = mix6.master;
+  if (ear) ear.gain.gain.value = mix7.master;
   for (const voice of voices) {
-    voice.audio.setVolume(voice.local * (voice.bus === "music" ? mix6.music : mix6.sfx));
+    voice.audio.setVolume(voice.local * (voice.bus === "music" ? mix7.music : mix7.sfx));
   }
 }
 function unit(value, fallback) {
   const number = typeof value === "number" ? value : Number(value);
-  return Number.isFinite(number) ? clamp4(number, 0, 1) : fallback;
+  return Number.isFinite(number) ? clamp6(number, 0, 1) : fallback;
 }
-function clamp4(value, min3, max4) {
-  return Math.min(max4, Math.max(min3, value));
+function clamp6(value, min4, max5) {
+  return Math.min(max5, Math.max(min4, value));
 }
 var contextChain = Promise.resolve();
 function settleContext(paused) {
@@ -6816,7 +7115,7 @@ registerRuntimeSystem("core.audio", 44, () => {
 installUnlock();
 
 // src/runtime/character.ts
-init_session10();
+init_session11();
 init_session();
 init_session2();
 init_runtimeTags();
@@ -7505,8 +7804,8 @@ function gather(node, step2, host) {
     if (dx * dx + dz * dz > radius * radius) continue;
     if (limit < Math.PI * 2) {
       const len = Math.hypot(dx, dz) || 1;
-      const dot3 = (forward.x * dx + forward.z * dz) / len;
-      if (Math.acos(Math.min(1, Math.max(-1, dot3))) > limit / 2) continue;
+      const dot4 = (forward.x * dx + forward.z * dz) / len;
+      if (Math.acos(Math.min(1, Math.max(-1, dot4))) > limit / 2) continue;
     }
     hits.push(other.id);
   }
@@ -8397,12 +8696,12 @@ function groundUnder(host, x, y, z, id, spec) {
 function slide(host, x, y, z, nextX, nextZ, id, radius) {
   const dx = nextX - x;
   const dz = nextZ - z;
-  const length4 = Math.hypot(dx, dz);
-  if (length4 < 1e-5 || !host.probe) return { x: nextX, z: nextZ };
-  const hit = host.probe([x, y, z], [dx / length4, 0, dz / length4], length4 + radius, id);
-  if (hit === null || hit > length4 + radius * 0.2) return { x: nextX, z: nextZ };
+  const length5 = Math.hypot(dx, dz);
+  if (length5 < 1e-5 || !host.probe) return { x: nextX, z: nextZ };
+  const hit = host.probe([x, y, z], [dx / length5, 0, dz / length5], length5 + radius, id);
+  if (hit === null || hit > length5 + radius * 0.2) return { x: nextX, z: nextZ };
   const allowed = Math.max(0, hit - radius);
-  return { x: x + dx / length4 * allowed, z: z + dz / length4 * allowed };
+  return { x: x + dx / length5 * allowed, z: z + dz / length5 * allowed };
 }
 registerRuntimeSystem("core.character", RUNTIME_STAGE.POST_PHYSICS, stepCharacters);
 
@@ -8411,7 +8710,7 @@ init_fieldSchema();
 import {
   AdditiveBlending as AdditiveBlending2,
   BackSide,
-  Color as Color5,
+  Color as Color6,
   DataTexture as DataTexture2,
   DoubleSide as DoubleSide3,
   FrontSide,
@@ -9208,7 +9507,7 @@ function coerceUniformValue(schema, raw) {
   const value = raw !== void 0 ? raw : defaultForSchema(schema);
   if (schema.type === "number") return Number(value) || 0;
   if (schema.type === "boolean") return value ? 1 : 0;
-  if (schema.type === "color") return new Color5(typeof value === "string" ? value : "#ffffff");
+  if (schema.type === "color") return new Color6(typeof value === "string" ? value : "#ffffff");
   if (schema.type === "vec2") {
     const arr = Array.isArray(value) ? value : [0, 0];
     return new Vector23(Number(arr[0]) || 0, Number(arr[1]) || 0);
@@ -9841,25 +10140,57 @@ function resolvePoolKey(templateOrPrefab) {
   }
   return null;
 }
+function resolveParamValue(schema, rawVal, host) {
+  if (schema.type === "vec2" && Array.isArray(rawVal)) {
+    return { x: Number(rawVal[0]) || 0, y: Number(rawVal[1]) || 0 };
+  }
+  if (schema.type === "vec3" && Array.isArray(rawVal)) {
+    return { x: Number(rawVal[0]) || 0, y: Number(rawVal[1]) || 0, z: Number(rawVal[2]) || 0 };
+  }
+  if (schema.type === "ref" && schema.target === "node" && typeof rawVal === "string") {
+    return makeNodeHandle(rawVal, host);
+  }
+  return rawVal;
+}
 function buildScriptContext(node, scriptId, rawParams, stateObj, host) {
   const world3 = getRuntimeWorld();
   const def = compiledBehaviors.get(scriptId);
-  const resolvedParams = {};
-  const inputRecord = rawParams && typeof rawParams === "object" ? rawParams : {};
-  for (const [k, schema] of Object.entries(def?.params ?? {})) {
-    const val = k in inputRecord ? inputRecord[k] : defaultForSchema(schema);
-    if (schema.type === "vec2" && Array.isArray(val)) resolvedParams[k] = { x: Number(val[0]) || 0, y: Number(val[1]) || 0 };
-    else if (schema.type === "vec3" && Array.isArray(val)) resolvedParams[k] = { x: Number(val[0]) || 0, y: Number(val[1]) || 0, z: Number(val[2]) || 0 };
-    else if (schema.type === "ref" && schema.target === "node" && typeof val === "string") resolvedParams[k] = makeNodeHandle(val, host);
-    else resolvedParams[k] = val;
-  }
+  const paramSchemas = def?.params ?? {};
+  const readLatestInputRecord = () => {
+    const liveNode = world3.getNodes()[node.id];
+    const liveRaw = liveNode?.gameplay?.packs?.__project__?.[scriptId];
+    const chosen = liveRaw !== void 0 ? liveRaw : rawParams;
+    return chosen && typeof chosen === "object" ? chosen : {};
+  };
+  const liveParams = new Proxy(paramSchemas, {
+    get(_target, prop) {
+      if (typeof prop !== "string") return void 0;
+      const schema = paramSchemas[prop];
+      if (!schema) return void 0;
+      const inputRecord = readLatestInputRecord();
+      const val = prop in inputRecord ? inputRecord[prop] : defaultForSchema(schema);
+      return resolveParamValue(schema, val, host);
+    },
+    has(_target, prop) {
+      return typeof prop === "string" && prop in paramSchemas;
+    },
+    ownKeys() {
+      return Object.keys(paramSchemas);
+    },
+    getOwnPropertyDescriptor(_target, prop) {
+      if (typeof prop !== "string" || !(prop in paramSchemas)) return void 0;
+      return { enumerable: true, configurable: true };
+    }
+  });
   const handle = makeNodeHandle(node.id, host);
   const obj = host.resolveObject(node.id);
   return {
     node: handle,
-    params: resolvedParams,
+    params: liveParams,
     state: stateObj,
-    elapsedTime: simElapsed,
+    get elapsedTime() {
+      return simElapsed;
+    },
     get position() {
       return handle.position;
     },
@@ -9885,7 +10216,7 @@ function buildScriptContext(node, scriptId, rawParams, stateObj, host) {
       handle.visible = v;
     },
     get enabled() {
-      return inputRecord.__enabled !== false;
+      return readLatestInputRecord().__enabled !== false;
     },
     hasTag: (tag) => handle.hasTag(tag),
     addTag: (tag) => handle.addTag(tag),
@@ -11092,9 +11423,9 @@ function compileAndRegisterScript(id, fileName, source) {
 }
 function viewRelativeMove(action, host) {
   const axis = getActionAxis2D(action);
-  const length4 = Math.hypot(axis.x, axis.y);
-  if (length4 < 1e-4) return { x: 0, y: 0, z: 0 };
-  const scale = length4 > 1 ? 1 / length4 : 1;
+  const length5 = Math.hypot(axis.x, axis.y);
+  if (length5 < 1e-4) return { x: 0, y: 0, z: 0 };
+  const scale = length5 > 1 ? 1 / length5 : 1;
   const yaw = host.yaw?.() ?? 0;
   const sin3 = Math.sin(yaw);
   const cos3 = Math.cos(yaw);
@@ -12147,12 +12478,12 @@ function childrenOf(nodes, parentId) {
   return Object.values(nodes).filter((node) => node.parentId === parentId).sort((a, b) => a.order - b.order || a.name.localeCompare(b.name, "zh"));
 }
 function nextOrder(nodes, parentId, exceptId) {
-  let max4 = 0;
+  let max5 = 0;
   for (const node of Object.values(nodes)) {
     if (node.id === exceptId || node.parentId !== parentId) continue;
-    if (node.order >= max4) max4 = node.order + 1;
+    if (node.order >= max5) max5 = node.order + 1;
   }
-  return max4;
+  return max5;
 }
 function uniqueName(nodes, base) {
   const names = new Set(Object.values(nodes).map((node) => node.name));
@@ -12739,9 +13070,9 @@ function contains(nodes, ancestor, id) {
   return false;
 }
 function nextOrder2(nodes, parentId) {
-  let max4 = -1;
-  for (const node of Object.values(nodes)) if (node.parentId === parentId) max4 = Math.max(max4, node.order);
-  return max4 + 1;
+  let max5 = -1;
+  for (const node of Object.values(nodes)) if (node.parentId === parentId) max5 = Math.max(max5, node.order);
+  return max5 + 1;
 }
 function uniqueName2(nodes, base) {
   const names = new Set(Object.values(nodes).map((node) => node.name));
@@ -12894,6 +13225,9 @@ var zh = {
   "library.item.sky": "\u5929\u7A7A",
   "library.item.skyDetail": "\u65F6\u523B\u3001\u5927\u6C14\u6563\u5C04\u548C\u8DDF\u7740\u592A\u9633\u8D70\u7684\u73AF\u5883\u5149\u7167\u3002\u5173\u6389\u540E\u53C2\u6570\u7559\u5728\u753B\u9762\u4E0A\uFF0C\u53EA\u662F\u4E0D\u518D\u7ED8\u5236\u3002",
   "library.item.skyPoints": "\u65F6\u523B\u4E0E\u5927\u6C14\n\u73AF\u5883\u5149\u7167\n\u9AD8\u5EA6\u96FE\u3001\u661F\u7A7A\u4E0E\u6708\u4EAE",
+  "library.item.fog": "\u9AD8\u5EA6\u96FE",
+  "library.item.fogDetail": "\u66FF\u4EE3\u9ED8\u8BA4\u7EBF\u6027\u96FE\uFF0C\u540C\u65F6\u63D0\u4F9B\u9AD8\u5EA6\u96FE\u4E0E\u8FDC\u8FD1\u96FE\u4E24\u5957\u72EC\u7ACB\u53C2\u6570\uFF0C\u652F\u6301\u9AD8\u5EA6\u6807\u51C6\u7EBF\u3001\u8FC7\u6E21\u8303\u56F4\u3001\u53CC\u8272\u6DF7\u5408\u4E0E\u968F\u673A\u566A\u70B9\u3002",
+  "library.item.fogPoints": "\u9AD8\u5EA6\u96FE\uFF08\u6807\u51C6\u7EBF\u4E0E\u8FC7\u6E21\u8303\u56F4\uFF09\n\u8FDC\u8FD1\u96FE\uFF08\u8D77\u70B9\u3001\u7EC8\u70B9\u4E0E\u8FC7\u6E21\u8303\u56F4\uFF09\n3D \u968F\u673A\u566A\u70B9\u6D41\u52A8\u4E0E\u53CC\u8272\u878D\u5408",
   "library.item.water": "\u6C34\u4F53",
   "library.item.waterDetail": "TSL \u6C34\u9762\u3001\u53CC\u5C42\u6D41\u52A8\u6CD5\u7EBF\u3001\u5E73\u9762\u53CD\u5C04\u3001\u6C34\u6DF1\u5438\u6536\u4E0E\u5CB8\u8FB9\u6CE1\u6CAB\u3002\u5173\u6389\u540E\u53C2\u6570\u4FDD\u7559\uFF0C\u6062\u590D\u539F\u6750\u8D28\u3002",
   "library.item.waterPoints": "\u5E73\u9762\u53CD\u5C04\u4E0E\u6C34\u6DF1\u5438\u6536\n\u5CB8\u8FB9\u6CE1\u6CAB\u4E0E\u6CE2\u6D6A\n5 \u5957\u9884\u8BBE\u4E0E 3 \u6863\u753B\u8D28",
@@ -13180,7 +13514,36 @@ var zh = {
   "inspector.linkedNote": "\u8FD9\u4E2A\u69FD\u5F15\u7528\u6750\u8D28\u8D44\u6E90\u3002\u8FD9\u91CC\u7684\u4FEE\u6539\u4F1A\u4F5C\u7528\u5230\u6240\u6709\u4F7F\u7528\u5B83\u7684\u7269\u4F53\u3002",
   "material.shader": "\u7740\u8272\u5668",
   "material.lit": "\u6807\u51C6\u5149\u7167",
-  "material.unityStandard": "Unity \u6807\u51C6 (R\u91D1\u5C5E / A\u5149\u6ED1)",
+  "material.unityStandard": "Unity \u6807\u51C6",
+  "material.physical": "PBR Advanced",
+  "material.clearcoatSection": "\u6E05\u6F06 (Clearcoat)",
+  "material.clearcoatEnabled": "\u542F\u7528\u6E05\u6F06",
+  "material.clearcoat": "\u6E05\u6F06\u5F3A\u5EA6",
+  "material.clearcoatRoughness": "\u6E05\u6F06\u7C97\u7CD9\u5EA6",
+  "material.clearcoatMap": "\u6E05\u6F06\u8D34\u56FE",
+  "material.clearcoatRoughnessMap": "\u6E05\u6F06\u7C97\u7CD9\u56FE",
+  "material.clearcoatNormalMap": "\u6E05\u6F06\u6CD5\u7EBF\u56FE",
+  "material.transmissionSection": "\u900F\u5C04 / \u73BB\u7483 (Transmission)",
+  "material.transmissionEnabled": "\u542F\u7528\u900F\u5C04",
+  "material.transmission": "\u900F\u5C04\u5F3A\u5EA6",
+  "material.ior": "\u6298\u5C04\u7387 (IOR)",
+  "material.thickness": "\u4ECB\u8D28\u539A\u5EA6",
+  "material.attenuationColor": "\u8870\u51CF\u989C\u8272",
+  "material.attenuationDistance": "\u8870\u51CF\u8DDD\u79BB",
+  "material.sheenSection": "\u4E1D\u7ED2 / \u5E03\u6599 (Sheen)",
+  "material.sheenEnabled": "\u542F\u7528\u4E1D\u7ED2",
+  "material.sheen": "\u4E1D\u7ED2\u5F3A\u5EA6",
+  "material.sheenRoughness": "\u4E1D\u7ED2\u7C97\u7CD9\u5EA6",
+  "material.sheenColor": "\u4E1D\u7ED2\u989C\u8272",
+  "material.iridescenceSection": "\u8679\u5F69\u8584\u819C (Iridescence)",
+  "material.iridescenceEnabled": "\u542F\u7528\u8679\u5F69",
+  "material.iridescence": "\u8679\u5F69\u5F3A\u5EA6",
+  "material.iridescenceIOR": "\u8679\u5F69\u6298\u5C04\u7387",
+  "material.iridescenceThickness": "\u8679\u5F69\u819C\u539A (nm)",
+  "material.specularSection": "\u9AD8\u5149\u53CD\u5C04 (Specular)",
+  "material.specularEnabled": "\u542F\u7528\u9AD8\u5149\u5FAE\u8C03",
+  "material.specularIntensity": "\u9AD8\u5149\u5F3A\u5EA6",
+  "material.specularColor": "\u9AD8\u5149\u989C\u8272",
   "material.unityMetallicGloss": "\u91D1\u5C5E\u5149\u6ED1",
   "material.unityMetallicGlossHint": "Unity \u8D34\u56FE\u7EA6\u5B9A\uFF1A\u7EA2\u901A\u9053\u91D1\u5C5E\uFF0CAlpha \u901A\u9053\u5149\u6ED1\u5EA6\uFF081-\u7C97\u7CD9\uFF09\uFF0C\u7EFF\u901A\u9053\u906E\u853D",
   "material.particle": "\u7C92\u5B50\u65E0\u5149",
@@ -13739,6 +14102,34 @@ var zh = {
   "sky.moon": "\u6708\u4EAE",
   "sky.moonPhase": "\u6708\u76F8",
   "sky.moonLight": "\u6708\u5149",
+  "fog.title": "\u9AD8\u5EA6\u96FE",
+  "fog.general": "\u57FA\u7840\u8BBE\u7F6E",
+  "fog.opacity": "\u6700\u5927\u4E0D\u900F\u660E\u5EA6",
+  "fog.affectSky": "\u4F5C\u7528\u4E8E\u5929\u7A7A",
+  "fog.heightGroup": "\u9AD8\u5EA6\u96FE",
+  "fog.heightEnabled": "\u542F\u7528\u9AD8\u5EA6\u96FE",
+  "fog.heightColor": "\u9AD8\u5EA6\u96FE\u989C\u8272",
+  "fog.heightGradient": "\u4E09\u8272\u5782\u76F4\u6E10\u53D8",
+  "fog.heightBottomColor": "\u5E95\u5C42\u989C\u8272",
+  "fog.heightMidColor": "\u4E2D\u5C42\u989C\u8272",
+  "fog.heightTopColor": "\u9876\u5C42\u989C\u8272",
+  "fog.heightBase": "\u9AD8\u5EA6\u6807\u51C6\u7EBF",
+  "fog.heightRange": "\u9AD8\u5EA6\u8FC7\u6E21\u8303\u56F4",
+  "fog.heightDensity": "\u6D53\u5EA6",
+  "fog.heightFalloff": "\u8870\u51CF\u66F2\u7EBF",
+  "fog.distanceGroup": "\u8FDC\u8FD1\u96FE",
+  "fog.distanceEnabled": "\u542F\u7528\u8FDC\u8FD1\u96FE",
+  "fog.distanceNearColor": "\u8FD1\u7AEF\u989C\u8272",
+  "fog.distanceFarColor": "\u8FDC\u7AEF\u989C\u8272",
+  "fog.distanceStart": "\u8D77\u70B9\u8DDD\u79BB",
+  "fog.distanceEnd": "\u7EC8\u70B9\u8DDD\u79BB",
+  "fog.distanceTransition": "\u8FC7\u6E21\u8303\u56F4",
+  "fog.distanceDensity": "\u6D53\u5EA6",
+  "fog.noiseGroup": "\u968F\u673A\u566A\u70B9",
+  "fog.noiseEnabled": "\u542F\u7528\u566A\u70B9",
+  "fog.noiseScale": "\u566A\u70B9\u5C3A\u5EA6",
+  "fog.noiseIntensity": "\u6270\u52A8\u5F3A\u5EA6",
+  "fog.noiseSpeed": "\u98D8\u52A8\u901F\u5EA6",
   "projectSettings.skyDetail": "\u7A0B\u5E8F\u5316\u5927\u6C14\u548C\u65F6\u523B\u3002\u5F00\u542F\u540E\u53D6\u4EE3\u80CC\u666F\u4E0E\u73AF\u5883\u8D34\u56FE\uFF0C\u91D1\u5C5E\u53CD\u5C04\u8DDF\u7740\u592A\u9633\u53D8\u3002\u5173\u6389\u540E\u53C2\u6570\u7559\u5728\u753B\u9762\u4E0A\u3002",
   "projectSettings.navigationDetail": "\u4ECE\u9759\u6001\u8868\u9762\u70D8\u7119\u5BFC\u822A\u7F51\u683C\u3002\u8BD5\u73A9\u65F6\u969C\u788D\u53EF\u4EE5\u6316\u5F00\u7F51\u683C\uFF0C\u5BFB\u8DEF\u8BFB\u53D6\u8FD9\u4EFD\u7F51\u683C\u3002",
   "projectSettings.catalogs": "\u9879\u76EE\u76EE\u5F55",
@@ -14035,6 +14426,17 @@ var zh = {
   "pkg.scanning": "\u6B63\u5728\u626B\u63CF\u53EF\u63D0\u53D6\u8D44\u6E90\u2026",
   "pkg.scanningSlow": "\u8D44\u6E90\u5305\u8F83\u5927\uFF0C\u6B63\u5728\u89E3\u538B\u548C\u5EFA\u7ACB\u7D22\u5F15\u3002\u7A97\u53E3\u6CA1\u6709\u5361\u6B7B\uFF0C\u5B8C\u6210\u540E\u4F1A\u663E\u793A\u53EF\u63D0\u53D6\u8D44\u6E90\u3002",
   "pkg.scanFailed": "\u626B\u63CF\u5931\u8D25\uFF1A{detail}",
+  "pkg.scanProgress": "\u6B63\u5728\u89E3\u538B\u5E76\u5EFA\u7ACB\u7D22\u5F15 {percent}%\uFF08{done} / {total}\uFF09",
+  "pkg.tooLargeForBrowser": "\u8D44\u6E90\u5305\u592A\u5927\uFF08{size}\uFF09\uFF0C\u7F51\u9875\u7248\u65E0\u6CD5\u5BFC\u5165\uFF0C\u8BF7\u5728\u684C\u9762\u7248\u91CC\u5BFC\u5165\u3002",
+  "pkg.cancelled": "\u5DF2\u53D6\u6D88\u63D0\u53D6\uFF0C\u5B8C\u6210\u4E86 {count} \u9879\u3002",
+  "pkg.cancel": "\u53D6\u6D88",
+  "pkg.failedList": "\u4EE5\u4E0B {count} \u9879\u5931\u8D25\uFF1A",
+  "memory.sweepDone": "\u5DF2\u91CA\u653E\u573A\u666F\u6CA1\u7528\u5230\u7684\u8D44\u6E90\uFF1A{textures} \u5F20\u8D34\u56FE\u3001{models} \u4E2A\u6A21\u578B\uFF0C\u7EA6 {freed}\u3002\u8D34\u56FE\u663E\u5B58\u4F30\u7B97 {used} / \u9884\u7B97 {budget}\u3002",
+  "memory.sweepWhilePlaying": "\u8BD5\u73A9\u671F\u95F4\u4E0D\u56DE\u6536\u8D44\u6E90\uFF0C\u8BF7\u5148\u505C\u6B62\u8BD5\u73A9\u3002",
+  "memory.overBudget": "\u8D34\u56FE\u663E\u5B58\u4F30\u7B97 {used} \u5DF2\u8D85\u8FC7\u9884\u7B97 {budget}\uFF0C\u5F53\u524D\u573A\u666F\u7528\u5230\u7684\u8D34\u56FE\u592A\u591A\u3002\u4E4B\u540E\u52A0\u8F7D\u7684\u8D34\u56FE\u4F1A\u81EA\u52A8\u964D\u4F4E\u6E05\u6670\u5EA6\u4EE5\u907F\u514D\u663E\u5B58\u8017\u5C3D\u3002",
+  "memory.loadFailed": "{kind}\u300C{name}\u300D\u591A\u6B21\u52A0\u8F7D\u5931\u8D25\uFF0C\u5DF2\u505C\u6B62\u81EA\u52A8\u91CD\u8BD5\uFF1A{message}\u3002\u4FEE\u597D\u6587\u4EF6\u540E\u91CD\u65B0\u5BFC\u5165\u5373\u53EF\u3002",
+  "memory.bulkImport": "\u672C\u6B21\u5BFC\u5165 {count} \u4E2A\u6587\u4EF6\uFF0C\u5DF2\u5207\u6362\u4E3A\u6279\u91CF\u6A21\u5F0F\uFF1A\u53EA\u5199\u5165\u5DE5\u7A0B\u5E76\u751F\u6210\u7F29\u7565\u56FE\uFF0C\u7528\u5230\u65F6\u518D\u52A0\u8F7D\u3002",
+  "menu.releaseUnused": "\u91CA\u653E\u672A\u5F15\u7528\u8D44\u6E90",
   "pkg.empty": "\u6CA1\u6709\u627E\u5230\u53EF\u63D0\u53D6\u7684\u6A21\u578B\u3001\u8D34\u56FE\u3001\u52A8\u753B\u6216\u6750\u8D28\u3002",
   "pkg.models": "\u6A21\u578B",
   "pkg.textures": "\u8D34\u56FE",
@@ -14885,6 +15287,9 @@ var en = {
   "library.item.sky": "Sky",
   "library.item.skyDetail": "Time of day, atmospheric scattering and image lighting that follows the sun. Turning this off keeps the settings and stops drawing it.",
   "library.item.skyPoints": "Time and atmosphere\nImage-based lighting\nHeight fog, stars and moon",
+  "library.item.fog": "Height Fog",
+  "library.item.fogDetail": "Replaces default linear fog with independent height and distance fog controls, transition bands, dual colors, and 3D noise.",
+  "library.item.fogPoints": "Height fog (base line & range)\nDistance fog (start, end & transition)\n3D noise animation & color blending",
   "library.item.water": "Water",
   "library.item.waterDetail": "TSL water surface with dual scrolling normals, planar reflection, depth absorption and shoreline foam.",
   "library.item.waterPoints": "Planar reflection & depth\nShoreline foam & waves\n5 style & 3 quality presets",
@@ -15171,7 +15576,36 @@ var en = {
   "inspector.linkedNote": "This slot references a material asset. Edits apply to every object using it.",
   "material.shader": "Shader",
   "material.lit": "Lit",
-  "material.unityStandard": "Unity Standard (R Metallic / A Smoothness)",
+  "material.unityStandard": "Unity Standard",
+  "material.physical": "PBR Advanced",
+  "material.clearcoatSection": "Clearcoat",
+  "material.clearcoatEnabled": "Enable clearcoat",
+  "material.clearcoat": "Clearcoat",
+  "material.clearcoatRoughness": "Coat Roughness",
+  "material.clearcoatMap": "Clearcoat Map",
+  "material.clearcoatRoughnessMap": "Coat Roughness Map",
+  "material.clearcoatNormalMap": "Coat Normal Map",
+  "material.transmissionSection": "Transmission (Glass)",
+  "material.transmissionEnabled": "Enable transmission",
+  "material.transmission": "Transmission",
+  "material.ior": "IOR",
+  "material.thickness": "Thickness",
+  "material.attenuationColor": "Attenuation Color",
+  "material.attenuationDistance": "Attenuation Dist",
+  "material.sheenSection": "Sheen (Fabric)",
+  "material.sheenEnabled": "Enable sheen",
+  "material.sheen": "Sheen",
+  "material.sheenRoughness": "Sheen Roughness",
+  "material.sheenColor": "Sheen Color",
+  "material.iridescenceSection": "Iridescence",
+  "material.iridescenceEnabled": "Enable iridescence",
+  "material.iridescence": "Iridescence",
+  "material.iridescenceIOR": "Iridescence IOR",
+  "material.iridescenceThickness": "Film Thickness (nm)",
+  "material.specularSection": "Specular",
+  "material.specularEnabled": "Enable specular override",
+  "material.specularIntensity": "Specular Intensity",
+  "material.specularColor": "Specular Color",
   "material.unityMetallicGloss": "Metallic Smoothness",
   "material.unityMetallicGlossHint": "Unity convention: Red is metallic, Alpha is smoothness (1-roughness), Green is occlusion",
   "material.particle": "Particle Unlit",
@@ -15730,6 +16164,34 @@ var en = {
   "sky.moon": "Moon",
   "sky.moonPhase": "Moon phase",
   "sky.moonLight": "Moonlight",
+  "fog.title": "Height Fog",
+  "fog.general": "General",
+  "fog.opacity": "Max opacity",
+  "fog.affectSky": "Affect sky",
+  "fog.heightGroup": "Height Fog",
+  "fog.heightEnabled": "Enable height fog",
+  "fog.heightColor": "Height color",
+  "fog.heightGradient": "3-color vertical gradient",
+  "fog.heightBottomColor": "Bottom color",
+  "fog.heightMidColor": "Mid color",
+  "fog.heightTopColor": "Top color",
+  "fog.heightBase": "Base height",
+  "fog.heightRange": "Height range",
+  "fog.heightDensity": "Density",
+  "fog.heightFalloff": "Falloff curve",
+  "fog.distanceGroup": "Distance Fog",
+  "fog.distanceEnabled": "Enable distance fog",
+  "fog.distanceNearColor": "Near color",
+  "fog.distanceFarColor": "Far color",
+  "fog.distanceStart": "Start distance",
+  "fog.distanceEnd": "End distance",
+  "fog.distanceTransition": "Transition range",
+  "fog.distanceDensity": "Density",
+  "fog.noiseGroup": "Noise",
+  "fog.noiseEnabled": "Enable noise",
+  "fog.noiseScale": "Noise scale",
+  "fog.noiseIntensity": "Noise intensity",
+  "fog.noiseSpeed": "Noise speed",
   "projectSettings.skyDetail": "Procedural atmosphere and time of day. While on, it replaces the background and environment image so metal reflections follow the sun. Turning it off keeps the settings.",
   "projectSettings.navigationDetail": "Bakes a navmesh from static surfaces. Obstacles can carve it during play, and path queries read that mesh.",
   "projectSettings.catalogs": "Project catalogs",
@@ -16026,6 +16488,17 @@ var en = {
   "pkg.scanning": "Scanning extractable assets\u2026",
   "pkg.scanningSlow": "This package is large. The window is still working.",
   "pkg.scanFailed": "Scan failed: {detail}",
+  "pkg.scanProgress": "Unpacking and indexing {percent}% ({done} / {total})",
+  "pkg.tooLargeForBrowser": "This package is too large ({size}) for the web version. Import it in the desktop app.",
+  "pkg.cancelled": "Extraction cancelled after {count} items.",
+  "pkg.cancel": "Cancel",
+  "pkg.failedList": "{count} items failed:",
+  "memory.sweepDone": "Released unused assets: {textures} textures, {models} models, about {freed}. Estimated texture memory {used} / budget {budget}.",
+  "memory.sweepWhilePlaying": "Assets are not released while playing. Stop the playtest first.",
+  "memory.overBudget": "Estimated texture memory {used} exceeds the budget {budget}: this scene uses too many textures. Textures loaded from now on use a lower resolution to avoid running out of video memory.",
+  "memory.loadFailed": '{kind} "{name}" failed to load several times and will not be retried: {message}. Fix the file and reimport it.',
+  "memory.bulkImport": "Importing {count} files in bulk mode: files are written to the project with thumbnails and loaded on first use.",
+  "menu.releaseUnused": "Release Unused Assets",
   "pkg.empty": "No extractable models, textures, animations, or materials.",
   "pkg.models": "Models",
   "pkg.textures": "Textures",
@@ -17049,10 +17522,10 @@ function lookPoint(eye, focus, lookAtTarget) {
   return [eye[0] + dx / len, eye[1] + dy / len, eye[2] + dz / len];
 }
 function clampPitch(pitch, spec) {
-  let min3 = spec.minPitch * Math.PI / 180;
-  let max4 = spec.maxPitch * Math.PI / 180;
-  if (min3 > max4) [min3, max4] = [max4, min3];
-  return Math.min(max4, Math.max(min3, pitch));
+  let min4 = spec.minPitch * Math.PI / 180;
+  let max5 = spec.maxPitch * Math.PI / 180;
+  if (min4 > max5) [min4, max5] = [max5, min4];
+  return Math.min(max5, Math.max(min4, pitch));
 }
 function spring(host, focus, desired, ignoreId, radius) {
   const dx = desired[0] - focus[0];
@@ -17095,7 +17568,7 @@ function ensureLayers(layers) {
 }
 
 // src/editor/scene/transform.ts
-import { Euler as Euler3, Matrix4 as Matrix42, Quaternion as Quaternion6, Vector3 as Vector312 } from "three";
+import { Euler as Euler3, Matrix4 as Matrix43, Quaternion as Quaternion6, Vector3 as Vector312 } from "three";
 var DEG2 = Math.PI / 180;
 var RAD = 180 / Math.PI;
 function eulerQuaternion2(rotation) {
@@ -17202,7 +17675,7 @@ function placeViewportAt(position, quaternion) {
 
 // src/editor/scene/store.ts
 init_archive();
-init_session10();
+init_session11();
 var seed = createSeed();
 function bakeFollow(node) {
   const arm2 = cameraArmOf(node.id);
@@ -17457,13 +17930,13 @@ var useEditorStore = create6((set, get) => ({
     });
     if (ok && created) get().log("info", translate("log.created", { name: created }));
   },
-  extractSocket: (modelId, bone, name, select3 = true) => {
+  extractSocket: (modelId, bone, name, select4 = true) => {
     if (get().playState !== "stopped") return null;
     const parent = get().nodes[modelId];
     if (!parent || parent.kind !== "model") return null;
     const existing = Object.values(get().nodes).find((node) => node.parentId === modelId && node.socketBone === bone);
     if (existing) {
-      if (select3) get().setSelection([existing.id]);
+      if (select4) get().setSelection([existing.id]);
       return existing.id;
     }
     let createdId = null;
@@ -17479,7 +17952,7 @@ var useEditorStore = create6((set, get) => ({
         socketBone: bone
       });
       tagAddedChild(draft.nodes, id);
-      if (select3) draft.selection = [id];
+      if (select4) draft.selection = [id];
     });
     return createdId;
   },
@@ -18918,13 +19391,13 @@ test("\u5185\u7F6E\u7EC4\u4EF6\uFF1A\u767B\u8BB0\u8868\u5B8C\u6574\uFF0C\u672A\u
   assert.equal(applyCoreComponentPatch(null, "animation", {}).ok, false);
 });
 test("\u5185\u7F6E\u7EC4\u4EF6\uFF1A\u6302\u8F7D\u89D2\u8272\u4F1A\u8865\u5168\u9ED8\u8BA4\u503C\u5E76\u914D\u597D\u8DDF\u968F\u76F8\u673A\uFF0C\u79FB\u9664\u65F6\u6210\u5BF9\u6E05\u7406", () => {
-  const mounted = applyCoreComponentPatch({ packs: { __project__: { Foo: {} } } }, "character", {
+  const mounted2 = applyCoreComponentPatch({ packs: { __project__: { Foo: {} } } }, "character", {
     moveSpeed: 6,
     mode: "topDown",
     idleClip: "Idle"
   });
-  assert.ok(mounted.ok);
-  const gameplay = mounted.gameplay;
+  assert.ok(mounted2.ok);
+  const gameplay = mounted2.gameplay;
   assert.equal(gameplay.character?.moveSpeed, 6);
   assert.equal(gameplay.character?.idleClip, "Idle");
   assert.equal(gameplay.character?.jumpSpeed, 6.5, "\u672A\u6307\u5B9A\u7684\u5B57\u6BB5\u53D6\u9ED8\u8BA4\u503C");
@@ -18947,9 +19420,9 @@ test("\u5185\u7F6E\u7EC4\u4EF6\uFF1A\u6302\u8F7D\u89D2\u8272\u4F1A\u8865\u5168\u
 test("\u5185\u7F6E\u7EC4\u4EF6\uFF1A\u89D2\u8272\u63A7\u5236\u5668\u65E0\u9700\u811A\u672C\u5373\u53EF\u54CD\u5E94 Move \u8F93\u5165", () => {
   clearScriptRuntimeState();
   clearAllVirtualInput();
-  const mounted = applyCoreComponentPatch(null, "character", { mode: "topDown", dash: false });
-  assert.ok(mounted.ok);
-  const sim = createHeadlessWorld([makeNode2("hero", "Hero", { gameplay: mounted.gameplay })]);
+  const mounted2 = applyCoreComponentPatch(null, "character", { mode: "topDown", dash: false });
+  assert.ok(mounted2.ok);
+  const sim = createHeadlessWorld([makeNode2("hero", "Hero", { gameplay: mounted2.gameplay })]);
   const before = sim.host.resolveObject("hero").position.clone();
   injectVirtualInput({ type: "axis", action: "Move", x: 0, y: 1 });
   sim.run(1);
@@ -19050,14 +19523,14 @@ export default defineBehavior({
 })
 `;
   assert.equal(compileAndRegisterScript("SpeedDriver", "Assets/Scripts/SpeedDriver.ts", driver2).ok, true);
-  const mounted = applyCoreComponentPatch(
+  const mounted2 = applyCoreComponentPatch(
     { packs: { __project__: { Patrol: {} } } },
     "locomotion",
     { idleClip: "Idle", walkClip: "Walk", runClip: "Run", runClipAssetId: "anim-pack" }
   );
-  assert.ok(mounted.ok);
+  assert.ok(mounted2.ok);
   const sim = createHeadlessWorld([
-    makeNode2("npc", "NPC", { assetId: "npc-model", gameplay: mounted.gameplay }),
+    makeNode2("npc", "NPC", { assetId: "npc-model", gameplay: mounted2.gameplay }),
     makeNode2("driver", "Driver", { gameplay: { packs: { __project__: { SpeedDriver: {} } } } })
   ]);
   sim.run(0.9);

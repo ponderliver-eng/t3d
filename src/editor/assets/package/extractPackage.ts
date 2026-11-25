@@ -1,10 +1,11 @@
-import { importExtractedBytes } from '../import'
+import { importExtractedBytes, type ImportOptions } from '../import'
+import { releaseUnreferencedAssets } from '../assetMemory'
 import { useAssetStore } from '../library'
 import { normalizeDir } from '../folders'
 import { getModelTemplate, normalizeMaterialKey, retargetClipsOntoModel, type ModelMaterialHint } from '../models'
 import { importUnityMatText, textureGuidRegex, UNITY_MAT_TEXTURE_PROPERTIES } from '../unityMaterial'
 import { decodeTgaToRgba, encodeRgbaToPng } from '../ufbx/tgaTexture'
-import type { PackageAssetScannerEntry, PackageMaterialBindingSource } from './packageAssetScanner'
+import type { PackageAssetScannerCompanionFile, PackageAssetScannerEntry, PackageMaterialBindingSource } from './packageAssetScanner'
 import type { PackageModelAssetRole } from './packageAssetRoleGuess'
 
 export interface PackageExtractionProgress {
@@ -66,7 +67,7 @@ export function withReferencedTextures(
     }
   }
   for (const entry of all) {
-    if (entry.kind !== 'material' || !ids.has(entry.id)) continue
+    if (entry.kind !== 'material' || !ids.has(entry.id) || !entry.assetBytes) continue
     const text = new TextDecoder().decode(entry.assetBytes)
     for (const property of UNITY_MAT_TEXTURE_PROPERTIES) {
       const guid = textureGuidRegex(text, property)
@@ -87,8 +88,16 @@ export async function extractPackageEntries(
     carrierBodies: Record<string, string>
     materialBindingSources?: readonly PackageMaterialBindingSource[]
     onProgress?: (progress: PackageExtractionProgress) => void
+    /** 批量模式：每个资源入库后立刻放掉内存里的副本（见 ImportOptions.bulk） */
+    bulk?: boolean
+    /** 取消信号：在两个文件之间检查，已经入库的保留 */
+    signal?: AbortSignal
   },
-): Promise<{ imported: string[]; failed: Array<{ name: string; error: string }> }> {
+): Promise<{ imported: string[]; failed: Array<{ name: string; error: string }>; cancelled: boolean }> {
+  // 合并动画要用到已加载的模板，所以这时模型不逐个释放，改为全部做完后统一回收
+  const releaseEach = Boolean(options.bulk) && !options.mergeAnimations
+  const companionCache = createCompanionCache()
+  const cancelled = () => options.signal?.aborted === true
   const imported: string[] = []
   const failed: Array<{ name: string; error: string }> = []
   const importedIds = new Map<string, string>()
@@ -106,9 +115,10 @@ export async function extractPackageEntries(
 
   // 1. 先导贴图（记录 GUID -> 贴图 AssetId）
   for (const entry of textures) {
+    if (cancelled()) break
     report('textures', entry.fileName)
     try {
-      const id = await importOne(entry, options.targetDirectory, options.directoryMode)
+      const id = await importOne(entry, options.targetDirectory, options.directoryMode, companionCache, { bulk: options.bulk })
       if (id) {
         imported.push(id)
         importedIds.set(entry.id, id)
@@ -123,11 +133,12 @@ export async function extractPackageEntries(
 
   // 2. 再导材质（这样后面模型导入时，工程里已经有完整的 MaterialAsset 可供绑定）
   for (const entry of materials) {
+    if (cancelled()) break
     report('materials', entry.fileName)
     try {
       const dir = destinationDir(entry, options.targetDirectory, options.directoryMode)
       ensureFolder(dir)
-      const text = new TextDecoder().decode(entry.assetBytes)
+      const text = new TextDecoder().decode(entry.assetBytes ?? await entry.readAsset())
       const id = importUnityMatText(text, entry.fileName, dir, guid => guidToTexture.get(guid.toLowerCase()) ?? null)
       if (id) {
         imported.push(id)
@@ -149,11 +160,13 @@ export async function extractPackageEntries(
 
   // 3. 导入模型与动画，并传入从 .meta / .prefab / .unity 解析出的材质绑定提示
   for (const entry of models) {
+    if (cancelled()) break
     const role = options.roles[entry.id] ?? entry.roleGuess?.role
     report(role === 'animationCarrier' || entry.kind === 'animation' ? 'animations' : 'models', entry.fileName)
     try {
       const hint = buildModelMaterialHint(entry, guidToMaterial, nameToMaterial, options.materialBindingSources)
-      const id = await importOne(entry, options.targetDirectory, options.directoryMode, hint)
+      const previewPng = entry.kind === 'model' && entry.readPreview ? await entry.readPreview().catch(() => undefined) : undefined
+      const id = await importOne(entry, options.targetDirectory, options.directoryMode, companionCache, { bulk: releaseEach, previewPng }, hint)
       if (id) {
         imported.push(id)
         importedIds.set(entry.id, id)
@@ -165,7 +178,7 @@ export async function extractPackageEntries(
   }
 
   // 4. 已导入的人形片段都可以重定向到其他人形本体，不要求文件名带 @。
-  if (options.mergeAnimations) {
+  if (options.mergeAnimations && !cancelled()) {
     const ready = models.flatMap(entry => {
       const id = importedIds.get(entry.id)
       const template = id ? getModelTemplate(id) : undefined
@@ -195,41 +208,91 @@ export async function extractPackageEntries(
     }
   }
 
-  options.onProgress?.({ phase: 'materials', completed: total, total })
-  return { imported, failed }
+  // 批量但没有逐个释放时（合并动画），做完后把场景没用到的统一放掉
+  if (options.bulk && !releaseEach) releaseUnreferencedAssets()
+  options.onProgress?.({ phase: 'materials', completed, total })
+  return { imported, failed, cancelled: cancelled() }
 }
 
 async function importOne(
   entry: PackageAssetScannerEntry,
   target: string,
   mode: 'flat' | 'preserve',
+  companionCache: CompanionCache,
+  importOptions: ImportOptions,
   materialHint?: ModelMaterialHint,
 ): Promise<string | null> {
   const dir = destinationDir(entry, target, mode)
   ensureFolder(dir)
+  const bytes = await entry.readAsset()
   if (entry.extension === 'tga') {
-    const png = encodeRgbaToPng(decodeTgaToRgba(entry.assetBytes))
+    const png = encodeRgbaToPng(decodeTgaToRgba(bytes))
     const name = entry.fileName.replace(/\.tga$/i, '.png')
-    return importExtractedBytes(name, png, dir)
+    return importExtractedBytes(name, png, dir, [], undefined, importOptions)
   }
-  return importExtractedBytes(entry.fileName, entry.assetBytes, dir, companionTextures(entry), materialHint)
+  const companions = entry.companionFiles.length > 0 ? await companionTextures(entry, companionCache) : []
+  return importExtractedBytes(entry.fileName, bytes, dir, companions, materialHint, importOptions)
 }
 
-function companionTextures(entry: PackageAssetScannerEntry): Array<{ name: string; data: Uint8Array }> {
-  const files: Array<{ name: string; data: Uint8Array }> = []
-  for (const file of entry.companionFiles) {
-    if (file.extension === 'tga') {
-      try {
-        files.push({
-          name: file.fileName.replace(/\.tga$/i, '.png'),
-          data: encodeRgbaToPng(decodeTgaToRgba(file.bytes)),
-        })
-      } catch {
-        continue
+/** 一个模型最多带这么多伴随贴图字节进解析器，超出的不再读（工程里的独立贴图仍会按材质绑定）。 */
+const COMPANION_BYTES_PER_MODEL = 512 * 1024 * 1024
+/** 伴随贴图缓存上限：同一目录下的多个模型共用贴图，缓存一份避免反复读盘和转码。 */
+const COMPANION_CACHE_BYTES = 256 * 1024 * 1024
+
+interface CompanionCache {
+  get: (file: PackageAssetScannerCompanionFile) => Promise<{ name: string; data: Uint8Array } | null>
+}
+
+function createCompanionCache(): CompanionCache {
+  const cached = new Map<string, { name: string; data: Uint8Array }>()
+  let cachedBytes = 0
+  return {
+    async get(file) {
+      const hit = cached.get(file.originalPath)
+      if (hit) {
+        // 最近用过的挪到队尾
+        cached.delete(file.originalPath)
+        cached.set(file.originalPath, hit)
+        return hit
       }
-      continue
-    }
-    if (['png', 'jpg', 'jpeg', 'webp'].includes(file.extension)) files.push({ name: file.fileName, data: file.bytes })
+      let item: { name: string; data: Uint8Array } | null = null
+      if (file.extension === 'tga') {
+        try {
+          item = {
+            name: file.fileName.replace(/\.tga$/i, '.png'),
+            data: encodeRgbaToPng(decodeTgaToRgba(await file.read())),
+          }
+        } catch {
+          return null
+        }
+      } else if (['png', 'jpg', 'jpeg', 'webp'].includes(file.extension)) {
+        item = { name: file.fileName, data: await file.read() }
+      }
+      if (!item) return null
+      cached.set(file.originalPath, item)
+      cachedBytes += item.data.byteLength
+      for (const [key, old] of cached) {
+        if (cachedBytes <= COMPANION_CACHE_BYTES || key === file.originalPath) break
+        cached.delete(key)
+        cachedBytes -= old.data.byteLength
+      }
+      return item
+    },
+  }
+}
+
+async function companionTextures(
+  entry: PackageAssetScannerEntry,
+  cache: CompanionCache,
+): Promise<Array<{ name: string; data: Uint8Array }>> {
+  const files: Array<{ name: string; data: Uint8Array }> = []
+  let total = 0
+  for (const file of entry.companionFiles) {
+    if (total + file.sizeBytes > COMPANION_BYTES_PER_MODEL) continue
+    const item = await cache.get(file).catch(() => null)
+    if (!item) continue
+    files.push(item)
+    total += file.sizeBytes
   }
   return files
 }

@@ -996,7 +996,15 @@ function rank(meta: AssetMeta, referenced: Set<string>): number {
  * plainIds：以普通方式（颜色、法线等，或非 Unity 着色器的金属粗糙度）使用的贴图。
  * 只在 unityMrIds 里、不在 plainIds 里的贴图，打开时只需要重排后的成品，不需要原图。
  */
-function referencedAssetIds(document: ProjectDocument | null): { ids: Set<string>, unityMrIds: Set<string>, plainIds: Set<string> } {
+/** 编辑器当前状态（正在编辑的场景 + 工程里的材质/特效/界面）用到的全部资源。回收未引用资源时以它为准。 */
+export function liveReferencedAssetIds(): Set<string> {
+  const editor = useEditorStore.getState()
+  const library = Object.values(useAssetStore.getState().assets)
+    .filter((asset): asset is ProjectDocument['library'][number] => !('fileName' in asset))
+  return referencedAssetIds({ nodes: editor.nodes, picture: editor.picture, library }).ids
+}
+
+function referencedAssetIds(document: Pick<ProjectDocument, 'nodes' | 'picture' | 'library'> | null): { ids: Set<string>, unityMrIds: Set<string>, plainIds: Set<string> } {
   const ids = new Set<string>()
   const unityMrIds = new Set<string>()
   const plainIds = new Set<string>()
