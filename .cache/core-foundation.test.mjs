@@ -623,7 +623,21 @@ function emptyIndex() {
 }
 
 // src/core/project/designMemory.ts
+var NOTES_HEADING = "## \u8865\u5145\u8BF4\u660E";
+var NOTES_EMPTY = "\uFF08\u6682\u65E0\uFF09";
+var UPDATED_LABEL = "\u66F4\u65B0\u65F6\u95F4";
+var LINE_FIELDS = [
+  { key: "genre", label: "\u7C7B\u578B" },
+  { key: "perspective", label: "\u89C6\u89D2" },
+  { key: "coreLoop", label: "\u6838\u5FC3\u5FAA\u73AF" },
+  { key: "winLose", label: "\u80DC\u8D1F\u6761\u4EF6" },
+  { key: "artStyle", label: "\u7F8E\u672F\u98CE\u683C" },
+  { key: "colorPalette", label: "\u8272\u5F69\u677F" },
+  { key: "controls", label: "\u64CD\u4F5C\u6620\u5C04" },
+  { key: "namingRules", label: "\u547D\u540D\u7EA6\u5B9A" }
+];
 var memoryDesign = createDefaultDesignDoc();
+var memoryMarkdown = formatDesignMarkdown(memoryDesign);
 function createDefaultDesignDoc() {
   return {
     title: "\u672A\u547D\u540D\u6E38\u620F\u9879\u76EE",
@@ -639,24 +653,42 @@ function createDefaultDesignDoc() {
     updatedAt: (/* @__PURE__ */ new Date()).toISOString()
   };
 }
+function oneLine(value) {
+  return value.replace(/\s*\r?\n\s*/g, " ").trim();
+}
+function fieldLine(label, value) {
+  return `- **${label}**\uFF1A${oneLine(value) || "\u5F85\u5B9A"}`;
+}
+function fieldValue(doc, key) {
+  return key === "colorPalette" ? doc.colorPalette.join(", ") : doc[key];
+}
 function formatDesignMarkdown(doc) {
   return [
     `# ${doc.title || "\u672A\u547D\u540D\u6E38\u620F\u9879\u76EE"}`,
     "",
-    `- **\u7C7B\u578B**\uFF1A${doc.genre || "\u5F85\u5B9A"}`,
-    `- **\u89C6\u89D2**\uFF1A${doc.perspective || "\u5F85\u5B9A"}`,
-    `- **\u6838\u5FC3\u5FAA\u73AF**\uFF1A${doc.coreLoop || "\u5F85\u5B9A"}`,
-    `- **\u80DC\u8D1F\u6761\u4EF6**\uFF1A${doc.winLose || "\u5F85\u5B9A"}`,
-    `- **\u7F8E\u672F\u98CE\u683C**\uFF1A${doc.artStyle || "\u5F85\u5B9A"}`,
-    `- **\u8272\u5F69\u677F**\uFF1A${doc.colorPalette.length > 0 ? doc.colorPalette.join(", ") : "\u5F85\u5B9A"}`,
-    `- **\u64CD\u4F5C\u6620\u5C04**\uFF1A${doc.controls || "\u5F85\u5B9A"}`,
-    `- **\u547D\u540D\u7EA6\u5B9A**\uFF1A${doc.namingRules || "\u5F85\u5B9A"}`,
-    `- **\u66F4\u65B0\u65F6\u95F4**\uFF1A${doc.updatedAt}`,
+    ...LINE_FIELDS.map((field) => fieldLine(field.label, fieldValue(doc, field.key))),
+    `- **${UPDATED_LABEL}**\uFF1A${doc.updatedAt}`,
     "",
-    "## \u8865\u5145\u8BF4\u660E",
-    doc.notes || "\uFF08\u6682\u65E0\uFF09",
+    NOTES_HEADING,
+    doc.notes || NOTES_EMPTY,
     ""
   ].join("\n");
+}
+function findFieldLine(lines, label) {
+  const marker = `- **${label}**\uFF1A`;
+  return lines.findIndex((line) => line.startsWith(marker));
+}
+function notesRange(lines) {
+  const start = lines.findIndex((line) => line.trim() === NOTES_HEADING);
+  if (start < 0) return null;
+  let end = lines.length;
+  for (let i = start + 1; i < lines.length; i += 1) {
+    if (/^#{1,2}\s+/.test(lines[i])) {
+      end = i;
+      break;
+    }
+  }
+  return { start, end };
 }
 function parseDesignMarkdown(md) {
   const doc = createDefaultDesignDoc();
@@ -664,10 +696,9 @@ function parseDesignMarkdown(md) {
   const heading = lines.find((l) => l.startsWith("# "));
   if (heading) doc.title = heading.slice(2).trim();
   const readField = (prefix) => {
-    const marker = `- **${prefix}**\uFF1A`;
-    const line = lines.find((l) => l.startsWith(marker));
-    if (!line) return null;
-    const val = line.slice(marker.length).trim();
+    const idx = findFieldLine(lines, prefix);
+    if (idx < 0) return null;
+    const val = lines[idx].slice(`- **${prefix}**\uFF1A`.length).trim();
     return val === "\u5F85\u5B9A" ? "" : val;
   };
   doc.genre = readField("\u7C7B\u578B") ?? doc.genre;
@@ -681,10 +712,11 @@ function parseDesignMarkdown(md) {
   }
   doc.controls = readField("\u64CD\u4F5C\u6620\u5C04") ?? doc.controls;
   doc.namingRules = readField("\u547D\u540D\u7EA6\u5B9A") ?? doc.namingRules;
-  const notesIdx = lines.findIndex((l) => l.trim() === "## \u8865\u5145\u8BF4\u660E");
-  if (notesIdx >= 0) {
-    const notesText = lines.slice(notesIdx + 1).join("\n").trim();
-    doc.notes = notesText === "\uFF08\u6682\u65E0\uFF09" ? "" : notesText;
+  doc.updatedAt = readField(UPDATED_LABEL) || doc.updatedAt;
+  const range = notesRange(lines);
+  if (range) {
+    const notesText = lines.slice(range.start + 1, range.end).join("\n").trim();
+    doc.notes = notesText === NOTES_EMPTY ? "" : notesText;
   }
   return doc;
 }

@@ -1,4 +1,4 @@
-import { AnimationClip, BufferAttribute, Group, IntType, Mesh, MeshStandardMaterial, Object3D, Vector3, type BufferGeometry, type Material, type Skeleton } from 'three'
+import { AnimationClip, Group, Mesh, MeshStandardMaterial, Object3D, Vector3, type BufferGeometry } from 'three'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js'
 import { OBJLoader } from 'three/addons/loaders/OBJLoader.js'
@@ -12,7 +12,8 @@ import { useEditorStore } from '../scene/store'
 import { boundsOf } from '../scene/bounds'
 import { patchAssetMeta, readFileBytes, readModelArtifact, writeModelArtifact } from './cache'
 import { type FileAsset, type MaterialAsset, useAssetStore } from './library'
-import { applyModelMaterials, normalizeSlot } from './materials'
+import { applyModelMaterials, editorMaterialHost, normalizeSlot } from './materials'
+import { instantiateModelScene, normalizeMaterialKey as engineNormalizeMaterialKey, normalizeSkinIndex, readModelSlots } from '../../runtime/engine/materials'
 import { mergedHumanoidSlots, preserveHumanoidAvatarOverrides } from '../animation/humanoidAvatar'
 import { bindHumanoidClip } from '../animation/humanoidRetarget'
 import { releaseHumanoidPlayback } from '../animation/humanoidPlayback'
@@ -374,29 +375,8 @@ export function applyModelMaterialBindings(assetId: string, hint?: ModelMaterial
 export function instantiateModel(assetId: string): { object: Object3D, clips: AnimationClip[] } | null {
   const template = getModelTemplate(assetId)
   if (!template) return null
-  normalizeSkinIndex(template.scene)
-  const object = cloneSkinned(template.scene)
-  shareSkeletons(object)
-  padSkeletons(object)
-  object.traverse(child => {
-    const mesh = child as Mesh
-    if (!mesh.isMesh) return
-    mesh.castShadow = true
-    mesh.receiveShadow = true
-    if ((mesh as Mesh & { isSkinnedMesh?: boolean }).isSkinnedMesh) mesh.frustumCulled = false
-    if (Array.isArray(mesh.material)) mesh.material = mesh.material.map(material => cloneMaterialWithSlotToken(material))
-    else mesh.material = cloneMaterialWithSlotToken(mesh.material)
-  })
-  applyModelMaterials(object, template.slots)
+  const object = instantiateModelScene(template.scene, template.slots, editorMaterialHost, cloneSkinned)
   return { object, clips: template.clips }
-}
-
-function cloneMaterialWithSlotToken(material: Material): Material {
-  const next = material.clone()
-  if (material.userData?.t3dSlot !== undefined) {
-    next.userData = { ...next.userData, t3dSlot: material.userData.t3dSlot }
-  }
-  return next
 }
 
 const artifactLoaded = new Set<string>()
@@ -581,25 +561,6 @@ async function loadFbxWithUfbx(asset: FileAsset): Promise<ModelTemplate> {
   return template
 }
 
-function normalizeSkinIndex(root: Object3D) {
-  root.traverse(child => {
-    const mesh = child as Mesh
-    if (!mesh.isMesh) return
-    const geometry = mesh.geometry as BufferGeometry | undefined
-    const skinIndex = geometry?.attributes.skinIndex as (BufferAttribute & { gpuType?: number, isInterleavedBufferAttribute?: boolean }) | undefined
-    if (geometry && skinIndex && (skinIndex.array instanceof Uint32Array || skinIndex.array instanceof Int32Array || skinIndex.gpuType === IntType || skinIndex.isInterleavedBufferAttribute)) {
-      const next = new Uint16Array(skinIndex.count * 4)
-      for (let i = 0; i < skinIndex.count; i += 1) {
-        next[i * 4] = skinIndex.getX(i)
-        next[i * 4 + 1] = skinIndex.getY(i)
-        next[i * 4 + 2] = skinIndex.getZ(i)
-        next[i * 4 + 3] = skinIndex.getW(i)
-      }
-      geometry.setAttribute('skinIndex', new BufferAttribute(next, 4))
-    }
-  })
-}
-
 function templateFromObject(object: Object3D, clips: AnimationClip[]): ModelTemplate {
   let scene: Group
   if (object instanceof Group) scene = object
@@ -621,56 +582,11 @@ function templateFromObject(object: Object3D, clips: AnimationClip[]): ModelTemp
       }
     }
   })
-  const slots = readSlots(scene)
+  const slots = readModelSlots(scene)
   for (const clip of clips) {
     if (clip.tracks.length > 64) clip.optimize()
   }
   return { scene, clips, slots, humanoid: describeHumanoid(scene, clips), tree: describeModelTree(scene) }
-}
-
-/** 多块蒙皮网格如果绑的是同一套骨骼，只留一份骨架。否则每帧会按网格数量重复上传骨骼矩阵。 */
-function shareSkeletons(root: Object3D) {
-  const shared = new Map<string, Skeleton>()
-  root.traverse(child => {
-    const mesh = child as Mesh & { isSkinnedMesh?: boolean, skeleton?: Skeleton }
-    const skeleton = mesh.skeleton
-    if (!mesh.isSkinnedMesh || !skeleton || skeleton.bones.length === 0) return
-    let key = String(skeleton.bones.length)
-    for (let i = 0; i < skeleton.bones.length; i += 1) key += `|${skeleton.bones[i].uuid}`
-    const existing = shared.get(key)
-    if (existing) mesh.skeleton = existing
-    else shared.set(key, skeleton)
-  })
-}
-
-const BONE_BUCKETS = [16, 32, 64, 128, 256, 512, 1024]
-
-/**
- * 把每副骨架的骨骼数补齐到固定档位（16、32、64…）。
- * 骨骼矩阵数组的长度会写进着色器，骨骼数不同的蒙皮网格就各要一份着色器和管线；
- * 一个角色拆成十几个部件、每个部件骨骼数都不一样时，同一个材质会被编译十几遍，阴影同理。
- * 补的是第 0 根骨骼的重复项，没有顶点引用它们，不影响蒙皮结果。
- */
-function padSkeletons(root: Object3D) {
-  const done = new Set<Skeleton>()
-  root.traverse(child => {
-    const mesh = child as Mesh & { isSkinnedMesh?: boolean, skeleton?: Skeleton }
-    const skeleton = mesh.skeleton
-    if (!mesh.isSkinnedMesh || !skeleton || done.has(skeleton)) return
-    done.add(skeleton)
-    const count = skeleton.bones.length
-    if (count === 0 || skeleton.boneInverses.length !== count) return
-    const target = BONE_BUCKETS.find(size => size >= count)
-    if (!target || target === count) return
-    const bone = skeleton.bones[0]
-    const inverse = skeleton.boneInverses[0]
-    for (let i = count; i < target; i += 1) {
-      skeleton.bones.push(bone)
-      skeleton.boneInverses.push(inverse.clone())
-    }
-    skeleton.boneMatrices = new Float32Array(target * 16)
-    skeleton.update()
-  })
 }
 
 function rememberClipCatalog(assetId: string, clips: AnimationClip[]) {
@@ -728,47 +644,8 @@ function rememberHumanoidAvatar(assetId: string, built: ModelHumanoid['avatar'])
   void patchAssetMeta(assetId, { humanoidAvatar: next })
 }
 
-function readSlots(root: Object3D): PbrSlot[] {
-  const slots: PbrSlot[] = []
-  const seen = new Set<string>()
-  root.traverse(child => {
-    const mesh = child as Mesh
-    if (!mesh.isMesh) return
-    const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material]
-    const indices: number[] = []
-    for (const material of materials) {
-      if (!material) {
-        indices.push(-1)
-        continue
-      }
-      const added = slotFromMaterial(material, seen, slots.length)
-      if (added.length > 0) {
-        const index = slots.length
-        slots.push(...added)
-        material.userData.t3dSlot = index
-        indices.push(index)
-      } else {
-        const index = slots.findIndex(slot => slot.name === material.name)
-        material.userData.t3dSlot = index
-        indices.push(index)
-      }
-    }
-    mesh.userData.t3dSlotIndices = indices
-  })
-  return slots
-}
-
 export function normalizeMaterialKey(raw: string): string {
-  return raw
-    .split(':')
-    .pop()!
-    .trim()
-    .toLowerCase()
-    .replace(/\.(?:mat|t3dmat|gm3dmat)$/i, '')
-    .replace(/\.\d+$/g, '')
-    .replace(/^(?:m|mat|mtl)[_-]+/i, '')
-    .replace(/(?:[_-\s]+(?:material|mat|mtl|instance))+$/i, '')
-    .replace(/[\s._-]+/g, '')
+  return engineNormalizeMaterialKey(raw)
 }
 
 function materialStem(raw: string): string {
@@ -1009,28 +886,4 @@ function classifyTextureRole(name: string): {
     }
   }
   return { base: name, kind: 'albedo' }
-}
-
-function slotFromMaterial(material: Material, seen: Set<string>, index: number): PbrSlot[] {
-  const name = material.name || `材质 ${index + 1}`
-  if (seen.has(name)) return []
-  seen.add(name)
-  const standard = material as MeshStandardMaterial
-  const emissiveHex = standard.emissive ? `#${standard.emissive.getHexString()}` : '#000000'
-  const hasEmissive = Boolean(standard.emissiveMap) || emissiveHex !== '#000000'
-  return [{
-    name,
-    color: standard.color ? `#${standard.color.getHexString()}` : '#ffffff',
-    metalness: standard.metalness ?? 0,
-    roughness: standard.roughness ?? 0.5,
-    emissive: emissiveHex,
-    emissiveIntensity: hasEmissive ? (standard.emissiveIntensity ?? 1) : 0,
-    opacity: standard.opacity ?? 1,
-    ao: standard.aoMapIntensity ?? 1,
-    mapAssetId: null,
-    normalAssetId: null,
-    metallicRoughnessAssetId: null,
-    emissiveAssetId: null,
-    aoAssetId: null,
-  }]
 }

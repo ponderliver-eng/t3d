@@ -5,7 +5,6 @@ import {
   AnimationAction,
   AnimationClip,
   AnimationMixer,
-  BackSide,
   BoxGeometry,
   CanvasTexture,
   CapsuleGeometry,
@@ -14,19 +13,15 @@ import {
   ConeGeometry,
   CylinderGeometry,
   DirectionalLight,
-  DoubleSide,
   EquirectangularReflectionMapping,
   Euler,
   Fog,
-  FrontSide,
   Group,
   HemisphereLight,
   LinearToneMapping,
   LoopOnce,
   LoopRepeat,
-  type Material,
   Mesh,
-  MeshBasicMaterial,
   MeshStandardMaterial,
   NeutralToneMapping,
   NoColorSpace,
@@ -56,10 +51,21 @@ import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js'
 import { clone as cloneSkinned } from 'three/addons/utils/SkeletonUtils.js'
 import { WebGPURenderer } from 'three/webgpu'
 import { normalizeCapabilities, syncCapabilityRuntimes } from '../capabilities/registry'
+import { disposeParticles, mountParticles } from '../capabilities/particles/session'
 import { SKY_CAPABILITY_ID } from '../capabilities/sky/defaults'
 import { skyFogActive } from '../capabilities/sky/session'
-import { compileShaderSource, buildMaterialFromShader, registerShaderTextureResolver, type CompiledShaderAsset } from '../core/codeAssets/shaderRuntime'
+import { compileShaderSource, registerShaderTextureResolver, type CompiledShaderAsset } from '../core/codeAssets/shaderRuntime'
 import { clearScriptRuntimeState, compileAndRegisterScript } from '../core/codeAssets/scriptRuntime'
+import {
+  applyModelMaterialsWithHost,
+  applyNodeMaterialWithHost,
+  instantiateModelScene,
+  normalizeMaterialKey,
+  normalizeSkinIndex,
+  particleDescForWithHost,
+  readModelSlots,
+  type MaterialEngineHost,
+} from '../runtime/engine/materials'
 import {
   bindGlobalInputListeners,
   injectVirtualInput,
@@ -133,7 +139,7 @@ class PlayerAssetManager {
   private readonly texLoader = new TextureLoader()
   private readonly hdrLoader = new RGBELoader()
   private readonly exrLoader = new EXRLoader()
-  private readonly modelCache = new Map<string, { scene: Group; clips: AnimationClip[]; humanoid: ModelHumanoid }>()
+  private readonly modelCache = new Map<string, { scene: Group; clips: AnimationClip[]; slots: PbrSlot[]; humanoid: ModelHumanoid }>()
   private readonly texCache = new Map<string, Texture>()
   private readonly linearTexCache = new Map<string, Texture>()
   private readonly unityMrCache = new Map<string, Texture>()
@@ -144,10 +150,12 @@ class PlayerAssetManager {
     this.gltfLoader.setMeshoptDecoder(MeshoptDecoder)
   }
 
-  getModelClone(assetId: string): { scene: Object3D; clips: AnimationClip[]; humanoid: ModelHumanoid } | null {
+  getModelClone(assetId: string, host: MaterialEngineHost): { scene: Object3D; clips: AnimationClip[]; slots: PbrSlot[]; humanoid: ModelHumanoid } | null {
     const tpl = this.modelCache.get(assetId)
     if (!tpl) return null
-    return { scene: cloneSkinned(tpl.scene), clips: tpl.clips, humanoid: tpl.humanoid }
+    const mergedSlots = resolveMergedModelSlots({ id: '', name: '', kind: 'model', position: [0, 0, 0], rotation: [0, 0, 0], scale: [1, 1, 1], color: '#ffffff', roughness: 0.7, metalness: 0.1, visible: true, parentId: null, assetId, slots: [] } as unknown as SceneNode, this.assets, tpl.slots)
+    const object = instantiateModelScene(tpl.scene, mergedSlots, host, cloneSkinned)
+    return { scene: object, clips: tpl.clips, slots: mergedSlots, humanoid: tpl.humanoid }
   }
 
   getModelTemplate(assetId: string) {
@@ -235,9 +243,14 @@ class PlayerAssetManager {
       try {
         if (asset.kind === 'model' || asset.kind === 'animation') {
           const gltf = await this.gltfLoader.loadAsync(asset.url!)
+          normalizeSkinIndex(gltf.scene)
+          const rawSlots = asset.kind === 'model' ? readModelSlots(gltf.scene) : []
+          const slots = Array.isArray(asset.slots) && asset.slots.length > 0
+            ? resolveMergedModelSlots({ id: '', name: '', kind: 'model', position: [0, 0, 0], rotation: [0, 0, 0], scale: [1, 1, 1], color: '#ffffff', roughness: 0.7, metalness: 0.1, visible: true, parentId: null, assetId, slots: rawSlots } as unknown as SceneNode, this.assets, asset.slots)
+            : rawSlots
           const clips = gltf.animations ?? []
           const humanoid = describeHumanoid(gltf.scene, clips)
-          this.modelCache.set(assetId, { scene: gltf.scene, clips, humanoid })
+          this.modelCache.set(assetId, { scene: gltf.scene, clips, slots, humanoid })
         } else if (asset.kind === 'texture') {
           const lower = (asset.fileName || asset.url || '').toLowerCase()
           if (lower.endsWith('.ktx2') || lower.endsWith('.tga')) return
@@ -268,7 +281,7 @@ class PlayerAssetManager {
 
   async preloadList(
     assetIds: string[],
-    onProgress?: (loaded: number, total: number, currentName: string) => void,
+    onProgress?: (loaded: number, total: number, categoryLabel: string) => void,
   ): Promise<void> {
     const targets = assetIds.filter((id) => {
       const a = this.assets[id]
@@ -279,16 +292,24 @@ class PlayerAssetManager {
       onProgress?.(1, 1, '')
       return
     }
+    const labelOfKind = (kind: string | undefined): string => {
+      if (kind === 'model') return '模型资源'
+      if (kind === 'animation') return '动作资源'
+      if (kind === 'texture') return '贴图资源'
+      if (kind === 'environment') return '环境光照'
+      if (kind === 'audio') return '音频资源'
+      return '场景资源'
+    }
     let done = 0
     const queue = [...targets]
     const workers = Array.from({ length: Math.min(6, total) }, async () => {
       while (queue.length > 0) {
         const id = queue.shift()
         if (!id) break
-        const name = this.assets[id]?.name ?? id
+        const category = labelOfKind(this.assets[id]?.kind)
         await this.ensureAsset(id)
         done += 1
-        onProgress?.(done, total, name)
+        onProgress?.(done, total, category)
       }
     })
     await Promise.all(workers)
@@ -367,13 +388,12 @@ class LoadingOverlay {
     this.root.style.opacity = '1'
   }
 
-  setProgress(ratio: number, currentName?: string) {
+  setProgress(ratio: number, categoryLabel?: string) {
     const pct = Math.max(0, Math.min(100, Math.round(ratio * 100)))
     if (this.barFill) this.barFill.style.width = `${pct}%`
     if (this.pctLabel) this.pctLabel.textContent = `${pct}%`
-    if (currentName) {
-      this.subLabel.textContent = `${this.cfg.subtitle || '正在加载资源…'} (${currentName})`
-    }
+    const base = this.cfg.subtitle || '正在加载资源…'
+    this.subLabel.textContent = categoryLabel ? `${base} · ${categoryLabel}` : base
   }
 
   async hide() {
@@ -489,170 +509,80 @@ function buildBoundClip(
   return clip
 }
 
-function resolveSlotData(slot: PbrSlot, assets: Record<string, ExportedAssetEntry>): PbrSlot {
-  if (slot.materialAssetId) {
-    const linked = assets[slot.materialAssetId]
-    if (linked?.slot) return { ...linked.slot, name: slot.name }
-  }
-  return slot
-}
-
 const compiledShaders = new Map<string, CompiledShaderAsset>()
 
-function sideForCull(cull: PbrSlot['cull']) {
-  if (cull === 'front') return BackSide
-  if (cull === 'off') return DoubleSide
-  return FrontSide
-}
-
-function slotFromPlayerNode(node: SceneNode, assets: Record<string, ExportedAssetEntry>): PbrSlot {
-  if (node.materialAssetId && assets[node.materialAssetId]?.slot) {
-    return { ...assets[node.materialAssetId]!.slot!, name: node.name }
-  }
-  return {
-    name: node.name,
-    color: node.color || '#8c96a4',
-    metalness: node.metalness ?? 0,
-    roughness: node.roughness ?? 1,
-    emissive: node.emissive ?? '#000000',
-    emissiveIntensity: node.emissiveIntensity ?? 0,
-    opacity: node.opacity ?? 1,
-    ao: node.ao ?? 1,
-    mapAssetId: node.mapAssetId ?? null,
-    normalAssetId: node.normalAssetId ?? null,
-    metallicRoughnessAssetId: node.metallicRoughnessAssetId ?? node.roughnessAssetId ?? node.metalnessAssetId ?? null,
-    roughnessAssetId: node.roughnessAssetId ?? null,
-    metalnessAssetId: node.metalnessAssetId ?? null,
-    emissiveAssetId: node.emissiveAssetId ?? null,
-    aoAssetId: node.aoAssetId ?? null,
-    materialAssetId: node.materialAssetId ?? null,
-    shader: node.shader ?? 'lit',
-    shaderParams: (node.capabilities?.__materialShaderParams as Record<string, unknown> | undefined) ?? undefined,
-    normalScale: node.normalScale ?? 1,
-    alphaMode: node.alphaMode ?? 'opaque',
-    alphaCutoff: node.alphaCutoff ?? 0.5,
-    cull: node.cull ?? 'back',
-    depthWrite: node.depthWrite ?? true,
-    wireframe: node.wireframe ?? false,
-  }
-}
-
-function buildMaterialFromSlot(
-  baseMat: Material | null,
-  rawSlot: PbrSlot,
+function createPlayerMaterialHost(
   assetMgr: PlayerAssetManager,
   assets: Record<string, ExportedAssetEntry>,
-): Material {
-  const slot = resolveSlotData(rawSlot, assets)
-  const shaderKind = slot.shader ?? 'lit'
+): MaterialEngineHost {
+  return {
+    getMaterialSlot: (id) => {
+      if (!id) return null
+      const asset = assets[id]
+      if (!asset || asset.kind !== 'material') return null
+      return asset.slot ?? null
+    },
+    getTexture: (assetId, colorMap) => (assetId ? assetMgr.getTexture(assetId, colorMap) : null),
+    getUnityMetallicRoughnessTexture: (assetId) => (assetId ? assetMgr.getUnityMetallicRoughnessTexture(assetId) : null),
+    getCustomShader: (shaderId) => {
+      const rec = compiledShaders.get(shaderId)
+      if (rec?.definition) return { definition: rec.definition, updatedAt: 1 }
+      return null
+    },
+  }
+}
 
-  if (shaderKind.startsWith('custom:')) {
-    const shaderId = shaderKind.slice('custom:'.length)
-    const rec = compiledShaders.get(shaderId)
-    if (rec?.definition) {
-      const built = buildMaterialFromShader(rec.definition, slot.shaderParams)
-      const mat = built.material
-      if (baseMat?.name) mat.name = baseMat.name
-      if (!rec.definition.doubleSided) mat.side = sideForCull(slot.cull)
-      ;(mat as unknown as { wireframe: boolean }).wireframe = Boolean(slot.wireframe)
-      return mat
+function resolveMergedModelSlots(node: SceneNode, assets: Record<string, ExportedAssetEntry>, tplSlots: PbrSlot[] = []): PbrSlot[] {
+  const assetSlots = node.assetId && Array.isArray(assets[node.assetId]?.slots) && assets[node.assetId]!.slots!.length > 0
+    ? assets[node.assetId]!.slots!
+    : tplSlots
+  const nodeSlots = Array.isArray(node.slots) ? node.slots : []
+  if (nodeSlots.length === 0) return assetSlots
+  if (assetSlots.length === 0) return nodeSlots
+  const assetByName = new Map(assetSlots.map((s) => [s.name, s]))
+  const assetByNorm = new Map(assetSlots.map((s) => [normalizeMaterialKey(s.name), s]))
+  return nodeSlots.map((slot, idx) => {
+    const fresh = assetByName.get(slot.name) ?? assetByNorm.get(normalizeMaterialKey(slot.name)) ?? assetSlots[idx]
+    if (!fresh) return slot
+    const hasMap = Boolean(slot.mapAssetId || fresh.mapAssetId || slot.materialAssetId || fresh.materialAssetId)
+    return {
+      ...fresh,
+      ...slot,
+      color: hasMap && slot.color === '#000000' && fresh.color && fresh.color !== '#000000' ? fresh.color : slot.color,
+      materialAssetId: slot.materialAssetId ?? fresh.materialAssetId,
+      shader: slot.shader ?? fresh.shader,
+      mapAssetId: slot.mapAssetId ?? fresh.mapAssetId,
+      normalAssetId: slot.normalAssetId ?? fresh.normalAssetId,
+      metallicRoughnessAssetId: slot.metallicRoughnessAssetId ?? fresh.metallicRoughnessAssetId,
+      roughnessAssetId: slot.roughnessAssetId ?? fresh.roughnessAssetId,
+      metalnessAssetId: slot.metalnessAssetId ?? fresh.metalnessAssetId,
+      emissiveAssetId: slot.emissiveAssetId ?? fresh.emissiveAssetId,
+      aoAssetId: slot.aoAssetId ?? fresh.aoAssetId,
     }
-  }
-
-  const isUnlit = shaderKind !== 'lit' && shaderKind !== 'unity-standard'
-  const mat: MeshBasicMaterial | MeshStandardMaterial = isUnlit
-    ? (baseMat && (baseMat as MeshBasicMaterial).isMeshBasicMaterial
-      ? (baseMat as MeshBasicMaterial).clone()
-      : new MeshBasicMaterial())
-    : (baseMat && (baseMat as MeshStandardMaterial).isMeshStandardMaterial
-      ? (baseMat as MeshStandardMaterial).clone()
-      : new MeshStandardMaterial())
-
-  if (baseMat?.name) mat.name = baseMat.name
-  if (slot.color) mat.color.set(slot.color)
-
-  const alphaMode = slot.alphaMode ?? 'opaque'
-  const opacity = typeof slot.opacity === 'number' ? slot.opacity : 1
-  if (alphaMode === 'blend') {
-    mat.transparent = opacity < 0.999
-    mat.opacity = opacity
-    mat.alphaTest = 0
-    mat.depthWrite = slot.depthWrite ?? false
-  } else if (alphaMode === 'clip') {
-    mat.transparent = false
-    mat.opacity = 1
-    mat.alphaTest = slot.alphaCutoff ?? 0.5
-    mat.depthWrite = slot.depthWrite ?? true
-  } else {
-    mat.transparent = false
-    mat.opacity = 1
-    mat.alphaTest = 0
-    mat.depthWrite = slot.depthWrite ?? true
-  }
-
-  mat.side = sideForCull(slot.cull)
-  mat.wireframe = Boolean(slot.wireframe)
-
-  if (shaderKind !== 'unlit-color') {
-    const mapTex = slot.mapAssetId ? assetMgr.getTexture(slot.mapAssetId, true) : null
-    if (mapTex) mat.map = mapTex
-  } else {
-    mat.map = null
-  }
-
-  if (!isUnlit) {
-    const std = mat as MeshStandardMaterial
-    const isUnity = shaderKind === 'unity-standard'
-    const mrId = slot.metallicRoughnessAssetId ?? slot.roughnessAssetId ?? slot.metalnessAssetId
-    if (typeof slot.roughness === 'number') std.roughness = slot.roughness
-    if (typeof slot.metalness === 'number') std.metalness = isUnity && mrId ? 1 : slot.metalness
-    if (slot.emissive) std.emissive.set(slot.emissive)
-    if (typeof slot.emissiveIntensity === 'number') std.emissiveIntensity = slot.emissiveIntensity
-    if (typeof slot.ao === 'number') std.aoMapIntensity = slot.ao
-    const nScale = typeof slot.normalScale === 'number' ? slot.normalScale : 1
-    if (std.normalScale) std.normalScale.set(nScale, nScale)
-    else std.normalScale = new Vector2(nScale, nScale)
-
-    const normalTex = slot.normalAssetId ? assetMgr.getTexture(slot.normalAssetId, false) : null
-    if (normalTex) std.normalMap = normalTex
-
-    const mrTex = mrId
-      ? (isUnity ? assetMgr.getUnityMetallicRoughnessTexture(mrId) : assetMgr.getTexture(mrId, false))
-      : null
-    if (mrTex) {
-      std.roughnessMap = mrTex
-      std.metalnessMap = mrTex
-    }
-
-    const emissiveTex = slot.emissiveAssetId ? assetMgr.getTexture(slot.emissiveAssetId, true) : null
-    if (emissiveTex) std.emissiveMap = emissiveTex
-
-    const aoId = slot.aoAssetId ?? (isUnity ? mrId : null)
-    const aoTex = aoId
-      ? (isUnity && aoId === mrId ? assetMgr.getUnityMetallicRoughnessTexture(aoId) : assetMgr.getTexture(aoId, false))
-      : null
-    if (aoTex) std.aoMap = aoTex
-  }
-
-  mat.needsUpdate = true
-  return mat
+  })
 }
 
 function applyPlayerModelMaterials(
   root: Object3D,
   node: SceneNode,
-  assetMgr: PlayerAssetManager,
+  tplSlots: PbrSlot[],
+  matHost: MaterialEngineHost,
   assets: Record<string, ExportedAssetEntry>,
 ) {
-  const assetSlots = node.assetId && Array.isArray(assets[node.assetId]?.slots) ? assets[node.assetId]!.slots! : []
-  const slots = Array.isArray(node.slots) && node.slots.length > 0 ? node.slots : assetSlots
+  const slots = resolveMergedModelSlots(node, assets, tplSlots)
   const overrides = node.partOverrides
   const hiddenSet = new Set(node.hiddenParts ?? [])
-  const hasSlotOrMat = slots.length > 0 || Boolean(node.materialAssetId) || Boolean(overrides && Object.keys(overrides).length > 0)
-  const indexByName = new Map(slots.map((s, idx) => [s.name, idx]))
-  const nodeMatSlot = node.materialAssetId ? assets[node.materialAssetId]?.slot : undefined
 
-  const walk = (object: Object3D, parentPath: string, parentHidden: boolean) => {
+  if (slots.length > 0 || (overrides && Object.keys(overrides).length > 0)) {
+    applyModelMaterialsWithHost(root, slots, matHost, overrides)
+  } else if (node.materialAssetId) {
+    const nodeMatSlot = matHost.getMaterialSlot(node.materialAssetId)
+    if (nodeMatSlot) {
+      applyModelMaterialsWithHost(root, [nodeMatSlot], matHost, overrides)
+    }
+  }
+
+  const walkFlags = (object: Object3D, parentPath: string, parentHidden: boolean) => {
     const label = object.name || object.type
     const path = parentPath ? `${parentPath}/${label}` : label
     const isHidden = parentHidden || hiddenSet.has(path)
@@ -662,39 +592,10 @@ function applyPlayerModelMaterials(
       const ov = overrides?.[path]
       mesh.castShadow = ov?.castShadow ?? Boolean(node.castShadow)
       mesh.receiveShadow = ov?.receiveShadow ?? (node.receiveShadow !== false)
-
-      if (mesh.geometry?.attributes?.uv && !mesh.geometry.attributes.uv2) {
-        mesh.geometry.setAttribute('uv2', mesh.geometry.attributes.uv)
-      }
-
-      if (hasSlotOrMat) {
-        const overrideSlot = ov?.materialAssetId ? assets[ov.materialAssetId]?.slot : undefined
-        const existingIndices = Array.isArray(mesh.userData?.t3dSlotIndices)
-          ? (mesh.userData.t3dSlotIndices as number[])
-          : null
-        const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material]
-        const nextMats = mats.map((m, idx) => {
-          if (!m) return m
-          if (overrideSlot) {
-            return buildMaterialFromSlot(m, overrideSlot, assetMgr, assets)
-          }
-          let slot: PbrSlot | undefined
-          const slotIdx = existingIndices?.[idx] ?? indexByName.get(m.name) ?? (slots.length === 1 ? 0 : idx)
-          if (typeof slotIdx === 'number' && slotIdx >= 0 && slotIdx < slots.length) {
-            slot = slots[slotIdx]
-          } else if (nodeMatSlot) {
-            slot = nodeMatSlot
-          }
-          if (slot) return buildMaterialFromSlot(m, slot, assetMgr, assets)
-          return m
-        })
-        mesh.material = Array.isArray(mesh.material) ? nextMats : nextMats[0]
-      }
     }
-    for (const child of object.children) walk(child, path, isHidden)
+    for (const child of object.children) walkFlags(child, path, isHidden)
   }
-
-  for (const child of root.children) walk(child, '', false)
+  for (const child of root.children) walkFlags(child, '', false)
 }
 
 function playBodyOnEntry(
@@ -908,6 +809,11 @@ function buildStandaloneWorld(
       forcedCameraUntil = 0
     },
     instantiatePrefab: instantiatePrefabTree,
+    resolveTexture: (assetId) => Promise.resolve(assetMgr.getTexture(assetId, false)),
+    getTexture: (assetId, srgb = false) => assetMgr.getTexture(assetId, srgb),
+    resolveParticleDesc: (materialId) =>
+      particleDescForWithHost(materialId ?? null, createPlayerMaterialHost(assetMgr, assets)),
+    resolveAssetUrl: (assetId) => Promise.resolve(assets[assetId]?.url ?? null),
     getTags: () => [],
     getAsset: (id) => assets[id],
     listAssets: () => Object.values(assets),
@@ -1019,38 +925,35 @@ function mountSinglePlayerNode(
   const existing = mounted.map.get(node.id)
   if (existing) return existing
 
-  const group = new Group()
-  group.name = node.name
+    const group = new Group()
+    group.name = node.name
   group.userData.nodeId = node.id
-  group.visible = node.visible !== false
-  group.position.set(node.position[0], node.position[1], node.position[2])
-  group.rotation.set(
-    node.rotation[0] * DEG_TO_RAD,
-    node.rotation[1] * DEG_TO_RAD,
-    node.rotation[2] * DEG_TO_RAD,
-    'XYZ',
-  )
-  group.scale.set(node.scale[0], node.scale[1], node.scale[2])
+    group.visible = node.visible !== false
+    group.position.set(node.position[0], node.position[1], node.position[2])
+    group.rotation.set(
+      node.rotation[0] * DEG_TO_RAD,
+      node.rotation[1] * DEG_TO_RAD,
+      node.rotation[2] * DEG_TO_RAD,
+      'XYZ',
+    )
+    group.scale.set(node.scale[0], node.scale[1], node.scale[2])
 
-  const geo = createGeometryForNode(node)
-  if (geo) {
-    if (geo.attributes?.uv && !geo.attributes.uv2) {
-      geo.setAttribute('uv2', geo.attributes.uv)
-    }
-    const slot = slotFromPlayerNode(node, assets)
-    const mat = buildMaterialFromSlot(null, slot, assetMgr, assets)
-    const mesh = new Mesh(geo, mat)
-    mesh.castShadow = Boolean(node.castShadow)
-    mesh.receiveShadow = node.receiveShadow !== false
-    group.add(mesh)
-  } else if (node.kind === 'model' && node.assetId) {
-    const modelClone = assetMgr.getModelClone(node.assetId)
-    if (modelClone) {
-      const modelAsset = assets[node.assetId]
-      const importScale = typeof modelAsset?.importScale === 'number' && modelAsset.importScale > 0 ? modelAsset.importScale : 1
-      modelClone.scene.scale.setScalar(importScale)
-      applyPlayerModelMaterials(modelClone.scene, node, assetMgr, assets)
-      group.add(modelClone.scene)
+    const geo = createGeometryForNode(node)
+    const matHost = createPlayerMaterialHost(assetMgr, assets)
+    if (geo) {
+      const mesh = new Mesh(geo, new MeshStandardMaterial())
+      applyNodeMaterialWithHost(mesh, node, matHost)
+      mesh.castShadow = Boolean(node.castShadow)
+      mesh.receiveShadow = node.receiveShadow !== false
+      group.add(mesh)
+    } else if (node.kind === 'model' && node.assetId) {
+      const modelClone = assetMgr.getModelClone(node.assetId, matHost)
+      if (modelClone) {
+        const modelAsset = assets[node.assetId]
+        const importScale = typeof modelAsset?.importScale === 'number' && modelAsset.importScale > 0 ? modelAsset.importScale : 1
+        modelClone.scene.scale.setScalar(importScale)
+        applyPlayerModelMaterials(modelClone.scene, node, modelClone.slots, matHost, assets)
+        group.add(modelClone.scene)
       mounted.modelRoots.set(node.id, modelClone.scene)
       const mixer = new AnimationMixer(modelClone.scene)
       mounted.mixers.push(mixer)
@@ -1089,9 +992,9 @@ function mountSinglePlayerNode(
         })
       }
     }
-  } else if (node.kind === 'directional-light') {
-    const light = new DirectionalLight(node.color || '#ffffff', node.intensity ?? 2)
-    light.castShadow = Boolean(node.castShadow)
+    } else if (node.kind === 'directional-light') {
+      const light = new DirectionalLight(node.color || '#ffffff', node.intensity ?? 2)
+      light.castShadow = Boolean(node.castShadow)
     light.shadow.mapSize.set(2048, 2048)
     const distance = Math.max(node.range ?? 20, 4)
     light.shadow.camera.near = 0.5
@@ -1103,15 +1006,15 @@ function mountSinglePlayerNode(
     if (typeof node.shadowBias === 'number') light.shadow.bias = node.shadowBias
     if (typeof node.shadowNormalBias === 'number') light.shadow.normalBias = node.shadowNormalBias
     light.target.position.set(0, -1, 0)
-    group.add(light)
+      group.add(light)
     group.add(light.target)
-  } else if (node.kind === 'point-light') {
+    } else if (node.kind === 'point-light') {
     const light = new PointLight(node.color || '#ffffff', node.intensity ?? 2, node.range ?? 15, node.decay ?? 2)
     light.castShadow = Boolean(node.castShadow)
     if (typeof node.shadowBias === 'number') light.shadow.bias = node.shadowBias
     if (typeof node.shadowNormalBias === 'number') light.shadow.normalBias = node.shadowNormalBias
-    group.add(light)
-  } else if (node.kind === 'spot-light') {
+      group.add(light)
+    } else if (node.kind === 'spot-light') {
     const light = new SpotLight(
       node.color || '#ffffff',
       node.intensity ?? 2,
@@ -1124,12 +1027,12 @@ function mountSinglePlayerNode(
     if (typeof node.shadowBias === 'number') light.shadow.bias = node.shadowBias
     if (typeof node.shadowNormalBias === 'number') light.shadow.normalBias = node.shadowNormalBias
     light.target.position.set(0, -1, 0)
-    group.add(light)
+      group.add(light)
     group.add(light.target)
-  } else if (node.kind === 'hemisphere-light') {
+    } else if (node.kind === 'hemisphere-light') {
     const light = new HemisphereLight(node.color || '#dbeafe', node.groundColor || '#334155', node.intensity ?? 1)
-    group.add(light)
-  }
+      group.add(light)
+    }
 
   mounted.map.set(node.id, group)
   return group
@@ -1162,9 +1065,12 @@ function mountSceneObjects(
     ;(parent ?? mounted.root).add(obj)
   }
 
+  // 与 EditorViewport 一致：始终保留基础环境漫反射，避免有太阳光时背光面全黑
+  mounted.root.add(new AmbientLight(0xffffff, 0.28))
+
   const hasAnyLight = Object.values(nodes).some((n) => n.kind.endsWith('-light'))
   if (!hasAnyLight) {
-    mounted.root.add(new AmbientLight('#ffffff', 0.65))
+    mounted.root.add(new AmbientLight('#ffffff', 0.4))
     const key = new DirectionalLight('#ffffff', 1.6)
     key.position.set(6, 12, 8)
     mounted.root.add(key)
@@ -1206,13 +1112,16 @@ function applyPlayerPicture(
   capabilities: Record<string, boolean>,
   volume: ReturnType<typeof createVolumeLight>,
 ) {
+  const env = assetMgr.getEnvironment(picture.envAssetId)
+  if (env) {
+    scene.environment = env
+  } else if (!capabilities[SKY_CAPABILITY_ID]) {
+    scene.environment = null
+  }
   if (!capabilities[SKY_CAPABILITY_ID]) {
-    const env = assetMgr.getEnvironment(picture.envAssetId)
     if (env) {
-      scene.environment = env
       scene.background = env
     } else {
-      scene.environment = null
       scene.background = new Color(picture.background || '#181d26')
     }
   }
@@ -1258,9 +1167,39 @@ async function createRenderer(
     return c
   }
   const primary = makeCanvas()
-  const attachBackendInfo = (r: WebGPURenderer, fallback: boolean) => {
-    const backendName = (r as unknown as { backend?: { constructor?: { name?: string } } }).backend?.constructor?.name ?? (fallback ? 'WebGLBackend' : 'WebGPUBackend')
-    console.info(`[T3D Player] 渲染后端: ${backendName}${fallback ? ' (WebGL2 回退)' : ''}`)
+  const attachBackendInfo = async (r: WebGPURenderer, fallback: boolean) => {
+    const backend = (r as unknown as {
+      backend?: {
+        constructor?: { name?: string }
+        device?: { adapterInfo?: { vendor?: string; architecture?: string; device?: string; description?: string } }
+        gl?: WebGL2RenderingContext
+      }
+    }).backend
+    const backendName = backend?.constructor?.name ?? (fallback ? 'WebGLBackend' : 'WebGPUBackend')
+    let gpuName = 'Unknown GPU'
+    if (!fallback) {
+      const info = backend?.device?.adapterInfo
+      if (info) {
+        gpuName = [info.vendor, info.description || info.device, info.architecture].filter(Boolean).join(' ') || gpuName
+      } else if (typeof navigator !== 'undefined' && 'gpu' in navigator) {
+        const adapter = await (navigator as Navigator & { gpu?: { requestAdapter?: (opts?: { powerPreference?: string }) => Promise<{ info?: { vendor?: string; description?: string; device?: string } } | null> } })
+          .gpu?.requestAdapter?.({ powerPreference: 'high-performance' }).catch(() => null)
+        if (adapter?.info) {
+          gpuName = [adapter.info.vendor, adapter.info.description || adapter.info.device].filter(Boolean).join(' ') || gpuName
+        }
+      }
+    } else if (backend?.gl) {
+      const ext = backend.gl.getExtension('WEBGL_debug_renderer_info')
+      if (ext) {
+        gpuName = String(backend.gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) || gpuName)
+      }
+    }
+    ;(window as unknown as { __T3D_GPU_INFO__?: unknown }).__T3D_GPU_INFO__ = {
+      backend: backendName,
+      isWebGPU: !fallback,
+      gpu: gpuName,
+    }
+    console.info(`[T3D Player] 渲染后端: ${backendName}${fallback ? ' (WebGL2 回退)' : ' (WebGPU)'} | GPU: ${gpuName}`)
   }
   try {
     const webgpu = new WebGPURenderer({ canvas: primary, antialias: true, powerPreference: 'high-performance' })
@@ -1268,7 +1207,7 @@ async function createRenderer(
     webgpu.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2))
     webgpu.shadowMap.enabled = true
     webgpu.shadowMap.type = PCFShadowMap
-    attachBackendInfo(webgpu, false)
+    await attachBackendInfo(webgpu, false)
     return { renderer: webgpu, canvas: primary }
   } catch (err) {
     console.warn('[T3D Player] WebGPU 初始化失败，回退 WebGL2:', err)
@@ -1279,7 +1218,7 @@ async function createRenderer(
     webgl.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2))
     webgl.shadowMap.enabled = true
     webgl.shadowMap.type = PCFShadowMap
-    attachBackendInfo(webgl, true)
+    await attachBackendInfo(webgl, true)
     return { renderer: webgl, canvas: fallbackCanvas }
   }
 }
@@ -1341,6 +1280,7 @@ async function boot() {
   const volume = createVolumeLight()
   const scene = new Scene()
   scene.add(volume.mesh)
+  mountParticles(scene)
   const camera = new PerspectiveCamera(55, window.innerWidth / Math.max(1, window.innerHeight), 0.1, 1000)
   camera.position.set(0, 4, 8)
   camera.lookAt(0, 1, 0)
@@ -1362,10 +1302,11 @@ async function boot() {
       ? [...new Set(Object.keys(payload.scenes ?? {}).flatMap((id) => getPreloadIdsForScene(id)))]
       : getPreloadIdsForScene(entryId)
 
-  await assetMgr.preloadList(initialPreloadIds, (loaded, total, name) => {
-    overlay.setProgress(loaded / Math.max(1, total), name)
+  await assetMgr.preloadList(initialPreloadIds, (loaded, total, category) => {
+    overlay.setProgress((loaded / Math.max(1, total)) * 0.85, category)
   })
 
+  overlay.setProgress(0.9, '场景与脚本')
   for (const shader of payload.shaders ?? []) {
     const compiled = compileShaderSource(shader.id, shader.relativePath, shader.source)
     if (compiled.ok && compiled.exports) compiledShaders.set(shader.id, compiled.exports)
@@ -1387,10 +1328,12 @@ async function boot() {
   const initH = Math.max(1, window.innerHeight)
   const initPic = world.getPicture()
   const initEffects = picturePipeline.usesEffects(initPic)
+  overlay.setProgress(0.95, '渲染管线')
   if (initEffects) {
     picturePipeline.render(scene, camera, initPic, initW, initH)
   }
   await picturePipeline.precompile(scene, camera, initEffects).catch(() => undefined)
+  overlay.setProgress(1, '')
   await overlay.hide()
 
   // 若选择仅预加载初始场景，则进入后在空闲时后台预热其余场景资源
@@ -1421,9 +1364,10 @@ async function boot() {
         if (loadingCfg.enabled && loadingCfg.showOnSceneSwitch) {
           overlay.show(`正在切换场景：${nextScene.name}`)
         }
-        await assetMgr.preloadList(getPreloadIdsForScene(nextId), (loaded, total, name) => {
-          overlay.setProgress(loaded / Math.max(1, total), name)
+        await assetMgr.preloadList(getPreloadIdsForScene(nextId), (loaded, total, category) => {
+          overlay.setProgress(loaded / Math.max(1, total), category)
         })
+        disposeParticles()
         if (mounted) scene.remove(mounted.root)
         clearScriptRuntimeState()
         switchSceneData(nextId, nextScene.nodes, nextScene.picture)
@@ -1763,7 +1707,7 @@ async function boot() {
     if (picturePipeline.usesEffects(pic)) {
       picturePipeline.render(scene, camera, pic, window.innerWidth, Math.max(1, window.innerHeight))
     } else {
-      renderer.render(scene, camera)
+    renderer.render(scene, camera)
     }
     requestAnimationFrame(frame)
   }

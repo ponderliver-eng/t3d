@@ -49,6 +49,27 @@ function getInputActionMap() {
 function setInputActionMap(next) {
   currentMap = normalizeInputMap(next);
 }
+function isTypingTarget(target) {
+  const element = target;
+  const tag = element?.tagName;
+  return Boolean(tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || element?.isContentEditable);
+}
+function bindGlobalInputListeners() {
+  if (listenersBound || typeof window === "undefined") return;
+  listenersBound = true;
+  window.addEventListener("keydown", (event) => {
+    if (isTypingTarget(event.target)) return;
+    if (!physicalKeys.has(event.code)) tappedKeys.add(event.code);
+    physicalKeys.add(event.code);
+  });
+  window.addEventListener("keyup", (event) => {
+    physicalKeys.delete(event.code);
+  });
+  window.addEventListener("blur", () => {
+    physicalKeys.clear();
+    tappedKeys.clear();
+  });
+}
 function injectVirtualInput(events) {
   const list = Array.isArray(events) ? events : [events];
   for (const event of list) {
@@ -152,7 +173,7 @@ function consumeInputFrame() {
   tappedKeys.clear();
   tappedActions.clear();
 }
-var DEFAULT_INPUT_MAP, currentMap, physicalKeys, virtualKeys, tappedKeys, virtualActions, tappedActions, virtualAxes;
+var DEFAULT_INPUT_MAP, currentMap, physicalKeys, virtualKeys, tappedKeys, virtualActions, tappedActions, virtualAxes, listenersBound;
 var init_actionMap = __esm({
   "src/core/input/actionMap.ts"() {
     "use strict";
@@ -219,6 +240,7 @@ var init_actionMap = __esm({
     virtualActions = /* @__PURE__ */ new Set();
     tappedActions = /* @__PURE__ */ new Set();
     virtualAxes = /* @__PURE__ */ new Map();
+    listenersBound = false;
   }
 });
 
@@ -884,6 +906,10 @@ function registerPhysicsExtension(id, order, step2) {
     const idx = extensions.findIndex((item) => item.id === id);
     if (idx >= 0) extensions.splice(idx, 1);
   };
+}
+function moveCharacters(moves) {
+  if (!world || moves.length === 0) return null;
+  return world.moveCharacters(moves);
 }
 function getPhysicsBodyState(id) {
   return world?.bodyState(id) ?? null;
@@ -1612,8 +1638,8 @@ function sampleAtRest(restX, restZ, spec, waveTime, swellTime) {
     const slope = c * w * crestPower - (c * c * 2 - 1) * waveLean;
     dy += height * amp * mod2;
     const crestUp = Math.max(s, 0);
-    const gather = c * spec.waveSteepness + crestUp * crestUp * waveCurl;
-    const horiz = gather * pinch * Math.min(mod2, 1.1);
+    const gather2 = c * spec.waveSteepness + crestUp * crestUp * waveCurl;
+    const horiz = gather2 * pinch * Math.min(mod2, 1.1);
     dx += dirX * horiz;
     dz += dirZ * horiz;
     const gradX = dirX * (gradAlong + k) + perpX * gradAcross;
@@ -1888,8 +1914,8 @@ function createWaterMaterial(options) {
       const c = cos(theta);
       vHeight = vHeight.add(profileOf(s, c, false).height.mul(wave.amp).mul(mod2).mul(wave.geoFade));
       const crestUp = max(s, float(0));
-      const gather = c.mul(uWaveSteepness).add(crestUp.mul(crestUp).mul(uWaveCurl));
-      vHoriz = vHoriz.add(wave.dir.mul(gather.mul(wave.pinch).mul(min(mod2, float(1.1))).mul(wave.geoFade)));
+      const gather2 = c.mul(uWaveSteepness).add(crestUp.mul(crestUp).mul(uWaveCurl));
+      vHoriz = vHoriz.add(wave.dir.mul(gather2.mul(wave.pinch).mul(min(mod2, float(1.1))).mul(wave.geoFade)));
     });
     displacedLocal = options.upAxis === "z" ? vec3(
       restLocal.x.add(vHoriz.x.mul(uInvScale.x)),
@@ -4171,21 +4197,47 @@ function juiceShake(now = performance.now() / 1e3) {
   if (now >= shakeUntil || shakeAmp <= 0) return { x: 0, y: 0 };
   return { x: (Math.random() - 0.5) * shakeAmp, y: (Math.random() - 0.5) * shakeAmp };
 }
-var holdUntil, shakeAmp, shakeUntil;
+function clearJuice() {
+  holdUntil = 0;
+  shakeAmp = 0;
+  shakeUntil = 0;
+  if (flashColor) {
+    flashColor = "";
+    flashUntil = 0;
+    flashListeners.forEach((listener2) => listener2());
+  }
+}
+function armJuice(hitStopSec, shake, color2, now) {
+  if (hitStopSec > 0) holdUntil = Math.max(holdUntil, now + hitStopSec);
+  if (shake > 0) {
+    shakeAmp = shake;
+    shakeUntil = now + 0.28;
+  }
+  if (color2) {
+    flashColor = color2;
+    flashUntil = now + 0.12;
+    flashListeners.forEach((listener2) => listener2());
+    window.setTimeout(() => flashListeners.forEach((listener2) => listener2()), 140);
+  }
+}
+var holdUntil, shakeAmp, shakeUntil, flashColor, flashUntil, flashListeners;
 var init_juiceClock = __esm({
   "src/gameplay/juiceClock.ts"() {
     "use strict";
     holdUntil = 0;
     shakeAmp = 0;
     shakeUntil = 0;
+    flashColor = "";
+    flashUntil = 0;
+    flashListeners = /* @__PURE__ */ new Set();
   }
 });
 
 // src/runtime/frameProfile.ts
-function measureCost(id, run) {
+function measureCost(id, run2) {
   const start2 = performance.now();
   try {
-    run();
+    run2();
   } finally {
     const ms = performance.now() - start2;
     buckets.set(id, (buckets.get(id) ?? 0) + ms);
@@ -4393,6 +4445,107 @@ function defaultScore() {
     defeatMessage: "onStageDefeat"
   };
 }
+function isCoreCondition(kind) {
+  return CONDS.includes(kind);
+}
+function emptyCondition(kind = "hasTag") {
+  return { id: crypto.randomUUID(), kind, tag: "", left: "", op: "==", right: "" };
+}
+function emptyStep(kind = "message") {
+  return {
+    id: crypto.randomUUID(),
+    do: kind,
+    message: "",
+    name: "",
+    value: "0",
+    tag: "",
+    seconds: kind === "wait" ? 0.5 : 0,
+    clip: "",
+    clipAssetId: "",
+    stateId: "",
+    level: "info",
+    conditions: kind === "if" ? [emptyCondition("hasTag")] : [],
+    steps: []
+  };
+}
+function readRules(raw) {
+  if (!Array.isArray(raw)) return [];
+  return raw.map(normalizeRule).filter((rule) => !!rule);
+}
+function readRuleStates(raw) {
+  if (!Array.isArray(raw)) return [];
+  return raw.map(normalizeState).filter((node) => !!node);
+}
+function normalizeRule(raw) {
+  if (!raw || typeof raw !== "object") return null;
+  const item = raw;
+  const legacy = item.cond && item.cond !== "always" ? [emptyCondition(item.cond)] : [];
+  if (legacy[0] && item.cond) {
+    legacy[0].tag = item.tag ?? "";
+    legacy[0].left = item.left ?? "";
+    legacy[0].op = item.op || "==";
+    legacy[0].right = item.right ?? "";
+  }
+  return {
+    id: item.id || crypto.randomUUID(),
+    name: item.name ?? "",
+    enabled: item.enabled !== false,
+    trigger: typeof item.trigger === "string" && item.trigger ? item.trigger : "playStart",
+    message: item.message ?? "",
+    key: item.key || "KeyE",
+    conditions: Array.isArray(item.conditions) && item.conditions.length > 0 ? item.conditions.map(normalizeCondition) : legacy,
+    steps: Array.isArray(item.steps) ? item.steps.map(normalizeStep) : []
+  };
+}
+function normalizeCondition(raw) {
+  const item = raw ?? {};
+  return {
+    id: item.id || crypto.randomUUID(),
+    kind: typeof item.kind === "string" && item.kind ? item.kind : "always",
+    tag: item.tag ?? "",
+    left: item.left ?? "",
+    op: item.op || "==",
+    right: item.right ?? ""
+  };
+}
+function normalizeStep(raw) {
+  const item = raw ?? {};
+  const kind = typeof item.do === "string" && item.do ? item.do : "message";
+  const step2 = emptyStep(kind);
+  step2.id = item.id || step2.id;
+  step2.message = item.message ?? "";
+  step2.name = item.name ?? "";
+  step2.value = item.value ?? "0";
+  step2.tag = item.tag ?? "";
+  step2.seconds = Number.isFinite(item.seconds) ? Number(item.seconds) : step2.seconds;
+  step2.clip = item.clip ?? "";
+  step2.clipAssetId = item.clipAssetId ?? "";
+  step2.stateId = item.stateId ?? "";
+  step2.level = item.level === "warn" || item.level === "error" ? item.level : "info";
+  const legacy = item.do === "if" && item.cond ? [{ ...emptyCondition(isCoreCondition(item.cond) ? item.cond : "always"), tag: item.tag ?? "", left: item.left ?? "", op: item.op || "==", right: item.right ?? "" }] : [];
+  step2.conditions = Array.isArray(item.conditions) && item.conditions.length > 0 ? item.conditions.map(normalizeCondition) : legacy;
+  step2.steps = Array.isArray(item.steps) ? item.steps.map(normalizeStep) : [];
+  return step2;
+}
+function normalizeState(raw) {
+  if (!raw || typeof raw !== "object") return null;
+  const item = raw;
+  if (!item.id) return null;
+  return {
+    id: item.id,
+    name: item.name ?? "",
+    children: Array.isArray(item.children) ? item.children.map(normalizeState).filter((node) => !!node) : [],
+    onEnter: Array.isArray(item.onEnter) ? item.onEnter.map(normalizeStep) : [],
+    onTick: Array.isArray(item.onTick) ? item.onTick.map(normalizeStep) : [],
+    onExit: Array.isArray(item.onExit) ? item.onExit.map(normalizeStep) : [],
+    transitions: Array.isArray(item.transitions) ? item.transitions.map((jump) => ({
+      id: jump.id || crypto.randomUUID(),
+      targetId: jump.targetId ?? "",
+      conditions: Array.isArray(jump.conditions) ? jump.conditions.map(normalizeCondition) : []
+    })) : [],
+    enter: Array.isArray(item.enter) ? item.enter.map(normalizeCondition) : []
+  };
+}
 function registerRuntimeSystem(id, order, step2) {
   const target = order >= RUNTIME_STAGE.POST_ANIMATION ? postAnimationSystems : order >= RUNTIME_STAGE.PHYSICS_NAV ? postPhysicsSystems : systems;
   const index = target.findIndex((item) => item.id === id);
@@ -4423,7 +4576,7 @@ function stepSceneRuntime(dt, host) {
   }
   consumeInputFrame();
 }
-var RUNTIME_STAGE, systems, postPhysicsSystems, postAnimationSystems;
+var CONDS, RUNTIME_STAGE, systems, postPhysicsSystems, postAnimationSystems;
 var init_sceneRuntime = __esm({
   "src/runtime/sceneRuntime.ts"() {
     "use strict";
@@ -4433,6 +4586,7 @@ var init_sceneRuntime = __esm({
     init_juiceClock();
     init_actionMap();
     init_frameProfile();
+    CONDS = ["always", "hasTag", "missingTag", "compare", "formula"];
     RUNTIME_STAGE = {
       PRE_PHYSICS: 10,
       PHYSICS_NAV: 50,
@@ -4593,27 +4747,27 @@ var init_schema = __esm({
     SPLINE_PATH_CAPABILITY_ID = "splinePath";
     SPLINE_SCHEMA = {
       type: "object",
-      label: "Spline \u8DEF\u5F84\u8FD0\u52A8",
+      label: "spline.title",
       fields: {
-        enabled: { type: "boolean", default: true, label: "\u542F\u7528" },
-        pathNodeId: { type: "ref", target: "node", kinds: ["spline"], default: null, label: "Spline \u66F2\u7EBF\u8282\u70B9" },
+        enabled: { type: "boolean", default: true, label: "field.enable" },
+        pathNodeId: { type: "ref", target: "node", kinds: ["spline"], default: null, label: "spline.pathNode" },
         mode: {
           type: "enum",
           default: "loop",
-          label: "\u8FD0\u884C\u6A21\u5F0F",
+          label: "spline.mode",
           options: [
-            { value: "once", label: "\u5355\u6B21\u5230\u8FBE" },
-            { value: "loop", label: "\u5FAA\u73AF" },
-            { value: "pingPong", label: "\u5F80\u8FD4" }
+            { value: "once", label: "spline.mode.once" },
+            { value: "loop", label: "spline.mode.loop" },
+            { value: "pingPong", label: "spline.mode.pingPong" }
           ]
         },
-        speed: { type: "number", default: 4, min: 0.05, max: 200, step: 0.5, label: "\u79FB\u52A8\u901F\u5EA6 (m/s)" },
-        tension: { type: "number", default: 0.5, min: 0, max: 1, step: 0.05, label: "\u66F2\u7EBF\u5F20\u529B" },
-        closed: { type: "boolean", default: false, label: "\u95ED\u5408\u66F2\u7EBF" },
-        faceDirection: { type: "boolean", default: true, label: "\u671D\u5411\u8DEF\u5F84\u5207\u7EBF" },
-        planeXZ: { type: "boolean", default: false, label: "\u4FDD\u6301\u5F53\u524D\u9AD8\u5EA6 (XZ)" },
-        autoStart: { type: "boolean", default: true, label: "\u8BD5\u73A9\u81EA\u52A8\u542F\u52A8" },
-        startProgress: { type: "number", default: 0, min: 0, max: 1, step: 0.05, label: "\u8D77\u59CB\u8FDB\u5EA6 (0~1)" }
+        speed: { type: "number", default: 4, min: 0.05, max: 200, step: 0.5, label: "spline.speed" },
+        tension: { type: "number", default: 0.5, min: 0, max: 1, step: 0.05, label: "spline.curveTension" },
+        closed: { type: "boolean", default: false, label: "field.closed" },
+        faceDirection: { type: "boolean", default: true, label: "spline.face" },
+        planeXZ: { type: "boolean", default: false, label: "spline.planeXZ" },
+        autoStart: { type: "boolean", default: true, label: "spline.autoStart" },
+        startProgress: { type: "number", default: 0, min: 0, max: 1, step: 0.05, label: "spline.start" }
       }
     };
   }
@@ -4789,50 +4943,50 @@ var init_schema2 = __esm({
     TWEEN_CAPABILITY_ID = "tween";
     TWEEN_SCHEMA = {
       type: "object",
-      label: "Tween \u8865\u95F4\u52A8\u6548",
+      label: "tween.title",
       fields: {
-        enabled: { type: "boolean", default: true, label: "\u542F\u7528" },
+        enabled: { type: "boolean", default: true, label: "field.enable" },
         property: {
           type: "enum",
           default: "floatBob",
-          label: "\u52A8\u6548\u7C7B\u578B",
+          label: "tween.kind",
           options: [
-            { value: "floatBob", label: "\u60AC\u6D6E\u6D6E\u52A8 (PingPong)" },
-            { value: "positionOffset", label: "\u4F4D\u7F6E\u504F\u79FB" },
-            { value: "rotationOffset", label: "\u65CB\u8F6C\u89D2\u5EA6 (\u5EA6)" },
-            { value: "scaleMultiplier", label: "\u7F29\u653E\u500D\u7387\u53D8\u5316" }
+            { value: "floatBob", label: "tween.kind.floatBob" },
+            { value: "positionOffset", label: "tween.kind.positionOffset" },
+            { value: "rotationOffset", label: "tween.kind.rotationOffset" },
+            { value: "scaleMultiplier", label: "tween.kind.scaleMultiplier" }
           ]
         },
-        delta: { type: "vec3", default: [0, 0.35, 0], label: "\u53D8\u5316\u91CF (X/Y/Z)" },
-        duration: { type: "number", default: 1.2, min: 0.05, max: 60, step: 0.1, label: "\u5355\u7A0B\u65F6\u957F (\u79D2)" },
-        delay: { type: "number", default: 0, min: 0, max: 30, step: 0.1, label: "\u8D77\u59CB\u5EF6\u8FDF (\u79D2)" },
+        delta: { type: "vec3", default: [0, 0.35, 0], label: "tween.delta" },
+        duration: { type: "number", default: 1.2, min: 0.05, max: 60, step: 0.1, label: "tween.duration" },
+        delay: { type: "number", default: 0, min: 0, max: 30, step: 0.1, label: "tween.delay" },
         ease: {
           type: "enum",
           default: "inOutSine",
-          label: "\u7F13\u52A8\u66F2\u7EBF",
+          label: "tween.ease",
           options: [
-            { value: "linear", label: "\u7EBF\u6027 (Linear)" },
-            { value: "inOutSine", label: "\u6B63\u5F26\u7F13\u5165\u7F13\u51FA (Sine)" },
-            { value: "outQuad", label: "\u4E8C\u6B21\u7F13\u51FA (OutQuad)" },
-            { value: "inOutQuad", label: "\u4E8C\u6B21\u7F13\u5165\u7F13\u51FA (InOutQuad)" },
-            { value: "outCubic", label: "\u4E09\u6B21\u7F13\u51FA (OutCubic)" },
-            { value: "inOutCubic", label: "\u4E09\u6B21\u7F13\u5165\u7F13\u51FA (InOutCubic)" },
-            { value: "outBack", label: "\u56DE\u5F39 (OutBack)" },
-            { value: "outBounce", label: "\u5F39\u8DF3 (OutBounce)" },
-            { value: "outElastic", label: "\u5F39\u6027 (OutElastic)" }
+            { value: "linear", label: "tween.ease.linear" },
+            { value: "inOutSine", label: "tween.ease.inOutSine" },
+            { value: "outQuad", label: "tween.ease.outQuad" },
+            { value: "inOutQuad", label: "tween.ease.inOutQuad" },
+            { value: "outCubic", label: "tween.ease.outCubic" },
+            { value: "inOutCubic", label: "tween.ease.inOutCubic" },
+            { value: "outBack", label: "tween.ease.outBack" },
+            { value: "outBounce", label: "tween.ease.outBounce" },
+            { value: "outElastic", label: "tween.ease.outElastic" }
           ]
         },
         loopMode: {
           type: "enum",
           default: "pingPong",
-          label: "\u5FAA\u73AF\u6A21\u5F0F",
+          label: "tween.repeat",
           options: [
-            { value: "once", label: "\u5355\u6B21" },
-            { value: "loop", label: "\u4ECE\u5934\u5FAA\u73AF" },
-            { value: "pingPong", label: "\u5F80\u8FD4 (PingPong)" }
+            { value: "once", label: "tween.repeat.once" },
+            { value: "loop", label: "tween.repeat.loop" },
+            { value: "pingPong", label: "tween.repeat.pingPong" }
           ]
         },
-        autoStart: { type: "boolean", default: true, label: "\u8BD5\u73A9\u81EA\u52A8\u64AD\u653E" }
+        autoStart: { type: "boolean", default: true, label: "tween.autoStart" }
       }
     };
   }
@@ -4981,16 +5135,16 @@ var init_schema3 = __esm({
     CROWD_CAPABILITY_ID = "crowd";
     CROWD_SCHEMA = {
       type: "object",
-      label: "\u7FA4\u4F53\u907F\u8BA9 (Crowd)",
+      label: "crowd.title",
       fields: {
-        enabled: { type: "boolean", default: true, label: "\u542F\u7528" },
-        radius: { type: "number", default: 0.8, min: 0.2, max: 10, step: 0.1, label: "\u907F\u8BA9\u534A\u5F84 (m)" },
-        maxSpeed: { type: "number", default: 4.5, min: 0.1, max: 50, step: 0.5, label: "\u6700\u5927\u901F\u5EA6 (m/s)" },
-        separationWeight: { type: "number", default: 1.8, min: 0, max: 10, step: 0.1, label: "\u5206\u79BB\u6743\u91CD" },
-        cohesionWeight: { type: "number", default: 0.25, min: 0, max: 5, step: 0.05, label: "\u51DD\u805A\u6743\u91CD" },
-        alignmentWeight: { type: "number", default: 0.35, min: 0, max: 5, step: 0.05, label: "\u5BF9\u9F50\u6743\u91CD" },
-        planeXZ: { type: "boolean", default: true, label: "XZ \u5E73\u9762\u79FB\u52A8" },
-        faceDirection: { type: "boolean", default: true, label: "\u671D\u5411\u79FB\u52A8\u65B9\u5411" }
+        enabled: { type: "boolean", default: true, label: "field.enable" },
+        radius: { type: "number", default: 0.8, min: 0.2, max: 10, step: 0.1, label: "crowd.radius" },
+        maxSpeed: { type: "number", default: 4.5, min: 0.1, max: 50, step: 0.5, label: "crowd.maxSpeed" },
+        separationWeight: { type: "number", default: 1.8, min: 0, max: 10, step: 0.1, label: "crowd.separation" },
+        cohesionWeight: { type: "number", default: 0.25, min: 0, max: 5, step: 0.05, label: "crowd.cohesion" },
+        alignmentWeight: { type: "number", default: 0.35, min: 0, max: 5, step: 0.05, label: "crowd.alignment" },
+        planeXZ: { type: "boolean", default: true, label: "crowd.planeXZ" },
+        faceDirection: { type: "boolean", default: true, label: "crowd.face" }
       }
     };
   }
@@ -5420,6 +5574,39 @@ function findRow(database, tableId, id) {
   if (!key) return void 0;
   return tableRows(database, tableId).find((row) => row.id === key);
 }
+function listEnabledPackTriggers(enabled) {
+  const on = resolveEnabledPackIds(enabled);
+  const out = [];
+  for (const pack of packs.values()) {
+    if (!on.has(pack.id)) continue;
+    for (const def of pack.triggers ?? []) out.push({ packId: pack.id, def });
+  }
+  return out;
+}
+function findPackTrigger(kind, enabled) {
+  const on = resolveEnabledPackIds(enabled);
+  for (const pack of packs.values()) {
+    const def = pack.triggers?.find((item) => item.kind === kind);
+    if (def) return { packId: pack.id, enabled: on.has(pack.id), def };
+  }
+  return void 0;
+}
+function findPackCondition(kind, enabled) {
+  const on = resolveEnabledPackIds(enabled);
+  for (const pack of packs.values()) {
+    const def = pack.conditions?.find((item) => item.kind === kind);
+    if (def) return { packId: pack.id, enabled: on.has(pack.id), def };
+  }
+  return void 0;
+}
+function findPackAction(kind, enabled) {
+  const on = resolveEnabledPackIds(enabled);
+  for (const pack of packs.values()) {
+    const def = pack.actions?.find((item) => item.kind === kind);
+    if (def) return { packId: pack.id, enabled: on.has(pack.id), def };
+  }
+  return void 0;
+}
 var packs;
 var init_registry = __esm({
   "src/gameplay/registry.ts"() {
@@ -5447,6 +5634,17 @@ function listRuntimeTags(nodeId, now = performance.now() / 1e3) {
     remaining: until > 0 ? Math.max(0, until - now) : null
   }));
 }
+function clearRuntimeTags() {
+  bags.clear();
+}
+function tickRuntimeTags(now) {
+  for (const [nodeId, bag] of bags) {
+    for (const [tag, until] of bag) {
+      if (until > 0 && now >= until) bag.delete(tag);
+    }
+    if (bag.size === 0) bags.delete(nodeId);
+  }
+}
 function nodeHasTag(node, query) {
   if (!query.trim()) return false;
   if (matchesTag(node.tagId, query)) return true;
@@ -5459,6 +5657,50 @@ function nodeHasTag(node, query) {
     if (matchesTag(tag, query)) return true;
   }
   return false;
+}
+function addRuntimeTag(nodeId, tag, seconds, now) {
+  const id = tag.trim();
+  if (!id || blocked(nodeId, id)) return false;
+  const bag = bags.get(nodeId) ?? /* @__PURE__ */ new Map();
+  const previous = bag.get(id);
+  if (previous === 0 || seconds <= 0) bag.set(id, 0);
+  else bag.set(id, Math.max(previous ?? 0, now + seconds));
+  bags.set(nodeId, bag);
+  enforceBlocks(nodeId);
+  return bags.get(nodeId)?.has(id) ?? false;
+}
+function removeRuntimeTag(nodeId, tag) {
+  const id = tag.trim();
+  if (!id) return;
+  const bag = bags.get(nodeId);
+  if (!bag) return;
+  for (const key of [...bag.keys()]) {
+    if (matchesTag(key, id)) bag.delete(key);
+  }
+  if (bag.size === 0) bags.delete(nodeId);
+}
+function blockPrefix(tag) {
+  const row = findRow(getRuntimeWorld().getGameDatabase(), "tags", tag);
+  const prefix = row?.fields?.blockPrefix;
+  return typeof prefix === "string" ? prefix.trim() : "";
+}
+function blocked(nodeId, tag) {
+  const bag = bags.get(nodeId);
+  if (!bag) return false;
+  for (const held2 of bag.keys()) {
+    const prefix = blockPrefix(held2);
+    if (prefix && matchesTag(tag, prefix)) return true;
+  }
+  return false;
+}
+function enforceBlocks(nodeId) {
+  const bag = bags.get(nodeId);
+  if (!bag) return;
+  const prefixes = [...bag.keys()].map(blockPrefix).filter(Boolean);
+  if (prefixes.length === 0) return;
+  for (const key of [...bag.keys()]) {
+    if (prefixes.some((prefix) => matchesTag(key, prefix))) bag.delete(key);
+  }
 }
 var bags;
 var init_runtimeTags = __esm({
@@ -5482,27 +5724,27 @@ var init_schema4 = __esm({
     PROJECTILE_CAPABILITY_ID = "projectile";
     PROJECTILE_SCHEMA = {
       type: "object",
-      label: "\u901A\u7528\u5F39\u9053 (Projectile)",
+      label: "projectile.title",
       fields: {
-        enabled: { type: "boolean", default: true, label: "\u542F\u7528" },
+        enabled: { type: "boolean", default: true, label: "field.enable" },
         mode: {
           type: "enum",
           default: "linear",
-          label: "\u5F39\u9053\u6A21\u5F0F",
+          label: "projectile.mode",
           options: [
-            { value: "linear", label: "\u76F4\u7EBF\u98DE\u884C" },
-            { value: "homing", label: "\u81EA\u52A8\u8FFD\u8E2A" },
-            { value: "ballistic", label: "\u629B\u7269\u7EBF" }
+            { value: "linear", label: "projectile.mode.linear" },
+            { value: "homing", label: "projectile.mode.homing" },
+            { value: "ballistic", label: "projectile.mode.ballistic" }
           ]
         },
-        speed: { type: "number", default: 22, min: 0.5, max: 200, step: 1, label: "\u98DE\u884C\u901F\u5EA6 (m/s)" },
-        gravity: { type: "number", default: 9.8, min: 0, max: 50, step: 0.5, label: "\u91CD\u529B\u52A0\u901F\u5EA6" },
-        turnRate: { type: "number", default: 6, min: 0.1, max: 30, step: 0.5, label: "\u8FFD\u8E2A\u8F6C\u5411\u7387 (rad/s)" },
-        maxLifetime: { type: "number", default: 3, min: 0.1, max: 60, step: 0.2, label: "\u6700\u5927\u5BFF\u547D (s)" },
-        hitRadius: { type: "number", default: 0.65, min: 0.05, max: 10, step: 0.05, label: "\u547D\u4E2D\u5224\u5B9A\u534A\u5F84 (m)" },
-        targetTag: { type: "string", default: "enemy", label: "\u76EE\u6807\u6807\u7B7E" },
-        damage: { type: "number", default: 10, min: 0, max: 9999, step: 1, label: "\u4F24\u5BB3\u503C" },
-        destroyOnHit: { type: "boolean", default: true, label: "\u547D\u4E2D\u540E\u56DE\u6C60/\u9500\u6BC1" }
+        speed: { type: "number", default: 22, min: 0.5, max: 200, step: 1, label: "projectile.speed" },
+        gravity: { type: "number", default: 9.8, min: 0, max: 50, step: 0.5, label: "projectile.gravity" },
+        turnRate: { type: "number", default: 6, min: 0.1, max: 30, step: 0.5, label: "projectile.turn" },
+        maxLifetime: { type: "number", default: 3, min: 0.1, max: 60, step: 0.2, label: "projectile.life" },
+        hitRadius: { type: "number", default: 0.65, min: 0.05, max: 10, step: 0.05, label: "projectile.hitRadius" },
+        targetTag: { type: "string", default: "enemy", label: "projectile.targetTag" },
+        damage: { type: "number", default: 10, min: 0, max: 9999, step: 1, label: "projectile.damage" },
+        destroyOnHit: { type: "boolean", default: true, label: "projectile.destroy" }
       }
     };
   }
@@ -5925,6 +6167,8 @@ var init_runtime = __esm({
       hazeOn = false;
       fogOn = false;
       apKey = "";
+      apFrame = 0;
+      apWarned = false;
       applyFogNode = (colorNode, scenePass) => {
         let node = colorNode;
         if (this.hazeOn && this.sky.aerialPerspectiveTexture) {
@@ -5993,7 +6237,7 @@ var init_runtime = __esm({
           const nextApKey = `${e[0].toFixed(3)},${e[4].toFixed(3)},${e[8].toFixed(3)},${e[12].toFixed(2)},${e[13].toFixed(2)},${e[14].toFixed(2)}|${settings.timeOfDay}|${settings.latitude}|${settings.dayOfYear}|${settings.north}|${settings.turbidity}|${settings.groundAlbedo}`;
           if (nextApKey !== this.apKey) {
             this.apKey = nextApKey;
-            void this.sky.updateAerialPerspective();
+            this.scheduleAerialPerspective();
           }
         } else {
           this.apKey = "";
@@ -6006,7 +6250,20 @@ var init_runtime = __esm({
           signature: `${settings.haze ? 1 : 0}${settings.fog ? 1 : 0}`
         });
       }
+      scheduleAerialPerspective() {
+        if (this.apFrame) return;
+        this.apFrame = requestAnimationFrame(() => {
+          this.apFrame = 0;
+          void this.sky.updateAerialPerspective().catch((error) => {
+            if (this.apWarned) return;
+            this.apWarned = true;
+            console.warn("[sky] \u5927\u6C14\u900F\u89C6\u66F4\u65B0\u5931\u8D25", error);
+          });
+        });
+      }
       dispose() {
+        if (this.apFrame) cancelAnimationFrame(this.apFrame);
+        this.apFrame = 0;
         this.starToken += 1;
         this.starsWanted = false;
         if (this.starsReady) this.sky.disableStars();
@@ -7069,11 +7326,11 @@ function playSound(options) {
   const id = nextId++;
   const ticket = playTicket;
   const ear = ensureListener();
-  const run = () => {
+  const run2 = () => {
     void start(id, options, ticket);
   };
-  if (ear.context.state === "suspended" && !holdContext) void ear.context.resume().then(run);
-  else run();
+  if (ear.context.state === "suspended" && !holdContext) void ear.context.resume().then(run2);
+  else run2();
   return id;
 }
 function stopMusic() {
@@ -7303,6 +7560,84 @@ var init_audio = __esm({
   }
 });
 
+// src/runtime/signals.ts
+function onFootstep(listener2) {
+  footstepListeners.add(listener2);
+  return () => {
+    footstepListeners.delete(listener2);
+  };
+}
+function emitFootstep(nodeId) {
+  for (const listener2 of footstepListeners) {
+    listener2(nodeId);
+  }
+  emitCharacterEvent(nodeId, "onFootstep");
+}
+function onCharacterEvent(listener2) {
+  characterEventListeners.add(listener2);
+  return () => {
+    characterEventListeners.delete(listener2);
+  };
+}
+function emitCharacterEvent(nodeId, event, payload) {
+  for (const listener2 of characterEventListeners) {
+    listener2(nodeId, event, payload);
+  }
+}
+var footstepListeners, characterEventListeners;
+var init_signals = __esm({
+  "src/runtime/signals.ts"() {
+    "use strict";
+    footstepListeners = /* @__PURE__ */ new Set();
+    characterEventListeners = /* @__PURE__ */ new Set();
+  }
+});
+
+// src/gameplay/juice.ts
+function playJuice(id, nodeId, host) {
+  const world3 = getRuntimeWorld();
+  const row = findRow(world3.getGameDatabase(), "juice", id);
+  if (!row) {
+    if (id.trim()) world3.log("warn", `\u6253\u51FB\u611F\u7F3A\u5C11\u4E00\u884C\uFF1A${id}`);
+    return false;
+  }
+  const fields = row.fields ?? {};
+  const now = performance.now() / 1e3;
+  const color2 = typeof fields.rimFlashColor === "string" ? fields.rimFlashColor : "";
+  armJuice(numberField(fields.hitStopSec), numberField(fields.cameraShake), color2, now);
+  const sound = typeof fields.sound === "string" ? fields.sound.trim() : "";
+  if (sound) {
+    playSound({
+      assetId: sound,
+      volume: fields.soundVolume === void 0 ? 1 : numberField(fields.soundVolume),
+      parent: host.resolveObject(nodeId)
+    });
+  }
+  const knock = numberField(fields.knockbackMeters);
+  if (knock > 0) knockBack(nodeId, host, knock);
+  return true;
+}
+function knockBack(nodeId, host, meters) {
+  const object = host.resolveObject(nodeId);
+  if (!object) return;
+  const yaw = Math.atan2(2 * object.quaternion.w * object.quaternion.y, 1 - 2 * object.quaternion.y * object.quaternion.y);
+  object.position.x -= Math.sin(yaw) * meters;
+  object.position.z -= Math.cos(yaw) * meters;
+}
+function numberField(value) {
+  const number = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(number) ? number : 0;
+}
+var init_juice = __esm({
+  "src/gameplay/juice.ts"() {
+    "use strict";
+    init_audio();
+    init_world();
+    init_juiceClock();
+    init_registry();
+  }
+});
+
 // src/runtime/ui/bindings.ts
 function coerceUiValue(raw) {
   if (typeof raw !== "string") return raw;
@@ -7368,16 +7703,1690 @@ var init_values = __esm({
   }
 });
 
+// src/runtime/rules.ts
+function watchKeys() {
+  if (keysOn || typeof window === "undefined") return;
+  keysOn = true;
+  window.addEventListener("keydown", (event) => {
+    const tag = event.target?.tagName;
+    if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+    if (!heldKeys.has(event.code)) tappedKeys2.add(event.code);
+    heldKeys.add(event.code);
+  });
+  window.addEventListener("keyup", (event) => heldKeys.delete(event.code));
+  window.addEventListener("blur", () => {
+    heldKeys.clear();
+    tappedKeys2.clear();
+  });
+}
+function postRuleEvent(nodeId, trigger, message = "") {
+  inbox.push({ nodeId, trigger, message });
+}
+function postRuleMessage(message, nodeId = "", fields) {
+  if (!message) return;
+  texts.set("msg", message);
+  messageFields.clear();
+  if (fields) {
+    for (const [key, raw] of Object.entries(fields)) {
+      const number = typeof raw === "number" ? raw : Number(raw);
+      if (Number.isFinite(number)) messageFields.set(`msg.${key}`, number);
+    }
+  }
+  inbox.push({ nodeId, trigger: "message", message });
+}
+function stepRules(dt, host) {
+  watchKeys();
+  const world3 = getRuntimeWorld();
+  if (world3.getPlayState() !== "playing") {
+    rulesSimClock = 0;
+    jobs.length = 0;
+    vars.clear();
+    texts.clear();
+    messageFields.clear();
+    clearRuntimeTags();
+    inbox.length = 0;
+    tappedKeys2.clear();
+    cursors.clear();
+    traces.clear();
+    started = false;
+    world3.clearPlayCameraForce?.();
+    return;
+  }
+  rulesSimClock += Math.max(0, dt);
+  const now = rulesSimClock;
+  const nodes = world3.getNodes();
+  tickRuntimeTags(now);
+  if (!started) {
+    started = true;
+    for (const node of Object.values(nodes)) fire(node, "playStart", "");
+  }
+  const batch = inbox.splice(0, inbox.length);
+  for (const event of batch) {
+    for (const node of Object.values(nodes)) {
+      if (event.nodeId && event.nodeId !== node.id) continue;
+      if (event.trigger === "message") {
+        for (const rule of readRules(node.gameplay?.rules)) {
+          if (rule.trigger === "message" && rule.message && rule.message === event.message) arm(node, rule);
+        }
+        continue;
+      }
+      fire(node, event.trigger, event.message);
+    }
+  }
+  for (const node of Object.values(nodes)) {
+    for (const rule of readRules(node.gameplay?.rules)) {
+      if (rule.trigger === "key" && keyHit(rule.key, tappedKeys2)) arm(node, rule);
+    }
+  }
+  const gameplayPacks = world3.getGameplayPacks();
+  const packTriggers = listEnabledPackTriggers(gameplayPacks);
+  if (packTriggers.length > 0) {
+    for (const node of Object.values(nodes)) {
+      for (const rule of readRules(node.gameplay?.rules)) {
+        const reg = findPackTrigger(rule.trigger, gameplayPacks);
+        if (reg?.enabled && reg.def.poll?.(node, rule, host)) arm(node, rule);
+      }
+    }
+  }
+  tappedKeys2.clear();
+  tickStates(host);
+  for (let i = jobs.length - 1; i >= 0; i -= 1) {
+    if (advance(jobs[i], dt, host, now)) jobs.splice(i, 1);
+  }
+}
+function keyHit(expected, codes) {
+  const want = expected.trim();
+  if (!want || codes.size === 0) return false;
+  if (codes.has(want)) return true;
+  const upper = want.toUpperCase();
+  if (want.length === 1 && upper >= "A" && upper <= "Z" && codes.has(`Key${upper}`)) return true;
+  if (want.length === 1 && want >= "0" && want <= "9" && codes.has(`Digit${want}`)) return true;
+  const lower = want.toLowerCase();
+  for (const code of codes) {
+    if (code.toLowerCase() === lower) return true;
+  }
+  return false;
+}
+function fire(node, trigger, message) {
+  for (const rule of readRules(node.gameplay?.rules)) {
+    if (rule.trigger !== trigger) continue;
+    if (trigger === "message" && rule.message && rule.message !== message) continue;
+    arm(node, rule);
+  }
+}
+function arm(node, rule) {
+  if (!rule.enabled) return;
+  if (!allPass(node, rule.conditions)) return;
+  if (rule.steps.length === 0) return;
+  jobs.push({
+    nodeId: node.id,
+    ruleId: rule.id,
+    stateId: "",
+    source: "rule",
+    steps: rule.steps.map(copyStep),
+    index: 0,
+    wait: 0,
+    frame: false,
+    list: [],
+    target: "",
+    moving: false,
+    loop: null
+  });
+}
+function advance(job, dt, host, now) {
+  const node = getRuntimeWorld().getNodes()[job.nodeId];
+  if (!node) return true;
+  let guard = 0;
+  while (job.index < job.steps.length && guard < 48) {
+    guard += 1;
+    const step2 = job.steps[job.index];
+    const waiting = step2?.do === "wait" && job.wait > 0 || step2?.do === "waitUpper" || step2?.do === "waitMark" || step2?.do === "waitFrame" && job.frame;
+    markTrace(job, step2, waiting);
+    if (!step2) break;
+    if (step2.do === "wait") {
+      if (job.wait <= 0) job.wait = Math.max(0, evaluate(step2.value) || step2.seconds);
+      job.wait -= dt;
+      if (job.wait > 0) {
+        markTrace(job, step2, true);
+        return false;
+      }
+      job.wait = 0;
+      job.index += 1;
+      continue;
+    }
+    if (step2.do === "waitFrame") {
+      if (!job.frame) {
+        job.frame = true;
+        markTrace(job, step2, true);
+        return false;
+      }
+      job.frame = false;
+      job.index += 1;
+      continue;
+    }
+    if (step2.do === "moveTo") {
+      if (!job.moving) {
+        const point2 = pointOf(step2, job, host);
+        if (!point2) {
+          job.index += 1;
+          continue;
+        }
+        orderCharacterMove(job.nodeId, point2[0], point2[1], point2[2]);
+        job.moving = true;
+        markTrace(job, step2, true);
+        return false;
+      }
+      if (characterTraveling(job.nodeId)) {
+        markTrace(job, step2, true);
+        return false;
+      }
+      job.moving = false;
+      job.index += 1;
+      continue;
+    }
+    if (step2.do === "waitUpper") {
+      if (node.overlayPlaying) {
+        markTrace(job, step2, true);
+        return false;
+      }
+      job.index += 1;
+      continue;
+    }
+    if (step2.do === "waitMark") {
+      const mark = Math.min(1, Math.max(0, evaluate(step2.value) || step2.seconds));
+      const progress = node.overlayClip ? overlayProgress(node) : getRuntimeWorld().bodyProgress?.(node.id) ?? 0;
+      lastValue = progress;
+      if (progress + 1e-3 < mark) {
+        markTrace(job, step2, true);
+        return false;
+      }
+      job.index += 1;
+      continue;
+    }
+    if (step2.do === "if") {
+      const passed = allPass(node, step2.conditions);
+      lastValue = passed ? 1 : 0;
+      if (passed && step2.steps.length > 0) {
+        job.steps = [...job.steps.slice(0, job.index + 1), ...step2.steps.map(copyStep), ...job.steps.slice(job.index + 1)];
+      }
+      job.index += 1;
+      continue;
+    }
+    if (step2.do === "each") {
+      if (job.list.length === 0 || step2.steps.length === 0) {
+        job.index += 1;
+        continue;
+      }
+      job.loop = {
+        ids: job.list.slice(),
+        item: 0,
+        steps: step2.steps.map(copyStep),
+        after: job.steps.slice(job.index + 1).map(copyStep)
+      };
+      job.target = job.loop.ids[0];
+      job.steps = job.loop.steps.map(copyStep);
+      job.index = 0;
+      continue;
+    }
+    if (step2.do === "switchState" && step2.stateId) {
+      const cursor2 = cursors.get(job.nodeId);
+      if (cursor2 && cursor2.stateId !== step2.stateId) cursor2.pendingId = step2.stateId;
+      job.index += 1;
+      continue;
+    }
+    run(node, step2, job, host, now);
+    job.index += 1;
+  }
+  if (job.loop && job.index >= job.steps.length) {
+    job.loop.item += 1;
+    if (job.loop.item < job.loop.ids.length) {
+      job.target = job.loop.ids[job.loop.item];
+      job.steps = job.loop.steps.map(copyStep);
+      job.index = 0;
+      return false;
+    }
+    job.steps = job.loop.after;
+    job.index = 0;
+    job.loop = null;
+    return false;
+  }
+  const cursor = cursors.get(job.nodeId);
+  traces.set(job.nodeId, { ruleId: "", stepId: "", stateId: cursor?.stateId ?? "", waiting: false, value: lastValue });
+  return job.index >= job.steps.length;
+}
+function markTrace(job, step2, waiting) {
+  traces.set(job.nodeId, {
+    ruleId: job.ruleId,
+    stepId: step2?.id ?? "",
+    stateId: cursors.get(job.nodeId)?.stateId ?? job.stateId,
+    waiting,
+    value: lastValue
+  });
+}
+function run(node, step2, job, host, now) {
+  const world3 = getRuntimeWorld();
+  const actor = job.target ? world3.getNodes()[job.target] ?? node : node;
+  if (step2.do === "message") {
+    postRuleMessage(step2.message);
+    world3.log("info", `${node.name}\uFF1A${step2.message}`);
+    return;
+  }
+  if (step2.do === "setVar") {
+    const value = evaluate(step2.value);
+    lastValue = value;
+    if (step2.name) vars.set(step2.name, value);
+    return;
+  }
+  if (step2.do === "addTag") {
+    const row = findRow(world3.getGameDatabase(), "tags", step2.tag);
+    if (step2.tag.trim() && !row) world3.log("warn", `\u73A9\u6CD5\u6807\u7B7E\u7F3A\u5C11\u4E00\u884C\uFF1A${step2.tag}`);
+    const fallback = Number(row?.fields?.defaultDurationSec ?? 0);
+    const seconds = step2.seconds > 0 ? step2.seconds : Number.isFinite(fallback) ? fallback : 0;
+    addRuntimeTag(actor.id, step2.tag, seconds, now);
+    return;
+  }
+  if (step2.do === "removeTag") {
+    removeRuntimeTag(actor.id, step2.tag);
+    return;
+  }
+  if (step2.do === "playClip" && step2.clip) {
+    playOn(actor, step2, false);
+    return;
+  }
+  if (step2.do === "playUpper" && step2.clip) {
+    playOn(actor, step2, true);
+    return;
+  }
+  if (step2.do === "stance") {
+    if (!step2.clip) world3.stopUpper?.(actor.id);
+    else world3.playUpper?.(actor.id, step2.clip, { assetId: clipAsset(actor, step2), loop: true, fade: actor.clipFade ?? 0.15 });
+    return;
+  }
+  if (step2.do === "showUi" || step2.do === "hideUi") {
+    const screen = findNamed(step2.name, "screen");
+    if (screen) setScreenVisible(screen.id, step2.do === "showUi");
+    return;
+  }
+  if (step2.do === "lock") {
+    const target = step2.name ? findNamed(step2.name) : job.target ? world3.getNodes()[job.target] : void 0;
+    const character = node.gameplay?.character;
+    if (!character) return;
+    world3.updateNode(node.id, {
+      gameplay: { ...node.gameplay, character: { ...character, lockTargetName: target?.name ?? "", lockTargetId: target?.id ?? "" } }
+    });
+    return;
+  }
+  if (step2.do === "camera") {
+    const camera = findNamed(step2.name, "camera");
+    if (camera) world3.forcePlayCamera?.(camera.id);
+    return;
+  }
+  if (step2.do === "spawn") spawnPrefab(node, step2, host);
+  if (step2.do === "hide") {
+    const nodes = { ...world3.getNodes() };
+    delete nodes[actor.id];
+    world3.setNodes(nodes);
+    return;
+  }
+  if (step2.do === "score") {
+    const amount = evaluate(step2.value);
+    lastValue = amount;
+    addRuleScore(amount);
+    return;
+  }
+  if (step2.do === "juice") {
+    playJuice(step2.name, actor.id, host);
+    return;
+  }
+  if (step2.do === "sound") {
+    const assetId = step2.clipAssetId || step2.name;
+    const music = step2.tag === "music";
+    if (!assetId) {
+      if (music) stopMusic();
+      return;
+    }
+    const volume = step2.value.trim() ? evaluate(step2.value) : 1;
+    lastValue = volume;
+    playSound({
+      assetId,
+      bus: music ? "music" : "sfx",
+      loop: music,
+      volume,
+      parent: music ? null : host.resolveObject(actor.id)
+    });
+    return;
+  }
+  if (step2.do === "gather") {
+    job.list = gather(node, step2, host);
+    lastValue = job.list.length;
+    return;
+  }
+  if (step2.do === "log") {
+    world3.log(step2.level, step2.message);
+    return;
+  }
+  const packAction = findPackAction(step2.do, world3.getGameplayPacks());
+  if (packAction?.enabled) {
+    packAction.def.execute({
+      node,
+      actor,
+      step: step2,
+      host,
+      now,
+      evaluate,
+      postMessage: postRuleMessage,
+      log: (level, message) => world3.log(level, message),
+      orderMove: (id, point2) => orderCharacterMove(id, point2[0], point2[1], point2[2])
+    });
+  }
+}
+function allPass(node, conditions) {
+  return conditions.every((item) => passes(node, item));
+}
+function passes(node, cond) {
+  if (cond.kind === "always") return true;
+  if (cond.kind === "formula") {
+    const value = evaluate(cond.left);
+    lastValue = value;
+    return value > 0;
+  }
+  if (cond.kind === "hasTag") return hasTag(node, cond.tag);
+  if (cond.kind === "missingTag") return !hasTag(node, cond.tag);
+  if (cond.kind !== "compare") {
+    const packCond = findPackCondition(cond.kind, getRuntimeWorld().getGameplayPacks());
+    if (!packCond?.enabled) return false;
+    return packCond.def.test(node, cond, { hasTag: (tag) => hasTag(node, tag), evaluate });
+  }
+  const a = readValue(cond.left);
+  const b = readValue(cond.right);
+  if (cond.op === "!=") return a !== b;
+  if (cond.op === ">") return a > b;
+  if (cond.op === "<") return a < b;
+  if (cond.op === ">=") return a >= b;
+  if (cond.op === "<=") return a <= b;
+  return a === b;
+}
+function hasTag(node, tag) {
+  return nodeHasTag(node, tag);
+}
+function readValue(token) {
+  const numeric = Number(token);
+  if (token.trim() !== "" && Number.isFinite(numeric)) return numeric;
+  if (messageFields.has(token)) return messageFields.get(token) ?? 0;
+  return vars.get(token) ?? 0;
+}
+function copyStep(step2) {
+  return { ...step2, conditions: step2.conditions.map((item) => ({ ...item })), steps: step2.steps.map(copyStep) };
+}
+function tickStates(host) {
+  for (const node of Object.values(getRuntimeWorld().getNodes())) {
+    const tree = readRuleStates(node.gameplay?.ruleStates);
+    if (tree.length === 0) {
+      cursors.delete(node.id);
+      continue;
+    }
+    let cursor = cursors.get(node.id);
+    if (!cursor) {
+      const leaf = pickLeaf(node, tree[0]);
+      if (!leaf) continue;
+      cursor = { stateId: leaf.id, phase: "entering", pendingId: "" };
+      cursors.set(node.id, cursor);
+      startEdge(node, leaf, "enter");
+      continue;
+    }
+    if (jobs.some((job) => job.nodeId === node.id && job.source !== "rule" && job.stateId === cursor.stateId)) continue;
+    const current = findState(tree, cursor.stateId);
+    if (!current) {
+      cursors.delete(node.id);
+      continue;
+    }
+    if (cursor.phase === "entering") {
+      cursor.phase = "ticking";
+      continue;
+    }
+    if (cursor.phase === "exiting") {
+      enterPending(node, tree, cursor);
+      continue;
+    }
+    const jump = current.transitions.find((item) => item.targetId && item.conditions.length > 0 && allPass(node, item.conditions) && findState(tree, item.targetId));
+    const pending3 = cursor.pendingId && cursor.pendingId !== cursor.stateId ? cursor.pendingId : "";
+    if (jump || pending3) {
+      cursor.pendingId = jump?.targetId || pending3;
+      cursor.phase = "exiting";
+      startEdge(node, current, "exit");
+      if (!jobs.some((job) => job.nodeId === node.id && job.source === "exit")) enterPending(node, tree, cursor);
+      continue;
+    }
+    startEdge(node, current, "tick");
+  }
+  void host;
+}
+function startEdge(node, state, source) {
+  const steps = source === "enter" ? state.onEnter : source === "exit" ? state.onExit : state.onTick;
+  if (steps.length === 0) return;
+  jobs.push({
+    nodeId: node.id,
+    ruleId: "",
+    stateId: state.id,
+    source,
+    steps: steps.map(copyStep),
+    index: 0,
+    wait: 0,
+    frame: false,
+    list: [],
+    target: "",
+    moving: false,
+    loop: null
+  });
+}
+function enterPending(node, tree, cursor) {
+  const target = findState(tree, cursor.pendingId);
+  const leaf = target ? pickLeaf(node, target) : void 0;
+  cursor.pendingId = "";
+  if (!leaf) {
+    cursor.phase = "ticking";
+    return;
+  }
+  cursor.stateId = leaf.id;
+  cursor.phase = "entering";
+  startEdge(node, leaf, "enter");
+}
+function findState(nodes, id) {
+  for (const node of nodes) {
+    if (node.id === id) return node;
+    const child = findState(node.children, id);
+    if (child) return child;
+  }
+  return void 0;
+}
+function pickLeaf(node, state) {
+  if (!state) return void 0;
+  if (state.children.length === 0) return state;
+  const chosen = state.children.find((child) => child.enter.length === 0 || allPass(node, child.enter)) ?? state.children[0];
+  return pickLeaf(node, chosen);
+}
+function playOn(node, step2, upper) {
+  const assetId = clipAsset(node, step2);
+  const world3 = getRuntimeWorld();
+  const opts = { assetId, loop: !upper, fade: node.clipFade ?? 0.15 };
+  if (upper) world3.playUpper?.(node.id, step2.clip, opts);
+  else world3.playBody?.(node.id, step2.clip, opts);
+}
+function clipAsset(node, step2) {
+  if (!step2.clipAssetId || step2.clipAssetId === node.assetId) return null;
+  return step2.clipAssetId;
+}
+function overlayProgress(node) {
+  if (!node.overlayClip) return 0;
+  const duration = getRuntimeWorld().clipDuration?.(node.overlayAssetId || node.assetId, node.overlayClip) ?? 0;
+  if (duration <= 0) return node.overlayPlaying ? 0 : 1;
+  return Math.min(1, Math.max(0, (node.overlayTime ?? 0) / duration));
+}
+function findNamed(name, kind) {
+  const trimmed = name.trim();
+  if (!trimmed) return void 0;
+  return Object.values(getRuntimeWorld().getNodes()).find((node) => (!kind || node.kind === kind) && (node.id === trimmed || node.name === trimmed));
+}
+function pointOf(step2, job, host) {
+  const named = step2.name ? findNamed(step2.name) : job.target ? getRuntimeWorld().getNodes()[job.target] : void 0;
+  if (named) {
+    const object = host.resolveObject(named.id);
+    if (!object) return null;
+    return [object.position.x, object.position.y, object.position.z];
+  }
+  const parts = step2.value.split(",").map((item) => Number(item.trim()));
+  if (parts.length === 3 && parts.every((item) => Number.isFinite(item))) return [parts[0], parts[1], parts[2]];
+  return null;
+}
+function gather(node, step2, host) {
+  const self = host.resolveObject(node.id);
+  if (!self) return [];
+  const radius = Math.max(0.1, step2.seconds > 0 ? step2.seconds : evaluate(step2.value) || 3);
+  const angle = step2.value.includes(",") ? 0 : Number(step2.value);
+  const limit = Number.isFinite(angle) && angle > 0 ? angle * Math.PI / 180 : Math.PI * 2;
+  const forward = { x: -Math.sin(yawOf(self.quaternion)), z: -Math.cos(yawOf(self.quaternion)) };
+  const hits = [];
+  for (const other of Object.values(getRuntimeWorld().getNodes())) {
+    if (other.id === node.id || !other.visible) continue;
+    if (step2.tag && !nodeHasTag(other, step2.tag)) continue;
+    const object = host.resolveObject(other.id);
+    if (!object) continue;
+    const dx = object.position.x - self.position.x;
+    const dz = object.position.z - self.position.z;
+    if (dx * dx + dz * dz > radius * radius) continue;
+    if (limit < Math.PI * 2) {
+      const len = Math.hypot(dx, dz) || 1;
+      const dot3 = (forward.x * dx + forward.z * dz) / len;
+      if (Math.acos(Math.min(1, Math.max(-1, dot3))) > limit / 2) continue;
+    }
+    hits.push(other.id);
+  }
+  return hits;
+}
+function yawOf(quaternion) {
+  return Math.atan2(2 * quaternion.w * quaternion.y, 1 - 2 * quaternion.y * quaternion.y);
+}
+function spawnPrefab(node, step2, host) {
+  const self = host.resolveObject(node.id);
+  const parts = step2.value.split(",").map((item) => Number(item.trim()));
+  const offset = parts.length >= 3 && parts.every((item) => Number.isFinite(item)) ? parts : [1, 0, 0];
+  const position = [
+    (self?.position.x ?? node.position[0]) + offset[0],
+    (self?.position.y ?? node.position[1]) + offset[1],
+    (self?.position.z ?? node.position[2]) + offset[2]
+  ];
+  getRuntimeWorld().instantiatePrefab?.(step2.name, { parentId: node.parentId, position });
+}
+function evaluate(source) {
+  const text = source.trim();
+  if (!text) return 0;
+  let index = 0;
+  const skip = () => {
+    while (text[index] === " ") index += 1;
+  };
+  const unary = () => {
+    skip();
+    if (text[index] === "-") {
+      index += 1;
+      return -unary();
+    }
+    if (text[index] === "(") {
+      index += 1;
+      const value2 = expression();
+      skip();
+      if (text[index] === ")") index += 1;
+      return value2;
+    }
+    const start2 = index;
+    if (/[0-9.]/.test(text[index] ?? "")) {
+      while (/[0-9.]/.test(text[index] ?? "")) index += 1;
+      return Number(text.slice(start2, index)) || 0;
+    }
+    while (/[\w.]/.test(text[index] ?? "")) index += 1;
+    const name = text.slice(start2, index);
+    skip();
+    if (text[index] === "(") {
+      index += 1;
+      const args = [];
+      skip();
+      if (text[index] !== ")") {
+        args.push(expression());
+        for (; ; ) {
+          skip();
+          if (text[index] !== ",") break;
+          index += 1;
+          args.push(expression());
+        }
+      }
+      skip();
+      if (text[index] === ")") index += 1;
+      return callFn(name, args);
+    }
+    return readValue(name);
+  };
+  const product = () => {
+    let value2 = unary();
+    for (; ; ) {
+      skip();
+      if (text[index] === "*") {
+        index += 1;
+        value2 *= unary();
+      } else if (text[index] === "/") {
+        index += 1;
+        const divisor = unary();
+        value2 = divisor === 0 ? 0 : value2 / divisor;
+      } else break;
+    }
+    return value2;
+  };
+  const sum = () => {
+    let value2 = product();
+    for (; ; ) {
+      skip();
+      if (text[index] === "+") {
+        index += 1;
+        value2 += product();
+      } else if (text[index] === "-") {
+        index += 1;
+        value2 -= product();
+      } else break;
+    }
+    return value2;
+  };
+  const expression = () => {
+    const value2 = sum();
+    skip();
+    const two = text.slice(index, index + 2);
+    if (two === ">=" || two === "<=" || two === "==" || two === "!=") {
+      index += 2;
+      return compare(value2, sum(), two) ? 1 : 0;
+    }
+    if (text[index] === ">" || text[index] === "<") {
+      const op = text[index];
+      index += 1;
+      return compare(value2, sum(), op) ? 1 : 0;
+    }
+    return value2;
+  };
+  const value = expression();
+  return Number.isFinite(value) ? value : 0;
+}
+function callFn(name, args) {
+  if (name === "clamp" && args.length >= 3) return Math.min(Math.max(args[0], args[1]), args[2]);
+  if (name === "min" && args.length > 0) return Math.min(...args);
+  if (name === "max" && args.length > 0) return Math.max(...args);
+  if (name === "abs" && args.length > 0) return Math.abs(args[0]);
+  return 0;
+}
+function compare(left, right, op) {
+  if (op === "!=") return left !== right;
+  if (op === ">") return left > right;
+  if (op === "<") return left < right;
+  if (op === ">=") return left >= right;
+  if (op === "<=") return left <= right;
+  return left === right;
+}
+var jobs, vars, texts, messageFields, inbox, heldKeys, tappedKeys2, cursors, traces, keysOn, started, rulesSimClock, lastValue;
+var init_rules = __esm({
+  "src/runtime/rules.ts"() {
+    "use strict";
+    init_character();
+    init_signals();
+    init_devices();
+    init_registry();
+    init_juice();
+    init_audio();
+    init_runtimeTags();
+    init_values();
+    init_world();
+    init_sceneRuntime();
+    jobs = [];
+    vars = /* @__PURE__ */ new Map();
+    texts = /* @__PURE__ */ new Map();
+    messageFields = /* @__PURE__ */ new Map();
+    inbox = [];
+    heldKeys = /* @__PURE__ */ new Set();
+    tappedKeys2 = /* @__PURE__ */ new Set();
+    cursors = /* @__PURE__ */ new Map();
+    traces = /* @__PURE__ */ new Map();
+    keysOn = false;
+    started = false;
+    onFootstep((nodeId) => postRuleMessage("onFootstep", nodeId));
+    rulesSimClock = 0;
+    registerRuntimeSystem("core.rules", 35, stepRules);
+    lastValue = null;
+  }
+});
+
+// src/runtime/devices.ts
+function setPrompt(next) {
+  if (next === prompt) return;
+  prompt = next;
+  promptListeners.forEach((listener2) => listener2());
+}
+function ensureKeys() {
+  bindGlobalInputListeners();
+}
+function stepDevices(_dt, host) {
+  ensureKeys();
+  const world3 = getRuntimeWorld();
+  if (world3.getPlayState() !== "playing") {
+    interactUsed.clear();
+    zones.clear();
+    setPrompt("");
+    return;
+  }
+  const nodes = world3.getNodes();
+  const actors = Object.values(nodes).filter((node) => node.gameplay?.character?.enabled);
+  let nextPrompt = "";
+  for (const node of Object.values(nodes)) {
+    if (node.gameplay?.interact?.enabled) nextPrompt = nearerPrompt(nextPrompt, touchInteract(node, node.gameplay.interact, actors, host));
+    if (node.gameplay?.trigger?.enabled) touchTrigger(node, node.gameplay.trigger, actors, host);
+  }
+  setPrompt(nextPrompt);
+}
+function touchInteract(node, spec, actors, host) {
+  if (spec.once && interactUsed.has(node.id)) return "";
+  const self = host.resolveObject(node.id);
+  if (!self) return "";
+  const radius = Math.max(0.2, spec.radius);
+  const near = actors.some((actor) => matchesTag2(actor, spec.filterTagId) && within(self, host.resolveObject(actor.id), radius));
+  if (!near) return "";
+  const key = spec.key || "KeyE";
+  const triggered = isKeyHeld(key) || key === "KeyE" && wasActionTapped("Interact");
+  if (triggered) {
+    interactUsed.add(node.id);
+    const message = spec.message || "onInteract";
+    getRuntimeWorld().log("info", `${node.name}\uFF1A${message}`);
+    hear(message);
+    postRuleEvent(node.id, "interact");
+    grantInteractScore();
+    return "";
+  }
+  return spec.prompt || "\u6309 E \u4EA4\u4E92";
+}
+function touchTrigger(node, spec, actors, host) {
+  const live = zones.get(node.id) ?? { inside: /* @__PURE__ */ new Set(), used: false };
+  const self = host.resolveObject(node.id);
+  if (!self) return;
+  if (spec.once && live.used && live.inside.size === 0) return;
+  const radius = Math.max(0.2, spec.radius);
+  const nowInside = /* @__PURE__ */ new Set();
+  for (const actor of actors) {
+    if (!matchesTag2(actor, spec.filterTagId)) continue;
+    if (!within(self, host.resolveObject(actor.id), radius)) continue;
+    nowInside.add(actor.id);
+    if (!live.inside.has(actor.id)) {
+      getRuntimeWorld().log("info", `${node.name}\uFF1A${spec.enterMessage || "onZoneEnter"}`);
+      hear(spec.enterMessage || "onZoneEnter");
+      postRuleEvent(node.id, "enter");
+      live.used = true;
+    }
+  }
+  for (const id of live.inside) {
+    if (nowInside.has(id)) continue;
+    getRuntimeWorld().log("info", `${node.name}\uFF1A${spec.exitMessage || "onZoneExit"}`);
+    hear(spec.exitMessage || "onZoneExit");
+    postRuleEvent(node.id, "exit");
+    live.used = true;
+  }
+  live.inside = nowInside;
+  zones.set(node.id, live);
+}
+function matchesTag2(node, tagId) {
+  if (!tagId) return true;
+  if (node.tagId === tagId) return true;
+  return (node.tagIds ?? []).includes(tagId);
+}
+function within(self, other, radius) {
+  if (!self || !other) return false;
+  const dx = self.position.x - other.position.x;
+  const dy = self.position.y - other.position.y;
+  const dz = self.position.z - other.position.z;
+  return dx * dx + dy * dy + dz * dz <= radius * radius;
+}
+function nearerPrompt(current, next) {
+  return next || current;
+}
+function stepMovers(dt, host) {
+  carries.length = 0;
+  const world3 = getRuntimeWorld();
+  if (world3.getPlayState() !== "playing") {
+    rides.clear();
+    heard.clear();
+    return;
+  }
+  for (const node of Object.values(world3.getNodes())) {
+    const spec = node.gameplay?.mover;
+    if (!spec?.enabled) continue;
+    const object = host.resolveObject(node.id);
+    if (!object) continue;
+    const ride = rides.get(node.id) ?? { origin: null, travel: 0, forward: true, started: spec.autoPlay, wait: 0 };
+    if (!ride.origin) ride.origin = [object.position.x, object.position.y, object.position.z];
+    if (!ride.started && heard.has(spec.startMessage)) ride.started = true;
+    const before = [object.position.x, object.position.y, object.position.z];
+    if (ride.started) advanceRide(ride, spec, dt);
+    const duration = Math.max(0.05, spec.duration);
+    const along = ride.forward ? ride.travel / duration : 1 - ride.travel / duration;
+    const span = smooth(along);
+    object.position.set(
+      ride.origin[0] + spec.offset[0] * span,
+      ride.origin[1] + spec.offset[1] * span,
+      ride.origin[2] + spec.offset[2] * span
+    );
+    rides.set(node.id, ride);
+    carries.push({
+      x: object.position.x,
+      y: object.position.y,
+      z: object.position.z,
+      dx: object.position.x - before[0],
+      dy: object.position.y - before[1],
+      dz: object.position.z - before[2],
+      radius: Math.max(0.4, spec.carryRadius)
+    });
+  }
+}
+function advanceRide(ride, spec, dt) {
+  const duration = Math.max(0.05, spec.duration);
+  if (ride.wait > 0) {
+    ride.wait = Math.max(0, ride.wait - dt);
+    if (ride.wait > 0 || !spec.pingPong) return;
+    ride.travel = 0;
+    ride.forward = !ride.forward;
+    return;
+  }
+  ride.travel += dt;
+  if (ride.travel < duration) return;
+  ride.travel = duration;
+  ride.wait = spec.pause;
+  if (!spec.pingPong) ride.started = false;
+  else if (spec.pause <= 0) {
+    ride.travel = 0;
+    ride.forward = !ride.forward;
+  }
+}
+function hear(message) {
+  if (!message) return;
+  heard.add(message);
+  postRuleMessage(message);
+}
+function carryFor(x, y, z) {
+  for (const item of carries) {
+    const flat = (item.x - x) ** 2 + (item.z - z) ** 2;
+    if (flat > item.radius * item.radius) continue;
+    if (y < item.y - 0.35 || y > item.y + 1.8) continue;
+    return item;
+  }
+  return null;
+}
+function stepRound(dt, host) {
+  const world3 = getRuntimeWorld();
+  if (world3.getPlayState() !== "playing") {
+    roundSimTime = 0;
+    spawnId = "";
+    fallAt = 0;
+    scoreValue = 0;
+    scoreState = "";
+    clock = 0;
+    shownTime = -1;
+    return;
+  }
+  roundSimTime += Math.max(0, dt);
+  const nodes = world3.getNodes();
+  const actors = Object.values(nodes).filter((node) => node.gameplay?.character?.enabled);
+  let abyssY = -12;
+  let abyssDelay = 1.2;
+  let abyssMessage = "onPlayerRespawned";
+  let abyssName = "";
+  for (const node of Object.values(nodes)) {
+    const spec = node.gameplay?.checkpoint;
+    if (!spec?.enabled) continue;
+    const point2 = host.resolveObject(node.id);
+    if (!point2) continue;
+    if (spec.spawn && !spawnId) spawnId = node.id;
+    if (node.id === spawnId || !abyssName) {
+      abyssY = spec.abyssY;
+      abyssDelay = spec.delay;
+      abyssMessage = spec.message || abyssMessage;
+      abyssName = node.name;
+    }
+    for (const actor of actors) {
+      const body = host.resolveObject(actor.id);
+      if (!body || !within(point2, body, spec.radius) || spawnId === node.id) continue;
+      spawnId = node.id;
+      abyssY = spec.abyssY;
+      abyssDelay = spec.delay;
+      abyssMessage = spec.message || abyssMessage;
+      abyssName = node.name;
+      world3.log("info", `${node.name}\uFF1A\u68C0\u67E5\u70B9`);
+    }
+  }
+  const now = roundSimTime;
+  if (abyssName) for (const actor of actors) {
+    const body = host.resolveObject(actor.id);
+    if (!body) continue;
+    if (body.position.y < abyssY && fallAt <= 0) fallAt = now + Math.max(0, abyssDelay);
+    if (fallAt > 0 && now >= fallAt) {
+      const home = spawnId ? host.resolveObject(spawnId) : null;
+      if (home) {
+        relocateCharacter(actor.id, home.position.x, home.position.y + 0.05, home.position.z);
+        world3.log("info", `${abyssName}\uFF1A${abyssMessage}`);
+        hear(abyssMessage);
+      }
+      fallAt = 0;
+    }
+  }
+  const board = Object.values(nodes).find((node) => node.gameplay?.score?.enabled);
+  const score = board?.gameplay?.score;
+  if (!score || scoreState === "done" || scoreState === "victory" || scoreState === "defeat") return;
+  if (clock <= 0) {
+    clock = roundSimTime || 1e-4;
+    writeUiVariable("objective", score.title);
+    writeUiVariable("score", scoreValue);
+  }
+  const elapsed = Math.max(0, roundSimTime - clock);
+  const left = score.timeLimit > 0 ? Math.ceil(Math.max(0, score.timeLimit - elapsed)) : 0;
+  if (left !== shownTime) {
+    shownTime = left;
+    writeUiVariable("timeLeft", score.timeLimit > 0 ? left : "");
+  }
+  if (score.timeLimit > 0 && left <= 0 && scoreState !== "defeat") {
+    scoreState = "defeat";
+    world3.log("info", `${board?.name}\uFF1A${score.defeatMessage}`);
+    hear(score.defeatMessage);
+  }
+}
+function grantInteractScore() {
+  const board = Object.values(getRuntimeWorld().getNodes()).find((node) => node.gameplay?.score?.enabled);
+  addRuleScore(board?.gameplay?.score?.perInteract ?? 0);
+}
+function addRuleScore(amount) {
+  const world3 = getRuntimeWorld();
+  const board = Object.values(world3.getNodes()).find((node) => node.gameplay?.score?.enabled);
+  const score = board?.gameplay?.score;
+  if (!score || scoreState === "done" || scoreState === "defeat" || scoreState === "victory") return;
+  scoreValue += amount;
+  writeUiVariable("score", scoreValue);
+  writeUiVariable("objective", score.title);
+  if (scoreValue >= score.target) {
+    scoreState = "victory";
+    world3.log("info", `${board?.name}\uFF1A${score.victoryMessage}`);
+    hear(score.victoryMessage);
+  }
+}
+function smooth(value) {
+  const t = Math.min(1, Math.max(0, value));
+  return t * t * (3 - 2 * t);
+}
+var interactUsed, zones, prompt, promptListeners, rides, carries, heard, spawnId, fallAt, scoreValue, scoreState, clock, shownTime, roundSimTime;
+var init_devices = __esm({
+  "src/runtime/devices.ts"() {
+    "use strict";
+    init_sceneRuntime();
+    init_rules();
+    init_character();
+    init_values();
+    init_world();
+    init_actionMap();
+    interactUsed = /* @__PURE__ */ new Set();
+    zones = /* @__PURE__ */ new Map();
+    prompt = "";
+    promptListeners = /* @__PURE__ */ new Set();
+    rides = /* @__PURE__ */ new Map();
+    carries = [];
+    heard = /* @__PURE__ */ new Set();
+    spawnId = "";
+    fallAt = 0;
+    scoreValue = 0;
+    scoreState = "";
+    clock = 0;
+    shownTime = -1;
+    roundSimTime = 0;
+    registerRuntimeSystem("core.movers", 8, stepMovers);
+    registerRuntimeSystem("core.devices", 30, stepDevices);
+    registerRuntimeSystem("core.round", 40, stepRound);
+  }
+});
+
+// src/runtime/character.ts
+function ensureKeys2() {
+  bindGlobalInputListeners();
+}
+function held(code) {
+  return isKeyHeld(code);
+}
+function tapped(code) {
+  return wasKeyTapped(code);
+}
+function consumeTaps() {
+}
+function characterTraveling(id) {
+  if (orders.has(id)) return true;
+  const live = motion.get(id);
+  if (!live) return false;
+  return live.pathIndex < live.path.length;
+}
+function relocateCharacter(id, x, y, z) {
+  relocations.set(id, [x, y, z]);
+}
+function orderCharacterMove(id, x, y, z) {
+  orders.set(id, [x, y, z]);
+}
+function takeRelocation(id) {
+  const next = relocations.get(id) ?? null;
+  if (next) relocations.delete(id);
+  return next;
+}
+function setCharacterModifiers(nodeId, patch) {
+  const prev = runtimeModifiers.get(nodeId) ?? {};
+  runtimeModifiers.set(nodeId, { ...prev, ...patch });
+}
+function getCharacterModifiers(nodeId) {
+  return { ...runtimeModifiers.get(nodeId) ?? {} };
+}
+function clearCharacterModifiers(nodeId) {
+  runtimeModifiers.delete(nodeId);
+}
+function stepCharacters(dt, host) {
+  ensureKeys2();
+  const worldState = getRuntimeWorld();
+  if (worldState.getPlayState() !== "playing") {
+    simClock = 0;
+    motion.clear();
+    orders.clear();
+    runtimeModifiers.clear();
+    consumeTaps();
+    clearJuice();
+    return;
+  }
+  simClock += Math.max(0, dt);
+  const now = simClock;
+  const nodes = worldState.getNodes();
+  const yaw = host.yaw?.() ?? 0;
+  for (const node of Object.values(nodes)) {
+    const raw = node.gameplay?.character;
+    if (!raw?.enabled) continue;
+    const spec = { ...defaultCharacter(), ...raw };
+    const object = host.resolveObject(node.id);
+    if (!object) continue;
+    const live = motion.get(node.id) ?? freshMotion(yawOf2(object.quaternion));
+    const order = orders.get(node.id);
+    if (order) {
+      const path = findNavigationPath([object.position.x, object.position.y, object.position.z], order);
+      live.path = path && path.length > 1 ? path.slice(1) : [order];
+      live.pathIndex = 0;
+      orders.delete(node.id);
+    }
+    const placed = takeRelocation(node.id);
+    if (placed) {
+      object.position.set(placed[0], placed[1], placed[2]);
+      live.vy = 0;
+      live.grounded = true;
+    }
+    const mods = runtimeModifiers.get(node.id);
+    const inputLocked = Boolean(mods?.inputLock);
+    const moveSpeedMul = typeof mods?.moveSpeedMul === "number" && Number.isFinite(mods.moveSpeedMul) ? Math.max(0, mods.moveSpeedMul) : 1;
+    const gravityMul = typeof mods?.gravityMul === "number" && Number.isFinite(mods.gravityMul) ? Math.max(0, mods.gravityMul) : 1;
+    const effectiveGravity = spec.gravity * gravityMul;
+    const wish = inputLocked ? { x: 0, z: 0, amount: 0 } : wishInput(spec);
+    const sprint = !inputLocked && (isActionPressed("Sprint") || held("ShiftLeft") || held("ShiftRight"));
+    const speed = spec.moveSpeed * moveSpeedMul * (sprint && wish.amount > 0 ? spec.sprintMultiplier : 1);
+    const basis = facingBasis(spec, node.id, nodes, object.position.x, object.position.z, yaw, host);
+    const world3 = rotate(wish.x, wish.z, basis.moveYaw);
+    const dashPressed = !inputLocked && spec.dash && (wasActionTapped("Dash") || tapped(spec.dashKey || "KeyC"));
+    if (dashPressed && now >= live.dashReady) {
+      const dir = wish.amount > 0.1 ? world3 : { x: Math.sin(live.yaw), z: Math.cos(live.yaw) };
+      const len = Math.hypot(dir.x, dir.z) || 1;
+      live.dashX = dir.x / len;
+      live.dashZ = dir.z / len;
+      live.dashUntil = now + spec.dashDuration;
+      live.dashReady = live.dashUntil + spec.dashCooldown;
+      live.invincibleUntil = now + spec.dashInvincible;
+      addRuntimeTag(node.id, "State.Invincible", spec.dashInvincible, now);
+      live.path = [];
+    }
+    const click = spec.mode === "pointAndClick" || spec.driver !== "capsule" ? host.consumeClick?.(spec.clickButton) ?? null : null;
+    if (click && (spec.driver === "nav" || spec.driver === "hybrid" || spec.mode === "pointAndClick")) {
+      const path = findNavigationPath([object.position.x, object.position.y, object.position.z], click);
+      live.path = path && path.length > 1 ? path.slice(1) : [click];
+      live.pathIndex = 0;
+    }
+    if (wish.amount > 0.1 || now < live.dashUntil) live.path = [];
+    const dodging = now < live.dashUntil;
+    let moveX = 0;
+    let moveZ = 0;
+    if (dodging) {
+      moveX = live.dashX * (spec.dashDistance / Math.max(0.05, spec.dashDuration));
+      moveZ = live.dashZ * (spec.dashDistance / Math.max(0.05, spec.dashDuration));
+    } else if (wish.amount > 0.1 && spec.driver !== "nav") {
+      moveX = world3.x * speed;
+      moveZ = world3.z * speed;
+    } else if (spec.driver === "nav" && wish.amount > 0.1) {
+      const steered = steer([object.position.x, object.position.y, object.position.z], {
+        x: object.position.x + world3.x * 2,
+        y: object.position.y,
+        z: object.position.z + world3.z * 2
+      }, spec.clickStop);
+      moveX = steered.x * speed;
+      moveZ = steered.z * speed;
+    } else if (live.path.length > 0) {
+      const steered = followPath(object.position.x, object.position.z, live, spec.clickStop);
+      moveX = steered.x * speed;
+      moveZ = steered.z * speed;
+    }
+    const useCapsule = spec.driver !== "nav";
+    const shift = useCapsule ? capsuleShift(spec, object.quaternion) : { x: 0, y: 0, z: 0 };
+    const feet = object.position.y + shift.y;
+    const footX = object.position.x + shift.x;
+    const footZ = object.position.z + shift.z;
+    const water = spec.swim !== false ? sampleWaterSurface(footX, footZ) : null;
+    const submerged = water ? water.height - feet : -999;
+    const swimOffset = spec.swimHeightOffset ?? 0;
+    const targetSubmerged = Math.max(0.1, spec.height * 0.68 - swimOffset);
+    const enterDepth = spec.height * 0.62;
+    const exitDepth = Math.max(0.05, Math.min(spec.height * 0.48, targetSubmerged - 0.18));
+    const ground = useCapsule && live.grounded ? feet : groundUnder(host, useCapsule ? footX : object.position.x, useCapsule ? feet : object.position.y, useCapsule ? footZ : object.position.z, node.id, spec);
+    const touchingFloor = ground !== null && feet <= ground + 0.12;
+    const swimJumping = now <= live.swimJumpUntil;
+    const wasGrounded = live.grounded;
+    if (water && submerged >= enterDepth) {
+      if (!live.swimming) {
+        live.swimming = true;
+        live.jumpsUsed = 0;
+        live.jumpPhase = "none";
+        live.clip = "";
+        emitCharacterEvent(node.id, "onEnterWater", { waterHeight: water.height });
+      }
+    } else if (!water || submerged < exitDepth && (touchingFloor || swimJumping || submerged < -0.2)) {
+      if (live.swimming) {
+        live.swimming = false;
+        live.clip = "";
+        if (!swimJumping) live.lastGrounded = now;
+        emitCharacterEvent(node.id, "onExitWater");
+      }
+    }
+    const onGround = !live.swimming && (live.grounded || ground !== null && feet <= ground + 0.08 && live.vy <= 0.1);
+    if (onGround) live.lastGrounded = now;
+    const coyote = now - live.lastGrounded <= spec.coyoteTime;
+    if (!inputLocked && (wasActionTapped("Jump") || tapped("Space"))) live.jumpBufferUntil = now + spec.jumpBuffer;
+    if (onGround && live.vy <= 0) live.jumpsUsed = 0;
+    const canJump = !inputLocked && (live.swimming || coyote && live.jumpsUsed === 0 || !onGround && live.jumpsUsed > 0 && live.jumpsUsed < spec.maxJumps || onGround && live.jumpsUsed < spec.maxJumps);
+    let jumped = false;
+    if (now <= live.jumpBufferUntil && canJump && !dodging) {
+      if (live.swimming) {
+        live.vy = Math.max(live.vy, spec.jumpSpeed * 0.85);
+        live.swimJumpUntil = now + 0.28;
+      } else {
+        live.vy = spec.jumpSpeed;
+        live.jumpsUsed += 1;
+      }
+      live.jumpBufferUntil = 0;
+      live.lastGrounded = -999;
+      jumped = true;
+      emitCharacterEvent(node.id, "onJump", { swimming: live.swimming, jumpIndex: live.jumpsUsed });
+    }
+    if (live.swimming && water) {
+      const swimScale = Math.max(0.1, spec.swimSpeedMultiplier ?? 0.65);
+      if (!dodging) {
+        moveX *= swimScale;
+        moveZ *= swimScale;
+      }
+      if (now <= live.swimJumpUntil) {
+        live.vy -= effectiveGravity * dt;
+      } else {
+        const targetFeetY = water.height - targetSubmerged;
+        live.vy += ((targetFeetY - feet) * 18 - live.vy * 6) * dt;
+        moveX += water.normal[0] * 0.45;
+        moveZ += water.normal[2] * 0.45;
+      }
+    } else {
+      const supported = onGround || live.grounded;
+      if (!(supported && live.vy <= 0)) live.vy -= effectiveGravity * dt;
+    }
+    const damp = Math.exp(-(live.grounded ? 10 : 2.5) * dt);
+    live.extVx *= damp;
+    live.extVy *= damp;
+    live.extVz *= damp;
+    if (Math.abs(live.extVx) < 0.01) live.extVx = 0;
+    if (Math.abs(live.extVy) < 0.01) live.extVy = 0;
+    if (Math.abs(live.extVz) < 0.01) live.extVz = 0;
+    const dispX = (moveX + live.extVx) * dt;
+    const dispY = (live.vy + live.extVy) * dt;
+    const dispZ = (moveZ + live.extVz) * dt;
+    let nextX = object.position.x + dispX;
+    let nextY = object.position.y + dispY;
+    let nextZ = object.position.z + dispZ;
+    let landed = false;
+    let platformYaw = 0;
+    if (spec.driver !== "nav") {
+      const solved = moveCharacters([{
+        id: node.id,
+        position: [footX, feet, footZ],
+        displacement: [dispX, dispY, dispZ],
+        radius: spec.radius,
+        height: spec.height,
+        dt,
+        interact: spec.physicsInteract ?? false,
+        mass: spec.mass ?? 65,
+        pushStrength: spec.pushStrength ?? 1
+      }]);
+      const step2 = solved?.[0];
+      if (step2) {
+        nextX = step2.position[0] - shift.x;
+        nextY = step2.position[1] - shift.y;
+        nextZ = step2.position[2] - shift.z;
+        if (step2.yawDelta) platformYaw = step2.yawDelta;
+        if (step2.impulse) {
+          live.extVx += step2.impulse[0];
+          live.extVy += step2.impulse[1];
+          live.extVz += step2.impulse[2];
+          if (step2.impulse[1] > 0.6) live.vy = Math.max(live.vy, step2.impulse[1]);
+        }
+        landed = step2.grounded && live.vy <= 0.35 && live.extVy <= 0.6;
+      } else {
+        const blocked2 = slide(host, footX, feet + spec.height * 0.45, footZ, footX + dispX, footZ + dispZ, node.id, spec.radius);
+        nextX = blocked2.x - shift.x;
+        nextZ = blocked2.z - shift.z;
+        landed = ground !== null && live.vy <= 0 && nextY <= ground + 0.08;
+        if (landed && ground !== null) nextY = ground - shift.y;
+      }
+    } else if (ground !== null && live.vy <= 0 && nextY <= ground + 0.08) {
+      nextY = ground;
+      landed = true;
+    }
+    if (landed && !live.swimming) {
+      live.vy = 0;
+      live.grounded = true;
+      live.lastGrounded = now;
+      if (!jumped) live.jumpsUsed = 0;
+      if (!wasGrounded) emitCharacterEvent(node.id, "onLand");
+    } else {
+      live.grounded = false;
+    }
+    const traveled = Math.hypot(nextX - object.position.x, nextZ - object.position.z);
+    if (live.grounded && !live.swimming && traveled > 0) {
+      live.footstep += traveled;
+      if (live.footstep >= spec.footstepDistance) {
+        live.footstep = 0;
+        live.footsteps += 1;
+        emitFootstep(node.id);
+        if (spec.footstepJuice) playJuice(spec.footstepJuice, node.id, host);
+      }
+    }
+    object.position.set(nextX, nextY, nextZ);
+    const carry = carryFor(nextX, nextY, nextZ);
+    if (carry && live.grounded) object.position.set(nextX + carry.dx, nextY + carry.dy, nextZ + carry.dz);
+    if (platformYaw) live.yaw += platformYaw;
+    const face = faceYaw(spec, basis, wish, moveX, moveZ, dodging, live);
+    if (face !== null) {
+      const rate = Math.max(30, spec.turnSpeed) * Math.PI / 180 * (basis.lock ? 1.5 : 1);
+      live.yaw = stepYaw(live.yaw, face, rate * dt);
+    }
+    object.quaternion.set(0, Math.sin(live.yaw / 2), 0, Math.cos(live.yaw / 2));
+    if (live.swimming) {
+      live.jumpPhase = "none";
+    } else {
+      stepJumpPose(node.id, node.assetId ?? "", spec, live, dt, now, jumped, dodging, wish.amount > 0.1 || Math.hypot(moveX, moveZ) > 0.2);
+    }
+    if (live.jumpPhase !== "none") {
+      motion.set(node.id, live);
+      continue;
+    }
+    const clip = pickClip(spec, dodging, wish.amount > 0.1 || Math.hypot(moveX, moveZ) > 0.2, sprint, live.swimming);
+    const clipKey = clip.name ? `${clip.assetId}\0${clip.name}` : "";
+    if (clipKey && clipKey !== live.clip) {
+      live.clip = clipKey;
+      const own = !clip.assetId || clip.assetId === node.assetId;
+      getRuntimeWorld().playBody?.(node.id, clip.name, {
+        assetId: own ? null : clip.assetId,
+        loop: clip.name !== spec.dodgeClip && clip.name !== spec.landClip,
+        fade: 0.12
+      });
+    }
+    motion.set(node.id, live);
+  }
+  consumeTaps();
+}
+function freshMotion(yaw) {
+  return {
+    yaw,
+    vy: 0,
+    extVx: 0,
+    extVy: 0,
+    extVz: 0,
+    grounded: false,
+    swimming: false,
+    swimJumpUntil: 0,
+    lastGrounded: 0,
+    jumpBufferUntil: 0,
+    jumpsUsed: 0,
+    dashUntil: 0,
+    dashReady: 0,
+    dashX: 0,
+    dashZ: 1,
+    invincibleUntil: 0,
+    clip: "",
+    jumpPhase: "none",
+    jumpTime: 0,
+    path: [],
+    pathIndex: 0,
+    footstep: 0,
+    footsteps: 0
+  };
+}
+function wishInput(spec) {
+  const axis = getActionAxis2D("Move");
+  const x = axis.x;
+  const z = spec.mode === "side25d" ? 0 : axis.y;
+  const amount = Math.hypot(x, z);
+  return { x, z, amount: amount > 1 ? 1 : amount };
+}
+function facingBasis(spec, selfId, nodes, x, z, cameraYaw, host) {
+  if (spec.mode === "side25d") return { moveYaw: cameraYaw, faceYaw: 0, lock: false };
+  if (spec.mode === "lockOn") {
+    const target = spec.lockTargetId && spec.lockTargetId !== selfId ? nodes[spec.lockTargetId] : spec.lockTargetName ? Object.values(nodes).find((item) => item.id !== selfId && item.name === spec.lockTargetName) : void 0;
+    const targetObject = target ? host.resolveObject(target.id) : null;
+    if (targetObject) {
+      const yaw = Math.atan2(targetObject.position.x - x, targetObject.position.z - z);
+      return { moveYaw: yaw, faceYaw: yaw, lock: true };
+    }
+  }
+  if (spec.mode === "strafe" || spec.mode === "firstPerson" || spec.mode === "lockOn") {
+    return { moveYaw: cameraYaw, faceYaw: cameraYaw + Math.PI, lock: true };
+  }
+  return { moveYaw: cameraYaw, faceYaw: cameraYaw, lock: false };
+}
+function rotate(x, z, yaw) {
+  const sin3 = Math.sin(yaw);
+  const cos3 = Math.cos(yaw);
+  return {
+    x: x * cos3 - z * sin3,
+    z: -x * sin3 - z * cos3
+  };
+}
+function faceYaw(spec, basis, wish, moveX, moveZ, dodging, live) {
+  if (dodging) return Math.atan2(live.dashX, live.dashZ);
+  if (basis.lock || spec.mode === "strafe" || spec.mode === "firstPerson" || spec.mode === "lockOn") return basis.faceYaw;
+  if (wish.amount > 0.1 || Math.hypot(moveX, moveZ) > 0.2) return Math.atan2(moveX, moveZ);
+  return null;
+}
+function capsuleShift(spec, q) {
+  const offset = spec.capsuleOffset ?? [0, 0, 0];
+  const yaw = yawOf2(q);
+  const sin3 = Math.sin(yaw);
+  const cos3 = Math.cos(yaw);
+  return {
+    x: offset[0] * cos3 + offset[2] * sin3,
+    y: offset[1],
+    z: -offset[0] * sin3 + offset[2] * cos3
+  };
+}
+function yawOf2(q) {
+  return Math.atan2(2 * (q.w * q.y + q.x * q.z), 1 - 2 * (q.y * q.y + q.z * q.z));
+}
+function stepYaw(current, target, maxStep) {
+  let delta = target - current;
+  if (delta > Math.PI) delta -= Math.PI * 2;
+  if (delta < -Math.PI) delta += Math.PI * 2;
+  if (Math.abs(delta) <= maxStep) return target;
+  return current + Math.sign(delta) * maxStep;
+}
+function followPath(x, z, live, stop) {
+  while (live.pathIndex < live.path.length) {
+    const point3 = live.path[live.pathIndex];
+    if (Math.hypot(point3[0] - x, point3[2] - z) <= stop) live.pathIndex += 1;
+    else break;
+  }
+  if (live.pathIndex >= live.path.length) {
+    live.path = [];
+    return { x: 0, z: 0 };
+  }
+  const point2 = live.path[live.pathIndex];
+  return steerPoint(x, z, point2[0], point2[2]);
+}
+function steer(from, to, stop) {
+  const path = findNavigationPath(from, [to.x, to.y, to.z]);
+  const next = path && path.length > 1 ? path[1] : [to.x, to.y, to.z];
+  if (Math.hypot(next[0] - from[0], next[2] - from[2]) <= stop) return { x: 0, z: 0 };
+  return steerPoint(from[0], from[2], next[0], next[2]);
+}
+function steerPoint(x, z, tx, tz) {
+  const dx = tx - x;
+  const dz = tz - z;
+  const len = Math.hypot(dx, dz) || 1;
+  return { x: dx / len, z: dz / len };
+}
+function airborne(live, now) {
+  return now - live.lastGrounded >= 0.12 || live.vy < -2;
+}
+function stepJumpPose(id, ownerAssetId, spec, live, dt, now, jumped, dodging, moving) {
+  const anyJump = spec.jumpClip || spec.airClip || spec.landClip;
+  if (dodging || !anyJump) {
+    if (live.jumpPhase !== "none") live.clip = "";
+    live.jumpPhase = "none";
+    return;
+  }
+  const begin = (phase) => {
+    live.jumpPhase = phase;
+    live.jumpTime = 0;
+    live.clip = "";
+  };
+  if (jumped && (spec.jumpClip || spec.airClip)) begin(spec.jumpClip ? "rise" : "hang");
+  else if (live.jumpPhase === "rise") {
+    live.jumpTime += dt;
+    const duration = getRuntimeWorld().clipDuration?.(spec.jumpClipAssetId || ownerAssetId, spec.jumpClip) ?? 0;
+    const finished = duration > 0 && live.jumpTime >= duration - 0.02;
+    const falling = live.vy <= 0 && live.jumpTime >= 0.12;
+    if (live.grounded) begin(spec.landClip ? "land" : "none");
+    else if (finished || falling) begin("hang");
+  } else if (live.jumpPhase === "hang") {
+    live.jumpTime += dt;
+    if (live.grounded) begin(spec.landClip ? "land" : "none");
+  } else if (live.jumpPhase === "land") {
+    live.jumpTime += dt;
+    const duration = getRuntimeWorld().clipDuration?.(spec.landClipAssetId || ownerAssetId, spec.landClip) ?? 0;
+    const contact = duration > 0 ? Math.min(0.22, Math.max(0.12, duration * 0.4)) : 0.16;
+    const finished = duration > 0 && live.jumpTime >= Math.min(duration, 0.5) - 0.02 || duration <= 0 && live.jumpTime >= 0.28;
+    if (!live.grounded && airborne(live, now)) begin(spec.airClip ? "hang" : "none");
+    else if (finished) begin("none");
+    else if (moving && live.jumpTime >= contact) begin("none");
+  } else if (!live.grounded && spec.airClip && airborne(live, now)) begin("hang");
+  if (live.jumpPhase === "rise" && spec.jumpClip) playOwned(id, ownerAssetId, live, spec.jumpClip, spec.jumpClipAssetId, false);
+  else if (live.jumpPhase === "hang" && spec.airClip) playOwned(id, ownerAssetId, live, spec.airClip, spec.airClipAssetId, true);
+  else if (live.jumpPhase === "land" && spec.landClip) playOwned(id, ownerAssetId, live, spec.landClip, spec.landClipAssetId, false);
+}
+function playOwned(id, ownerAssetId, live, name, assetId, loop) {
+  const key = `${loop ? "loop" : "once"}\0${assetId}\0${name}`;
+  if (live.clip === key) return;
+  live.clip = key;
+  const own = !assetId || assetId === ownerAssetId;
+  getRuntimeWorld().playBody?.(id, name, { assetId: own ? null : assetId, loop, fade: 0.1 });
+}
+function pickClip(spec, dodging, moving, sprint, swimming) {
+  if (dodging && spec.dodgeClip) return { name: spec.dodgeClip, assetId: spec.dodgeClipAssetId };
+  if (swimming) {
+    if (moving && spec.swimClip) return { name: spec.swimClip, assetId: spec.swimClipAssetId ?? "" };
+    if (spec.swimIdleClip) return { name: spec.swimIdleClip, assetId: spec.swimIdleClipAssetId ?? "" };
+    if (spec.swimClip) return { name: spec.swimClip, assetId: spec.swimClipAssetId ?? "" };
+  }
+  if (moving && sprint && spec.runClip) return { name: spec.runClip, assetId: spec.runClipAssetId };
+  if (moving && spec.walkClip) return { name: spec.walkClip, assetId: spec.walkClipAssetId };
+  return { name: spec.idleClip, assetId: spec.idleClipAssetId };
+}
+function groundUnder(host, x, y, z, id, spec) {
+  const distance2 = host.probe?.([x, y + spec.height * 0.5, z], [0, -1, 0], spec.height + 0.45, id);
+  if (distance2 === null || distance2 === void 0) return null;
+  return y + spec.height * 0.5 - distance2;
+}
+function slide(host, x, y, z, nextX, nextZ, id, radius) {
+  const dx = nextX - x;
+  const dz = nextZ - z;
+  const length4 = Math.hypot(dx, dz);
+  if (length4 < 1e-5 || !host.probe) return { x: nextX, z: nextZ };
+  const hit = host.probe([x, y, z], [dx / length4, 0, dz / length4], length4 + radius, id);
+  if (hit === null || hit > length4 + radius * 0.2) return { x: nextX, z: nextZ };
+  const allowed = Math.max(0, hit - radius);
+  return { x: x + dx / length4 * allowed, z: z + dz / length4 * allowed };
+}
+var motion, orders, relocations, runtimeModifiers, simClock;
+var init_character = __esm({
+  "src/runtime/character.ts"() {
+    "use strict";
+    init_session4();
+    init_session();
+    init_session2();
+    init_runtimeTags();
+    init_juiceClock();
+    init_signals();
+    init_juice();
+    init_devices();
+    init_world();
+    init_actionMap();
+    init_sceneRuntime();
+    motion = /* @__PURE__ */ new Map();
+    orders = /* @__PURE__ */ new Map();
+    relocations = /* @__PURE__ */ new Map();
+    runtimeModifiers = /* @__PURE__ */ new Map();
+    simClock = 0;
+    registerRuntimeSystem("core.character", RUNTIME_STAGE.POST_PHYSICS, stepCharacters);
+  }
+});
+
+// src/core/codeAssets/typeDefs.ts
+var init_typeDefs = __esm({
+  "src/core/codeAssets/typeDefs.ts"() {
+    "use strict";
+  }
+});
+
 // src/core/codeAssets/compiler.ts
 import ts from "typescript";
 var init_compiler = __esm({
   "src/core/codeAssets/compiler.ts"() {
     "use strict";
+    init_typeDefs();
+  }
+});
+
+// src/core/codeAssets/shaderRuntime.ts
+import {
+  AdditiveBlending as AdditiveBlending2,
+  BackSide,
+  Color as Color5,
+  DataTexture as DataTexture2,
+  DoubleSide as DoubleSide3,
+  FrontSide,
+  MultiplyBlending as MultiplyBlending2,
+  NoBlending,
+  NormalBlending as NormalBlending2,
+  RGBAFormat as RGBAFormat2,
+  SubtractiveBlending,
+  Vector2 as Vector23,
+  Vector3 as Vector310,
+  Vector4
+} from "three";
+import * as tsl from "three/tsl";
+import {
+  MeshBasicNodeMaterial as MeshBasicNodeMaterial3,
+  MeshPhysicalNodeMaterial,
+  MeshSSSNodeMaterial,
+  MeshStandardNodeMaterial,
+  MeshToonNodeMaterial,
+  PhysicalLightingModel
+} from "three/webgpu";
+function fallbackWhiteTexture() {
+  if (!cachedFallbackTex) {
+    cachedFallbackTex = new DataTexture2(new Uint8Array([255, 255, 255, 255]), 1, 1, RGBAFormat2);
+    cachedFallbackTex.needsUpdate = true;
+  }
+  return cachedFallbackTex;
+}
+function resolveTextureAsset(raw) {
+  if (typeof raw === "string" && raw.trim() && textureResolver) {
+    const tex = textureResolver(raw.trim());
+    if (tex) return tex;
+  }
+  if (raw && typeof raw === "object" && "isTexture" in raw) {
+    return raw;
+  }
+  if (raw && typeof raw === "object" && "value" in raw) {
+    const val = raw.value;
+    if (val && typeof val === "object" && "isTexture" in val) return val;
+  }
+  return fallbackWhiteTexture();
+}
+function coerceUniformValue(schema, raw) {
+  const value = raw !== void 0 ? raw : defaultForSchema(schema);
+  if (schema.type === "number") return Number(value) || 0;
+  if (schema.type === "boolean") return value ? 1 : 0;
+  if (schema.type === "color") return new Color5(typeof value === "string" ? value : "#ffffff");
+  if (schema.type === "vec2") {
+    const arr = Array.isArray(value) ? value : [0, 0];
+    return new Vector23(Number(arr[0]) || 0, Number(arr[1]) || 0);
+  }
+  if (schema.type === "vec3") {
+    const arr = Array.isArray(value) ? value : [0, 0, 0];
+    return new Vector310(Number(arr[0]) || 0, Number(arr[1]) || 0, Number(arr[2]) || 0);
+  }
+  if (schema.type === "vec4") {
+    const arr = Array.isArray(value) ? value : [0, 0, 0, 1];
+    return new Vector4(Number(arr[0]) || 0, Number(arr[1]) || 0, Number(arr[2]) || 0, Number(arr[3]) ?? 1);
+  }
+  if (schema.type === "texture" || schema.type === "ref" && schema.target === "asset") {
+    return resolveTextureAsset(value);
+  }
+  return value;
+}
+function updateCompiledShaderParam(compiled, paramName, value) {
+  const entry = compiled.uniforms[paramName];
+  if (!entry) return false;
+  entry.node.value = coerceUniformValue(entry.schema, value);
+  compiled.paramValues[paramName] = value;
+  return true;
+}
+function setCompiledShaderParam(shaderId, paramName, value) {
+  const compiled = compiledShaders.get(shaderId);
+  if (!compiled) return false;
+  return updateCompiledShaderParam(compiled, paramName, value);
+}
+function getCompiledShaderParam(shaderId, paramName) {
+  return compiledShaders.get(shaderId)?.paramValues[paramName];
+}
+var textureResolver, cachedFallbackTex, PHYSICAL_SURFACE_KEYS, VALID_SURFACE_KEYS, compiledShaders;
+var init_shaderRuntime = __esm({
+  "src/core/codeAssets/shaderRuntime.ts"() {
+    "use strict";
+    init_fieldSchema();
+    init_compiler();
+    textureResolver = null;
+    cachedFallbackTex = null;
+    PHYSICAL_SURFACE_KEYS = /* @__PURE__ */ new Set([
+      "clearcoat",
+      "clearcoatRoughness",
+      "clearcoatNormal",
+      "transmission",
+      "ior",
+      "thickness",
+      "attenuationColor",
+      "attenuationDistance",
+      "sheen",
+      "sheenRoughness",
+      "iridescence",
+      "iridescenceIOR",
+      "iridescenceThickness",
+      "anisotropy",
+      "dispersion",
+      "specularIntensity",
+      "specularColor"
+    ]);
+    VALID_SURFACE_KEYS = /* @__PURE__ */ new Set([
+      "baseColor",
+      "normal",
+      "roughness",
+      "metalness",
+      "emissive",
+      "opacity",
+      "vertexOffset",
+      ...PHYSICAL_SURFACE_KEYS
+    ]);
+    compiledShaders = /* @__PURE__ */ new Map();
   }
 });
 
 // src/core/codeAssets/scriptRuntime.ts
-import { Vector3 as Vector310 } from "three";
+import { Vector3 as Vector311 } from "three";
+function extractShortStack(error) {
+  if (!(error instanceof Error) || !error.stack) return "";
+  const lines = error.stack.split("\n").slice(1).map((line) => line.trim()).filter((line) => line.length > 0);
+  if (lines.length === 0) return "";
+  const scriptFrames = lines.filter((line) => line.includes("t3d:///"));
+  const picked = (scriptFrames.length > 0 ? scriptFrames : lines).slice(0, 3);
+  return `
+  at ${picked.join("\n  at ")}`;
+}
+function reportRuntimeError(phase, scriptId, label, error, nodeId) {
+  const world3 = getRuntimeWorld();
+  const message = error instanceof Error ? error.message : String(error);
+  const key = `${phase}|${scriptId}|${nodeId ?? ""}|${message}`;
+  const count = (runtimeErrorCounts.get(key) ?? 0) + 1;
+  runtimeErrorCounts.set(key, count);
+  const nodeName = nodeId ? world3.getNodes()[nodeId]?.name : void 0;
+  const nodeDesc = nodeId ? ` \u8282\u70B9=${nodeName ? `"${nodeName}"(${nodeId})` : nodeId}` : "";
+  if (count === 1) {
+    const stack = extractShortStack(error);
+    world3.log("error", `[${phase}] ${label} (${scriptId})${nodeDesc}: ${message}${stack}`);
+  } else if (count === 10 || count === 100 || count === 1e3) {
+    world3.log("error", `[${phase}] ${label} (${scriptId})${nodeDesc} \u5DF2\u91CD\u590D\u62A5\u9519 ${count} \u6B21: ${message}`);
+  }
+}
+function ensureCharacterEventBridge() {
+  if (characterEventSubscribed) return;
+  characterEventSubscribed = true;
+  onCharacterEvent((nodeId, event, payload) => {
+    if (getRuntimeWorld().getPlayState() !== "playing") return;
+    messageQueue.push({ targetNodeId: nodeId, name: event, payload, senderId: nodeId });
+  });
+}
 function ensureUiClickBridge() {
   if (uiClickSubscribed) return;
   uiClickSubscribed = true;
@@ -7469,10 +9478,14 @@ function makeNodeHandle(nodeId, host) {
       return obj ? { x: obj.position.x, y: obj.position.y, z: obj.position.z } : toVec3Obj(node.position);
     },
     set position(val) {
-      if (obj) obj.position.set(val.x, val.y, val.z);
-      node.position[0] = val.x;
-      node.position[1] = val.y;
-      node.position[2] = val.z;
+      if (!val || typeof val !== "object") return;
+      const x = typeof val.x === "number" && Number.isFinite(val.x) ? val.x : obj ? obj.position.x : node.position[0];
+      const y = typeof val.y === "number" && Number.isFinite(val.y) ? val.y : obj ? obj.position.y : node.position[1];
+      const z = typeof val.z === "number" && Number.isFinite(val.z) ? val.z : obj ? obj.position.z : node.position[2];
+      if (obj) obj.position.set(x, y, z);
+      node.position[0] = x;
+      node.position[1] = y;
+      node.position[2] = z;
     },
     get rotation() {
       return obj ? { x: obj.rotation.x, y: obj.rotation.y, z: obj.rotation.z } : {
@@ -7586,7 +9599,7 @@ function resolveSplinePointsInput(input, host) {
       const ly = Number(p[1]) || 0;
       const lz = Number(p[2]) || 0;
       if (pathObj) {
-        const v = new Vector310(lx, ly, lz).applyMatrix4(pathObj.matrixWorld);
+        const v = new Vector311(lx, ly, lz).applyMatrix4(pathObj.matrixWorld);
         pts.push({ x: v.x, y: v.y, z: v.z });
       } else {
         pts.push({
@@ -7799,15 +9812,18 @@ function resetAndInvokeSpawn(nodeId, payload, host) {
         nodeId: subId,
         scriptId: sid,
         started: true,
+        enabled: true,
+        lastRawParams: rawParams,
         state: def.state ? { ...def.state() } : {}
       };
       instanceStates.set(key, rec);
       const ctx = buildScriptContext(subNode, sid, rawParams, rec.state, host);
       try {
         def.onStart?.(ctx);
+        def.onEnable?.(ctx);
         def.onSpawn?.(ctx, payload);
       } catch (error) {
-        getRuntimeWorld().log("error", `\u811A\u672C "${def.name}" \u6FC0\u6D3B\u9519\u8BEF: ${error instanceof Error ? error.message : String(error)}`);
+        reportRuntimeError("onSpawn", sid, `\u811A\u672C "${def.name}"`, error, subId);
       }
     }
   }
@@ -7874,25 +9890,57 @@ function resolvePoolKey(templateOrPrefab) {
   }
   return null;
 }
+function resolveParamValue(schema, rawVal, host) {
+  if (schema.type === "vec2" && Array.isArray(rawVal)) {
+    return { x: Number(rawVal[0]) || 0, y: Number(rawVal[1]) || 0 };
+  }
+  if (schema.type === "vec3" && Array.isArray(rawVal)) {
+    return { x: Number(rawVal[0]) || 0, y: Number(rawVal[1]) || 0, z: Number(rawVal[2]) || 0 };
+  }
+  if (schema.type === "ref" && schema.target === "node" && typeof rawVal === "string") {
+    return makeNodeHandle(rawVal, host);
+  }
+  return rawVal;
+}
 function buildScriptContext(node, scriptId, rawParams, stateObj, host) {
   const world3 = getRuntimeWorld();
   const def = compiledBehaviors.get(scriptId);
-  const resolvedParams = {};
-  const inputRecord = rawParams && typeof rawParams === "object" ? rawParams : {};
-  for (const [k, schema] of Object.entries(def?.params ?? {})) {
-    const val = k in inputRecord ? inputRecord[k] : defaultForSchema(schema);
-    if (schema.type === "vec2" && Array.isArray(val)) resolvedParams[k] = { x: Number(val[0]) || 0, y: Number(val[1]) || 0 };
-    else if (schema.type === "vec3" && Array.isArray(val)) resolvedParams[k] = { x: Number(val[0]) || 0, y: Number(val[1]) || 0, z: Number(val[2]) || 0 };
-    else if (schema.type === "ref" && schema.target === "node" && typeof val === "string") resolvedParams[k] = makeNodeHandle(val, host);
-    else resolvedParams[k] = val;
-  }
+  const paramSchemas = def?.params ?? {};
+  const readLatestInputRecord = () => {
+    const liveNode = world3.getNodes()[node.id];
+    const liveRaw = liveNode?.gameplay?.packs?.__project__?.[scriptId];
+    const chosen = liveRaw !== void 0 ? liveRaw : rawParams;
+    return chosen && typeof chosen === "object" ? chosen : {};
+  };
+  const liveParams = new Proxy(paramSchemas, {
+    get(_target, prop) {
+      if (typeof prop !== "string") return void 0;
+      const schema = paramSchemas[prop];
+      if (!schema) return void 0;
+      const inputRecord = readLatestInputRecord();
+      const val = prop in inputRecord ? inputRecord[prop] : defaultForSchema(schema);
+      return resolveParamValue(schema, val, host);
+    },
+    has(_target, prop) {
+      return typeof prop === "string" && prop in paramSchemas;
+    },
+    ownKeys() {
+      return Object.keys(paramSchemas);
+    },
+    getOwnPropertyDescriptor(_target, prop) {
+      if (typeof prop !== "string" || !(prop in paramSchemas)) return void 0;
+      return { enumerable: true, configurable: true };
+    }
+  });
   const handle = makeNodeHandle(node.id, host);
   const obj = host.resolveObject(node.id);
   return {
     node: handle,
-    params: resolvedParams,
+    params: liveParams,
     state: stateObj,
-    elapsedTime: simElapsed,
+    get elapsedTime() {
+      return simElapsed;
+    },
     get position() {
       return handle.position;
     },
@@ -7916,6 +9964,9 @@ function buildScriptContext(node, scriptId, rawParams, stateObj, host) {
     },
     set visible(v) {
       handle.visible = v;
+    },
+    get enabled() {
+      return readLatestInputRecord().__enabled !== false;
     },
     hasTag: (tag) => handle.hasTag(tag),
     addTag: (tag) => handle.addTag(tag),
@@ -8269,7 +10320,7 @@ function buildScriptContext(node, scriptId, rawParams, stateObj, host) {
           navAgents.delete(node.id);
           return false;
         }
-        navAgents.set(node.id, { path, index: 0, speed: Math.max(0.1, speed) });
+        navAgents.set(node.id, { scriptId, path, index: 0, speed: Math.max(0.1, speed) });
         return true;
       },
       stop: () => {
@@ -8312,6 +10363,7 @@ function buildScriptContext(node, scriptId, rawParams, stateObj, host) {
         };
         splineFollowAgents.set(node.id, {
           nodeId: node.id,
+          scriptId,
           spline,
           distance: startDist,
           speed: Math.max(0.01, Number(options?.speed ?? 4)),
@@ -8351,6 +10403,7 @@ function buildScriptContext(node, scriptId, rawParams, stateObj, host) {
         activeTweens.set(id, {
           id,
           ownerNodeId: node.id,
+          scriptId,
           delayRemaining: Math.max(0, Number(options?.delay ?? 0)),
           elapsed: 0,
           duration: dur,
@@ -8393,6 +10446,7 @@ function buildScriptContext(node, scriptId, rawParams, stateObj, host) {
         activeTweens.set(id, {
           id,
           ownerNodeId: node.id,
+          scriptId,
           delayRemaining: Math.max(0, Number(options?.delay ?? 0)),
           elapsed: 0,
           duration: dur,
@@ -8415,6 +10469,7 @@ function buildScriptContext(node, scriptId, rawParams, stateObj, host) {
         activeTweens.set(id, {
           id,
           ownerNodeId: node.id,
+          scriptId,
           delayRemaining: 0,
           elapsed: 0,
           duration: dur,
@@ -8444,6 +10499,7 @@ function buildScriptContext(node, scriptId, rawParams, stateObj, host) {
         activeTweens.set(id, {
           id,
           ownerNodeId: node.id,
+          scriptId,
           delayRemaining: 0,
           elapsed: 0,
           duration: dur,
@@ -8529,6 +10585,11 @@ function buildScriptContext(node, scriptId, rawParams, stateObj, host) {
         world3.playUpper?.(node.id, clipName, opts);
       },
       stopUpper: (fade2) => world3.stopUpper?.(node.id, fade2)
+    },
+    character: {
+      setModifiers: (patch) => setCharacterModifiers(node.id, patch),
+      getModifiers: () => getCharacterModifiers(node.id),
+      clearModifiers: () => clearCharacterModifiers(node.id)
     },
     audio: {
       playSfx: (assetId, opts) => {
@@ -8661,6 +10722,10 @@ function buildScriptContext(node, scriptId, rawParams, stateObj, host) {
           window.dispatchEvent(new CustomEvent("t3d:load-scene", { detail: { sceneId, spawnPoint: options?.spawnPoint } }));
         }
       }
+    },
+    shader: {
+      setParam: (shaderId, paramName, value) => setCompiledShaderParam(shaderId, paramName, value),
+      getParam: (shaderId, paramName) => getCompiledShaderParam(shaderId, paramName)
     },
     global: {
       get: (key) => globalMemory.get(key),
@@ -8994,6 +11059,10 @@ function buildSystemWorldApi(systemId, host) {
         }
       }
     },
+    shader: {
+      setParam: (shaderId, paramName, value) => setCompiledShaderParam(shaderId, paramName, value),
+      getParam: (shaderId, paramName) => getCompiledShaderParam(shaderId, paramName)
+    },
     global: {
       get: (key) => globalMemory.get(key),
       set: (key, value) => {
@@ -9033,6 +11102,41 @@ function viewRelativeMove(action, host) {
     z: (-axis.x * sin3 - axis.y * cos3) * scale
   };
 }
+function snapshotStateValue(value, depth) {
+  if (value === null || value === void 0) return value ?? null;
+  if (typeof value === "number") return Number.isFinite(value) ? Number(value.toFixed(4)) : String(value);
+  if (typeof value === "boolean") return value;
+  if (typeof value === "string") return value.length > 200 ? `${value.slice(0, 200)}\u2026` : value;
+  if (typeof value === "function") return "[function]";
+  if (depth <= 0) return Array.isArray(value) ? `[array ${value.length}]` : "[object]";
+  if (Array.isArray(value)) {
+    const head = value.slice(0, 12).map((item) => snapshotStateValue(item, depth - 1));
+    if (value.length > 12) head.push(`\u2026\u5171 ${value.length} \u9879`);
+    return head;
+  }
+  if (value instanceof Map) return `[Map ${value.size}]`;
+  if (value instanceof Set) return `[Set ${value.size}]`;
+  const out = {};
+  let count = 0;
+  for (const [key, item] of Object.entries(value)) {
+    if (count >= 24) {
+      out["\u2026"] = "\u5B57\u6BB5\u8FC7\u591A\u5DF2\u7701\u7565";
+      break;
+    }
+    out[key] = snapshotStateValue(item, depth - 1);
+    count += 1;
+  }
+  return out;
+}
+function readScriptStateSnapshot(nodeId) {
+  let out = null;
+  for (const rec of instanceStates.values()) {
+    if (rec.nodeId !== nodeId) continue;
+    out ??= {};
+    out[rec.scriptId] = snapshotStateValue(rec.state, 3);
+  }
+  return out;
+}
 function clearScriptRuntimeState() {
   for (const [sysId, sys] of compiledSystems.entries()) {
     if (sys.mounted) {
@@ -9049,6 +11153,7 @@ function clearScriptRuntimeState() {
     }
   }
   instanceStates.clear();
+  runtimeErrorCounts.clear();
   messageQueue.length = 0;
   uiEventHandlers.clear();
   uiEventQueue.length = 0;
@@ -9070,6 +11175,14 @@ function clearScriptRuntimeState() {
   prevMouseButtons = 0;
   currMouseButtons = 0;
 }
+function resolveTaskOwnerState(nodeId, scriptId, nodes, mountedKeys, activeKeys) {
+  if (nodeId.startsWith("__system__:")) return "active";
+  if (!nodes[nodeId] || isNodePooledInactive(nodeId, nodes)) return "destroyed";
+  if (!scriptId) return "active";
+  const key = instanceKey2(nodeId, scriptId);
+  if (!mountedKeys.has(key)) return "destroyed";
+  return activeKeys.has(key) ? "active" : "disabled";
+}
 function stepProjectScripts(dt, host) {
   const world3 = getRuntimeWorld();
   if (world3.getPlayState() !== "playing") {
@@ -9077,6 +11190,7 @@ function stepProjectScripts(dt, host) {
     return;
   }
   ensureUiClickBridge();
+  ensureCharacterEventBridge();
   bindProjectileRuntimeHooks({
     onHit: ({ projectileId, targetId, ownerId, damage, position }) => {
       messageQueue.push({
@@ -9104,12 +11218,83 @@ function stepProjectScripts(dt, host) {
   prevMouseButtons = currMouseButtons;
   currMouseButtons = host.mouseButtons ? host.mouseButtons() : host.rightHeld?.() ? 2 : 0;
   const nodes = world3.getNodes();
+  const mountedKeys = /* @__PURE__ */ new Set();
   const activeKeys = /* @__PURE__ */ new Set();
   for (const sysId of compiledSystems.keys()) {
+    mountedKeys.add(`sys:${sysId}`);
     activeKeys.add(`sys:${sysId}`);
+  }
+  for (const node of Object.values(nodes)) {
+    if (isNodePooledInactive(node.id, nodes)) continue;
+    const projectScripts = node.gameplay?.packs?.__project__;
+    if (!projectScripts || typeof projectScripts !== "object") continue;
+    for (const [scriptId, rawParams] of Object.entries(projectScripts)) {
+      const def = compiledBehaviors.get(scriptId);
+      if (!def) continue;
+      const key = instanceKey2(node.id, scriptId);
+      mountedKeys.add(key);
+      const isEnabled = !(rawParams && typeof rawParams === "object" && rawParams.__enabled === false);
+      if (!isEnabled) {
+        const disabledRec = instanceStates.get(key);
+        if (disabledRec && disabledRec.enabled) {
+          disabledRec.enabled = false;
+          disabledRec.lastRawParams = rawParams;
+          if (def.onDisable) {
+            const ctx2 = buildScriptContext(node, scriptId, rawParams, disabledRec.state, host);
+            try {
+              def.onDisable(ctx2);
+            } catch (error) {
+              reportRuntimeError("onDisable", scriptId, `\u811A\u672C "${def.name}"`, error, node.id);
+            }
+          }
+        }
+        continue;
+      }
+      activeKeys.add(key);
+      let rec = instanceStates.get(key);
+      if (!rec) {
+        rec = {
+          nodeId: node.id,
+          scriptId,
+          started: false,
+          enabled: false,
+          lastRawParams: rawParams,
+          state: def.state ? { ...def.state() } : {}
+        };
+        instanceStates.set(key, rec);
+      } else {
+        rec.lastRawParams = rawParams;
+      }
+      const ctx = buildScriptContext(node, scriptId, rawParams, rec.state, host);
+      measureCost(`script:${scriptId}`, () => {
+        let phase = "onUpdate";
+        try {
+          if (!rec.started) {
+            rec.started = true;
+            phase = "onStart";
+            def.onStart?.(ctx);
+          }
+          if (!rec.enabled) {
+            rec.enabled = true;
+            phase = "onEnable";
+            def.onEnable?.(ctx);
+          }
+          phase = "onUpdate";
+          def.onUpdate?.(ctx, dt);
+        } catch (error) {
+          reportRuntimeError(phase, scriptId, `\u811A\u672C "${def.name}"`, error, node.id);
+        }
+      });
+    }
   }
   if (navAgents.size > 0 && dt > 0) {
     for (const [agentId, agent] of navAgents) {
+      const ownerState = resolveTaskOwnerState(agentId, agent.scriptId, nodes, mountedKeys, activeKeys);
+      if (ownerState === "destroyed") {
+        navAgents.delete(agentId);
+        continue;
+      }
+      if (ownerState === "disabled") continue;
       const obj = host.resolveObject(agentId);
       const n = nodes[agentId];
       if (!obj && !n) {
@@ -9142,47 +11327,17 @@ function stepProjectScripts(dt, host) {
       }
     }
   }
-  for (const node of Object.values(nodes)) {
-    if (isNodePooledInactive(node.id, nodes)) continue;
-    const projectScripts = node.gameplay?.packs?.__project__;
-    if (!projectScripts || typeof projectScripts !== "object") continue;
-    for (const [scriptId, rawParams] of Object.entries(projectScripts)) {
-      if (rawParams && typeof rawParams === "object" && rawParams.__enabled === false) {
-        continue;
-      }
-      const def = compiledBehaviors.get(scriptId);
-      if (!def) continue;
-      const key = instanceKey2(node.id, scriptId);
-      activeKeys.add(key);
-      let rec = instanceStates.get(key);
-      if (!rec) {
-        rec = {
-          nodeId: node.id,
-          scriptId,
-          started: false,
-          state: def.state ? { ...def.state() } : {}
-        };
-        instanceStates.set(key, rec);
-      }
-      const ctx = buildScriptContext(node, scriptId, rawParams, rec.state, host);
-      measureCost(`script:${scriptId}`, () => {
-        try {
-          if (!rec.started) {
-            rec.started = true;
-            def.onStart?.(ctx);
-          }
-          def.onUpdate?.(ctx, dt);
-        } catch (error) {
-          world3.log("error", `\u811A\u672C "${def.name}" \u8FD0\u884C\u9519\u8BEF: ${error instanceof Error ? error.message : String(error)}`);
-        }
-      });
-    }
-  }
   if (splineFollowAgents.size > 0 && dt > 0) {
     for (const [agentId, ag] of Array.from(splineFollowAgents.entries())) {
+      const ownerState = resolveTaskOwnerState(agentId, ag.scriptId, nodes, mountedKeys, activeKeys);
+      if (ownerState === "destroyed") {
+        splineFollowAgents.delete(agentId);
+        continue;
+      }
+      if (ownerState === "disabled") continue;
       const n = nodes[agentId];
       const h = makeNodeHandle(agentId, host);
-      if (!n || !h || isNodePooledInactive(agentId, nodes)) {
+      if (!n || !h) {
         splineFollowAgents.delete(agentId);
         continue;
       }
@@ -9231,7 +11386,7 @@ function stepProjectScripts(dt, host) {
         try {
           ag.onArrive?.();
         } catch (error) {
-          world3.log("error", `Spline \u5230\u8FBE\u56DE\u8C03\u9519\u8BEF: ${error instanceof Error ? error.message : String(error)}`);
+          reportRuntimeError("spline.onArrive", "spline", "Spline \u5230\u8FBE\u56DE\u8C03", error, ag.nodeId);
         }
       }
     }
@@ -9239,11 +11394,12 @@ function stepProjectScripts(dt, host) {
   if (activeTweens.size > 0 && dt > 0) {
     for (const tw of Array.from(activeTweens.values())) {
       if (!activeTweens.has(tw.id)) continue;
-      const ownerExists = tw.ownerNodeId.startsWith("__system__:") || Boolean(nodes[tw.ownerNodeId]) && !isNodePooledInactive(tw.ownerNodeId, nodes);
-      if (!ownerExists) {
+      const ownerState = resolveTaskOwnerState(tw.ownerNodeId, tw.scriptId, nodes, mountedKeys, activeKeys);
+      if (ownerState === "destroyed") {
         activeTweens.delete(tw.id);
         continue;
       }
+      if (ownerState === "disabled") continue;
       if (tw.delayRemaining > 0) {
         tw.delayRemaining -= dt;
         if (tw.delayRemaining > 0) continue;
@@ -9259,7 +11415,7 @@ function stepProjectScripts(dt, host) {
         tw.apply(eased);
         tw.onUpdate?.(eased);
       } catch (error) {
-        world3.log("error", `Tween \u66F4\u65B0\u9519\u8BEF: ${error instanceof Error ? error.message : String(error)}`);
+        reportRuntimeError("tween.onUpdate", "tween", "Tween \u66F4\u65B0\u56DE\u8C03", error, tw.ownerNodeId);
         activeTweens.delete(tw.id);
         continue;
       }
@@ -9273,7 +11429,7 @@ function stepProjectScripts(dt, host) {
           try {
             tw.onComplete?.();
           } catch (error) {
-            world3.log("error", `Tween \u5B8C\u6210\u56DE\u8C03\u9519\u8BEF: ${error instanceof Error ? error.message : String(error)}`);
+            reportRuntimeError("tween.onComplete", "tween", "Tween \u5B8C\u6210\u56DE\u8C03", error, tw.ownerNodeId);
           }
         }
       }
@@ -9283,12 +11439,12 @@ function stepProjectScripts(dt, host) {
     const timerSnapshot = Array.from(scriptTimers.values());
     for (const timer of timerSnapshot) {
       if (!scriptTimers.has(timer.id)) continue;
-      const isSystemTimer = timer.nodeId.startsWith("__system__:");
-      const tNode = isSystemTimer ? null : nodes[timer.nodeId];
-      if (!isSystemTimer && (!tNode || isNodePooledInactive(timer.nodeId, nodes))) {
+      const ownerState = resolveTaskOwnerState(timer.nodeId, timer.scriptId, nodes, mountedKeys, activeKeys);
+      if (ownerState === "destroyed") {
         scriptTimers.delete(timer.id);
         continue;
       }
+      if (ownerState === "disabled") continue;
       timer.remaining -= dt;
       if (timer.remaining <= 0) {
         if (timer.repeat) {
@@ -9300,7 +11456,7 @@ function stepProjectScripts(dt, host) {
         try {
           timer.callback();
         } catch (error) {
-          world3.log("error", `\u811A\u672C\u5B9A\u65F6\u5668\u56DE\u8C03\u9519\u8BEF: ${error instanceof Error ? error.message : String(error)}`);
+          reportRuntimeError("timer", "timer", "\u811A\u672C\u5B9A\u65F6\u5668\u56DE\u8C03", error, timer.nodeId);
         }
       }
     }
@@ -9320,7 +11476,7 @@ function stepProjectScripts(dt, host) {
         try {
           def.onMessage(ctx, { name: msg.name, payload: msg.payload, sender });
         } catch (error) {
-          world3.log("error", `\u811A\u672C "${def.name}" \u6D88\u606F\u5904\u7406\u9519\u8BEF: ${error instanceof Error ? error.message : String(error)}`);
+          reportRuntimeError(`onMessage:${msg.name}`, rec.scriptId, `\u811A\u672C "${def.name}"`, error, rec.nodeId);
         }
       }
     }
@@ -9336,28 +11492,36 @@ function stepProjectScripts(dt, host) {
           try {
             fn(evt.payload);
           } catch (error) {
-            world3.log("error", `UI \u4E8B\u4EF6 "${evt.eventName}" \u5904\u7406\u9519\u8BEF: ${error instanceof Error ? error.message : String(error)}`);
+            reportRuntimeError(`uiEvent:${evt.eventName}`, instKey, `UI \u4E8B\u4EF6 "${evt.eventName}"`, error, evt.payload.nodeId);
           }
         }
       }
     }
   }
   for (const [key, rec] of instanceStates.entries()) {
-    if (activeKeys.has(key)) continue;
+    if (mountedKeys.has(key)) continue;
     uiEventHandlers.delete(key);
     const def = compiledBehaviors.get(rec.scriptId);
     const node = nodes[rec.nodeId];
-    if (def?.onDestroy && node) {
-      const ctx = buildScriptContext(node, rec.scriptId, {}, rec.state, host);
-      try {
-        def.onDestroy(ctx);
-      } catch {
+    if (node && (def?.onDisable || def?.onDestroy)) {
+      const ctx = buildScriptContext(node, rec.scriptId, rec.lastRawParams ?? {}, rec.state, host);
+      if (rec.enabled && def.onDisable) {
+        try {
+          def.onDisable(ctx);
+        } catch {
+        }
+      }
+      if (def.onDestroy) {
+        try {
+          def.onDestroy(ctx);
+        } catch {
+        }
       }
     }
     instanceStates.delete(key);
   }
 }
-var compiledBehaviors, compiledSystems, instanceStates, messageQueue, uiEventHandlers, uiEventQueue, uiClickSubscribed, globalMemory, persistentMemory, navAgents, pooledInactive, nodePoolKey, poolBuckets, scriptTimers, splineFollowAgents, activeTweens, sfxCooldownAt, nextTimerId, nextTweenId, simElapsed, framePointerDelta, framePointerPos, frameWheelDelta, prevMouseButtons, currMouseButtons;
+var compiledBehaviors, compiledSystems, instanceStates, runtimeErrorCounts, messageQueue, uiEventHandlers, uiEventQueue, uiClickSubscribed, characterEventSubscribed, globalMemory, persistentMemory, navAgents, pooledInactive, nodePoolKey, poolBuckets, scriptTimers, splineFollowAgents, activeTweens, sfxCooldownAt, nextTimerId, nextTweenId, simElapsed, framePointerDelta, framePointerPos, frameWheelDelta, prevMouseButtons, currMouseButtons;
 var init_scriptRuntime = __esm({
   "src/core/codeAssets/scriptRuntime.ts"() {
     "use strict";
@@ -9368,6 +11532,9 @@ var init_scriptRuntime = __esm({
     init_session();
     init_registry();
     init_audio();
+    init_character();
+    init_signals();
+    init_shaderRuntime();
     init_frameProfile();
     init_motion();
     init_sceneRuntime();
@@ -9379,10 +11546,12 @@ var init_scriptRuntime = __esm({
     compiledBehaviors = /* @__PURE__ */ new Map();
     compiledSystems = /* @__PURE__ */ new Map();
     instanceStates = /* @__PURE__ */ new Map();
+    runtimeErrorCounts = /* @__PURE__ */ new Map();
     messageQueue = [];
     uiEventHandlers = /* @__PURE__ */ new Map();
     uiEventQueue = [];
     uiClickSubscribed = false;
+    characterEventSubscribed = false;
     globalMemory = /* @__PURE__ */ new Map();
     persistentMemory = /* @__PURE__ */ new Map();
     navAgents = /* @__PURE__ */ new Map();
@@ -9405,18 +11574,6 @@ var init_scriptRuntime = __esm({
   }
 });
 
-// src/core/codeAssets/shaderRuntime.ts
-import { Color as Color5, DataTexture as DataTexture2, RGBAFormat as RGBAFormat2 } from "three";
-import * as tsl from "three/tsl";
-import { MeshBasicNodeMaterial as MeshBasicNodeMaterial3, MeshStandardNodeMaterial } from "three/webgpu";
-var init_shaderRuntime = __esm({
-  "src/core/codeAssets/shaderRuntime.ts"() {
-    "use strict";
-    init_fieldSchema();
-    init_compiler();
-  }
-});
-
 // src/core/codeAssets/workspace.ts
 import { create as create4 } from "zustand";
 var useCodeAssetStore;
@@ -9430,6 +11587,7 @@ var init_workspace = __esm({
     init_store2();
     init_scriptRuntime();
     init_shaderRuntime();
+    init_typeDefs();
     useCodeAssetStore = create4((set) => ({
       assets: {},
       selectedId: null,
@@ -9899,13 +12057,13 @@ var init_messages = __esm({
       "menu.edit": "\u7F16\u8F91",
       "menu.create": "\u521B\u5EFA",
       "menu.view": "\u89C6\u56FE",
-      "menu.newProject": "\u65B0\u5EFA\u5DE5\u7A0B\u2026",
-      "menu.openProject": "\u6253\u5F00\u5DE5\u7A0B\u2026",
-      "menu.recentProjects": "\u6700\u8FD1\u5DE5\u7A0B",
+      "menu.newProject": "\u65B0\u5EFA\u9879\u76EE\u2026",
+      "menu.openProject": "\u6253\u5F00\u9879\u76EE\u2026",
+      "menu.recentProjects": "\u6700\u8FD1\u9879\u76EE",
       "menu.newScene": "\u65B0\u5EFA\u573A\u666F",
       "menu.save": "\u4FDD\u5B58",
-      "menu.saveAsProject": "\u53E6\u5B58\u4E3A\u5DE5\u7A0B\u2026",
-      "menu.projectSettings": "\u5DE5\u7A0B\u8BBE\u7F6E\u2026",
+      "menu.saveAsProject": "\u53E6\u5B58\u4E3A\u9879\u76EE\u2026",
+      "menu.projectSettings": "\u9879\u76EE\u8BBE\u7F6E\u2026",
       "menu.database": "\u6E38\u620F\u6570\u636E\u2026",
       "menu.library": "\u5B98\u65B9\u5E93\u2026",
       "menu.tags": "\u6807\u7B7E\u2026",
@@ -9929,9 +12087,9 @@ var init_messages = __esm({
       "hub.delete": "\u5220\u9664",
       "hub.enabled": "\u5DF2\u542F\u7528",
       "hub.disabled": "\u5DF2\u5173\u95ED",
-      "hub.packHint": "\u5173\u6389\u7684\u5305\u4F1A\u4ECE\u8FD9\u5F20\u76EE\u5F55\u6D88\u5931\uFF0C\u5DF2\u7ECF\u5199\u8FC7\u7684\u884C\u7559\u5728\u5DE5\u7A0B\u91CC\u3002\u5C5E\u6027\u3001\u7269\u54C1\u8FD9\u4E9B\u8868\u7B49\u5BF9\u5E94\u7684\u5305\u505A\u4E86\u518D\u51FA\u73B0\u3002",
+      "hub.packHint": "\u5173\u6389\u7684\u5305\u4F1A\u4ECE\u8FD9\u5F20\u76EE\u5F55\u6D88\u5931\uFF0C\u5DF2\u7ECF\u5199\u8FC7\u7684\u884C\u7559\u5728\u9879\u76EE\u91CC\u3002\u5C5E\u6027\u3001\u7269\u54C1\u8FD9\u4E9B\u8868\u7B49\u5BF9\u5E94\u7684\u5305\u505A\u4E86\u518D\u51FA\u73B0\u3002",
       "library.title": "\u5B98\u65B9\u5E93",
-      "library.lead": "\u7F16\u8F91\u5668\u81EA\u5E26\u7684\u80FD\u529B\u3001\u73A9\u6CD5\u3001\u4E13\u9879\u548C\u7D20\u6750\u3002\u5F00\u5173\u8BB0\u5728\u5F53\u524D\u5DE5\u7A0B\u91CC\u3002",
+      "library.lead": "\u7F16\u8F91\u5668\u81EA\u5E26\u7684\u80FD\u529B\u3001\u73A9\u6CD5\u3001\u4E13\u9879\u548C\u7D20\u6750\u3002\u5F00\u5173\u8BB0\u5728\u5F53\u524D\u9879\u76EE\u91CC\u3002",
       "library.search": "\u641C\u7D22\u540D\u79F0",
       "library.empty": "\u6CA1\u6709\u5339\u914D\u7684\u6761\u76EE",
       "library.on": "\u5DF2\u5F00\u542F",
@@ -9939,9 +12097,9 @@ var init_messages = __esm({
       "library.soon": "\u5F00\u53D1\u4E2D",
       "library.official": "\u5B98\u65B9",
       "library.includes": "\u8FD9\u4E00\u5305\u63D0\u4F9B",
-      "library.switch": "\u5DE5\u7A0B\u5F00\u5173",
+      "library.switch": "\u9879\u76EE\u5F00\u5173",
       "library.soonNote": "\u968F\u7F16\u8F91\u5668\u5F00\u53D1\u3002\u767B\u8BB0\u5B8C\u6210\u524D\u4E0D\u80FD\u5F00\u5173\u3002",
-      "library.assetNote": "\u7D20\u6750\u662F\u76EE\u5F55\uFF0C\u7528\u5230\u65F6\u518D\u5BFC\u5165\u5DE5\u7A0B\u3002\u73B0\u5728\u8FD8\u4E0D\u80FD\u5B89\u88C5\u3002",
+      "library.assetNote": "\u7D20\u6750\u662F\u76EE\u5F55\uFF0C\u7528\u5230\u65F6\u518D\u5BFC\u5165\u9879\u76EE\u3002\u73B0\u5728\u8FD8\u4E0D\u80FD\u5B89\u88C5\u3002",
       "library.shelf.capability": "\u80FD\u529B",
       "library.shelf.gameplay": "\u73A9\u6CD5",
       "library.shelf.genre": "\u4E13\u9879",
@@ -10084,13 +12242,13 @@ var init_messages = __esm({
       "library.item.dialogueDetail": "\u5BF9\u8BDD\u548C\u4EFB\u52A1\u8FFD\u8E2A\u3002",
       "library.item.dialoguePoints": "\u5BF9\u8BDD\n\u4EFB\u52A1",
       "library.item.rts": "\u5373\u65F6\u7B56\u7565",
-      "library.item.rtsDetail": "\u6846\u9009\u3001\u7F16\u7EC4\u548C\u5355\u4F4D\u6307\u4EE4\u3002\u4E13\u5C5E\u5305\uFF0C\u4E0D\u662F\u793A\u4F8B\u5DE5\u7A0B\u3002",
+      "library.item.rtsDetail": "\u6846\u9009\u3001\u7F16\u7EC4\u548C\u5355\u4F4D\u6307\u4EE4\u3002\u4E13\u5C5E\u5305\uFF0C\u4E0D\u662F\u793A\u4F8B\u9879\u76EE\u3002",
       "library.item.rtsPoints": "\u6846\u9009\u4E0E\u7F16\u7EC4\n\u5355\u4F4D\u6307\u4EE4",
       "library.item.rpg": "\u89D2\u8272\u626E\u6F14",
       "library.item.rpgDetail": "\u628A\u5C5E\u6027\u3001\u80CC\u5305\u3001\u5BF9\u8BDD\u548C\u4EFB\u52A1\u6536\u6210\u4E00\u5957\u89D2\u8272\u626E\u6F14\u89C4\u5219\u3002",
       "library.item.rpgPoints": "\u89D2\u8272\u6210\u957F\n\u4EFB\u52A1\u6D41\u7A0B",
       "library.item.characters": "\u89D2\u8272\u4E0E\u52A8\u753B",
-      "library.item.charactersDetail": "\u5B98\u65B9\u4EBA\u5F62\u548C\u5E38\u7528\u52A8\u4F5C\u3002\u5BFC\u5165\u540E\u8FDB\u5165\u5DE5\u7A0B\u8D44\u6E90\u3002",
+      "library.item.charactersDetail": "\u5B98\u65B9\u4EBA\u5F62\u548C\u5E38\u7528\u52A8\u4F5C\u3002\u5BFC\u5165\u540E\u8FDB\u5165\u9879\u76EE\u8D44\u6E90\u3002",
       "library.item.charactersPoints": "\u4EBA\u5F62\u6A21\u578B\n\u8D70\u8DD1\u8DF3\u52A8\u4F5C",
       "library.item.environments": "\u573A\u666F\u5957\u4EF6",
       "library.item.environmentsDetail": "\u5730\u9762\u3001\u5CA9\u77F3\u548C\u5E38\u7528\u6446\u4EF6\u3002",
@@ -10099,12 +12257,18 @@ var init_messages = __esm({
       "library.item.vfxDetail": "\u505A\u597D\u7684\u7206\u70B8\u3001\u62D6\u5C3E\u548C\u547D\u4E2D\u6548\u679C\u3002\u64AD\u653E\u4ECD\u8981\u6253\u5F00\u7C92\u5B50\u80FD\u529B\u3002",
       "library.item.vfxPoints": "\u547D\u4E2D\u4E0E\u7206\u70B8\n\u62D6\u5C3E",
       "hub.noBlock": "\u4E0D\u963B\u65AD",
-      "menu.projectMenu": "\u5DE5\u7A0B",
+      "menu.projectMenu": "\u9879\u76EE",
+      "menu.hub": "\u7BA1\u7406\u4E2D\u5FC3",
+      "menu.help": "\u5E2E\u52A9",
+      "menu.helpSite": "\u5B98\u65B9\u7F51\u7AD9",
+      "menu.helpSupport": "\u6280\u672F\u652F\u6301",
+      "menu.about": "\u5173\u4E8E",
+      "menu.aboutBody": "AI\u667A\u80FD\u6E38\u620F\u5F00\u53D1\u5E73\u53F0",
       "menu.views": "\u89C6\u56FE",
       "menu.display": "\u663E\u793A",
       "menu.savedDirectory": "\u5DF2\u4FDD\u5B58\u5230 {name}",
       "menu.import": "\u5BFC\u5165\u8D44\u6E90",
-      "menu.extractPackage": "\u63D0\u53D6\u7D20\u6750\u5305\u2026",
+      "menu.extractPackage": "\u5BFC\u5165 UnityPackage\u2026",
       "menu.undo": "\u64A4\u9500",
       "menu.redo": "\u91CD\u505A",
       "menu.duplicate": "\u5C31\u5730\u590D\u5236",
@@ -10218,8 +12382,8 @@ var init_messages = __esm({
       "settings.languageEn": "English",
       "settings.autoSave": "\u81EA\u52A8\u4FDD\u5B58",
       "settings.autoSaveNote": "\u7F16\u8F91\u540E\u5199\u5165\u672C\u5730\u7F13\u5B58\u3002\u5173\u95ED\u540E\u4ECD\u4F1A\u5728\u79BB\u5F00\u9875\u9762\u524D\u4FDD\u5B58\u3002",
-      "settings.openLastProject": "\u542F\u52A8\u65F6\u6253\u5F00\u4E0A\u6B21\u5DE5\u7A0B",
-      "settings.openLastProjectNote": "\u542F\u52A8\u65F6\u6253\u5F00\u6700\u8FD1\u4E00\u6B21\u7684\u5DE5\u7A0B\u76EE\u5F55\u3002",
+      "settings.openLastProject": "\u542F\u52A8\u65F6\u6253\u5F00\u4E0A\u6B21\u9879\u76EE",
+      "settings.openLastProjectNote": "\u542F\u52A8\u65F6\u6253\u5F00\u6700\u8FD1\u4E00\u6B21\u7684\u9879\u76EE\u76EE\u5F55\u3002",
       "settings.uiScale": "\u754C\u9762\u7F29\u653E",
       "settings.close": "\u5173\u95ED",
       "inspector.modelRenderer": "\u6A21\u578B\u6E32\u67D3",
@@ -10773,9 +12937,9 @@ var init_messages = __esm({
       "navigation.stale": "\u53C2\u6570\u5DF2\u53D8\u5316\uFF0C\u9700\u8981\u91CD\u65B0\u70D8\u7119\u3002",
       "navigation.triangles": "\u8868\u9762\u4E09\u89D2\u5F62",
       "navigation.obstacleHint": "\u969C\u788D\u5BB9\u91CF\u5927\u4E8E 0 \u65F6\uFF0C\u8BD5\u73A9\u4F1A\u7528\u7AD6\u76F4\u5706\u67F1\u628A\u969C\u788D\u4ECE\u5BFC\u822A\u7F51\u683C\u4E0A\u6316\u5F00\u3002",
-      "projectSettings.title": "\u5DE5\u7A0B\u8BBE\u7F6E",
+      "projectSettings.title": "\u9879\u76EE\u8BBE\u7F6E",
       "projectSettings.modules": "\u80FD\u529B\u5305",
-      "projectSettings.note": "\u5F00\u5173\u4FDD\u5B58\u5728\u5F53\u524D\u5DE5\u7A0B\u91CC\u3002\u5173\u95ED\u540E\u4E0D\u518D\u52A0\u8F7D\u5BF9\u5E94\u6A21\u5757\uFF0C\u5DF2\u586B\u5199\u7684\u6570\u636E\u4E0D\u4F1A\u5220\u9664\u3002",
+      "projectSettings.note": "\u5F00\u5173\u4FDD\u5B58\u5728\u5F53\u524D\u9879\u76EE\u91CC\u3002\u5173\u95ED\u540E\u4E0D\u518D\u52A0\u8F7D\u5BF9\u5E94\u6A21\u5757\uFF0C\u5DF2\u586B\u5199\u7684\u6570\u636E\u4E0D\u4F1A\u5220\u9664\u3002",
       "projectSettings.physicsDetail": "\u78B0\u649E\u4F53\u3001\u521A\u4F53\u548C\u8BD5\u73A9\u65F6\u7684\u7269\u7406\u6A21\u62DF\u3002",
       "projectSettings.particlesDetail": "\u7C92\u5B50\u7279\u6548\u3002\u5173\u6389\u540E\u8D44\u6E90\u548C\u7269\u4F53\u4E0A\u7684\u6570\u636E\u8FD8\u5728\uFF0C\u53EA\u662F\u4E0D\u518D\u64AD\u653E\u3002",
       "sky.enable": "\u5929\u7A7A",
@@ -11090,11 +13254,13 @@ var init_messages = __esm({
       "log.uiMessage": "\u754C\u9762\u53D1\u51FA\u6D88\u606F {message}",
       "asset.animation": "\u52A8\u753B",
       "asset.audio": "\u97F3\u9891",
+      "asset.document": "\u6587\u6863",
       "asset.prefab": "\u9884\u5236\u4F53",
       "project.all": "\u5168\u90E8",
       "project.model": "\u6A21\u578B",
       "project.image": "\u6750\u8D28/\u8D34\u56FE",
       "project.audio": "\u97F3\u9891",
+      "project.document": "\u6587\u6863",
       "project.animation": "\u52A8\u753B",
       "project.scene": "\u573A\u666F",
       "project.used": "\u672C\u573A\u666F",
@@ -11104,7 +13270,7 @@ var init_messages = __esm({
       "project.clear": "\u6E05\u9664",
       "project.import": "\u5BFC\u5165",
       "project.extractPackage": "\u63D0\u53D6\u7D20\u6750\u5305",
-      "pkg.title": "\u63D0\u53D6\u7D20\u6750\u5305",
+      "pkg.title": "\u5BFC\u5165 UnityPackage",
       "pkg.noFile": "\u672A\u9009\u62E9\u6587\u4EF6",
       "pkg.close": "\u5173\u95ED",
       "pkg.scanning": "\u6B63\u5728\u626B\u63CF\u53EF\u63D0\u53D6\u8D44\u6E90\u2026",
@@ -11182,7 +13348,7 @@ var init_messages = __esm({
       "project.cancel": "\u53D6\u6D88",
       "project.open": "\u6253\u5F00",
       "project.reveal": "\u6253\u5F00\u6240\u5728\u76EE\u5F55\u2026",
-      "project.revealMissing": "\u8FD9\u4E2A\u8D44\u6E90\u8FD8\u6CA1\u6709\u5199\u5230\u78C1\u76D8\u76EE\u5F55\u3002\u5148\u628A\u5DE5\u7A0B\u53E6\u5B58\u4E3A\u76EE\u5F55\u5DE5\u7A0B\u3002",
+      "project.revealMissing": "\u8FD9\u4E2A\u8D44\u6E90\u8FD8\u6CA1\u6709\u5199\u5230\u78C1\u76D8\u76EE\u5F55\u3002\u5148\u628A\u9879\u76EE\u53E6\u5B58\u4E3A\u76EE\u5F55\u9879\u76EE\u3002",
       "project.revealFailed": "\u6253\u4E0D\u5F00\u6240\u5728\u76EE\u5F55\uFF1A{message}",
       "project.place": "\u653E\u5165\u573A\u666F",
       "project.rename": "\u91CD\u547D\u540D",
@@ -11219,6 +13385,7 @@ var init_messages = __esm({
       "project.textureHint": "\u53CC\u51FB\u9884\u89C8\uFF0C\u4E5F\u53EF\u4EE5\u62D6\u5230\u7269\u4F53\u4E0A",
       "project.animHint": "\u62D6\u5230\u6A21\u578B\u4E0A\u64AD\u653E",
       "project.audioHint": "\u53CC\u51FB\u8BD5\u542C",
+      "project.docHint": "\u53CC\u51FB\u6253\u5F00\u7F16\u8F91\u6587\u6863",
       "project.openFolder": "\u53CC\u51FB\u6253\u5F00\u76EE\u5F55",
       "project.folder": "\u76EE\u5F55",
       "hierarchy.search": "\u641C\u7D22\u7269\u4F53",
@@ -11389,22 +13556,22 @@ var init_messages = __esm({
       "gesture.color": "\u4FEE\u6539\u989C\u8272",
       "error.panel": "{name} \u51FA\u9519\uFF1A{message}",
       "log.cacheOpenFail": "\u672C\u5730\u9879\u76EE\u7F13\u5B58\u6CA1\u80FD\u6253\u5F00\uFF0C\u4F7F\u7528\u7A7A\u767D\u573A\u666F",
-      "log.projectCreated": "\u5DF2\u521B\u5EFA\u5DE5\u7A0B\u300C{name}\u300D\u3002\u6E90\u6587\u4EF6\u5728 Assets/\uFF0C\u7F13\u5B58\u5728 .cache/t3d/",
-      "log.projectSavedAs": "\u5DF2\u628A\u5F53\u524D\u9879\u76EE\u53E6\u5B58\u4E3A\u5DE5\u7A0B\u300C{name}\u300D",
-      "log.projectSaveAsOccupied": "\u300C{name}\u300D\u91CC\u5DF2\u7ECF\u6709\u5DE5\u7A0B\uFF0C\u8BF7\u53E6\u9009\u4E00\u4E2A\u7A7A\u6587\u4EF6\u5939",
-      "log.projectOpened": "\u5DF2\u6253\u5F00\u5DE5\u7A0B\u300C{name}\u300D",
-      "log.projectExists": "\u8FD9\u4E2A\u6587\u4EF6\u5939\u5DF2\u6709\u5DE5\u7A0B\uFF0C\u5DF2\u6253\u5F00\u300C{name}\u300D",
+      "log.projectCreated": "\u5DF2\u521B\u5EFA\u9879\u76EE\u300C{name}\u300D\u3002\u6E90\u6587\u4EF6\u5728 Assets/\uFF0C\u7F13\u5B58\u5728 .cache/t3d/",
+      "log.projectSavedAs": "\u5DF2\u628A\u5F53\u524D\u9879\u76EE\u53E6\u5B58\u4E3A\u9879\u76EE\u300C{name}\u300D",
+      "log.projectSaveAsOccupied": "\u300C{name}\u300D\u91CC\u5DF2\u7ECF\u6709\u9879\u76EE\uFF0C\u8BF7\u53E6\u9009\u4E00\u4E2A\u7A7A\u6587\u4EF6\u5939",
+      "log.projectOpened": "\u5DF2\u6253\u5F00\u9879\u76EE\u300C{name}\u300D",
+      "log.projectExists": "\u8FD9\u4E2A\u6587\u4EF6\u5939\u5DF2\u6709\u9879\u76EE\uFF0C\u5DF2\u6253\u5F00\u300C{name}\u300D",
       "log.projectMissing": "\u8FD9\u4E2A\u6587\u4EF6\u5939\u91CC\u6CA1\u6709 project.t3d",
       "log.projectInvalid": "project.t3d \u65E0\u6CD5\u8BFB\u53D6",
-      "log.projectFailed": "\u5DE5\u7A0B\u64CD\u4F5C\u5931\u8D25\uFF1A{message}",
-      "log.projectBrowser": "\u5F53\u524D\u6D4F\u89C8\u5668\u4E0D\u80FD\u9009\u62E9\u672C\u5730\u5DE5\u7A0B\u76EE\u5F55",
-      "log.projectPermission": "\u4E0A\u6B21\u7684\u5DE5\u7A0B\u9700\u8981\u91CD\u65B0\u6388\u6743\u3002\u8BF7\u4ECE\u300C\u6587\u4EF6 \u2192 \u6700\u8FD1\u5DE5\u7A0B\u300D\u6253\u5F00\uFF0C\u6216\u4F7F\u7528\u300C\u6253\u5F00\u5DE5\u7A0B\u300D\u3002",
+      "log.projectFailed": "\u9879\u76EE\u64CD\u4F5C\u5931\u8D25\uFF1A{message}",
+      "log.projectBrowser": "\u5F53\u524D\u6D4F\u89C8\u5668\u4E0D\u80FD\u9009\u62E9\u672C\u5730\u9879\u76EE\u76EE\u5F55",
+      "log.projectPermission": "\u4E0A\u6B21\u7684\u9879\u76EE\u9700\u8981\u91CD\u65B0\u6388\u6743\u3002\u8BF7\u4ECE\u300C\u6587\u4EF6 \u2192 \u6700\u8FD1\u9879\u76EE\u300D\u6253\u5F00\uFF0C\u6216\u4F7F\u7528\u300C\u6253\u5F00\u9879\u76EE\u300D\u3002",
       "log.projectLoose": "\u5DF2\u4ECE Assets \u76EE\u5F55\u7EB3\u5165 {count} \u4E2A\u6587\u4EF6",
       "status.localProject": "\u672C\u5730\u7F13\u5B58",
       "log.opened": "\u9879\u76EE\u5DF2\u6253\u5F00\uFF0C\u573A\u666F {ms}ms",
       "log.openedDetail": "\u9879\u76EE\u5DF2\u6253\u5F00 {total}ms\uFF08\u573A\u666F {scene}ms \xB7 \u6A21\u578B\u7D2F\u8BA1 {model}ms \xB7 \u8D34\u56FE\u7D2F\u8BA1 {texture}ms\uFF09\uFF0C\u6210\u54C1\u547D\u4E2D {hits}\uFF0C\u6E90\u6587\u4EF6\u89E3\u6790 {parsed}\uFF0C\u5931\u8D25 {failed}",
       "log.openProfile": "\u6253\u5F00\u5256\u6790\uFF08\u8D44\u6E90\u5230\u9F50\u540E\u5230\u753B\u9762\u7A33\u5B9A\uFF0C\u542B\u9884\u7F16\u8BD1\uFF09\uFF1A\u4E3B\u7EBF\u7A0B\u5404\u73AF\u8282 {costs} \xB7 \u65B0\u5EFA\u7740\u8272\u5668 {shaders} \u4E2A \xB7 \u73B0\u7F16\u8BD1\u7BA1\u7EBF {pipelines} \u6761 \xB7 \u9884\u7F16\u8BD1\u7BA1\u7EBF {asyncPipelines} \u6761\uFF08\u7D2F\u8BA1 {asyncMs}ms\uFF0C\u6700\u957F {asyncWorst}ms\uFF09\xB7 \u8D44\u6E90\u5230\u9F50\u524D\u5DF2\u5EFA\u7740\u8272\u5668 {earlyShaders} \u4E2A\u3001\u7BA1\u7EBF {earlyPipelines} \u6761",
-      "log.openTimeline": "\u6253\u5F00\u65F6\u95F4\u7EBF\uFF08\u5B9E\u9645\u8017\u65F6\uFF09\uFF1A\u8BFB\u5DE5\u7A0B\u6587\u4EF6 {read}ms \xB7 \u5EFA\u7ACB\u4F1A\u8BDD {session}ms \xB7 \u626B\u63CF\u76EE\u5F55 {scan}ms \xB7 \u4FDD\u5B58 {save}ms \xB7 \u8D44\u6E90\u6062\u590D {warm}ms\uFF08\u6A21\u578B {model}ms \xB7 \u8D34\u56FE {texture}ms\uFF09\xB7 \u6E32\u67D3\u5668\u521D\u59CB\u5316 {init}ms\uFF08\u8D44\u6E90\u5230\u9F50\u540E\u53C8\u7B49\u4E86\u5B83 {wait}ms\uFF09\xB7 \u7740\u8272\u5668\u9884\u7F16\u8BD1 {compile}ms\uFF08\u671F\u95F4\u754C\u9762\u53EF\u64CD\u4F5C\uFF09\xB7 \u9884\u7F16\u8BD1\u540E\u5230\u753B\u9762\u7A33\u5B9A {settle}ms\uFF08{frames} \u5E27\uFF0C\u5176\u4E2D {slow} \u5E27\u5361\u987F\uFF0C\u6700\u957F\u4E00\u5E27 {worst}ms\uFF09\xB7 \u4E3B\u7EBF\u7A0B\u957F\u4EFB\u52A1 {tasks} \u4E2A\u5171 {busy}ms\uFF0C\u6700\u957F {longest}ms",
+      "log.openTimeline": "\u6253\u5F00\u65F6\u95F4\u7EBF\uFF08\u5B9E\u9645\u8017\u65F6\uFF09\uFF1A\u8BFB\u9879\u76EE\u6587\u4EF6 {read}ms \xB7 \u5EFA\u7ACB\u4F1A\u8BDD {session}ms \xB7 \u626B\u63CF\u76EE\u5F55 {scan}ms \xB7 \u4FDD\u5B58 {save}ms \xB7 \u8D44\u6E90\u6062\u590D {warm}ms\uFF08\u6A21\u578B {model}ms \xB7 \u8D34\u56FE {texture}ms\uFF09\xB7 \u6E32\u67D3\u5668\u521D\u59CB\u5316 {init}ms\uFF08\u8D44\u6E90\u5230\u9F50\u540E\u53C8\u7B49\u4E86\u5B83 {wait}ms\uFF09\xB7 \u7740\u8272\u5668\u9884\u7F16\u8BD1 {compile}ms\uFF08\u671F\u95F4\u754C\u9762\u53EF\u64CD\u4F5C\uFF09\xB7 \u9884\u7F16\u8BD1\u540E\u5230\u753B\u9762\u7A33\u5B9A {settle}ms\uFF08{frames} \u5E27\uFF0C\u5176\u4E2D {slow} \u5E27\u5361\u987F\uFF0C\u6700\u957F\u4E00\u5E27 {worst}ms\uFF09\xB7 \u4E3B\u7EBF\u7A0B\u957F\u4EFB\u52A1 {tasks} \u4E2A\u5171 {busy}ms\uFF0C\u6700\u957F {longest}ms",
       "log.backend": "\u6E32\u67D3\u540E\u7AEF\uFF1A{label}",
       "log.webgpu": "WebGPU",
       "log.webgl2": "WebGL2 \u56DE\u9000",
@@ -11418,6 +13585,7 @@ var init_messages = __esm({
       "log.importedTexture": "\u5DF2\u5BFC\u5165\u8D34\u56FE {name}",
       "log.importedEnv": "\u5DF2\u5BFC\u5165\u73AF\u5883\u8D34\u56FE {name}",
       "log.importedAudio": "\u5DF2\u5BFC\u5165\u97F3\u9891 {name}",
+      "log.importedDocument": "\u5DF2\u5BFC\u5165\u6587\u6863 {name}",
       "log.cacheFail": "\u7F13\u5B58\u8D44\u6E90 {name} \u6CA1\u80FD\u6062\u590D\uFF1A{message}",
       "log.referenced": "\u8FD8\u88AB\u8FD9\u4E9B\u7269\u4F53\u5F15\u7528\uFF1A",
       "log.folderKept": "\u6587\u4EF6\u5939\u91CC\u8FD8\u6709\u6B63\u5728\u4F7F\u7528\u7684\u8D44\u6E90\uFF0C\u8FD9\u4E9B\u548C\u6587\u4EF6\u5939\u90FD\u7559\u7740\uFF1A",
@@ -11486,7 +13654,394 @@ var init_messages = __esm({
       "project.duplicate": "\u590D\u5236",
       "project.findRefs": "\u67E5\u627E\u5F15\u7528",
       "project.noRefs": "\u6CA1\u6709\u7269\u4F53\u5F15\u7528\u8FD9\u4E2A\u8D44\u6E90",
-      "project.refs": "\u88AB\u8FD9\u4E9B\u8D44\u6E90\u6216\u7269\u4F53\u4F7F\u7528\uFF1A{names}"
+      "project.refs": "\u88AB\u8FD9\u4E9B\u8D44\u6E90\u6216\u7269\u4F53\u4F7F\u7528\uFF1A{names}",
+      "field.enable": "\u542F\u7528",
+      "field.color": "\u989C\u8272",
+      "field.closed": "\u95ED\u5408\u66F2\u7EBF",
+      "field.tension": "\u5F20\u529B",
+      "tween.kind": "\u52A8\u6548\u7C7B\u578B",
+      "tween.kind.floatBob": "\u60AC\u6D6E\u6D6E\u52A8 (PingPong)",
+      "tween.kind.positionOffset": "\u4F4D\u7F6E\u504F\u79FB",
+      "tween.kind.rotationOffset": "\u65CB\u8F6C\u89D2\u5EA6 (\u5EA6)",
+      "tween.kind.scaleMultiplier": "\u7F29\u653E\u500D\u7387\u53D8\u5316",
+      "tween.delta": "\u53D8\u5316\u91CF (X/Y/Z)",
+      "tween.duration": "\u5355\u7A0B\u65F6\u957F (\u79D2)",
+      "tween.delay": "\u8D77\u59CB\u5EF6\u8FDF (\u79D2)",
+      "tween.ease": "\u7F13\u52A8\u66F2\u7EBF",
+      "tween.ease.linear": "\u7EBF\u6027 (Linear)",
+      "tween.ease.inOutSine": "\u6B63\u5F26\u7F13\u5165\u7F13\u51FA (Sine)",
+      "tween.ease.outQuad": "\u4E8C\u6B21\u7F13\u51FA (OutQuad)",
+      "tween.ease.inOutQuad": "\u4E8C\u6B21\u7F13\u5165\u7F13\u51FA (InOutQuad)",
+      "tween.ease.outCubic": "\u4E09\u6B21\u7F13\u51FA (OutCubic)",
+      "tween.ease.inOutCubic": "\u4E09\u6B21\u7F13\u5165\u7F13\u51FA (InOutCubic)",
+      "tween.ease.outBack": "\u56DE\u5F39 (OutBack)",
+      "tween.ease.outBounce": "\u5F39\u8DF3 (OutBounce)",
+      "tween.ease.outElastic": "\u5F39\u6027 (OutElastic)",
+      "tween.repeat": "\u5FAA\u73AF\u6A21\u5F0F",
+      "tween.repeat.once": "\u5355\u6B21",
+      "tween.repeat.loop": "\u4ECE\u5934\u5FAA\u73AF",
+      "tween.repeat.pingPong": "\u5F80\u8FD4 (PingPong)",
+      "tween.autoStart": "\u8BD5\u73A9\u81EA\u52A8\u64AD\u653E",
+      "spline.gesture": "\u7F16\u8F91 Spline \u66F2\u7EBF",
+      "spline.edit": "Spline \u66F2\u7EBF\u7F16\u8F91",
+      "spline.hint": "\u70B9\u51FB\u4EFB\u610F\u63A7\u5236\u70B9\uFF0C\u7528\u79FB\u52A8 Gizmo \u6CBF\u8F74\u5411\u62D6\u52A8\uFF1B\u76F4\u63A5\u62D6\u52A8\u5706\u70B9\u5219\u5728\u5F53\u524D\u89C6\u89D2\u5E73\u9762\u4E0A\u79FB\u52A8\u3002\u62D6\u62FD\u6846\u9009\u53EF\u4EE5\u540C\u65F6\u9009\u4E2D\u591A\u4E2A\u63A7\u5236\u70B9\u3002",
+      "spline.pathNode": "Spline \u66F2\u7EBF\u8282\u70B9",
+      "spline.mode": "\u8FD0\u884C\u6A21\u5F0F",
+      "spline.mode.once": "\u5355\u6B21\u5230\u8FBE",
+      "spline.mode.loop": "\u5FAA\u73AF",
+      "spline.mode.pingPong": "\u5F80\u8FD4",
+      "spline.speed": "\u79FB\u52A8\u901F\u5EA6 (m/s)",
+      "spline.curveTension": "\u66F2\u7EBF\u5F20\u529B",
+      "spline.face": "\u671D\u5411\u8DEF\u5F84\u5207\u7EBF",
+      "spline.planeXZ": "\u4FDD\u6301\u5F53\u524D\u9AD8\u5EA6 (XZ)",
+      "spline.autoStart": "\u8BD5\u73A9\u81EA\u52A8\u542F\u52A8",
+      "spline.start": "\u8D77\u59CB\u8FDB\u5EA6 (0~1)",
+      "spline.points": "\u63A7\u5236\u70B9 ({count})",
+      "spline.addPoint": "\u6DFB\u52A0\u63A7\u5236\u70B9",
+      "spline.removePoint": "\u5220\u9664\u63A7\u5236\u70B9",
+      "spline.fallback": "\u672A\u6307\u5B9A\u8DEF\u5F84\u7236\u8282\u70B9\u65F6\uFF0C\u5C06\u9ED8\u8BA4\u628A\u5F53\u524D\u8282\u70B9\u7684\u5B50\u8282\u70B9\u4F5C\u4E3A\u6709\u5E8F\u8DEF\u70B9\u3002",
+      "crowd.radius": "\u907F\u8BA9\u534A\u5F84 (m)",
+      "crowd.maxSpeed": "\u6700\u5927\u901F\u5EA6 (m/s)",
+      "crowd.separation": "\u5206\u79BB\u6743\u91CD",
+      "crowd.cohesion": "\u51DD\u805A\u6743\u91CD",
+      "crowd.alignment": "\u5BF9\u9F50\u6743\u91CD",
+      "crowd.planeXZ": "XZ \u5E73\u9762\u79FB\u52A8",
+      "crowd.face": "\u671D\u5411\u79FB\u52A8\u65B9\u5411",
+      "projectile.mode": "\u5F39\u9053\u6A21\u5F0F",
+      "projectile.mode.linear": "\u76F4\u7EBF\u98DE\u884C",
+      "projectile.mode.homing": "\u81EA\u52A8\u8FFD\u8E2A",
+      "projectile.mode.ballistic": "\u629B\u7269\u7EBF",
+      "projectile.speed": "\u98DE\u884C\u901F\u5EA6 (m/s)",
+      "projectile.gravity": "\u91CD\u529B\u52A0\u901F\u5EA6",
+      "projectile.turn": "\u8FFD\u8E2A\u8F6C\u5411\u7387 (rad/s)",
+      "projectile.life": "\u6700\u5927\u5BFF\u547D (s)",
+      "projectile.hitRadius": "\u547D\u4E2D\u5224\u5B9A\u534A\u5F84 (m)",
+      "projectile.targetTag": "\u76EE\u6807\u6807\u7B7E",
+      "projectile.damage": "\u4F24\u5BB3\u503C",
+      "projectile.destroy": "\u547D\u4E2D\u540E\u56DE\u6C60/\u9500\u6BC1",
+      "water.schema": "\u6C34\u4F53\u53C2\u6570",
+      "schema.listCount": "\u5171 {count} \u9879",
+      "schema.dropNode": "\u677E\u5F00\u4EE5\u5F15\u7528\u8282\u70B9",
+      "schema.dropNodeHint": "\u4ECE\u5C42\u7EA7\u6811\u62D6\u653E\u8282\u70B9\u5230\u6B64\u5904\uFF0C\u6216\u70B9\u51FB\u53F3\u4FA7\u653E\u5927\u955C\u9009\u62E9",
+      "schema.nodeTitle": "{name} ({id}) \u2014 \u70B9\u51FB\u5B9A\u4F4D\uFF0C\u6216\u62D6\u653E\u5176\u4ED6\u8282\u70B9\u66FF\u6362",
+      "schema.nodeEmpty": "\u65E0 (\u62D6\u653E\u8282\u70B9\u6216\u9009\u62E9)",
+      "schema.nodeMissing": "\u5DF2\u4E22\u5931 ({id})",
+      "schema.pick": "\u9009\u62E9{name}",
+      "schema.clearRef": "\u6E05\u7A7A\u5F15\u7528",
+      "schema.dropAsset": "\u677E\u5F00\u4EE5\u5F15\u7528\u8D44\u4EA7",
+      "schema.dropAssetHint": "\u4ECE\u8D44\u6E90\u9762\u677F\u62D6\u653E\u8D44\u4EA7\u5230\u6B64\u5904\uFF0C\u6216\u70B9\u51FB\u53F3\u4FA7\u653E\u5927\u955C\u9009\u62E9",
+      "schema.assetTitle": "{name} ({kind}) \u2014 \u70B9\u51FB\u5B9A\u4F4D\uFF0C\u6216\u62D6\u653E\u8D44\u4EA7\u66FF\u6362",
+      "schema.assetEmpty": "\u65E0 (\u62D6\u653E\u8D44\u4EA7\u6216\u9009\u62E9)",
+      "schema.dropClip": "\u677E\u5F00\u4EE5\u5F15\u7528\u52A8\u753B",
+      "schema.dropClipHint": "\u4ECE\u8D44\u6E90\u9762\u677F\u62D6\u653E\u52A8\u753B\u7247\u6BB5\u5230\u6B64\u5904\uFF0C\u6216\u70B9\u51FB\u53F3\u4FA7\u653E\u5927\u955C\u9009\u62E9",
+      "schema.clipTitle": "{name} \u2014 \u62D6\u653E\u52A8\u753B\u7247\u6BB5\u6216\u70B9\u51FB\u53F3\u4FA7\u9009\u62E9",
+      "schema.clipEmpty": "\u65E0 (\u62D6\u653E\u52A8\u753B\u6216\u9009\u62E9)",
+      "schema.rowHint": "\u70B9\u51FB\u9009\u62E9\u7B56\u5212\u8868\u6761\u76EE",
+      "schema.rowEmpty": "\u65E0 (\u70B9\u51FB\u9009\u62E9)",
+      "schema.search": "\u641C\u7D22\u540D\u79F0\u3001\u7C7B\u578B\u6216 ID\u2026",
+      "schema.clearPick": "\u65E0\uFF08\u6E05\u7A7A\u5F15\u7528\uFF09",
+      "schema.noMatch": "\u6CA1\u6709\u5339\u914D\u7684\u9879",
+      "tool.design": "\u84DD\u56FE",
+      "tool.designTip": "\u7ACB\u9879\u84DD\u56FE (design.md)",
+      "tool.packs": "\u80FD\u529B\u5305",
+      "tool.packsTip": "\u80FD\u529B\u5305\u6C89\u6DC0\u4E0E\u914D\u65B9",
+      "tool.branches": "\u5206\u652F",
+      "tool.branchesTip": "\u5FEB\u7167\u4E0E\u5B9E\u9A8C\u5206\u652F\u5BF9\u6BD4",
+      "tool.diagnose": "\u4F53\u68C0",
+      "tool.diagnoseTip": "\u4F53\u68C0\u4E0E\u6027\u80FD\u9884\u7B97\u770B\u677F",
+      "tool.publish": "\u53D1\u5E03",
+      "tool.publishTip": "\u9A8C\u8BC1\u4E0E Web \u53D1\u5E03",
+      "tool.ai": "AI \u52A9\u624B",
+      "tool.aiTip": "AI \u6307\u6325\u53F0",
+      "menu.exportWeb": "\u6784\u5EFA\u2026",
+      "view.device.full": "\u591A\u7AEF\u6BD4\u4F8B\u9884\u89C8\uFF1A\u81EA\u9002\u5E94\u5168\u5C4F\uFF08\u70B9\u51FB\u5207\u6362 16:9 / \u7AD6\u5C4F / \u6A2A\u5C4F\uFF09",
+      "view.device.desktop": "\u591A\u7AEF\u6BD4\u4F8B\u9884\u89C8\uFF1A16:9 \u684C\u9762",
+      "view.device.portrait": "\u591A\u7AEF\u6BD4\u4F8B\u9884\u89C8\uFF1A9:16 \u624B\u673A\u7AD6\u5C4F",
+      "view.device.landscape": "\u591A\u7AEF\u6BD4\u4F8B\u9884\u89C8\uFF1A16:9 \u624B\u673A\u6A2A\u5C4F",
+      "view.annotate": "\u89C6\u53E3\u5708\u9009\u6279\u6CE8\u5E76\u53D1\u9001\u7ED9 AI",
+      "view.aiPrompt": "\u5C31\u5730\u5524\u9192 AI \u6307\u4EE4\u6846 (Ctrl/Cmd + K)",
+      "view.interact": "\u4EA4\u4E92",
+      "view.jump": "\u8DF3",
+      "view.annotateHint": "\u5728\u89C6\u53E3\u4E2D\u5708\u753B\u9700\u8981\u4FEE\u6539\u7684\u4F4D\u7F6E",
+      "view.annotateClear": "\u6E05\u9664",
+      "view.annotateSend": "\u9644\u5E26\u6279\u6CE8\u53D1\u7ED9 AI",
+      "view.aiInline": "AI \u5C31\u5730\u6307\u4EE4",
+      "view.aiPlaceholder": "\u8F93\u5165\u5BF9\u5F53\u524D\u9009\u4E2D\u7269\u4F53\u6216\u89C6\u53E3\u7684\u4FEE\u6539\u8981\u6C42\uFF0C\u56DE\u8F66\u53D1\u9001\u2026",
+      "ui.addControl": "\u6DFB\u52A0\u63A7\u4EF6",
+      "ui.addNamed": "\u6DFB\u52A0 {name}",
+      "ui.layers": "\u56FE\u5C42\u6811",
+      "ui.show": "\u663E\u793A",
+      "ui.hide": "\u9690\u85CF",
+      "ui.interact": "\u542F\u7528\u4EA4\u4E92",
+      "ui.basic": "\u57FA\u7840\u5C5E\u6027",
+      "ui.mode": "\u6A21\u5F0F",
+      "ui.anchorGrid": "\u951A\u70B9\u9884\u8BBE",
+      "ui.anchor.tl": "\u5DE6\u4E0A",
+      "ui.anchor.tc": "\u4E2D\u4E0A",
+      "ui.anchor.tr": "\u53F3\u4E0A",
+      "ui.anchor.ml": "\u5DE6\u4E2D",
+      "ui.anchor.mc": "\u5C45\u4E2D",
+      "ui.anchor.mr": "\u53F3\u4E2D",
+      "ui.anchor.bl": "\u5DE6\u4E0B",
+      "ui.anchor.bc": "\u4E2D\u4E0B",
+      "ui.anchor.br": "\u53F3\u4E0B",
+      "ui.justify": "\u4E3B\u8F74\u5BF9\u9F50",
+      "ui.alignCross": "\u4EA4\u53C9\u8F74",
+      "ui.align.start": "\u8D77\u59CB",
+      "ui.flex.center": "\u5C45\u4E2D",
+      "ui.align.end": "\u672B\u5C3E",
+      "ui.align.between": "\u4E24\u7AEF\u5BF9\u9F50",
+      "ui.align.stretch": "\u62C9\u4F38",
+      "ui.selectedCount": "\u5DF2\u9009 {count} \u4E2A",
+      "ui.stageHint": "\u6EDA\u8F6E\u7F29\u653E \xB7 \u6309\u4F4F\u6EDA\u8F6E\u5E73\u79FB \xB7 \u62D6\u51FA\u6846\u9009\u591A\u4E2A\u63A7\u4EF6",
+      "ui.canvasSize": "\u753B\u5E03\u5206\u8FA8\u7387",
+      "ui.canvasZoom": "\u753B\u5E03\u7F29\u653E",
+      "ui.grid": "\u663E\u793A/\u9690\u85CF\u80CC\u666F\u7F51\u683C",
+      "ui.statePreview": "\u4EA4\u4E92\u72B6\u6001\u9884\u89C8",
+      "ui.docFallback": "UI \u6587\u6863",
+      "ui.bgPlaceholder": "\u5982 #1e293b \u6216 rgba(...)",
+      "ui.varPlaceholder": "\u5982 hp / score",
+      "ui.targetProp": "\u76EE\u6807\u5C5E\u6027",
+      "ui.action": "\u52A8\u4F5C",
+      "shader.file": "\u7740\u8272\u5668 (.shader.ts)",
+      "shader.scriptFile": "\u811A\u672C (.ts)",
+      "shader.asset": "\u7740\u8272\u5668\u8D44\u4EA7",
+      "shader.scriptAsset": "\u811A\u672C\u8D44\u4EA7",
+      "shader.info": "\u57FA\u672C\u4FE1\u606F",
+      "shader.id": "\u6807\u8BC6\u7B26",
+      "shader.path": "\u6587\u4EF6\u8DEF\u5F84",
+      "shader.compile": "\u7F16\u8BD1\u72B6\u6001",
+      "shader.compileOk": "\u7F16\u8BD1\u901A\u8FC7",
+      "shader.compileErr": "{count} \u4E2A\u7F16\u8BD1\u9519\u8BEF",
+      "shader.lightMode": "\u5149\u7167\u6A21\u5F0F",
+      "shader.unlit": "\u65E0\u5149\u7167 (unlit)",
+      "shader.lit": "\u6807\u51C6\u5149\u7167 (lit)",
+      "shader.surface": "\u900F\u660E / \u53CC\u9762",
+      "shader.transparent": "\u900F\u660E",
+      "shader.opaque": "\u4E0D\u900F\u660E",
+      "shader.double": "\u53CC\u9762",
+      "shader.single": "\u5355\u9762",
+      "shader.scriptKind": "\u811A\u672C\u7C7B\u578B",
+      "shader.system": "\u5168\u5C40\u7CFB\u7EDF (system)",
+      "shader.behavior": "\u8282\u70B9\u884C\u4E3A (behavior)",
+      "shader.params": "\u66B4\u9732\u53C2\u6570 ({count})",
+      "shader.builtin": "\u5185\u7F6E\u7740\u8272\u5668",
+      "shader.custom": "\u81EA\u5B9A\u4E49\u7740\u8272\u5668",
+      "shader.error": "\u9519\u8BEF",
+      "pm.title": "\u9879\u76EE\u7BA1\u7406\u4E2D\u5FC3",
+      "pm.branch": "\u5206\u652F\uFF1A{name}",
+      "pm.main": "\u4E3B\u7EBF (main)",
+      "pm.healthy": "\u4F53\u68C0\u5065\u5EB7",
+      "pm.errors": "{count} \u963B\u585E\u9519\u8BEF",
+      "pm.close": "\u5173\u95ED",
+      "pm.tab.design": "\u7ACB\u9879\u4E0E\u6D41\u56FE",
+      "pm.tab.packs": "\u7B56\u5212\u8868\u4E0E\u80FD\u529B\u5305",
+      "pm.tab.diagnose": "\u4F53\u68C0\u4E0E\u9884\u7B97",
+      "pm.tab.branches": "\u5FEB\u7167\u4E0E\u5206\u652F",
+      "pm.tab.publish": "\u6784\u5EFA\u4E0E\u53D1\u5E03",
+      "pm.sceneCount": "{count}\u573A\u666F",
+      "pm.designTitle": "\u7ACB\u9879\u84DD\u56FE\u4E0E\u5173\u5361\u6D41\u8F6C (design.md)",
+      "pm.designLead": "\u5168\u5C40\u8BBE\u8BA1\u8BB0\u5FC6\u4F1A\u968F\u6BCF\u8F6E\u5BF9\u8BDD\u81EA\u52A8\u6CE8\u5165 AI \u4E0A\u4E0B\u6587\uFF0C\u4FDD\u8BC1\u591A\u8F6E\u534F\u4F5C\u98CE\u683C\u4E0E\u73A9\u6CD5\u4E0D\u8DD1\u504F",
+      "pm.askDesign": "\u6309\u84DD\u56FE\u4EA4\u529E AI",
+      "pm.saveDesign": "\u4FDD\u5B58\u84DD\u56FE",
+      "pm.flow": "\u591A\u573A\u666F\u5173\u5361\u6D41\u8F6C\u56FE (Scene Flow)",
+      "pm.scenes": "{count} \u4E2A\u573A\u666F",
+      "pm.flowEmpty": "\u5F53\u524D\u9879\u76EE\u4EC5\u542B\u9ED8\u8BA4\u4E34\u65F6\u573A\u666F\uFF0C\u4FDD\u5B58\u6216\u65B0\u5EFA\u573A\u666F\u8D44\u4EA7\u540E\u5C06\u5728\u6B64\u5C55\u793A\u5173\u5361\u6D41\u3002",
+      "pm.current": "\u5F53\u524D",
+      "pm.nodeCount": "\u8282\u70B9\u6570: {count}",
+      "pm.openEdit": "\u5207\u5165\u7F16\u8F91",
+      "pm.playScene": "\u8DF3\u5173\u8BD5\u73A9",
+      "pm.settings": "\u9879\u76EE\u8BBE\u5B9A\u4E0E\u7F8E\u672F\u89C4\u8303",
+      "pm.projectName": "\u9879\u76EE\u540D\u79F0",
+      "pm.genre": "\u6E38\u620F\u7C7B\u578B",
+      "pm.genrePh": "\u5982\uFF1A\u5E73\u53F0\u8DF3\u8DC3 / RTS / TPS",
+      "pm.camera": "\u955C\u5934\u89C6\u89D2",
+      "pm.cameraPh": "\u5982\uFF1A\u7B2C\u4E09\u4EBA\u79F0\u8FFD\u5C3E / \u4FEF\u89C6\u89D2",
+      "pm.art": "\u7F8E\u672F\u98CE\u683C\u5173\u952E\u8BCD",
+      "pm.artPh": "\u4F4E\u591A\u8FB9\u5F62\u3001\u8D5B\u535A\u9713\u8679\u3001\u9AD8\u5BF9\u6BD4\u5149\u5F71",
+      "pm.palette": "\u8272\u5F69\u677F (\u9017\u53F7\u5206\u9694)",
+      "pm.loop": "\u6838\u5FC3\u73A9\u6CD5\u5FAA\u73AF",
+      "pm.win": "\u80DC\u8D1F\u6761\u4EF6\u4E0E\u64CD\u63A7\u8BF4\u660E",
+      "pm.notes": "\u8865\u5145\u5907\u6CE8",
+      "pm.packsTitle": "\u7B56\u5212\u6570\u503C\u8868\u3001\u80FD\u529B\u5305\u6C89\u6DC0\u4E0E\u914D\u65B9\u5E93",
+      "pm.packsLead": "\u652F\u6301\u5C06\u672C\u9879\u76EE\u811A\u672C\u4E0E\u7740\u8272\u5668\u6C89\u6DC0\u4E3A\u6807\u51C6\u80FD\u529B\u5305\uFF0C\u6216\u5BFC\u5165\u5916\u90E8 pack.json \u5E76\u8FDB\u884C\u5B89\u5168\u4FE1\u4EFB\u786E\u8BA4",
+      "pm.importPack": "\u5BFC\u5165 pack.json",
+      "pm.sedimentTitle": "\u4E00\u952E\u6C89\u6DC0\u5F53\u524D\u9879\u76EE\u4E3A\u80FD\u529B\u5305\uFF08\u81EA\u52A8\u89C4\u6574 __project__ \u811A\u672C\uFF09",
+      "pm.packIdPh": "\u5305 ID (\u5982 user.my-rts)",
+      "pm.packNamePh": "\u663E\u793A\u540D\u79F0",
+      "pm.tier.content": "\u5185\u5BB9\u5305 (content)",
+      "pm.tier.gameplay": "\u73A9\u6CD5\u5305 (gameplay)",
+      "pm.tier.effect": "\u6548\u679C\u5305 (effect)",
+      "pm.sedimentBusy": "\u6C89\u6DC0\u4E2D\u2026",
+      "pm.sediment": "\u4E00\u952E\u6C89\u6DC0",
+      "pm.tables": "\u9879\u76EE\u7B56\u5212\u6570\u636E\u8868\u6982\u89C8",
+      "pm.balance": "\u8BA9 AI \u5E73\u8861\u6570\u503C",
+      "pm.noTables": "\u5F53\u524D\u65E0\u5DF2\u542F\u7528\u7684\u7B56\u5212\u6570\u636E\u8868\u3002",
+      "pm.rows": "{count} \u884C",
+      "pm.installed": "\u5DF2\u5B89\u88C5\u7528\u6237\u80FD\u529B\u5305 ({count})",
+      "pm.noPacks": "\u6682\u672A\u5B89\u88C5\u7528\u6237\u6C89\u6DC0\u5305\u3002",
+      "pm.trusted": "\u5DF2\u4FE1\u4EFB",
+      "pm.untrusted": "\u5F85\u4FE1\u4EFB\u786E\u8BA4",
+      "pm.packMeta": "{id}@{version} \xB7 \u811A\u672C {scripts} \xB7 \u7740\u8272\u5668 {shaders} \xB7 \u7EC4\u4EF6 {components}",
+      "pm.trust": "\u4FE1\u4EFB\u5E76\u542F\u7528",
+      "pm.uninstall": "\u5378\u8F7D",
+      "pm.recipes": "\u53EF\u7528\u5B98\u65B9\u4E0E\u7528\u6237\u914D\u65B9 ({count})",
+      "pm.buildRecipe": "\u6309\u914D\u65B9\u642D\u5EFA",
+      "pm.diagnoseTitle": "\u9879\u76EE\u4F53\u68C0\u4E0E\u6027\u80FD\u9884\u7B97\u770B\u677F",
+      "pm.diagnoseLead": "\u5B9E\u65F6\u76D1\u63A7\u573A\u666F\u89C4\u6A21\u3001DrawCall\u3001\u4E09\u89D2\u9762\u6570\u4E0E\u5F15\u7528\u5B8C\u6574\u6027\uFF0C\u5F02\u5E38\u9879\u53EF\u76F4\u63A5\u4EA4\u529E AI \u4FEE\u590D",
+      "pm.fixAll": "\u5168\u90E8\u4EA4\u529E AI \u81EA\u68C0\u4FEE\u590D",
+      "pm.triangles": "\u4E09\u89D2\u9762\u6570",
+      "pm.shadowLights": "\u9634\u5F71\u5149\u6E90",
+      "pm.lightUnit": " \u76CF",
+      "pm.assetSize": "\u8D44\u4EA7\u603B\u4F53\u79EF",
+      "pm.issues": "\u4F53\u68C0\u660E\u7EC6",
+      "pm.issueCounts": "{errors} \u9519\u8BEF \xB7 {warnings} \u8B66\u544A",
+      "pm.allClear": "\u9879\u76EE\u4F53\u68C0\u4E0E\u6027\u80FD\u9884\u7B97\u5168\u90E8\u901A\u8FC7\uFF01",
+      "pm.error": "\u9519\u8BEF",
+      "pm.warning": "\u8B66\u544A",
+      "pm.hint": "\u5EFA\u8BAE\uFF1A{hint}",
+      "pm.fix": "\u4EA4\u7ED9 AI \u4FEE",
+      "pm.branchTitle": "\u7248\u672C\u5FEB\u7167\u4E0E\u8F7B\u91CF\u5B9E\u9A8C\u5206\u652F",
+      "pm.branchLead": "\u53EF\u4ECE\u4EFB\u610F\u8282\u70B9\u62C9\u51FA\u5B9E\u9A8C\u5206\u652F\u8FDB\u884C A/B \u65B9\u6848\u8BD5\u73A9\u5BF9\u6BD4\uFF0C\u786E\u8BA4\u6548\u679C\u540E\u4E00\u952E\u8BBE\u4E3A\u4E3B\u7EBF",
+      "pm.branches": "\u5B9E\u9A8C\u5206\u652F (Branches)",
+      "pm.branchPh": "\u65B0\u5B9E\u9A8C\u5206\u652F\u540D\u79F0\uFF08\u5982\uFF1A\u65B9\u6848B-\u5FEB\u8282\u594F\u624B\u611F\uFF09",
+      "pm.branchDefault": "\u5B9E\u9A8C\u5206\u652F",
+      "pm.branchFail": "\u521B\u5EFA\u5931\u8D25",
+      "pm.createBranch": "\u62C9\u51FA\u5B9E\u9A8C\u5206\u652F",
+      "pm.active": "\u5F53\u524D\u6FC0\u6D3B",
+      "pm.branchDiff": "\u8282\u70B9 {count}{diff}",
+      "pm.diff": " \xB7 \u76F8\u5BF9\u4E3B\u7EBF\uFF1A+{added} \u65B0\u589E / ~{modified} \u4FEE\u6539 / -{removed} \u5220\u9664",
+      "pm.switch": "\u5207\u6362\u5BF9\u6BD4",
+      "pm.promote": "\u8BBE\u4E3A\u4E3B\u7EBF",
+      "pm.checkpoints": "\u7248\u672C\u5FEB\u7167 (Checkpoints)",
+      "pm.checkpointPh": "\u91CC\u7A0B\u7891\u5FEB\u7167\u5907\u6CE8\u2026",
+      "pm.checkpointDefault": "\u624B\u52A8\u91CC\u7A0B\u7891",
+      "pm.saveCheckpoint": "\u4FDD\u5B58\u91CC\u7A0B\u7891",
+      "pm.noCheckpoints": "\u6682\u65E0\u5FEB\u7167\u8BB0\u5F55\u3002",
+      "pm.checkpointMeta": "{time} \xB7 \u8282\u70B9 {count}",
+      "pm.branchFrom": "\u62C9\u51FA\u5206\u652F",
+      "pm.restore": "\u6062\u590D",
+      "pm.publishTitle": "\u6784\u5EFA\u4E0E\u53D1\u5E03 Web \u64AD\u653E\u5305",
+      "pm.publishLead": "\u5BFC\u51FA\u96F6\u7F16\u8F91\u5668\u4F9D\u8D56\u7684\u72EC\u7ACB Web \u64AD\u653E\u5305\uFF08\u590D\u7528 WebGPURenderer \u4E0E WebGL2 \u56DE\u9000\uFF09",
+      "pm.gate": "\u53D1\u5E03\u524D\u95E8\u7981\u68C0\u67E5",
+      "pm.gateOk": "\u2713 \u4F53\u68C0\u65E0\u963B\u585E\u9519\u8BEF\uFF0C\u53EF\u4EE5\u5BFC\u51FA\u72EC\u7ACB Web \u64AD\u653E\u5305\u3002",
+      "pm.gateBad": "\u2715 \u5F53\u524D\u5B58\u5728 {count} \u4E2A\u4F53\u68C0\u9519\u8BEF\uFF0C\u5EFA\u8BAE\u5148\u5904\u7406\u540E\u518D\u53D1\u5E03\u3002",
+      "pm.export": "\u9009\u62E9\u76EE\u5F55\u5E76\u6784\u5EFA",
+      "pm.smoke": "\u8BA9 AI \u8DD1\u5192\u70DF\u9A8C\u8BC1",
+      "ai.title": "AI \u6307\u6325\u53F0",
+      "ai.unconfigured": "\u672A\u914D\u7F6E",
+      "ai.noKey": "\u672A\u8BBE\u5BC6\u94A5",
+      "ai.desktop": "\u684C\u9762\u7AEF\u53EF\u7528",
+      "ai.noExport": "\u5F53\u524D\u6CA1\u6709\u53EF\u5BFC\u51FA\u7684\u5BF9\u8BDD\u8BB0\u5F55",
+      "ai.exported": "\u5DF2\u5BFC\u51FA {count} \u6761\u5BF9\u8BDD\u8BB0\u5F55",
+      "ai.imported": "\u5DF2\u5BFC\u5165\u5408\u5E76 {count} \u6761\u5BF9\u8BDD\u8BB0\u5F55",
+      "ai.importFailed": "\u5BFC\u5165\u5931\u8D25\uFF1A{message}",
+      "ai.noViewport": "\u5F53\u524D\u65E0\u6CD5\u83B7\u53D6\u89C6\u53E3\u753B\u9762",
+      "ai.snapshot": "\u5DF2\u521B\u5EFA\u91CC\u7A0B\u7891\u5FEB\u7167",
+      "ai.manualSnapshot": "\u624B\u52A8\u5FEB\u7167 {time}",
+      "ai.importTip": "\u5BFC\u5165 / \u8FC1\u79FB\u5BF9\u8BDD\u8BB0\u5F55 (.json)",
+      "ai.exportTip": "\u5BFC\u51FA\u5BF9\u8BDD\u8BB0\u5F55 (.json)",
+      "ai.settingsTip": "\u6A21\u578B\u4E0E API \u8BBE\u7F6E",
+      "ai.knowledgeTip": "AI \u77E5\u8BC6\u4E0E\u89C4\u5219\uFF08\u6280\u80FD\u3001\u8BBE\u8BA1\u4E0E\u9700\u6C42\u6587\u6863\uFF09",
+      "ai.clearTip": "\u6E05\u7A7A\u5BF9\u8BDD",
+      "ai.collapse": "\u6536\u8D77 AI \u6307\u6325\u53F0",
+      "ai.settings": "\u6A21\u578B API \u8BBE\u7F6E\uFF08\u5BC6\u94A5\u4EC5\u5B58\u4E3B\u8FDB\u7A0B\uFF09",
+      "ai.addProvider": "\u65B0\u589E\u4E00\u6761",
+      "ai.current": "\u5F53\u524D",
+      "ai.newConfig": "+ \u65B0\u5EFA\u914D\u7F6E\u4E2D\u2026",
+      "ai.namePh": "\u540D\u79F0\uFF08\u5982\uFF1ADeepSeek \u5B98\u65B9 / \u7845\u57FA\u6D41\u52A8 / \u672C\u5730 Ollama\uFF09",
+      "ai.urlPh": "Base URL\uFF08\u5982 https://api.deepseek.com/v1\uFF09",
+      "ai.modelPh": "\u9ED8\u8BA4\u6A21\u578B\u540D\u79F0\uFF08\u5982 deepseek-chat / gpt-4o\uFF09",
+      "ai.modelsPh": "\u5907\u9009\u6A21\u578B\u5217\u8868\uFF08\u53EF\u9009\uFF0C\u9017\u53F7\u5206\u9694\uFF0C\u5982 deepseek-chat, deepseek-reasoner\uFF09",
+      "ai.keySaved": "\u5DF2\u4FDD\u5B58\u5BC6\u94A5\uFF08\u7559\u7A7A\u8868\u793A\u4E0D\u4FEE\u6539\uFF09",
+      "ai.keyPh": "\u8F93\u5165 API Key",
+      "ai.deleteItem": "\u5220\u9664\u6B64\u9879",
+      "ai.close": "\u5173\u95ED",
+      "ai.customApi": "\u81EA\u5B9A\u4E49\u63A5\u53E3",
+      "ai.saveEnable": "\u4FDD\u5B58\u5E76\u542F\u7528",
+      "ai.ready": "AI \u5DF2\u5C31\u7EEA\uFF0C\u53EF\u76F4\u63A5\u4E0B\u8FBE\u521B\u4F5C\u6307\u4EE4",
+      "ai.example": "\u793A\u4F8B\uFF1A\u300C\u65B0\u5EFA\u4E00\u4E2A\u5E73\u53F0\u8DF3\u8DC3\u5173\u5361\uFF0C\u5E26\u5730\u9762\u3001\u4E3B\u89D2\u51FA\u751F\u70B9\u3001\u51E0\u4E2A\u53F0\u9636\u3001\u4E00\u76CF\u65B9\u5411\u5149\u548C\u76F8\u673A\uFF0C\u6700\u540E\u505A\u4E00\u6B21\u4F53\u68C0\u3002\u300D",
+      "ai.older": "\u8FD8\u6709 {count} \u6761\u66F4\u65E9\u5BF9\u8BDD\uFF08\u4E0A\u6ED1\u6216\u70B9\u51FB\u52A0\u8F7D\uFF09",
+      "ai.deleteTurn": "\u5220\u9664\u6B64\u6761\u5BF9\u8BDD",
+      "ai.working": "\u6B63\u5728\u5904\u7406\u4E2D\u2026",
+      "ai.locate": "\u70B9\u51FB\u5B9A\u4F4D\u6216\u6253\u5F00\u8BE5\u5BF9\u8C61",
+      "ai.annotationAlt": "\u89C6\u53E3\u6279\u6CE8\u622A\u56FE",
+      "ai.interrupted": "\u6267\u884C\u5F02\u5E38\u4E2D\u65AD\uFF08\u9875\u9762\u5237\u65B0\u6216\u8FDE\u63A5\u65AD\u5F00\uFF09",
+      "ai.interruptedHint": "\u5DF2\u4FDD\u7559\u60A8\u7684\u63D0\u95EE\u4E0E\u5F53\u524D\u5DF2\u5B8C\u6210\u7684\u8FDB\u5EA6\uFF0C\u53EF\u70B9\u51FB\u7EE7\u7EED\u5904\u7406\u3002",
+      "ai.continue": "\u70B9\u51FB\u7EE7\u7EED",
+      "ai.stepLimit": "\u5DF2\u8FBE\u5355\u8F6E 32 \u6B65\u4E0A\u9650\uFF0C\u4EFB\u52A1\u5C1A\u672A\u5168\u90E8\u5B8C\u6210",
+      "ai.pending": "\u4ECD\u6709 {count} \u9879\u8BA1\u5212\u6B65\u9AA4\u5F85\u7EE7\u7EED",
+      "ai.resume": "\u7EE7\u7EED\u6267\u884C",
+      "ai.cache": "\u7F13\u5B58 {percent}%",
+      "ai.steps": "{count} \u6B65",
+      "ai.copyTip": "\u590D\u5236\u6587\u672C",
+      "ai.copied": "\u5DF2\u590D\u5236",
+      "ai.copy": "\u590D\u5236",
+      "ai.rollback": "\u56DE\u9000\u672C\u8F6E",
+      "ai.reject": "\u62D2\u7EDD",
+      "ai.allow": "\u5141\u8BB8\u6267\u884C",
+      "ai.allowMoreTip": "\u66F4\u591A\u5141\u8BB8\u9009\u9879",
+      "ai.allowAlwaysTool": "\u603B\u662F\u5141\u8BB8 {tool}",
+      "ai.allowAlwaysAll": "\u603B\u662F\u5141\u8BB8\u6240\u6709\u9AD8\u98CE\u9669\u64CD\u4F5C",
+      "ai.autoAllowActive": "\u5DF2\u81EA\u52A8\u5141\u8BB8 {count} \u7C7B\u9AD8\u98CE\u9669\u64CD\u4F5C\uFF08\u70B9\u51FB\u91CD\u7F6E\uFF09",
+      "ai.autoAllowAllActive": "\u5DF2\u5F00\u542F\u300C\u603B\u662F\u5141\u8BB8\u6240\u6709\u9AD8\u98CE\u9669\u64CD\u4F5C\u300D\uFF08\u70B9\u51FB\u91CD\u7F6E\uFF09",
+      "ai.autoAllowReset": "\u5DF2\u91CD\u7F6E\u9AD8\u98CE\u9669\u64CD\u4F5C\u81EA\u52A8\u5141\u8BB8\u89C4\u5219",
+      "ai.playtestPrompt": "\u8BF7\u542F\u52A8\u8BD5\u73A9\u63A2\u9488\u8DD1\u4E00\u6B21\u5192\u70DF\u6D4B\u8BD5\uFF08playtest__run_smoke\uFF09\u5E76\u505A\u9879\u76EE\u4F53\u68C0\uFF08query__project_diagnose\uFF09\uFF0C\u6C47\u62A5\u7ED3\u679C\u3002",
+      "ai.resumeInterruptedWithPrev": "\u4E0A\u4E00\u8F6E\u6267\u884C\u56E0\u9875\u9762\u5237\u65B0/\u5F02\u5E38\u4E2D\u65AD\uFF0C\u8BF7\u7ED3\u5408\u6211\u7684\u4E0A\u4E00\u6761\u8BF7\u6C42\uFF08\u201C{text}\u201D\uFF09\u4EE5\u53CA\u5DF2\u6267\u884C\u7684\u6B65\u9AA4\uFF0C\u7EE7\u7EED\u5B8C\u6210\u5269\u4F59\u5DE5\u4F5C\u3002",
+      "ai.resumeInterrupted": "\u4E0A\u4E00\u8F6E\u6267\u884C\u56E0\u9875\u9762\u5237\u65B0/\u5F02\u5E38\u4E2D\u65AD\uFF0C\u8BF7\u7ED3\u5408\u4E0A\u4E0B\u6587\u4E0E\u5DF2\u6267\u884C\u7684\u6B65\u9AA4\uFF0C\u7EE7\u7EED\u5B8C\u6210\u5269\u4F59\u5DE5\u4F5C\u3002",
+      "ai.resumePlanPrompt": "\u8BF7\u6309\u5F53\u524D\u4EFB\u52A1\u8BA1\u5212\u7EE7\u7EED\u63A8\u8FDB\u5269\u4F59\u672A\u5B8C\u6210\u7684\u6B65\u9AA4\uFF0C\u76F4\u5230\u5168\u90E8\u5B8C\u6210\u3002",
+      "ai.assertFailed": "\u65AD\u8A00\u672A\u901A\u8FC7\uFF1A{message}",
+      "ai.unknownAssert": "\u672A\u77E5\u65AD\u8A00",
+      "ai.perfBudget": "\u6027\u80FD\u9884\u7B97\uFF1A{note}",
+      "ai.warnLine": "\u8B66\u544A\uFF1A{msg}",
+      "ai.taskProgress": "\u4EFB\u52A1 {done}/{total}",
+      "ai.taskCurrent": "\xB7 {title}",
+      "ai.taskDone": "\xB7 \u5168\u90E8\u5B8C\u6210",
+      "ai.clearPlan": "\u6E05\u9664\u4EFB\u52A1\u8BA1\u5212",
+      "ai.dropHint": "\u677E\u5F00\u5373\u53EF\u5C06\u8282\u70B9 / \u811A\u672C / \u7740\u8272\u5668 / \u8D44\u4EA7\u9644\u52A0\u5230\u5F53\u524D\u5BF9\u8BDD",
+      "ai.pendingShot": "\u5F85\u53D1\u9001\u89C6\u53E3\u6279\u6CE8",
+      "ai.removeShot": "\u79FB\u9664\u6279\u6CE8\u622A\u56FE",
+      "ai.removeRef": "\u79FB\u9664\u5F15\u7528",
+      "ai.insertName": "\u5F53\u524D\u89C6\u53E3\u9009\u4E2D\u8282\u70B9\uFF08\u70B9\u51FB\u63D2\u5165\u540D\u79F0\uFF09",
+      "ai.inputPh": "\u8F93\u5165\u9700\u6C42\uFF0C\u652F\u6301\u622A\u56FE/Ctrl+V\u8D34\u56FE/\u62D6\u5165\u8D44\u6E90\uFF0C\u6216 @ \u5F15\u7528\uFF08Enter \u53D1\u9001\uFF09",
+      "ai.inputBusyPh": "AI \u8FD0\u884C\u4E2D\uFF0C\u53EF\u76F4\u63A5\u8F93\u5165\u7EA0\u504F/\u63D2\u8BDD\u6307\u4EE4\uFF08Enter \u53D1\u9001\uFF0C\u5C06\u5728\u5F53\u524D\u6B65\u9AA4\u540E\u6CE8\u5165\uFF09",
+      "ai.capture": "\u622A\u53D6\u5F53\u524D 3D \u89C6\u53E3\u7ED9 AI \u5206\u6790",
+      "ai.kind.node": "\u8282\u70B9",
+      "ai.kind.shader": "\u7740\u8272\u5668",
+      "ai.kind.script": "\u811A\u672C",
+      "ai.provider.compat": "\u517C\u5BB9\u63A5\u53E3",
+      "ai.cmd.playtest": "\u8FD0\u884C\u5192\u70DF\u8BD5\u73A9\u4E0E\u4F53\u68C0",
+      "ai.cmd.diagnose": "\u6253\u5F00\u4F53\u68C0\u4E0E\u6027\u80FD\u9884\u7B97\u770B\u677F",
+      "ai.cmd.pack": "\u6253\u5F00\u80FD\u529B\u5305\u6C89\u6DC0\u4E2D\u5FC3",
+      "ai.cmd.checkpoint": "\u7ACB\u5373\u4FDD\u5B58\u91CC\u7A0B\u7891\u5FEB\u7167",
+      "ai.send": "\u53D1\u9001",
+      "ai.steer": "\u8FD0\u884C\u4E2D\u63D2\u8BDD\u7EA0\u504F",
+      "ai.stop": "\u5B89\u5168\u505C\u6B62",
+      "ai.queued": "\u5DF2\u6392\u961F {count} \u6761\u63D2\u8BDD\uFF0C\u5C06\u5728\u5F53\u524D\u6B65\u9AA4\u5B8C\u6210\u540E\u6CE8\u5165",
+      "ai.switchModel": "\u5FEB\u901F\u5207\u6362\u5BF9\u8BDD\u6A21\u578B",
+      "ai.noModel": "\u672A\u9009\u62E9\u6A21\u578B",
+      "ai.enterSend": "Enter \u53D1\u9001",
+      "ai.modelLater": "\u5F53\u524D\u5BF9\u8BDD\u4ECD\u6CBF\u7528\u539F\u6A21\u578B\uFF0C\u5207\u6362\u540E\u5C06\u5728\u4E0B\u6B21\u53D1\u9001\u65B0\u5BF9\u8BDD\u65F6\u751F\u6548",
+      "ai.manage": "\u7BA1\u7406\u6A21\u578B\u4E0E API \u8BBE\u7F6E\u2026",
+      "ai.copySelection": "\u590D\u5236\u9009\u4E2D\u6587\u5B57",
+      "ai.copyMessage": "\u590D\u5236\u6574\u6761\u6D88\u606F",
+      "ai.selectAll": "\u5168\u9009\u672C\u6761\u6B63\u6587",
+      "ai.stepsDone": "\u5DF2\u6267\u884C {count} \u6B65\u64CD\u4F5C",
+      "ai.stepsFailed": "\u5DF2\u6267\u884C {count} \u6B65\u64CD\u4F5C\uFF08{failed} \u9879\u5931\u8D25\uFF09",
+      "ai.expandError": "\u70B9\u51FB\u5C55\u5F00/\u6536\u8D77\u5B8C\u6574\u62A5\u9519\u4FE1\u606F",
+      "ai.locateAsset": "\u70B9\u51FB\u5728\u5DE6\u4FA7\u8D44\u6E90\u7A97\u53E3\u5B9A\u4F4D\u8BE5\u8D44\u6E90",
+      "ai.focusNode": "\u70B9\u51FB\u5728\u89C6\u53E3\u4E2D\u805A\u7126\u8BE5\u8282\u70B9",
+      "ai.hintPrefix": "\u63D0\u793A\uFF1A{hint}",
+      "ai.copyCode": "\u590D\u5236\u4EE3\u7801",
+      "pm.savedDesign": "\u8BBE\u8BA1\u84DD\u56FE design.md \u5DF2\u4FDD\u5B58",
+      "pm.sedimentOk": "\u80FD\u529B\u5305 {id} \u5DF2\u6C89\u6DC0\u5E76\u6CE8\u518C",
+      "pm.sedimentFail": "\u6C89\u6DC0\u5931\u8D25",
+      "pm.packInvalid": "\u65E0\u6548\u7684 pack.json \u6E05\u5355\u683C\u5F0F",
+      "pm.importedTrust": "\u5DF2\u5BFC\u5165\u300C{name}\u300D\uFF0C\u8BF7\u70B9\u51FB\u300C\u4FE1\u4EFB\u5E76\u542F\u7528\u300D\u540E\u6FC0\u6D3B",
+      "pm.importedActive": "\u5DF2\u5BFC\u5165\u5E76\u6FC0\u6D3B\u80FD\u529B\u5305\u300C{name}\u300D",
+      "pm.importFail": "\u5BFC\u5165\u5931\u8D25\uFF1A{message}",
+      "pm.exportBrowser": "\u5F53\u524D\u4E3A\u6D4F\u89C8\u5668\u6A21\u5F0F\uFF0C\u8BF7\u5728\u684C\u9762\u7AEF\u5BFC\u51FA Web \u64AD\u653E\u5305\u3002",
+      "pm.branchSuffix": "{label}-\u5206\u652F"
     };
     en = {
       "menu.file": "File",
@@ -11694,11 +14249,17 @@ var init_messages = __esm({
       "library.item.vfxPoints": "Impacts and bursts\nTrails",
       "hub.noBlock": "No block",
       "menu.projectMenu": "Project",
+      "menu.hub": "Hub",
+      "menu.help": "Help",
+      "menu.helpSite": "Website",
+      "menu.helpSupport": "Support",
+      "menu.about": "About",
+      "menu.aboutBody": "AI game development platform",
       "menu.views": "Views",
       "menu.display": "Display",
       "menu.savedDirectory": "Saved to {name}",
       "menu.import": "Import Assets",
-      "menu.extractPackage": "Extract Package\u2026",
+      "menu.extractPackage": "Import UnityPackage\u2026",
       "menu.undo": "Undo",
       "menu.redo": "Redo",
       "menu.duplicate": "Duplicate",
@@ -12684,11 +15245,13 @@ var init_messages = __esm({
       "log.uiMessage": "UI sent message {message}",
       "asset.animation": "Animation",
       "asset.audio": "Audio",
+      "asset.document": "Document",
       "asset.prefab": "Prefab",
       "project.all": "All",
       "project.model": "Models",
       "project.image": "Materials/Textures",
       "project.audio": "Audio",
+      "project.document": "Documents",
       "project.animation": "Animations",
       "project.scene": "Scenes",
       "project.used": "Used Here",
@@ -12698,7 +15261,7 @@ var init_messages = __esm({
       "project.clear": "Clear",
       "project.import": "Import",
       "project.extractPackage": "Extract Unity Package",
-      "pkg.title": "Extract Package",
+      "pkg.title": "Import UnityPackage",
       "pkg.noFile": "No file selected",
       "pkg.close": "Close",
       "pkg.scanning": "Scanning extractable assets\u2026",
@@ -12813,6 +15376,7 @@ var init_messages = __esm({
       "project.textureHint": "Double-click to preview. Drag onto an object.",
       "project.animHint": "Drag onto a model to play",
       "project.audioHint": "Double-click to listen",
+      "project.docHint": "Double-click to open and edit document",
       "project.openFolder": "Double-click to open the folder",
       "project.folder": "Folder",
       "hierarchy.search": "Search objects",
@@ -13012,6 +15576,7 @@ var init_messages = __esm({
       "log.importedTexture": "Imported texture {name}",
       "log.importedEnv": "Imported environment {name}",
       "log.importedAudio": "Imported audio {name}",
+      "log.importedDocument": "Imported document {name}",
       "log.cacheFail": "Cached asset {name} could not be restored: {message}",
       "log.referenced": "Still used by: ",
       "log.folderKept": "Kept the folder. These assets are still in use: ",
@@ -13080,18 +15645,405 @@ var init_messages = __esm({
       "project.duplicate": "Duplicate",
       "project.findRefs": "Find References",
       "project.noRefs": "Nothing references this asset",
-      "project.refs": "Used by: {names}"
+      "project.refs": "Used by: {names}",
+      "field.enable": "Enabled",
+      "field.color": "Color",
+      "field.closed": "Closed curve",
+      "field.tension": "Tension",
+      "tween.kind": "Motion",
+      "tween.kind.floatBob": "Float (ping-pong)",
+      "tween.kind.positionOffset": "Position offset",
+      "tween.kind.rotationOffset": "Rotation (degrees)",
+      "tween.kind.scaleMultiplier": "Scale multiplier",
+      "tween.delta": "Delta (X/Y/Z)",
+      "tween.duration": "Duration (s)",
+      "tween.delay": "Start delay (s)",
+      "tween.ease": "Easing",
+      "tween.ease.linear": "Linear",
+      "tween.ease.inOutSine": "Sine in-out",
+      "tween.ease.outQuad": "Quad out",
+      "tween.ease.inOutQuad": "Quad in-out",
+      "tween.ease.outCubic": "Cubic out",
+      "tween.ease.inOutCubic": "Cubic in-out",
+      "tween.ease.outBack": "Back out",
+      "tween.ease.outBounce": "Bounce out",
+      "tween.ease.outElastic": "Elastic out",
+      "tween.repeat": "Repeat",
+      "tween.repeat.once": "Once",
+      "tween.repeat.loop": "Loop",
+      "tween.repeat.pingPong": "Ping-pong",
+      "tween.autoStart": "Play on start",
+      "spline.gesture": "Edit spline",
+      "spline.edit": "Spline curve",
+      "spline.hint": "Click a control point and use the move gizmo. Drag the sphere to move it on the view plane. Drag a box to select several points.",
+      "spline.pathNode": "Spline node",
+      "spline.mode": "Mode",
+      "spline.mode.once": "Once",
+      "spline.mode.loop": "Loop",
+      "spline.mode.pingPong": "Ping-pong",
+      "spline.speed": "Speed (m/s)",
+      "spline.curveTension": "Curve tension",
+      "spline.face": "Face the tangent",
+      "spline.planeXZ": "Keep current height (XZ)",
+      "spline.autoStart": "Start on play",
+      "spline.start": "Start progress (0\u20131)",
+      "spline.points": "Control points ({count})",
+      "spline.addPoint": "Add point",
+      "spline.removePoint": "Remove point",
+      "spline.fallback": "Without a path parent, this node\u2019s children are used as ordered waypoints.",
+      "crowd.radius": "Avoidance radius (m)",
+      "crowd.maxSpeed": "Max speed (m/s)",
+      "crowd.separation": "Separation",
+      "crowd.cohesion": "Cohesion",
+      "crowd.alignment": "Alignment",
+      "crowd.planeXZ": "Move on XZ",
+      "crowd.face": "Face movement",
+      "projectile.mode": "Flight mode",
+      "projectile.mode.linear": "Linear",
+      "projectile.mode.homing": "Homing",
+      "projectile.mode.ballistic": "Ballistic",
+      "projectile.speed": "Speed (m/s)",
+      "projectile.gravity": "Gravity",
+      "projectile.turn": "Turn rate (rad/s)",
+      "projectile.life": "Max lifetime (s)",
+      "projectile.hitRadius": "Hit radius (m)",
+      "projectile.targetTag": "Target tag",
+      "projectile.damage": "Damage",
+      "projectile.destroy": "Recycle on hit",
+      "water.schema": "Water settings",
+      "schema.listCount": "{count} items",
+      "schema.dropNode": "Drop to reference a node",
+      "schema.dropNodeHint": "Drop a node from the hierarchy, or use the picker",
+      "schema.nodeTitle": "{name} ({id}) \u2014 click to reveal, or drop another node",
+      "schema.nodeEmpty": "None (drop or pick a node)",
+      "schema.nodeMissing": "Missing ({id})",
+      "schema.pick": "Pick {name}",
+      "schema.clearRef": "Clear reference",
+      "schema.dropAsset": "Drop to reference an asset",
+      "schema.dropAssetHint": "Drop an asset, or use the picker",
+      "schema.assetTitle": "{name} ({kind}) \u2014 click to reveal, or drop another asset",
+      "schema.assetEmpty": "None (drop or pick an asset)",
+      "schema.dropClip": "Drop to reference a clip",
+      "schema.dropClipHint": "Drop a clip, or use the picker",
+      "schema.clipTitle": "{name} \u2014 drop a clip or use the picker",
+      "schema.clipEmpty": "None (drop or pick a clip)",
+      "schema.rowHint": "Click to pick a table row",
+      "schema.rowEmpty": "None (click to pick)",
+      "schema.search": "Search name, type, or ID\u2026",
+      "schema.clearPick": "None (clear reference)",
+      "schema.noMatch": "No matches",
+      "tool.design": "Design",
+      "tool.designTip": "Design brief (design.md)",
+      "tool.packs": "Packs",
+      "tool.packsTip": "Capability packs and recipes",
+      "tool.branches": "Branches",
+      "tool.branchesTip": "Snapshots and experiment branches",
+      "tool.diagnose": "Diagnose",
+      "tool.diagnoseTip": "Health and performance budget",
+      "tool.publish": "Publish",
+      "tool.publishTip": "Validate and export Web",
+      "tool.ai": "AI",
+      "tool.aiTip": "AI console",
+      "menu.exportWeb": "Build\u2026",
+      "view.device.full": "Device frame: full screen (click for 16:9 / portrait / landscape)",
+      "view.device.desktop": "Device frame: 16:9 desktop",
+      "view.device.portrait": "Device frame: 9:16 portrait",
+      "view.device.landscape": "Device frame: 16:9 landscape",
+      "view.annotate": "Draw on the viewport and send it to AI",
+      "view.aiPrompt": "Open the inline AI prompt (Ctrl/Cmd + K)",
+      "view.interact": "Interact",
+      "view.jump": "Jump",
+      "view.annotateHint": "Circle the part of the view to change",
+      "view.annotateClear": "Clear",
+      "view.annotateSend": "Send markup to AI",
+      "view.aiInline": "Inline AI prompt",
+      "view.aiPlaceholder": "Describe a change to the selection or the view, then press Enter\u2026",
+      "ui.addControl": "Add control",
+      "ui.addNamed": "Add {name}",
+      "ui.layers": "Layers",
+      "ui.show": "Show",
+      "ui.hide": "Hide",
+      "ui.interact": "Interactive",
+      "ui.basic": "Basics",
+      "ui.mode": "Mode",
+      "ui.anchorGrid": "Anchor preset",
+      "ui.anchor.tl": "Top left",
+      "ui.anchor.tc": "Top",
+      "ui.anchor.tr": "Top right",
+      "ui.anchor.ml": "Left",
+      "ui.anchor.mc": "Center",
+      "ui.anchor.mr": "Right",
+      "ui.anchor.bl": "Bottom left",
+      "ui.anchor.bc": "Bottom",
+      "ui.anchor.br": "Bottom right",
+      "ui.justify": "Main axis",
+      "ui.alignCross": "Cross axis",
+      "ui.align.start": "Start",
+      "ui.flex.center": "Center",
+      "ui.align.end": "End",
+      "ui.align.between": "Space between",
+      "ui.align.stretch": "Stretch",
+      "ui.selectedCount": "{count} selected",
+      "ui.stageHint": "Wheel to zoom \xB7 drag the wheel to pan \xB7 drag to select",
+      "ui.canvasSize": "Canvas size",
+      "ui.canvasZoom": "Canvas zoom",
+      "ui.grid": "Toggle the background grid",
+      "ui.statePreview": "State preview",
+      "ui.docFallback": "UI document",
+      "ui.bgPlaceholder": "e.g. #1e293b or rgba(...)",
+      "ui.varPlaceholder": "e.g. hp / score",
+      "ui.targetProp": "Target property",
+      "ui.action": "Action",
+      "shader.file": "Shader (.shader.ts)",
+      "shader.scriptFile": "Script (.ts)",
+      "shader.asset": "Shader asset",
+      "shader.scriptAsset": "Script asset",
+      "shader.info": "Details",
+      "shader.id": "Identifier",
+      "shader.path": "File path",
+      "shader.compile": "Compile status",
+      "shader.compileOk": "Compiled",
+      "shader.compileErr": "{count} compile errors",
+      "shader.lightMode": "Lighting",
+      "shader.unlit": "Unlit",
+      "shader.lit": "Lit",
+      "shader.surface": "Transparency / sides",
+      "shader.transparent": "Transparent",
+      "shader.opaque": "Opaque",
+      "shader.double": "Double-sided",
+      "shader.single": "Single-sided",
+      "shader.scriptKind": "Script kind",
+      "shader.system": "Global system",
+      "shader.behavior": "Node behavior",
+      "shader.params": "Exposed parameters ({count})",
+      "shader.builtin": "Built-in shaders",
+      "shader.custom": "Custom shaders",
+      "shader.error": "Error",
+      "pm.title": "Project hub",
+      "pm.branch": "Branch: {name}",
+      "pm.main": "Main",
+      "pm.healthy": "Health check passed",
+      "pm.errors": "{count} blocking errors",
+      "pm.close": "Close",
+      "pm.tab.design": "Design & flow",
+      "pm.tab.packs": "Tables & packs",
+      "pm.tab.diagnose": "Health & budget",
+      "pm.tab.branches": "Snapshots & branches",
+      "pm.tab.publish": "Build & publish",
+      "pm.sceneCount": "{count} scenes",
+      "pm.designTitle": "Design brief and scene flow (design.md)",
+      "pm.designLead": "The design brief is injected into every AI turn so later work stays on the same game.",
+      "pm.askDesign": "Ask AI from the brief",
+      "pm.saveDesign": "Save brief",
+      "pm.flow": "Scene flow",
+      "pm.scenes": "{count} scenes",
+      "pm.flowEmpty": "Only the temporary scene exists. Save or create a scene asset to see the flow.",
+      "pm.current": "Current",
+      "pm.nodeCount": "Nodes: {count}",
+      "pm.openEdit": "Edit",
+      "pm.playScene": "Play this scene",
+      "pm.settings": "Project and art direction",
+      "pm.projectName": "Project name",
+      "pm.genre": "Genre",
+      "pm.genrePh": "e.g. platformer / RTS / TPS",
+      "pm.camera": "Camera",
+      "pm.cameraPh": "e.g. third-person follow / top-down",
+      "pm.art": "Art-style keywords",
+      "pm.artPh": "Low poly, neon, high-contrast light",
+      "pm.palette": "Palette (comma separated)",
+      "pm.loop": "Core loop",
+      "pm.win": "Win, lose, and controls",
+      "pm.notes": "Notes",
+      "pm.packsTitle": "Tables, capability packs, and recipes",
+      "pm.packsLead": "Turn this project\u2019s scripts and shaders into a pack, or import an external pack.json after a trust check.",
+      "pm.importPack": "Import pack.json",
+      "pm.sedimentTitle": "Save this project as a capability pack",
+      "pm.packIdPh": "Pack id (e.g. user.my-rts)",
+      "pm.packNamePh": "Display name",
+      "pm.tier.content": "Content",
+      "pm.tier.gameplay": "Gameplay",
+      "pm.tier.effect": "Effect",
+      "pm.sedimentBusy": "Saving\u2026",
+      "pm.sediment": "Save pack",
+      "pm.tables": "Design tables",
+      "pm.balance": "Ask AI to balance",
+      "pm.noTables": "No design tables are enabled.",
+      "pm.rows": "{count} rows",
+      "pm.installed": "Installed packs ({count})",
+      "pm.noPacks": "No user packs installed.",
+      "pm.trusted": "Trusted",
+      "pm.untrusted": "Needs trust",
+      "pm.packMeta": "{id}@{version} \xB7 scripts {scripts} \xB7 shaders {shaders} \xB7 components {components}",
+      "pm.trust": "Trust and enable",
+      "pm.uninstall": "Uninstall",
+      "pm.recipes": "Recipes ({count})",
+      "pm.buildRecipe": "Build from recipe",
+      "pm.diagnoseTitle": "Health and performance budget",
+      "pm.diagnoseLead": "Scene size, draw calls, triangles, and missing references. Issues can be sent to AI.",
+      "pm.fixAll": "Ask AI to fix all",
+      "pm.triangles": "Triangles",
+      "pm.shadowLights": "Shadow lights",
+      "pm.lightUnit": "",
+      "pm.assetSize": "Asset size",
+      "pm.issues": "Findings",
+      "pm.issueCounts": "{errors} errors \xB7 {warnings} warnings",
+      "pm.allClear": "Health check and budget both passed.",
+      "pm.error": "Error",
+      "pm.warning": "Warning",
+      "pm.hint": "Suggestion: {hint}",
+      "pm.fix": "Ask AI to fix",
+      "pm.branchTitle": "Snapshots and experiment branches",
+      "pm.branchLead": "Branch from any point, compare in play, then promote the one you keep.",
+      "pm.branches": "Branches",
+      "pm.branchPh": "New branch name",
+      "pm.branchDefault": "Experiment",
+      "pm.branchFail": "Could not create the branch",
+      "pm.createBranch": "Create branch",
+      "pm.active": "Active",
+      "pm.branchDiff": "Nodes {count}{diff}",
+      "pm.diff": " \xB7 vs main: +{added} added / ~{modified} changed / -{removed} removed",
+      "pm.switch": "Switch",
+      "pm.promote": "Make main",
+      "pm.checkpoints": "Checkpoints",
+      "pm.checkpointPh": "Checkpoint note\u2026",
+      "pm.checkpointDefault": "Manual checkpoint",
+      "pm.saveCheckpoint": "Save checkpoint",
+      "pm.noCheckpoints": "No checkpoints yet.",
+      "pm.checkpointMeta": "{time} \xB7 nodes {count}",
+      "pm.branchFrom": "Branch",
+      "pm.restore": "Restore",
+      "pm.publishTitle": "Build and publish Web player",
+      "pm.publishLead": "Export a standalone Web player that reuses the WebGPU renderer and the WebGL2 fallback.",
+      "pm.gate": "Publish gate",
+      "pm.gateOk": "No blocking errors. The Web player can be exported.",
+      "pm.gateBad": "{count} health errors. Fix them before publishing.",
+      "pm.export": "Choose folder and build",
+      "pm.smoke": "Ask AI to smoke-test",
+      "ai.title": "AI console",
+      "ai.unconfigured": "Not configured",
+      "ai.noKey": "No API key",
+      "ai.desktop": "Desktop only",
+      "ai.noExport": "There is no chat to export",
+      "ai.exported": "Exported {count} messages",
+      "ai.imported": "Imported {count} messages",
+      "ai.importFailed": "Import failed: {message}",
+      "ai.noViewport": "The viewport image is not available",
+      "ai.snapshot": "Checkpoint saved",
+      "ai.manualSnapshot": "Manual snapshot {time}",
+      "ai.importTip": "Import chat (.json)",
+      "ai.exportTip": "Export chat (.json)",
+      "ai.settingsTip": "Model and API settings",
+      "ai.knowledgeTip": "AI knowledge & rules (skills, design and requirement docs)",
+      "ai.clearTip": "Clear chat",
+      "ai.collapse": "Hide the AI console",
+      "ai.settings": "Model API (the key stays in the main process)",
+      "ai.addProvider": "Add",
+      "ai.current": "Current",
+      "ai.newConfig": "+ New configuration\u2026",
+      "ai.namePh": "Name (e.g. DeepSeek, local Ollama)",
+      "ai.urlPh": "Base URL (e.g. https://api.deepseek.com/v1)",
+      "ai.modelPh": "Default model (e.g. deepseek-chat / gpt-4o)",
+      "ai.modelsPh": "Extra models, comma separated",
+      "ai.keySaved": "Key saved (leave blank to keep it)",
+      "ai.keyPh": "API key",
+      "ai.deleteItem": "Delete",
+      "ai.close": "Close",
+      "ai.customApi": "Custom endpoint",
+      "ai.saveEnable": "Save and enable",
+      "ai.ready": "Ready. Describe what to build.",
+      "ai.example": "Example: \u201CMake a platform level with a ground, a spawn, a few steps, a directional light and a camera, then run a health check.\u201D",
+      "ai.older": "{count} earlier messages (scroll or click to load)",
+      "ai.deleteTurn": "Delete this message",
+      "ai.working": "Working\u2026",
+      "ai.locate": "Click to reveal this object",
+      "ai.annotationAlt": "Viewport markup",
+      "ai.interrupted": "The run stopped (the page reloaded or the connection dropped)",
+      "ai.interruptedHint": "Your question and the finished steps are kept. Continue when ready.",
+      "ai.continue": "Continue",
+      "ai.stepLimit": "The 32-step limit for this turn was reached",
+      "ai.pending": "{count} planned steps are still open",
+      "ai.resume": "Continue",
+      "ai.cache": "cache {percent}%",
+      "ai.steps": "{count} steps",
+      "ai.copyTip": "Copy text",
+      "ai.copied": "Copied",
+      "ai.copy": "Copy",
+      "ai.rollback": "Undo this turn",
+      "ai.reject": "Reject",
+      "ai.allow": "Allow",
+      "ai.allowMoreTip": "More allow options",
+      "ai.allowAlwaysTool": "Always allow {tool}",
+      "ai.allowAlwaysAll": "Always allow all high-risk actions",
+      "ai.autoAllowActive": "Auto-allowing {count} high-risk action(s) (click to reset)",
+      "ai.autoAllowAllActive": "Always-allow all high-risk enabled (click to reset)",
+      "ai.autoAllowReset": "High-risk auto-allow rules cleared",
+      "ai.playtestPrompt": "Please run a smoke playtest (playtest__run_smoke) and project health check (query__project_diagnose), then report the results.",
+      "ai.resumeInterruptedWithPrev": 'The previous run was interrupted by a page reload or error. Please continue the remaining work based on my last request ("{text}") and the steps already completed.',
+      "ai.resumeInterrupted": "The previous run was interrupted by a page reload or error. Please continue the remaining work based on the context and completed steps.",
+      "ai.resumePlanPrompt": "Please continue executing the remaining steps in the current task plan until everything is complete.",
+      "ai.assertFailed": "Assertion failed: {message}",
+      "ai.unknownAssert": "Unknown assertion",
+      "ai.perfBudget": "Performance budget: {note}",
+      "ai.warnLine": "Warning: {msg}",
+      "ai.taskProgress": "Tasks {done}/{total}",
+      "ai.taskCurrent": "\xB7 {title}",
+      "ai.taskDone": "\xB7 Done",
+      "ai.clearPlan": "Clear the plan",
+      "ai.dropHint": "Drop to attach nodes, scripts, shaders, or assets",
+      "ai.pendingShot": "Viewport markup to send",
+      "ai.removeShot": "Remove markup",
+      "ai.removeRef": "Remove reference",
+      "ai.insertName": "Selected viewport nodes (click to insert the name)",
+      "ai.inputPh": "Describe a change. Paste or drop images, or @ a reference. Enter to send.",
+      "ai.inputBusyPh": "AI is running. Type a correction and press Enter to inject it after the current step.",
+      "ai.capture": "Capture the viewport for AI",
+      "ai.kind.node": "Node",
+      "ai.kind.shader": "Shader",
+      "ai.kind.script": "Script",
+      "ai.provider.compat": "Compatible API",
+      "ai.cmd.playtest": "Run a smoke playtest and health check",
+      "ai.cmd.diagnose": "Open the health and budget board",
+      "ai.cmd.pack": "Open capability packs",
+      "ai.cmd.checkpoint": "Save a checkpoint now",
+      "ai.send": "Send",
+      "ai.steer": "Steer the running task",
+      "ai.stop": "Stop safely",
+      "ai.queued": "{count} follow-ups queued; they are injected after the current step",
+      "ai.switchModel": "Switch the chat model",
+      "ai.noModel": "No model selected",
+      "ai.enterSend": "Enter to send",
+      "ai.modelLater": "This chat keeps its model. The new one applies to the next message.",
+      "ai.manage": "Manage models and API\u2026",
+      "ai.copySelection": "Copy selection",
+      "ai.copyMessage": "Copy the whole message",
+      "ai.selectAll": "Select this message",
+      "ai.stepsDone": "{count} steps ran",
+      "ai.stepsFailed": "{count} steps ran ({failed} failed)",
+      "ai.expandError": "Show or hide the full error",
+      "ai.locateAsset": "Reveal this asset",
+      "ai.focusNode": "Focus this node in the viewport",
+      "ai.hintPrefix": "Note: {hint}",
+      "ai.copyCode": "Copy code",
+      "pm.savedDesign": "Saved design.md",
+      "pm.sedimentOk": "Pack {id} was saved and registered",
+      "pm.sedimentFail": "Could not save the pack",
+      "pm.packInvalid": "The pack.json manifest is invalid",
+      "pm.importedTrust": "Imported \u201C{name}\u201D. Trust and enable it to activate the scripts.",
+      "pm.importedActive": "Imported and activated \u201C{name}\u201D",
+      "pm.importFail": "Import failed: {message}",
+      "pm.exportBrowser": "Web export needs the desktop app. The browser build cannot write the player.",
+      "pm.branchSuffix": "{label}-branch"
     };
   }
 });
 
 // src/editor/i18n/index.ts
 import { useMemo } from "react";
-function translate(key, vars) {
+function translate(key, vars2) {
   const lang = resolveLanguage(usePrefsStore.getState().language);
   const text = (lang === "en" ? en : zh)[key];
-  if (!vars) return text;
-  return text.replace(/\{(\w+)\}/g, (_, name) => String(vars[name] ?? ""));
+  if (!vars2) return text;
+  return text.replace(/\{(\w+)\}/g, (_, name) => String(vars2[name] ?? ""));
 }
 var init_i18n = __esm({
   "src/editor/i18n/index.ts"() {
@@ -13192,27 +16144,27 @@ function stepCameras(dt, host) {
     (focus[1] + lockObject.position.y + spec.pivot[1] * 0.6) * 0.5,
     (focus[2] + lockObject.position.z) * 0.5
   ] : focus;
-  const arm = arms.get(active.id) ?? freshArm(spec, host);
-  if (arm.local !== spec.localOffset) {
-    arm.local = spec.localOffset;
-    arm.yaw = spec.localOffset ? 0 : host.yaw?.() ?? arm.yaw;
-    arm.position = null;
+  const arm2 = arms.get(active.id) ?? freshArm(spec, host);
+  if (arm2.local !== spec.localOffset) {
+    arm2.local = spec.localOffset;
+    arm2.yaw = spec.localOffset ? 0 : host.yaw?.() ?? arm2.yaw;
+    arm2.position = null;
   }
   const q = targetObject.quaternion;
   const targetYaw = lockObject ? Math.atan2(lockObject.position.x - targetObject.position.x, lockObject.position.z - targetObject.position.z) : Math.atan2(2 * (q.w * q.y + q.x * q.z), 1 - 2 * (q.y * q.y + q.z * q.z));
-  steer(spec, arm, host);
-  arm.pitch = clampPitch(arm.pitch, spec);
+  steer2(spec, arm2, host);
+  arm2.pitch = clampPitch(arm2.pitch, spec);
   if (character?.mode === "firstPerson") {
-    poseFirstPerson(active.id, spec, arm, focus, host);
+    poseFirstPerson(active.id, spec, arm2, focus, host);
     return;
   }
-  const scale = dolly(spec, arm, wheel);
-  const yaw = lockObject ? targetYaw + Math.PI : spec.orbit === "none" ? targetYaw : spec.localOffset ? targetYaw + arm.yaw : arm.yaw;
-  const offset = orbitOffset(spec, yaw, arm.pitch, scale);
+  const scale = dolly(spec, arm2, wheel);
+  const yaw = lockObject ? targetYaw + Math.PI : spec.orbit === "none" ? targetYaw : spec.localOffset ? targetYaw + arm2.yaw : arm2.yaw;
+  const offset = orbitOffset(spec, yaw, arm2.pitch, scale);
   let desired = [focus[0] + offset[0], focus[1] + offset[1], focus[2] + offset[2]];
   if (spec.collision) desired = spring(host, focus, desired, target.id, spec.collisionRadius);
   const alpha = spec.damping > 0 && dt > 0 ? 1 - Math.exp(-spec.damping * dt) : 1;
-  const from = arm.position ?? desired;
+  const from = arm2.position ?? desired;
   const next = [
     from[0] + (desired[0] - from[0]) * alpha,
     from[1] + (desired[1] - from[1]) * alpha,
@@ -13220,17 +16172,17 @@ function stepCameras(dt, host) {
   ];
   const shake = juiceShake();
   const shaken = [next[0] + shake.x, next[1] + shake.y, next[2]];
-  arm.position = next;
-  arms.set(active.id, arm);
-  if (!arm.noted && armChanged(arm)) {
-    arm.noted = true;
+  arm2.position = next;
+  arms.set(active.id, arm2);
+  if (!arm2.noted && armChanged(arm2)) {
+    arm2.noted = true;
     getRuntimeWorld().markPlayDirty();
   }
   host.poseCamera?.(shaken, lookPoint(shaken, lookAt, spec.lookAtTarget), spec.fov);
 }
-function poseFirstPerson(id, spec, arm, focus, host) {
-  const yaw = arm.yaw;
-  const pitch = arm.pitch;
+function poseFirstPerson(id, spec, arm2, focus, host) {
+  const yaw = arm2.yaw;
+  const pitch = arm2.pitch;
   const flat = Math.cos(pitch);
   const forward = [-Math.sin(yaw) * flat, Math.sin(pitch), -Math.cos(yaw) * flat];
   const right = [Math.cos(yaw), 0, -Math.sin(yaw)];
@@ -13240,10 +16192,10 @@ function poseFirstPerson(id, spec, arm, focus, host) {
     focus[2] + right[2] * spec.offset[0] + forward[2] * spec.offset[2]
   ];
   const look = [eye[0] + forward[0], eye[1] + forward[1], eye[2] + forward[2]];
-  arm.position = eye;
-  arms.set(id, arm);
-  if (!arm.noted && armChanged(arm)) {
-    arm.noted = true;
+  arm2.position = eye;
+  arms.set(id, arm2);
+  if (!arm2.noted && armChanged(arm2)) {
+    arm2.noted = true;
     getRuntimeWorld().markPlayDirty();
   }
   const shake = juiceShake();
@@ -13261,8 +16213,8 @@ function freshArm(spec, host) {
   );
   return { yaw, pitch, zoom: 1, startYaw: yaw, startPitch: pitch, position: null, local: spec.localOffset, noted: false };
 }
-function armChanged(arm) {
-  return Math.abs(arm.zoom - 1) > 1e-3 || Math.abs(angleDelta(arm.yaw, arm.startYaw)) > 1e-3 || Math.abs(angleDelta(arm.pitch, arm.startPitch)) > 1e-3;
+function armChanged(arm2) {
+  return Math.abs(arm2.zoom - 1) > 1e-3 || Math.abs(angleDelta(arm2.yaw, arm2.startYaw)) > 1e-3 || Math.abs(angleDelta(arm2.pitch, arm2.startPitch)) > 1e-3;
 }
 function angleDelta(current, start2) {
   let delta = current - start2;
@@ -13271,17 +16223,17 @@ function angleDelta(current, start2) {
   return delta;
 }
 function cameraArmOf(id) {
-  const arm = arms.get(id);
-  if (!arm) return null;
-  return { zoom: arm.zoom, yaw: arm.yaw, pitch: arm.pitch, changed: armChanged(arm) };
+  const arm2 = arms.get(id);
+  if (!arm2) return null;
+  return { zoom: arm2.zoom, yaw: arm2.yaw, pitch: arm2.pitch, changed: armChanged(arm2) };
 }
 function settleCameraArm(id) {
-  const arm = arms.get(id);
-  if (!arm) return;
-  arm.zoom = 1;
-  arm.startYaw = arm.yaw;
-  arm.startPitch = arm.pitch;
-  arm.noted = false;
+  const arm2 = arms.get(id);
+  if (!arm2) return;
+  arm2.zoom = 1;
+  arm2.startYaw = arm2.yaw;
+  arm2.startPitch = arm2.pitch;
+  arm2.noted = false;
 }
 function resolveLock(character, selfId, nodes) {
   if (character.lockTargetId && character.lockTargetId !== selfId && nodes[character.lockTargetId]) return nodes[character.lockTargetId];
@@ -13295,18 +16247,18 @@ function resolveTarget(spec, selfId, nodes) {
   if (!spec.targetId && spec.targetName) return Object.values(nodes).find((node) => node.name === spec.targetName) ?? nodes[selfId];
   return nodes[selfId];
 }
-function steer(spec, arm, host) {
+function steer2(spec, arm2, host) {
   const delta = host.pointerDelta?.() ?? { x: 0, y: 0 };
   if (spec.orbit === "none") return;
   const drag = spec.orbit === "mouse" || host.rightHeld?.() === true;
   if (!drag) return;
   const sens = Math.max(0.01, spec.sensitivity) * 0.02;
-  arm.yaw -= delta.x * sens;
-  arm.pitch = clampPitch(arm.pitch - delta.y * sens, spec);
+  arm2.yaw -= delta.x * sens;
+  arm2.pitch = clampPitch(arm2.pitch - delta.y * sens, spec);
 }
-function dolly(spec, arm, wheel) {
+function dolly(spec, arm2, wheel) {
   if (!spec.zoom) {
-    arm.zoom = 1;
+    arm2.zoom = 1;
     return 1;
   }
   const base = Math.max(0.05, Math.hypot(spec.offset[0], spec.offset[1], spec.offset[2]));
@@ -13314,10 +16266,10 @@ function dolly(spec, arm, wheel) {
   const maxScale = Math.max(minScale, spec.maxDistance) / base;
   if (wheel) {
     const steps = Math.sign(wheel) * Math.min(Math.abs(wheel), 400) / 100;
-    arm.zoom *= Math.exp(steps * Math.max(0.01, spec.zoomSpeed));
+    arm2.zoom *= Math.exp(steps * Math.max(0.01, spec.zoomSpeed));
   }
-  arm.zoom = Math.min(maxScale, Math.max(minScale, arm.zoom));
-  return arm.zoom;
+  arm2.zoom = Math.min(maxScale, Math.max(minScale, arm2.zoom));
+  return arm2.zoom;
 }
 function orbitOffset(spec, yaw, pitch, scale = 1) {
   const scaled = [spec.offset[0] * scale, spec.offset[1] * scale, spec.offset[2] * scale];
@@ -13405,7 +16357,7 @@ var init_taxonomy = __esm({
 });
 
 // src/editor/scene/transform.ts
-import { Euler as Euler3, Matrix4 as Matrix42, Quaternion as Quaternion6, Vector3 as Vector311 } from "three";
+import { Euler as Euler3, Matrix4 as Matrix42, Quaternion as Quaternion6, Vector3 as Vector312 } from "three";
 function eulerQuaternion2(rotation) {
   return new Quaternion6().setFromEuler(new Euler3(rotation[0] * DEG2, rotation[1] * DEG2, rotation[2] * DEG2, "XYZ"));
 }
@@ -13423,11 +16375,11 @@ function worldPose2(nodes, id) {
     current = current.parentId ? nodes[current.parentId] : void 0;
   }
   chain.reverse();
-  const position = new Vector311();
+  const position = new Vector312();
   const quaternion = new Quaternion6();
-  const scale = new Vector311(1, 1, 1);
-  const localPosition = new Vector311();
-  const localScale = new Vector311();
+  const scale = new Vector312(1, 1, 1);
+  const localPosition = new Vector312();
+  const localScale = new Vector312();
   for (const node of chain) {
     localPosition.set(node.position[0], node.position[1], node.position[2]).multiply(scale).applyQuaternion(quaternion);
     position.add(localPosition);
@@ -13442,7 +16394,7 @@ function safeDiv(value, scale) {
 }
 function worldPointToLocal(parent, point2) {
   const delta = point2.clone().sub(parent.position).applyQuaternion(parent.quaternion.clone().invert());
-  return new Vector311(
+  return new Vector312(
     safeDiv(delta.x, parent.scale.x),
     safeDiv(delta.y, parent.scale.y),
     safeDiv(delta.z, parent.scale.z)
@@ -13459,7 +16411,7 @@ function localPoseFromWorld(parent, world3) {
   return {
     position: worldPointToLocal(parent, world3.position),
     quaternion: parent.quaternion.clone().invert().multiply(world3.quaternion),
-    scale: new Vector311(
+    scale: new Vector312(
       safeDiv(world3.scale.x, parent.scale.x),
       safeDiv(world3.scale.y, parent.scale.y),
       safeDiv(world3.scale.z, parent.scale.z)
@@ -13529,21 +16481,21 @@ __export(store_exports, {
   primaryId: () => primaryId,
   useEditorStore: () => useEditorStore
 });
-import { Quaternion as Quaternion7, Vector3 as Vector312 } from "three";
+import { Quaternion as Quaternion7, Vector3 as Vector313 } from "three";
 import { create as create6 } from "zustand";
 function bakeFollow(node) {
-  const arm = cameraArmOf(node.id);
-  if (!arm?.changed) return null;
+  const arm2 = cameraArmOf(node.id);
+  if (!arm2?.changed) return null;
   const character = node.gameplay?.character?.enabled ? { ...defaultCharacter(), ...node.gameplay.character } : null;
   if (!character && !node.gameplay?.cameraFollow?.enabled) return null;
   const spec = character ? resolveCharacterCamera(character, node.gameplay?.cameraFollow) : { ...defaultCameraFollow(), ...node.gameplay?.cameraFollow };
   if (!spec.enabled) return null;
-  const zoom = arm.zoom;
+  const zoom = arm2.zoom;
   return {
     ...spec,
     offset: [spec.offset[0] * zoom, spec.offset[1] * zoom, spec.offset[2] * zoom],
-    orbitYaw: arm.yaw * 180 / Math.PI,
-    orbitPitch: arm.pitch * 180 / Math.PI
+    orbitYaw: arm2.yaw * 180 / Math.PI,
+    orbitPitch: arm2.pitch * 180 / Math.PI
   };
 }
 function cloneNodes(nodes) {
@@ -13825,7 +16777,7 @@ var init_store2 = __esm({
         const parent = node.parentId ? worldPose2(nodes, node.parentId) : null;
         const current = worldPose2(nodes, id);
         const local = poseComponents(localPoseFromWorld(parent, {
-          position: new Vector312(view.position[0], view.position[1], view.position[2]),
+          position: new Vector313(view.position[0], view.position[1], view.position[2]),
           quaternion: new Quaternion7(view.quaternion[0], view.quaternion[1], view.quaternion[2], view.quaternion[3]),
           scale: current.scale
         }));
@@ -13913,13 +16865,13 @@ var init_store2 = __esm({
         });
         if (ok && created) get().log("info", translate("log.created", { name: created }));
       },
-      extractSocket: (modelId, bone, name, select2 = true) => {
+      extractSocket: (modelId, bone, name, select3 = true) => {
         if (get().playState !== "stopped") return null;
         const parent = get().nodes[modelId];
         if (!parent || parent.kind !== "model") return null;
         const existing = Object.values(get().nodes).find((node) => node.parentId === modelId && node.socketBone === bone);
         if (existing) {
-          if (select2) get().setSelection([existing.id]);
+          if (select3) get().setSelection([existing.id]);
           return existing.id;
         }
         let createdId = null;
@@ -13935,7 +16887,7 @@ var init_store2 = __esm({
             socketBone: bone
           });
           tagAddedChild(draft.nodes, id);
-          if (select2) draft.selection = [id];
+          if (select3) draft.selection = [id];
         });
         return createdId;
       },
@@ -14043,10 +16995,10 @@ var init_store2 = __esm({
           return Boolean(state.nodes[id]);
         });
         const remove = /* @__PURE__ */ new Set();
-        const blocked = [];
+        const blocked2 = [];
         for (const id of roots) {
           const sub = subtreeIds(state.nodes, id);
-          if (sub.some((childId) => state.nodes[childId]?.locked)) blocked.push(state.nodes[id].name);
+          if (sub.some((childId) => state.nodes[childId]?.locked)) blocked2.push(state.nodes[id].name);
           else sub.forEach((childId) => remove.add(childId));
         }
         if (get().prefabSession) {
@@ -14056,7 +17008,7 @@ var init_store2 = __esm({
             get().log("warn", translate("prefab.keepRoot"));
           }
         }
-        if (blocked.length) get().log("warn", translate("log.skippedLocked", { names: blocked.join("\u3001") }));
+        if (blocked2.length) get().log("warn", translate("log.skippedLocked", { names: blocked2.join("\u3001") }));
         if (remove.size === 0) return;
         const ok = mutate(set, get, "\u5220\u9664", (draft) => {
           for (const id of remove) rememberRemoval(draft.nodes, id);
@@ -14148,7 +17100,7 @@ var init_store2 = __esm({
           const sharedParent = draft.nodes[live[0]].parentId;
           const parentId = live.every((id) => draft.nodes[id].parentId === sharedParent) ? sharedParent : null;
           const worlds = new Map(live.map((id) => [id, worldPose2(draft.nodes, id)]));
-          const center = new Vector312();
+          const center = new Vector313();
           for (const id of live) center.add(worlds.get(id).position);
           center.multiplyScalar(1 / live.length);
           const parentPose = parentId ? worldPose2(draft.nodes, parentId) : null;
@@ -14737,9 +17689,9 @@ var init_store2 = __esm({
             if (!node) continue;
             const parent = node.parentId ? worldPose2(nodes, node.parentId) : null;
             const local = localPoseFromWorld(parent, {
-              position: new Vector312(pose.position[0], pose.position[1], pose.position[2]),
+              position: new Vector313(pose.position[0], pose.position[1], pose.position[2]),
               quaternion: new Quaternion7(pose.rotation[0], pose.rotation[1], pose.rotation[2], pose.rotation[3]),
-              scale: new Vector312(node.scale[0], node.scale[1], node.scale[2])
+              scale: new Vector313(node.scale[0], node.scale[1], node.scale[2])
             });
             const parts = poseComponents(local);
             nodes[pose.id] = { ...node, position: parts.position, rotation: parts.rotation };
@@ -15106,7 +18058,7 @@ function diagnoseProject(budget = DEFAULT_PERFORMANCE_BUDGET) {
         severity: "warning",
         category: "pack",
         target: node.id,
-        message: `\u8282\u70B9 "${node.name}" \u6302\u6709\u6C34\u4F53\u914D\u7F6E\uFF0C\u4F46\u5DE5\u7A0B\u5C1A\u672A\u542F\u7528 water \u80FD\u529B\u5305`,
+        message: `\u8282\u70B9 "${node.name}" \u6302\u6709\u6C34\u4F53\u914D\u7F6E\uFF0C\u4F46\u9879\u76EE\u5C1A\u672A\u542F\u7528 water \u80FD\u529B\u5305`,
         hint: "\u8C03\u7528 capability.setEnabled \u5F00\u542F water \u80FD\u529B\u5305"
       });
     }
@@ -15117,7 +18069,7 @@ function diagnoseProject(budget = DEFAULT_PERFORMANCE_BUDGET) {
         category: "pack",
         target: node.id,
         message: `\u8282\u70B9 "${node.name}" \u4E0A\u7684 capabilities.${capId} \u4E0D\u662F\u5DF2\u767B\u8BB0\u7684\u80FD\u529B\u5305\uFF0C\u8FD0\u884C\u65F6\u4E0D\u4F1A\u8BFB\u53D6`,
-        hint: "\u8FD9\u662F\u65E0\u6548\u6570\u636E\u3002\u89D2\u8272\u79FB\u52A8/\u52A8\u753B\u8BF7\u7528 gameplay.setCoreComponent \u6302 character \u6216 locomotion"
+        hint: "\u53EF\u7528 capability.setNodeData({ nodeId, capabilityId, remove: true }) \u6E05\u7406\uFF1B\u89D2\u8272\u79FB\u52A8/\u52A8\u753B\u8BF7\u7528 gameplay.setCoreComponent \u6302 character \u6216 locomotion"
       });
     }
     if (node.gameplay?.packs) {
@@ -15220,7 +18172,7 @@ function diagnoseProject(budget = DEFAULT_PERFORMANCE_BUDGET) {
           severity: "warning",
           category: "playability",
           target: script.id,
-          message: `\u811A\u672C "${script.id}" \u8BFB\u53D6\u4E86\u8F93\u5165\u52A8\u4F5C "${actionName}"\uFF0C\u4F46\u5DE5\u7A0B\u8F93\u5165\u914D\u7F6E\u4E2D\u672A\u6CE8\u518C\u8BE5\u52A8\u4F5C`,
+          message: `\u811A\u672C "${script.id}" \u8BFB\u53D6\u4E86\u8F93\u5165\u52A8\u4F5C "${actionName}"\uFF0C\u4F46\u9879\u76EE\u8F93\u5165\u914D\u7F6E\u4E2D\u672A\u6CE8\u518C\u8BE5\u52A8\u4F5C`,
           hint: `\u8C03\u7528 input.setAction \u6CE8\u518C "${actionName}" \u7684\u6309\u952E\u6620\u5C04\uFF08\u6216\u6539\u7528\u5DF2\u6CE8\u518C\u52A8\u4F5C\uFF1A${Object.keys(inputActions).join(", ")}\uFF09`
         });
       }
@@ -15341,7 +18293,7 @@ function diagnoseProject(budget = DEFAULT_PERFORMANCE_BUDGET) {
     issues.push({
       severity: "warning",
       category: "budget",
-      message: `\u5DE5\u7A0B\u8D44\u4EA7\u603B\u4F53\u79EF\u8F83\u5927\uFF08${(assetBytes / (1024 * 1024)).toFixed(1)} MB\uFF0C\u9884\u7B97 ${(budget.maxAssetBytes / (1024 * 1024)).toFixed(0)} MB\uFF09`,
+      message: `\u9879\u76EE\u8D44\u4EA7\u603B\u4F53\u79EF\u8F83\u5927\uFF08${(assetBytes / (1024 * 1024)).toFixed(1)} MB\uFF0C\u9884\u7B97 ${(budget.maxAssetBytes / (1024 * 1024)).toFixed(0)} MB\uFF09`,
       hint: "\u5EFA\u8BAE\u538B\u7F29\u8D34\u56FE\u3001\u5F00\u542F Meshopt/KTX2 \u6216\u6E05\u7406\u672A\u5F15\u7528\u8D44\u4EA7"
     });
   }
@@ -15389,6 +18341,7 @@ init_actionMap();
 import { Group } from "three";
 init_library();
 init_store2();
+init_scriptRuntime();
 init_sceneRuntime();
 init_values();
 init_world();
@@ -15487,6 +18440,9 @@ var PlaytestSession = class {
       (n) => n.id === query.nodeIdOrName || n.name === query.nodeIdOrName
     );
     if (!target) return null;
+    if (query.kind === "scriptState") {
+      return readScriptStateSnapshot(target.id);
+    }
     const obj = getViewportBridge()?.resolveObject(target.id) ?? this.headlessObjects.get(target.id);
     if (obj) {
       const deg = 180 / Math.PI;

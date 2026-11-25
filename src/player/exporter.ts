@@ -9,7 +9,7 @@ import {
 import { diagnoseProject } from '../core/query/diagnose'
 import { readModelArtifact } from '../editor/assets/cache'
 import { useAssetStore, type ProjectAsset, type SceneAsset } from '../editor/assets/library'
-import { getModelTemplate, loadModelTemplate } from '../editor/assets/models'
+import { applyModelMaterialBindings, getModelTemplate, loadModelTemplate } from '../editor/assets/models'
 import { assetRecord, directoryProjectName, readAssetBytes } from '../editor/project/disk'
 import { electronBridge, joinProjectPath } from '../editor/project/electronBridge'
 import { useEditorStore } from '../editor/scene/store'
@@ -78,6 +78,32 @@ function collectSlotDeps(slot: PbrSlot | undefined, assets: Record<string, Proje
   }
 }
 
+function resolveEffectiveNodeSlots(node: SceneNode): PbrSlot[] | undefined {
+  const tplSlots = node.kind === 'model' && node.assetId ? getModelTemplate(node.assetId)?.slots : undefined
+  if (!Array.isArray(node.slots) || node.slots.length === 0) {
+    return tplSlots
+  }
+  if (!tplSlots || tplSlots.length === 0) {
+    return node.slots
+  }
+  const tplByName = new Map(tplSlots.map((s) => [s.name, s]))
+  return node.slots.map((slot, idx) => {
+    const fresh = tplByName.get(slot.name) ?? tplSlots[idx]
+    if (!fresh) return slot
+    return {
+      ...fresh,
+      ...slot,
+      materialAssetId: slot.materialAssetId ?? fresh.materialAssetId,
+      shader: slot.shader ?? fresh.shader,
+      mapAssetId: slot.mapAssetId ?? fresh.mapAssetId,
+      normalAssetId: slot.normalAssetId ?? fresh.normalAssetId,
+      metallicRoughnessAssetId: slot.metallicRoughnessAssetId ?? fresh.metallicRoughnessAssetId,
+      emissiveAssetId: slot.emissiveAssetId ?? fresh.emissiveAssetId,
+      aoAssetId: slot.aoAssetId ?? fresh.aoAssetId,
+    }
+  })
+}
+
 export function collectSceneDependencies(
   nodes: Record<string, SceneNode>,
   picture: ScenePicture | undefined,
@@ -114,6 +140,13 @@ export function collectSceneDependencies(
       if ('materialHint' in asset && asset.materialHint) {
         scanUnknownRefs(asset.materialHint, assets, collected)
       }
+    } else if (asset.kind === 'effect') {
+      if ('materialAssetId' in asset && typeof asset.materialAssetId === 'string') {
+        addAsset(asset.materialAssetId)
+      }
+      if ('simulation' in asset && asset.simulation) {
+        scanUnknownRefs(asset.simulation, assets, collected)
+      }
     }
   }
 
@@ -138,9 +171,12 @@ export function collectSceneDependencies(
     if (node.clipAssetId) addAsset(node.clipAssetId)
     if (node.overlayAssetId) addAsset(node.overlayAssetId)
     if (node.screen?.documentId) addAsset(node.screen.documentId)
-    const effectiveSlots = Array.isArray(node.slots) && node.slots.length > 0
-      ? node.slots
-      : (node.kind === 'model' && node.assetId ? getModelTemplate(node.assetId)?.slots : undefined)
+    if (node.effect) {
+      if (node.effect.assetId) addAsset(node.effect.assetId)
+      if (node.effect.materialAssetId) addAsset(node.effect.materialAssetId)
+      if (node.effect.simulation) scanUnknownRefs(node.effect.simulation, assets, collected)
+    }
+    const effectiveSlots = resolveEffectiveNodeSlots(node)
     if (Array.isArray(effectiveSlots)) {
       for (const slot of effectiveSlots) {
         if (slot.materialAssetId) addAsset(slot.materialAssetId)
@@ -462,6 +498,7 @@ export async function exportWebPlayerBundle(
         const modelAsset = allAssets[node.assetId]
         if (modelAsset && modelAsset.kind === 'model') {
           await loadModelTemplate(modelAsset).catch(() => null)
+          applyModelMaterialBindings(node.assetId)
         }
       }
     }

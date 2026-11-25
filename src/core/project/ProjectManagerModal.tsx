@@ -138,15 +138,15 @@ export function ProjectManagerModal() {
     if (!open) return
     let cancelled = false
     const apply = (doc: ReturnType<typeof getDesignDoc>) => {
-      setTitle(doc.title)
-      setGenre(doc.genre)
-      setPerspective(doc.perspective)
-      setCoreLoop(doc.coreLoop)
-      setWinLose(doc.winLose)
-      setArtStyle(doc.artStyle)
-      setPaletteText(doc.colorPalette.join(', '))
-      setControls(doc.controls)
-      setNotes(doc.notes)
+    setTitle(doc.title)
+    setGenre(doc.genre)
+    setPerspective(doc.perspective)
+    setCoreLoop(doc.coreLoop)
+    setWinLose(doc.winLose)
+    setArtStyle(doc.artStyle)
+    setPaletteText(doc.colorPalette.join(', '))
+    setControls(doc.controls)
+    setNotes(doc.notes)
     }
     apply(getDesignDoc())
     // 再从磁盘读回一次：design.md 可能被手工或外部编辑器改过
@@ -237,7 +237,7 @@ export function ProjectManagerModal() {
         settings: buildSettings,
         onProgress: (info) => setBuildProgress(info),
       })
-      setExportMsg(res.message)
+    setExportMsg(res.message)
       if (res.ok) {
         await bridge.shell?.openPath(res.outputDir).catch(() => undefined)
       }
@@ -724,16 +724,16 @@ export function ProjectManagerModal() {
               const iconUrl = iconTex && 'url' in iconTex ? iconTex.url : undefined
 
               return (
-                <>
-                  <div className="pm-section-head">
-                    <div>
-                      <h3>{t('pm.publishTitle')}</h3>
+              <>
+                <div className="pm-section-head">
+                  <div>
+                    <h3>{t('pm.publishTitle')}</h3>
                       <p>配置目标平台、参与打包的场景与初始场景、资源优化与预加载策略，以及自定义 Loading 画面。</p>
-                    </div>
                   </div>
+                </div>
 
                   {/* 目标平台 */}
-                  <div className="pm-card">
+                <div className="pm-card">
                     <div className="pm-card__title">
                       <span>目标平台（Build Target）</span>
                     </div>
@@ -1122,15 +1122,15 @@ export function ProjectManagerModal() {
                           {report.errorCount === 0 ? '门禁通过' : `${report.errorCount} 项错误`}
                         </span>
                         <span style={{ fontSize: 12, color: report.errorCount === 0 ? '#94a3b8' : '#fca5a5' }}>
-                          {report.errorCount === 0
-                            ? t('pm.gateOk')
-                            : t('pm.gateBad', { count: report.errorCount })}
+                    {report.errorCount === 0
+                      ? t('pm.gateOk')
+                      : t('pm.gateBad', { count: report.errorCount })}
                         </span>
-                      </div>
-                      <div className="pm-actions">
+                  </div>
+                  <div className="pm-actions">
                         <button type="button" className="pm-btn pm-btn--ai" disabled={buildBusy} onClick={() => askAi('请先运行一次冒烟试玩验证与体检，确认无误后提示我构建。')}>
-                          <Play size={13} /> {t('pm.smoke')}
-                        </button>
+                      <Play size={13} /> {t('pm.smoke')}
+                    </button>
                         <button
                           type="button"
                           className="pm-btn pm-btn--primary"
@@ -1143,17 +1143,17 @@ export function ProjectManagerModal() {
                             : buildSettings.target === 'electron'
                               ? '选择目录并构建桌面端'
                               : t('pm.export')}
-                        </button>
-                      </div>
+                    </button>
+                  </div>
                     </div>
                     {buildProgress && (
                       <div style={{ fontSize: 11.5, color: '#93c5fd' }}>
                         {buildProgress.label}
                       </div>
                     )}
-                    {exportMsg && <div style={{ fontSize: 12, color: '#93c5fd' }}>{exportMsg}</div>}
-                  </div>
-                </>
+                  {exportMsg && <div style={{ fontSize: 12, color: '#93c5fd' }}>{exportMsg}</div>}
+                </div>
+              </>
               )
             })()}
           </main>

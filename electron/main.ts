@@ -69,6 +69,7 @@ const RENDERER_DIST = path.join(__dirname, '../dist')
 
 app.commandLine.appendSwitch('enable-unsafe-webgpu')
 app.commandLine.appendSwitch('ignore-gpu-blocklist')
+app.commandLine.appendSwitch('force_high_performance_gpu')
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required')
 // 显卡着色器磁盘缓存默认只有几 MB，一个场景编译出的着色器就能把它挤满，
 // 结果每次打开都被淘汰重编。放大到 512MB，第二次打开才能直接复用。
@@ -474,6 +475,7 @@ function startStaticServer(rootDir) {
 let serverRef = null;
 app.commandLine.appendSwitch('enable-unsafe-webgpu');
 app.commandLine.appendSwitch('ignore-gpu-blocklist');
+app.commandLine.appendSwitch('force_high_performance_gpu');
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 app.commandLine.appendSwitch('gpu-disk-cache-size-kb', String(512 * 1024));
 
