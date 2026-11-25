@@ -373,13 +373,13 @@ export default function KnowledgeDrawer({ onClose, onUse }: { onClose: () => voi
                   )}
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ color: '#e4e4e7' }}>
-                      {entry.name}{' '}
+                      {L(entry.name, entry.nameEn || entry.name)}{' '}
                       <span style={{ color: '#71717a' }}>
                         {entry.id} · {entry.kind === 'skill' ? L('技能', 'skill') : L('知识', 'doc')}
                         {entry.files.length > 0 ? ` · ${entry.files.length} ${L('个文件', 'files')}` : ''}
                       </span>
                     </div>
-                    <div style={{ color: '#a1a1aa' }}>{entry.description}</div>
+                    <div style={{ color: '#a1a1aa' }}>{L(entry.description, entry.descriptionEn || entry.description)}</div>
                     {entry.overrides && entry.overrides.length > 0 && (
                       <div style={{ color: '#93c5fd' }}>
                         {L('已覆盖：', 'Overrides: ')}
@@ -402,7 +402,7 @@ export default function KnowledgeDrawer({ onClose, onUse }: { onClose: () => voi
                           onUse(
                             L(
                               `请按技能「${entry.command || entry.name}」（kb__read id: ${entry.id}）完成：`,
-                              `Use the skill "${entry.command || entry.name}" (kb__read id: ${entry.id}) to: `,
+                              `Use the skill "${entry.command || entry.nameEn || entry.name}" (kb__read id: ${entry.id}) to: `,
                             ),
                           )
                         }

@@ -22,8 +22,12 @@ export interface RecipeFile {
 export interface Recipe {
   id: string
   title: string
+  /** 知识面板英文界面用的标题 */
+  titleEn: string
   /** 一句话说明解决什么问题（出现在系统提示的目录里） */
   summary: string
+  /** 知识面板英文界面用的说明 */
+  summaryEn: string
   /** 场景搭建与挂载步骤（按顺序执行） */
   setup: string[]
   files: RecipeFile[]
@@ -477,7 +481,9 @@ export const RECIPES: Recipe[] = [
   {
     id: 'third-person-controller',
     title: '第三人称角色控制（移动 / 跳跃 / 动画切换）',
+    titleEn: 'Third-person character (move / jump / animation)',
     summary: 'WASD 相对相机移动、空格跳跃、Shift 奔跑，按状态切换待机/行走/奔跑剪辑',
+    summaryEn: 'WASD moves relative to the camera, Space jumps, Shift sprints, and idle/walk/run clips follow the state',
     setup: [
       '角色节点：已有蒙皮模型就用 kind:"model"；没有模型就用 kind:"capsule"（此时三个剪辑参数留空即可）。',
       '场景里要有一个相机节点（建议同时挂 follow-camera 范例）。',
@@ -497,7 +503,9 @@ export const RECIPES: Recipe[] = [
   {
     id: 'follow-camera',
     title: '跟随相机（平滑跟随 + 右键环绕）',
+    titleEn: 'Follow camera (smooth follow + right-drag orbit)',
     summary: '相机平滑跟在目标身后并始终注视目标',
+    summaryEn: 'The camera stays smoothly behind the target and always looks at it',
     setup: [
       '创建 kind:"camera" 节点，初始位置放在目标后上方即可（脚本会接管位置与朝向）。',
       'script__attach 到相机节点，params.target 传被跟随的节点。',
@@ -509,7 +517,9 @@ export const RECIPES: Recipe[] = [
   {
     id: 'enemy-wave',
     title: '波次刷怪 + 追击敌人（对象池）',
+    titleEn: 'Enemy waves + chase (object pool)',
     summary: '从一个隐藏模板节点池化生成敌人，敌人追击并攻击玩家，可被 hit 消息击杀',
+    summaryEn: 'Spawns enemies from a hidden template through the pool; they chase and attack the player and die on a hit message',
     setup: [
       '敌人模板：创建一个敌人节点（模型或基础几何体），挂 ChaseEnemy，然后把模板的 visible 设为 false 并放在场景外侧。',
       '刷怪点：创建 kind:"empty" 节点放在战场中心，挂 WaveSpawner，params.template 传敌人模板节点。',
@@ -529,7 +539,9 @@ export const RECIPES: Recipe[] = [
   {
     id: 'shooting',
     title: '射击（玩家开火 + 池化子弹）',
+    titleEn: 'Shooting (player fire + pooled bullets)',
     summary: '按住攻击键沿角色朝向发射子弹，子弹命中带 "enemy" 标签的节点后发送 hit 消息',
+    summaryEn: 'Hold attack to fire bullets along the character facing; hitting a node tagged "enemy" sends a hit message',
     setup: [
       '子弹模板：创建一个小球/小胶囊节点，挂 Bullet，visible 设为 false。',
       'script__attach PlayerShooter 到玩家节点，params.bullet 传子弹模板节点。',
@@ -545,7 +557,9 @@ export const RECIPES: Recipe[] = [
   {
     id: 'health-score-hud',
     title: '生命值 + 得分 + HUD / 结算界面',
+    titleEn: 'Health + score + HUD / result screen',
     summary: '玩家受击扣血、击杀与拾取加分，数据驱动 HUD，死亡或达标时弹出结算界面',
+    summaryEn: 'Hits reduce health, kills and pickups add score, the HUD is data-driven, and a result screen appears on death or when the goal is reached',
     setup: [
       'HUD：ui__createFromTemplate({ template:"hud", varKey:"hp", scoreVarKey:"score" })。',
       '结算：ui__createFromTemplate({ template:"result", name:"结算界面", scoreVarKey:"score" })，标题文本可用 ui__patchNode 绑定到变量 resultTitle。',
@@ -564,7 +578,9 @@ export const RECIPES: Recipe[] = [
   {
     id: 'collectible',
     title: '可拾取物（金币 / 道具）',
+    titleEn: 'Collectible (coin / item)',
     summary: '旋转浮动的拾取物，玩家靠近后加分并消失',
+    summaryEn: 'A spinning, bobbing pickup that awards score and disappears when the player gets close',
     setup: [
       '创建拾取物节点（球体/圆柱或模型），挂 Collectible；需要多个时直接复制节点或做成预制体。',
       '配合 health-score-hud 范例的 GameManager 统计得分（它会处理 collected 消息）。',
@@ -606,7 +622,9 @@ export function recipeToKnowledgeEntry(recipe: Recipe): KnowledgeEntry {
     kind: 'skill',
     source: 'builtin',
     name: recipe.title,
+    nameEn: recipe.titleEn,
     description: recipe.summary,
+    descriptionEn: recipe.summaryEn,
     body,
     files: recipe.files.map((file) => ({
       path: `${file.scriptId}.ts`,

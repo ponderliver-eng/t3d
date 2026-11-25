@@ -22,8 +22,12 @@ export interface KnowledgeEntry {
   kind: KnowledgeKind
   source: KnowledgeSource
   name: string
+  /** 英文界面用的名称；没有时回退 name */
+  nameEn?: string
   /** 目录里的一行说明：要写清「什么时候该用」 */
   description: string
+  /** 英文界面用的说明；没有时回退 description */
+  descriptionEn?: string
   /** 正文 Markdown（不含头部） */
   body: string
   files: KnowledgeFileRef[]
