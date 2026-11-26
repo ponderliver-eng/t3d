@@ -11,6 +11,15 @@ import { smaa } from 'three/addons/tsl/display/SMAANode.js'
 import type { ScenePicture } from '../editor/scene/types'
 import { composeSkyFog, skyFogActive, skyFogRevision } from '../capabilities/sky/session'
 import { buildHeightFogPass, heightFogActive, heightFogPipelineKey, type HeightFogPassHandle } from '../capabilities/fog/session'
+import {
+  buildWeatherSkyPass,
+  buildWeatherSurfacePass,
+  weatherActive,
+  weatherNeedsNormals,
+  weatherPipelineKey,
+  type WeatherSkyPassHandle,
+  type WeatherSurfacePassHandle,
+} from '../capabilities/weather/session'
 import { anyUnderwaterEffectEnabled, sampleUnderwaterView } from '../capabilities/water/session'
 import { buildPostEffectNode, getCompiledPostEffect, getPostEffectRevision, setCompiledShaderParam } from '../core/codeAssets/shaderRuntime'
 
@@ -90,6 +99,8 @@ export class RuntimePicturePipeline {
   private ssrNode: SsrUniforms | null = null
   private ssgiNode: SsgiUniforms | null = null
   private heightFogPass: HeightFogPassHandle | null = null
+  private weatherSurfacePass: WeatherSurfacePassHandle | null = null
+  private weatherSkyPass: WeatherSkyPassHandle | null = null
   private underwaterNode: UnderwaterUniforms | null = null
   private readonly camWorldPos = new Vector3()
   private denoiseNodes: Array<{ dispose: () => void }> = []
@@ -100,17 +111,19 @@ export class RuntimePicturePipeline {
   constructor(
     private readonly renderer: WebGPURenderer,
     private readonly options: PicturePipelineOptions = {},
-  ) {}
+  ) {
+    patchRendererPrecompileRenderTarget(renderer)
+  }
 
   usesEffects(picture: ScenePicture, extraActive = false): boolean {
-    return extraActive || picture.bloom || picture.ssr || picture.ssgi || picture.aa !== false || picture.ao || picture.dof || picture.hue !== 0 || picture.saturation !== 1 || skyFogActive() || heightFogActive(picture) || anyUnderwaterEffectEnabled() || readCustomPostEffects(picture).length > 0
+    return extraActive || picture.bloom || picture.ssr || picture.ssgi || picture.aa !== false || picture.ao || picture.dof || picture.hue !== 0 || picture.saturation !== 1 || skyFogActive() || heightFogActive(picture) || weatherActive(picture) || anyUnderwaterEffectEnabled() || readCustomPostEffects(picture).length > 0
   }
 
   render(scene: Scene, camera: Camera, picture: ScenePicture, width: number, height: number, beforeRender?: () => void) {
     const underwaterEnabled = anyUnderwaterEffectEnabled()
     const customPosts = readCustomPostEffects(picture)
     const customPostKey = customPosts.length > 0 ? `${getPostEffectRevision()}:${customPosts.map((p) => p.id).join(',')}` : ''
-    const key = [camera.uuid, picture.toneMapping, picture.bloom, picture.ssr, picture.ssgi, picture.ssgi && picture.ssgiDenoise, picture.aa !== false, picture.ao, picture.dof, picture.hue !== 0 || picture.saturation !== 1, skyFogRevision(), heightFogPipelineKey(picture), underwaterEnabled, customPostKey, width, height].join('|')
+    const key = [camera.uuid, picture.toneMapping, picture.bloom, picture.ssr, picture.ssgi, picture.ssgi && picture.ssgiDenoise, picture.aa !== false, picture.ao, picture.dof, picture.hue !== 0 || picture.saturation !== 1, skyFogRevision(), heightFogPipelineKey(picture), weatherPipelineKey(picture), underwaterEnabled, customPostKey, width, height].join('|')
     if (this.failed && this.key === key) {
       this.renderer.render(scene, camera)
       return
@@ -145,6 +158,12 @@ export class RuntimePicturePipeline {
     }
     if (this.heightFogPass) {
       this.heightFogPass.sync(picture, camera)
+    }
+    if (this.weatherSurfacePass) {
+      this.weatherSurfacePass.sync(picture, camera)
+    }
+    if (this.weatherSkyPass) {
+      this.weatherSkyPass.sync(picture, camera)
     }
     if (this.underwaterNode) {
       camera.getWorldPosition(this.camWorldPos)
@@ -203,16 +222,16 @@ export class RuntimePicturePipeline {
     this.pipeline?.dispose()
     const scenePass = pass(scene, camera, { samples: 0 })
     this.scenePass = scenePass
-    const needsBuffers = picture.ao || picture.ssr || picture.ssgi
+    const needsBuffers = picture.ao || picture.ssr || picture.ssgi || weatherNeedsNormals(picture)
     if (needsBuffers) {
       const mrtNode = mrt({
         output,
-        normal: vec4(picture.ssr ? packNormalToRGB(normalView) : normalView, diffuseColor.a),
-        ...(picture.ssr ? { metalrough: vec4(metalness, roughness, 0, diffuseColor.a) } : {}),
+        normal: vec4(packNormalToRGB(normalView), diffuseColor.a),
+        metalrough: vec4(metalness, roughness, 0, diffuseColor.a),
       })
       const materialBlend = mrtNode.getBlendMode('output')
       mrtNode.setBlendMode('normal', materialBlend)
-      if (picture.ssr) mrtNode.setBlendMode('metalrough', materialBlend)
+      mrtNode.setBlendMode('metalrough', materialBlend)
       scenePass.setMRT(mrtNode)
     }
     const beauty = needsBuffers ? scenePass.getTextureNode('output') : scenePass
@@ -220,10 +239,26 @@ export class RuntimePicturePipeline {
     this.bloomNode = null
     this.ssrNode = null
     this.ssgiNode = null
-    const normalNode = needsBuffers ? sceneNormal(scenePass, picture.ssr) : null
+    const normalNode = needsBuffers ? sceneNormal(scenePass, true) : null
     if (picture.ao && normalNode) {
       const aoPass = ssao(scenePass.getTextureNode('depth'), normalNode as never, camera) as { r: unknown }
       current = current.mul(aoPass.r) as typeof current
+    }
+    const wKey = weatherPipelineKey(picture)
+    const wParts = wKey === 'off' ? null : wKey.split(':')
+    const wClouds = wParts ? Number(wParts[1]) : 0
+    const wWet = wParts ? Number(wParts[2]) : 0
+    const wSnow = wParts ? Number(wParts[3]) : 0
+    if ((wWet > 0 || wSnow > 0) && normalNode) {
+      const surfacePass = buildWeatherSurfacePass(current, scenePass, normalNode, {
+        wetness: wWet > 0,
+        ripples: wWet === 2,
+        snow: wSnow === 1,
+      })
+      this.weatherSurfacePass = surfacePass
+      current = surfacePass.node as typeof current
+    } else {
+      this.weatherSurfacePass = null
     }
     if (picture.ssgi && normalNode) {
       const depth = scenePass.getTextureNode('depth')
@@ -275,6 +310,16 @@ export class RuntimePicturePipeline {
       this.dofNode = null
     }
     if (skyFogActive()) current = composeSkyFog(current, scenePass) as typeof current
+    if (wClouds > 0) {
+      const skyCloudPass = buildWeatherSkyPass(current, scenePass, {
+        clouds: true,
+        cirrus: wClouds === 2,
+      })
+      this.weatherSkyPass = skyCloudPass
+      current = skyCloudPass.node as typeof current
+    } else {
+      this.weatherSkyPass = null
+    }
     if (heightFogActive(picture)) {
       const fogKey = heightFogPipelineKey(picture)
       const [, hFlag, dFlag] = fogKey.split(':')
@@ -309,7 +354,7 @@ export class RuntimePicturePipeline {
     const customPosts = readCustomPostEffects(picture)
     if (customPosts.length > 0) {
       const postDepth = scenePass.getViewZNode()
-      const postNormal = normalNode ?? sceneNormal(scenePass, picture.ssr)
+      const postNormal = normalNode ?? sceneNormal(scenePass, true)
       for (const post of customPosts) {
         try {
           const next = buildPostEffectNode(
@@ -353,4 +398,26 @@ function sceneNormal(scenePass: ReturnType<typeof pass>, packed: boolean) {
   scenePass.getTexture('normal').type = UnsignedByteType
   scenePass.getTexture('metalrough').type = UnsignedByteType
   return sample(uv => unpackRGBToNormal(texture.sample(uv).rgb))
+}
+
+/**
+ * 修复 Three.js 0.187 WebGPURenderer 在 PassNode.compileAsync 期间跨帧 yield 时
+ * 因 useFrameBufferTarget === false 未恢复 renderTarget，导致 Background.material 等材质
+ * 以 renderTarget === null（单输出）编译却绑定到多输出 MRT RenderContext 的管线失配问题。
+ */
+function patchRendererPrecompileRenderTarget(renderer: WebGPURenderer) {
+  const internal = renderer as unknown as {
+    __t3dPrecompilePatched?: boolean
+    _beginPreCompile?: (state: { useFrameBufferTarget?: boolean; renderTarget?: unknown }) => void
+    setRenderTarget: (target: unknown) => void
+  }
+  if (internal.__t3dPrecompilePatched || typeof internal._beginPreCompile !== 'function') return
+  const origBegin = internal._beginPreCompile.bind(renderer)
+  internal._beginPreCompile = (state) => {
+    if (state && state.renderTarget != null && !state.useFrameBufferTarget) {
+      internal.setRenderTarget(state.renderTarget)
+    }
+    origBegin(state)
+  }
+  internal.__t3dPrecompilePatched = true
 }

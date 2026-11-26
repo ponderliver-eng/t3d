@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type MouseEvent } from 'react'
 import { createPortal } from 'react-dom'
-import { Box, ChevronRight, Clapperboard, Component, CopyPlus, FileCode2, FileText, Folder, FolderOpen, FolderPlus, FolderSearch, Globe, Image, Layers, LayoutGrid, List, ListTree, MapPin, Minus, Music, PackageOpen, Palette, PanelsTopLeft, Pencil, Plus, RefreshCw, Rows3, Scaling, Search, Sparkles, Sun, Trash2, Unlink, Upload, Wand2, X } from 'lucide-react'
+import { Box, ChevronRight, Clapperboard, Component, CopyPlus, FileCode2, FileText, Film, Folder, FolderOpen, FolderPlus, FolderSearch, Globe, Image, Layers, LayoutGrid, List, ListTree, MapPin, Minus, Music, PackageOpen, Palette, PanelsTopLeft, Pencil, Plus, RefreshCw, Rows3, Scaling, Search, Sparkles, Sun, Trash2, Unlink, Upload, Wand2, X } from 'lucide-react'
 import { CLIP_MIME } from '../animation/playback'
-import { ASSET_MIME, FOLDER_MIME, assignClip, bindImportInput, createDefaultDocument, createDefaultMaterial, createDefaultUi, deleteAsset, duplicateAsset, importFiles, isNodeDrag, logNamed, NODE_MIME, openAsset, openImport, reimportModel, reportAssetUsers } from '../assets/import'
+import { ASSET_MIME, FOLDER_MIME, assignClip, bindImportInput, createDefaultCutscene, createDefaultDocument, createDefaultMaterial, createDefaultUi, deleteAsset, duplicateAsset, importFiles, isNodeDrag, logNamed, NODE_MIME, openAsset, openImport, reimportModel, reportAssetUsers } from '../assets/import'
 import { savePrefabFromSelection } from '../assets/import'
 import { readPrefab } from '../assets/prefab'
 import { ASSETS_ROOT, directoryTree, findDir, isWithin, parentDir, type DirNode } from '../assets/folders'
@@ -58,6 +58,7 @@ const KIND_ICON = {
   prefab: Component,
   effect: Sparkles,
   ui: PanelsTopLeft,
+  cutscene: Film,
 } as const
 
 const KIND_COLOR: Record<string, string> = {
@@ -76,7 +77,7 @@ const KIND_COLOR: Record<string, string> = {
 
 function kindLabel(kind: string): string {
   const key = `asset.${kind}` as MessageKey
-  const known = ['scene', 'model', 'texture', 'environment', 'material', 'animation', 'audio', 'document', 'prefab', 'effect', 'ui']
+  const known = ['scene', 'model', 'texture', 'environment', 'material', 'animation', 'audio', 'document', 'prefab', 'effect', 'ui', 'cutscene']
   return known.includes(kind) ? translate(key) : kind
 }
 
@@ -810,6 +811,7 @@ function CreateMenu({ dir, onDone, onNewFolder }: { dir: string, onDone: () => v
             <button type="button" onClick={() => { useAssetStore.getState().setBrowseDir(dir); useEditorStore.getState().createScene(); onDone() }}><Globe size={12} />{t('project.createScene')}</button>
             <button type="button" onClick={() => { createDefaultMaterial(dir); onDone() }}><Palette size={12} />{t('project.createMaterial')}</button>
             <button type="button" onClick={() => { createDefaultUi(dir); onDone() }}><PanelsTopLeft size={12} />{t('project.createUi')}</button>
+            <button type="button" onClick={() => { createDefaultCutscene(dir); onDone() }}><Film size={12} />{t('project.createCutscene')}</button>
             <button type="button" onClick={() => {
               void createDefaultDocument(dir, 'md').then(id => {
                 const created = id ? useAssetStore.getState().assets[id] : null

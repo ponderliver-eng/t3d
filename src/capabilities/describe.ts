@@ -5,6 +5,7 @@ import { defaultNodePhysics } from './physics/defaults'
 import { CAPABILITIES, type CapabilityId, type CapabilityManifest } from './registry'
 import { defaultSkySettings } from './sky/defaults'
 import { defaultHeightFogSettings } from './fog/defaults'
+import { defaultWeatherSettings } from './weather/defaults'
 import { defaultWater } from './water/defaults'
 
 export interface CapabilityDescription {
@@ -97,6 +98,17 @@ const CAPABILITY_META: Record<CapabilityId | 'postEffects', CapabilityMetaEntry>
     writeWith: '脚本 API self.tween.to / value / punchScale / shakePosition',
     notes: ['无需节点数据槽，启用后可在行为脚本中直接使用 self.tween。'],
   },
+  cutscene: {
+    label: '过场动画序列 (Cutscene)',
+    description: '内置 Timeline/Sequence 过场编排系统，支持骨骼动作混合、变换/样条路径、材质与 TSL Shader 参数、灯光、画面后期、导演镜头与事件轨',
+    scope: 'picture',
+    dataPath: 'picture.capabilities.cutscene',
+    writeWith: 'cutscene.* 指令或编辑器「过场时间轴」面板',
+    fields: {
+      sequences: 'Array<CutsceneSequence>，场景过场序列列表',
+      activeSequenceId: 'string，当前编辑的过场序列 ID',
+    },
+  },
   crowd: {
     label: '群体避障（Crowd）',
     description: '多代理局部避障与群体移动（self.crowd）',
@@ -179,6 +191,31 @@ const CAPABILITY_META: Record<CapabilityId | 'postEffects', CapabilityMetaEntry>
       distanceNoiseScale: 'number，远近雾噪点空间尺度',
       distanceNoiseIntensity: 'number (0~1)，远近雾噪点扰动强度',
       distanceNoiseSpeed: 'number，远近雾噪点飘动速度',
+    },
+  },
+  weather: {
+    label: '天气系统与云层',
+    description: '天空双层云（积云+卷云）、相机环绕 GPU 降水粒子（雨/雪/沙尘）、地面湿润与积水涟漪、表面积雪覆盖及雷暴闪电',
+    scope: 'picture',
+    dataPath: 'picture.capabilities.weather',
+    writeWith: 'capability__setPictureData (capabilityId="weather")',
+    defaults: () => ({ ...defaultWeatherSettings() }),
+    fields: {
+      enabled: 'boolean，总开关',
+      preset: '"custom" | "clear" | "cloudy" | "rain" | "storm" | "snow" | "sandstorm"，天气预设',
+      cloudsEnabled: 'boolean，是否开启天空云层',
+      cloudCoverage: 'number (0~1)，云量覆盖率',
+      cloudDensity: 'number (0~2)，云体厚度',
+      cirrusEnabled: 'boolean，是否开启高空卷云',
+      precipitationType: '"none" | "rain" | "snow" | "sand"，降水粒子类型',
+      precipitationIntensity: 'number (0~1)，降水粒子密度',
+      wetnessEnabled: 'boolean，是否开启雨天地面湿润与积水（自动作用于所有标准材质）',
+      wetness: 'number (0~1)，湿润程度',
+      puddleAmount: 'number (0~1)，地面积水坑覆盖率',
+      ripplesEnabled: 'boolean，水坑雨滴涟漪开关',
+      snowCoverEnabled: 'boolean，是否开启表面积雪覆盖（自动作用于所有标准材质）',
+      snowCover: 'number (0~1)，积雪覆盖程度',
+      lightningEnabled: 'boolean，是否开启雷暴闪电',
     },
   },
   postEffects: {

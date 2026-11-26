@@ -5,6 +5,7 @@ import { addRuleScore } from './devices'
 import { findPackAction, findPackCondition, findPackTrigger, findRow, listEnabledPackTriggers } from '../gameplay/registry'
 import { playJuice } from '../gameplay/juice'
 import { playSound, stopMusic } from './audio'
+import { playCutscene, stopCutscene } from '../capabilities/cutscene/session'
 import { addRuntimeTag, clearRuntimeTags, nodeHasTag, removeRuntimeTag, tickRuntimeTags } from '../gameplay/runtimeTags'
 import { setScreenVisible } from './ui/values'
 import { getRuntimeWorld } from './world'
@@ -395,6 +396,16 @@ function run(node: SceneNode, step: RuleStep, job: Job, host: SceneRuntimeHost, 
     const amount = evaluate(step.value)
     lastValue = amount
     addRuleScore(amount)
+    return
+  }
+  if (step.do === 'playCutscene') {
+    const target = step.name.trim() || step.message.trim()
+    if (target) playCutscene(target)
+    return
+  }
+  if (step.do === 'stopCutscene') {
+    const target = step.name.trim() || step.message.trim()
+    stopCutscene(target || undefined)
     return
   }
   if (step.do === 'juice') {

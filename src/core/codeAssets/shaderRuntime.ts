@@ -177,6 +177,10 @@ function asNode(value: unknown): unknown {
   return value
 }
 
+export function coerceShaderUniformValue(schema: FieldSchema, raw: unknown): unknown {
+  return coerceUniformValue(schema, raw)
+}
+
 function coerceUniformValue(schema: FieldSchema, raw: unknown): unknown {
   const value = raw !== undefined ? raw : defaultForSchema(schema)
   if (schema.type === 'number') return Number(value) || 0

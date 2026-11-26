@@ -308,6 +308,12 @@ export interface AnimApi {
   stopUpper(fade?: number): void
 }
 
+export interface CutsceneApi {
+  play(nameOrId: string, options?: { loop?: boolean; speed?: number; startTime?: number; onComplete?: () => void }): boolean
+  stop(nameOrId?: string): void
+  isPlaying(nameOrId?: string): boolean
+}
+
 export interface AudioApi {
   playSfx(assetId: string, options?: { volume?: number; pitch?: number; position?: Vec3 }): void
   playBgm(assetId: string, options?: { volume?: number; loop?: boolean }): void
@@ -428,6 +434,7 @@ export interface ScriptContext<
   readonly crowd: CrowdApi
   readonly projectile: ProjectileApi
   readonly anim: AnimApi
+  readonly cutscene: CutsceneApi
   readonly audio: AudioApi
   readonly fx: FxApi
   readonly input: InputApi
@@ -537,6 +544,7 @@ export interface SystemWorldApi {
   readonly curve: CurveApi
   readonly crowd: SystemCrowdApi
   readonly projectile: SystemProjectileApi
+  readonly cutscene: CutsceneApi
   readonly input: InputApi
   readonly ui: UiApi
   readonly scene: SceneApi

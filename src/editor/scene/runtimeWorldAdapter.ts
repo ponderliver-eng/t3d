@@ -1,4 +1,5 @@
 import { getRuntimeWorld, setRuntimeWorld, type RuntimeWorld } from '../../runtime/world'
+import { applyCutscenePictureOverrides } from '../../runtime/engine/cutscene'
 import { bodyProgress, playBody, playUpper, stopUpper } from '../animation/director'
 import { useAssetStore } from '../assets/library'
 import { particleDescFor } from '../assets/materials'
@@ -17,7 +18,7 @@ export function createEditorRuntimeWorld(): RuntimeWorld {
     setNodes: (nodes) => useEditorStore.setState({ nodes, playDirty: true }),
     updateNode: (id, patch) => useEditorStore.getState().updateNode(id, patch),
     getActiveSceneId: () => useEditorStore.getState().activeSceneId,
-    getPicture: () => useEditorStore.getState().picture,
+    getPicture: () => applyCutscenePictureOverrides(useEditorStore.getState().picture),
     getCapabilities: () => useEditorStore.getState().capabilities,
     getGameplayPacks: () => useEditorStore.getState().gameplayPacks,
     getGameDatabase: () => useEditorStore.getState().gameDatabase,

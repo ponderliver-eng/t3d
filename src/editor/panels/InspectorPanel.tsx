@@ -42,6 +42,7 @@ import { EffectCard } from '../../capabilities/particles/EffectCard'
 import { NavigationCard, SceneNavigationCard } from '../../capabilities/navigation/NavigationCards'
 import { SkyCard } from '../../capabilities/sky/SkyCard'
 import { HeightFogCard } from '../../capabilities/fog/HeightFogCard'
+import { WeatherCard } from '../../capabilities/weather/WeatherCard'
 import { BuoyancyCard } from '../../capabilities/buoyancy/BuoyancyCard'
 import { BUOYANCY_CAPABILITY_ID, defaultBuoyancy } from '../../capabilities/buoyancy/defaults'
 import { SplineCard } from '../../capabilities/spline/SplineCard'
@@ -855,6 +856,7 @@ function SceneSettings() {
       <SceneNavigationCard />
       {capabilityEnabled(capabilities, 'sky') && <SkyCard />}
       {capabilityEnabled(capabilities, 'fog') && <HeightFogCard />}
+      {capabilityEnabled(capabilities, 'weather') && <WeatherCard />}
       </SceneColumn>
     </>
   )

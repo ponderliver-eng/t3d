@@ -7,6 +7,8 @@ import HierarchyPanel from '../panels/HierarchyPanel'
 import InspectorPanel from '../panels/InspectorPanel'
 import ViewportPanel from '../viewport/ViewportPanel'
 import ConsolePanel from '../panels/ConsolePanel'
+import CutscenePanel from '../panels/CutscenePanel'
+import { CutsceneFloatingHost } from '../panels/CutsceneFloatingHost'
 import HistoryPanel from '../panels/HistoryPanel'
 import { ErrorBoundary } from './ErrorBoundary'
 import { useEditorStore } from '../scene/store'
@@ -20,6 +22,7 @@ const PANELS: Record<PanelId, () => ReactElement> = {
   [PANEL.SCENE]: HierarchyPanel,
   [PANEL.VIEWPORT]: ViewportPanel,
   [PANEL.CONSOLE]: ConsolePanel,
+  [PANEL.CUTSCENE]: () => <CutscenePanel />,
   [PANEL.INSPECTOR]: InspectorPanel,
   [PANEL.HISTORY]: HistoryPanel,
 }
@@ -28,6 +31,7 @@ const TAB_NAME: Record<string, MessageKey> = {
   'tab-project': 'panel.project',
   'tab-viewport': 'panel.viewport',
   'tab-console': 'panel.console',
+  'tab-cutscene': 'panel.cutscene',
   'tab-scene': 'panel.scene',
   'tab-inspector': 'panel.inspector',
   'tab-history': 'panel.history',
@@ -117,6 +121,7 @@ export default function IDELayout() {
   return (
     <div className="ide-layout">
       <Layout model={model} factory={factory} onModelChange={onModelChange} onRenderTab={onRenderTab} />
+      <CutsceneFloatingHost />
     </div>
   )
 }

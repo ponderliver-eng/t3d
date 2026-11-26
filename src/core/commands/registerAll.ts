@@ -2,6 +2,7 @@ import { bindCommandBusToEditor } from './editorAdapter'
 import { registerAssetAndUiCommands } from './domains/assetAndUi'
 import { registerCapabilityCommands } from './domains/capability'
 import { registerCodeAssetCommands } from './domains/codeAssets'
+import { registerCutsceneCommands } from './domains/cutscene'
 import { registerGameplayCommands } from './domains/gameplay'
 import { registerPackCommands } from './domains/pack'
 import { registerPictureAndProjectCommands } from './domains/pictureAndProject'
@@ -18,6 +19,7 @@ export function ensureCoreCommandsRegistered(): () => void {
     registerPackCommands(),
     registerSceneCommands(),
     registerCapabilityCommands(),
+    registerCutsceneCommands(),
     registerGameplayCommands(),
     registerAssetAndUiCommands(),
     registerPictureAndProjectCommands(),

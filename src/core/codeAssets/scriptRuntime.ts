@@ -27,6 +27,8 @@ import {
 } from '../../runtime/character'
 import { onCharacterEvent } from '../../runtime/signals'
 import { getCompiledShaderParam, setCompiledShaderParam } from './shaderRuntime'
+import { getCutsceneScriptParamOverride } from '../../runtime/engine/cutscene'
+import { isCutscenePlaying, playCutscene, stopCutscene } from '../../capabilities/cutscene/session'
 import { measureCost } from '../../runtime/frameProfile'
 import {
   createAnimationCurve,
@@ -846,7 +848,9 @@ function buildScriptContext(
     const liveNode = world.getNodes()[node.id]
     const liveRaw = (liveNode?.gameplay?.packs?.__project__ as Record<string, unknown> | undefined)?.[scriptId]
     const chosen = liveRaw !== undefined ? liveRaw : rawParams
-    return chosen && typeof chosen === 'object' ? (chosen as Record<string, unknown>) : {}
+    const base = chosen && typeof chosen === 'object' ? (chosen as Record<string, unknown>) : {}
+    const override = getCutsceneScriptParamOverride(node.id, scriptId)
+    return override ? { ...base, ...override } : base
   }
   // 使用 Proxy 动态读取最新节点参数，确保 onStart / after / tween 等回调闭包捕获的 self.params 在 Play 调参时也能实时生效
   const liveParams = new Proxy(paramSchemas as Record<string, unknown>, {
@@ -1607,6 +1611,12 @@ function buildScriptContext(
       getModifiers: () => getCharacterModifiers(node.id),
       clearModifiers: () => clearCharacterModifiers(node.id),
     },
+    cutscene: {
+      play: (nameOrId: string, opts?: { loop?: boolean; speed?: number; startTime?: number; onComplete?: () => void }) =>
+        playCutscene(nameOrId, opts),
+      stop: (nameOrId?: string) => stopCutscene(nameOrId),
+      isPlaying: (nameOrId?: string) => isCutscenePlaying(nameOrId),
+    },
     audio: {
       playSfx: (assetId: string, opts?: { volume?: number; pitch?: number }) => {
         const now = typeof performance !== 'undefined' ? performance.now() : Date.now()
@@ -1989,6 +1999,12 @@ function buildSystemWorldApi(systemId: string, host: SceneRuntimeHost) {
         setCrowdFormation(ids, c, options)
       },
       stats: () => getCrowdStats(),
+    },
+    cutscene: {
+      play: (nameOrId: string, opts?: { loop?: boolean; speed?: number; startTime?: number; onComplete?: () => void }) =>
+        playCutscene(nameOrId, opts),
+      stop: (nameOrId?: string) => stopCutscene(nameOrId),
+      isPlaying: (nameOrId?: string) => isCutscenePlaying(nameOrId),
     },
     projectile: {
       launch: (

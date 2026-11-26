@@ -27,6 +27,7 @@ export const LIBRARY_ITEMS: LibraryItem[] = [
   { id: 'particles', shelf: 'capability', kind: 'capability', capabilityId: 'particles', name: 'library.item.particles', detail: 'library.item.particlesDetail', points: 'library.item.particlesPoints', hue: '#f2cf7f' },
   { id: 'sky', shelf: 'capability', kind: 'capability', capabilityId: 'sky', name: 'library.item.sky', detail: 'library.item.skyDetail', points: 'library.item.skyPoints', hue: '#7eb6ff' },
   { id: 'fog', shelf: 'capability', kind: 'capability', capabilityId: 'fog', name: 'library.item.fog', detail: 'library.item.fogDetail', points: 'library.item.fogPoints', hue: '#94a3b8' },
+  { id: 'weather', shelf: 'capability', kind: 'capability', capabilityId: 'weather', name: 'library.item.weather', detail: 'library.item.weatherDetail', points: 'library.item.weatherPoints', hue: '#60a5fa' },
   { id: 'water', shelf: 'capability', kind: 'capability', capabilityId: 'water', name: 'library.item.water', detail: 'library.item.waterDetail', points: 'library.item.waterPoints', hue: '#38bdf8' },
   { id: 'stats', shelf: 'gameplay', kind: 'soon', name: 'library.item.stats', detail: 'library.item.statsDetail', points: 'library.item.statsPoints', hue: '#e7a3b8' },
   { id: 'combat', shelf: 'gameplay', kind: 'soon', name: 'library.item.combat', detail: 'library.item.combatDetail', points: 'library.item.combatPoints', hue: '#e07a5f' },

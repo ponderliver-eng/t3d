@@ -153,6 +153,10 @@ export function collectSceneDependencies(
       if ('simulation' in asset && asset.simulation) {
         scanUnknownRefs(asset.simulation, assets, collected)
       }
+    } else if (asset.kind === 'cutscene') {
+      if ('sequence' in asset && asset.sequence) {
+        scanUnknownRefs(asset.sequence, assets, collected)
+      }
     }
   }
 

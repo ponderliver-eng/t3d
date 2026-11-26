@@ -3,6 +3,7 @@ import type { ClipCatalogEntry } from '../animation/playback'
 import type { ModelHumanoidAvatar } from '../animation/humanoidAvatar'
 import type { HumanoidRetargetAdjust } from '../animation/humanoidAdjust'
 import type { UiDocument } from '../../runtime/ui/spec'
+import type { CutsceneSequence } from '../../capabilities/cutscene/schema'
 import type { PbrSlot, SceneNode, ScenePicture, EditorView } from '../scene/types'
 import { ASSETS_ROOT, directoryExists, isWithin, joinDir, normalizeDir, parentDir, relocateDir, uniqueFolderName } from './folders'
 
@@ -54,6 +55,13 @@ export interface UiAsset {
   document: UiDocument
 }
 
+export interface CutsceneAsset {
+  id: string
+  name: string
+  kind: 'cutscene'
+  sequence: CutsceneSequence
+}
+
 export interface PrefabAsset {
   id: string
   name: string
@@ -72,7 +80,7 @@ export interface SceneAsset {
   editorView?: EditorView | null
 }
 
-export type ProjectAsset = FileAsset | MaterialAsset | PrefabAsset | SceneAsset | EffectAsset | UiAsset
+export type ProjectAsset = FileAsset | MaterialAsset | PrefabAsset | SceneAsset | EffectAsset | UiAsset | CutsceneAsset
 
 interface AssetState {
   assets: Record<string, ProjectAsset>

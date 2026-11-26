@@ -3,6 +3,7 @@ import { moveCharacters } from '../capabilities/physics/session'
 import { sampleWaterSurface } from '../capabilities/water/session'
 import { addRuntimeTag } from '../gameplay/runtimeTags'
 import { clearJuice } from '../gameplay/juiceClock'
+import { isCutsceneInputLocked } from '../capabilities/cutscene/session'
 import { emitCharacterEvent, emitFootstep } from './signals'
 import { playJuice } from '../gameplay/juice'
 import { carryFor } from './devices'
@@ -131,6 +132,10 @@ function stepCharacters(dt: number, host: SceneRuntimeHost) {
     runtimeModifiers.clear()
     consumeTaps()
     clearJuice()
+    return
+  }
+  if (isCutsceneInputLocked()) {
+    consumeTaps()
     return
   }
   simClock += Math.max(0, dt)

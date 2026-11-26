@@ -26,6 +26,7 @@ export const CONDS: RuleCondKind[] = ['always', 'hasTag', 'missingTag', 'compare
 export const STEP_KINDS: RuleStepKind[] = [
   'message', 'setVar', 'addTag', 'removeTag', 'wait', 'waitFrame', 'waitUpper', 'waitMark',
   'playClip', 'playUpper', 'stance',
+  'playCutscene', 'stopCutscene',
   'if', 'gather', 'each', 'switchState',
   'showUi', 'hideUi', 'lock', 'camera', 'moveTo', 'spawn', 'hide', 'score', 'juice', 'sound', 'log',
 ]
@@ -43,6 +44,8 @@ const TONE: Record<RuleStepKind, string> = {
   waitMark: '#fbbf24',
   playClip: '#f2cf7f',
   playUpper: '#f2cf7f',
+  playCutscene: '#c084fc',
+  stopCutscene: '#c084fc',
   stance: '#e7c56a',
   if: '#3b82f6',
   gather: '#22d3ee',
@@ -241,6 +244,16 @@ function StepFields({
     )
   }
   if (step.do === 'score') return <input disabled={disabled} value={step.value} placeholder={t('rule.amount')} onChange={event => onChange({ value: event.target.value })} />
+  if (step.do === 'playCutscene' || step.do === 'stopCutscene') {
+    return (
+      <input
+        disabled={disabled}
+        placeholder="过场序列名或 ID"
+        value={step.name}
+        onChange={e => onChange({ name: e.target.value })}
+      />
+    )
+  }
   if (step.do === 'juice') return <JuiceField value={step.name} disabled={disabled} onChange={name => onChange({ name })} />
   if (step.do === 'sound') {
     return (

@@ -2,6 +2,7 @@ import {
   AdditiveBlending,
   BackSide,
   BufferAttribute,
+  Color,
   CustomBlending,
   DoubleSide,
   FrontSide,
@@ -23,7 +24,7 @@ import {
   type Texture,
 } from 'three'
 import type { ParticleMaterialDesc } from '../../capabilities/particles/runtime'
-import { buildMaterialFromShader, type ShaderDefinition } from '../../core/codeAssets/shaderRuntime'
+import { buildMaterialFromShader, coerceShaderUniformValue, type ShaderDefinition, type ShaderUniformEntry } from '../../core/codeAssets/shaderRuntime'
 import type { AlphaMode, CullMode, ModelPartOverride, ParticleBlend, PbrSlot, SceneNode, SurfaceShader } from '../../editor/scene/types'
 
 export interface SurfaceSlot extends PbrSlot {
@@ -378,9 +379,8 @@ export function applySlotWithHost(material: Material, slot: PbrSlot, host: Mater
     const shaderId = surface.shader.slice('custom:'.length)
     const record = host.getCustomShader(shaderId)
     if (record?.definition) {
-      const paramsSig = surface.shaderParams ? JSON.stringify(surface.shaderParams) : ''
       const assetRev = host.getAssetRevision?.() ?? 0
-      const key = `${shaderId}:${record.updatedAt}:${assetRev}:${paramsSig}`
+      const key = `${shaderId}:${record.updatedAt}:${assetRev}`
       let next = material
       if (material.userData?.t3dCustomShaderKey !== key) {
         const built = buildMaterialFromShader(record.definition, surface.shaderParams)
@@ -389,6 +389,21 @@ export function applySlotWithHost(material: Material, slot: PbrSlot, host: Mater
         const token = materialSlotToken(material)
         if (token != null) next.userData.t3dSlot = token
         next.userData.t3dCustomShaderKey = key
+        next.userData.t3dCustomShaderUniforms = built.uniforms
+        next.userData.t3dCustomShaderParamsSig = surface.shaderParams ? JSON.stringify(surface.shaderParams) : ''
+      } else {
+        const paramsSig = surface.shaderParams ? JSON.stringify(surface.shaderParams) : ''
+        if (next.userData.t3dCustomShaderParamsSig !== paramsSig) {
+          next.userData.t3dCustomShaderParamsSig = paramsSig
+          const uniforms = next.userData.t3dCustomShaderUniforms as Record<string, ShaderUniformEntry> | undefined
+          if (uniforms && surface.shaderParams) {
+            for (const [paramKey, entry] of Object.entries(uniforms)) {
+              if (paramKey in surface.shaderParams) {
+                entry.node.value = coerceShaderUniformValue(entry.schema, surface.shaderParams[paramKey])
+              }
+            }
+          }
+        }
       }
       if (!record.definition.doubleSided) {
         next.side = sideFor(surface.cull)
@@ -667,4 +682,159 @@ export function padSkeletons(root: Object3D) {
     skeleton.boneMatrices = new Float32Array(target * 16)
     skeleton.update()
   })
+}
+
+function applyPropertyToSingleMaterial(mat: Material, prop: string, value: unknown) {
+  if (prop.startsWith('shaderParams.')) {
+    const paramKey = prop.slice('shaderParams.'.length)
+    const uniforms = mat.userData?.t3dCustomShaderUniforms as Record<string, ShaderUniformEntry> | undefined
+    const entry = uniforms?.[paramKey]
+    if (entry) {
+      entry.node.value = coerceShaderUniformValue(entry.schema, value)
+    }
+    return
+  }
+  const std = mat as MeshStandardMaterial & MeshBasicMaterial & MeshPhysicalMaterial
+  switch (prop) {
+    case 'color':
+      if (std.color && typeof value === 'string') std.color.set(value)
+      break
+    case 'emissive':
+      if (std.emissive && typeof value === 'string') std.emissive.set(value)
+      break
+    case 'emissiveIntensity':
+      if (typeof value === 'number') std.emissiveIntensity = value
+      break
+    case 'metalness':
+      if (typeof value === 'number') std.metalness = value
+      break
+    case 'roughness':
+      if (typeof value === 'number') std.roughness = value
+      break
+    case 'opacity':
+      if (typeof value === 'number') {
+        const nextTransparent = value < 0.999
+        if (mat.transparent !== nextTransparent) {
+          mat.transparent = nextTransparent
+          mat.needsUpdate = true
+        }
+        mat.opacity = value
+      }
+      break
+    case 'ao':
+      if (typeof value === 'number' && 'aoMapIntensity' in std) std.aoMapIntensity = value
+      break
+    case 'normalScale':
+      if (typeof value === 'number' && std.normalScale) std.normalScale.set(value, value)
+      break
+    case 'clearcoat':
+      if (typeof value === 'number' && 'clearcoat' in std) std.clearcoat = value
+      break
+    case 'clearcoatRoughness':
+      if (typeof value === 'number' && 'clearcoatRoughness' in std) std.clearcoatRoughness = value
+      break
+    case 'transmission':
+      if (typeof value === 'number' && 'transmission' in std) std.transmission = value
+      break
+    case 'ior':
+      if (typeof value === 'number' && 'ior' in std) std.ior = value
+      break
+    case 'sheen':
+      if (typeof value === 'number' && 'sheen' in std) std.sheen = value
+      break
+    case 'iridescence':
+      if (typeof value === 'number' && 'iridescence' in std) std.iridescence = value
+      break
+  }
+}
+
+/**
+ * 运行时零重建直接修改 Object3D 材质属性或 TSL 自定义着色器 Uniform。
+ * 支持路径：
+ * - `color` / `metalness` / `roughness` / `emissive` / `emissiveIntensity` / `opacity` / `shaderParams.<k>`
+ * - `slots.<idx>.<prop>`（针对多材质模型指定槽位）
+ */
+export function applyRuntimeMaterialProperty(root: Object3D, path: string, value: unknown): void {
+  let slotFilter = -1
+  let prop = path
+  if (path.startsWith('slots.')) {
+    const rest = path.slice('slots.'.length)
+    const dot = rest.indexOf('.')
+    if (dot > 0) {
+      const idx = Number(rest.slice(0, dot))
+      if (Number.isInteger(idx) && idx >= 0) {
+        slotFilter = idx
+        prop = rest.slice(dot + 1)
+      }
+    }
+  }
+  root.traverse((child) => {
+    const mesh = child as Mesh
+    if (!mesh.isMesh || !mesh.material) return
+    const list = Array.isArray(mesh.material) ? mesh.material : [mesh.material]
+    for (const mat of list) {
+      if (!mat) continue
+      if (slotFilter >= 0) {
+        const token = materialSlotToken(mat)
+        if (token !== null && token !== slotFilter) continue
+      }
+      applyPropertyToSingleMaterial(mat, prop, value)
+    }
+  })
+}
+
+export function readRuntimeMaterialProperty(root: Object3D, path: string): unknown {
+  let slotFilter = -1
+  let prop = path
+  if (path.startsWith('slots.')) {
+    const rest = path.slice('slots.'.length)
+    const dot = rest.indexOf('.')
+    if (dot > 0) {
+      const idx = Number(rest.slice(0, dot))
+      if (Number.isInteger(idx) && idx >= 0) {
+        slotFilter = idx
+        prop = rest.slice(dot + 1)
+      }
+    }
+  }
+  let found: unknown = undefined
+  root.traverse((child) => {
+    if (found !== undefined) return
+    const mesh = child as Mesh
+    if (!mesh.isMesh || !mesh.material) return
+    const list = Array.isArray(mesh.material) ? mesh.material : [mesh.material]
+    for (const mat of list) {
+      if (!mat) continue
+      if (slotFilter >= 0) {
+        const token = materialSlotToken(mat)
+        if (token !== null && token !== slotFilter) continue
+      }
+      if (prop.startsWith('shaderParams.')) {
+        const paramKey = prop.slice('shaderParams.'.length)
+        const uniforms = mat.userData?.t3dCustomShaderUniforms as Record<string, ShaderUniformEntry> | undefined
+        const entry = uniforms?.[paramKey]
+        if (entry) {
+          const val = entry.node.value
+          if (val && typeof val === 'object' && 'isColor' in val) found = `#${(val as Color).getHexString()}`
+          else if (val && typeof val === 'object' && 'x' in val && 'y' in val) {
+            const v = val as { x: number; y: number; z?: number; w?: number }
+            found = v.w !== undefined ? [v.x, v.y, v.z ?? 0, v.w] : v.z !== undefined ? [v.x, v.y, v.z] : [v.x, v.y]
+          } else {
+            found = val
+          }
+          return
+        }
+      }
+      const std = mat as MeshStandardMaterial & MeshBasicMaterial & MeshPhysicalMaterial
+      if (prop === 'color' && std.color) { found = `#${std.color.getHexString()}`; return }
+      if (prop === 'emissive' && std.emissive) { found = `#${std.emissive.getHexString()}`; return }
+      if (prop === 'emissiveIntensity' && typeof std.emissiveIntensity === 'number') { found = std.emissiveIntensity; return }
+      if (prop === 'metalness' && typeof std.metalness === 'number') { found = std.metalness; return }
+      if (prop === 'roughness' && typeof std.roughness === 'number') { found = std.roughness; return }
+      if (prop === 'opacity') { found = mat.opacity; return }
+      if (prop === 'ao' && 'aoMapIntensity' in std) { found = std.aoMapIntensity; return }
+      if (prop === 'normalScale' && std.normalScale) { found = std.normalScale.x; return }
+    }
+  })
+  return found
 }

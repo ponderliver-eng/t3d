@@ -1,4 +1,4 @@
-import type { EffectAsset, MaterialAsset, PrefabAsset, SceneAsset, UiAsset } from '../assets/library'
+import type { CutsceneAsset, EffectAsset, MaterialAsset, PrefabAsset, SceneAsset, UiAsset } from '../assets/library'
 import type { StoredNavMesh } from '../../capabilities/navigation/archive'
 import type { LayerDefinition, TagDefinition } from '../project/taxonomy'
 import type { SceneNode, ScenePicture } from './types'
@@ -10,7 +10,7 @@ export interface ProjectDocument {
   nodes: Record<string, SceneNode>
   selection: string[]
   picture: ScenePicture
-  library: Array<MaterialAsset | PrefabAsset | SceneAsset | EffectAsset | UiAsset>
+  library: Array<MaterialAsset | PrefabAsset | SceneAsset | EffectAsset | UiAsset | CutsceneAsset>
   folders?: string[]
   assetDirs?: Record<string, string>
   /** 官方能力包开关。缺省按各包的默认值。 */

@@ -407,6 +407,7 @@ export type CoreRuleCondKind = 'always' | 'hasTag' | 'missingTag' | 'compare' | 
 export type CoreRuleStepKind =
   | 'message' | 'setVar' | 'addTag' | 'removeTag' | 'wait' | 'waitFrame' | 'waitUpper' | 'waitMark'
   | 'playClip' | 'playUpper' | 'stance'
+  | 'playCutscene' | 'stopCutscene'
   | 'if' | 'gather' | 'each' | 'switchState'
   | 'showUi' | 'hideUi' | 'lock' | 'camera' | 'moveTo' | 'spawn' | 'hide' | 'score' | 'juice' | 'sound' | 'log'
 
@@ -474,6 +475,7 @@ const CONDS: CoreRuleCondKind[] = ['always', 'hasTag', 'missingTag', 'compare', 
 const STEPS: CoreRuleStepKind[] = [
   'message', 'setVar', 'addTag', 'removeTag', 'wait', 'waitFrame', 'waitUpper', 'waitMark',
   'playClip', 'playUpper', 'stance',
+  'playCutscene', 'stopCutscene',
   'if', 'gather', 'each', 'switchState',
   'showUi', 'hideUi', 'lock', 'camera', 'moveTo', 'spawn', 'hide', 'score', 'juice', 'sound', 'log',
 ]
@@ -671,6 +673,8 @@ export interface SceneRuntimeHost {
   consumePlayMarquee?: () => { ids: string[], additive: boolean } | null
   /** 将 3D 世界坐标投影到当前主视口屏幕像素坐标。 */
   worldToScreen?: (position: Vec3) => { x: number, y: number, ndcX: number, ndcY: number, visible: boolean } | null
+  /** Cutscene 系统对指定节点的骨骼动画做确定性采样（用于试玩与导出一致的序列动作播放）。 */
+  sampleNodeAnimation?: (nodeId: string, clips: readonly import('../capabilities/cutscene/schema').CutsceneAnimClip[], time: number) => boolean
 }
 
 /**

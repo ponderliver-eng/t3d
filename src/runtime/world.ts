@@ -26,6 +26,7 @@ export interface RuntimeAssetSummary {
   simulation?: unknown
   materialAssetId?: string | null
   quarksVersion?: string
+  sequence?: unknown
 }
 
 export interface RuntimeTagDef {

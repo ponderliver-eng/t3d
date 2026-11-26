@@ -49,6 +49,11 @@ import { buildUnityMetallicRoughnessTexture, loadUnpremultipliedTexture } from '
 import { loadBc7TextureFromUrl, rendererSupportsBc7 } from '../runtime/engine/bc7'
 import { buildPlayableClip } from '../runtime/engine/animation'
 import {
+  applyCutscenePictureOverrides,
+  isCutsceneDrivingAnim,
+  sampleCutsceneAnimationClips,
+} from '../runtime/engine/cutscene'
+import {
   appendSocketLocalPose,
   createNodeLight,
   createPrimitiveGeometry,
@@ -994,7 +999,7 @@ function buildStandaloneWorld(
       nodes = { ...nodes, [id]: { ...current, ...patch } }
     },
     getActiveSceneId: () => activeSceneId,
-    getPicture: () => picture,
+    getPicture: () => applyCutscenePictureOverrides(picture),
     getCapabilities: () => capabilities,
     getGameplayPacks: () => gameplayPacks,
     getGameDatabase: () => gameDatabase,
@@ -1838,32 +1843,34 @@ async function boot() {
       if (!mounted) return
       const nodes = world.getNodes()
       for (const [nodeId, entry] of mounted.animEntries) {
+        if (isCutsceneDrivingAnim(nodeId)) continue
         const node = nodes[nodeId]
-        if (!node?.animator?.enabled || node.clipPlaying === false) continue
-        if (entry.animatorState !== node.animator.stateId) {
-          entry.animatorState = node.animator.stateId
-          entry.animatorTime = 0
-        }
-        const st = activeAnimatorState(node.animator)
-        const dur = st?.clip ? (world.clipDuration?.(st.clipAssetId || node.assetId, st.clip) ?? 0) : 0
-        entry.animatorTime = (entry.animatorTime ?? 0) + dt * (st?.speed || 1)
-        const stepped = stepAnimator(node.animator, entry.animatorTime, dur)
-        if (stepped.changed) {
-          entry.animatorState = stepped.controller.stateId
-          entry.animatorTime = 0
-          world.updateNode(nodeId, { animator: stepped.controller })
-          const nextState = activeAnimatorState(stepped.controller)
-          if (nextState?.clip) {
-            playBodyOnEntry(entry, nextState.clip, assetMgr, {
-              assetId: nextState.clipAssetId,
-              loop: nextState.loop !== false,
-              fade: stepped.fade,
-              speed: nextState.speed,
-            })
+        if (node?.animator?.enabled && node.clipPlaying !== false) {
+          if (entry.animatorState !== node.animator.stateId) {
+            entry.animatorState = node.animator.stateId
+            entry.animatorTime = 0
+          }
+          const st = activeAnimatorState(node.animator)
+          const dur = st?.clip ? (world.clipDuration?.(st.clipAssetId || node.assetId, st.clip) ?? 0) : 0
+          entry.animatorTime = (entry.animatorTime ?? 0) + dt * (st?.speed || 1)
+          const stepped = stepAnimator(node.animator, entry.animatorTime, dur)
+          if (stepped.changed) {
+            entry.animatorState = stepped.controller.stateId
+            entry.animatorTime = 0
+            world.updateNode(nodeId, { animator: stepped.controller })
+            const nextState = activeAnimatorState(stepped.controller)
+            if (nextState?.clip) {
+              playBodyOnEntry(entry, nextState.clip, assetMgr, {
+                assetId: nextState.clipAssetId,
+                loop: nextState.loop !== false,
+                fade: stepped.fade,
+                speed: nextState.speed,
+              })
+            }
           }
         }
+        entry.mixer.update(dt)
       }
-      for (const mixer of mounted.mixers) mixer.update(dt)
     },
     probe: (origin: Vec3, direction: Vec3, max: number, ignoreId: string) => {
       if (!mounted) return null
@@ -1943,6 +1950,18 @@ async function boot() {
       const visible = inFront && projected.x >= -1 && projected.x <= 1 && projected.y >= -1 && projected.y <= 1
       return { x, y, ndcX: projected.x, ndcY: projected.y, visible }
     },
+    sampleNodeAnimation: (nodeId, clips, time) => {
+      if (!mounted) return false
+      const entry = mounted.animEntries.get(nodeId)
+      if (!entry) return false
+      return sampleCutsceneAnimationClips(entry.mixer, entry.actions, entry.ownerAssetId, clips, time, {
+        getClip: (sourceAssetId, clipName) => {
+          const resolved = resolvePlayerClipAndAsset(entry.ownerAssetId, clipName, sourceAssetId, assetMgr)
+          if (!resolved) return null
+          return buildBoundClip(resolved.clip, resolved.sourceId, entry.ownerAssetId, assetMgr, 'full', false)
+        },
+      })
+    },
   }
 
   let lastTime = performance.now()
@@ -1977,11 +1996,14 @@ async function boot() {
         }
       }
     }
-    const pic = world.getPicture()
+    const pic = applyCutscenePictureOverrides(world.getPicture())
+    if (pic !== world.getPicture()) {
+      renderer.toneMappingExposure = pic.exposure ?? 1.05
+    }
     if (picturePipeline.usesEffects(pic)) {
       picturePipeline.render(scene, camera, pic, window.innerWidth, Math.max(1, window.innerHeight))
     } else {
-    renderer.render(scene, camera)
+      renderer.render(scene, camera)
     }
     requestAnimationFrame(frame)
   }

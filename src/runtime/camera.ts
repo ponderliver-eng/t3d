@@ -1,4 +1,5 @@
 import { juiceShake } from '../gameplay/juiceClock'
+import { isCutsceneInputLocked } from '../capabilities/cutscene/session'
 import type { SceneNode, Vec3 } from '../editor/scene/types'
 import { defaultCameraFollow, defaultCharacter, registerRuntimeSystem, resolveCharacterCamera, type CameraFollowSpec, type SceneRuntimeHost } from './sceneRuntime'
 import { getRuntimeWorld } from './world'
@@ -32,6 +33,7 @@ function stepCameras(dt: number, host: SceneRuntimeHost) {
     return
   }
   if (playState !== 'playing') return
+  if (isCutsceneInputLocked()) return
   const nodes = world.getNodes()
   const wheel = host.wheel?.() ?? 0
   const active = Object.values(nodes).find(node => node.gameplay?.character?.enabled && node.gameplay.cameraFollow?.enabled !== false)

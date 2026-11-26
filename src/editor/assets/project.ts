@@ -1,4 +1,4 @@
-import type { EffectAsset, MaterialAsset, PrefabAsset, SceneAsset, UiAsset } from './library'
+import type { CutsceneAsset, EffectAsset, MaterialAsset, PrefabAsset, SceneAsset, UiAsset } from './library'
 import { assetDirectory, assetName, useAssetStore, type FileAsset } from './library'
 import {
   artifactKey,
@@ -287,7 +287,8 @@ export async function saveProjectNow() {
   if (editor.playState !== 'stopped' || editor.gesture) return
   editor.flushActiveScene()
   const library = Object.values(useAssetStore.getState().assets).filter(
-    (asset): asset is MaterialAsset | PrefabAsset | SceneAsset | EffectAsset | UiAsset => asset.kind === 'material' || asset.kind === 'prefab' || asset.kind === 'scene' || asset.kind === 'effect' || asset.kind === 'ui',
+    (asset): asset is MaterialAsset | PrefabAsset | SceneAsset | EffectAsset | UiAsset | CutsceneAsset =>
+      asset.kind === 'material' || asset.kind === 'prefab' || asset.kind === 'scene' || asset.kind === 'effect' || asset.kind === 'ui' || asset.kind === 'cutscene',
   )
   const catalog = useAssetStore.getState()
   const document: ProjectDocument = {
@@ -1158,7 +1159,7 @@ function replaceSession(document: ProjectDocument) {
   for (const asset of Object.values(useAssetStore.getState().assets)) {
     releaseRuntimeAsset(asset.id, 'url' in asset ? asset.url : '')
   }
-  const assets: Record<string, MaterialAsset | PrefabAsset | SceneAsset | EffectAsset | UiAsset> = {}
+  const assets: Record<string, MaterialAsset | PrefabAsset | SceneAsset | EffectAsset | UiAsset | CutsceneAsset> = {}
   for (const record of document.library) assets[record.id] = record
   const placed = applyWorkspace(document)
   useAssetStore.getState().loadSession(

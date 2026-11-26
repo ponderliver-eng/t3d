@@ -24,11 +24,13 @@ export const CAPABILITIES = [
   { id: 'navigation', defaultEnabled: true, category: 'physics' },
   { id: 'spline', defaultEnabled: true, category: 'animation', loadRuntime: () => import('./spline/session') },
   { id: 'tween', defaultEnabled: true, category: 'animation', loadRuntime: () => import('./tween/session') },
+  { id: 'cutscene', defaultEnabled: true, category: 'animation', loadRuntime: () => import('./cutscene/session') },
   { id: 'crowd', defaultEnabled: true, category: 'physics', loadRuntime: () => import('./crowd/session') },
   { id: 'projectile', defaultEnabled: true, category: 'physics', loadRuntime: () => import('./projectile/session') },
   { id: 'particles', defaultEnabled: false, category: 'scene-object' },
   { id: 'sky', defaultEnabled: false, category: 'environment', loadRuntime: () => import('./sky/session') },
   { id: 'fog', defaultEnabled: true, category: 'environment', loadRuntime: () => import('./fog/session') },
+  { id: 'weather', defaultEnabled: false, category: 'environment', loadRuntime: () => import('./weather/session') },
   { id: 'water', defaultEnabled: false, category: 'environment', loadRuntime: () => import('./water/session') },
 ] as const satisfies readonly CapabilityManifest[]
 

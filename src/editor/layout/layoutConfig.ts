@@ -7,6 +7,7 @@ export const PANEL = {
   SCENE: 'scene',
   VIEWPORT: 'viewport',
   CONSOLE: 'console',
+  CUTSCENE: 'cutscene',
   INSPECTOR: 'inspector',
   HISTORY: 'history',
 } as const
@@ -54,6 +55,7 @@ export const DEFAULT_LAYOUT: IJsonModel = {
             minHeight: 96,
             children: [
               { type: 'tab', id: 'tab-console', name: '控制台', component: PANEL.CONSOLE, enableClose: false },
+              { type: 'tab', id: 'tab-cutscene', name: '过场时间轴', component: PANEL.CUTSCENE, enableClose: false },
             ],
           },
         ],
@@ -83,7 +85,30 @@ export function loadLayout(): IJsonModel {
   try {
     const raw = localStorage.getItem(LAYOUT_KEY)
     if (!raw || !raw.includes(`"${PANEL.VIEWPORT}"`) || !raw.includes(`"${PANEL.SCENE}"`)) return DEFAULT_LAYOUT
-    return JSON.parse(raw) as IJsonModel
+    const parsed = JSON.parse(raw) as IJsonModel
+    if (!raw.includes(`"${PANEL.CUTSCENE}"`)) {
+      const inject = (node: Record<string, unknown>): boolean => {
+        if (Array.isArray(node.children)) {
+          const hasConsole = (node.children as Array<Record<string, unknown>>).some(c => c.id === 'tab-console')
+          if (hasConsole && node.type === 'tabset') {
+            ;(node.children as Array<Record<string, unknown>>).push({
+              type: 'tab',
+              id: 'tab-cutscene',
+              name: '过场时间轴',
+              component: PANEL.CUTSCENE,
+              enableClose: false,
+            })
+            return true
+          }
+          for (const child of node.children as Array<Record<string, unknown>>) {
+            if (inject(child)) return true
+          }
+        }
+        return false
+      }
+      inject(parsed.layout as unknown as Record<string, unknown>)
+    }
+    return parsed
   } catch {
     return DEFAULT_LAYOUT
   }

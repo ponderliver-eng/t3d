@@ -16,6 +16,8 @@ import { createScoreDocument } from '../../runtime/ui/spec'
 import { playSound } from '../../runtime/audio'
 import { collectUiImageIds } from '../../runtime/ui/tree'
 import { openUiEditor } from '../ui/session'
+import { createEmptySequence } from '../../capabilities/cutscene/schema'
+import { openCutsceneAsset } from '../panels/cutsceneWindowStore'
 import type { PbrSlot, SceneNode, Vec3 } from '../scene/types'
 
 export const ASSET_MIME = 'application/x-t3d-asset'
@@ -589,6 +591,17 @@ export function createDefaultUi(dir?: string) {
   openUiEditor(id)
 }
 
+export function createDefaultCutscene(dir?: string) {
+  const name = uniqueAssetName('过场序列')
+  const id = crypto.randomUUID()
+  const seq = createEmptySequence(name, id)
+  useAssetStore.getState().add({ id, name, kind: 'cutscene', sequence: seq })
+  useAssetStore.getState().place(id, dir)
+  useEditorStore.getState().inspectAsset(id)
+  openCutsceneAsset(id)
+  return id
+}
+
 export function createDefaultMaterial(dir?: string) {
   const name = uniqueAssetName(translate('project.newMaterialName'))
   const id = crypto.randomUUID()
@@ -619,7 +632,7 @@ export function createDefaultMaterial(dir?: string) {
 
 export function duplicateAsset(id: string) {
   const asset = useAssetStore.getState().assets[id]
-  if (!asset || (asset.kind !== 'material' && asset.kind !== 'scene' && asset.kind !== 'prefab' && asset.kind !== 'effect' && asset.kind !== 'ui')) return
+  if (!asset || (asset.kind !== 'material' && asset.kind !== 'scene' && asset.kind !== 'prefab' && asset.kind !== 'effect' && asset.kind !== 'ui' && asset.kind !== 'cutscene')) return
   const copy = structuredClone(asset)
   copy.id = crypto.randomUUID()
   copy.name = uniqueAssetName(`${asset.name} ${translate('project.copySuffix')}`)
@@ -816,6 +829,12 @@ function referencedBy(assetId: string): { name: string, assetId?: string }[] {
       collectUiImageIds(asset.document.root, images)
       if (images.has(assetId)) users.push({ name: asset.name, assetId: asset.id })
     }
+    if (asset.kind === 'cutscene') {
+      const seq = asset.sequence
+      const used = seq.tracks.some(t => t.clips?.some(c => c.clipAssetId === assetId))
+        || seq.eventTrack.some(e => e.assetId === assetId)
+      if (used) users.push({ name: asset.name, assetId: asset.id })
+    }
   }
   return users
 }
@@ -882,6 +901,10 @@ export async function openAsset(assetId: string) {
   if (!asset) return
   if (asset.kind === 'ui') {
     openUiEditor(asset.id)
+    return
+  }
+  if (asset.kind === 'cutscene') {
+    openCutsceneAsset(asset.id)
     return
   }
   if (asset.kind === 'audio') {

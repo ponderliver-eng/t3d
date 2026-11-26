@@ -47,6 +47,16 @@ import {
   stepActionBlend,
   type ActionBlend,
 } from '../../runtime/engine/animation'
+import {
+  applyCutsceneNodeProperty,
+  applyCutscenePictureOverrides,
+  clearCutsceneAnimMarks,
+  evaluateCutsceneCameraTrack,
+  isCutsceneDrivingAnim,
+  readCutsceneNodeProperty,
+  sampleCutsceneAnimationClips,
+} from '../../runtime/engine/cutscene'
+import { evaluateCutsceneTracks, getEditorCutscenePreview } from '../../capabilities/cutscene/session'
 import { createNodeLight, createPrimitiveGeometry, resolveToneMapping } from '../../runtime/engine/sceneNodes'
 import { useAssetStore } from '../assets/library'
 import { useCodeAssetStore } from '../../core/codeAssets/workspace'
@@ -198,6 +208,11 @@ export class EditorViewport {
   private readonly navDebug = new Group()
   private readonly scriptGizmos: ScriptGizmoManager
   private frameCamera: EditorCameraRig['active'] | null = null
+  private cutsceneBaseline: {
+    seqId: string
+    nodes: Map<string, Record<string, unknown>>
+    rig?: ReturnType<EditorCameraRig['snapshot']>
+  } | null = null
   private readonly viewForward = new Vector3()
   private readonly viewUp = new Vector3()
   private readonly viewQuat = new Quaternion()
@@ -490,6 +505,115 @@ export class EditorViewport {
         const visible = inFront && projected.x >= -1 && projected.x <= 1 && projected.y >= -1 && projected.y <= 1
         return { x, y, ndcX: projected.x, ndcY: projected.y, visible }
       },
+      sampleNodeAnimation: (nodeId, clips, time) => this.sampleCutsceneNodeAnimation(nodeId, clips, time),
+    }
+  }
+
+  private sampleCutsceneNodeAnimation(
+    nodeId: string,
+    clips: readonly import('../../capabilities/cutscene/schema').CutsceneAnimClip[],
+    time: number,
+  ): boolean {
+    const group = this.objects.get(nodeId)
+    const node = useEditorStore.getState().nodes[nodeId]
+    if (!group || !node || !node.assetId) return false
+    const data = dataOf(group)
+    if (!data.mixer || !data.actions) return false
+    const ownerId = node.assetId
+    return sampleCutsceneAnimationClips(data.mixer, data.actions, ownerId, clips, time, {
+      getClip: (sourceAssetId, clipName) => {
+        const list = sourceAssetId === ownerId
+          ? (getModelTemplate(ownerId)?.clips ?? [])
+          : clipsForSkeleton(sourceAssetId, ownerId)
+        return list.find(c => c.name === clipName) ?? (sourceAssetId !== ownerId && list.length === 1 ? list[0] : null)
+      },
+    })
+  }
+
+  private captureCutsceneBaseline(seq: import('../../capabilities/cutscene/schema').CutsceneSequence) {
+    const state = useEditorStore.getState()
+    const nodeSnaps = new Map<string, Record<string, unknown>>()
+    for (const track of seq.tracks) {
+      if (!track.targetNodeId || track.targetNodeId === '__picture__') continue
+      const node = state.nodes[track.targetNodeId]
+      const obj = this.objects.get(track.targetNodeId) ?? null
+      if (!node) continue
+      let snap = nodeSnaps.get(track.targetNodeId)
+      if (!snap) {
+        snap = {
+          position: readCutsceneNodeProperty(node, obj, 'position'),
+          rotation: readCutsceneNodeProperty(node, obj, 'rotation'),
+          scale: readCutsceneNodeProperty(node, obj, 'scale'),
+          visible: readCutsceneNodeProperty(node, obj, 'visible'),
+        }
+        nodeSnaps.set(track.targetNodeId, snap)
+      }
+      if (track.kind === 'property' && track.propertyPath && !(track.propertyPath in snap)) {
+        snap[track.propertyPath] = readCutsceneNodeProperty(node, obj, track.propertyPath)
+      }
+    }
+    this.cutsceneBaseline = {
+      seqId: seq.id,
+      nodes: nodeSnaps,
+      rig: seq.cameraTrack.length > 0 ? this.rig.snapshot() : undefined,
+    }
+  }
+
+  private restoreCutsceneBaseline() {
+    const base = this.cutsceneBaseline
+    if (!base) return
+    this.cutsceneBaseline = null
+    clearCutsceneAnimMarks()
+    const state = useEditorStore.getState()
+    for (const [nodeId, props] of base.nodes.entries()) {
+      const node = state.nodes[nodeId]
+      const obj = this.objects.get(nodeId) ?? null
+      if (!node || !obj) continue
+      for (const [path, val] of Object.entries(props)) {
+        if (val !== undefined) applyCutsceneNodeProperty(node, obj, path, val)
+      }
+      const data = dataOf(obj)
+      if (data.mixer) {
+        data.mixer.stopAllAction()
+        data.activeClip = ''
+        data.activeOverlay = ''
+        this.syncClip(data, node)
+      }
+    }
+    if (base.rig) {
+      this.rig.restore(base.rig)
+    }
+  }
+
+  private syncCutsceneEditorPreview() {
+    const state = useEditorStore.getState()
+    const preview = state.playState === 'stopped' ? getEditorCutscenePreview() : null
+    if (!preview) {
+      if (this.cutsceneBaseline) this.restoreCutsceneBaseline()
+      return
+    }
+    if (!this.cutsceneBaseline || this.cutsceneBaseline.seqId !== preview.sequence.id) {
+      if (this.cutsceneBaseline) this.restoreCutsceneBaseline()
+      this.captureCutsceneBaseline(preview.sequence)
+    }
+    const host = this.buildRuntimeHost()
+    const { sequence, time } = preview
+    clearCutsceneAnimMarks()
+    evaluateCutsceneTracks(sequence, time, state.nodes, host, 'transform')
+    evaluateCutsceneTracks(sequence, time, state.nodes, host, 'animation')
+    evaluateCutsceneTracks(sequence, time, state.nodes, host, 'render')
+    const camPose = evaluateCutsceneCameraTrack(
+      sequence.cameraTrack,
+      time,
+      state.nodes,
+      id => this.objects.get(id) ?? null,
+    )
+    if (camPose) {
+      this.rig.place(
+        new Vector3(camPose.position[0], camPose.position[1], camPose.position[2]),
+        new Vector3(camPose.lookAt[0], camPose.lookAt[1], camPose.lookAt[2]),
+        camPose.fov,
+      )
     }
   }
 
@@ -1707,6 +1831,7 @@ export class EditorViewport {
     this.frameCamera = this.activeCamera()
     attachAudioListener(this.viewCamera())
     stepSceneRuntime(dt, this.buildRuntimeHost())
+    this.syncCutsceneEditorPreview()
     this.pointerDelta = { x: 0, y: 0 }
     this.wheelDelta = 0
     this.followSimulatedParents()
@@ -1723,10 +1848,14 @@ export class EditorViewport {
     }
     this.flattenGizmo()
     this.frameCamera = this.activeCamera()
+    if (this.precompileState === 'running') {
+      this.publishStats()
+      return
+    }
     this.paintViewCube()
     if (this.ready && this.picture && this.width > 1 && this.height > 1) {
       const camera = this.viewCamera()
-      const picture = useEditorStore.getState().picture
+      const picture = applyCutscenePictureOverrides(useEditorStore.getState().picture)
       if (!picture.volume) this.volumeMuted = false
       try {
         measureCost('picture', () => {
@@ -1757,7 +1886,7 @@ export class EditorViewport {
         }
         if (this.precompileState === 'pending') {
           measureCost('precompile', () => this.beginPrecompile(drawFrame, camera, usesEffects))
-        } else if (this.precompileState !== 'running') {
+        } else {
           measureCost('render', drawFrame)
         }
       } catch (error) {
@@ -2105,7 +2234,7 @@ export class EditorViewport {
 
   private applyPicture() {
     const state = useEditorStore.getState()
-    const picture = state.picture
+    const picture = applyCutscenePictureOverrides(state.picture)
     if (!capabilityEnabled(state.capabilities, SKY_CAPABILITY_ID)) {
       const env = environmentFor(picture.envAssetId)
       if (env) {
@@ -2363,6 +2492,7 @@ export class EditorViewport {
       const node = nodes[id]
       const data = dataOf(group)
       if (!node || !data.mixer) continue
+      if (isCutsceneDrivingAnim(id)) continue
       const selected = state.selection.includes(id)
       if (justStarted) data.animatorTime = 0
       if (node.animator?.enabled && node.clipPlaying) {
