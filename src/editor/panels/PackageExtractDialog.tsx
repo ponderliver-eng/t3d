@@ -257,16 +257,21 @@ export function PackageExtractDialog({ file, open, onClose }: { file: File | nul
         </footer>
         {extracting && (
           <div className="pkg-extract__busy-overlay">
-            <div className="pkg-extract__busy-card">
-              <div className="pkg-extract__busy-head">
-                <span className="pkg-extract__spinner" />
-                <div>
-                  <strong>{t('pkg.extractingTitle')}</strong>
-                  <span>{t('pkg.extractingProgress', { completed: progress?.completed ?? 0, total: progress?.total ?? expanded.length })}</span>
-                </div>
+            <div className="pkg-extract__busy-card" role="status">
+              <span className="pkg-extract__spinner" />
+              <div className="pkg-extract__busy-copy">
+                <strong>{t('pkg.extractingTitle')}</strong>
+                <span>{t('pkg.extractingProgress', { completed: progress?.completed ?? 0, total: progress?.total ?? expanded.length })}</span>
               </div>
-              <p>{progress ? `${t(`pkg.phase.${progress.phase}` as MessageKey)}${progress.fileName ? ` · ${progress.fileName}` : ''}` : ''}</p>
-              <button type="button" className="pkg-extract__secondary" onClick={() => abortRef.current?.abort()}>{t('pkg.cancel')}</button>
+              <div className="pkg-extract__progress" aria-hidden="true">
+                <span style={{ width: `${Math.min(100, Math.round(((progress?.completed ?? 0) / Math.max(1, progress?.total ?? expanded.length)) * 100))}%` }} />
+              </div>
+              <p className="pkg-extract__busy-file" title={progress?.fileName || undefined}>
+                {progress ? `${t(`pkg.phase.${progress.phase}` as MessageKey)}${progress.fileName ? ` · ${progress.fileName}` : ''}` : ''}
+              </p>
+              <div className="pkg-extract__busy-actions">
+                <button type="button" className="pkg-extract__secondary" onClick={() => abortRef.current?.abort()}>{t('pkg.cancel')}</button>
+              </div>
             </div>
           </div>
         )}

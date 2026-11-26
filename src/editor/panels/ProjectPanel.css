@@ -405,6 +405,12 @@
   align-content: start;
 }
 
+.project-browse__assets.is-grid > .project-panel__hint-note {
+  grid-column: 1 / -1;
+  width: auto;
+  margin: 8px 4px 0;
+}
+
 .project-browse__assets.is-grid > .project-asset-block {
   min-width: 0;
 }
