@@ -198,7 +198,7 @@ export function WeatherCard() {
                     {weather.rainDripsEnabled && (
                       <>
                         <div className="iv2-pair">
-                          <WeatherNumber label={t('weather.rainDripsDensity')} value={weather.rainDripsDensity} min={0.05} max={1} step={0.01} onChange={(rainDripsDensity) => write({ rainDripsDensity })} />
+                          <WeatherNumber label={t('weather.rainDripsDensity')} value={weather.rainDripsDensity} min={0.05} max={3} step={0.05} onChange={(rainDripsDensity) => write({ rainDripsDensity })} />
                           <WeatherNumber label={t('weather.rainDripsIntensity')} value={weather.rainDripsIntensity} min={0} max={2} step={0.05} onChange={(rainDripsIntensity) => write({ rainDripsIntensity })} />
                         </div>
                         <WeatherNumber label={t('weather.rainDripsSpeed')} value={weather.rainDripsSpeed} min={0.2} max={3} step={0.05} onChange={(rainDripsSpeed) => write({ rainDripsSpeed })} />

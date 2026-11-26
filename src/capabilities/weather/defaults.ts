@@ -72,7 +72,7 @@ export interface WeatherSettings {
   rippleIntensity: number
   /** 角色与物体表面雨滴流淌水痕开关 */
   rainDripsEnabled: boolean
-  /** 角色与物体表面水滴数量占比 (0.05 ~ 1，控制水珠出现概率而非缩放 Tile) */
+  /** 角色与物体表面水滴数量 (0.05 ~ 3，控制水珠出现概率与多级流道密度) */
   rainDripsDensity: number
   /** 角色与物体表面水滴折射与高光强度 (0 ~ 2) */
   rainDripsIntensity: number
@@ -353,7 +353,7 @@ export function normalizeWeatherSettings(value: unknown): WeatherSettings {
     rippleDensity: clamp(raw.rippleDensity, base.rippleDensity, 0.05, 1),
     rippleIntensity: clamp(raw.rippleIntensity, base.rippleIntensity, 0, 2),
     rainDripsEnabled: bool(raw.rainDripsEnabled, base.rainDripsEnabled),
-    rainDripsDensity: clamp(raw.rainDripsDensity, base.rainDripsDensity, 0.05, 1),
+    rainDripsDensity: clamp(raw.rainDripsDensity, base.rainDripsDensity, 0.05, 3),
     rainDripsIntensity: clamp(raw.rainDripsIntensity, base.rainDripsIntensity, 0, 2),
     rainDripsSpeed: clamp(raw.rainDripsSpeed, base.rainDripsSpeed, 0.2, 3),
 

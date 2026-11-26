@@ -12,6 +12,7 @@ import type { ScenePicture } from '../editor/scene/types'
 import { composeSkyFog, skyFogActive, skyFogRevision } from '../capabilities/sky/session'
 import { buildHeightFogPass, heightFogActive, heightFogPipelineKey, type HeightFogPassHandle } from '../capabilities/fog/session'
 import {
+  buildWeatherObjectDripNode,
   buildWeatherSkyPass,
   buildWeatherSurfacePass,
   weatherActive,
@@ -227,7 +228,7 @@ export class RuntimePicturePipeline {
       const mrtNode = mrt({
         output,
         normal: vec4(packNormalToRGB(normalView), diffuseColor.a),
-        metalrough: vec4(metalness, roughness, 0, diffuseColor.a),
+        metalrough: vec4(metalness, roughness, buildWeatherObjectDripNode() as never, diffuseColor.a),
       })
       const materialBlend = mrtNode.getBlendMode('output')
       mrtNode.setBlendMode('normal', materialBlend)
