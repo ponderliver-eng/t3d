@@ -330,7 +330,7 @@ function ensurePrecipitationMesh(scene: Scene) {
 
   const snowW = tierWidthScale
     .mul(float(0.055).add(aMotion.w.mul(0.065)))
-    .mul(clamp(uSnowParticleSize, 0.3, 2.0))
+    .mul(clamp(uSnowParticleSize, 0.05, 2.0))
   const sandBillowW = tierWidthScale.mul(float(3.4).add(aMotion.w.mul(4.2)))
   const sandGrainW = tierWidthScale.mul(float(0.42).add(aMotion.w.mul(0.48)))
 

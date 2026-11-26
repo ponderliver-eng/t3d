@@ -216,7 +216,7 @@ const CAPABILITY_META: Record<CapabilityId | 'postEffects', CapabilityMetaEntry>
       rainStreakLength: 'number (0.05~1)，雨丝速度拉伸长度',
       rainStreakIntensity: 'number (0.2~3)，雨丝显示强度/可见度（避免被亮天空或雾遮盖）',
       rainRefractionEnabled: 'boolean，是否开启空中雨丝屏幕空间折射（关闭可回退至零额外 Pass 轻量雨丝）',
-      snowParticleSize: 'number (0.3~2)，雪花粒子尺寸倍率',
+      snowParticleSize: 'number (0.05~2)，雪花粒子尺寸倍率',
       snowSway: 'number (0~3)，雪花飘落左右随机摆动幅度',
       sandstormHaze: 'number (0~1)，沙尘暴景深黄沙雾化浓度',
       wetnessEnabled: 'boolean，是否开启雨天地面湿润与积水（自动作用于所有标准材质）',

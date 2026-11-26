@@ -57,7 +57,7 @@ export interface WeatherSettings {
   rainStreakIntensity: number
   /** 空中雨丝屏幕空间折射开关（关闭可节省一次半分辨率离屏 Pass） */
   rainRefractionEnabled: boolean
-  /** 雪花粒子尺寸倍率 (0.3 ~ 2) */
+  /** 雪花粒子尺寸倍率 (0.05 ~ 2) */
   snowParticleSize: number
   /** 雪花飘落左右随机摆动幅度 (0 ~ 3) */
   snowSway: number
@@ -360,7 +360,7 @@ export function normalizeWeatherSettings(value: unknown): WeatherSettings {
     rainStreakLength: clamp(raw.rainStreakLength, base.rainStreakLength, 0.05, 1),
     rainStreakIntensity: clamp(raw.rainStreakIntensity, base.rainStreakIntensity, 0.2, 3),
     rainRefractionEnabled: bool(raw.rainRefractionEnabled, base.rainRefractionEnabled),
-    snowParticleSize: clamp(raw.snowParticleSize, base.snowParticleSize, 0.3, 2),
+    snowParticleSize: clamp(raw.snowParticleSize, base.snowParticleSize, 0.05, 2),
     snowSway: clamp(raw.snowSway, base.snowSway, 0, 3),
     sandstormHaze: clamp(raw.sandstormHaze, base.sandstormHaze, 0, 1),
     splashEnabled: bool(raw.splashEnabled, base.splashEnabled),

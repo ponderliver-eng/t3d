@@ -175,7 +175,7 @@ export function WeatherCard() {
                     )}
                     {weather.precipitationType === 'snow' && (
                       <div className="iv2-pair">
-                        <WeatherNumber label={t('weather.snowParticleSize')} value={weather.snowParticleSize} min={0.3} max={2} step={0.05} onChange={(snowParticleSize) => write({ snowParticleSize })} />
+                        <WeatherNumber label={t('weather.snowParticleSize')} value={weather.snowParticleSize} min={0.05} max={2} step={0.05} onChange={(snowParticleSize) => write({ snowParticleSize })} />
                         <WeatherNumber label={t('weather.snowSway')} value={weather.snowSway} min={0} max={3} step={0.05} onChange={(snowSway) => write({ snowSway })} />
                       </div>
                     )}
