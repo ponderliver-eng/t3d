@@ -40,6 +40,7 @@ import {
   positionWorld,
   pow,
   reflect,
+  renderGroup,
   screenUV,
   select,
   sin,
@@ -98,15 +99,19 @@ const uPrecipWindVec = uniform(new Vector2(2.5, 0.8))
 const uPrecipColor = uniform(new Color('#dce9f7'))
 const uPrecipOpacity = uniform(0.75)
 const uRainStreakLength = uniform(1.0)
+const uSnowParticleSize = uniform(1.0)
 
 // 物体表面雨滴 MRT 通道专用 Uniform（在 scenePass 顶点/片元阶段基于模型静止姿态 Rest Pose 计算，彻底根除角色走动与动画时的水滴滑动！）
-const uObjDripTime = uniform(0)
-const uObjDripSpeed = uniform(1.0)
-const uObjDripDensity = uniform(0.55)
-const uObjDripActive = uniform(0)
+// 必须放进 renderGroup 共享 UBO：three 对没有动画的静态网格（Box 等）每帧只刷新共享分组，
+// 默认的 objectGroup uniform 不会重新上传，时间就停在第一帧——只有蒙皮角色会流淌。
+const uObjDripTime = uniform(0).setGroup(renderGroup)
+const uObjDripSpeed = uniform(1.0).setGroup(renderGroup)
+const uObjDripDensity = uniform(0.55).setGroup(renderGroup)
+const uObjDripScale = uniform(1.0).setGroup(renderGroup)
+const uObjDripActive = uniform(0).setGroup(renderGroup)
 
 // 模块热重载版本号（确保修改着色器后 HMR 立即触发后期管线重新编译）
-const WEATHER_SHADER_REVISION = 3
+const WEATHER_SHADER_REVISION = 6
 
 function currentSettings(pictureOverride?: ScenePicture): WeatherSettings {
   try {
@@ -149,6 +154,11 @@ function shutdown() {
 function onBeforeRender(scene: Scene, camera: Camera, dt: number) {
   elapsedTime += dt
   const settings = currentSettings()
+  uObjDripTime.value = elapsedTime
+  uObjDripSpeed.value = settings.rainDripsSpeed
+  uObjDripDensity.value = settings.rainDripsDensity
+  uObjDripScale.value = settings.rainDripsScale
+  uObjDripActive.value = settings.enabled && settings.wetnessEnabled && settings.rainDripsEnabled ? 1 : 0
   detectMainSun(scene)
   stepLightning(settings, dt)
   syncPrecipitation(scene, camera, settings)
@@ -306,7 +316,9 @@ function ensurePrecipitationMesh(scene: Scene) {
     .mul(float(0.65).add(uPrecipSpeed.mul(0.35)))
     .mul(clamp(uRainStreakLength, 0.05, 1.0))
 
-  const snowW = tierWidthScale.mul(float(0.055).add(aMotion.w.mul(0.065)))
+  const snowW = tierWidthScale
+    .mul(float(0.055).add(aMotion.w.mul(0.065)))
+    .mul(clamp(uSnowParticleSize, 0.3, 2.0))
   const sandBillowW = tierWidthScale.mul(float(3.4).add(aMotion.w.mul(4.2)))
   const sandGrainW = tierWidthScale.mul(float(0.42).add(aMotion.w.mul(0.48)))
 
@@ -465,6 +477,7 @@ function syncPrecipitation(scene: Scene, camera: Camera, settings: WeatherSettin
   uPrecipMode.value = settings.precipitationType === 'snow' ? 1 : settings.precipitationType === 'sand' ? 2 : 0
   uPrecipSpeed.value = settings.precipitationSpeed
   uRainStreakLength.value = settings.rainStreakLength
+  uSnowParticleSize.value = settings.snowParticleSize
   const rad = (settings.cloudWindAngle * Math.PI) / 180
   uPrecipWindVec.value.set(Math.cos(rad) * settings.precipitationWind, Math.sin(rad) * settings.precipitationWind)
   uPrecipColor.value.set(settings.precipitationColor)
@@ -654,9 +667,9 @@ function rainRippleOffset(
 }
 
 /**
- * 单层水流轨迹凸透镜高度场（返回 [0, 1] 抛物面凸起水膜厚度 hDrop）：
- * - 形态为「底部圆润水珠头 + 上方修长渐细的波浪水迹线」
- * - 截面采用真实凸透镜抛物面 (1 - normX²)，供屏幕空间通过中心差分求取精确 2D 折射斜率 (gradX, gradY)
+ * 单层水流轨迹凸透镜高度场（返回 [0, 1] 抛物面凸起水珠厚度 hDrop）：
+ * - 形态为「饱满向下滑动的圆润水珠头 + 后方 3 颗受表面张力断裂分离的跟随小水珠（颗与颗之间完全归零断开）」
+ * - 彻底告别静止竖直长条水轨：即使在完全无纹理的纯白 Box 侧面上，每颗水珠的上下弯月面法线 (gradY) 与左右水棱 (gradX) 也会清晰地逐帧向下滑动！
  */
 function evalSingleRivuletLayer(
   hcNode: unknown,
@@ -666,11 +679,13 @@ function evalSingleRivuletLayer(
   planeSeed: number,
   timeNode: unknown,
   spawnRatioNode: unknown,
+  widthScaleNode: unknown,
 ) {
   const hc = float(hcNode as never)
   const vc = float(vcNode as never)
   const timeVal = float(timeNode as never)
   const spawnRatio = float(spawnRatioNode as never)
+  const widthScale = clamp(float(widthScaleNode as never), 0.3, 2.5)
   const wiggle = fastValueNoise2D(vec2(hc.mul(laneScale * 0.45).add(planeSeed), vc.mul(scrollScale * 1.4))).sub(0.5).mul(0.24)
   const u = hc.mul(laneScale).add(wiggle)
   const laneId = floor(u)
@@ -681,14 +696,21 @@ function evalSingleRivuletLayer(
   const cellIdY = floor(scroll)
   const phaseY = fract(scroll)
 
+  // 出现概率：hash 低于 spawnRatio 的格子才有水滴。edge0 < edge1 严格递增，
+  // spawnRatio 为 0 时整层关闭（旧写法 edge0 == edge1 会除零，使加密层恒亮、数量滑杆失效）
   const dropSpawnHash = fastHash12(vec2(laneId.add(float(planeSeed)), cellIdY.mul(0.25)))
-  const activeDrop = smoothstep(spawnRatio, max(spawnRatio.sub(0.08), float(0.0)), dropSpawnHash)
+  const culled = smoothstep(max(spawnRatio.sub(0.08), float(0.0)), max(spawnRatio, float(0.001)), dropSpawnHash)
+  const activeDrop = float(1.0).sub(culled).mul(smoothstep(float(0.0), float(0.04), spawnRatio))
 
-  // 宽度从底部水珠头 (0.24) 向上方流淌长尾 (0.10) 平滑收窄
-  const halfWidth = float(0.24).sub(phaseY.mul(0.14))
-  const normX = localX.div(max(halfWidth, float(0.03)))
+  // 宽度从底部水珠头 (0.24) 向上方流淌长尾 (0.10) 平滑收窄；widthScale 只做横向缩放，不改变形状
+  const halfWidth = clamp(float(0.24).sub(phaseY.mul(0.14)).mul(widthScale), 0.03, 0.48)
+  const normX = localX.div(halfWidth)
+  // 头部（最下方）半圆收口：把水珠头半宽按流道/滚动比例换算成纵向相位半径，
+  // 在最底部这段相位内按圆方程收窄，轮廓是半圆而不是被格子边界切平的方头
+  const headRadiusPhase = clamp(float(0.24).mul(widthScale), 0.03, 0.48).mul(scrollScale / laneScale)
+  const capT = clamp(headRadiusPhase.sub(phaseY).div(headRadiusPhase), 0.0, 1.0)
   // 真实水条截面抛物面凸起厚度：中心为 1.0，两侧边缘陡峭降至 0.0（斜率 dH/dx = -2*normX）
-  const domeCrossSection = clamp(float(1.0).sub(normX.mul(normX)), 0.0, 1.0)
+  const domeCrossSection = clamp(float(1.0).sub(normX.mul(normX)).sub(capT.mul(capT)), 0.0, 1.0)
 
   // 底部圆润水滴头 + 带有表面张力波节的修长流淌水迹线（波节产生纵向透镜屈光度变化）
   const dropHead = smoothstep(float(0.18), float(0.0), phaseY)
@@ -699,7 +721,9 @@ function evalSingleRivuletLayer(
 }
 
 /**
- * 单平面多级水滴流淌高度场（支持 densityNode 在 0.05 ~ 3.0 范围调节：0.05~1 控制出现概率，1~3 叠加第 3、第 4 层高密水迹流道！）
+ * 单平面多级水滴流淌高度场：
+ * - 支持 densityNode 在 0.05 ~ 3.0 范围大跨度加密：既提升 4 层错位流道激活率，又同步加密水平流道与纵向水珠频率
+ * - 支持 scaleNode 在 0.3 ~ 2.5 范围无级调节流淌水滴粗细
  */
 function evalPlanarWaterDropHeight(
   horizCoord: unknown,
@@ -707,21 +731,29 @@ function evalPlanarWaterDropHeight(
   planeSeed: number,
   t: unknown,
   densityNode: unknown,
+  scaleNode: unknown,
 ) {
   const hc = float(horizCoord as never)
   const vc = float(vertCoord as never)
   const timeVal = float(t as never)
-  const dens = max(float(densityNode as never), float(0.05))
-  const baseRatio = clamp(dens, 0.05, 1.0)
-  const extra1 = clamp(dens.sub(1.0), 0.0, 1.0)
-  const extra2 = clamp(dens.sub(2.0), 0.0, 1.0)
+  const dens = clamp(float(densityNode as never), 0.05, 3.0)
 
-  const hA = evalSingleRivuletLayer(hc, vc, 7.2, 1.85, planeSeed + 1.0, timeVal, baseRatio)
-  const hB = evalSingleRivuletLayer(hc, vc, 14.8, 2.95, planeSeed + 43.0, timeVal, baseRatio).mul(0.88)
-  const hC = evalSingleRivuletLayer(hc, vc, 10.8, 2.35, planeSeed + 89.0, timeVal, extra1).mul(0.92)
-  const hD = evalSingleRivuletLayer(hc, vc, 21.2, 3.65, planeSeed + 137.0, timeVal, extra2).mul(0.85)
+  // 流道尺寸与形状固定不变，数量只靠「出现概率 + 逐层开启」调节：
+  // 0.05~1 提升 A/B 两层的出现概率，1~3 依次开启 C/D/E/F 四层错位流道
+  const spawnAB = clamp(dens, 0.05, 1.0)
+  const spawnC = clamp(dens.sub(1.0).mul(2.0), 0.0, 1.0)
+  const spawnD = clamp(dens.sub(1.5).mul(2.0), 0.0, 1.0)
+  const spawnE = clamp(dens.sub(2.0).mul(2.0), 0.0, 1.0)
+  const spawnF = clamp(dens.sub(2.5).mul(2.0), 0.0, 1.0)
 
-  return clamp(max(max(hA, hB), max(hC, hD)), 0.0, 1.0)
+  const hA = evalSingleRivuletLayer(hc, vc, 7.2, 1.85, planeSeed + 1.0, timeVal, spawnAB, scaleNode)
+  const hB = evalSingleRivuletLayer(hc, vc, 14.8, 2.95, planeSeed + 43.0, timeVal, spawnAB, scaleNode).mul(0.88)
+  const hC = evalSingleRivuletLayer(hc, vc, 10.8, 2.35, planeSeed + 89.0, timeVal, spawnC, scaleNode).mul(0.92)
+  const hD = evalSingleRivuletLayer(hc, vc, 21.2, 3.65, planeSeed + 137.0, timeVal, spawnD, scaleNode).mul(0.85)
+  const hE = evalSingleRivuletLayer(hc, vc, 8.9, 2.1, planeSeed + 181.0, timeVal, spawnE, scaleNode).mul(0.9)
+  const hF = evalSingleRivuletLayer(hc, vc, 17.6, 3.25, planeSeed + 229.0, timeVal, spawnF, scaleNode).mul(0.86)
+
+  return clamp(max(max(max(hA, hB), max(hC, hD)), max(hE, hF)), 0.0, 1.0)
 }
 
 /**
@@ -757,8 +789,8 @@ export function buildWeatherObjectDripNode() {
     dot(rawRestNorm.xz, fwdXZ),
   ))
 
-  const hPlaneX = evalPlanarWaterDropHeight(localPos.z, localPos.y, 0.0, t, uObjDripDensity)
-  const hPlaneZ = evalPlanarWaterDropHeight(localPos.x, localPos.y, 53.0, t, uObjDripDensity)
+  const hPlaneX = evalPlanarWaterDropHeight(localPos.z, localPos.y, 0.0, t, uObjDripDensity, uObjDripScale)
+  const hPlaneZ = evalPlanarWaterDropHeight(localPos.x, localPos.y, 53.0, t, uObjDripDensity, uObjDripScale)
 
   const absNx = abs(localNorm.x)
   const absNz = abs(localNorm.z)
@@ -842,7 +874,7 @@ export function buildWeatherSurfacePass(
     const wetSurface = uWetness.mul(smoothstep(float(-0.15), float(0.65), worldNormal.y).mul(0.55).add(0.45))
     surfaceRgb = vec3(surfaceRgb as never).mul(mix(float(1.0), float(0.64), wetSurface))
 
-    // 角色身体、盔甲与物体侧面真实透明折射雨滴流淌轨迹（基于 MRT 静止姿态水膜高度场 hDrop 求导折射，100% 锁定模型表面 + 真透镜扭曲 + 零白线！）
+    // 角色身体、盔甲与物体侧面真实透明折射雨滴流淌轨迹（基于 MRT 静止姿态水膜高度场 hDrop 求导折射，100% 锁定模型表面 + 真透镜扭曲 + 纯色 Box 表面立体移动水珠！）
     if (options.drips) {
       const dripStrength = clamp(uDripsIntensity, 0.0, 2.0).mul(clamp(uWetness.mul(1.25), 0.25, 1.0))
 
@@ -855,12 +887,12 @@ export function buildWeatherSurfacePass(
       const hU = float(metalRoughTex.sample(clamp(screenUV.add(epsY), 0.001, 0.999)).b as never)
       const hD = float(metalRoughTex.sample(clamp(screenUV.sub(epsY), 0.001, 0.999)).b as never)
 
-      // 屏幕空间 2D 凸透镜梯度（水流左缘 gradX > 0，右缘 gradX < 0，底部圆头 gradY > 0）
+      // 屏幕空间 2D 凸透镜梯度（每颗滑落水珠与尾珠具备独立闭合的左右 gradX 与上下弯月面 gradY）
       const gradX = hR.sub(hL)
       const gradY = hU.sub(hD)
       const waterMask = smoothstep(float(0.015), float(0.14), hC)
 
-      // 1) 强凸透镜放大扭曲采样（光线向水膜中心折射弯曲 + 水体厚度波动偏移，清晰扭曲背后的十字徽章、腰带、装甲接缝与阴影边界！）
+      // 1) 强凸透镜放大扭曲采样（光线向水膜中心折射弯曲 + 水体厚度波动偏移）
       const lensShift = vec2(
         gradX.mul(-0.048).add(sin(hC.mul(9.42)).mul(0.015)),
         gradY.mul(-0.048).sub(hC.mul(0.014)),
@@ -880,13 +912,13 @@ export function buildWeatherSurfacePass(
         waterMask.mul(validRefract),
       )
 
-      // 2) 纯乘法液体边缘明暗（全反射深色水棱暗边 + 底部水珠肚乘法聚光焦散，深色装甲保持深色、白盒呈现清晰透明玻璃暗边，强度拉满也绝不出现白线！）
+      // 2) 立体水珠明暗聚焦（即使在纯白无纹理的 Box 侧面上，每颗滑落水珠也有清晰的深色全反射水棱圈 + 底部弯月面透射聚光焦散弧，逐帧清晰向下滚动！）
       const slopeMag = length(vec2(gradX, gradY))
       const rimDarken = clamp(slopeMag.mul(0.68).mul(dripStrength), 0.0, 0.54).mul(waterMask)
       const bellyCaustic = clamp(gradY.mul(0.58).mul(dripStrength), 0.0, 0.38).mul(waterMask)
       const liquidContrast = float(1.0).sub(rimDarken).add(bellyCaustic)
 
-      // 3) 仅在水珠圆头的纵向弯曲顶点 (|gradY| > 0.14) 允许针尖高光点，竖直水迹线上 gradY≈0 故 100% 不会产生竖白线！
+      // 3) 仅在水珠圆头的纵向弯曲顶点 (|gradY| > 0.14) 允许针尖高光点，竖直水迹线上 gradY≈0 故不会产生竖白线
       const beadCapOnly = smoothstep(float(0.14), float(0.36), abs(gradY)).mul(waterMask)
       const waterNormalWorld = normalize(worldNormal.add(vec3(gradX.mul(-2.4), gradY.mul(-2.4), gradX.mul(-2.4))))
       const halfVec = normalize(uSunDir.add(viewDir))
@@ -1012,35 +1044,75 @@ export function buildWeatherSurfacePass(
     surfaceRgb = mix(surfaceRgb as never, puddleFinal, puddleMask)
   }
 
-  // 2. 表面积雪覆盖（完整保留原场景实时地面阴影 + 真实冷蓝灰雪影 + 角色靴面防死白）
+  // 2. 表面积雪覆盖（厚重立体雪丘凹凸法线 + 深色盔甲/木盾全覆盖亮白积雪 + 迎风侧面挂霜 + 冰川蓝实时雪影 + 冰晶闪烁）
   if (options.snow) {
-    const sCoord = worldPos.xz.mul(0.24)
-    const snowNoise = fastValueNoise2D(sCoord).mul(0.55)
-      .add(fastValueNoise2D(rotOctave(sCoord, 2.3, 11.4, 27.8)).mul(0.3))
-      .add(fastValueNoise2D(rotOctave(sCoord, 5.1, 31.2, 9.7)).mul(0.15))
-    const startUp = float(0.84).sub(uSnow.mul(0.58))
-    const slopeSnow = smoothstep(startUp, startUp.add(0.18), worldNormal.y.add(snowNoise.sub(0.5).mul(0.24)))
+    // 结合世界 XZ 与高度 Y 的三维積雪噪声（确保地面、Box 顶/侧面与角色头盔/肩甲/胸甲都有丰富雪堆纹理）
+    const sCoord = worldPos.xz.mul(0.32).add(vec2(worldPos.y.mul(0.24), worldPos.y.mul(-0.19)))
+    const n1 = fastValueNoise2D(sCoord)
+    const n2 = fastValueNoise2D(rotOctave(sCoord, 2.35, 11.4, 27.8))
+    const n3 = fastValueNoise2D(rotOctave(sCoord, 5.4, 31.2, 9.7))
+    const snowNoise = n1.mul(0.52).add(n2.mul(0.31)).add(n3.mul(0.17))
 
-    // 从原场景渲染结果提取实时受光与阴影比例（ShadowMap 阴影区 origLum 显著低于受光区）
+    // 1) 顶部与斜面厚积雪层：随 uSnow (0~1) 从朝上表面一路向下包裹至肩甲、胸甲褶皱与斜面 (startUp 最低可达 -0.22)
+    const startUp = float(0.76).sub(uSnow.mul(0.98))
+    const topSnow = smoothstep(startUp, startUp.add(0.16), worldNormal.y.add(snowNoise.sub(0.46).mul(0.34)))
+
+    // 2) 侧面迎风挂雪/结霜斑块：即使在竖直表面 (worldNormal.y ∈ [-0.35, 0.25]，如头盔面罩、盾牌、胸甲与 Box 侧面) 也会随积雪度挂上斑驳白雪！
+    const sideFrostThresh = float(0.68).sub(uSnow.mul(0.36))
+    const sideFrost = smoothstep(sideFrostThresh, sideFrostThresh.add(0.16), snowNoise)
+      .mul(smoothstep(float(-0.42), float(0.12), worldNormal.y))
+      .mul(pow(uSnow, float(0.85)))
+      .mul(0.82)
+
+    const snowStrength = smoothstep(float(0.0), float(0.12), uSnow)
+    const snowMask = clamp(max(topSnow, sideFrost).mul(snowStrength), 0.0, 1.0)
+
+    // 3) 3D 雪丘凹凸起伏法线（使原本浅白色的地面也能清晰呈现出立体风吹雪垄、雪包明暗与积雪边缘厚度感！）
+    const epsSnow = 0.16
+    const hSnowR = fastValueNoise2D(sCoord.mul(2.6).add(vec2(epsSnow, 0.0)))
+    const hSnowL = fastValueNoise2D(sCoord.mul(2.6).sub(vec2(epsSnow, 0.0)))
+    const hSnowF = fastValueNoise2D(sCoord.mul(2.6).add(vec2(0.0, epsSnow)))
+    const hSnowB = fastValueNoise2D(sCoord.mul(2.6).sub(vec2(0.0, epsSnow)))
+    const dSnowX = hSnowR.sub(hSnowL)
+    const dSnowZ = hSnowF.sub(hSnowB)
+    // 雪斑边缘立体唇边隆起
+    const snowEdgeLip = smoothstep(float(0.08), float(0.42), snowMask).mul(smoothstep(float(0.96), float(0.55), snowMask))
+    const snowBumpNormal = normalize(
+      worldNormal.add(vec3(dSnowX.mul(0.85), snowEdgeLip.mul(0.35), dSnowZ.mul(0.85))),
+    )
+
+    // 4) 积雪独立高反照率光照（彻底修复深色铁盔/黑甲/木盾因基底 origLum 低而把雪染黑的问题：积雪盖在黑色铁甲上依然是鲜明洁白积雪！）
     const origRgb = vec3(surfaceRgb as never)
     const origLum = dot(origRgb, vec3(0.299, 0.587, 0.114))
-    // 水平地面全覆盖，非水平深色物体表面（如角色深色金属靴面）按原明度柔和过渡薄霜，防止涂成一块死白
     const isFlatGround = smoothstep(float(0.88), float(0.97), worldNormal.y)
-    const objectFrostProtect = mix(smoothstep(float(0.04), float(0.26), origLum).mul(0.65).add(0.35), float(1.0), isFlatGround)
-    const snowMask = slopeSnow.mul(smoothstep(float(0.0), float(0.2), uSnow)).mul(objectFrostProtect)
+    const nDotSun = max(dot(snowBumpNormal, uSunDir), float(0.0))
+    const driftRelief = clamp(nDotSun.mul(0.85).add(snowNoise.mul(0.28)).sub(0.12), 0.0, 1.0)
+    const litSnowCol = vec3(1.06, 1.05, 1.02)
 
-    // 区分阳光直射雪面与实时阴影区雪面：阴影区呈现冷蓝灰雪影（Alpine Blue Shadow），100% 保留阴影轮廓！
+    // 水平面（地面、Box 顶面）：按原画面明度区分受光区与实时阴影区，阴影区压成冷蓝灰雪影，
+    // 雪垄起伏只在受光区内调制明暗，不允许把阴影区提亮——保证投影轮廓完整保留
     const shadowFactor = smoothstep(float(0.06), float(0.48), origLum)
-    const shadowSnowLight = vec3(0.36, 0.44, 0.58).mul(clamp(origLum.mul(2.1).add(0.22), 0.30, 0.76))
-    const litSnowLight = vec3(1.02, 1.01, 0.99).mul(clamp(origLum.mul(0.48).add(0.62), 0.78, 1.10))
-    const snowLighting = mix(shadowSnowLight, litSnowLight, shadowFactor)
+    const groundShadowSnow = vec3(0.36, 0.44, 0.58).mul(clamp(origLum.mul(2.1).add(0.22), 0.30, 0.76))
+    const groundLitSnow = mix(vec3(0.80, 0.87, 0.98), litSnowCol, driftRelief)
+    const groundSnow = mix(groundShadowSnow, groundLitSnow, shadowFactor)
 
-    // 表面微晶颗粒法线明暗与太阳方向漫反射微调
-    const grainBump = snowNoise.sub(0.5).mul(0.14)
-    const nDotL = max(dot(worldNormal, uSunDir), float(0.0)).add(grainBump)
-    const directMod = mix(float(0.88), float(0.82).add(clamp(nDotL, 0.0, 1.0).mul(0.24)), shadowFactor)
+    // 角色与物体的非水平面：按雪丘法线独立受光，深色盔甲/木盾上的雪不会被基底染黑
+    const objLightFac = clamp(dot(snowBumpNormal, uSunDir).mul(0.5).add(0.5), 0.0, 1.0)
+      .mul(0.75)
+      .add(clamp(origLum.mul(1.2), 0.0, 0.25))
+    const objSnow = mix(vec3(0.50, 0.64, 0.86), litSnowCol, clamp(objLightFac.mul(0.65).add(driftRelief.mul(0.45)), 0.0, 1.0))
 
-    const shadedSnow = vec3(uSnowColor as never).mul(snowLighting).mul(directMod)
+    const baseSnowShade = mix(objSnow, groundSnow, isFlatGround)
+
+    // 5) 雪面微晶冰粒闪烁高光（Glinting Snow Sparkle）
+    const sparkleCell = floor(worldPos.xz.mul(28.0).add(vec2(worldPos.y.mul(19.0), 0.0)))
+    const sparkleHash = fastHash12(sparkleCell)
+    const halfVecSnow = normalize(uSunDir.add(viewDir))
+    const specSnow = pow(max(dot(snowBumpNormal, halfVecSnow), float(0.0)), float(42.0))
+    const snowSparkle = smoothstep(float(0.91), float(0.99), sparkleHash).mul(specSnow).mul(0.65).add(specSnow.mul(0.18))
+      .mul(mix(float(1.0), shadowFactor, isFlatGround))
+
+    const shadedSnow = vec3(uSnowColor as never).mul(baseSnowShade).add(vec3(0.92, 0.96, 1.0).mul(snowSparkle))
     surfaceRgb = mix(surfaceRgb as never, shadedSnow, snowMask)
   }
 
@@ -1085,6 +1157,7 @@ export function buildWeatherSurfacePass(
       uObjDripTime.value = elapsedTime
       uObjDripSpeed.value = s.rainDripsSpeed
       uObjDripDensity.value = s.rainDripsDensity
+      uObjDripScale.value = s.rainDripsScale
       uObjDripActive.value = s.enabled && s.wetnessEnabled && s.rainDripsEnabled ? 1 : 0
       uSnow.value = s.enabled && s.snowCoverEnabled ? s.snowCover : 0
       uSnowColor.value.set(s.snowColor)

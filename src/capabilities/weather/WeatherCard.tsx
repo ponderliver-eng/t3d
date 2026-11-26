@@ -167,6 +167,9 @@ export function WeatherCard() {
                     {weather.precipitationType === 'rain' && (
                       <WeatherNumber label={t('weather.rainStreakLength')} value={weather.rainStreakLength} min={0.05} max={1} step={0.01} onChange={(rainStreakLength) => write({ rainStreakLength })} />
                     )}
+                    {weather.precipitationType === 'snow' && (
+                      <WeatherNumber label={t('weather.snowParticleSize')} value={weather.snowParticleSize} min={0.3} max={2} step={0.05} onChange={(snowParticleSize) => write({ snowParticleSize })} />
+                    )}
                     {weather.precipitationType === 'sand' && (
                       <WeatherNumber label={t('weather.sandstormHaze')} value={weather.sandstormHaze} min={0} max={1} step={0.02} onChange={(sandstormHaze) => write({ sandstormHaze })} />
                     )}
@@ -201,7 +204,10 @@ export function WeatherCard() {
                           <WeatherNumber label={t('weather.rainDripsDensity')} value={weather.rainDripsDensity} min={0.05} max={3} step={0.05} onChange={(rainDripsDensity) => write({ rainDripsDensity })} />
                           <WeatherNumber label={t('weather.rainDripsIntensity')} value={weather.rainDripsIntensity} min={0} max={2} step={0.05} onChange={(rainDripsIntensity) => write({ rainDripsIntensity })} />
                         </div>
-                        <WeatherNumber label={t('weather.rainDripsSpeed')} value={weather.rainDripsSpeed} min={0.2} max={3} step={0.05} onChange={(rainDripsSpeed) => write({ rainDripsSpeed })} />
+                        <div className="iv2-pair">
+                          <WeatherNumber label={t('weather.rainDripsScale')} value={weather.rainDripsScale} min={0.3} max={2.5} step={0.05} onChange={(rainDripsScale) => write({ rainDripsScale })} />
+                          <WeatherNumber label={t('weather.rainDripsSpeed')} value={weather.rainDripsSpeed} min={0.2} max={3} step={0.05} onChange={(rainDripsSpeed) => write({ rainDripsSpeed })} />
+                        </div>
                       </>
                     )}
                   </>

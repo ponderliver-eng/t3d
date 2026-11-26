@@ -53,6 +53,8 @@ export interface WeatherSettings {
   precipitationBoxSize: number
   /** 雨丝速度拉伸长度倍率 (0.05 ~ 1) */
   rainStreakLength: number
+  /** 雪花粒子尺寸倍率 (0.3 ~ 2) */
+  snowParticleSize: number
   /** 沙尘暴大气能见度黄沙雾化浓度 (0 ~ 1) */
   sandstormHaze: number
   /** 地面水花扰动开关 */
@@ -76,6 +78,8 @@ export interface WeatherSettings {
   rainDripsDensity: number
   /** 角色与物体表面水滴折射与高光强度 (0 ~ 2) */
   rainDripsIntensity: number
+  /** 角色与物体表面流淌水滴粗细倍率 (0.3 ~ 2.5) */
+  rainDripsScale: number
   /** 物体表面雨滴流淌速度 (0.2 ~ 3) */
   rainDripsSpeed: number
 
@@ -122,6 +126,7 @@ export function defaultWeatherSettings(): WeatherSettings {
     precipitationColor: '#dce9f7',
     precipitationBoxSize: 28,
     rainStreakLength: 0.45,
+    snowParticleSize: 1.0,
     sandstormHaze: 0.75,
     splashEnabled: true,
 
@@ -134,6 +139,7 @@ export function defaultWeatherSettings(): WeatherSettings {
     rainDripsEnabled: true,
     rainDripsDensity: 0.55,
     rainDripsIntensity: 1.0,
+    rainDripsScale: 1.0,
     rainDripsSpeed: 1.0,
 
     snowCoverEnabled: false,
@@ -343,6 +349,7 @@ export function normalizeWeatherSettings(value: unknown): WeatherSettings {
     precipitationColor: colorOf(raw.precipitationColor, base.precipitationColor),
     precipitationBoxSize: clamp(raw.precipitationBoxSize, base.precipitationBoxSize, 12, 60),
     rainStreakLength: clamp(raw.rainStreakLength, base.rainStreakLength, 0.05, 1),
+    snowParticleSize: clamp(raw.snowParticleSize, base.snowParticleSize, 0.3, 2),
     sandstormHaze: clamp(raw.sandstormHaze, base.sandstormHaze, 0, 1),
     splashEnabled: bool(raw.splashEnabled, base.splashEnabled),
 
@@ -355,6 +362,7 @@ export function normalizeWeatherSettings(value: unknown): WeatherSettings {
     rainDripsEnabled: bool(raw.rainDripsEnabled, base.rainDripsEnabled),
     rainDripsDensity: clamp(raw.rainDripsDensity, base.rainDripsDensity, 0.05, 3),
     rainDripsIntensity: clamp(raw.rainDripsIntensity, base.rainDripsIntensity, 0, 2),
+    rainDripsScale: clamp(raw.rainDripsScale, base.rainDripsScale, 0.3, 2.5),
     rainDripsSpeed: clamp(raw.rainDripsSpeed, base.rainDripsSpeed, 0.2, 3),
 
     snowCoverEnabled: bool(raw.snowCoverEnabled, base.snowCoverEnabled),
