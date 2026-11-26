@@ -1,11 +1,36 @@
-import type { Camera, Scene } from 'three'
-import { Color, OrthographicCamera } from 'three'
+import type { Camera, Object3D, Scene } from 'three'
+import { Color, DirectionalLight, OrthographicCamera, Quaternion, Vector3 } from 'three'
 import type { WebGPURenderer } from 'three/webgpu'
 import { mix, uniform, vec4 } from 'three/tsl'
 import { Sky, type SkyMoonlight, type SkyNight, type SkySun } from '@pmndrs/sky'
 import { EDITOR_HELPER_LAYER } from '../../core/layers'
 import type { SkySettings } from './defaults'
 import { setSkyViewState } from './session'
+
+const DOWN_AXIS = new Vector3(0, -1, 0)
+const tmpSunPos = new Vector3()
+const tmpSunTarget = new Vector3()
+const tmpSunDir = new Vector3()
+const tmpMoonDir = new Vector3()
+const tmpRayDir = new Vector3()
+const tmpTargetQuat = new Quaternion()
+const tmpParentQuat = new Quaternion()
+
+const NOON_TINT = new Color('#ffffff')
+const HORIZON_TINT = new Color('#ff9c54')
+const MOON_TINT = new Color('#8fb2e8')
+const NIGHT_TINT = new Color('#5c78a6')
+const tmpDayTint = new Color()
+const tmpNightTint = new Color()
+const tmpFinalTint = new Color()
+
+interface LightAppearanceBaseline {
+  baseIntensity: number
+  baseColor: Color
+  lastAppliedIntensity: number
+  lastAppliedColor: Color
+  applied: boolean
+}
 
 /**
  * 唯一允许 import `@pmndrs/sky` 的文件。
@@ -33,6 +58,8 @@ class SkyRuntime {
   private apKey = ''
   private apFrame = 0
   private apWarned = false
+  private readonly lightBaselines = new WeakMap<DirectionalLight, LightAppearanceBaseline>()
+  private lastManagedLight: DirectionalLight | null = null
   private readonly applyFogNode = (colorNode: unknown, scenePass: unknown) => {
     let node = colorNode
     if (this.hazeOn && this.sky.aerialPerspectiveTexture) {
@@ -116,6 +143,7 @@ class SkyRuntime {
     this.syncStars(settings)
     this.applied = settings
     this.sky.update(camera)
+    this.syncFirstDirectionalLight(settings)
     this.applyCelestialFade(settings, prev)
     if (settings.haze && this.hazeReady()) {
       const e = camera.matrixWorld.elements
@@ -149,6 +177,8 @@ class SkyRuntime {
   }
 
   dispose() {
+    this.restoreLightAppearance(this.lastManagedLight)
+    this.lastManagedLight = null
     if (this.apFrame) cancelAnimationFrame(this.apFrame)
     this.apFrame = 0
     this.starToken += 1
@@ -258,6 +288,184 @@ class SkyRuntime {
     night.setContrast(40 * scale)
     night.setMilkyWayContrast(20 * scale)
   }
+
+  private restoreLightAppearance(light: DirectionalLight | null) {
+    if (!light) return
+    const baseline = this.lightBaselines.get(light)
+    if (!baseline || !baseline.applied) return
+    light.intensity = baseline.baseIntensity
+    light.color.copy(baseline.baseColor)
+    baseline.lastAppliedIntensity = baseline.baseIntensity
+    baseline.lastAppliedColor.copy(baseline.baseColor)
+    baseline.applied = false
+  }
+
+  private captureOrSyncBaseline(light: DirectionalLight): LightAppearanceBaseline {
+    let baseline = this.lightBaselines.get(light)
+    if (!baseline) {
+      baseline = {
+        baseIntensity: light.intensity,
+        baseColor: light.color.clone(),
+        lastAppliedIntensity: light.intensity,
+        lastAppliedColor: light.color.clone(),
+        applied: false,
+      }
+      this.lightBaselines.set(light, baseline)
+      return baseline
+    }
+    if (!baseline.applied) {
+      baseline.baseIntensity = light.intensity
+      baseline.baseColor.copy(light.color)
+      baseline.lastAppliedIntensity = light.intensity
+      baseline.lastAppliedColor.copy(light.color)
+      return baseline
+    }
+    // 若外部（如编辑器属性面板或节点同步）改写了强度或颜色，将其视为新的正午基准值
+    if (Math.abs(light.intensity - baseline.lastAppliedIntensity) > 1e-4) {
+      baseline.baseIntensity = light.intensity
+    }
+    if (
+      Math.abs(light.color.r - baseline.lastAppliedColor.r) > 1e-4
+      || Math.abs(light.color.g - baseline.lastAppliedColor.g) > 1e-4
+      || Math.abs(light.color.b - baseline.lastAppliedColor.b) > 1e-4
+    ) {
+      baseline.baseColor.copy(light.color)
+    }
+    return baseline
+  }
+
+  private syncFirstDirectionalLight(settings: SkySettings) {
+    const wantAngle = settings.lockFirstDirectionalLight
+    const wantAppearance = settings.syncFirstDirectionalLightAppearance
+    const firstLight = findFirstSceneDirectionalLight(this.scene, this.sun.light, this.moon?.moon.light ?? null)
+
+    if (this.lastManagedLight && this.lastManagedLight !== firstLight) {
+      this.restoreLightAppearance(this.lastManagedLight)
+    }
+    this.lastManagedLight = firstLight
+
+    if (!firstLight) return
+    if (!wantAppearance) {
+      this.restoreLightAppearance(firstLight)
+    }
+    if (!wantAngle && !wantAppearance) return
+
+    // 1. 计算太阳方向（从目标指向太阳，y > 0 表示太阳在地平线以上）
+    this.sun.light.updateMatrixWorld(true)
+    this.sun.light.target.updateMatrixWorld(true)
+    this.sun.light.getWorldPosition(tmpSunPos)
+    this.sun.light.target.getWorldPosition(tmpSunTarget)
+    tmpSunDir.subVectors(tmpSunPos, tmpSunTarget)
+    if (tmpSunDir.lengthSq() <= 1e-8) return
+    tmpSunDir.normalize()
+
+    // 2. 如存在月亮，计算月亮方向
+    let hasMoonDir = false
+    const moonLight = this.moon?.moon.light
+    if (moonLight) {
+      moonLight.updateMatrixWorld(true)
+      moonLight.target?.updateMatrixWorld(true)
+      moonLight.getWorldPosition(tmpSunPos)
+      if (moonLight.target) {
+        moonLight.target.getWorldPosition(tmpSunTarget)
+      } else {
+        tmpSunTarget.set(0, 0, 0)
+      }
+      tmpMoonDir.subVectors(tmpSunPos, tmpSunTarget)
+      if (tmpMoonDir.lengthSq() > 1e-8) {
+        tmpMoonDir.normalize()
+        hasMoonDir = true
+      }
+    }
+
+    // 3. 角度锁定：白天追太阳，太阳下山后追月亮（无月亮或月亮在地下时保持微弱正仰角）
+    if (wantAngle) {
+      tmpRayDir.copy(tmpSunDir)
+      if (tmpRayDir.y <= 0.01) {
+        if (hasMoonDir && tmpMoonDir.y > 0.01) {
+          tmpRayDir.copy(tmpMoonDir)
+        } else {
+          tmpRayDir.y = Math.max(tmpRayDir.y, 0.06)
+          tmpRayDir.normalize()
+        }
+      }
+      // 光线照射方向为天体方向的反方向（从天空射向地面）
+      tmpRayDir.negate()
+
+      const parent = firstLight.parent
+      if (parent && parent !== this.scene && firstLight.target.parent === parent) {
+        tmpTargetQuat.setFromUnitVectors(DOWN_AXIS, tmpRayDir)
+        if (parent.parent && parent.parent !== this.scene) {
+          parent.parent.updateMatrixWorld(true)
+          parent.parent.getWorldQuaternion(tmpParentQuat)
+          parent.quaternion.copy(tmpParentQuat.invert().multiply(tmpTargetQuat))
+        } else {
+          parent.quaternion.copy(tmpTargetQuat)
+        }
+        firstLight.target.position.set(0, -1, 0)
+        parent.updateMatrixWorld(true)
+      } else {
+        firstLight.getWorldPosition(tmpSunPos)
+        firstLight.target.position.copy(tmpSunPos).add(tmpRayDir)
+        if (firstLight.target.parent && firstLight.target.parent !== this.scene) {
+          firstLight.target.parent.worldToLocal(firstLight.target.position)
+        }
+        firstLight.target.updateMatrixWorld(true)
+      }
+    }
+
+    // 4. 相对强度与颜色变化（以节点原本设置作正午 100% 基准，日出日落暖橙，夜晚切换月光冷蓝）
+    if (wantAppearance) {
+      const baseline = this.captureOrSyncBaseline(firstLight)
+      const sunElev = tmpSunDir.y
+
+      // 白天高度权重：0.48 以上保持正午 100% 亮度与原色；降至地平线时变暖且渐暗
+      const noonFac = smoothstepNum(-0.04, 0.48, sunElev)
+      const dayRelIntensity = 0.24 + 0.76 * noonFac
+      // 越靠近地平线越暖橙
+      const horizonWarmth = smoothstepNum(-0.04, 0.36, sunElev)
+      tmpDayTint.copy(HORIZON_TINT).lerp(NOON_TINT, horizonWarmth)
+
+      // 夜晚权重（太阳落到地平线以下平滑切换至月光或星夜微光）
+      const nightMix = 1 - smoothstepNum(-0.08, 0.03, sunElev)
+      const moonAbove = hasMoonDir ? smoothstepNum(-0.02, 0.25, tmpMoonDir.y) : 0
+      const moonPeakRel = Math.min(0.45, Math.max(0.05, 0.18 * settings.moonLight))
+      const nightRelIntensity = 0.06 + (moonPeakRel - 0.06) * moonAbove
+      tmpNightTint.copy(NIGHT_TINT).lerp(MOON_TINT, moonAbove)
+
+      const relIntensity = dayRelIntensity * (1 - nightMix) + nightRelIntensity * nightMix
+      tmpFinalTint.copy(tmpDayTint).lerp(tmpNightTint, nightMix)
+
+      firstLight.intensity = baseline.baseIntensity * relIntensity
+      firstLight.color.copy(baseline.baseColor).multiply(tmpFinalTint)
+      baseline.lastAppliedIntensity = firstLight.intensity
+      baseline.lastAppliedColor.copy(firstLight.color)
+      baseline.applied = true
+    }
+  }
+}
+
+function smoothstepNum(edge0: number, edge1: number, x: number) {
+  const t = Math.min(1, Math.max(0, (x - edge0) / (edge1 - edge0)))
+  return t * t * (3 - 2 * t)
+}
+
+function findFirstSceneDirectionalLight(
+  root: Object3D,
+  skySunLight: DirectionalLight,
+  skyMoonLight: DirectionalLight | null,
+): DirectionalLight | null {
+  for (const child of root.children) {
+    if ((child as DirectionalLight).isDirectionalLight) {
+      const light = child as DirectionalLight
+      if (light !== skySunLight && light !== skyMoonLight) return light
+    }
+    if (child.children.length > 0) {
+      const nested = findFirstSceneDirectionalLight(child, skySunLight, skyMoonLight)
+      if (nested) return nested
+    }
+  }
+  return null
 }
 
 function degreesToRadians(degrees: number) {

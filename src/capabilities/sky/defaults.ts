@@ -20,6 +20,10 @@ export interface SkySettings {
   /** 物理太阳照度的倍率。1 会远亮于现有曝光。 */
   sunIntensity: number
   sunShadow: boolean
+  /** 随时间自动锁定场景中第一个方向光的角度 */
+  lockFirstDirectionalLight: boolean
+  /** 随时间相对变化第一个方向光的强度与颜色（以节点原设置为正午基准） */
+  syncFirstDirectionalLightAppearance: boolean
   fog: boolean
   fogDensity: number
   fogHeightFalloff: number
@@ -66,6 +70,8 @@ export function defaultSkySettings(): SkySettings {
     sunAngularDiameter: 0.53,
     sunIntensity: 0.12,
     sunShadow: true,
+    lockFirstDirectionalLight: false,
+    syncFirstDirectionalLightAppearance: false,
     fog: false,
     fogDensity: 0.3,
     fogHeightFalloff: 300,
@@ -106,6 +112,8 @@ export function normalizeSkySettings(value: unknown): SkySettings {
     sunAngularDiameter: clamp(raw.sunAngularDiameter, base.sunAngularDiameter, 0.05, 12),
     sunIntensity: clamp(raw.sunIntensity, base.sunIntensity, 0, 4),
     sunShadow: bool(raw.sunShadow, base.sunShadow),
+    lockFirstDirectionalLight: bool(raw.lockFirstDirectionalLight, base.lockFirstDirectionalLight),
+    syncFirstDirectionalLightAppearance: bool(raw.syncFirstDirectionalLightAppearance, base.syncFirstDirectionalLightAppearance),
     fog: bool(raw.fog, base.fog),
     fogDensity: clamp(raw.fogDensity, base.fogDensity, 0, 12),
     fogHeightFalloff: clamp(raw.fogHeightFalloff, base.fogHeightFalloff, 1, 8000),

@@ -1,4 +1,5 @@
 import {
+  AdditiveBlending,
   Color,
   DataTexture,
   DirectionalLight,
@@ -8,15 +9,16 @@ import {
   Matrix4,
   Mesh,
   PlaneGeometry,
+  Scene,
   Vector2,
   Vector3,
   type Camera,
-  type Scene,
 } from 'three'
 import { MeshBasicNodeMaterial } from 'three/webgpu'
 import {
   abs,
   attribute,
+  cameraViewMatrix,
   clamp,
   cos,
   cross,
@@ -80,6 +82,13 @@ let precipGeo: InstancedBufferGeometry | null = null
 let precipMat: MeshBasicNodeMaterial | null = null
 let precipScene: Scene | null = null
 
+// 空中雨丝真屏幕空间折射专用离屏场景与网格（共享 precipGeo，在天空云与雾之后合成折射）
+let rainScene: Scene | null = null
+let rainMesh: Mesh | null = null
+let rainRefractMat: MeshBasicNodeMaterial | null = null
+let rainMaskBaseNode: unknown = null
+const uRainCamProjInv = uniform(new Matrix4())
+
 const tmpCamPos = new Vector3()
 const tmpVec = new Vector3()
 const tmpTarget = new Vector3()
@@ -99,7 +108,9 @@ const uPrecipWindVec = uniform(new Vector2(2.5, 0.8))
 const uPrecipColor = uniform(new Color('#dce9f7'))
 const uPrecipOpacity = uniform(0.75)
 const uRainStreakLength = uniform(1.0)
+const uRainStreakIntensity = uniform(1.2)
 const uSnowParticleSize = uniform(1.0)
+const uSnowSway = uniform(1.0)
 
 // 物体表面雨滴 MRT 通道专用 Uniform（在 scenePass 顶点/片元阶段基于模型静止姿态 Rest Pose 计算，彻底根除角色走动与动画时的水滴滑动！）
 // 必须放进 renderGroup 共享 UBO：three 对没有动画的静态网格（Box 等）每帧只刷新共享分组，
@@ -111,7 +122,7 @@ const uObjDripScale = uniform(1.0).setGroup(renderGroup)
 const uObjDripActive = uniform(0).setGroup(renderGroup)
 
 // 模块热重载版本号（确保修改着色器后 HMR 立即触发后期管线重新编译）
-const WEATHER_SHADER_REVISION = 6
+const WEATHER_SHADER_REVISION = 9
 
 function currentSettings(pictureOverride?: ScenePicture): WeatherSettings {
   try {
@@ -286,7 +297,8 @@ function ensurePrecipitationMesh(scene: Scene) {
   // 三维错频混沌湍流摆动
   const turbPhaseX = t.mul(aMotion.y.mul(1.7)).add(aMotion.z)
   const turbPhaseZ = t.mul(aMotion.y.mul(1.3)).add(aSeed.y.mul(6.283))
-  const turbAmp = select(isSnow, float(0.75), select(isSandBillow, float(1.6), select(isSand, float(0.45), float(0.03))))
+  const snowSwayAmp = float(0.75).mul(clamp(uSnowSway, 0.0, 3.0))
+  const turbAmp = select(isSnow, snowSwayAmp, select(isSandBillow, float(1.6), select(isSand, float(0.45), float(0.03))))
   const turbX = sin(turbPhaseX).add(cos(turbPhaseZ.mul(0.7)).mul(0.5)).mul(turbAmp)
   const turbZ = cos(turbPhaseZ).add(sin(turbPhaseX.mul(0.8)).mul(0.5)).mul(turbAmp)
 
@@ -378,10 +390,11 @@ function ensurePrecipitationMesh(scene: Scene) {
   const rainDarkRefractEdge = smoothstep(float(0.42), float(0.0), abs(pUv.x.sub(0.26))).mul(0.55)
   // 仅在雨滴最底端（pUv.y ≈ -0.62）保留圆润水珠头聚光点，不再画贯通全身的高光白线
   const rainDropHead = smoothstep(float(0.36), float(0.0), length(vec2(pUv.x.mul(1.6), pUv.y.add(0.62))))
-  const rainProfileAlpha = float(0.14)
-    .add(rainDarkRefractEdge.mul(0.28))
-    .add(rainDropHead.mul(0.62))
-  const rainGlassBody = rainWidthEnv.mul(rainTailFade).mul(rainProfileAlpha).mul(0.46)
+  const rainStrength = clamp(uRainStreakIntensity, 0.2, 3.0)
+  const rainProfileAlpha = float(0.18)
+    .add(rainDarkRefractEdge.mul(0.32))
+    .add(rainDropHead.mul(0.68))
+  const rainGlassBody = clamp(rainWidthEnv.mul(rainTailFade).mul(rainProfileAlpha).mul(0.62).mul(rainStrength), 0.0, 0.92)
 
   // 沙尘暴尘团片元噪声采样
   const cloudTex = defaultCloudNoiseTexture()
@@ -415,8 +428,9 @@ function ensurePrecipitationMesh(scene: Scene) {
   // 雨滴主体为幽暗半透明水影色，仅底部泪滴头带折射微光（彻底告别纯白长线！）
   const billowShade = mix(float(0.76), float(1.16), clamp(pUv.y.mul(0.5).add(0.5).add(dustNoise.sub(0.5).mul(0.35)), 0.0, 1.0))
   const precipRgb = vec3(uPrecipColor.r, uPrecipColor.g, uPrecipColor.b)
-  const rainWaterBodyCol = mix(vec3(0.18, 0.24, 0.32), precipRgb, float(0.32))
-  const rainRefractColor = mix(rainWaterBodyCol, precipRgb.mul(1.08), clamp(rainDropHead.mul(0.85), 0.0, 1.0))
+  const rainBodyMix = clamp(float(0.35).add(rainStrength.sub(1.0).mul(0.26)), 0.22, 0.85)
+  const rainWaterBodyCol = mix(vec3(0.22, 0.29, 0.38), precipRgb, rainBodyMix)
+  const rainRefractColor = mix(rainWaterBodyCol, precipRgb.mul(float(1.05).add(rainStrength.mul(0.12))), clamp(rainDropHead.mul(0.88), 0.0, 1.0))
 
   precipMat.colorNode = select(
     isSandBillow,
@@ -435,17 +449,62 @@ function ensurePrecipitationMesh(scene: Scene) {
   for (let bit = 0; bit < EDITOR_HELPER_LAYER; bit += 1) precipMesh.layers.enable(bit)
   scene.add(precipMesh)
   precipScene = scene
+
+  // ── 同步创建空中雨丝真屏幕空间折射网格（共享 precipGeo，挂到独立 rainScene） ──
+  rainRefractMat = new MeshBasicNodeMaterial()
+  rainRefractMat.transparent = true
+  rainRefractMat.blending = AdditiveBlending
+  rainRefractMat.depthWrite = false
+  rainRefractMat.depthTest = false
+  rainRefractMat.side = DoubleSide
+  const rainWorldPos = centerWorld.add(rainStreakOffset)
+  rainRefractMat.positionNode = rainWorldPos
+
+  // 使用正负分离编码 + AdditiveBlending：空白处清屏黑色 (0,0,0) 对应 R-G=0、遮罩=0，彻底杜绝清屏 Alpha=1 导致的全屏扭曲！
+  const cylGradX = pUv.x.negate().mul(rainWidthEnv)
+  const posGradX = max(cylGradX, float(0.0))
+  const negGradX = max(cylGradX.negate(), float(0.0))
+  rainMaskBaseNode = rainWidthEnv
+    .mul(rainTailFade)
+    .mul(float(0.35).add(rainDropHead.mul(0.65)))
+    .mul(edgeFade)
+    .mul(nearFade)
+    .mul(uPrecipOpacity)
+  rainRefractMat.colorNode = vec3(
+    posGradX,
+    negGradX,
+    rainDropHead.mul(0.85),
+  )
+  rainRefractMat.opacityNode = rainMaskBaseNode as never
+
+  if (!rainScene) rainScene = new Scene()
+  rainMesh = new Mesh(precipGeo, rainRefractMat)
+  rainMesh.name = '__WeatherRainRefract__'
+  rainMesh.frustumCulled = false
+  rainMesh.castShadow = false
+  rainMesh.receiveShadow = false
+  rainMesh.visible = false
+  rainMesh.layers.disableAll()
+  for (let bit = 0; bit < EDITOR_HELPER_LAYER; bit += 1) rainMesh.layers.enable(bit)
+  rainScene.add(rainMesh)
 }
 
 function disposePrecipitationMesh() {
   if (precipMesh && precipScene) {
     precipScene.remove(precipMesh)
   }
+  if (rainMesh && rainScene) {
+    rainScene.remove(rainMesh)
+  }
   precipGeo?.dispose()
   precipMat?.dispose()
+  rainRefractMat?.dispose()
   precipMesh = null
+  rainMesh = null
   precipGeo = null
   precipMat = null
+  rainRefractMat = null
+  rainMaskBaseNode = null
   precipScene = null
 }
 
@@ -453,12 +512,15 @@ function syncPrecipitation(scene: Scene, camera: Camera, settings: WeatherSettin
   const active = mounted && settings.enabled && settings.precipitationType !== 'none' && settings.precipitationIntensity > 0.01
   if (!active) {
     if (precipMesh) precipMesh.visible = false
+    if (rainMesh) rainMesh.visible = false
     return
   }
   ensurePrecipitationMesh(scene)
   if (!precipMesh || !precipGeo) return
 
-  precipMesh.visible = true
+  const isRainRefractMode = settings.precipitationType === 'rain' && settings.rainRefractionEnabled
+  precipMesh.visible = !isRainRefractMode
+  if (rainMesh) rainMesh.visible = isRainRefractMode
   const ratio = Math.pow(settings.precipitationIntensity, 0.75)
   // 沙尘暴由于单个粒子是 3~7 米大团块，无需 18000 个满画即可铺满全屏，控制实例数兼顾极佳帧率
   const maxForType = settings.precipitationType === 'sand' ? 4200 : MAX_PRECIP_COUNT
@@ -477,7 +539,9 @@ function syncPrecipitation(scene: Scene, camera: Camera, settings: WeatherSettin
   uPrecipMode.value = settings.precipitationType === 'snow' ? 1 : settings.precipitationType === 'sand' ? 2 : 0
   uPrecipSpeed.value = settings.precipitationSpeed
   uRainStreakLength.value = settings.rainStreakLength
+  uRainStreakIntensity.value = settings.rainStreakIntensity
   uSnowParticleSize.value = settings.snowParticleSize
+  uSnowSway.value = settings.snowSway
   const rad = (settings.cloudWindAngle * Math.PI) / 180
   uPrecipWindVec.value.set(Math.cos(rad) * settings.precipitationWind, Math.sin(rad) * settings.precipitationWind)
   uPrecipColor.value.set(settings.precipitationColor)
@@ -501,6 +565,16 @@ function sandHazeBit(s: WeatherSettings): number {
   return 1
 }
 
+function rainRefractBit(s: WeatherSettings): number {
+  if (!s.enabled || s.precipitationType !== 'rain' || s.precipitationIntensity <= 0.01 || !s.rainRefractionEnabled) return 0
+  return 1
+}
+
+export function getWeatherRainScene(): Scene {
+  if (!rainScene) rainScene = new Scene()
+  return rainScene
+}
+
 export function weatherActive(picture?: ScenePicture): boolean {
   if (!mounted) return false
   const s = currentSettings(picture)
@@ -510,6 +584,7 @@ export function weatherActive(picture?: ScenePicture): boolean {
     surfaceWetBits(s) > 0 ||
     s.snowCoverEnabled ||
     sandHazeBit(s) > 0 ||
+    rainRefractBit(s) > 0 ||
     s.lightningEnabled
   )
 }
@@ -529,6 +604,7 @@ export function weatherPipelineKey(picture?: ScenePicture): string {
     surfaceWetBits(s),
     s.snowCoverEnabled ? 1 : 0,
     sandHazeBit(s),
+    rainRefractBit(s),
   ].join(':')
 }
 
@@ -1044,72 +1120,64 @@ export function buildWeatherSurfacePass(
     surfaceRgb = mix(surfaceRgb as never, puddleFinal, puddleMask)
   }
 
-  // 2. 表面积雪覆盖（厚重立体雪丘凹凸法线 + 深色盔甲/木盾全覆盖亮白积雪 + 迎风侧面挂霜 + 冰川蓝实时雪影 + 冰晶闪烁）
+  // 2. 表面积雪覆盖（纯粹不透明厚雪层 + 仅积于朝上表面保护角色细节 + 干净冷蓝雪影不透地砖网格）
   if (options.snow) {
-    // 结合世界 XZ 与高度 Y 的三维積雪噪声（确保地面、Box 顶/侧面与角色头盔/肩甲/胸甲都有丰富雪堆纹理）
-    const sCoord = worldPos.xz.mul(0.32).add(vec2(worldPos.y.mul(0.24), worldPos.y.mul(-0.19)))
+    const sCoord = worldPos.xz.mul(0.28).add(vec2(worldPos.y.mul(0.18), worldPos.y.mul(-0.15)))
     const n1 = fastValueNoise2D(sCoord)
     const n2 = fastValueNoise2D(rotOctave(sCoord, 2.35, 11.4, 27.8))
     const n3 = fastValueNoise2D(rotOctave(sCoord, 5.4, 31.2, 9.7))
     const snowNoise = n1.mul(0.52).add(n2.mul(0.31)).add(n3.mul(0.17))
 
-    // 1) 顶部与斜面厚积雪层：随 uSnow (0~1) 从朝上表面一路向下包裹至肩甲、胸甲褶皱与斜面 (startUp 最低可达 -0.22)
-    const startUp = float(0.76).sub(uSnow.mul(0.98))
-    const topSnow = smoothstep(startUp, startUp.add(0.16), worldNormal.y.add(snowNoise.sub(0.46).mul(0.34)))
-
-    // 2) 侧面迎风挂雪/结霜斑块：即使在竖直表面 (worldNormal.y ∈ [-0.35, 0.25]，如头盔面罩、盾牌、胸甲与 Box 侧面) 也会随积雪度挂上斑驳白雪！
-    const sideFrostThresh = float(0.68).sub(uSnow.mul(0.36))
-    const sideFrost = smoothstep(sideFrostThresh, sideFrostThresh.add(0.16), snowNoise)
-      .mul(smoothstep(float(-0.42), float(0.12), worldNormal.y))
-      .mul(pow(uSnow, float(0.85)))
-      .mul(0.82)
-
+    // 1) 只覆盖朝上表面（地面、Box 顶面、头盔顶、肩甲顶部），严禁把角色竖直胸甲/面罩涂成白石膏像！
+    const startUp = float(0.92).sub(uSnow.mul(0.50))
+    const slopeSnow = smoothstep(startUp, startUp.add(0.16), worldNormal.y.add(snowNoise.sub(0.5).mul(0.16)))
+    // uSnow 从 0 -> 0.45 控制地面从融雪斑块到完整铺满，>= 0.45 后水平地面 100% 铺实不再透出网格线
+    const groundPatch = smoothstep(
+      clamp(float(0.45).sub(uSnow), 0.0, 0.44),
+      clamp(float(0.65).sub(uSnow), 0.05, 0.65),
+      snowNoise,
+    )
+    const isFlatGround = smoothstep(float(0.88), float(0.97), worldNormal.y)
+    const coverageMask = mix(slopeSnow, max(slopeSnow.mul(groundPatch), smoothstep(float(0.35), float(0.65), uSnow)), isFlatGround)
     const snowStrength = smoothstep(float(0.0), float(0.12), uSnow)
-    const snowMask = clamp(max(topSnow, sideFrost).mul(snowStrength), 0.0, 1.0)
+    const snowMask = clamp(coverageMask.mul(snowStrength), 0.0, 1.0)
 
-    // 3) 3D 雪丘凹凸起伏法线（使原本浅白色的地面也能清晰呈现出立体风吹雪垄、雪包明暗与积雪边缘厚度感！）
+    // 2) 柔和自然的雪面微起伏法线（避免低太阳下产生高对比波浪斑块）
     const epsSnow = 0.16
-    const hSnowR = fastValueNoise2D(sCoord.mul(2.6).add(vec2(epsSnow, 0.0)))
-    const hSnowL = fastValueNoise2D(sCoord.mul(2.6).sub(vec2(epsSnow, 0.0)))
-    const hSnowF = fastValueNoise2D(sCoord.mul(2.6).add(vec2(0.0, epsSnow)))
-    const hSnowB = fastValueNoise2D(sCoord.mul(2.6).sub(vec2(0.0, epsSnow)))
+    const hSnowR = fastValueNoise2D(sCoord.mul(2.4).add(vec2(epsSnow, 0.0)))
+    const hSnowL = fastValueNoise2D(sCoord.mul(2.4).sub(vec2(epsSnow, 0.0)))
+    const hSnowF = fastValueNoise2D(sCoord.mul(2.4).add(vec2(0.0, epsSnow)))
+    const hSnowB = fastValueNoise2D(sCoord.mul(2.4).sub(vec2(0.0, epsSnow)))
     const dSnowX = hSnowR.sub(hSnowL)
     const dSnowZ = hSnowF.sub(hSnowB)
-    // 雪斑边缘立体唇边隆起
-    const snowEdgeLip = smoothstep(float(0.08), float(0.42), snowMask).mul(smoothstep(float(0.96), float(0.55), snowMask))
     const snowBumpNormal = normalize(
-      worldNormal.add(vec3(dSnowX.mul(0.85), snowEdgeLip.mul(0.35), dSnowZ.mul(0.85))),
+      worldNormal.add(vec3(dSnowX.mul(0.18), float(0.0), dSnowZ.mul(0.18))),
     )
 
-    // 4) 积雪独立高反照率光照（彻底修复深色铁盔/黑甲/木盾因基底 origLum 低而把雪染黑的问题：积雪盖在黑色铁甲上依然是鲜明洁白积雪！）
+    // 3) 独立洁白雪面光照：绝不把地面网格线/深色材质纹路乘回雪面上！
     const origRgb = vec3(surfaceRgb as never)
     const origLum = dot(origRgb, vec3(0.299, 0.587, 0.114))
-    const isFlatGround = smoothstep(float(0.88), float(0.97), worldNormal.y)
+    // 水平地面仅在真正被物体投射阴影的暗区 (origLum < 0.20) 切换为平滑冷蓝雪影；受光区保持纯粹均匀洁白积雪
+    const shadowFactor = smoothstep(float(0.04), float(0.20), origLum)
     const nDotSun = max(dot(snowBumpNormal, uSunDir), float(0.0))
-    const driftRelief = clamp(nDotSun.mul(0.85).add(snowNoise.mul(0.28)).sub(0.12), 0.0, 1.0)
-    const litSnowCol = vec3(1.06, 1.05, 1.02)
-
-    // 水平面（地面、Box 顶面）：按原画面明度区分受光区与实时阴影区，阴影区压成冷蓝灰雪影，
-    // 雪垄起伏只在受光区内调制明暗，不允许把阴影区提亮——保证投影轮廓完整保留
-    const shadowFactor = smoothstep(float(0.06), float(0.48), origLum)
-    const groundShadowSnow = vec3(0.36, 0.44, 0.58).mul(clamp(origLum.mul(2.1).add(0.22), 0.30, 0.76))
-    const groundLitSnow = mix(vec3(0.80, 0.87, 0.98), litSnowCol, driftRelief)
+    const sunDayMod = float(0.84).add(clamp(nDotSun, 0.0, 1.0).mul(0.20)).add(snowNoise.sub(0.5).mul(0.05))
+    const groundShadowSnow = vec3(0.38, 0.48, 0.66)
+    const groundLitSnow = vec3(0.96, 0.97, 0.99).mul(sunDayMod)
     const groundSnow = mix(groundShadowSnow, groundLitSnow, shadowFactor)
 
-    // 角色与物体的非水平面：按雪丘法线独立受光，深色盔甲/木盾上的雪不会被基底染黑
-    const objLightFac = clamp(dot(snowBumpNormal, uSunDir).mul(0.5).add(0.5), 0.0, 1.0)
-      .mul(0.75)
-      .add(clamp(origLum.mul(1.2), 0.0, 0.25))
-    const objSnow = mix(vec3(0.50, 0.64, 0.86), litSnowCol, clamp(objLightFac.mul(0.65).add(driftRelief.mul(0.45)), 0.0, 1.0))
-
+    // 物体顶面（头盔、肩甲、Box 顶）：按自身朝向与太阳方向自然受光，保持立体冷暖明暗
+    const objSunMix = clamp(dot(snowBumpNormal, uSunDir).mul(0.45).add(0.55), 0.0, 1.0)
+    const objSnow = mix(vec3(0.56, 0.68, 0.86), vec3(1.0, 1.0, 0.99), objSunMix)
     const baseSnowShade = mix(objSnow, groundSnow, isFlatGround)
 
-    // 5) 雪面微晶冰粒闪烁高光（Glinting Snow Sparkle）
+    // 4) 细腻雪面微晶冰粒闪烁
     const sparkleCell = floor(worldPos.xz.mul(28.0).add(vec2(worldPos.y.mul(19.0), 0.0)))
     const sparkleHash = fastHash12(sparkleCell)
     const halfVecSnow = normalize(uSunDir.add(viewDir))
-    const specSnow = pow(max(dot(snowBumpNormal, halfVecSnow), float(0.0)), float(42.0))
-    const snowSparkle = smoothstep(float(0.91), float(0.99), sparkleHash).mul(specSnow).mul(0.65).add(specSnow.mul(0.18))
+    const specSnow = pow(max(dot(snowBumpNormal, halfVecSnow), float(0.0)), float(48.0))
+    const snowSparkle = smoothstep(float(0.92), float(0.99), sparkleHash)
+      .mul(specSnow)
+      .mul(0.55)
       .mul(mix(float(1.0), shadowFactor, isFlatGround))
 
     const shadedSnow = vec3(uSnowColor as never).mul(baseSnowShade).add(vec3(0.92, 0.96, 1.0).mul(snowSparkle))
@@ -1470,6 +1538,88 @@ export function buildWeatherSkyPass(
       uSandHaze.value = s.enabled && s.precipitationType === 'sand' ? s.sandstormHaze : 0
       uSandColor.value.set(s.precipitationColor)
       uLightning.value = s.enabled && s.lightningEnabled ? lightningFlash * s.lightningIntensity * 0.5 : 0
+    },
+  }
+}
+
+// ── 通道 C：空中雨丝真屏幕空间折射合成（基于半分辨率 rainPass，在天空云与高度雾之后叠加） ─
+
+export interface WeatherRainPassHandle {
+  node: unknown
+  sync: (picture: ScenePicture, camera: Camera) => void
+}
+
+export function buildWeatherRainPass(
+  colorNode: unknown,
+  scenePass: { getTextureNode: (name: string) => unknown },
+  rainPass: { getTextureNode: (name: string) => unknown },
+): WeatherRainPassHandle {
+  const depthTex = scenePass.getTextureNode('depth') as {
+    sample: (uv: unknown) => { r: unknown }
+  }
+  const beautyTex = scenePass.getTextureNode('output') as {
+    sample: (uv: unknown) => { rgb: unknown }
+  }
+  const rainTex = rainPass.getTextureNode('output') as {
+    sample: (uv: unknown) => { r: unknown; g: unknown; b: unknown; a: unknown }
+  }
+
+  // 在 rainRefractMat 的片元阶段注入当帧精确场景深度遮挡，被角色/墙体遮挡的雨丝直接归零
+  if (rainRefractMat && rainMaskBaseNode) {
+    const rainViewPos = cameraViewMatrix.mul(vec4(positionWorld, 1.0))
+    const rainDist = rainViewPos.z.negate()
+    const sceneD = depthTex.sample(screenUV).r
+    const sceneViewPos = getViewPosition(screenUV, sceneD as never, uRainCamProjInv)
+    const sceneDist = sceneViewPos.z.negate()
+    const notBlocked = select(
+      isBackgroundDepth(sceneD as never),
+      float(1.0),
+      smoothstep(float(-0.12), float(0.14), sceneDist.sub(rainDist)),
+    )
+    rainRefractMat.opacityNode = float(rainMaskBaseNode as never).mul(notBlocked) as never
+    rainRefractMat.needsUpdate = true
+  }
+
+  const uRainVis = uniform(1.2)
+  const uRainCol = uniform(new Color('#dce9f7'))
+
+  const rainSample = rainTex.sample(screenUV)
+  const posX = float(rainSample.r as never)
+  const negX = float(rainSample.g as never)
+  const headSpec = float(rainSample.b as never)
+  const gradX = clamp(posX.sub(negX), -1.0, 1.0)
+  const rainMask = clamp(posX.add(negX).mul(1.6).add(headSpec), 0.0, 1.0)
+
+  const strength = clamp(uRainVis, 0.2, 3.0)
+  // 真实屏幕空间凸透镜折射：仅在 rainMask > 0 的雨丝像素上沿圆柱横向斜率偏移采样背景，空白处 100% 零偏移
+  const refractUV = clamp(
+    screenUV.add(vec2(gradX.mul(0.024), headSpec.mul(-0.011)).mul(strength)),
+    0.002,
+    0.998,
+  )
+  const refractedDepth = depthTex.sample(refractUV).r
+  const validRefract = select(isBackgroundDepth(refractedDepth as never), float(0.65), float(1.0))
+  const deltaRefract = vec3(beautyTex.sample(refractUV).rgb as never).sub(
+    vec3(beautyTex.sample(screenUV).rgb as never),
+  )
+
+  const base = colorNode as { rgb: unknown; a: unknown }
+  const refractedRgb = vec3(base.rgb as never).add(
+    deltaRefract.mul(rainMask).mul(validRefract).mul(clamp(strength, 0.5, 1.8)),
+  )
+
+  // 圆柱水丝全内反射边缘对比 + 底部水珠折射微光（绝非死白线）
+  const rimDarken = clamp(abs(gradX).mul(0.28).mul(strength), 0.0, 0.36).mul(rainMask)
+  const headGlint = vec3(uRainCol as never).mul(headSpec.mul(0.28).mul(strength).mul(rainMask))
+
+  const finalRgb = refractedRgb.mul(float(1.0).sub(rimDarken)).add(headGlint)
+  return {
+    node: vec4(finalRgb, base.a as never),
+    sync: (picture: ScenePicture, camera: Camera) => {
+      const s = currentSettings(picture)
+      uRainCamProjInv.value.copy(camera.projectionMatrixInverse)
+      uRainVis.value = s.rainStreakIntensity
+      uRainCol.value.set(s.precipitationColor)
     },
   }
 }

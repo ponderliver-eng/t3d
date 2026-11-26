@@ -81,6 +81,8 @@ export function SkyCard() {
             <SkyNumber label={t('sky.angularSize')} value={sky.sunAngularDiameter} min={0.05} max={8} step={0.01} onChange={sunAngularDiameter => write({ sunAngularDiameter })} />
             <SkyNumber label={t('sky.sunIntensity')} value={sky.sunIntensity} min={0} max={2} step={0.01} onChange={sunIntensity => write({ sunIntensity })} />
             <Check label={t('sky.sunShadow')} checked={sky.sunShadow} onChange={sunShadow => edit({ sunShadow })} />
+            <Check label={t('sky.lockFirstDirectionalLight')} checked={sky.lockFirstDirectionalLight} onChange={lockFirstDirectionalLight => edit({ lockFirstDirectionalLight })} />
+            <Check label={t('sky.syncFirstDirectionalLightAppearance')} checked={sky.syncFirstDirectionalLightAppearance} onChange={syncFirstDirectionalLightAppearance => edit({ syncFirstDirectionalLightAppearance })} />
           </section>
           <section className="iv2-section">
             <div className="iv2-section__title" style={{ color: '#90a4ae' }}><i /><span>{t('sky.fog')}</span></div>

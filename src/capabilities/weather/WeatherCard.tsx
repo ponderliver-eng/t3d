@@ -165,10 +165,19 @@ export function WeatherCard() {
                       <WeatherNumber label={t('weather.precipBoxSize')} value={weather.precipitationBoxSize} min={12} max={60} step={1} onChange={(precipitationBoxSize) => write({ precipitationBoxSize })} />
                     </div>
                     {weather.precipitationType === 'rain' && (
-                      <WeatherNumber label={t('weather.rainStreakLength')} value={weather.rainStreakLength} min={0.05} max={1} step={0.01} onChange={(rainStreakLength) => write({ rainStreakLength })} />
+                      <>
+                        <div className="iv2-pair">
+                          <WeatherNumber label={t('weather.rainStreakLength')} value={weather.rainStreakLength} min={0.05} max={1} step={0.01} onChange={(rainStreakLength) => write({ rainStreakLength })} />
+                          <WeatherNumber label={t('weather.rainStreakIntensity')} value={weather.rainStreakIntensity} min={0.2} max={3} step={0.05} onChange={(rainStreakIntensity) => write({ rainStreakIntensity })} />
+                        </div>
+                        <WeatherCheck label={t('weather.rainRefractionEnabled')} checked={weather.rainRefractionEnabled} onChange={(val) => edit({ rainRefractionEnabled: val })} />
+                      </>
                     )}
                     {weather.precipitationType === 'snow' && (
-                      <WeatherNumber label={t('weather.snowParticleSize')} value={weather.snowParticleSize} min={0.3} max={2} step={0.05} onChange={(snowParticleSize) => write({ snowParticleSize })} />
+                      <div className="iv2-pair">
+                        <WeatherNumber label={t('weather.snowParticleSize')} value={weather.snowParticleSize} min={0.3} max={2} step={0.05} onChange={(snowParticleSize) => write({ snowParticleSize })} />
+                        <WeatherNumber label={t('weather.snowSway')} value={weather.snowSway} min={0} max={3} step={0.05} onChange={(snowSway) => write({ snowSway })} />
+                      </div>
                     )}
                     {weather.precipitationType === 'sand' && (
                       <WeatherNumber label={t('weather.sandstormHaze')} value={weather.sandstormHaze} min={0} max={1} step={0.02} onChange={(sandstormHaze) => write({ sandstormHaze })} />

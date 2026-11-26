@@ -13,11 +13,14 @@ import { composeSkyFog, skyFogActive, skyFogRevision } from '../capabilities/sky
 import { buildHeightFogPass, heightFogActive, heightFogPipelineKey, type HeightFogPassHandle } from '../capabilities/fog/session'
 import {
   buildWeatherObjectDripNode,
+  buildWeatherRainPass,
   buildWeatherSkyPass,
   buildWeatherSurfacePass,
+  getWeatherRainScene,
   weatherActive,
   weatherNeedsNormals,
   weatherPipelineKey,
+  type WeatherRainPassHandle,
   type WeatherSkyPassHandle,
   type WeatherSurfacePassHandle,
 } from '../capabilities/weather/session'
@@ -102,6 +105,7 @@ export class RuntimePicturePipeline {
   private heightFogPass: HeightFogPassHandle | null = null
   private weatherSurfacePass: WeatherSurfacePassHandle | null = null
   private weatherSkyPass: WeatherSkyPassHandle | null = null
+  private weatherRainPass: WeatherRainPassHandle | null = null
   private underwaterNode: UnderwaterUniforms | null = null
   private readonly camWorldPos = new Vector3()
   private denoiseNodes: Array<{ dispose: () => void }> = []
@@ -165,6 +169,9 @@ export class RuntimePicturePipeline {
     }
     if (this.weatherSkyPass) {
       this.weatherSkyPass.sync(picture, camera)
+    }
+    if (this.weatherRainPass) {
+      this.weatherRainPass.sync(picture, camera)
     }
     if (this.underwaterNode) {
       camera.getWorldPosition(this.camWorldPos)
@@ -251,6 +258,7 @@ export class RuntimePicturePipeline {
     const wWet = wParts ? Number(wParts[2]) : 0
     const wSnow = wParts ? Number(wParts[3]) : 0
     const wSand = wParts ? Number(wParts[4]) : 0
+    const wRain = wParts ? Number(wParts[5]) : 0
     if ((wWet > 0 || wSnow > 0 || wSand > 0) && normalNode) {
       const surfacePass = buildWeatherSurfacePass(current, scenePass, normalNode, {
         wetness: (wWet & 1) !== 0,
@@ -337,6 +345,15 @@ export class RuntimePicturePipeline {
       current = fogPass.node as typeof current
     } else {
       this.heightFogPass = null
+    }
+    if (wRain === 1) {
+      const rainPass = pass(getWeatherRainScene(), camera, { samples: 0 })
+      rainPass.setResolutionScale(0.5)
+      const weatherRainPass = buildWeatherRainPass(current, scenePass, rainPass)
+      this.weatherRainPass = weatherRainPass
+      current = weatherRainPass.node as typeof current
+    } else {
+      this.weatherRainPass = null
     }
     if (anyUnderwaterEffectEnabled()) {
       const weight = uniform(0)

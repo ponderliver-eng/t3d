@@ -53,8 +53,14 @@ export interface WeatherSettings {
   precipitationBoxSize: number
   /** 雨丝速度拉伸长度倍率 (0.05 ~ 1) */
   rainStreakLength: number
+  /** 雨丝显示强度/可见度 (0.2 ~ 3) */
+  rainStreakIntensity: number
+  /** 空中雨丝屏幕空间折射开关（关闭可节省一次半分辨率离屏 Pass） */
+  rainRefractionEnabled: boolean
   /** 雪花粒子尺寸倍率 (0.3 ~ 2) */
   snowParticleSize: number
+  /** 雪花飘落左右随机摆动幅度 (0 ~ 3) */
+  snowSway: number
   /** 沙尘暴大气能见度黄沙雾化浓度 (0 ~ 1) */
   sandstormHaze: number
   /** 地面水花扰动开关 */
@@ -126,7 +132,10 @@ export function defaultWeatherSettings(): WeatherSettings {
     precipitationColor: '#dce9f7',
     precipitationBoxSize: 28,
     rainStreakLength: 0.45,
+    rainStreakIntensity: 1.2,
+    rainRefractionEnabled: true,
     snowParticleSize: 1.0,
+    snowSway: 1.0,
     sandstormHaze: 0.75,
     splashEnabled: true,
 
@@ -349,7 +358,10 @@ export function normalizeWeatherSettings(value: unknown): WeatherSettings {
     precipitationColor: colorOf(raw.precipitationColor, base.precipitationColor),
     precipitationBoxSize: clamp(raw.precipitationBoxSize, base.precipitationBoxSize, 12, 60),
     rainStreakLength: clamp(raw.rainStreakLength, base.rainStreakLength, 0.05, 1),
+    rainStreakIntensity: clamp(raw.rainStreakIntensity, base.rainStreakIntensity, 0.2, 3),
+    rainRefractionEnabled: bool(raw.rainRefractionEnabled, base.rainRefractionEnabled),
     snowParticleSize: clamp(raw.snowParticleSize, base.snowParticleSize, 0.3, 2),
+    snowSway: clamp(raw.snowSway, base.snowSway, 0, 3),
     sandstormHaze: clamp(raw.sandstormHaze, base.sandstormHaze, 0, 1),
     splashEnabled: bool(raw.splashEnabled, base.splashEnabled),
 
