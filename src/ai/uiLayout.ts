@@ -71,7 +71,7 @@ export function measureUiLayout(root: UiNode, options?: { issuesOnly?: boolean }
             issues.push(`超出父容器（横向 ${Math.max(0, Math.round(dx))}px，纵向 ${Math.max(0, Math.round(dy))}px）`)
           }
         }
-        if ((node.type === 'text' || node.type === 'button') && (el.scrollWidth > el.clientWidth + 1 || el.scrollHeight > el.clientHeight + 1)) {
+        if ((node.type === 'text' || node.type === 'button' || node.type === 'fps') && (el.scrollWidth > el.clientWidth + 1 || el.scrollHeight > el.clientHeight + 1)) {
           issues.push('文字内容超出自身矩形，可能被裁切或溢出')
         }
       }

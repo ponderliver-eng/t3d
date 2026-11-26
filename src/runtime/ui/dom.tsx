@@ -1,4 +1,4 @@
-import { useState, type CSSProperties, type PointerEvent as ReactPointerEvent } from 'react'
+import { useEffect, useState, type CSSProperties, type PointerEvent as ReactPointerEvent, type ReactNode } from 'react'
 import type { UiLayer, UiNode, UiStyle } from './spec'
 import { resolveUiTree } from './bindings'
 import type { UiValues } from './bindings'
@@ -118,6 +118,7 @@ function UiDomNode({
     />
   ) : null
   if (node.type === 'text') return <div {...handlers}>{node.text}{resize}</div>
+  if (node.type === 'fps') return <UiFpsLabel handlers={handlers} template={node.text} resize={resize} />
   if (node.type === 'button') {
     return (
       <button type="button" {...handlers} aria-disabled={node.enabled === false || undefined}>
@@ -164,8 +165,40 @@ function UiDomNode({
   )
 }
 
+function UiFpsLabel({
+  handlers,
+  template,
+  resize,
+}: {
+  handlers: Record<string, unknown>
+  template?: string
+  resize: ReactNode
+}) {
+  const [fps, setFps] = useState(60)
+  useEffect(() => {
+    let frames = 0
+    let last = performance.now()
+    let raf = 0
+    const tick = (now: number) => {
+      frames += 1
+      const elapsed = now - last
+      if (elapsed >= 400) {
+        setFps(Math.max(1, Math.round((frames * 1000) / elapsed)))
+        frames = 0
+        last = now
+      }
+      raf = requestAnimationFrame(tick)
+    }
+    raf = requestAnimationFrame(tick)
+    return () => cancelAnimationFrame(raf)
+  }, [])
+  const raw = template ?? 'FPS: {fps}'
+  const label = raw.includes('{fps}') ? raw.replace(/\{fps\}/g, String(fps)) : raw ? `${raw} ${fps}` : `FPS: ${fps}`
+  return <div {...handlers}>{label}{resize}</div>
+}
+
 function isHitTarget(node: UiNode): boolean {
-  if (node.type === 'button' || node.type === 'text' || node.type === 'image' || node.type === 'progress') return true
+  if (node.type === 'button' || node.type === 'text' || node.type === 'fps' || node.type === 'image' || node.type === 'progress') return true
   const background = node.style?.backgroundColor
   if (background && background !== 'transparent') return true
   return (node.style?.borderWidth ?? 0) > 0

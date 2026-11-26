@@ -145,6 +145,7 @@ function nodeTypeName(type: UiNodeType): string {
     case 'panel': return translate('ui.type.panel')
     case 'stack': return translate('ui.type.stack')
     case 'text': return translate('ui.type.text')
+    case 'fps': return translate('ui.type.fps')
     case 'image': return translate('ui.type.image')
     case 'button': return translate('ui.type.button')
     case 'progress': return translate('ui.type.progress')

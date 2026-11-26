@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import {
+  Activity,
   ArrowDown,
   ArrowUp,
   Eye,
@@ -49,6 +50,7 @@ function nodeTypeIcon(type: UiNodeType): ReactNode {
     case 'panel': return <Square size={12} />
     case 'stack': return <Layers size={12} />
     case 'text': return <Type size={12} />
+    case 'fps': return <Activity size={12} />
     case 'image': return <ImageIcon size={12} />
     case 'button': return <MousePointerClick size={12} />
     case 'progress': return <Gauge size={12} />
@@ -528,7 +530,7 @@ function NodeFields({
               <span>{t('ui.interact')}</span>
             </label>
           </div>
-          {(node.type === 'text' || node.type === 'button') && (
+          {(node.type === 'text' || node.type === 'button' || node.type === 'fps') && (
             <label className="ui-editor__field">
               <span>{t('ui.text')}</span>
               <input defaultValue={node.text ?? ''} key={`${node.id}:text:${node.text ?? ''}`} onBlur={event => patchSelected({ text: event.target.value })} />

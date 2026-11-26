@@ -1,4 +1,4 @@
-export type UiNodeType = 'panel' | 'stack' | 'text' | 'image' | 'button' | 'progress'
+export type UiNodeType = 'panel' | 'stack' | 'text' | 'fps' | 'image' | 'button' | 'progress'
 
 export type UiLayoutMode = 'anchor' | 'flex'
 export type UiFlexDirection = 'row' | 'column'
@@ -10,7 +10,7 @@ export type UiStateKind = 'hover' | 'pressed' | 'disabled'
 export type UiBindingTarget = 'visible' | 'enabled' | 'text' | 'progress.value' | 'opacity'
 
 export const UI_LAYERS: readonly UiLayer[] = ['hud', 'menu', 'popup', 'modal']
-export const UI_NODE_TYPES: readonly UiNodeType[] = ['panel', 'stack', 'text', 'image', 'button', 'progress']
+export const UI_NODE_TYPES: readonly UiNodeType[] = ['panel', 'stack', 'text', 'fps', 'image', 'button', 'progress']
 
 export interface UiVec2 {
   x: number
@@ -106,6 +106,21 @@ export function createUiNode(type: UiNodeType, id = crypto.randomUUID()): UiNode
         text: 'Text',
         layout: anchorBox(160, 32),
         style: { color: '#ffffff', fontSize: 18, align: 'center' },
+      }
+    case 'fps':
+      return {
+        id,
+        type,
+        name: 'FPS',
+        text: 'FPS: {fps}',
+        layout: anchorBox(120, 30),
+        style: {
+          color: '#6dff8a',
+          fontSize: 16,
+          align: 'center',
+          backgroundColor: 'rgba(15, 23, 42, 0.55)',
+          borderRadius: 6,
+        },
       }
     case 'image':
       return {
@@ -591,7 +606,7 @@ export function validateUiDocument(doc: UiDocument): string[] {
 
   const walk = (node: UiNode, depth: number) => {
     const layout = node.layout
-    if (node.type === 'text' && typeof node.style?.fontSize === 'number' && node.style.fontSize < 12) {
+    if ((node.type === 'text' || node.type === 'fps') && typeof node.style?.fontSize === 'number' && node.style.fontSize < 12) {
       warnings.push(`节点 "${node.name || node.id}" 字号仅 ${node.style.fontSize}px，建议不小于 12px。`)
     }
     if ((node.type === 'button' || node.type === 'progress') && layout && typeof layout.height === 'number' && layout.height < 12) {
