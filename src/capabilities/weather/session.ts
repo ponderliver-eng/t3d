@@ -93,7 +93,6 @@ const uPrecipSpeed = uniform(1)
 const uPrecipWindVec = uniform(new Vector2(2.5, 0.8))
 const uPrecipColor = uniform(new Color('#dce9f7'))
 const uPrecipOpacity = uniform(0.75)
-const uPrecipSplash = uniform(1)
 const uRainStreakLength = uniform(1.0)
 
 function currentSettings(pictureOverride?: ScenePicture): WeatherSettings {
@@ -205,9 +204,9 @@ function ensurePrecipitationMesh(scene: Scene) {
     seedArray[i4 + 0] = Math.random()
     seedArray[i4 + 1] = Math.random()
     seedArray[i4 + 2] = Math.random()
-    // 编码层级：0~45% 为近景高密层 (tier 0)，45%~85% 为中景主力层 (tier 1)，85%~94% 为远景层 (tier 2)，94%~100% 为地面水花 (tier 3)
+    // 编码层级：0~48% 为近景高密层 (tier 0)，48%~88% 为中景主力层 (tier 1)，88%~100% 为远景层 (tier 2)
     const u = Math.random()
-    const tier = u < 0.45 ? 0.0 : u < 0.85 ? 1.0 : u < 0.94 ? 2.0 : 3.0
+    const tier = u < 0.48 ? 0.0 : u < 0.88 ? 1.0 : 2.0
     seedArray[i4 + 3] = tier + Math.random() * 0.98
 
     motionArray[i4 + 0] = 0.78 + Math.random() * 0.48
@@ -233,7 +232,6 @@ function ensurePrecipitationMesh(scene: Scene) {
 
   const tierId = floor(aSeed.w)
   const roleFrac = fract(aSeed.w)
-  const isSplash = tierId.greaterThan(float(2.5)).and(uPrecipSplash.greaterThan(float(0.5))).and(isSnow.not()).and(isSand.not())
   // 沙尘暴模式下：72% 粒子为数米级巨型翻滚沙尘云团（Dust Billow），28% 为疾风飞沙
   const isSandBillow = isSand.and(roleFrac.lessThan(float(0.72)))
 
@@ -279,14 +277,7 @@ function ensurePrecipitationMesh(scene: Scene) {
   const wrappedY = fract(rawY.sub(uPrecipCamPos.y).div(tierBoxY).add(0.5)).sub(0.5).mul(tierBoxY).add(uPrecipCamPos.y)
   const wrappedZ = fract(rawZ.sub(uPrecipCamPos.z).div(tierBoxXZ).add(0.5)).sub(0.5).mul(tierBoxXZ).add(uPrecipCamPos.z)
 
-  const splashLife = fract(t.mul(3.0).add(roleFrac.mul(7.13)))
-  const splashY = uPrecipCamPos.y.sub(float(1.6))
-
-  const centerWorld = vec3(
-     wrappedX,
-    select(isSplash, splashY, wrappedY),
-    wrappedZ,
-  )
+  const centerWorld = vec3(wrappedX, wrappedY, wrappedZ)
 
   // 粒子尺寸：
   // - 雨滴：细长雨丝，长度受 uRainStreakLength 直接控制
@@ -296,11 +287,11 @@ function ensurePrecipitationMesh(scene: Scene) {
   const tierWidthScale = select(tierId.lessThan(float(0.5)), float(0.88), select(tierId.lessThan(float(1.5)), float(1.18), float(1.55)))
   const tierLenScale = select(tierId.lessThan(float(0.5)), float(0.82), select(tierId.lessThan(float(1.5)), float(1.08), float(1.38)))
 
-  const rainW = tierWidthScale.mul(float(0.015).add(aMotion.w.mul(0.012)))
+  const rainW = tierWidthScale.mul(float(0.014).add(aMotion.w.mul(0.010)))
   const rainH = tierLenScale
-    .mul(float(0.65).add(aMotion.w.mul(0.55)))
-    .mul(float(0.55).add(uPrecipSpeed.mul(0.45)))
-    .mul(uRainStreakLength)
+    .mul(float(0.75).add(aMotion.w.mul(0.55)))
+    .mul(float(0.65).add(uPrecipSpeed.mul(0.35)))
+    .mul(clamp(uRainStreakLength, 0.05, 1.0))
 
   const snowW = tierWidthScale.mul(float(0.055).add(aMotion.w.mul(0.065)))
   const sandBillowW = tierWidthScale.mul(float(3.4).add(aMotion.w.mul(4.2)))
@@ -342,26 +333,35 @@ function ensurePrecipitationMesh(scene: Scene) {
     .mul(positionLocal.x.mul(quadW))
     .add(velUpDir.mul(positionLocal.y.mul(quadH)))
 
-  // 3. 地面水花涟漪：水平贴地圆环
-  const splashRadius = float(0.14).add(splashLife.mul(0.34))
-  const splashOffset = vec3(positionLocal.x.mul(splashRadius), float(0.02), positionLocal.y.mul(splashRadius))
-
   const isCameraBillboard = isSnow.or(isSand)
-  const activeOffset = select(isSplash, splashOffset, select(isCameraBillboard, cameraBillboardOffset, rainStreakOffset))
+  const activeOffset = select(isCameraBillboard, cameraBillboardOffset, rainStreakOffset)
   precipMat.positionNode = centerWorld.add(activeOffset)
 
   // 片元形态：
   // 1. 雪花：柔和立体晶核
-  // 2. 雨丝：高亮流线核心
-  // 3. 水花：扩散同心涟漪圈
-  // 4. 沙尘暴巨型尘团与飞沙团：采样无缝湍流云纹理 + 翻滚软边气团（全向正对镜头）
+  // 2. 雨丝：透明柱状水滴透镜（内部通透半透明 + 偏轴高光脊线 + 底部水滴球头聚光焦点，告别死白粉笔线）
+  // 3. 沙尘暴巨型尘团与飞沙团：采样无缝湍流云纹理 + 翻滚软边气团（全向正对镜头）
   const pUv = uv().sub(0.5).mul(2.0)
   const radial = length(pUv)
   const snowCore = exp(radial.mul(radial).mul(-3.2)).mul(smoothstep(float(1.0), float(0.15), radial))
-  const streakShape = smoothstep(float(1.0), float(0.0), abs(pUv.x))
-    .mul(smoothstep(float(1.0), float(0.0), abs(pUv.y)))
-    .mul(float(0.65).add(smoothstep(float(0.35), float(0.0), abs(pUv.x)).mul(0.5)))
-  const splashRing = smoothstep(float(0.28), float(0.0), abs(radial.sub(0.72))).mul(float(1.0).sub(splashLife))
+
+  // 透明折射水滴雨丝光学形态：
+  // 真实水滴柱透镜不是一根实心白线，而是「一侧深色全反射折射暗边 + 中间通透低透明度水体 + 另一侧极细高光亮脊 + 底部泪滴聚光头」
+  const rainWidthEnv = smoothstep(float(1.0), float(0.08), abs(pUv.x))
+  const rainTailFade = smoothstep(float(1.0), float(-0.55), pUv.y).mul(smoothstep(float(-1.0), float(-0.76), pUv.y))
+  // 极细偏轴高光亮脊（仅占宽度 14%，位于左侧 pUv.x = -0.22）
+  const rainSpecSpine = smoothstep(float(0.16), float(0.0), abs(pUv.x.add(0.22)))
+  // 右侧与外缘折射暗边（全反射弯曲光线形成的深色水棱边，在浅色背景/白盒前清晰呈现透明玻璃质感！）
+  const rainDarkRefractEdge = smoothstep(float(0.45), float(0.0), abs(pUv.x.sub(0.28))).mul(0.75)
+    .add(smoothstep(float(0.48), float(0.82), abs(pUv.x)).mul(0.45))
+  // 底部下坠水珠圆头（凸透镜焦点）
+  const rainDropHead = smoothstep(float(0.42), float(0.0), length(vec2(pUv.x.mul(1.45), pUv.y.add(0.58))))
+  // 中空通透度：中心水体极薄半透明（0.12），靠折射暗边与高光细脊勾勒透明水滴体积
+  const rainProfileAlpha = float(0.12)
+    .add(rainDarkRefractEdge.mul(0.38))
+    .add(rainSpecSpine.mul(0.72))
+    .add(rainDropHead.mul(0.78))
+  const rainGlassBody = rainWidthEnv.mul(rainTailFade).mul(rainProfileAlpha).mul(0.62)
 
   // 沙尘暴尘团片元噪声采样
   const cloudTex = defaultCloudNoiseTexture()
@@ -377,7 +377,7 @@ function ensurePrecipitationMesh(scene: Scene) {
   const shapeAlpha = select(
     isSnow,
     snowCore,
-    select(isSplash, splashRing, select(isSandBillow, sandBillowAlpha, select(isSand, sandGrainAlpha, streakShape))),
+    select(isSandBillow, sandBillowAlpha, select(isSand, sandGrainAlpha, rainGlassBody)),
   )
 
   // 当前层级包围盒边缘平滑淡出 + 近镜头防贴脸淡出
@@ -391,10 +391,19 @@ function ensurePrecipitationMesh(scene: Scene) {
   const nearMax = select(isSandBillow, float(5.2), float(1.35))
   const nearFade = smoothstep(nearMin, nearMax, camDist)
 
-  // 沙尘暴尘团内部自带顶部受光与底部浓暗立体感
+  // 沙尘暴尘团内部自带顶部受光与底部浓暗立体感；
+  // 雨滴采用双极折射配色：折射暗边为深冷蓝灰水影色，高光脊线与底部水滴头为晶莹高光色（彻底告别纯白粉笔线！）
   const billowShade = mix(float(0.76), float(1.16), clamp(pUv.y.mul(0.5).add(0.5).add(dustNoise.sub(0.5).mul(0.35)), 0.0, 1.0))
   const precipRgb = vec3(uPrecipColor.r, uPrecipColor.g, uPrecipColor.b)
-  precipMat.colorNode = select(isSandBillow, precipRgb.mul(billowShade), precipRgb)
+  const rainRefractDarkCol = vec3(0.11, 0.16, 0.24)
+  const rainHighlightWeight = clamp(rainSpecSpine.add(rainDropHead.mul(0.85)), 0.0, 1.0)
+  const rainRefractColor = mix(rainRefractDarkCol, precipRgb.mul(1.28), rainHighlightWeight)
+
+  precipMat.colorNode = select(
+    isSandBillow,
+    precipRgb.mul(billowShade),
+    select(isSnow.or(isSand), precipRgb, rainRefractColor),
+  )
   precipMat.opacityNode = shapeAlpha.mul(edgeFade).mul(nearFade).mul(uPrecipOpacity)
 
   precipMesh = new Mesh(precipGeo, precipMat)
@@ -453,7 +462,6 @@ function syncPrecipitation(scene: Scene, camera: Camera, settings: WeatherSettin
   uPrecipWindVec.value.set(Math.cos(rad) * settings.precipitationWind, Math.sin(rad) * settings.precipitationWind)
   uPrecipColor.value.set(settings.precipitationColor)
   uPrecipOpacity.value = Math.min(1, 0.42 + settings.precipitationIntensity * 0.58)
-  uPrecipSplash.value = settings.splashEnabled ? 1 : 0
 }
 
 // ── 后期管线判定与 Key ────────────────────────────────────────────────────────
@@ -567,94 +575,220 @@ function sampleUdsCumulusDensity(cloudTex: DataTexture, uvNode: unknown, heightF
   return clamp(baseCloud.sub(erodeWeight).div(max(float(1.0).sub(erodeWeight), float(0.25))), 0.0, 1.0)
 }
 
-/** 双层重叠雨滴同心圆水波纹（支持 uRippleDensity 动态控制涟漪密集度） */
-function rainRippleOffset(worldXZ: unknown, timeNode: unknown, densityNode: unknown) {
-  const dens = max(float(densityNode as never), float(0.2))
-  const xz = vec2(worldXZ as never).mul(dens)
+/**
+ * 双层重叠雨滴同心圆水波纹：
+ * 1) 涟漪尺寸恒定（绝不缩放 Tile 大小），通过 uRippleDensity (0.05~1) 控制每个网格周期的雨滴落点出现概率（真正控制涟漪数量！）
+ * 2) 内置解析式 Mipmap 距离与掠射角抗锯齿滤波（pixelFootprint），彻底消除中远景水坑的高频噪点闪烁
+ * 3) 支持 uRippleIntensity (0~2) 独立控制水波纹法线与波峰高光显示强度
+ */
+function rainRippleOffset(
+  worldXZ: unknown,
+  timeNode: unknown,
+  densityNode: unknown,
+  intensityNode: unknown,
+  pixelFootprintNode: unknown,
+) {
+  const spawnRatio = clamp(float(densityNode as never), 0.02, 1.0)
+  const strength = max(float(intensityNode as never), float(0.0))
+  const footprint = max(float(pixelFootprintNode as never), float(0.5))
+  const xz = vec2(worldXZ as never)
   const t = float(timeNode as never)
 
-  // 第一层涟漪网格
-  const pA = xz.mul(2.1)
+  // 解析式 Mipmap 滤波：随距离与掠射角自动降低波纹空间频率并平滑衰减亚像素高频波，彻底根除远处水坑噪点
+  const mipAtten = smoothstep(float(22.0), float(3.2), footprint)
+  const ringFreq = mix(float(16.0), float(32.0), smoothstep(float(14.0), float(2.0), footprint))
+
+  // 第一层固定物理尺度涟漪网格（单格约 45cm，涟漪直径恒定，由 activeA 控制出现数量）
+  const pA = xz.mul(2.2)
   const cellA = floor(pA)
   const localA = fract(pA).sub(0.5)
   const seedA = fastHash12(cellA)
-  const phaseA = fract(t.mul(1.15).add(seedA.mul(7.13)))
-  const distA = length(localA)
-  const ringA = sin(distA.sub(phaseA.mul(0.45)).mul(42.0))
-    .mul(smoothstep(float(0.45), float(0.0), distA))
-    .mul(smoothstep(float(0.0), float(0.08), distA.sub(phaseA.mul(0.45)).add(0.08)))
+  const cycleTimeA = t.mul(1.10).add(seedA.mul(7.13))
+  const cycleIdA = floor(cycleTimeA)
+  const phaseA = fract(cycleTimeA)
+  const spawnHashA = fastHash12(cellA.add(vec2(cycleIdA.mul(1.37), cycleIdA.mul(3.11))))
+  const activeA = smoothstep(spawnRatio, max(spawnRatio.sub(0.06), float(0.0)), spawnHashA)
+  // 格内随机微偏心，避免死板网格排列
+  const centerJitterA = vec2(seedA.sub(0.5), fract(seedA.mul(7.3)).sub(0.5)).mul(0.28)
+  const deltaA = localA.sub(centerJitterA)
+  const distA = length(deltaA)
+  const waveDeltaA = distA.sub(phaseA.mul(0.38))
+  const ringA = sin(waveDeltaA.mul(ringFreq))
+    .mul(smoothstep(float(0.40), float(0.02), distA))
+    .mul(smoothstep(float(0.11), float(0.0), abs(waveDeltaA)))
     .mul(float(1.0).sub(phaseA))
+    .mul(activeA)
 
-  // 第二层交错涟漪网格
-  const pB = rotOctave(xz, 2.65, 5.37, 8.91)
+  // 第二层交错固定尺度涟漪网格
+  const pB = rotOctave(xz, 2.55, 5.37, 8.91)
   const cellB = floor(pB)
   const localB = fract(pB).sub(0.5)
   const seedB = fastHash12(cellB)
-  const phaseB = fract(t.mul(1.35).add(seedB.mul(11.3)))
-  const distB = length(localB)
-  const ringB = sin(distB.sub(phaseB.mul(0.42)).mul(46.0))
-    .mul(smoothstep(float(0.42), float(0.0), distB))
-    .mul(smoothstep(float(0.0), float(0.08), distB.sub(phaseB.mul(0.42)).add(0.08)))
+  const cycleTimeB = t.mul(1.28).add(seedB.mul(11.3))
+  const cycleIdB = floor(cycleTimeB)
+  const phaseB = fract(cycleTimeB)
+  const spawnHashB = fastHash12(cellB.add(vec2(cycleIdB.mul(2.19), cycleIdB.mul(1.73))))
+  const activeB = smoothstep(spawnRatio, max(spawnRatio.sub(0.06), float(0.0)), spawnHashB)
+  const centerJitterB = vec2(seedB.sub(0.5), fract(seedB.mul(5.9)).sub(0.5)).mul(0.26)
+  const deltaB = localB.sub(centerJitterB)
+  const distB = length(deltaB)
+  const waveDeltaB = distB.sub(phaseB.mul(0.36))
+  const ringB = sin(waveDeltaB.mul(ringFreq.mul(1.06)))
+    .mul(smoothstep(float(0.38), float(0.02), distB))
+    .mul(smoothstep(float(0.11), float(0.0), abs(waveDeltaB)))
     .mul(float(1.0).sub(phaseB))
+    .mul(activeB)
 
-  const dirA = localA.div(max(distA, float(0.001)))
-  const dirB = localB.div(max(distB, float(0.001)))
-  return dirA.mul(ringA).add(dirB.mul(ringB)).mul(0.18)
+  const dirA = deltaA.div(max(distA, float(0.001)))
+  const dirB = deltaB.div(max(distB, float(0.001)))
+  const offset2D = dirA.mul(ringA).add(dirB.mul(ringB)).mul(0.22).mul(strength).mul(mipAtten)
+  const crestGlow = max(ringA, float(0.0)).add(max(ringB, float(0.0))).mul(strength).mul(mipAtten)
+  return { offset2D, crestGlow }
 }
 
 /**
- * 角色与物体侧面/斜面雨滴流淌水痕（Screen-Space Triplanar Rain Rivulets）：
- * 零模型 UV 依赖，利用世界坐标与法线在角色盔甲、身体、建筑侧面生成蜿蜒滑落的水珠与湿水痕。
+ * 单平面世界锁定水滴流淌采样（纯 32 位世界坐标输入，不掺杂 8 位视空间法线，彻底根除镜头转动时的水滴抖动！）
+ * - 形态取「饱满水滴头 + 连贯修长渐细流淌水迹线条」的黄金中间值（既有滑落水珠头，又有修长流淌轨迹线）
+ * - 生成柱面/球冠双极折射光学场：外圈折射暗边（rimDark）、内部透镜焦散亮区（caustic）、偏轴极细高光脊（specSpine）与强屏幕折射法线（lensX, lensY）
  */
-function computeSurfaceRainDrips(worldPos: unknown, worldNormal: unknown, timeNode: unknown, speedNode: unknown) {
+function evalPlanarWaterDrops(
+  horizCoord: unknown,
+  vertCoord: unknown,
+  planeSeed: number,
+  t: unknown,
+  spawnRatio: unknown,
+) {
+  const hc = float(horizCoord as never)
+  const vc = float(vertCoord as never)
+  const timeVal = float(t as never)
+  const ratio = clamp(float(spawnRatio as never), 0.02, 1.0)
+
+  // ── 层 1：主力流淌水迹线（间距 ~13.5cm，下端饱满水珠头 + 上端修长渐细水痕轨迹线） ──
+  const laneScaleA = float(7.4)
+  const wiggleA = fastValueNoise2D(vec2(hc.mul(3.4).add(planeSeed), vc.mul(2.7))).sub(0.5).mul(0.26)
+  const uA = hc.mul(laneScaleA).add(wiggleA)
+  const laneIdA = floor(uA)
+  const localXA = fract(uA).sub(0.5)
+  const laneHashA = fastHash12(vec2(laneIdA, float(planeSeed)))
+
+  const scrollA = vc.mul(1.85).add(timeVal.mul(float(0.65).add(laneHashA.mul(0.55)))).add(laneHashA.mul(13.7))
+  const cellIdYA = floor(scrollA)
+  const phaseYA = fract(scrollA)
+  // 控制流道出现数量（不改变单条水迹的粗细）
+  const dropSpawnHashA = fastHash12(vec2(laneIdA.add(float(planeSeed)), cellIdYA.mul(0.25)))
+  const activeDropA = smoothstep(ratio, max(ratio.sub(0.08), float(0.0)), dropSpawnHashA)
+
+  // 宽度从底部水滴头 (0.22) 向上方流淌长尾 (0.09) 平滑收窄，形成连贯修长的雨滴流淌轨迹！
+  const halfWidthA = float(0.22).sub(phaseYA.mul(0.13))
+  const normXA = localXA.div(max(halfWidthA, float(0.03)))
+  const acrossMaskA = smoothstep(float(1.0), float(0.10), abs(normXA))
+  const dropHeadA = smoothstep(float(0.18), float(0.0), phaseYA)
+  const dropTrailA = smoothstep(float(0.82), float(0.0), phaseYA).mul(0.78)
+  const rivuletA = acrossMaskA.mul(max(dropHeadA, dropTrailA)).mul(activeDropA)
+
+  // 柱面水条的双极折射光学分布（即使在纯白方块上也能一眼看出透明水体的折射暗边与内部聚光焦散！）
+  // 1) 外缘与一侧全反射折射暗边（水体边缘把光线折射偏离，呈现深色透明液体轮廓）
+  const rimDarkA = smoothstep(float(0.38), float(0.92), abs(normXA))
+    .add(smoothstep(float(-0.05), float(0.65), normXA).mul(0.55))
+    .mul(rivuletA)
+  // 2) 另一侧与水滴头下腹部凸透镜聚光焦散（把光线汇聚到基底表面，呈现晶莹透亮内芯）
+  const causticA = smoothstep(float(0.25), float(-0.45), normXA)
+    .mul(smoothstep(float(0.85), float(0.20), abs(normXA)))
+    .add(dropHeadA.mul(0.85))
+    .mul(rivuletA)
+  // 3) 极细镜面高光脊线（仅占水条宽度 16%，绝不把整条水痕涂成白线）
+  const specSpineA = smoothstep(float(0.22), float(0.0), abs(normXA.add(0.28)))
+    .mul(float(0.55).add(dropHeadA.mul(0.65)))
+    .mul(rivuletA)
+
+  // ── 层 2：交错细流淌水迹线（间距 ~6.4cm，丰富层次感） ──
+  const laneScaleB = float(15.5)
+  const wiggleB = fastValueNoise2D(vec2(hc.mul(7.2).add(planeSeed + 19.3), vc.mul(5.0))).sub(0.5).mul(0.22)
+  const uB = hc.mul(laneScaleB).add(wiggleB)
+  const laneIdB = floor(uB)
+  const localXB = fract(uB).sub(0.5)
+  const laneHashB = fastHash12(vec2(laneIdB.add(47.0), float(planeSeed + 11.0)))
+
+  const scrollB = vc.mul(3.0).add(timeVal.mul(float(0.85).add(laneHashB.mul(0.65)))).add(laneHashB.mul(29.1))
+  const cellIdYB = floor(scrollB)
+  const phaseYB = fract(scrollB)
+  const dropSpawnHashB = fastHash12(vec2(laneIdB.add(float(planeSeed + 71.0)), cellIdYB.mul(0.25)))
+  const activeDropB = smoothstep(ratio, max(ratio.sub(0.08), float(0.0)), dropSpawnHashB)
+
+  const halfWidthB = float(0.20).sub(phaseYB.mul(0.11))
+  const normXB = localXB.div(max(halfWidthB, float(0.03)))
+  const acrossMaskB = smoothstep(float(1.0), float(0.10), abs(normXB))
+  const dropHeadB = smoothstep(float(0.15), float(0.0), phaseYB)
+  const dropTrailB = smoothstep(float(0.72), float(0.0), phaseYB).mul(0.68)
+  const rivuletB = acrossMaskB.mul(max(dropHeadB, dropTrailB)).mul(0.82).mul(activeDropB)
+
+  const rimDarkB = smoothstep(float(0.38), float(0.92), abs(normXB))
+    .add(smoothstep(float(-0.05), float(0.65), normXB).mul(0.55))
+    .mul(rivuletB)
+  const causticB = smoothstep(float(0.25), float(-0.45), normXB)
+    .mul(smoothstep(float(0.85), float(0.20), abs(normXB)))
+    .add(dropHeadB.mul(0.85))
+    .mul(rivuletB)
+  const specSpineB = smoothstep(float(0.22), float(0.0), abs(normXB.add(0.28)))
+    .mul(float(0.50).add(dropHeadB.mul(0.65)))
+    .mul(rivuletB)
+
+  const totalMask = clamp(max(rivuletA, rivuletB), 0.0, 1.0)
+  const rimDark = clamp(rimDarkA.add(rimDarkB.mul(0.8)), 0.0, 1.2)
+  const caustic = clamp(causticA.add(causticB.mul(0.8)), 0.0, 1.2)
+  const specSpine = clamp(max(specSpineA, specSpineB), 0.0, 1.0)
+
+  // 强柱面/泪滴 2D 折射透镜法线（横向曲率 normX + 水滴头纵向曲率）
+  const lensX = clamp(normXA, -1.0, 1.0).mul(rivuletA).add(clamp(normXB, -1.0, 1.0).mul(rivuletB))
+  const lensY = dropHeadA.mul(rivuletA).add(dropHeadB.mul(rivuletB)).mul(-1.25)
+
+  return { totalMask, rimDark, caustic, specSpine, lensX, lensY }
+}
+
+/**
+ * 角色与物体表面真实透明折射水滴流淌轨迹（World-Locked Triplanar Refractive Water Rivulets）：
+ * - 在 X 轴与 Z 轴平面分别基于纯 32 位世界坐标独立计算，再按法线平滑混合结果，镜头旋转时 100% 零抖动！
+ * - 支持控制水滴数量（uDripsDensity，不改变平铺大小）与水滴强度（uDripsIntensity）
+ */
+function computeSurfaceRainDrips(
+  worldPos: unknown,
+  worldNormal: unknown,
+  timeNode: unknown,
+  speedNode: unknown,
+  densityNode: unknown,
+) {
   const wp = vec3(worldPos as never)
   const wn = vec3(worldNormal as never)
   const t = float(timeNode as never).mul(max(float(speedNode as never), float(0.2)))
 
-  // 无接缝侧向水平坐标（根据 X/Z 法线分量自动混合）
+  // 分别在 X 平面 (wp.z, wp.y) 与 Z 平面 (wp.x, wp.y) 独立采样，绝不混入法线到坐标中！
+  const planeX = evalPlanarWaterDrops(wp.z, wp.y, 0.0, t, densityNode)
+  const planeZ = evalPlanarWaterDrops(wp.x, wp.y, 37.0, t, densityNode)
+
   const absNx = abs(wn.x)
   const absNz = abs(wn.z)
-  const horizWeight = absNx.div(max(absNx.add(absNz), float(0.001)))
-  const sideCoord = mix(wp.x, wp.z, horizWeight)
-
-  // 第一层主水珠流道（间距约 14cm）
-  const laneScaleA = float(7.2)
-  const wiggleA = fastValueNoise2D(vec2(sideCoord.mul(3.5), wp.y.mul(2.8))).sub(0.5).mul(0.28)
-  const uA = sideCoord.mul(laneScaleA).add(wiggleA)
-  const laneIdA = floor(uA)
-  const laneLocalX_A = fract(uA).sub(0.5)
-  const seedA = fastHash12(vec2(laneIdA, floor(wp.x.add(wp.z))))
-  // 向上滚动相位 = 向下流淌（wp.y 减小方向）
-  const dropPhaseA = fract(wp.y.mul(1.85).add(t.mul(float(0.65).add(seedA.mul(0.55)))).add(seedA.mul(13.7)))
-  const headWidthA = float(0.22).sub(dropPhaseA.mul(0.12))
-  const acrossMaskA = smoothstep(headWidthA, float(0.02), abs(laneLocalX_A))
-  // 水珠亮头（dropPhaseA 接近 0 处）+ 水痕渐变拖尾
-  const dropHeadA = smoothstep(float(0.14), float(0.0), dropPhaseA)
-  const dropTrailA = smoothstep(float(0.78), float(0.0), dropPhaseA).mul(0.52)
-  const rivuletA = acrossMaskA.mul(max(dropHeadA, dropTrailA))
-
-  // 第二层细密水珠流道（间距约 6.5cm，交错补充细节）
-  const laneScaleB = float(15.5)
-  const wiggleB = fastValueNoise2D(vec2(sideCoord.mul(7.5).add(19.3), wp.y.mul(5.2))).sub(0.5).mul(0.24)
-  const uB = sideCoord.mul(laneScaleB).add(wiggleB)
-  const laneIdB = floor(uB)
-  const laneLocalX_B = fract(uB).sub(0.5)
-  const seedB = fastHash12(vec2(laneIdB.add(47.0), floor(wp.y)))
-  const dropPhaseB = fract(wp.y.mul(3.1).add(t.mul(float(0.85).add(seedB.mul(0.65)))).add(seedB.mul(29.1)))
-  const acrossMaskB = smoothstep(float(0.20), float(0.02), abs(laneLocalX_B))
-  const dropHeadB = smoothstep(float(0.12), float(0.0), dropPhaseB)
-  const dropTrailB = smoothstep(float(0.65), float(0.0), dropPhaseB).mul(0.42)
-  const rivuletB = acrossMaskB.mul(max(dropHeadB, dropTrailB)).mul(0.75)
+  const blendZ = smoothstep(float(0.32), float(0.68), absNz.div(max(absNx.add(absNz), float(0.001))))
 
   // 仅在侧面与斜面生效（朝天水平面 |ny| > 0.86 由水坑接管，朝下底面 ny < -0.35 减弱）
   const sideMask = smoothstep(float(0.88), float(0.42), abs(wn.y)).mul(smoothstep(float(-0.45), float(0.15), wn.y))
-  const dripIntensity = clamp(rivuletA.add(rivuletB), 0.0, 1.0).mul(sideMask)
-  const normalPerturbX = laneLocalX_A.mul(rivuletA).add(laneLocalX_B.mul(rivuletB)).mul(sideMask)
-  const normalPerturbY = dropHeadA.add(dropHeadB).mul(0.35).mul(sideMask)
+
+  const dripMask = mix(planeX.totalMask, planeZ.totalMask, blendZ).mul(sideMask)
+  const rimDark = mix(planeX.rimDark, planeZ.rimDark, blendZ).mul(sideMask)
+  const caustic = mix(planeX.caustic, planeZ.caustic, blendZ).mul(sideMask)
+  const specSpine = mix(planeX.specSpine, planeZ.specSpine, blendZ).mul(sideMask)
+  const lensX = mix(planeX.lensX, planeZ.lensX, blendZ).mul(sideMask)
+  const lensY = mix(planeX.lensY, planeZ.lensY, blendZ).mul(sideMask)
+
+  // 将 2D 水条柱面透镜法线扰动合成到 3D 世界法线
+  const perturbedNormal = normalize(wn.add(vec3(lensX.mul(0.95), lensY.mul(0.75), lensX.mul(0.95))))
 
   return {
-    dripMask: dripIntensity,
-    perturbedNormal: normalize(wn.add(vec3(normalPerturbX.mul(0.45), normalPerturbY, normalPerturbX.mul(0.45)))),
+    dripMask,
+    rimDark,
+    caustic,
+    specSpine,
+    lensOffset2D: vec2(lensX, lensY),
+    perturbedNormal,
     sideMask,
   }
 }
@@ -682,7 +816,10 @@ export function buildWeatherSurfacePass(
   const uTime = uniform(0)
   const uWetness = uniform(0)
   const uPuddle = uniform(0)
-  const uRippleDensity = uniform(1.0)
+  const uRippleDensity = uniform(0.65)
+  const uRippleIntensity = uniform(1.0)
+  const uDripsDensity = uniform(0.55)
+  const uDripsIntensity = uniform(1.0)
   const uDripsSpeed = uniform(1.0)
   const uSnow = uniform(0)
   const uSnowColor = uniform(new Color('#eef5ff'))
@@ -727,24 +864,51 @@ export function buildWeatherSurfacePass(
     const wetSurface = uWetness.mul(smoothstep(float(-0.15), float(0.65), worldNormal.y).mul(0.55).add(0.45))
     surfaceRgb = vec3(surfaceRgb as never).mul(mix(float(1.0), float(0.64), wetSurface))
 
-    // 角色身体、盔甲与物体侧面雨滴流淌水痕（Screen-Space Triplanar Rain Rivulets）
+    // 角色身体、盔甲与物体侧面真实透明折射雨滴流淌轨迹（Screen-Space Refractive Water Rivulets）
     if (options.drips) {
-      const drips = computeSurfaceRainDrips(worldPos, worldNormal, uTime, uDripsSpeed)
-      const halfVec = normalize(uSunDir.add(viewDir))
-      const dripSpec = pow(max(dot(drips.perturbedNormal, halfVec), float(0.0)), float(42.0))
-        .mul(drips.dripMask)
-        .mul(uWetness)
-        .mul(0.85)
-      const sideFresnel = pow(float(1.0).sub(clamp(dot(drips.perturbedNormal, viewDir), 0.0, 1.0)), float(3.2))
-        .mul(drips.sideMask)
-        .mul(uWetness)
-      const wetFilmSheen = vec3(0.72, 0.80, 0.92).mul(
-        drips.dripMask.mul(0.28).add(sideFresnel.mul(0.18)),
+      const drips = computeSurfaceRainDrips(worldPos, worldNormal, uTime, uDripsSpeed, uDripsDensity)
+      const dripStrength = clamp(uDripsIntensity, 0.0, 2.0).mul(clamp(uWetness.mul(1.25), 0.25, 1.0))
+
+      // 1) 强屏幕空间柱面透镜折射采样（幅度提升至 0.026，盔甲纹理、阴影边界、结构接缝在水流经过时会产生肉眼可见的放大弯曲折射！）
+      const refractUV = clamp(
+        screenUV.add(drips.lensOffset2D.mul(0.026).mul(dripStrength)),
+        0.002,
+        0.998,
       )
-      // 水道滑过处轻微加深基底并叠加晶莹流动高光与水膜反光
-      surfaceRgb = vec3(surfaceRgb as never)
-        .mul(mix(float(1.0), float(0.84), drips.dripMask.mul(uWetness)))
-        .add(vec3(uSunColor as never).mul(dripSpec).add(wetFilmSheen))
+      const refractedDepth = depthTex.sample(refractUV).r
+      const validRefract = select(isBackgroundDepth(refractedDepth as never), float(0.0), float(1.0))
+      const refractedRgb = vec3(beautyTex.sample(refractUV).rgb as never).mul(
+        mix(float(1.0), float(0.64), wetSurface),
+      )
+      const clearWaterBase = mix(
+        vec3(surfaceRgb as never),
+        refractedRgb,
+        clamp(drips.dripMask.mul(validRefract).mul(dripStrength), 0.0, 0.96),
+      )
+
+      // 2) 双极柱面透镜折射明暗（即使在纯色白盒上也能清晰呈现透明液体的「深色折射暗边 + 内部透亮焦散」，彻底告别平涂白线！）
+      const lensContrast = clamp(
+        float(1.0)
+          .sub(drips.rimDark.mul(0.32).mul(dripStrength))
+          .add(drips.caustic.mul(0.24).mul(dripStrength)),
+        0.48,
+        1.45,
+      )
+
+      // 3) 柱面水条折射天空环境色 + 极细镜面高光脊线（specSpine），仅在 16% 宽度的高光脊上提亮
+      const refractEnvDir = reflect(viewDir.negate(), drips.perturbedNormal)
+      const envSkyTint = mix(vec3(0.18, 0.24, 0.34), vec3(0.68, 0.78, 0.92), clamp(refractEnvDir.y.mul(0.5).add(0.5), 0.0, 1.0))
+      const halfVec = normalize(uSunDir.add(viewDir))
+      const sunSpec = pow(max(dot(drips.perturbedNormal, halfVec), float(0.0)), float(72.0))
+      const sharpGlint = drips.specSpine.mul(0.42).add(sunSpec.mul(drips.dripMask).mul(0.95)).mul(dripStrength)
+
+      const waterBodyRgb = mix(
+        clearWaterBase.mul(lensContrast),
+        envSkyTint,
+        clamp(drips.rimDark.mul(0.18).mul(dripStrength), 0.0, 0.35),
+      )
+
+      surfaceRgb = waterBodyRgb.add(vec3(uSunColor as never).mul(sharpGlint))
     }
 
     // 水平地面低洼积水坑分布（域扭曲多级噪声，边缘自然不规则）
@@ -765,11 +929,16 @@ export function buildWeatherSurfacePass(
 
     surfaceRgb = vec3(surfaceRgb as never).mul(mix(float(1.0), float(0.68), wetRimMask))
 
-    // 水面涟漪法线（支持 uRippleDensity 调节涟漪密集度）
+    // 水面涟漪法线（支持 uRippleDensity 控制数量、uRippleIntensity 控制强度、解析式 Mipmap 消除远处噪点）
     let puddleNormal: unknown = vec3(0, 1, 0)
     let ripple2D: unknown = vec2(0, 0)
+    let rippleCrest: unknown = float(0.0)
     if (options.ripples) {
-      ripple2D = rainRippleOffset(worldPos.xz, uTime, uRippleDensity)
+      const viewDistForMip = length(viewPos)
+      const pixelFootprint = viewDistForMip.div(max(abs(viewDir.y), float(0.14)))
+      const rippleRes = rainRippleOffset(worldPos.xz, uTime, uRippleDensity, uRippleIntensity, pixelFootprint)
+      ripple2D = rippleRes.offset2D
+      rippleCrest = rippleRes.crestGlow
       const rp = ripple2D as { x: unknown; y: unknown }
       puddleNormal = normalize(vec3(rp.x as never, float(1.0), rp.y as never))
     }
@@ -850,7 +1019,8 @@ export function buildWeatherSurfacePass(
 
     const submergedGround = vec3(surfaceRgb as never).mul(0.32)
     const sunSpec = pow(max(dot(reflWorldDir, uSunDir), float(0.0)), float(96.0)).mul(vec3(uSunColor as never)).mul(0.9)
-    const puddleFinal = mix(submergedGround, totalReflection, reflStrength).add(sunSpec)
+    const rippleCrestRing = vec3(0.84, 0.92, 1.0).mul(float(rippleCrest as never).mul(0.04))
+    const puddleFinal = mix(submergedGround, totalReflection, reflStrength).add(sunSpec).add(rippleCrestRing)
 
     surfaceRgb = mix(surfaceRgb as never, puddleFinal, puddleMask)
   }
@@ -921,6 +1091,9 @@ export function buildWeatherSurfacePass(
       uWetness.value = s.enabled && s.wetnessEnabled ? s.wetness : 0
       uPuddle.value = s.enabled && s.wetnessEnabled ? s.puddleAmount : 0
       uRippleDensity.value = s.rippleDensity
+      uRippleIntensity.value = s.rippleIntensity
+      uDripsDensity.value = s.rainDripsDensity
+      uDripsIntensity.value = s.rainDripsIntensity
       uDripsSpeed.value = s.rainDripsSpeed
       uSnow.value = s.enabled && s.snowCoverEnabled ? s.snowCover : 0
       uSnowColor.value.set(s.snowColor)
@@ -1048,11 +1221,18 @@ export function buildWeatherSkyPass(
   let transmittance: unknown = float(1.0)
   let scatteredLight: unknown = vec3(0, 0, 0)
 
-  // ── 层级 1：低空 3D 体积积云层（16 步高预算步进 + 3 步向阳阴影锥 + 双阶多重散射） ──
+  // ── 层级 1：低空 3D 体积积云层（16 步高预算步进 + 3D 太阳方向体积照明 + 乌云黑核与高亮银边轮廓） ──
   if (options.lowClouds) {
     const covThreshold = float(0.74).sub(uCoverage.mul(0.52))
     const stepCount = 16
     const invSteps = 1.0 / stepCount
+
+    // 乌云深层暗核底色（随 uShadow 与云体浓度加深为厚重深灰黑乌云核，同时保留边缘高光）
+    const stormCoreColor = mix(
+      vec3(0.03, 0.04, 0.07),
+      vec3(0.14, 0.17, 0.23).mul(vec3(uCloudTint as never)),
+      dayFactor,
+    )
 
     for (let i = 0; i < stepCount; i += 1) {
       const h = (i + 0.5) * invSteps
@@ -1064,30 +1244,48 @@ export function buildWeatherSkyPass(
       const rawD = sampleUdsCumulusDensity(cloudTex, sampleUV, float(h), covThreshold)
       const d = rawD.mul(uDensity).mul(horizonMask)
 
-      // 3 步向阳锥形阴影采样（近、中、远三级光深累积）
-      const s1 = sampleUdsCumulusDensity(cloudTex, sampleUV.add(sunDirXZ.mul(0.016)), float(min(1.0, h + 0.12)), covThreshold)
-      const s2 = sampleUdsCumulusDensity(cloudTex, sampleUV.add(sunDirXZ.mul(0.042)), float(min(1.0, h + 0.28)), covThreshold)
-      const s3 = sampleUdsCumulusDensity(cloudTex, sampleUV.add(sunDirXZ.mul(0.088)), float(min(1.0, h + 0.52)), covThreshold)
-      const shadowOpticalDepth = s1.mul(0.35).add(s2.mul(0.38)).add(s3.mul(0.27)).mul(uShadow).mul(uDensity).mul(3.4)
+      // 1) 真实 3D 太阳方向跨尺度光线步进（0 额外采样开销，拉开步幅直接捕获云朵向阳面、背阳面与立体法线梯度！）
+      const s1 = sampleUdsCumulusDensity(cloudTex, sampleUV.add(sunDirXZ.mul(0.032)), float(min(1.0, h + 0.14)), covThreshold)
+      const s2 = sampleUdsCumulusDensity(cloudTex, sampleUV.add(sunDirXZ.mul(0.088)), float(min(1.0, h + 0.34)), covThreshold)
+      const s3 = sampleUdsCumulusDensity(cloudTex, sampleUV.add(sunDirXZ.mul(0.195)), float(min(1.0, h + 0.62)), covThreshold)
 
-      // UDS 双阶多重散射（Primary Beer + Secondary Multi-Scatter Octave）：厚云内部柔和通透不死黑
+      // 向阳表面方向梯度（当向太阳方向一步 s1 < 当前密度 rawD 时，说明处于朝向太阳的受光球面上，强烈提亮！）
+      const sunFacingSlope = clamp(rawD.sub(s1).mul(2.8).add(0.42), 0.0, 1.45)
+
+      // 太阳方向光学深度（背阳侧与云团深处累积浓重自阴影）
+      const shadowOpticalDepth = s1.mul(0.32).add(s2.mul(0.38)).add(s3.mul(0.30)).mul(uShadow).mul(uDensity).mul(4.8)
       const primaryTrans = exp(shadowOpticalDepth.negate())
-      const multiScatterTrans = exp(shadowOpticalDepth.mul(-0.28)).mul(0.45)
-      const sunTrans = clamp(primaryTrans.mul(0.72).add(multiScatterTrans), 0.0, 1.15)
+      const multiScatterTrans = exp(shadowOpticalDepth.mul(-0.34)).mul(0.28)
+      const sunTrans = clamp(primaryTrans.mul(0.82).add(multiScatterTrans), 0.0, 1.25).mul(sunFacingSlope)
 
-      // Beer-Powder 糖霜边缘体积感：迎光花椰菜云包立体饱满
-      const powder = float(1.0).sub(exp(d.mul(-3.8)).mul(0.48))
+      // 2) 强烈边缘轮廓光（Edge Rim / Silver Lining）：云朵外圈薄边缘 (rawD 0.02~0.38) 强透光，勾勒鲜明立体银边！
+      const thinEdgeMask = smoothstep(float(0.01), float(0.11), rawD).mul(smoothstep(float(0.54), float(0.14), rawD))
+      const powder = float(1.0).sub(exp(d.mul(-4.5)).mul(0.62))
+      const edgeRimGlow = thinEdgeMask.mul(float(0.55).add(phaseHG.mul(0.85))).mul(uSilver).mul(
+        exp(s1.mul(uShadow).mul(-1.6)),
+      )
 
-      // 垂直高度环境光插值 + 闪电内部透光
-      const verticalAmbient = mix(bottomAmbientColor, topSkyAmbientColor, smoothstep(float(0.05), float(0.88), float(h)))
-      const directSun = litTopColor.mul(sunTrans.mul(powder).add(phaseHG.mul(sunTrans).mul(0.62)))
-      const lightningGlow = vec3(0.68, 0.80, 1.0).mul(uLightning.mul(0.42))
+      // 3) 乌云体感（中间厚重灰黑，边缘亮轮廓）：云团核心厚度越大、uShadow 越高，内部环境光被强烈吸收压暗
+      const coreThickness = smoothstep(float(0.16), float(0.68), rawD.mul(clamp(uDensity, 0.5, 2.0)))
+      const coreDarkWeight = clamp(
+        coreThickness.mul(uShadow).mul(float(0.65).add(clamp(shadowOpticalDepth.mul(0.25), 0.0, 0.65))),
+        0.0,
+        0.94,
+      )
+
+      const baseAmbient = mix(bottomAmbientColor, topSkyAmbientColor, smoothstep(float(0.08), float(0.90), float(h)))
+      const sculptedAmbient = mix(baseAmbient, stormCoreColor, coreDarkWeight)
+
+      const directSun = litTopColor.mul(
+        sunTrans.mul(powder).mul(float(1.0).sub(coreDarkWeight.mul(0.55))).add(edgeRimGlow.mul(0.92)),
+      )
+      const lightningGlow = vec3(0.68, 0.80, 1.0).mul(uLightning.mul(0.48))
 
       // 地平线远距大气透视融合（远端云团自然融入地平线散射天光）
       const aerialBlend = clamp(float(1.0).sub(exp(max(rayDist.sub(1.4), float(0.0)).mul(-0.24))), 0.0, 0.82)
-      const localCloudCol = mix(verticalAmbient.add(directSun).add(lightningGlow), skyBgRgb, aerialBlend)
+      const localCloudCol = mix(sculptedAmbient.add(directSun).add(lightningGlow), skyBgRgb, aerialBlend)
 
-      const stepExtinction = d.mul(0.36)
+      const stepExtinction = d.mul(0.38)
       const stepTrans = exp(stepExtinction.negate())
       const stepAlpha = float(1.0).sub(stepTrans)
 
@@ -1096,10 +1294,11 @@ export function buildWeatherSkyPass(
     }
   }
 
-  // ── 层级 2：中空高积云/层云层（6 步体积步进，1.85 倍海拔 + 异向风切变视差） ──
+  // ── 层级 2：中空高积云/层云层（6 步体积步进，1.85 倍海拔 + 异向风切变视差 + 太阳方向明暗） ──
   if (options.midClouds) {
     const midCovThresh = float(0.78).sub(uCoverage.mul(0.48))
     const midHeights = [0.12, 0.28, 0.45, 0.62, 0.78, 0.92]
+    const midStormCore = mix(vec3(0.04, 0.05, 0.08), vec3(0.18, 0.21, 0.28).mul(vec3(uCloudTint as never)), dayFactor)
     for (let i = 0; i < midHeights.length; i += 1) {
       const h = midHeights[i]!
       const shellH = 1.85 + h * 0.28
@@ -1111,19 +1310,24 @@ export function buildWeatherSkyPass(
       const sMid2 = texture(cloudTex, rotOctave(midUV, 2.2, 0.33, 0.61))
       const midField = sMid1.r.mul(0.58).add(sMid2.g.mul(0.42))
       const midProfile = smoothstep(float(0.0), float(0.22), float(h)).mul(smoothstep(float(1.0), float(0.35), float(h)))
-      const midDensity = clamp(
+      const rawMidD = clamp(
         midField.mul(midProfile.mul(0.3).add(0.7)).sub(midCovThresh).div(max(float(1.0).sub(midCovThresh), float(0.18))),
         0.0,
         1.0,
       )
-        .mul(uDensity)
-        .mul(0.65)
-        .mul(horizonMask)
+      const midDensity = rawMidD.mul(uDensity).mul(0.65).mul(horizonMask)
 
-      const sMidSun = texture(cloudTex, midUV.add(sunDirXZ.mul(0.025))).r
-      const midSunTrans = exp(max(sMidSun.sub(midCovThresh), float(0.0)).mul(uShadow).mul(-2.4))
-      const midAmbient = mix(bottomAmbientColor, topSkyAmbientColor, float(0.45 + h * 0.45))
-      const midDirect = litTopColor.mul(midSunTrans.mul(0.75).add(phaseHG.mul(midSunTrans).mul(0.45)))
+      const sMidSun = texture(cloudTex, midUV.add(sunDirXZ.mul(0.055))).r
+      const midSunDepth = max(sMidSun.sub(midCovThresh), float(0.0)).mul(uShadow).mul(3.6)
+      const midSunTrans = exp(midSunDepth.negate())
+      const midEdgeRim = smoothstep(float(0.02), float(0.15), rawMidD).mul(smoothstep(float(0.55), float(0.18), rawMidD)).mul(uSilver)
+      const midCoreDark = smoothstep(float(0.20), float(0.75), rawMidD.mul(uDensity)).mul(uShadow).mul(0.82)
+      const midAmbient = mix(
+        mix(bottomAmbientColor, topSkyAmbientColor, float(0.45 + h * 0.45)),
+        midStormCore,
+        midCoreDark,
+      )
+      const midDirect = litTopColor.mul(midSunTrans.mul(0.82).add(midEdgeRim.mul(float(0.45).add(phaseHG.mul(0.55)))))
       const aerialBlend = clamp(float(1.0).sub(exp(max(rayDist.sub(2.0), float(0.0)).mul(-0.18))), 0.0, 0.85)
       const midCol = mix(midAmbient.add(midDirect), skyBgRgb, aerialBlend)
 

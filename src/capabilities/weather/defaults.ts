@@ -51,7 +51,7 @@ export interface WeatherSettings {
   precipitationColor: string
   /** 相机环绕降水盒边长 (m) */
   precipitationBoxSize: number
-  /** 雨丝速度拉伸长度倍率 (0.2 ~ 3) */
+  /** 雨丝速度拉伸长度倍率 (0.05 ~ 1) */
   rainStreakLength: number
   /** 沙尘暴大气能见度黄沙雾化浓度 (0 ~ 1) */
   sandstormHaze: number
@@ -66,11 +66,17 @@ export interface WeatherSettings {
   puddleAmount: number
   /** 雨滴落入水坑的动态涟漪开关 */
   ripplesEnabled: boolean
-  /** 地面水坑涟漪密集度 (0.2 ~ 4) */
+  /** 地面水坑涟漪数量占比 (0.05 ~ 1，控制出现概率而非缩放 Tile) */
   rippleDensity: number
+  /** 地面水坑涟漪显示强度 (0 ~ 2) */
+  rippleIntensity: number
   /** 角色与物体表面雨滴流淌水痕开关 */
   rainDripsEnabled: boolean
-  /** 物体表面雨滴流淌速度与强度 (0.2 ~ 3) */
+  /** 角色与物体表面水滴数量占比 (0.05 ~ 1，控制水珠出现概率而非缩放 Tile) */
+  rainDripsDensity: number
+  /** 角色与物体表面水滴折射与高光强度 (0 ~ 2) */
+  rainDripsIntensity: number
+  /** 物体表面雨滴流淌速度 (0.2 ~ 3) */
   rainDripsSpeed: number
 
   // ── 4. 表面积雪覆盖（保留实时地面阴影与冷色雪影） ──
@@ -115,7 +121,7 @@ export function defaultWeatherSettings(): WeatherSettings {
     precipitationWind: 2.5,
     precipitationColor: '#dce9f7',
     precipitationBoxSize: 28,
-    rainStreakLength: 1.0,
+    rainStreakLength: 0.45,
     sandstormHaze: 0.75,
     splashEnabled: true,
 
@@ -123,8 +129,11 @@ export function defaultWeatherSettings(): WeatherSettings {
     wetness: 0.65,
     puddleAmount: 0.45,
     ripplesEnabled: true,
-    rippleDensity: 1.0,
+    rippleDensity: 0.65,
+    rippleIntensity: 1.0,
     rainDripsEnabled: true,
+    rainDripsDensity: 0.55,
+    rainDripsIntensity: 1.0,
     rainDripsSpeed: 1.0,
 
     snowCoverEnabled: false,
@@ -185,9 +194,9 @@ export function weatherPresetPatch(preset: Exclude<WeatherPreset, 'custom'>): Pa
         midCloudsEnabled: true,
         highCloudsEnabled: false,
         cloudCoverage: 0.84,
-        cloudDensity: 1.4,
-        cloudSilverLining: 0.55,
-        cloudShadowStrength: 0.65,
+        cloudDensity: 1.45,
+        cloudSilverLining: 0.90,
+        cloudShadowStrength: 0.78,
         cloudTint: '#cfd8e6',
         cirrusEnabled: false,
         precipitationType: 'rain',
@@ -195,14 +204,17 @@ export function weatherPresetPatch(preset: Exclude<WeatherPreset, 'custom'>): Pa
         precipitationSpeed: 1.15,
         precipitationWind: 3.5,
         precipitationColor: '#d8e8fa',
-        rainStreakLength: 1.15,
+        rainStreakLength: 0.50,
         splashEnabled: true,
         wetnessEnabled: true,
         wetness: 0.78,
         puddleAmount: 0.58,
         ripplesEnabled: true,
-        rippleDensity: 1.2,
+        rippleDensity: 0.68,
+        rippleIntensity: 1.0,
         rainDripsEnabled: true,
+        rainDripsDensity: 0.58,
+        rainDripsIntensity: 1.0,
         rainDripsSpeed: 1.0,
         snowCoverEnabled: false,
         lightningEnabled: false,
@@ -215,9 +227,9 @@ export function weatherPresetPatch(preset: Exclude<WeatherPreset, 'custom'>): Pa
         midCloudsEnabled: true,
         highCloudsEnabled: false,
         cloudCoverage: 0.92,
-        cloudDensity: 1.7,
-        cloudSilverLining: 0.45,
-        cloudShadowStrength: 0.78,
+        cloudDensity: 1.75,
+        cloudSilverLining: 0.95,
+        cloudShadowStrength: 0.90,
         cloudTint: '#9aa8ba',
         cirrusEnabled: false,
         precipitationType: 'rain',
@@ -225,14 +237,17 @@ export function weatherPresetPatch(preset: Exclude<WeatherPreset, 'custom'>): Pa
         precipitationSpeed: 1.45,
         precipitationWind: 8.5,
         precipitationColor: '#c9dcf2',
-        rainStreakLength: 1.45,
+        rainStreakLength: 0.75,
         splashEnabled: true,
         wetnessEnabled: true,
         wetness: 0.92,
         puddleAmount: 0.76,
         ripplesEnabled: true,
-        rippleDensity: 1.5,
+        rippleDensity: 0.88,
+        rippleIntensity: 1.25,
         rainDripsEnabled: true,
+        rainDripsDensity: 0.78,
+        rainDripsIntensity: 1.2,
         rainDripsSpeed: 1.4,
         snowCoverEnabled: false,
         lightningEnabled: true,
@@ -327,7 +342,7 @@ export function normalizeWeatherSettings(value: unknown): WeatherSettings {
     precipitationWind: clamp(raw.precipitationWind, base.precipitationWind, 0, 20),
     precipitationColor: colorOf(raw.precipitationColor, base.precipitationColor),
     precipitationBoxSize: clamp(raw.precipitationBoxSize, base.precipitationBoxSize, 12, 60),
-    rainStreakLength: clamp(raw.rainStreakLength, base.rainStreakLength, 0.2, 3),
+    rainStreakLength: clamp(raw.rainStreakLength, base.rainStreakLength, 0.05, 1),
     sandstormHaze: clamp(raw.sandstormHaze, base.sandstormHaze, 0, 1),
     splashEnabled: bool(raw.splashEnabled, base.splashEnabled),
 
@@ -335,8 +350,11 @@ export function normalizeWeatherSettings(value: unknown): WeatherSettings {
     wetness: clamp(raw.wetness, base.wetness, 0, 1),
     puddleAmount: clamp(raw.puddleAmount, base.puddleAmount, 0, 1),
     ripplesEnabled: bool(raw.ripplesEnabled, base.ripplesEnabled),
-    rippleDensity: clamp(raw.rippleDensity, base.rippleDensity, 0.2, 4),
+    rippleDensity: clamp(raw.rippleDensity, base.rippleDensity, 0.05, 1),
+    rippleIntensity: clamp(raw.rippleIntensity, base.rippleIntensity, 0, 2),
     rainDripsEnabled: bool(raw.rainDripsEnabled, base.rainDripsEnabled),
+    rainDripsDensity: clamp(raw.rainDripsDensity, base.rainDripsDensity, 0.05, 1),
+    rainDripsIntensity: clamp(raw.rainDripsIntensity, base.rainDripsIntensity, 0, 2),
     rainDripsSpeed: clamp(raw.rainDripsSpeed, base.rainDripsSpeed, 0.2, 3),
 
     snowCoverEnabled: bool(raw.snowCoverEnabled, base.snowCoverEnabled),

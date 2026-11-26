@@ -165,7 +165,7 @@ export function WeatherCard() {
                       <WeatherNumber label={t('weather.precipBoxSize')} value={weather.precipitationBoxSize} min={12} max={60} step={1} onChange={(precipitationBoxSize) => write({ precipitationBoxSize })} />
                     </div>
                     {weather.precipitationType === 'rain' && (
-                      <WeatherNumber label={t('weather.rainStreakLength')} value={weather.rainStreakLength} min={0.2} max={3} step={0.05} onChange={(rainStreakLength) => write({ rainStreakLength })} />
+                      <WeatherNumber label={t('weather.rainStreakLength')} value={weather.rainStreakLength} min={0.05} max={1} step={0.01} onChange={(rainStreakLength) => write({ rainStreakLength })} />
                     )}
                     {weather.precipitationType === 'sand' && (
                       <WeatherNumber label={t('weather.sandstormHaze')} value={weather.sandstormHaze} min={0} max={1} step={0.02} onChange={(sandstormHaze) => write({ sandstormHaze })} />
@@ -189,11 +189,20 @@ export function WeatherCard() {
                     </div>
                     <WeatherCheck label={t('weather.ripplesEnabled')} checked={weather.ripplesEnabled} onChange={(val) => edit({ ripplesEnabled: val })} />
                     {weather.ripplesEnabled && (
-                      <WeatherNumber label={t('weather.rippleDensity')} value={weather.rippleDensity} min={0.2} max={4} step={0.05} onChange={(rippleDensity) => write({ rippleDensity })} />
+                      <div className="iv2-pair">
+                        <WeatherNumber label={t('weather.rippleDensity')} value={weather.rippleDensity} min={0.05} max={1} step={0.01} onChange={(rippleDensity) => write({ rippleDensity })} />
+                        <WeatherNumber label={t('weather.rippleIntensity')} value={weather.rippleIntensity} min={0} max={2} step={0.05} onChange={(rippleIntensity) => write({ rippleIntensity })} />
+                      </div>
                     )}
                     <WeatherCheck label={t('weather.rainDripsEnabled')} checked={weather.rainDripsEnabled} onChange={(val) => edit({ rainDripsEnabled: val })} />
                     {weather.rainDripsEnabled && (
-                      <WeatherNumber label={t('weather.rainDripsSpeed')} value={weather.rainDripsSpeed} min={0.2} max={3} step={0.05} onChange={(rainDripsSpeed) => write({ rainDripsSpeed })} />
+                      <>
+                        <div className="iv2-pair">
+                          <WeatherNumber label={t('weather.rainDripsDensity')} value={weather.rainDripsDensity} min={0.05} max={1} step={0.01} onChange={(rainDripsDensity) => write({ rainDripsDensity })} />
+                          <WeatherNumber label={t('weather.rainDripsIntensity')} value={weather.rainDripsIntensity} min={0} max={2} step={0.05} onChange={(rainDripsIntensity) => write({ rainDripsIntensity })} />
+                        </div>
+                        <WeatherNumber label={t('weather.rainDripsSpeed')} value={weather.rainDripsSpeed} min={0.2} max={3} step={0.05} onChange={(rainDripsSpeed) => write({ rainDripsSpeed })} />
+                      </>
                     )}
                   </>
                 )}
