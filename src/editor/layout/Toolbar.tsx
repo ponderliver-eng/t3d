@@ -1,8 +1,9 @@
-import { ArrowDownToLine, Axis3d, BookOpen, BoxSelect, Check, Crosshair, FileDown, FilePlus, GitBranch, Globe, Grid3x3, History, Library, Magnet, Move3d, Package, Pause, Play, Redo2, RotateCcw, Save, Scaling, Activity, Sparkles, Square, Undo2 } from 'lucide-react'
+import { ArrowDownToLine, Axis3d, BookOpen, BoxSelect, Check, Crosshair, FileDown, FilePlus, Film, GitBranch, Globe, Grid3x3, History, Library, Magnet, Move3d, Package, Pause, Play, Redo2, RotateCcw, Save, Scaling, Activity, Sparkles, Square, Undo2 } from 'lucide-react'
 import { useAgentStore } from '../../ai/agentLoop'
 import { useManagerModalStore } from '../../core/project/ProjectManagerModal'
 import { saveProjectNow } from '../assets/project'
 import { translate, useI18n } from '../i18n'
+import { useCutsceneWindowStore } from '../panels/cutsceneWindowStore'
 import { askNewScene, useEditorStore } from '../scene/store'
 import { redoActive, undoActive, useUiEditor } from '../ui/session'
 import { selectTab } from './events'
@@ -18,6 +19,7 @@ export default function Toolbar() {
   const playDirty = useEditorStore(state => state.playDirty)
   const sidePanel = useEditorStore(state => state.sidePanel)
   const aiPanelOpen = useAgentStore(state => state.panelOpen)
+  const cutsceneMode = useCutsceneWindowStore(state => state.mode)
   const toggleAiPanel = () => useAgentStore.getState().setPanelOpen(!aiPanelOpen)
   const sceneUndo = useEditorStore(state => (state.past.length > 0 || state.gesture !== null) && state.playState === 'stopped')
   const sceneRedo = useEditorStore(state => state.future.length > 0 && state.gesture === null && state.playState === 'stopped')
@@ -186,6 +188,15 @@ export default function Toolbar() {
       >
         <FileDown size={14} />
         <span>{t('tool.publish')}</span>
+      </button>
+      <button
+        type="button"
+        className={`toolbar__btn ${cutsceneMode !== 'closed' ? 'toolbar__btn--active' : ''}`}
+        title="过场时间轴编辑器（独立窗口 / 底部停靠）"
+        onClick={() => useCutsceneWindowStore.getState().toggle()}
+      >
+        <Film size={14} />
+        <span>过场</span>
       </button>
       <button
         type="button"

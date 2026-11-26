@@ -249,11 +249,14 @@ export class RuntimePicturePipeline {
     const wClouds = wParts ? Number(wParts[1]) : 0
     const wWet = wParts ? Number(wParts[2]) : 0
     const wSnow = wParts ? Number(wParts[3]) : 0
-    if ((wWet > 0 || wSnow > 0) && normalNode) {
+    const wSand = wParts ? Number(wParts[4]) : 0
+    if ((wWet > 0 || wSnow > 0 || wSand > 0) && normalNode) {
       const surfacePass = buildWeatherSurfacePass(current, scenePass, normalNode, {
-        wetness: wWet > 0,
-        ripples: wWet === 2,
+        wetness: (wWet & 1) !== 0,
+        ripples: (wWet & 2) !== 0,
+        drips: (wWet & 4) !== 0,
         snow: wSnow === 1,
+        sandHaze: wSand === 1,
       })
       this.weatherSurfacePass = surfacePass
       current = surfacePass.node as typeof current
@@ -310,10 +313,12 @@ export class RuntimePicturePipeline {
       this.dofNode = null
     }
     if (skyFogActive()) current = composeSkyFog(current, scenePass) as typeof current
-    if (wClouds > 0) {
+    if (wClouds > 0 || wSand > 0) {
       const skyCloudPass = buildWeatherSkyPass(current, scenePass, {
-        clouds: true,
-        cirrus: wClouds === 2,
+        lowClouds: (wClouds & 1) !== 0,
+        midClouds: (wClouds & 2) !== 0,
+        highClouds: (wClouds & 4) !== 0,
+        sandHaze: wSand === 1,
       })
       this.weatherSkyPass = skyCloudPass
       current = skyCloudPass.node as typeof current

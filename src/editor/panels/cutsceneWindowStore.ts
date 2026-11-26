@@ -1,25 +1,48 @@
 import { create } from 'zustand'
 import { CUTSCENE_CAPABILITY_ID, normalizeCutsceneDocument } from '../../capabilities/cutscene/schema'
-import { selectTab } from '../layout/events'
+import { dockCutsceneTab, selectTab, undockCutsceneTab } from '../layout/events'
 import { useEditorStore } from '../scene/store'
 
+export type CutsceneWindowMode = 'closed' | 'floating' | 'docked'
+
 interface CutsceneWindowState {
-  floating: boolean
+  mode: CutsceneWindowMode
   x: number
   y: number
   width: number
   height: number
-  setFloating: (floating: boolean) => void
+  setMode: (mode: CutsceneWindowMode) => void
+  openFloating: () => void
+  dockToBottom: () => void
+  close: () => void
+  toggle: () => void
   setBounds: (patch: Partial<{ x: number; y: number; width: number; height: number }>) => void
 }
 
-export const useCutsceneWindowStore = create<CutsceneWindowState>((set) => ({
-  floating: false,
-  x: 120,
+export const useCutsceneWindowStore = create<CutsceneWindowState>((set, get) => ({
+  mode: 'closed',
+  x: 140,
   y: 120,
-  width: 960,
-  height: 360,
-  setFloating: (floating) => set({ floating }),
+  width: 980,
+  height: 380,
+  setMode: (mode) => set({ mode }),
+  openFloating: () => {
+    set({ mode: 'floating' })
+    undockCutsceneTab()
+  },
+  dockToBottom: () => {
+    set({ mode: 'docked' })
+    dockCutsceneTab()
+  },
+  close: () => {
+    set({ mode: 'closed' })
+    undockCutsceneTab()
+  },
+  toggle: () => {
+    const cur = get().mode
+    if (cur === 'closed') get().openFloating()
+    else get().close()
+  },
   setBounds: (patch) => set((state) => ({ ...state, ...patch })),
 }))
 
@@ -32,7 +55,10 @@ export function openCutsceneAsset(assetId: string): void {
       [CUTSCENE_CAPABILITY_ID]: { ...doc, activeAssetId: assetId },
     },
   })
-  if (!useCutsceneWindowStore.getState().floating) {
+  const store = useCutsceneWindowStore.getState()
+  if (store.mode === 'docked') {
     selectTab('tab-cutscene')
+  } else {
+    store.openFloating()
   }
 }

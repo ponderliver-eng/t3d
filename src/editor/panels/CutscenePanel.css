@@ -259,6 +259,10 @@
   color: var(--text-primary);
 }
 
+.cutscene-row-header.is-node-group.is-missing {
+  border-left-color: var(--text-error);
+}
+
 .cutscene-row-header.is-child {
   padding-left: 22px;
   font-size: var(--font-size-xs);

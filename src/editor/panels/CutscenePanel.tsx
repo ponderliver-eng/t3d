@@ -96,16 +96,16 @@ function formatTime(sec: number): string {
 }
 
 export default function CutscenePanel({ isFloating = false }: { isFloating?: boolean }) {
-  const floating = useCutsceneWindowStore(s => s.floating)
-  const setFloating = useCutsceneWindowStore(s => s.setFloating)
+  const mode = useCutsceneWindowStore(s => s.mode)
+  const dockToBottom = useCutsceneWindowStore(s => s.dockToBottom)
 
-  if (floating && !isFloating) {
+  if (mode === 'floating' && !isFloating) {
     return (
       <div className="cutscene-panel">
         <div className="cutscene-empty">
           <Film size={24} />
           <div>过场时间轴已在独立窗口中打开</div>
-          <button type="button" className="cutscene-btn is-active" onClick={() => setFloating(false)}>
+          <button type="button" className="cutscene-btn is-active" onClick={dockToBottom}>
             <Minimize2 size={12} /> 停靠回底部面板
           </button>
         </div>
@@ -123,7 +123,8 @@ function CutsceneEditorBody({ isFloating }: { isFloating: boolean }) {
   const playState = useEditorStore(s => s.playState)
   const assets = useAssetStore(s => s.assets)
   const codeAssets = useCodeAssetStore(s => s.assets)
-  const setFloating = useCutsceneWindowStore(s => s.setFloating)
+  const openFloating = useCutsceneWindowStore(s => s.openFloating)
+  const dockToBottom = useCutsceneWindowStore(s => s.dockToBottom)
 
   const doc = useMemo<CutsceneDocument>(
     () => normalizeCutsceneDocument(picture.capabilities?.[CUTSCENE_CAPABILITY_ID]),
@@ -950,7 +951,7 @@ function CutsceneEditorBody({ isFloating }: { isFloating: boolean }) {
           <button
             type="button"
             className="cutscene-btn"
-            onClick={() => setFloating(!isFloating)}
+            onClick={() => (isFloating ? dockToBottom() : openFloating())}
             title={isFloating ? '停靠回底部面板' : '弹出为独立窗口'}
           >
             {isFloating ? <Minimize2 size={12} /> : <ExternalLink size={12} />}
@@ -1176,7 +1177,7 @@ function CutsceneEditorBody({ isFloating }: { isFloating: boolean }) {
         <button
           type="button"
           className="cutscene-btn"
-          onClick={() => setFloating(!isFloating)}
+          onClick={() => (isFloating ? dockToBottom() : openFloating())}
           title={isFloating ? '停靠回底部面板' : '弹出为独立浮动窗口'}
         >
           {isFloating ? <Minimize2 size={12} /> : <ExternalLink size={12} />}
@@ -1294,7 +1295,7 @@ function CutsceneEditorBody({ isFloating }: { isFloating: boolean }) {
             const customShaderId = node?.shader?.startsWith('custom:') ? node.shader.slice('custom:'.length) : ''
             return (
               <div key={nodeId}>
-                <div className="cutscene-row-header is-node-group">
+                <div className={`cutscene-row-header is-node-group${node ? '' : ' is-missing'}`}>
                   <button
                     type="button"
                     className="cutscene-collapse-btn"
@@ -1308,25 +1309,37 @@ function CutsceneEditorBody({ isFloating }: { isFloating: boolean }) {
                     style={{ cursor: 'pointer' }}
                     onClick={() => toggleGroupCollapse(nodeId)}
                   >
-                    📦 {node?.name || `(已删除 ${nodeId.slice(0, 6)})`}
+                    📦 {node ? node.name : <span style={{ color: 'var(--text-error)' }}>{`(已删除 ${nodeId.slice(0, 6)})`}</span>}
                     {isCollapsed && nodeTracks.length > 0 && (
                       <span style={{ color: 'var(--text-muted)', fontSize: 10, fontWeight: 400 }}>
                         ({nodeTracks.length})
                       </span>
                     )}
                   </span>
-                  <button
-                    type="button"
-                    className="cutscene-btn"
-                    style={{ height: 20, padding: '0 5px' }}
-                    onClick={() => {
-                      if (isCollapsed) setCollapsedGroups(prev => ({ ...prev, [nodeId]: false }))
-                      setAddMenuNodeId(prev => (prev === nodeId ? null : nodeId))
-                    }}
-                    title="添加属性/动作轨道"
-                  >
-                    <Plus size={11} />
-                  </button>
+                  {node ? (
+                    <button
+                      type="button"
+                      className="cutscene-btn"
+                      style={{ height: 20, padding: '0 5px' }}
+                      onClick={() => {
+                        if (isCollapsed) setCollapsedGroups(prev => ({ ...prev, [nodeId]: false }))
+                        setAddMenuNodeId(prev => (prev === nodeId ? null : nodeId))
+                      }}
+                      title="添加属性/动作轨道"
+                    >
+                      <Plus size={11} />
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      className="cutscene-btn"
+                      style={{ height: 20, padding: '0 5px', color: 'var(--text-error)' }}
+                      onClick={() => updateActiveSeq(s => ({ ...s, tracks: s.tracks.filter(t => t.targetNodeId !== nodeId) }))}
+                      title="移除该已删除物体的所有轨道"
+                    >
+                      <Trash2 size={11} />
+                    </button>
+                  )}
                 </div>
                 {!isCollapsed && addMenuNodeId === nodeId && node && (
                   <div className="cutscene-menu-pop">

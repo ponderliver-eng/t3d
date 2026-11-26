@@ -7,7 +7,7 @@ type ResizeDir = 'n' | 's' | 'e' | 'w' | 'ne' | 'nw' | 'se' | 'sw'
 const DIRS: ResizeDir[] = ['n', 's', 'e', 'w', 'ne', 'nw', 'se', 'sw']
 
 export function CutsceneFloatingHost() {
-  const { floating, x, y, width, height, setFloating, setBounds } = useCutsceneWindowStore()
+  const { mode, x, y, width, height, dockToBottom, close, setBounds } = useCutsceneWindowStore()
   const [drag, setDrag] = useState<{ sx: number; sy: number; ox: number; oy: number } | null>(null)
   const [resize, setResize] = useState<{
     dir: ResizeDir
@@ -19,7 +19,7 @@ export function CutsceneFloatingHost() {
     oh: number
   } | null>(null)
 
-  if (!floating) return null
+  if (mode !== 'floating') return null
 
   const onHeaderMove = (e: PointerEvent) => {
     if (!drag) return
@@ -72,10 +72,10 @@ export function CutsceneFloatingHost() {
           过场时间轴 (Cutscene)
         </span>
         <div style={{ display: 'flex', gap: 4 }}>
-          <button type="button" className="cutscene-btn" onClick={() => setFloating(false)} title="停靠回底部面板">
-            <Minimize2 size={12} /> 停靠
+          <button type="button" className="cutscene-btn" onClick={dockToBottom} title="停靠到底部面板">
+            <Minimize2 size={12} /> 停靠到底部
           </button>
-          <button type="button" className="cutscene-btn" onClick={() => setFloating(false)} title="关闭独立窗口">
+          <button type="button" className="cutscene-btn" onClick={close} title="关闭独立窗口">
             <X size={12} />
           </button>
         </div>

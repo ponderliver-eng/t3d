@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type ReactElement } from 'react'
-import { Actions, Layout, Model, type ITabRenderValues, type TabNode } from 'flexlayout-react'
+import { Actions, DockLocation, Layout, Model, type ITabRenderValues, type TabNode } from 'flexlayout-react'
 import { Settings } from 'lucide-react'
 import 'flexlayout-react/style/dark.css'
 import ProjectPanel from '../panels/ProjectPanel'
@@ -9,12 +9,13 @@ import ViewportPanel from '../viewport/ViewportPanel'
 import ConsolePanel from '../panels/ConsolePanel'
 import CutscenePanel from '../panels/CutscenePanel'
 import { CutsceneFloatingHost } from '../panels/CutsceneFloatingHost'
+import { useCutsceneWindowStore } from '../panels/cutsceneWindowStore'
 import HistoryPanel from '../panels/HistoryPanel'
 import { ErrorBoundary } from './ErrorBoundary'
 import { useEditorStore } from '../scene/store'
 import { useI18n, type MessageKey } from '../i18n'
 import { DEFAULT_LAYOUT, LAYOUT_KEY, PANEL, loadLayout, type PanelId } from './layoutConfig'
-import { selectTab, T3D_LAYOUT_RESET, T3D_SELECT_TAB } from './events'
+import { selectTab, T3D_DOCK_CUTSCENE, T3D_LAYOUT_RESET, T3D_SELECT_TAB, T3D_UNDOCK_CUTSCENE } from './events'
 import './IDELayout.css'
 
 const PANELS: Record<PanelId, () => ReactElement> = {
@@ -50,11 +51,18 @@ export default function IDELayout() {
   }, [lang, t])
 
   useEffect(() => {
+    if (modelRef.current.getNodeById('tab-cutscene')) {
+      useCutsceneWindowStore.getState().setMode('docked')
+    }
+  }, [])
+
+  useEffect(() => {
     const onReset = () => {
       localStorage.removeItem(LAYOUT_KEY)
       const fresh = Model.fromJson(DEFAULT_LAYOUT)
       setModel(fresh)
       modelRef.current = fresh
+      useCutsceneWindowStore.getState().setMode('closed')
       for (const [id, key] of Object.entries(TAB_NAME)) {
         try { fresh.doAction(Actions.renameTab(id, t(key))) } catch { /* 旧布局里可能没有这个页签 */ }
       }
@@ -67,19 +75,68 @@ export default function IDELayout() {
         console.warn('[layout] selectTab failed', tabId, error)
       }
     }
+    const onDockCutscene = () => {
+      const m = modelRef.current
+      const existing = m.getNodeById('tab-cutscene')
+      if (existing) {
+        try { m.doAction(Actions.selectTab('tab-cutscene')) } catch { /* ignore */ }
+        return
+      }
+      const consoleNode = m.getNodeById('tab-console')
+      const targetTabsetId = consoleNode?.getParent()?.getId()
+      if (!targetTabsetId) return
+      try {
+        m.doAction(
+          Actions.addNode(
+            {
+              type: 'tab',
+              id: 'tab-cutscene',
+              name: t('panel.cutscene'),
+              component: PANEL.CUTSCENE,
+              enableClose: true,
+            },
+            targetTabsetId,
+            DockLocation.CENTER,
+            -1,
+            true,
+          ),
+        )
+        localStorage.setItem(LAYOUT_KEY, JSON.stringify(m.toJson()))
+      } catch (error) {
+        console.warn('[layout] dockCutscene failed', error)
+      }
+    }
+    const onUndockCutscene = () => {
+      const m = modelRef.current
+      if (!m.getNodeById('tab-cutscene')) return
+      try {
+        m.doAction(Actions.deleteTab('tab-cutscene'))
+        localStorage.setItem(LAYOUT_KEY, JSON.stringify(m.toJson()))
+      } catch (error) {
+        console.warn('[layout] undockCutscene failed', error)
+      }
+    }
     window.addEventListener(T3D_LAYOUT_RESET, onReset)
     window.addEventListener(T3D_SELECT_TAB, onSelect)
+    window.addEventListener(T3D_DOCK_CUTSCENE, onDockCutscene)
+    window.addEventListener(T3D_UNDOCK_CUTSCENE, onUndockCutscene)
     return () => {
       window.removeEventListener(T3D_LAYOUT_RESET, onReset)
       window.removeEventListener(T3D_SELECT_TAB, onSelect)
+      window.removeEventListener(T3D_DOCK_CUTSCENE, onDockCutscene)
+      window.removeEventListener(T3D_UNDOCK_CUTSCENE, onUndockCutscene)
     }
   }, [t])
 
-  const onModelChange = useCallback((updated: Model, action: { type: string; data?: { tabNode?: string } }) => {
+  const onModelChange = useCallback((updated: Model, action: { type: string; data?: { tabNode?: string; node?: string } }) => {
     if (action.type === Actions.SELECT_TAB) {
       const tabId = action.data?.tabNode
       if (tabId === 'tab-history') useEditorStore.getState().setSidePanel('history')
       else if (tabId === 'tab-inspector') useEditorStore.getState().setSidePanel('inspector')
+    } else if (action.type === Actions.DELETE_TAB) {
+      if (action.data?.node === 'tab-cutscene' && useCutsceneWindowStore.getState().mode === 'docked') {
+        useCutsceneWindowStore.getState().setMode('closed')
+      }
     }
     localStorage.setItem(LAYOUT_KEY, JSON.stringify(updated.toJson()))
   }, [])
