@@ -656,6 +656,10 @@ export function padSkeletons(root: Object3D) {
     if (!target || target === count) return
     const bone = skeleton.bones[0]
     const inverse = skeleton.boneInverses[0]
+    // Skeleton.clone() 与模板共用同一个 boneInverses 数组：必须先拷贝再补齐，
+    // 否则模板的数组被撑长，下一次克隆时长度对不上，three 会把逆绑定矩阵全部重置为单位矩阵（角色炸开）
+    skeleton.bones = skeleton.bones.slice()
+    skeleton.boneInverses = skeleton.boneInverses.slice()
     for (let i = count; i < target; i += 1) {
       skeleton.bones.push(bone)
       skeleton.boneInverses.push(inverse.clone())
