@@ -217,6 +217,14 @@ export class EditorViewport {
   private readonly viewForward = new Vector3()
   private readonly viewUp = new Vector3()
   private readonly viewQuat = new Quaternion()
+  private lastViewCommitAt = 0
+  private lastCommittedView: ReturnType<EditorCameraRig['snapshot']> | null = null
+  private hasSocketNodes = false
+  private guidesDirty = true
+  private lastGuidesAspect = 0
+  private sceneStatsDirty = true
+  private cachedSceneStats = { objects: 0, vertices: 0, materials: 0, textures: 0 }
+  private readonly splineGroups = new Set<Group>()
   private playCameraWarned = ''
   private clickPoints: { left: [number, number, number] | null, right: [number, number, number] | null } = { left: null, right: null }
   private clickHits: { left: { nodeId: string | null, point: [number, number, number] } | null, right: { nodeId: string | null, point: [number, number, number] } | null } = { left: null, right: null }
@@ -723,7 +731,15 @@ export class EditorViewport {
   }
 
   private syncScene() {
+    this.guidesDirty = true
+    this.sceneStatsDirty = true
+    this.splineGroups.clear()
+    let hasSockets = false
     const state = useEditorStore.getState()
+    for (const n of Object.values(state.nodes)) {
+      if (n.socketBone && n.parentId) { hasSockets = true; break }
+    }
+    this.hasSocketNodes = hasSockets
     this.reconcileSplinePoint(state.nodes, state.selection, state.playState)
     syncCapabilityRuntimes(state.capabilities)
     const assetRevision = useAssetStore.getState().revision
@@ -1829,7 +1845,26 @@ export class EditorViewport {
 
   private commitView() {
     if (this.rig.dragging) return
-    useEditorStore.getState().rememberEditorView(this.rig.snapshot())
+    const now = performance.now()
+    if (now - this.lastViewCommitAt < 150) return
+    const snap = this.rig.snapshot()
+    const prev = this.lastCommittedView
+    if (
+      prev
+      && prev.view === snap.view
+      && Math.abs(prev.orbitDistance - snap.orbitDistance) < 1e-4
+      && Math.abs(prev.yaw - snap.yaw) < 1e-4
+      && Math.abs(prev.pitch - snap.pitch) < 1e-4
+      && Math.abs(prev.orthoSize - snap.orthoSize) < 1e-4
+      && Math.abs(prev.pivot[0] - snap.pivot[0]) < 1e-4
+      && Math.abs(prev.pivot[1] - snap.pivot[1]) < 1e-4
+      && Math.abs(prev.pivot[2] - snap.pivot[2]) < 1e-4
+    ) {
+      return
+    }
+    this.lastViewCommitAt = now
+    this.lastCommittedView = snap
+    useEditorStore.getState().rememberEditorView(snap)
   }
 
   private tick = (time: number) => {
@@ -1980,6 +2015,7 @@ export class EditorViewport {
   }
 
   private poseSockets() {
+    if (!this.hasSocketNodes) return
     const nodes = useEditorStore.getState().nodes
     const posed = new Set<string>()
     for (const id of orderedIds(nodes)) {
@@ -2058,28 +2094,37 @@ export class EditorViewport {
     const state = useEditorStore.getState()
     const show = state.playState === 'stopped' && state.helpersVisible
     const aspect = this.aspect()
-    for (const [id, group] of this.objects) {
-      const node = state.nodes[id]
-      if (!node) continue
-      const guide = dataOf(group).guide
-      if (guide) guide.refresh(node, group.scale, aspect, show, state.selection.includes(id))
-      const selected = show && state.selection.includes(id)
-      this.syncColliderGuide(
-        group,
-        node,
-        selected && inspectorCardOpen(id, 'physics'),
-        selected && inspectorCardOpen(id, 'character'),
-      )
+    if (this.guidesDirty || Math.abs(aspect - this.lastGuidesAspect) > 1e-4) {
+      this.guidesDirty = false
+      this.lastGuidesAspect = aspect
+      this.splineGroups.clear()
+      const selectedSet = new Set(state.selection)
+      for (const [id, group] of this.objects) {
+        const node = state.nodes[id]
+        if (!node) continue
+        const data = dataOf(group)
+        if (data.guide) data.guide.refresh(node, group.scale, aspect, show, selectedSet.has(id))
+        const selected = show && selectedSet.has(id)
+        this.syncColliderGuide(
+          group,
+          node,
+          selected && inspectorCardOpen(id, 'physics'),
+          selected && inspectorCardOpen(id, 'character'),
+        )
+        if (data.splineGizmo?.group.visible) this.splineGroups.add(group)
+      }
+      this.refreshDeviceGuides(state.nodes, show, state.selection)
+      this.scriptGizmos.refresh(state.nodes, show, state.selection)
     }
-    this.refreshDeviceGuides(state.nodes, show, state.selection)
-    this.scriptGizmos.refresh(state.nodes, show, state.selection)
-    const camera = this.viewCamera()
-    for (const group of this.objects.values()) {
-      const gizmo = dataOf(group).splineGizmo
-      if (!gizmo?.group.visible) continue
-      restoreSplineHelperLayers(gizmo)
-      gizmo.group.updateMatrixWorld(true)
-      layoutSplineHandles(gizmo, camera, this.height)
+    if (this.splineGroups.size > 0) {
+      const camera = this.viewCamera()
+      for (const group of this.splineGroups) {
+        const gizmo = dataOf(group).splineGizmo
+        if (!gizmo?.group.visible) continue
+        restoreSplineHelperLayers(gizmo)
+        gizmo.group.updateMatrixWorld(true)
+        layoutSplineHandles(gizmo, camera, this.height)
+      }
     }
   }
 
@@ -2298,33 +2343,42 @@ export class EditorViewport {
     const frameMs = (this.fpsAccum / this.fpsFrames) * 1000
     this.fpsFrames = 0
     this.fpsAccum = 0
-    let objects = 0
-    let vertices = 0
-    const materials = new Set<string>()
-    const textures = new Set<string>()
-    this.scene.traverse(child => {
-      const mesh = child as Mesh
-      if (!mesh.isMesh || !mesh.visible) return
-      objects += 1
-      vertices += mesh.geometry.getAttribute('position')?.count ?? 0
-      const list = Array.isArray(mesh.material) ? mesh.material : [mesh.material]
-      for (const material of list) {
-        if (!material) continue
-        materials.add(material.uuid)
-        for (const value of Object.values(material)) {
-          const texture = value as { isTexture?: boolean, uuid?: string }
-          if (texture?.isTexture && texture.uuid) textures.add(texture.uuid)
+    if (this.sceneStatsDirty) {
+      this.sceneStatsDirty = false
+      let objects = 0
+      let vertices = 0
+      const materials = new Set<string>()
+      const textures = new Set<string>()
+      this.scene.traverse(child => {
+        const mesh = child as Mesh
+        if (!mesh.isMesh || !mesh.visible) return
+        objects += 1
+        vertices += mesh.geometry.getAttribute('position')?.count ?? 0
+        const list = Array.isArray(mesh.material) ? mesh.material : [mesh.material]
+        for (const material of list) {
+          if (!material) continue
+          materials.add(material.uuid)
+          for (const value of Object.values(material)) {
+            const texture = value as { isTexture?: boolean, uuid?: string }
+            if (texture?.isTexture && texture.uuid) textures.add(texture.uuid)
+          }
         }
+      })
+      this.cachedSceneStats = {
+        objects,
+        vertices,
+        materials: materials.size,
+        textures: textures.size,
       }
-    })
+    }
     const info = this.renderer.info.render
     const camera = this.rig.active.position
     useEditorStore.getState().setViewportStats({
-      objects,
+      objects: this.cachedSceneStats.objects,
       triangles: info.triangles,
-      vertices,
-      materials: materials.size,
-      textures: textures.size,
+      vertices: this.cachedSceneStats.vertices,
+      materials: this.cachedSceneStats.materials,
+      textures: this.cachedSceneStats.textures,
       calls: info.drawCalls,
       fps: Math.round(fps * 10) / 10,
       frameMs: Math.round(frameMs * 10) / 10,
