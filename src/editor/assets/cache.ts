@@ -135,18 +135,25 @@ export async function patchAssetMeta(id: string, patch: Partial<AssetMeta>): Pro
 }
 
 export async function forgetFile(id: string): Promise<void> {
+  const stillSharesHash = (hash: string | undefined) => Boolean(
+    hash && Object.values(useAssetStore.getState().assets).some(
+      item => item.id !== id && 'hash' in item && item.hash === hash,
+    ),
+  )
   if (isDirectoryProject()) {
     const meta = assetRecord(id)
-    await forgetAsset(id, meta?.hash ? artifactKey(meta.hash) : null)
+    const shared = stillSharesHash(meta?.hash)
+    await forgetAsset(id, meta?.hash && !shared ? artifactKey(meta.hash) : null)
     return
   }
   const db = await database()
   const meta = await request<AssetMeta | undefined>(db, META, 'readonly', store => store.get(id))
+  const shared = stillSharesHash(meta?.hash)
   await transaction(db, [FILES, META, ARTIFACTS, ORIGINALS], 'readwrite', stores => {
     stores[FILES].delete(id)
     stores[META].delete(id)
     stores[ORIGINALS].delete(id)
-    if (meta?.hash) stores[ARTIFACTS].delete(artifactKey(meta.hash))
+    if (meta?.hash && !shared) stores[ARTIFACTS].delete(artifactKey(meta.hash))
   })
 }
 

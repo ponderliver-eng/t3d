@@ -84,13 +84,14 @@ export function directoryExists(path: string, folders: string[], assetDirs: Reco
   return [...folders.map(normalizeDir), ...Object.values(assetDirs).map(normalizeDir)].some(dir => dir === target || dir.startsWith(`${target}/`))
 }
 
-export function uniqueFolderName(parent: string, folders: string[], assetDirs: Record<string, string>): string {
+export function uniqueFolderName(parent: string, folders: string[], assetDirs: Record<string, string>, baseName = '新建文件夹'): string {
   const node = findDir(directoryTree(folders, assetDirs), normalizeDir(parent))
   const names = new Set(node?.children.map(child => child.name) ?? [])
-  let name = '新建文件夹'
+  const cleanBase = baseName.trim().replace(/[\\/]/g, '') || '新建文件夹'
+  let name = cleanBase
   let index = 2
   while (names.has(name)) {
-    name = `新建文件夹 ${index}`
+    name = `${cleanBase} ${index}`
     index += 1
   }
   return name

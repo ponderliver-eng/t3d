@@ -36,8 +36,12 @@ function readPrefs(): PrefsData {
 }
 
 function persist(state: PrefsData) {
-  localStorage.setItem(KEY, JSON.stringify(state))
-  document.documentElement.style.zoom = String(state.uiScale)
+  if (typeof localStorage !== 'undefined') {
+    localStorage.setItem(KEY, JSON.stringify(state))
+  }
+  if (typeof document !== 'undefined') {
+    document.documentElement.style.zoom = String(state.uiScale)
+  }
 }
 
 function dataOf(state: PrefsData, patch: Partial<PrefsData>): PrefsData {
@@ -76,5 +80,6 @@ export const usePrefsStore = create<PrefsState>(set => ({
 
 export function resolveLanguage(setting: LanguageSetting): 'zh' | 'en' {
   if (setting === 'zh' || setting === 'en') return setting
-  return navigator.language.toLowerCase().startsWith('zh') ? 'zh' : 'en'
+  const lang = typeof navigator !== 'undefined' ? navigator.language : 'zh-CN'
+  return lang.toLowerCase().startsWith('zh') ? 'zh' : 'en'
 }

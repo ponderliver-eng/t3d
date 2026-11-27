@@ -132,6 +132,7 @@ interface AssetState {
   add: (asset: ProjectAsset) => void
   addMany: (assets: ProjectAsset[]) => void
   remove: (id: string) => void
+  removeMany: (ids: string[]) => void
   rename: (id: string, name: string) => void
   patch: (id: string, patch: Partial<FileAsset>) => void
   writeScene: (id: string, nodes: Record<string, SceneNode>, picture: ScenePicture, editorView?: EditorView | null) => void
@@ -151,10 +152,13 @@ interface AssetState {
   setBrowseDir: (dir: string) => void
   setExpanded: (expanded: Record<string, boolean>) => void
   place: (id: string, dir?: string) => void
+  placeMany: (entries: Record<string, string>, extraFolders?: string[]) => void
+  relocateBatch: (dirMoves: Array<{ from: string; to: string }>, itemMoves: Record<string, string>, extraFolders?: string[]) => void
   writePrefab: (id: string, rootId: string, nodes: Record<string, SceneNode>) => void
   createFolder: (parent?: string) => string
   renameFolder: (path: string, name: string) => void
   deleteFolder: (path: string) => void
+  deleteFolders: (paths: string[]) => void
 }
 
 export function assetDirectory(id: string, assetDirs: Record<string, string>): string {
@@ -180,6 +184,19 @@ export const useAssetStore = create<AssetState>((set, get) => ({
     const assetDirs = { ...state.assetDirs }
     delete assets[id]
     delete assetDirs[id]
+    return { assets, assetDirs, revision: state.revision + 1 }
+  }),
+  removeMany: ids => set(state => {
+    if (ids.length === 0) return {}
+    const assets = { ...state.assets }
+    const assetDirs = { ...state.assetDirs }
+    let changed = false
+    for (const id of ids) {
+      if (id in assets || id in assetDirs) changed = true
+      delete assets[id]
+      delete assetDirs[id]
+    }
+    if (!changed) return {}
     return { assets, assetDirs, revision: state.revision + 1 }
   }),
   rename: (id, name) => set(state => {
@@ -252,6 +269,55 @@ export const useAssetStore = create<AssetState>((set, get) => ({
     assetDirs: { ...state.assetDirs, [id]: normalizeDir(dir ?? state.browseDir) },
     revision: state.revision + 1,
   })),
+  placeMany: (entries, extraFolders) => set(state => {
+    const keys = Object.keys(entries)
+    if (keys.length === 0 && (!extraFolders || extraFolders.length === 0)) return {}
+    const assetDirs = { ...state.assetDirs }
+    for (const [id, dir] of Object.entries(entries)) {
+      assetDirs[id] = normalizeDir(dir)
+    }
+    const folders = extraFolders && extraFolders.length > 0
+      ? [...new Set([...state.folders.map(normalizeDir), ...extraFolders.map(normalizeDir)])].filter(f => f !== ASSETS_ROOT)
+      : state.folders
+    return { assetDirs, folders, revision: state.revision + 1 }
+  }),
+  relocateBatch: (dirMoves, itemMoves, extraFolders) => set(state => {
+    const cleanDirMoves = dirMoves
+      .map(m => ({ from: normalizeDir(m.from), to: normalizeDir(m.to) }))
+      .filter(m => m.from !== ASSETS_ROOT && m.from !== m.to && !isWithin(m.to, m.from))
+    const itemKeys = Object.keys(itemMoves)
+    if (cleanDirMoves.length === 0 && itemKeys.length === 0 && (!extraFolders || extraFolders.length === 0)) return {}
+    const mapPath = (p: string): string => {
+      const norm = normalizeDir(p)
+      for (const move of cleanDirMoves) {
+        if (isWithin(norm, move.from)) return relocateDir(norm, move.from, move.to)
+      }
+      return norm
+    }
+    const expanded: Record<string, boolean> = {}
+    for (const [dir, open] of Object.entries(state.expanded)) {
+      expanded[mapPath(dir)] = open
+    }
+    const assetDirs: Record<string, string> = {}
+    for (const [id, dir] of Object.entries(state.assetDirs)) {
+      assetDirs[id] = mapPath(dir)
+    }
+    for (const [id, dir] of Object.entries(itemMoves)) {
+      assetDirs[id] = normalizeDir(dir)
+    }
+    const folderSet = new Set<string>()
+    for (const folder of state.folders) folderSet.add(mapPath(folder))
+    for (const move of cleanDirMoves) folderSet.add(move.to)
+    for (const folder of extraFolders ?? []) folderSet.add(normalizeDir(folder))
+    folderSet.delete(ASSETS_ROOT)
+    return {
+      folders: [...folderSet],
+      assetDirs,
+      browseDir: mapPath(state.browseDir),
+      expanded,
+      revision: state.revision + 1,
+    }
+  }),
   createFolder: parent => {
     const state = get()
     const base = normalizeDir(parent ?? state.browseDir)
@@ -279,22 +345,33 @@ export const useAssetStore = create<AssetState>((set, get) => ({
     })
   },
   deleteFolder: path => {
-    const source = normalizeDir(path)
-    const parent = parentDir(source)
-    if (!parent) return
+    get().deleteFolders([path])
+  },
+  deleteFolders: paths => {
+    const sources = [...new Set(paths.map(normalizeDir))].filter(source => Boolean(parentDir(source)))
+    if (sources.length === 0) return
     const state = get()
-    const remains = Object.keys(state.assets).some(id => isWithin(assetDirectory(id, state.assetDirs), source))
-    if (remains) return
+    const occupiedDirs: string[] = []
+    for (const id of Object.keys(state.assets)) {
+      occupiedDirs.push(assetDirectory(id, state.assetDirs))
+    }
+    for (const [key, dir] of Object.entries(state.assetDirs)) {
+      if (key.startsWith('code:')) occupiedDirs.push(normalizeDir(dir))
+    }
+    const removable = sources.filter(source => !occupiedDirs.some(dir => isWithin(dir, source)))
+    if (removable.length === 0) return
+    const isRemoved = (dir: string) => removable.some(source => isWithin(dir, source))
     const expanded = { ...state.expanded }
-    for (const dir of Object.keys(expanded)) {
-      if (dir === source || dir.startsWith(`${source}/`)) delete expanded[dir]
+    for (const dir of Object.entries(expanded).map(([k]) => k)) {
+      if (isRemoved(dir)) delete expanded[dir]
+    }
+    let nextBrowse = state.browseDir
+    while (isRemoved(nextBrowse)) {
+      nextBrowse = parentDir(nextBrowse) ?? ASSETS_ROOT
     }
     set({
-      folders: state.folders.filter(folder => {
-        const dir = normalizeDir(folder)
-        return dir !== source && !dir.startsWith(`${source}/`)
-      }),
-      browseDir: isWithin(state.browseDir, source) ? parent : state.browseDir,
+      folders: state.folders.filter(folder => !isRemoved(normalizeDir(folder))),
+      browseDir: nextBrowse,
       expanded,
       revision: state.revision + 1,
     })

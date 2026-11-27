@@ -10,6 +10,23 @@ import { scanPackageArchive, type PackageArchiveEntrySource } from '../src/edito
 import { canRestoreDegraded, chooseMipSkip, estimateRgbaBytes } from '../src/editor/assets/memoryBudget'
 import { createLoadFailureGate, setLoadFailureReporter } from '../src/editor/assets/loadFailures'
 import { packBc7Artifact, trimBc7ArtifactToMaxSize, unpackBc7Artifact } from '../src/runtime/engine/bc7'
+import {
+  assetItemKey,
+  computeNextSelectionOnClick,
+  dirItemKey,
+  useProjectSelectionStore,
+} from '../src/editor/assets/projectSelection'
+import {
+  analyzeDeleteSelection,
+  canMoveProjectItems,
+  duplicateProjectItems,
+  executeDeleteSelection,
+  moveProjectItems,
+  normalizeTopLevelSelection,
+} from '../src/editor/assets/batchOps'
+import { assetDirectory, useAssetStore, type MaterialAsset, type PrefabAsset, type SceneAsset } from '../src/editor/assets/library'
+import { normalizeSlot } from '../src/editor/assets/materials'
+import { useEditorStore } from '../src/editor/scene/store'
 
 function tarHeader(name: string, size: number, type = '0'): Buffer {
   const header = Buffer.alloc(512)
@@ -218,4 +235,178 @@ test('BC7 成品打包与导出尺寸裁剪：超上限时裁掉最高级，但�
   assert.equal(trimmedTiny.width, 4)
   assert.equal(trimmedTiny.mips.length, 3)
 })
+
+test('资源多选：点击、Ctrl 切换、Shift 区间连选与父子目录归一化', () => {
+  const visible = [
+    dirItemKey('Assets/Characters'),
+    dirItemKey('Assets/Props'),
+    assetItemKey('mat_1'),
+    assetItemKey('mat_2'),
+    assetItemKey('mat_3'),
+  ]
+
+  // 普通单击
+  const s1 = computeNextSelectionOnClick(visible[1]!, visible, [], null, { ctrlOrMeta: false, shift: false })
+  assert.deepEqual(s1.keys, [visible[1]])
+
+  // Shift 连选区间 [1..3]
+  const s2 = computeNextSelectionOnClick(visible[3]!, visible, s1.keys, s1.anchor, { ctrlOrMeta: false, shift: true })
+  assert.deepEqual(s2.keys, [visible[1], visible[2], visible[3]])
+
+  // Ctrl 反选中间项
+  const s3 = computeNextSelectionOnClick(visible[2]!, visible, s2.keys, s2.anchor, { ctrlOrMeta: true, shift: false })
+  assert.deepEqual(s3.keys, [visible[1], visible[3]])
+
+  // 父子选区归一化：同时选中父目录与子目录/内部资产时只保留顶层目录
+  const matInside: MaterialAsset = {
+    id: 'mat_in_props',
+    name: 'PropMat',
+    kind: 'material',
+    slot: normalizeSlot({ name: 'PropMat' }),
+  }
+  const matOutside: MaterialAsset = {
+    id: 'mat_outside',
+    name: 'OutMat',
+    kind: 'material',
+    slot: normalizeSlot({ name: 'OutMat' }),
+  }
+  useAssetStore.getState().loadSession(
+    { [matInside.id]: matInside, [matOutside.id]: matOutside },
+    ['Assets/Props', 'Assets/Props/Sub'],
+    { [matInside.id]: 'Assets/Props/Sub', [matOutside.id]: 'Assets' },
+  )
+
+  const norm = normalizeTopLevelSelection([
+    dirItemKey('Assets'),
+    dirItemKey('Assets/Props'),
+    dirItemKey('Assets/Props/Sub'),
+    assetItemKey('mat_in_props'),
+    assetItemKey('mat_outside'),
+  ])
+  assert.deepEqual(norm.dirs, ['Assets/Props'])
+  assert.deepEqual(norm.assetIds, ['mat_outside'])
+})
+
+test('资源批量移动、目录成套复制重映射与分级引用删除', async () => {
+  const extTexMat: MaterialAsset = {
+    id: 'shared_mat',
+    name: 'SharedMat',
+    kind: 'material',
+    slot: normalizeSlot({ name: 'SharedMat', color: '#ffffff' }),
+  }
+  const innerMat: MaterialAsset = {
+    id: 'kit_mat',
+    name: 'KitMat',
+    kind: 'material',
+    slot: normalizeSlot({ name: 'KitMat', color: '#ff0000' }),
+  }
+  const innerPrefab: PrefabAsset = {
+    id: 'kit_prefab',
+    name: 'KitPrefab',
+    kind: 'prefab',
+    rootId: 'n1',
+    nodes: {
+      n1: {
+        id: 'n1',
+        name: 'Box',
+        kind: 'box',
+        parentId: null,
+        visible: true,
+        locked: false,
+        position: [0, 0, 0],
+        rotation: [0, 0, 0],
+        scale: [1, 1, 1],
+        color: '#ffffff',
+        metalness: 0,
+        roughness: 0.5,
+        emissive: '#000000',
+        emissiveIntensity: 0,
+        opacity: 1,
+        ao: 1,
+        mapAssetId: null,
+        materialAssetId: 'kit_mat',
+        slots: [],
+      } as unknown as import('../src/editor/scene/types').SceneNode,
+    },
+  }
+  const mainScene: SceneAsset = {
+    id: 'scene_main',
+    name: 'MainScene',
+    kind: 'scene',
+    nodes: {},
+    picture: useEditorStore.getState().picture,
+  }
+
+  useAssetStore.getState().loadSession(
+    {
+      [extTexMat.id]: extTexMat,
+      [innerMat.id]: innerMat,
+      [innerPrefab.id]: innerPrefab,
+      [mainScene.id]: mainScene,
+    },
+    ['Assets/Kit', 'Assets/Archive'],
+    {
+      [extTexMat.id]: 'Assets',
+      [innerMat.id]: 'Assets/Kit',
+      [innerPrefab.id]: 'Assets/Kit',
+      [mainScene.id]: 'Assets',
+    },
+  )
+  useEditorStore.setState({ activeSceneId: mainScene.id, nodes: {} })
+
+  // 1. 禁止把目录移入自身或子目录，允许批量移入其他目录
+  assert.equal(canMoveProjectItems([dirItemKey('Assets/Kit')], 'Assets/Kit'), false)
+  assert.equal(canMoveProjectItems([dirItemKey('Assets/Kit')], 'Assets/Kit/Child'), false)
+  assert.equal(canMoveProjectItems([dirItemKey('Assets/Kit'), assetItemKey('shared_mat')], 'Assets/Archive'), true)
+
+  moveProjectItems([dirItemKey('Assets/Kit'), assetItemKey('shared_mat')], 'Assets/Archive')
+  assert.equal(assetDirectory('kit_mat', useAssetStore.getState().assetDirs), 'Assets/Archive/Kit')
+  assert.equal(assetDirectory('shared_mat', useAssetStore.getState().assetDirs), 'Assets/Archive')
+
+  // 2. 递归复制目录：副本内的预制体应自动指向新克隆出的材质副本
+  const copiedKeys = await duplicateProjectItems([dirItemKey('Assets/Archive/Kit')])
+  assert.equal(copiedKeys.length, 1)
+  assert.ok(copiedKeys[0]!.startsWith('dir:Assets/Archive/Kit '))
+  const copiedDir = copiedKeys[0]!.slice(4)
+  const copiedAssets = Object.values(useAssetStore.getState().assets).filter(
+    a => assetDirectory(a.id, useAssetStore.getState().assetDirs) === copiedDir,
+  )
+  assert.equal(copiedAssets.length, 2)
+  const copiedMat = copiedAssets.find((a): a is MaterialAsset => a.kind === 'material')!
+  const copiedPrefab = copiedAssets.find((a): a is PrefabAsset => a.kind === 'prefab')!
+  assert.notEqual(copiedMat.id, innerMat.id)
+  assert.equal(copiedPrefab.nodes.n1!.materialAssetId, copiedMat.id, '同批次复制目录内预制体应指向新材质副本')
+
+  // 3. 删除整个目录：目录内部互引（KitPrefab -> KitMat）不应阻塞删除
+  const planClean = analyzeDeleteSelection([copiedKeys[0]!])!
+  assert.equal(planClean.referencedItems.length, 0, '同目录内部互引不应计为外部阻塞引用')
+  await executeDeleteSelection(planClean, 'safe-only')
+  assert.equal(useAssetStore.getState().assets[copiedMat.id], undefined)
+  assert.equal(useAssetStore.getState().folders.includes(copiedDir), false)
+
+  // 4. 外部场景节点引用了 KitMat 时，safe-only 应保留被引用项，force-all 应断开引用并彻底删除
+  useEditorStore.setState({
+    nodes: {
+      sceneBox: {
+        ...innerPrefab.nodes.n1!,
+        id: 'sceneBox',
+        materialAssetId: 'kit_mat',
+      },
+    },
+  })
+  const planRef = analyzeDeleteSelection([dirItemKey('Assets/Archive/Kit')])!
+  assert.equal(planRef.referencedItems.length, 1)
+  assert.equal(planRef.referencedItems[0]!.name, 'KitMat')
+
+  await executeDeleteSelection(planRef, 'safe-only')
+  assert.equal(useAssetStore.getState().assets.kit_prefab, undefined, '未被引用的 KitPrefab 应被删除')
+  assert.ok(useAssetStore.getState().assets.kit_mat, '被引用的 KitMat 在 safe-only 模式下应保留')
+
+  const planForce = analyzeDeleteSelection([dirItemKey('Assets/Archive/Kit')])!
+  await executeDeleteSelection(planForce, 'force-all')
+  assert.equal(useAssetStore.getState().assets.kit_mat, undefined, 'force-all 后 KitMat 应被删除')
+  assert.equal(useEditorStore.getState().nodes.sceneBox?.materialAssetId, null, '场景节点上的悬空材质引用应自动清空')
+  useProjectSelectionStore.getState().clearSelection()
+})
+
 

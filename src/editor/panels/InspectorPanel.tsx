@@ -7,6 +7,9 @@ import { activeAnimatorState, emptyAnimator } from '../animation/animator'
 import { HumanoidCard } from './HumanoidCard'
 import { AnimatorCard } from './AnimatorCard'
 import { ASSET_MIME, reimportModel, saveMaterialFromNode, savePrefabFromSelection, openAsset } from '../assets/import'
+import { dirName, isWithin, joinDir, parentDir } from '../assets/folders'
+import { duplicateProjectItems } from '../assets/batchOps'
+import { dirItemKey, parseProjectItemKey, useProjectSelectionStore, type ProjectItemKey } from '../assets/projectSelection'
 import { primaryId, useEditorStore } from '../scene/store'
 import { readRuntimePose, type RuntimeNodePose } from '../scene/viewportBridge'
 import { isLight, isMesh } from '../scene/kinds'
@@ -95,6 +98,7 @@ export default function InspectorPanel() {
   const asset = useAssetStore(state => inspectedAssetId ? state.assets[inspectedAssetId] : undefined)
   const selectedCodeId = useCodeAssetStore(state => state.selectedId)
   const codeAsset = useCodeAssetStore(state => selectedCodeId ? state.assets[selectedCodeId] : undefined)
+  const projectSelectedKeys = useProjectSelectionStore(state => state.selectedKeys)
   const { t } = useI18n()
   const id = primaryId({ selection })
   const node = id ? nodes[id] : undefined
@@ -143,6 +147,14 @@ export default function InspectorPanel() {
     return (
       <InspectorFrame subject={`code:${codeAsset.id}`}>
         <CodeAssetSettings asset={codeAsset} />
+      </InspectorFrame>
+    )
+  }
+
+  if (projectSelectedKeys.length > 0 && selection.length === 0) {
+    return (
+      <InspectorFrame subject={`project-selection:${projectSelectedKeys.join('|')}`}>
+        <ProjectSelectionSettings keys={projectSelectedKeys} />
       </InspectorFrame>
     )
   }
@@ -524,6 +536,125 @@ function CodeAssetSettings({ asset }: { asset: CodeAssetRecord }) {
           </>
         )}
       </div>
+    </>
+  )
+}
+
+function ProjectSelectionSettings({ keys }: { keys: readonly ProjectItemKey[] }) {
+  const { t } = useI18n()
+  const assets = useAssetStore(state => state.assets)
+  const assetDirs = useAssetStore(state => state.assetDirs)
+  const codeAssets = useCodeAssetStore(state => state.assets)
+
+  if (keys.length === 1) {
+    const single = parseProjectItemKey(keys[0]!)
+    if (single?.type === 'dir') {
+      const folderName = dirName(single.path)
+      const childAssetCount = Object.keys(assets).filter(id => isWithin(assetDirectory(id, assetDirs), single.path)).length
+      const childCodeCount = Object.values(codeAssets).filter(c => isWithin(assetDirectory(`code:${c.kind}:${c.id}`, assetDirs), single.path)).length
+      return (
+        <>
+          <header className="inspector__header">
+            <div className="inspector__kind">{t('project.folder')}</div>
+            <input
+              defaultValue={folderName}
+              key={single.path}
+              onBlur={event => {
+                const next = event.target.value.trim().replace(/[\\/]/g, '')
+                const parent = parentDir(single.path)
+                if (next && next !== folderName && parent) {
+                  useAssetStore.getState().renameFolder(single.path, next)
+                  useProjectSelectionStore.getState().setSelectedKeys([dirItemKey(joinDir(parent, next))])
+                } else {
+                  event.target.value = folderName
+                }
+              }}
+              onKeyDown={event => {
+                if (event.key === 'Enter') event.currentTarget.blur()
+              }}
+            />
+          </header>
+          <Section title={t('project.detail')} color="#60a5fa">
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 12, color: 'var(--text-secondary)' }}>
+              <div>路径：{single.path}</div>
+              <div>包含内容：{childAssetCount + childCodeCount} 项资源</div>
+            </div>
+          </Section>
+        </>
+      )
+    }
+  }
+
+  const counts = new Map<string, number>()
+  const modelIds: string[] = []
+  for (const key of keys) {
+    const parsed = parseProjectItemKey(key)
+    if (!parsed) continue
+    if (parsed.type === 'dir') {
+      counts.set(t('project.folder'), (counts.get(t('project.folder')) ?? 0) + 1)
+    } else if (parsed.type === 'asset') {
+      const a = assets[parsed.id]
+      if (!a) continue
+      const label = assetKindLabel(a.kind)
+      counts.set(label, (counts.get(label) ?? 0) + 1)
+      if (a.kind === 'model' || a.kind === 'animation') modelIds.push(a.id)
+    } else {
+      const label = parsed.kind === 'shader' ? '着色器' : '脚本'
+      counts.set(label, (counts.get(label) ?? 0) + 1)
+    }
+  }
+
+  return (
+    <>
+      <header className="inspector__header">
+        <div className="inspector__kind">资源多选</div>
+        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', padding: '2px 0' }}>
+          已选择 {keys.length} 项
+        </div>
+      </header>
+      <Section title="选中统计" color="#60a5fa">
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+          {[...counts.entries()].map(([label, count]) => (
+            <span
+              key={label}
+              style={{
+                padding: '2px 8px',
+                borderRadius: 4,
+                background: 'rgba(255,255,255,0.06)',
+                border: '1px solid var(--border)',
+                fontSize: 11,
+                color: 'var(--text-secondary)',
+              }}
+            >
+              {label} × {count}
+            </span>
+          ))}
+        </div>
+      </Section>
+      <Section title="批量操作" color="#a78bfa">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <button
+            type="button"
+            className="iv2-btn"
+            onClick={() => { void duplicateProjectItems(keys) }}
+          >
+            创建副本 (Ctrl+D)
+          </button>
+          {modelIds.length > 0 && (
+            <button
+              type="button"
+              className="iv2-btn"
+              onClick={() => {
+                void (async () => {
+                  for (const id of modelIds) await reimportModel(id)
+                })()
+              }}
+            >
+              批量重新导入模型 ({modelIds.length})
+            </button>
+          )}
+        </div>
+      </Section>
     </>
   )
 }

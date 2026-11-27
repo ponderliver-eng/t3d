@@ -10,7 +10,7 @@ import { readPrefab } from './prefab'
 import { translate } from '../i18n'
 import { QUARKS_VERSION } from '../../capabilities/particles/defaults'
 import { readQuarksDocument } from '../../capabilities/particles/readQuarks'
-import { assetDirectory, assetName, ensureScenesLoaded, useAssetStore, type FileAsset, type FileKind, type ProjectAsset } from './library'
+import { assetDirectory, assetName, useAssetStore, type FileAsset, type FileKind, type ProjectAsset } from './library'
 import { selectTab } from '../layout/events'
 import { createScoreDocument } from '../../runtime/ui/spec'
 import { playSound } from '../../runtime/audio'
@@ -19,7 +19,10 @@ import { openUiEditor } from '../ui/session'
 import { createEmptySequence } from '../../capabilities/cutscene/schema'
 import { openCutsceneAsset } from '../panels/cutsceneWindowStore'
 import type { PbrSlot, SceneNode, Vec3 } from '../scene/types'
+import { assetItemKey, PROJECT_ITEMS_MIME } from './projectSelection'
+import { duplicateProjectItems } from './batchOps'
 
+export { PROJECT_ITEMS_MIME }
 export const ASSET_MIME = 'application/x-t3d-asset'
 export const FOLDER_MIME = 'application/x-t3d-folder'
 export const NODE_MIME = 'application/x-t3d-node'
@@ -631,23 +634,7 @@ export function createDefaultMaterial(dir?: string) {
 }
 
 export function duplicateAsset(id: string) {
-  const asset = useAssetStore.getState().assets[id]
-  if (!asset || (asset.kind !== 'material' && asset.kind !== 'scene' && asset.kind !== 'prefab' && asset.kind !== 'effect' && asset.kind !== 'ui' && asset.kind !== 'cutscene')) return
-  if (asset.kind === 'scene' && asset.unloaded) {
-    // 节点还在磁盘上：读进来再复制。
-    void ensureScenesLoaded([id]).then(() => {
-      const loaded = useAssetStore.getState().assets[id]
-      if (loaded?.kind === 'scene' && !loaded.unloaded) duplicateAsset(id)
-    })
-    return
-  }
-  const copy = structuredClone(asset)
-  copy.id = crypto.randomUUID()
-  copy.name = uniqueAssetName(`${asset.name} ${translate('project.copySuffix')}`)
-  const dir = assetDirectory(id, useAssetStore.getState().assetDirs)
-  useAssetStore.getState().add(copy)
-  useAssetStore.getState().place(copy.id, dir)
-  useEditorStore.getState().inspectAsset(copy.id)
+  void duplicateProjectItems([assetItemKey(id)])
 }
 
 export function reportAssetUsers(id: string) {
@@ -815,7 +802,7 @@ function isPaintable(node: SceneNode): boolean {
   return node.kind === 'box' || node.kind === 'sphere' || node.kind === 'plane' || node.kind === 'cylinder' || node.kind === 'capsule' || node.kind === 'cone' || node.kind === 'model'
 }
 
-function referencedBy(assetId: string): { name: string, assetId?: string }[] {
+export function referencedBy(assetId: string): { name: string, assetId?: string }[] {
   const users: { name: string, assetId?: string }[] = []
   for (const node of Object.values(useEditorStore.getState().nodes)) {
     if (usesAsset(node, assetId)) users.push({ name: node.name })

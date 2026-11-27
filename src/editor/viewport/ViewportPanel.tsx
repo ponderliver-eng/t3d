@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { CLIP_MIME, readClipDrag } from '../animation/playback'
-import { ASSET_MIME, assignClip, importFiles, placeAsset } from '../assets/import'
+import { ASSET_MIME, PROJECT_ITEMS_MIME, assignClip, importFiles, placeAsset } from '../assets/import'
+import { parseProjectItemKey, readDraggedProjectKeys } from '../assets/projectSelection'
 import { subscribeWarmProgress, warmProgress } from '../assets/project'
 import { useI18n, type MessageKey } from '../i18n'
 import type { CameraView } from '../scene/types'
@@ -308,7 +309,7 @@ export default function ViewportPanel() {
           ref={stageRef}
         onDragOver={event => {
           const types = [...event.dataTransfer.types]
-          if (types.includes(ASSET_MIME) || types.includes(CLIP_MIME) || types.includes('Files')) event.preventDefault()
+          if (types.includes(PROJECT_ITEMS_MIME) || types.includes(ASSET_MIME) || types.includes(CLIP_MIME) || types.includes('Files')) event.preventDefault()
         }}
         onDrop={event => {
           const clipDrag = readClipDrag(event.dataTransfer.getData(CLIP_MIME))
@@ -318,8 +319,34 @@ export default function ViewportPanel() {
             assignClip(hit.nodeId, clipDrag.assetId, clipDrag.clip)
             return
           }
-          const assetId = event.dataTransfer.getData(ASSET_MIME)
           const point = hit?.point ?? [0, 0, 0] as [number, number, number]
+          const batchKeys = readDraggedProjectKeys(event.dataTransfer)
+          if (batchKeys.length > 1) {
+            const placeableIds: string[] = []
+            const assetsMap = useAssetStore.getState().assets
+            for (const k of batchKeys) {
+              const parsed = parseProjectItemKey(k)
+              if (parsed?.type !== 'asset') continue
+              const a = assetsMap[parsed.id]
+              if (a && (a.kind === 'model' || a.kind === 'prefab' || a.kind === 'effect')) {
+                placeableIds.push(a.id)
+              }
+            }
+            if (placeableIds.length > 0) {
+              event.preventDefault()
+              const cols = Math.ceil(Math.sqrt(placeableIds.length))
+              const step = 1.6
+              placeableIds.forEach((id, idx) => {
+                const col = idx % cols
+                const row = Math.floor(idx / cols)
+                const offsetX = (col - (cols - 1) / 2) * step
+                const offsetZ = row * step
+                placeAsset(id, [point[0] + offsetX, point[1], point[2] + offsetZ], null)
+              })
+              return
+            }
+          }
+          const assetId = event.dataTransfer.getData(ASSET_MIME)
           if (assetId) {
             event.preventDefault()
             placeAsset(assetId, point, hit?.nodeId ?? null)
