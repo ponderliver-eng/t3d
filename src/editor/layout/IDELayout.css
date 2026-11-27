@@ -58,13 +58,36 @@
   color: var(--text-primary) !important;
 }
 
+.scene-tab__name {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  font-size: var(--font-size-base, 12px);
+  line-height: 1;
+  font-weight: 400;
+  color: var(--text-muted);
+  max-width: 120px;
+  margin-right: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  align-self: center;
+  cursor: pointer;
+}
+
+.scene-tab__name:hover {
+  color: var(--text-secondary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
 .scene-tab__settings {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   width: 18px;
   height: 18px;
-  margin: 0;
+  margin: 0 4px 0 0;
   padding: 0;
   border: 0;
   border-radius: 4px;

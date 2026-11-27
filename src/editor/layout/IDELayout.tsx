@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState, type ReactElement } from 'react'
-import { Actions, DockLocation, Layout, Model, type ITabRenderValues, type TabNode } from 'flexlayout-react'
+import { Actions, DockLocation, Layout, Model, type BorderNode, type ITabSetRenderValues, type TabNode, type TabSetNode } from 'flexlayout-react'
 import { Settings } from 'lucide-react'
 import 'flexlayout-react/style/dark.css'
 import ProjectPanel from '../panels/ProjectPanel'
@@ -12,6 +12,7 @@ import { CutsceneFloatingHost } from '../panels/CutsceneFloatingHost'
 import { useCutsceneWindowStore } from '../panels/cutsceneWindowStore'
 import HistoryPanel from '../panels/HistoryPanel'
 import { ErrorBoundary } from './ErrorBoundary'
+import { assetDirectory, useAssetStore } from '../assets/library'
 import { useEditorStore } from '../scene/store'
 import { useI18n, type MessageKey } from '../i18n'
 import { DEFAULT_LAYOUT, LAYOUT_KEY, PANEL, loadLayout, type PanelId } from './layoutConfig'
@@ -40,6 +41,10 @@ const TAB_NAME: Record<string, MessageKey> = {
 
 export default function IDELayout() {
   const { t, lang } = useI18n()
+  const activeSceneId = useEditorStore(state => state.activeSceneId)
+  const prefabAssetId = useEditorStore(state => state.prefabSession?.assetId ?? '')
+  const targetAssetId = prefabAssetId || activeSceneId
+  const activeSceneName = useAssetStore(state => (targetAssetId ? state.assets[targetAssetId]?.name ?? '' : ''))
   const [model, setModel] = useState(() => Model.fromJson(loadLayout()))
   const modelRef = useRef(model)
   modelRef.current = model
@@ -141,8 +146,29 @@ export default function IDELayout() {
     localStorage.setItem(LAYOUT_KEY, JSON.stringify(updated.toJson()))
   }, [])
 
-  const onRenderTab = useCallback((node: TabNode, renderValues: ITabRenderValues) => {
-    if (node.getId() !== 'tab-scene') return
+  const onRenderTabSet = useCallback((node: TabSetNode | BorderNode, renderValues: ITabSetRenderValues) => {
+    const hasSceneTab = node.getChildren().some(child => child.getId() === 'tab-scene')
+    if (!hasSceneTab) return
+    if (activeSceneName && targetAssetId) {
+      renderValues.buttons.push(
+        <button
+          key="scene-name"
+          type="button"
+          className="scene-tab__name"
+          title={`${activeSceneName}（点击在资源面板定位）`}
+          onPointerDown={event => event.stopPropagation()}
+          onClick={event => {
+            event.stopPropagation()
+            const library = useAssetStore.getState()
+            library.setBrowseDir(assetDirectory(targetAssetId, library.assetDirs))
+            useEditorStore.setState({ inspectedAssetId: targetAssetId })
+            selectTab('tab-project')
+          }}
+        >
+          {activeSceneName}
+        </button>,
+      )
+    }
     renderValues.buttons.push(
       <button
         key="scene-settings"
@@ -162,7 +188,7 @@ export default function IDELayout() {
         <Settings size={13} strokeWidth={2} />
       </button>,
     )
-  }, [t])
+  }, [activeSceneName, t, targetAssetId])
 
   const factory = useCallback((node: TabNode) => {
     const component = node.getComponent() as PanelId | undefined
@@ -177,7 +203,7 @@ export default function IDELayout() {
 
   return (
     <div className="ide-layout">
-      <Layout model={model} factory={factory} onModelChange={onModelChange} onRenderTab={onRenderTab} />
+      <Layout model={model} factory={factory} onModelChange={onModelChange} onRenderTabSet={onRenderTabSet} />
       <CutsceneFloatingHost />
     </div>
   )

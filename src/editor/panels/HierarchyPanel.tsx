@@ -12,7 +12,6 @@ import { assetDirectory, useAssetStore } from '../assets/library'
 import { getModelTemplate, subscribeModels, type ModelTreeNode } from '../assets/models'
 import { instanceDirty, isPrefabRoot } from '../assets/prefab'
 import { useI18n, type MessageKey } from '../i18n'
-import { TAG_FILTER_UNTAGGED, sortedTags } from '../project/taxonomy'
 import { childrenOf, isLight, isMesh, LIGHT_KINDS, MESH_KINDS } from '../scene/kinds'
 import { useEditorStore, primaryId, type DeviceKind } from '../scene/store'
 import { isUnder } from '../scene/transform'
@@ -84,8 +83,6 @@ export default function HierarchyPanel() {
   const { t } = useI18n()
   const [modelVersion, setModelVersion] = useState(0)
   const [query, setQuery] = useState('')
-  const [tagFilter, setTagFilter] = useState('all')
-  const tags = useEditorStore(state => state.tags)
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
   const [subOpen, setSubOpen] = useState<Record<string, boolean>>({})
   const [drop, setDrop] = useState<{ id: string, zone: 'before' | 'into' | 'after' } | null>(null)
@@ -192,27 +189,24 @@ export default function HierarchyPanel() {
       const node = nodes[id]
       if (!node) return false
       const nameOk = !q || node.name.toLowerCase().includes(q)
-      const tagged = Boolean(node.tagId) || (node.tagIds?.length ?? 0) > 0
-      const tagOk = tagFilter === 'all'
-        || (tagFilter === TAG_FILTER_UNTAGGED ? !tagged : node.tagId === tagFilter || node.tagIds?.includes(tagFilter))
-      const subMatch = q && tagOk && node.kind === 'model' && node.assetId
+      const subMatch = q && node.kind === 'model' && node.assetId
         ? filterSubTree(modelTrees.get(node.assetId) ?? [], q).length > 0
         : false
-      const self = (nameOk && tagOk) || subMatch
+      const self = nameOk || subMatch
       const child = (childrenMap.get(id) ?? EMPTY_NODES).some(item => visit(item.id))
       const ok = self || child
       cache.set(id, ok)
       return ok
     }
-    if (q || tagFilter !== 'all') Object.keys(nodes).forEach(visit)
+    if (q) Object.keys(nodes).forEach(visit)
     return cache
-  }, [nodes, q, tagFilter, modelTrees, childrenMap])
+  }, [nodes, q, modelTrees, childrenMap])
 
   const visibleRows = useMemo(() => {
     const rows: TreeRow[] = []
     let searchSubExpanded = 0
     const walkNodeBranch = (node: SceneNode, depth: number) => {
-      if ((q || tagFilter !== 'all') && !matches.get(node.id)) return
+      if (q && !matches.get(node.id)) return
       rows.push({ kind: 'node', node, depth })
       const internal = node.kind === 'model' && node.assetId ? (modelTrees.get(node.assetId) ?? []) : []
       const nodeKids = childrenMap.get(node.id) ?? EMPTY_NODES
@@ -220,7 +214,7 @@ export default function HierarchyPanel() {
       const filteredSub = q && internal.length > 0 ? filterSubTree(internal, q) : []
       const openBySearch = (q && filteredSub.length > 0 && searchSubExpanded < 5)
       if (openBySearch) searchSubExpanded += 1
-      const open = q || tagFilter !== 'all'
+      const open = q
         ? (!isModelDefaultCollapsed || openBySearch || nodeKids.some(c => matches.get(c.id)))
         : (node.kind === 'model' ? collapsed[node.id] === false : !collapsed[node.id])
       if (!open) return
@@ -246,7 +240,7 @@ export default function HierarchyPanel() {
     }
     for (const root of childrenMap.get(null) ?? EMPTY_NODES) walkNodeBranch(root, 0)
     return rows
-  }, [childrenMap, collapsed, subOpen, q, tagFilter, matches, modelTrees, boneChildren])
+  }, [childrenMap, collapsed, subOpen, q, matches, modelTrees, boneChildren])
 
   useEffect(() => {
     if (!menu && !createOpen) return
@@ -562,11 +556,6 @@ export default function HierarchyPanel() {
             </button>
           )}
         </div>
-        <select className="scene-panel__filter" value={tagFilter} onChange={event => setTagFilter(event.target.value)} title={t('tags.filter')}>
-          <option value="all">{t('tags.filterAll')}</option>
-          <option value={TAG_FILTER_UNTAGGED}>{t('tags.filterUntagged')}</option>
-          {sortedTags(tags).map(tag => <option key={tag.id} value={tag.id}>{tag.name}</option>)}
-        </select>
         <span className="scene-panel__count">{Object.keys(nodes).length}</span>
         <button type="button" className="scene-panel__icon" title={t('hierarchy.expand')} onClick={() => setCollapsed({})}>
           <ChevronsUpDown size={14} />
