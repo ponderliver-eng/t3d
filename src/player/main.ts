@@ -1149,6 +1149,10 @@ function mountSinglePlayerNode(
     group.name = node.name
   group.userData.nodeId = node.id
     group.visible = node.visible !== false
+    group.updateMatrixWorld = function skipHiddenUpdateMatrixWorld(force?: boolean) {
+      if (!this.visible) return
+      Group.prototype.updateMatrixWorld.call(this, force)
+    }
     group.position.set(node.position[0], node.position[1], node.position[2])
     group.rotation.set(
       node.rotation[0] * DEG_TO_RAD,

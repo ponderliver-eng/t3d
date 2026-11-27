@@ -254,6 +254,23 @@ export class EditorViewport {
     this.navDebug.name = 'nav-debug'
     this.scene.add(this.navDebug)
     this.scriptGizmos = createScriptGizmoManager(this.scene)
+    // Three.js 的 scene.updateMatrixWorld() 会因 scene.matrixAutoUpdate 把 force 置为 true 向下传递；
+    // 在 world 层跳过不可见的顶层节点，既能省掉隐藏子树（如数万骨骼 + SkinnedMesh 逆矩阵）的每帧更新，
+    // 又保留直接调用 group.updateMatrixWorld(true)（聚焦/算包围盒）的能力。
+    this.world.updateMatrixWorld = function updateVisibleWorldChildren(force?: boolean) {
+      if (this.matrixAutoUpdate) this.updateMatrix()
+      if (this.matrixWorldNeedsUpdate || force) {
+        if (this.parent === null) this.matrixWorld.copy(this.matrix)
+        else this.matrixWorld.multiplyMatrices(this.parent.matrixWorld, this.matrix)
+        this.matrixWorldNeedsUpdate = false
+        force = true
+      }
+      const children = this.children
+      for (let i = 0, l = children.length; i < l; i += 1) {
+        const child = children[i]
+        if (child.visible) child.updateMatrixWorld(force)
+      }
+    }
     root.add(this.world)
     mountParticles(this.scene)
     const ambient = new AmbientLight(0xffffff, 0.28)
@@ -2797,4 +2814,10 @@ function disposeObject(object: Object3D) {
     if (Array.isArray(material)) material.forEach(item => item.dispose())
     else material?.dispose()
   })
+}
+
+const viteHot = (import.meta as unknown as { hot?: { accept: (cb: () => void) => void } }).hot
+if (viteHot) {
+  // ViewportPanel 在 useEffect(..., []) 中创建实例，HMR 不会重建 EditorViewport，直接整页刷新生效
+  viteHot.accept(() => window.location.reload())
 }

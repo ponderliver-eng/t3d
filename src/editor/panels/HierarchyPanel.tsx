@@ -561,7 +561,7 @@ export default function HierarchyPanel() {
             const open = q ? true : subOpen[key] === true
             const subSelected = subSelection?.nodeId === node.id && subSelection.path === item.path
             const partVisible = !(node.hiddenParts ?? []).includes(item.path)
-            const parentHidden = subAncestorHidden(node.hiddenParts, item.path)
+            const parentHidden = !node.visible || ancestorHidden(nodes, node.id) || subAncestorHidden(node.hiddenParts, item.path)
             const canToggleVisibility = item.kind === 'mesh' || (item.kind === 'node' && hasMeshDescendant(item))
             const attached = item.kind === 'bone' ? (boneChildren.get(`${node.id}\n${item.path}`) ?? []) : []
             const hasSubKids = item.children.length > 0 || attached.length > 0
