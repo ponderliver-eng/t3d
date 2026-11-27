@@ -58,6 +58,7 @@ import {
 } from '../../runtime/engine/cutscene'
 import { evaluateCutsceneTracks, getEditorCutscenePreview } from '../../capabilities/cutscene/session'
 import { createNodeLight, createPrimitiveGeometry, resolveToneMapping } from '../../runtime/engine/sceneNodes'
+import { markSkeletonsDirty } from '../../runtime/engine/materials'
 import { useAssetStore } from '../assets/library'
 import { useCodeAssetStore } from '../../core/codeAssets/workspace'
 import { bindTextureRenderer, environmentFor } from '../assets/textures'
@@ -725,6 +726,8 @@ export class EditorViewport {
 
     const changed = new Set<string>()
     const moved = new Set<string>()
+    /** 记录自身与所有祖先都可见的节点；编辑器把物体平铺在 world 下，需要手动向下继承可见性。 */
+    const hierarchyVisible = new Set<string>()
     const playing = state.playState === 'playing'
     for (const id of orderedIds(state.nodes)) {
       const node = state.nodes[id]
@@ -753,7 +756,10 @@ export class EditorViewport {
         group.scale.copy(pose.scale)
       }
       const layerBit = layerBitIndex(node.renderLayerId, state.layers)
-      group.visible = node.visible && (state.editorCullingMask & (1 << layerBit)) !== 0
+      const parentVisible = !node.parentId || !state.nodes[node.parentId] || hierarchyVisible.has(node.parentId)
+      const selfAndAncestorsVisible = parentVisible && node.visible
+      if (selfAndAncestorsVisible) hierarchyVisible.add(id)
+      group.visible = selfAndAncestorsVisible && (state.editorCullingMask & (1 << layerBit)) !== 0
       const splineSelected = editing && state.selection.includes(id)
       const splineActiveKey = getActiveSplinePoints().filter(point => point.id === id).map(point => point.index).join(',')
       const viewDirty = nodeChanged
@@ -1582,7 +1588,7 @@ export class EditorViewport {
     const nodes = useEditorStore.getState().nodes
     for (const [id, group] of this.objects) {
       const node = nodes[id]
-      if (!node?.visible || node.locked) continue
+      if (!node || !group.visible || node.locked) continue
       const source = dataOf(group).pick ?? group
       const box = boundsOf(source)
       const point = box.isEmpty() ? group.getWorldPosition(new Vector3()) : box.getCenter(new Vector3())
@@ -1623,7 +1629,7 @@ export class EditorViewport {
     for (const [id, group] of this.objects) {
       const node = nodes[id]
       const gizmo = dataOf(group).splineGizmo
-      if (!node?.visible || node.locked || node.kind !== 'spline' || !gizmo?.group.visible) continue
+      if (!node || !group.visible || node.locked || node.kind !== 'spline' || !gizmo?.group.visible) continue
       gizmo.group.updateMatrixWorld(true)
       for (const handle of gizmo.handles) {
         if (!handle.visible || !isRendered(handle)) continue
@@ -2434,7 +2440,10 @@ export class EditorViewport {
           action.weight = 1
           action.paused = !play.playing
           action.time = play.time
-          if (!play.playing) data.mixer.update(0)
+          if (!play.playing) {
+            markSkeletonsDirty(data.modelRoot)
+            data.mixer.update(0)
+          }
         }
       } else if (previous) {
         if (fade > 0) previous.fadeOut(fade)
@@ -2455,6 +2464,7 @@ export class EditorViewport {
         action.weight = 1
         if (!action.isRunning()) action.play()
         action.time = play.time
+        markSkeletonsDirty(data.modelRoot)
         data.mixer.update(0)
       }
     }
@@ -2526,6 +2536,7 @@ export class EditorViewport {
       const bodyKeep = node.clipPlaying ? data.actions?.get(data.activeClip ?? '') : undefined
       data.bodyBlend = this.stepBlend(data, data.bodyBlend, overlayKeep)
       data.overlayBlend = this.stepBlend(data, data.overlayBlend, bodyKeep)
+      markSkeletonsDirty(data.modelRoot)
       data.mixer.update(dt)
       const action = data.actions?.get(data.activeClip ?? '')
       const overlay = data.actions?.get(data.activeOverlay ?? '')

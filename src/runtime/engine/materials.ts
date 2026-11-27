@@ -1,6 +1,7 @@
 import {
   AdditiveBlending,
   BackSide,
+  Box3,
   BufferAttribute,
   Color,
   CustomBlending,
@@ -16,11 +17,13 @@ import {
   OneFactor,
   OneMinusSrcAlphaFactor,
   Skeleton,
+  Sphere,
   Vector2,
   type BufferGeometry,
   type Material,
   type Object3D,
   type Side,
+  type SkinnedMesh,
   type Texture,
 } from 'three'
 import type { ParticleMaterialDesc } from '../../capabilities/particles/runtime'
@@ -630,6 +633,93 @@ export function shareSkeletons(root: Object3D) {
 
 const BONE_BUCKETS = [16, 32, 64, 128, 256, 512, 1024]
 
+interface LazySkeletonState {
+  dirty: boolean
+  lastRoot: Float32Array
+}
+
+const skeletonStates = new WeakMap<Skeleton, LazySkeletonState>()
+const rootSkeletonCache = new WeakMap<Object3D, Skeleton[]>()
+const baseSkeletonUpdate = Skeleton.prototype.update
+
+function sameMatrixElements(a: Float32Array, b: readonly number[]): boolean {
+  for (let i = 0; i < 16; i += 1) {
+    if (a[i] !== b[i]) return false
+  }
+  return true
+}
+
+function installLazySkeletonUpdate(skeleton: Skeleton) {
+  if (skeletonStates.has(skeleton)) return
+  // NaN 初始化确保首次渲染必然执行一次真实计算
+  const lastRoot = new Float32Array(16)
+  lastRoot[0] = Number.NaN
+  const state: LazySkeletonState = { dirty: true, lastRoot }
+  skeletonStates.set(skeleton, state)
+  skeleton.update = function lazySkeletonUpdate(this: Skeleton) {
+    const rootBone = this.bones[0]
+    if (!state.dirty && rootBone && sameMatrixElements(state.lastRoot, rootBone.matrixWorld.elements)) {
+      return
+    }
+    baseSkeletonUpdate.call(this)
+    if (rootBone) state.lastRoot.set(rootBone.matrixWorld.elements)
+    state.dirty = false
+  }
+}
+
+/**
+ * 标记对象树下的骨骼需要更新。动画推进、切动作、拖时间轴或脚本改骨骼前调用；
+ * 静止未移动的角色会跳过每帧的 Skeleton.update() 矩阵计算。
+ */
+export function markSkeletonsDirty(root: Object3D | null | undefined) {
+  if (!root) return
+  let list = rootSkeletonCache.get(root)
+  if (!list) {
+    const unique = new Set<Skeleton>()
+    root.traverse((child) => {
+      const mesh = child as Mesh & { isSkinnedMesh?: boolean; skeleton?: Skeleton }
+      if (mesh.isSkinnedMesh && mesh.skeleton) unique.add(mesh.skeleton)
+    })
+    list = [...unique]
+    rootSkeletonCache.set(root, list)
+  }
+  for (let i = 0; i < list.length; i += 1) {
+    const state = skeletonStates.get(list[i])
+    if (state) state.dirty = true
+  }
+}
+
+/**
+ * 为 SkinnedMesh 计算外扩后的安全裁剪包围球，替代原先 frustumCulled = false。
+ * 既能让视野外/阴影视锥外的蒙皮模型被剔除，又能留出动画摆动余量防止误裁。
+ */
+function prepareSkinnedCullBounds(mesh: SkinnedMesh) {
+  const geometry = mesh.geometry
+  if (!geometry) {
+    mesh.frustumCulled = false
+    return
+  }
+  if (geometry.boundingBox === null) geometry.computeBoundingBox()
+  const baseBox = geometry.boundingBox
+  if (!baseBox || baseBox.isEmpty()) {
+    mesh.frustumCulled = false
+    return
+  }
+  const dx = baseBox.max.x - baseBox.min.x
+  const dy = baseBox.max.y - baseBox.min.y
+  const dz = baseBox.max.z - baseBox.min.z
+  const margin = Math.max(0.5, Math.max(dx, dy, dz) * 0.5)
+  const box = (mesh.boundingBox ?? new Box3()).copy(baseBox).expandByScalar(margin)
+  mesh.boundingBox = box
+  const sphere = box.getBoundingSphere(mesh.boundingSphere ?? new Sphere())
+  if (!Number.isFinite(sphere.radius) || sphere.radius <= 0) {
+    mesh.frustumCulled = false
+    return
+  }
+  mesh.boundingSphere = sphere
+  mesh.frustumCulled = true
+}
+
 /**
  * 统一的模型模板克隆与实例化：
  * 负责 `normalizeSkinIndex`、`cloneSkinned`、`shareSkeletons`、`padSkeletons`、
@@ -650,7 +740,9 @@ export function instantiateModelScene(
     if (!mesh.isMesh) return
     mesh.castShadow = true
     mesh.receiveShadow = true
-    if ((mesh as Mesh & { isSkinnedMesh?: boolean }).isSkinnedMesh) mesh.frustumCulled = false
+    if ((mesh as Mesh & { isSkinnedMesh?: boolean }).isSkinnedMesh) {
+      prepareSkinnedCullBounds(mesh as unknown as SkinnedMesh)
+    }
     if (Array.isArray(mesh.material)) mesh.material = mesh.material.map((material) => cloneMaterialWithSlotToken(material))
     else mesh.material = cloneMaterialWithSlotToken(mesh.material)
   })
@@ -665,6 +757,7 @@ export function padSkeletons(root: Object3D) {
     const skeleton = mesh.skeleton
     if (!mesh.isSkinnedMesh || !skeleton || done.has(skeleton)) return
     done.add(skeleton)
+    installLazySkeletonUpdate(skeleton)
     const count = skeleton.bones.length
     if (count === 0 || skeleton.boneInverses.length !== count) return
     const target = BONE_BUCKETS.find((size) => size >= count)

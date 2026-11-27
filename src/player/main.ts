@@ -39,6 +39,7 @@ import {
   applyModelMaterialsWithHost,
   applyNodeMaterialWithHost,
   instantiateModelScene,
+  markSkeletonsDirty,
   normalizeMaterialKey,
   normalizeSkinIndex,
   particleDescForWithHost,
@@ -1869,6 +1870,9 @@ async function boot() {
             }
           }
         }
+        const hasRunning = entry.actions.size > 0 && Array.from(entry.actions.values()).some((a) => a.isRunning() && !a.paused)
+        if (!hasRunning) continue
+        markSkeletonsDirty(entry.rootScene)
         entry.mixer.update(dt)
       }
     },

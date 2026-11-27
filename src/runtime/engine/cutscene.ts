@@ -11,6 +11,7 @@ import {
   type Light,
   type Object3D,
 } from 'three'
+import { markSkeletonsDirty } from './materials'
 import type {
   CutsceneAnimClip,
   CutsceneCameraShot,
@@ -309,6 +310,7 @@ export function sampleCutsceneAnimationClips(
     act.time = item.localTime
   }
 
+  markSkeletonsDirty(mixer.getRoot() as Object3D)
   mixer.update(0)
   return true
 }
