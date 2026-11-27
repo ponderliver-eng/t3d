@@ -287,7 +287,7 @@ export default function InspectorPanel() {
 
       {(isMesh(node.kind) || (node.kind === 'model' && (!activeSub || activeSub.kind === 'mesh'))) && <MeshRendererCard node={node} />}
 
-      {node.kind === 'model' && (
+      {node.kind === 'model' && !activeSub && (
         <Card id="model" title={t('inspector.model')} color={kindColor(node.kind)}>
           <Section title={node.animator?.enabled === true ? t('anim.machine') : t('anim.simple')} color="#f2cf7f">
             <AnimModeSwitch nodeId={node.id} />
