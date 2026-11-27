@@ -285,7 +285,7 @@ export default function InspectorPanel() {
         </div>
       </Card>
 
-      {(isMesh(node.kind) || node.kind === 'model') && <MeshRendererCard node={node} />}
+      {(isMesh(node.kind) || (node.kind === 'model' && (!activeSub || activeSub.kind === 'mesh'))) && <MeshRendererCard node={node} />}
 
       {node.kind === 'model' && (
         <Card id="model" title={t('inspector.model')} color={kindColor(node.kind)}>
