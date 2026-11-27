@@ -1452,57 +1452,52 @@ function CreateMenu({ dir, onDone, onNewFolder }: { dir: string, onDone: () => v
       <div className="project-panel__submenu-pop">
         <button type="button" onClick={() => { onNewFolder(useAssetStore.getState().createFolder(dir)); onDone() }}><FolderPlus size={12} />{t('project.newFolderMenu')}</button>
         <div className="project-panel__sep" />
-        <div className="project-panel__submenu">
-          <button type="button"><span><Folder size={12} />{t('panel.project')}</span><ChevronRight size={12} /></button>
-          <div className="project-panel__submenu-pop">
-            <button type="button" onClick={() => { useAssetStore.getState().setBrowseDir(dir); useEditorStore.getState().createScene(); onDone() }}><Globe size={12} />{t('project.createScene')}</button>
-            <button type="button" onClick={() => { createDefaultMaterial(dir); onDone() }}><Palette size={12} />{t('project.createMaterial')}</button>
-            <button type="button" onClick={() => { createDefaultUi(dir); onDone() }}><PanelsTopLeft size={12} />{t('project.createUi')}</button>
-            <button type="button" onClick={() => { createDefaultCutscene(dir); onDone() }}><Film size={12} />{t('project.createCutscene')}</button>
-            <button type="button" onClick={() => {
-              void createDefaultDocument(dir, 'md').then(id => {
-                const created = id ? useAssetStore.getState().assets[id] : null
-                if (created) openAssetPreview('document', created.id, created.name)
-              })
-              onDone()
-            }}><FileText size={12} />Markdown 文档</button>
-            <button type="button" onClick={() => {
-              void createDefaultDocument(dir, 'txt').then(id => {
-                const created = id ? useAssetStore.getState().assets[id] : null
-                if (created) openAssetPreview('document', created.id, created.name)
-              })
-              onDone()
-            }}><FileText size={12} />文本文档</button>
-            <button type="button" disabled={!hasSelection} onClick={() => { useAssetStore.getState().setBrowseDir(dir); savePrefabFromSelection(); onDone() }}><Component size={12} />{t('project.createPrefab')}</button>
-            <div className="project-panel__sep" />
-            <button
-              type="button"
-              onClick={() => {
-                const count = Object.values(useCodeAssetStore.getState().assets).filter(a => a.kind === 'script').length + 1
-                const id = normalizeCodeAssetId('script', `behavior_${count}`)
-                void saveAndCompileCodeAsset('script', id, defaultTemplateFor('script', id), dir).then(() => {
-                  openCodeAssetModal('script', id)
-                })
-                onDone()
-              }}
-            >
-              <FileCode2 size={12} />脚本
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                const count = Object.values(useCodeAssetStore.getState().assets).filter(a => a.kind === 'shader').length + 1
-                const id = normalizeCodeAssetId('shader', `surface_${count}`)
-                void saveAndCompileCodeAsset('shader', id, defaultTemplateFor('shader', id), dir).then(() => {
-                  openCodeAssetModal('shader', id)
-                })
-                onDone()
-              }}
-            >
-              <Wand2 size={12} />Shader
-            </button>
-          </div>
-        </div>
+        <button type="button" onClick={() => { useAssetStore.getState().setBrowseDir(dir); useEditorStore.getState().createScene(); onDone() }}><Globe size={12} />{t('project.createScene')}</button>
+        <button type="button" onClick={() => { createDefaultMaterial(dir); onDone() }}><Palette size={12} />{t('project.createMaterial')}</button>
+        <button type="button" onClick={() => { createDefaultUi(dir); onDone() }}><PanelsTopLeft size={12} />{t('project.createUi')}</button>
+        <button type="button" onClick={() => { createDefaultCutscene(dir); onDone() }}><Film size={12} />{t('project.createCutscene')}</button>
+        <button type="button" onClick={() => {
+          void createDefaultDocument(dir, 'md').then(id => {
+            const created = id ? useAssetStore.getState().assets[id] : null
+            if (created) openAssetPreview('document', created.id, created.name)
+          })
+          onDone()
+        }}><FileText size={12} />Markdown 文档</button>
+        <button type="button" onClick={() => {
+          void createDefaultDocument(dir, 'txt').then(id => {
+            const created = id ? useAssetStore.getState().assets[id] : null
+            if (created) openAssetPreview('document', created.id, created.name)
+          })
+          onDone()
+        }}><FileText size={12} />文本文档</button>
+        <button type="button" disabled={!hasSelection} onClick={() => { useAssetStore.getState().setBrowseDir(dir); savePrefabFromSelection(); onDone() }}><Component size={12} />{t('project.createPrefab')}</button>
+        <div className="project-panel__sep" />
+        <button
+          type="button"
+          onClick={() => {
+            const count = Object.values(useCodeAssetStore.getState().assets).filter(a => a.kind === 'script').length + 1
+            const id = normalizeCodeAssetId('script', `behavior_${count}`)
+            void saveAndCompileCodeAsset('script', id, defaultTemplateFor('script', id), dir).then(() => {
+              openCodeAssetModal('script', id)
+            })
+            onDone()
+          }}
+        >
+          <FileCode2 size={12} />脚本
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            const count = Object.values(useCodeAssetStore.getState().assets).filter(a => a.kind === 'shader').length + 1
+            const id = normalizeCodeAssetId('shader', `surface_${count}`)
+            void saveAndCompileCodeAsset('shader', id, defaultTemplateFor('shader', id), dir).then(() => {
+              openCodeAssetModal('shader', id)
+            })
+            onDone()
+          }}
+        >
+          <Wand2 size={12} />Shader
+        </button>
       </div>
     </div>
   )
