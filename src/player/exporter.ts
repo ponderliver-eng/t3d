@@ -10,7 +10,7 @@ import { diagnoseProject } from '../core/query/diagnose'
 import { readModelArtifact, readTextureArtifact } from '../editor/assets/cache'
 import { ensureScenesLoaded, useAssetStore, type ProjectAsset, type SceneAsset } from '../editor/assets/library'
 import { applyModelMaterialBindings, getModelTemplate, loadModelTemplate } from '../editor/assets/models'
-import { bakeTextureArtifact } from '../editor/assets/textures'
+import { bakeTextureArtifact, bakeUnityMrTextureArtifact } from '../editor/assets/textures'
 import { trimBc7ArtifactToMaxSize } from '../runtime/engine/bc7'
 import { readUnpremultipliedRgba } from '../runtime/engine/textures'
 import { assetRecord, directoryProjectName, readAssetBytes } from '../editor/project/disk'
@@ -96,16 +96,17 @@ function resolveEffectiveNodeSlots(node: SceneNode): PbrSlot[] | undefined {
   return node.slots.map((slot, idx) => {
     const fresh = tplByName.get(slot.name) ?? tplSlots[idx]
     if (!fresh) return slot
+    const sameOrUnsetMat = !slot.materialAssetId || slot.materialAssetId === fresh.materialAssetId
     return {
       ...fresh,
       ...slot,
       materialAssetId: slot.materialAssetId ?? fresh.materialAssetId,
       shader: slot.shader ?? fresh.shader,
-      mapAssetId: slot.mapAssetId ?? fresh.mapAssetId,
-      normalAssetId: slot.normalAssetId ?? fresh.normalAssetId,
-      metallicRoughnessAssetId: slot.metallicRoughnessAssetId ?? fresh.metallicRoughnessAssetId,
-      emissiveAssetId: slot.emissiveAssetId ?? fresh.emissiveAssetId,
-      aoAssetId: slot.aoAssetId ?? fresh.aoAssetId,
+      mapAssetId: slot.mapAssetId ?? (sameOrUnsetMat ? fresh.mapAssetId : null),
+      normalAssetId: slot.normalAssetId ?? (sameOrUnsetMat ? fresh.normalAssetId : null),
+      metallicRoughnessAssetId: slot.metallicRoughnessAssetId ?? (sameOrUnsetMat ? fresh.metallicRoughnessAssetId : null),
+      emissiveAssetId: slot.emissiveAssetId ?? (sameOrUnsetMat ? fresh.emissiveAssetId : null),
+      aoAssetId: slot.aoAssetId ?? (sameOrUnsetMat ? fresh.aoAssetId : null),
     }
   })
 }
@@ -201,8 +202,17 @@ export function collectSceneDependencies(
     if (node.animator) scanUnknownRefs(node.animator, assets, collected)
     if (node.capabilities) scanUnknownRefs(node.capabilities, assets, collected)
     if (node.gameplay) scanUnknownRefs(node.gameplay, assets, collected)
-    // 当节点带有动画/角色/运动或脚本逻辑时，剪辑可能仅按名称引用工程内的 animation 资源而未显式填 clipAssetId
-    if (node.kind === 'model' || node.gameplay?.character || node.gameplay?.locomotion || node.animator || node.clip) {
+    // 仅当节点实际挂有角色/运动/状态机/默认剪辑或脚本组件时，才兜底拉入工程内的独立 animation 资产（纯静态场景不再无差别预载全部动作文件）
+    const hasNodeScripts = Boolean(node.gameplay?.packs && Object.keys(node.gameplay.packs).length > 0)
+    const hasProjectScripts = hasNodeScripts && Object.values(useCodeAssetStore.getState().assets).some((a) => a.kind === 'script')
+    if (
+      node.gameplay?.character ||
+      node.gameplay?.locomotion ||
+      node.animator ||
+      node.clip ||
+      node.overlayClip ||
+      hasProjectScripts
+    ) {
       for (const a of Object.values(assets)) {
         if (a.kind === 'animation') addAsset(a.id)
       }
@@ -213,6 +223,95 @@ export function collectSceneDependencies(
   for (const id of [...collected]) addAsset(id)
 
   return [...collected]
+}
+
+function collectTextureChannelRoles(
+  builtScenes: readonly ExportedSceneData[],
+  allAssets: Record<string, ProjectAsset>,
+  settings: BuildSettings,
+): { unityMrTexIds: Set<string>; standardTexIds: Set<string> } {
+  const unityMrTexIds = new Set<string>()
+  const standardTexIds = new Set<string>()
+
+  const markStandard = (id: string | null | undefined) => {
+    if (id && allAssets[id]?.kind === 'texture') standardTexIds.add(id)
+  }
+  const markUnityMr = (id: string | null | undefined) => {
+    if (id && allAssets[id]?.kind === 'texture') unityMrTexIds.add(id)
+  }
+  const scanUnknownAsStandard = (val: unknown, depth = 0): void => {
+    if (depth > 5 || val === null || val === undefined) return
+    if (typeof val === 'string') {
+      markStandard(val)
+      return
+    }
+    if (Array.isArray(val)) {
+      for (const item of val) scanUnknownAsStandard(item, depth + 1)
+      return
+    }
+    if (typeof val === 'object') {
+      for (const v of Object.values(val as Record<string, unknown>)) scanUnknownAsStandard(v, depth + 1)
+    }
+  }
+  const visitSlot = (slot: Partial<PbrSlot> | undefined) => {
+    if (!slot) return
+    const linkedMat = slot.materialAssetId ? allAssets[slot.materialAssetId] : undefined
+    const effectiveShader = (linkedMat && linkedMat.kind === 'material' ? linkedMat.slot.shader : undefined) ?? slot.shader ?? 'lit'
+    const isUnity = effectiveShader === 'unity-standard'
+    const normalId = slot.normalAssetId ?? null
+    markStandard(slot.mapAssetId)
+    markStandard(normalId)
+    markStandard(slot.emissiveAssetId)
+    markStandard(slot.aoAssetId)
+    markStandard(slot.clearcoatMapAssetId)
+    markStandard(slot.clearcoatRoughnessMapAssetId)
+    markStandard(slot.clearcoatNormalMapAssetId)
+    const mrId = slot.metallicRoughnessAssetId ?? slot.metalnessAssetId ?? slot.roughnessAssetId ?? null
+    if (mrId && mrId !== normalId) {
+      if (isUnity) markUnityMr(mrId)
+      else markStandard(mrId)
+    }
+    if (!isUnity) {
+      markStandard(slot.roughnessAssetId)
+      markStandard(slot.metalnessAssetId)
+    }
+    if (slot.shaderParams) scanUnknownAsStandard(slot.shaderParams)
+  }
+
+  markStandard(settings.loading.logoAssetId)
+  markStandard(settings.loading.backgroundAssetId)
+  markStandard(settings.electron.iconAssetId)
+
+  for (const asset of Object.values(allAssets)) {
+    if (asset.kind === 'material') {
+      visitSlot(asset.slot)
+    } else if (asset.kind === 'model') {
+      for (const slot of getModelTemplate(asset.id)?.slots ?? []) visitSlot(slot)
+    } else if (asset.kind === 'ui') {
+      const uiImgs = new Set<string>()
+      collectUiImageIds(asset.document.root, uiImgs)
+      for (const id of uiImgs) markStandard(id)
+    } else if (asset.kind === 'effect') {
+      if ('simulation' in asset && asset.simulation) scanUnknownAsStandard(asset.simulation)
+    }
+  }
+
+  const visitNodes = (nodes: Record<string, SceneNode>, picture?: ScenePicture) => {
+    if (picture?.capabilities) scanUnknownAsStandard(picture.capabilities)
+    for (const node of Object.values(nodes)) {
+      visitSlot(node)
+      for (const slot of resolveEffectiveNodeSlots(node) ?? []) visitSlot(slot)
+      if (node.effect?.simulation) scanUnknownAsStandard(node.effect.simulation)
+      if (node.capabilities) scanUnknownAsStandard(node.capabilities)
+      if (node.gameplay) scanUnknownAsStandard(node.gameplay)
+    }
+  }
+  for (const sc of builtScenes) visitNodes(sc.nodes, sc.picture)
+  for (const asset of Object.values(allAssets)) {
+    if (asset.kind === 'prefab') visitNodes(asset.nodes)
+  }
+
+  return { unityMrTexIds, standardTexIds }
 }
 
 function isPackedOrDataTexture(fileName: string): boolean {
@@ -335,11 +434,13 @@ export function buildExportedProjectPayload(
   assetExtOverrides?: Record<string, string>,
   settingsOverride?: BuildSettings,
   includedAssetIds?: Set<string>,
-  assetBc7Overrides?: Record<string, { bc7Url?: string; unityMrBc7Url?: string }>,
+  assetBc7Overrides?: Record<string, { bc7Url?: string; unityMrBc7Url?: string; onlyUnityMr?: boolean }>,
+  sceneUrlOverrides?: Record<string, string>,
+  builtScenesOverride?: ExportedSceneData[],
 ) {
   const editor = useEditorStore.getState()
   const settings = settingsOverride ?? useBuildSettingsStore.getState().settings
-  const builtScenes = resolveScenesForBuild(settings)
+  const builtScenes = builtScenesOverride ?? resolveScenesForBuild(settings)
   const entryId = builtScenes.some((s) => s.id === settings.entrySceneId)
     ? settings.entrySceneId
     : (builtScenes[0]?.id ?? editor.activeSceneId)
@@ -362,6 +463,7 @@ export function buildExportedProjectPayload(
       url: rawUrl,
       ...(bc7Info?.bc7Url ? { bc7Url: bc7Info.bc7Url } : {}),
       ...(bc7Info?.unityMrBc7Url ? { unityMrBc7Url: bc7Info.unityMrBc7Url } : {}),
+      ...(bc7Info?.onlyUnityMr ? { onlyUnityMr: true } : {}),
       fileName: nextFileName,
       clipCatalog: 'clipCatalog' in asset ? asset.clipCatalog : undefined,
       importScale: 'importScale' in asset ? asset.importScale : undefined,
@@ -385,8 +487,21 @@ export function buildExportedProjectPayload(
     .filter((item) => item.kind === 'shader')
     .map((item) => ({ id: item.id, relativePath: item.relativePath, source: item.source }))
 
-  const scenesMap: Record<string, ExportedSceneData> = {}
-  for (const sc of builtScenes) scenesMap[sc.id] = sc
+  const scenesMap: Record<string, unknown> = {}
+  for (const sc of builtScenes) {
+    const extUrl = sceneUrlOverrides?.[sc.id]
+    if (extUrl) {
+      // 入口场景已内联在顶层 payload.nodes / payload.picture，其余场景拆分到独立 JSON 按需加载，避免大工程启动时解析几十 MB 的重复 JSON
+      scenesMap[sc.id] = {
+        id: sc.id,
+        name: sc.name,
+        requiredAssetIds: sc.requiredAssetIds,
+        sceneUrl: extUrl,
+      }
+    } else {
+      scenesMap[sc.id] = sc
+    }
+  }
 
   return {
     version: 2,
@@ -558,10 +673,12 @@ export async function exportWebPlayerBundle(
     return requiredSet.has(a.id)
   })
 
+  const { unityMrTexIds, standardTexIds } = collectTextureChannelRoles(builtScenes, allAssets, settings)
+
   // 拷贝 & 烘焙资产到 contentDir/project-assets/
   const assetUrlOverrides: Record<string, string> = {}
   const assetExtOverrides: Record<string, string> = {}
-  const assetBc7Overrides: Record<string, { bc7Url?: string; unityMrBc7Url?: string }> = {}
+  const assetBc7Overrides: Record<string, { bc7Url?: string; unityMrBc7Url?: string; onlyUnityMr?: boolean }> = {}
   const totalCount = Math.max(1, targetAssets.length)
 
   for (let i = 0; i < targetAssets.length; i += 1) {
@@ -605,9 +722,11 @@ export async function exportWebPlayerBundle(
       }
     }
 
+    let rawSourceBuf: ArrayBuffer | null = null
     if (!outBytes) {
       const raw = await readAssetBytes(asset.id).catch(() => null)
       if (!raw) continue
+      rawSourceBuf = raw
       const rawBytes = new Uint8Array(raw)
       outBytes = rawBytes
       if (asset.kind === 'texture' && 'fileName' in asset) {
@@ -645,44 +764,85 @@ export async function exportWebPlayerBundle(
       && 'hash' in asset && asset.hash
       && 'fileName' in asset
     ) {
-      let bc7Buf = await readTextureArtifact(asset.hash, 'bc7').catch(() => null)
-      if (!bc7Buf) {
-        // 缓存里还没有压缩成品：用工程里的原始文件烘一份（不能用上面转成 WebP 的有损结果，成品缓存是编辑器共用的）
-        const source = await readAssetBytes(asset.id).catch(() => null)
-        if (source) {
-          await bakeTextureArtifact(asset, new Blob([source])).catch(() => false)
-          bc7Buf = await readTextureArtifact(asset.hash, 'bc7').catch(() => null)
+      const needsUnityMr = unityMrTexIds.has(asset.id)
+      const exclusivelyUnityMr = needsUnityMr && !standardTexIds.has(asset.id)
+      let wroteUnityMrBc7 = false
+
+      if (needsUnityMr) {
+        let mrBc7Buf = await readTextureArtifact(asset.hash, 'unity-mr-bc7').catch(() => null)
+        if (!mrBc7Buf) {
+          const source = rawSourceBuf ?? (await readAssetBytes(asset.id).catch(() => null))
+          if (source) {
+            rawSourceBuf = source
+            await bakeUnityMrTextureArtifact(asset, new Blob([source])).catch(() => false)
+            mrBc7Buf = await readTextureArtifact(asset.hash, 'unity-mr-bc7').catch(() => null)
+          }
+        }
+        const trimmedMrBc7 = mrBc7Buf ? trimBc7ArtifactToMaxSize(mrBc7Buf, settings.textureMaxSize) : null
+        if (trimmedMrBc7 && trimmedMrBc7.byteLength > 0) {
+          const mrRel = `${rel}.unity-mr.bc7`
+          const mrDest = joinProjectPath(contentDir, `project-assets/${mrRel}`)
+          await bridge.fs.writeBinaryFile(mrDest, trimmedMrBc7)
+          assetBc7Overrides[asset.id] = {
+            ...(assetBc7Overrides[asset.id] ?? {}),
+            unityMrBc7Url: `./project-assets/${mrRel}`,
+            ...(exclusivelyUnityMr ? { onlyUnityMr: true } : {}),
+          }
+          files.push(mrDest)
+          wroteUnityMrBc7 = true
         }
       }
-      const trimmedBc7 = bc7Buf ? trimBc7ArtifactToMaxSize(bc7Buf, settings.textureMaxSize) : null
-      if (trimmedBc7 && trimmedBc7.byteLength > 0) {
-        // 直接在原文件名后面加后缀，避免 a.png 和 a.jpg 的压缩成品重名
-        const bc7Rel = `${rel}.bc7`
-        const bc7Dest = joinProjectPath(contentDir, `project-assets/${bc7Rel}`)
-        await bridge.fs.writeBinaryFile(bc7Dest, trimmedBc7)
-        assetBc7Overrides[asset.id] = { ...(assetBc7Overrides[asset.id] ?? {}), bc7Url: `./project-assets/${bc7Rel}` }
-        files.push(bc7Dest)
-      }
-      const mrBc7Buf = await readTextureArtifact(asset.hash, 'unity-mr-bc7').catch(() => null)
-      const trimmedMrBc7 = mrBc7Buf ? trimBc7ArtifactToMaxSize(mrBc7Buf, settings.textureMaxSize) : null
-      if (trimmedMrBc7 && trimmedMrBc7.byteLength > 0) {
-        const mrRel = `${rel}.unity-mr.bc7`
-        const mrDest = joinProjectPath(contentDir, `project-assets/${mrRel}`)
-        await bridge.fs.writeBinaryFile(mrDest, trimmedMrBc7)
-        assetBc7Overrides[asset.id] = { ...(assetBc7Overrides[asset.id] ?? {}), unityMrBc7Url: `./project-assets/${mrRel}` }
-        files.push(mrDest)
+
+      // 仅用作 Unity 金属光滑图的贴图已有重排好的 unity-mr.bc7，无需再重复写出一份未重排的 .bc7
+      if (!exclusivelyUnityMr || !wroteUnityMrBc7) {
+        let bc7Buf = await readTextureArtifact(asset.hash, 'bc7').catch(() => null)
+        if (!bc7Buf) {
+          const source = rawSourceBuf ?? (await readAssetBytes(asset.id).catch(() => null))
+          if (source) {
+            rawSourceBuf = source
+            await bakeTextureArtifact(asset, new Blob([source])).catch(() => false)
+            bc7Buf = await readTextureArtifact(asset.hash, 'bc7').catch(() => null)
+          }
+        }
+        const trimmedBc7 = bc7Buf ? trimBc7ArtifactToMaxSize(bc7Buf, settings.textureMaxSize) : null
+        if (trimmedBc7 && trimmedBc7.byteLength > 0) {
+          const bc7Rel = `${rel}.bc7`
+          const bc7Dest = joinProjectPath(contentDir, `project-assets/${bc7Rel}`)
+          await bridge.fs.writeBinaryFile(bc7Dest, trimmedBc7)
+          assetBc7Overrides[asset.id] = { ...(assetBc7Overrides[asset.id] ?? {}), bc7Url: `./project-assets/${bc7Rel}` }
+          files.push(bc7Dest)
+        }
       }
     }
   }
 
   reportProgress?.({ phase: 'write', current: 1, total: 1, label: '正在写入工程配置与清单…' })
+  const scenesDir = joinProjectPath(contentDir, 'scenes')
+  await bridge.fs.mkdir(scenesDir)
+  const sceneUrlOverrides: Record<string, string> = {}
+  for (const sc of builtScenes) {
+    const safeSceneFile = `${sc.id.replace(/[^a-zA-Z0-9._-]+/g, '_')}.json`
+    const sceneDest = joinProjectPath(scenesDir, safeSceneFile)
+    await bridge.fs.writeTextFile(sceneDest, JSON.stringify({ id: sc.id, name: sc.name, nodes: sc.nodes, picture: sc.picture }))
+    sceneUrlOverrides[sc.id] = `./scenes/${safeSceneFile}`
+    files.push(sceneDest)
+  }
+
   const includedIds = settings.stripUnusedAssets ? requiredSet : undefined
-  const payload = buildExportedProjectPayload(assetUrlOverrides, assetExtOverrides, settings, includedIds, assetBc7Overrides)
+  const payload = buildExportedProjectPayload(
+    assetUrlOverrides,
+    assetExtOverrides,
+    settings,
+    includedIds,
+    assetBc7Overrides,
+    sceneUrlOverrides,
+    builtScenes,
+  )
   const projectFile = joinProjectPath(contentDir, 'project.t3d.json')
   const inputFile = joinProjectPath(contentDir, 'input.json')
   const manifestFile = joinProjectPath(contentDir, 'export-manifest.json')
 
-  await bridge.fs.writeTextFile(projectFile, `${JSON.stringify(payload, null, 2)}\n`)
+  await bridge.fs.writeTextFile(projectFile, JSON.stringify(payload))
   await bridge.fs.writeTextFile(inputFile, `${JSON.stringify(payload.inputMap, null, 2)}\n`)
   await bridge.fs.writeTextFile(
     manifestFile,

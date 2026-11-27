@@ -40,6 +40,9 @@ const ICONS: Record<NodeKind, typeof Box> = {
 }
 
 const RENAME_DELAY_MS = 1000
+const ROW_HEIGHT = 24
+const VIRTUAL_OVERSCAN = 12
+const EMPTY_NODES: SceneNode[] = []
 type DropZone = 'before' | 'into' | 'after'
 
 type TreeRow =
@@ -102,11 +105,57 @@ export default function HierarchyPanel() {
   const draggingRef = useRef<string | null>(null)
   const dropLive = useRef<{ id: string, zone: DropZone } | null>(null)
   const [draggingId, setDraggingId] = useState<string | null>(null)
+  const [scrollTop, setScrollTop] = useState(0)
+  const [listHeight, setListHeight] = useState(480)
   const primary = primaryId({ selection })
   const pendingRenameId = useEditorStore(state => state.pendingRenameId)
 
   const q = query.trim().toLowerCase()
   useEffect(() => subscribeModels(() => setModelVersion(value => value + 1)), [])
+
+  useEffect(() => {
+    const el = listRef.current
+    if (!el) return
+    setListHeight(el.clientHeight || 480)
+    if (typeof ResizeObserver === 'undefined') return
+    const ro = new ResizeObserver(entries => {
+      const h = entries[0]?.contentRect.height
+      if (h && h > 0) setListHeight(h)
+    })
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+
+  const childrenMap = useMemo(() => {
+    const map = new Map<string | null, SceneNode[]>()
+    for (const node of Object.values(nodes)) {
+      const list = map.get(node.parentId)
+      if (list) list.push(node)
+      else map.set(node.parentId, [node])
+    }
+    for (const list of map.values()) {
+      if (list.length > 1) {
+        list.sort((a, b) => (a.order - b.order) || a.name.localeCompare(b.name, 'zh'))
+      }
+    }
+    return map
+  }, [nodes])
+
+  const hiddenAncestors = useMemo(() => {
+    const memo = new Map<string, boolean>()
+    const check = (id: string): boolean => {
+      const cached = memo.get(id)
+      if (cached !== undefined) return cached
+      const parentId = nodes[id]?.parentId
+      const res = parentId ? (!nodes[parentId]?.visible || check(parentId)) : false
+      memo.set(id, res)
+      return res
+    }
+    for (const id of Object.keys(nodes)) check(id)
+    return memo
+  }, [nodes])
+
+  const selectionSet = useMemo(() => new Set(selection), [selection])
 
   const modelTrees = useMemo(() => {
     void modelVersion
@@ -150,14 +199,14 @@ export default function HierarchyPanel() {
         ? filterSubTree(modelTrees.get(node.assetId) ?? [], q).length > 0
         : false
       const self = (nameOk && tagOk) || subMatch
-      const child = childrenOf(nodes, id).some(item => visit(item.id))
+      const child = (childrenMap.get(id) ?? EMPTY_NODES).some(item => visit(item.id))
       const ok = self || child
       cache.set(id, ok)
       return ok
     }
     if (q || tagFilter !== 'all') Object.keys(nodes).forEach(visit)
     return cache
-  }, [nodes, q, tagFilter, modelTrees])
+  }, [nodes, q, tagFilter, modelTrees, childrenMap])
 
   const visibleRows = useMemo(() => {
     const rows: TreeRow[] = []
@@ -166,18 +215,19 @@ export default function HierarchyPanel() {
       if ((q || tagFilter !== 'all') && !matches.get(node.id)) return
       rows.push({ kind: 'node', node, depth })
       const internal = node.kind === 'model' && node.assetId ? (modelTrees.get(node.assetId) ?? []) : []
+      const nodeKids = childrenMap.get(node.id) ?? EMPTY_NODES
       const isModelDefaultCollapsed = node.kind === 'model' && collapsed[node.id] === undefined
       const filteredSub = q && internal.length > 0 ? filterSubTree(internal, q) : []
       const openBySearch = (q && filteredSub.length > 0 && searchSubExpanded < 5)
       if (openBySearch) searchSubExpanded += 1
       const open = q || tagFilter !== 'all'
-        ? (!isModelDefaultCollapsed || openBySearch || childrenOf(nodes, node.id).some(c => matches.get(c.id)))
+        ? (!isModelDefaultCollapsed || openBySearch || nodeKids.some(c => matches.get(c.id)))
         : (node.kind === 'model' ? collapsed[node.id] === false : !collapsed[node.id])
       if (!open) return
       if (internal.length > 0 && (q ? filteredSub.length > 0 && openBySearch : collapsed[node.id] === false)) {
         walkSub(node, q ? filteredSub : internal, depth + 1, Boolean(q && filteredSub.length > 0))
       }
-      for (const child of childrenOf(nodes, node.id)) {
+      for (const child of nodeKids) {
         if (internal.length > 0 && child.socketBone) continue
         walkNodeBranch(child, depth + 1)
       }
@@ -194,9 +244,9 @@ export default function HierarchyPanel() {
         }
       }
     }
-    for (const root of childrenOf(nodes, null)) walkNodeBranch(root, 0)
+    for (const root of childrenMap.get(null) ?? EMPTY_NODES) walkNodeBranch(root, 0)
     return rows
-  }, [nodes, collapsed, subOpen, q, tagFilter, matches, modelTrees, boneChildren])
+  }, [childrenMap, collapsed, subOpen, q, tagFilter, matches, modelTrees, boneChildren])
 
   useEffect(() => {
     if (!menu && !createOpen) return
@@ -280,7 +330,14 @@ export default function HierarchyPanel() {
       })
     }
     const timer = window.setTimeout(() => {
-      listRef.current?.querySelector(`[data-node-id="${primary}"]`)?.scrollIntoView({ block: 'nearest' })
+      const el = listRef.current
+      if (!el) return
+      const idx = visibleRows.findIndex(r => r.kind === 'node' && r.node.id === primary)
+      if (idx < 0) return
+      const rowTop = idx * ROW_HEIGHT
+      const rowBottom = rowTop + ROW_HEIGHT
+      if (rowTop < el.scrollTop) el.scrollTop = rowTop
+      else if (rowBottom > el.scrollTop + el.clientHeight) el.scrollTop = rowBottom - el.clientHeight
     }, 0)
     return () => window.clearTimeout(timer)
   }, [primary])
@@ -306,9 +363,14 @@ export default function HierarchyPanel() {
       })
     }
     const timer = window.setTimeout(() => {
-      listRef.current
-        ?.querySelector(`[data-sub-key="${CSS.escape(`${subSelection.nodeId}:${subSelection.path}`)}"]`)
-        ?.scrollIntoView({ block: 'nearest' })
+      const el = listRef.current
+      if (!el) return
+      const idx = visibleRows.findIndex(r => r.kind === 'sub' && r.node.id === subSelection.nodeId && r.item.path === subSelection.path)
+      if (idx < 0) return
+      const rowTop = idx * ROW_HEIGHT
+      const rowBottom = rowTop + ROW_HEIGHT
+      if (rowTop < el.scrollTop) el.scrollTop = rowTop
+      else if (rowBottom > el.scrollTop + el.clientHeight) el.scrollTop = rowBottom - el.clientHeight
     }, 20)
     return () => window.clearTimeout(timer)
   }, [subSelection])
@@ -516,7 +578,7 @@ export default function HierarchyPanel() {
           onClick={() => {
             const next: Record<string, boolean> = {}
             for (const node of Object.values(nodes)) {
-              if (childrenOf(nodes, node.id).length > 0 || (node.kind === 'model' && node.assetId && modelTrees.has(node.assetId))) {
+              if ((childrenMap.get(node.id)?.length ?? 0) > 0 || (node.kind === 'model' && node.assetId && modelTrees.has(node.assetId))) {
                 next[node.id] = true
               }
             }
@@ -547,6 +609,7 @@ export default function HierarchyPanel() {
       <div
         className="scene-panel__list"
         ref={listRef}
+        onScroll={event => setScrollTop(event.currentTarget.scrollTop)}
         onContextMenu={event => {
           if ((event.target as HTMLElement).closest('.scene-item')) return
           event.preventDefault()
@@ -554,14 +617,24 @@ export default function HierarchyPanel() {
         }}
       >
         {visibleRows.length === 0 && <div className="scene-panel__empty">{t('hierarchy.empty')}</div>}
-        {visibleRows.map(row => {
+        {(() => {
+          const total = visibleRows.length
+          if (total === 0) return null
+          const startIdx = Math.max(0, Math.floor(scrollTop / ROW_HEIGHT) - VIRTUAL_OVERSCAN)
+          const endIdx = Math.min(total, Math.ceil((scrollTop + listHeight) / ROW_HEIGHT) + VIRTUAL_OVERSCAN)
+          const topPad = startIdx * ROW_HEIGHT
+          const bottomPad = Math.max(0, (total - endIdx) * ROW_HEIGHT)
+          return (
+            <>
+              {topPad > 0 && <div style={{ height: topPad, flexShrink: 0 }} aria-hidden />}
+              {visibleRows.slice(startIdx, endIdx).map(row => {
           if (row.kind === 'sub') {
             const { node, item, depth } = row
             const key = `${node.id}:${item.path}`
             const open = q ? true : subOpen[key] === true
             const subSelected = subSelection?.nodeId === node.id && subSelection.path === item.path
             const partVisible = !(node.hiddenParts ?? []).includes(item.path)
-            const parentHidden = !node.visible || ancestorHidden(nodes, node.id) || subAncestorHidden(node.hiddenParts, item.path)
+            const parentHidden = !node.visible || Boolean(hiddenAncestors.get(node.id)) || subAncestorHidden(node.hiddenParts, item.path)
             const canToggleVisibility = item.kind === 'mesh' || (item.kind === 'node' && hasMeshDescendant(item))
             const attached = item.kind === 'bone' ? (boneChildren.get(`${node.id}\n${item.path}`) ?? []) : []
             const hasSubKids = item.children.length > 0 || attached.length > 0
@@ -692,9 +765,9 @@ export default function HierarchyPanel() {
           const { node, depth } = row
           const Icon = ICONS[node.kind]
           const hasInternal = node.kind === 'model' && Boolean(node.assetId && modelTrees.get(node.assetId)?.length)
-          const hasChildren = childrenOf(nodes, node.id).length > 0 || hasInternal
+          const hasChildren = (childrenMap.get(node.id)?.length ?? 0) > 0 || hasInternal
           const isOpen = node.kind === 'model' ? (collapsed[node.id] === false || (Boolean(q) && hasInternal)) : !collapsed[node.id]
-          const selected = selection.includes(node.id) && !(subSelection?.nodeId === node.id)
+          const selected = selectionSet.has(node.id) && !(subSelection?.nodeId === node.id)
           return (
             <div
               key={node.id}
@@ -706,7 +779,7 @@ export default function HierarchyPanel() {
                 node.prefabAssetId || node.nestedPrefabId ? 'scene-item--prefab' : '',
                 isPrefabRoot(node) ? 'scene-item--prefab-root' : '',
                 node.visible ? '' : 'scene-item--hidden',
-                ancestorHidden(nodes, node.id) ? 'scene-item--ancestor-hidden' : '',
+                hiddenAncestors.get(node.id) ? 'scene-item--ancestor-hidden' : '',
                 draggingId === node.id ? 'scene-item--dragging' : '',
               ].filter(Boolean).join(' ')}
               style={{ paddingLeft: 6 + depth * 14 }}
@@ -858,6 +931,10 @@ export default function HierarchyPanel() {
             </div>
           )
         })}
+              {bottomPad > 0 && <div style={{ height: bottomPad, flexShrink: 0 }} aria-hidden />}
+            </>
+          )
+        })()}
       </div>
       {menu && createPortal(
         <div ref={menuRef} className="scene-panel__context" style={{ left: menu.x, top: menu.y }} onPointerDown={event => event.stopPropagation()}>
@@ -1034,17 +1111,6 @@ function CreateList({ onCreate, onCreateDevice, onCreateWater }: { onCreate: (ki
       {waterEnabled && <button type="button" onClick={onCreateWater}><Waves size={12} />{t('water.title')}</button>}
     </>
   )
-}
-
-function ancestorHidden(nodes: Record<string, SceneNode>, id: string): boolean {
-  let current = nodes[id]?.parentId ?? null
-  while (current) {
-    const parent = nodes[current]
-    if (!parent) return false
-    if (!parent.visible) return true
-    current = parent.parentId
-  }
-  return false
 }
 
 function iconColor(kind: NodeKind): string {

@@ -860,6 +860,46 @@ export async function bakeTextureArtifact(asset: FileAsset, blob: Blob): Promise
   })
 }
 
+/**
+ * 构建发布桌面端专用：为尚未在编辑器视口触发过重排的 Unity MetallicGloss / MaskMap 贴图，
+ * 离线完成通道重排（R=AO, G=Roughness, B=Metallic）并直接压缩写出 `unity-mr-bc7` 成品，
+ * 避免独立 Player 启动时回退解码 PNG 原图并在主线程重排通道。
+ */
+export async function bakeUnityMrTextureArtifact(asset: FileAsset, blob: Blob): Promise<boolean> {
+  const lower = asset.fileName.toLowerCase()
+  if (!asset.hash || lower.endsWith('.ktx2') || lower.endsWith('.svg')) return false
+  if (typeof createImageBitmap !== 'function' || !isBc7Supported()) return false
+  return withDecodeSlot(async () => {
+    const bitmap = await decodeBitmap(blob)
+    try {
+      if (bitmap.width < 4 || bitmap.height < 4 || bitmap.width % 4 !== 0 || bitmap.height % 4 !== 0) return false
+      const rgba = readUnpremultipliedRgba(bitmap, bitmap.width, bitmap.height)
+      let hasAlpha = false
+      const firstA = rgba[3] ?? 255
+      for (let i = 3; i < rgba.length; i += 4) {
+        if (Math.abs((rgba[i] ?? 255) - firstA) > 2) {
+          hasAlpha = true
+          break
+        }
+      }
+      const useA = hasAlpha || firstA < 250
+      for (let i = 0; i < rgba.length; i += 4) {
+        const r = rgba[i]!
+        const g = rgba[i + 1]!
+        const a = rgba[i + 3]!
+        rgba[i] = g > 0 ? g : 255
+        rgba[i + 1] = 255 - (useA ? a : r)
+        rgba[i + 2] = r
+        rgba[i + 3] = 255
+      }
+      await persistTextureCache(asset.hash, bitmap.width, bitmap.height, rgba, 'unity-mr', 'unity-mr-bc7')
+      return true
+    } finally {
+      bitmap.close()
+    }
+  })
+}
+
 async function loadBitmapTexture(url: string): Promise<Texture> {
   if (typeof createImageBitmap === 'function') {
     try {

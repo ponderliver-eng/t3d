@@ -454,8 +454,7 @@ function registerIpc() {
         'utf-8',
       )
 
-      const mainCjs = `const { app, BrowserWindow } = require('electron');
-const http = require('http');
+      const mainCjs = `const { app, BrowserWindow, protocol } = require('electron');
 const fs = require('fs');
 const path = require('path');
 
@@ -470,6 +469,10 @@ const MIME = {
   '.jpeg': 'image/jpeg',
   '.webp': 'image/webp',
   '.ktx2': 'application/octet-stream',
+  '.bc7': 'application/octet-stream',
+  '.hdr': 'application/octet-stream',
+  '.exr': 'application/octet-stream',
+  '.env': 'application/octet-stream',
   '.glb': 'model/gltf-binary',
   '.gltf': 'model/gltf+json',
   '.wasm': 'application/wasm',
@@ -479,36 +482,21 @@ const MIME = {
   '.svg': 'image/svg+xml',
 };
 
-function startStaticServer(rootDir) {
-  return new Promise((resolve) => {
-    const server = http.createServer((req, res) => {
-      const reqPath = decodeURIComponent((req.url || '/').split('?')[0]);
-      const rel = reqPath === '/' ? 'index.html' : reqPath.replace(/^\\/+/, '');
-      const full = path.resolve(rootDir, rel);
-      if (!full.startsWith(rootDir)) {
-        res.writeHead(403);
-        res.end();
-        return;
-      }
-      fs.readFile(full, (err, data) => {
-        if (err) {
-          res.writeHead(404);
-          res.end('Not Found');
-          return;
-        }
-        const ext = path.extname(full).toLowerCase();
-        res.writeHead(200, { 'Content-Type': MIME[ext] || 'application/octet-stream' });
-        res.end(data);
-      });
-    });
-    server.listen(0, '127.0.0.1', () => {
-      const addr = server.address();
-      resolve({ server, port: addr.port });
-    });
-  });
-}
+// 使用特权本地协议直读磁盘文件：绕开 HTTP/1.1 loopback 每源最多 6 个并发连接的硬限制与 TCP 套接字开销，同时启用 V8 字节码缓存
+protocol.registerSchemesAsPrivileged([
+  {
+    scheme: 't3d-app',
+    privileges: {
+      standard: true,
+      secure: true,
+      supportFetchAPI: true,
+      corsEnabled: true,
+      stream: true,
+      codeCache: true,
+    },
+  },
+]);
 
-let serverRef = null;
 app.commandLine.appendSwitch('enable-unsafe-webgpu');
 app.commandLine.appendSwitch('ignore-gpu-blocklist');
 app.commandLine.appendSwitch('force_high_performance_gpu');
@@ -516,8 +504,31 @@ app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 app.commandLine.appendSwitch('gpu-disk-cache-size-kb', String(512 * 1024));
 
 app.whenReady().then(async () => {
-  const { server, port } = await startStaticServer(__dirname);
-  serverRef = server;
+  const rootDir = path.resolve(__dirname);
+  protocol.handle('t3d-app', async (req) => {
+    try {
+      const parsed = new URL(req.url);
+      const reqPath = decodeURIComponent(parsed.pathname || '/');
+      const rel = reqPath === '/' ? 'index.html' : reqPath.replace(/^\\/+/, '');
+      const full = path.resolve(rootDir, rel);
+      const relCheck = path.relative(rootDir, full);
+      if (relCheck.startsWith('..') || path.isAbsolute(relCheck)) {
+        return new Response('Forbidden', { status: 403 });
+      }
+      const data = await fs.promises.readFile(full);
+      const ext = path.extname(full).toLowerCase();
+      return new Response(data, {
+        status: 200,
+        headers: {
+          'Content-Type': MIME[ext] || 'application/octet-stream',
+          'Cache-Control': 'public, max-age=31536000, immutable',
+        },
+      });
+    } catch {
+      return new Response('Not Found', { status: 404 });
+    }
+  });
+
   const win = new BrowserWindow({
     width: ${width},
     height: ${height},
@@ -534,11 +545,10 @@ app.whenReady().then(async () => {
     },
   });
   win.setMenu(null);
-  win.loadURL('http://127.0.0.1:' + port + '/index.html');
+  win.loadURL('t3d-app://bundle/index.html');
 });
 
 app.on('window-all-closed', () => {
-  if (serverRef) serverRef.close();
   app.quit();
 });
 `

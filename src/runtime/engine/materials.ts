@@ -593,7 +593,11 @@ export function cloneMaterialWithSlotToken(material: Material): Material {
   return next
 }
 
+const normalizedSkinRoots = new WeakSet<Object3D>()
+
 export function normalizeSkinIndex(root: Object3D) {
+  if (normalizedSkinRoots.has(root)) return
+  normalizedSkinRoots.add(root)
   root.traverse((child) => {
     const mesh = child as Mesh
     if (!mesh.isMesh) return
@@ -734,23 +738,28 @@ export function instantiateModelScene(
   templateSlots: PbrSlot[],
   host: MaterialEngineHost,
   cloneFn: (source: Object3D) => Object3D,
+  overrides?: Record<string, ModelPartOverride>,
 ): Object3D {
   normalizeSkinIndex(templateScene)
   const object = cloneFn(templateScene)
-  shareSkeletons(object)
-  padSkeletons(object)
+  let hasSkinned = false
   object.traverse((child) => {
     const mesh = child as Mesh
     if (!mesh.isMesh) return
     mesh.castShadow = true
     mesh.receiveShadow = true
     if ((mesh as Mesh & { isSkinnedMesh?: boolean }).isSkinnedMesh) {
+      hasSkinned = true
       prepareSkinnedCullBounds(mesh as unknown as SkinnedMesh)
     }
     if (Array.isArray(mesh.material)) mesh.material = mesh.material.map((material) => cloneMaterialWithSlotToken(material))
     else mesh.material = cloneMaterialWithSlotToken(mesh.material)
   })
-  applyModelMaterialsWithHost(object, templateSlots, host)
+  if (hasSkinned) {
+    shareSkeletons(object)
+    padSkeletons(object)
+  }
+  applyModelMaterialsWithHost(object, templateSlots, host, overrides)
   return object
 }
 
