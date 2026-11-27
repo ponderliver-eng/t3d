@@ -54,7 +54,7 @@ export function parseUnityMaterialSlot(
   const texGuids = parseTextureGuids(text)
   const pickTex = (keys: readonly string[]): string | null => {
     for (const key of keys) {
-      const guid = texGuids[key] ?? textureGuidRegex(text, key)
+      const guid = key in texGuids ? texGuids[key] : textureGuidRegex(text, key)
       if (!guid) continue
       const resolved = resolveTextureGuid?.(guid) ?? null
       if (resolved) return resolved
@@ -64,7 +64,10 @@ export function parseUnityMaterialSlot(
 
   const mapAssetId = pickTex(ALBEDO_KEYS)
   const normalAssetId = pickTex(NORMAL_KEYS)
-  const metallicRoughnessAssetId = pickTex(METALLIC_KEYS)
+  const rawMetallicRoughnessAssetId = pickTex(METALLIC_KEYS)
+  const metallicRoughnessAssetId = normalAssetId && rawMetallicRoughnessAssetId === normalAssetId
+    ? null
+    : rawMetallicRoughnessAssetId
   const emissiveAssetId = pickTex(EMISSION_KEYS)
   const aoAssetId = pickTex(AO_KEYS)
 
@@ -124,20 +127,40 @@ function parseTextureGuids(text: string): Record<string, string> {
   let current = ''
   for (const line of text.split(/\r?\n/)) {
     const key = line.match(/^\s*-\s*(_[A-Za-z0-9_]+):\s*$/)?.[1]
+      ?? line.match(/^\s*-\s*first:\s*\{?\s*name:\s*(_[A-Za-z0-9_]+)\s*\}?\s*$/)?.[1]
+      ?? line.match(/^\s*name:\s*(_[A-Za-z0-9_]+)\s*$/)?.[1]
     if (key) {
       current = key
+      if (!(current in out)) out[current] = ''
+      continue
+    }
+    if (/^\s*m_(?:Floats|Colors|Ints):\s*$/.test(line)) {
+      current = ''
       continue
     }
     if (!current) continue
-    const guid = line.match(/^\s*m_Texture:\s*\{[^}]*guid:\s*([0-9a-fA-F]+)[^}]*\}/)?.[1]
-    if (guid) out[current] = guid.toLowerCase()
+    if (/^\s*m_Texture:\s*\{/.test(line)) {
+      const guid = line.match(/guid:\s*([0-9a-fA-F]{32})/)?.[1]
+      out[current] = guid ? guid.toLowerCase() : ''
+      current = ''
+    }
   }
   return out
 }
 
 export function textureGuidRegex(text: string, property: string): string | null {
-  const match = text.match(new RegExp(`${property}:[\\s\\S]{0,220}?guid:\\s*([0-9a-fA-F]+)`, 'i'))
-  return match?.[1]?.toLowerCase() ?? null
+  const escaped = property.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const direct = text.match(
+    new RegExp(`(?:^|\\s|-\\s*)${escaped}:\\s*(?:\\r?\\n\\s+m_Texture:\\s*\\{([^}]*)\\}|\\{([^}]*)\\})`, 'i'),
+  )
+  const inside = direct?.[1] ?? direct?.[2]
+  if (inside !== undefined) {
+    return inside.match(/guid:\s*([0-9a-fA-F]{32})/i)?.[1]?.toLowerCase() ?? null
+  }
+  const v2021 = text.match(
+    new RegExp(`name:\\s*${escaped}\\b[\\s\\S]{0,160}?m_Texture:\\s*\\{([^}]*)\\}`, 'i'),
+  )
+  return v2021?.[1]?.match(/guid:\s*([0-9a-fA-F]{32})/i)?.[1]?.toLowerCase() ?? null
 }
 
 function unityFloat(text: string, property: string): number | null {

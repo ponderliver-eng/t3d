@@ -104,7 +104,8 @@ export function buildGlbFromUfbxScene(
     return accessorIndex
   }
 
-  // 1. Nodes
+  // 1. Nodes（过滤碰撞体网格与已有 LOD0 时的低模 LOD1~LOD9）
+  const ignoredUfbxNodes = computeIgnoredUfbxNodes(scene)
   const gltfNodes: Array<Record<string, unknown>> = []
   const nodeIndexByUfbxIndex = new Map<number, number>()
   const rootChildren: number[] = []
@@ -125,7 +126,7 @@ export function buildGlbFromUfbxScene(
 
   for (let i = 0; i < scene.nodes.length; i += 1) {
     const n = scene.nodes[i]!
-    if (n.isRoot) continue
+    if (n.isRoot || ignoredUfbxNodes.has(i)) continue
     const idx = gltfNodes.length
     gltfNodes.push({
       name: n.name || `Node_${i}`,
@@ -138,7 +139,7 @@ export function buildGlbFromUfbxScene(
 
   for (let i = 0; i < scene.nodes.length; i += 1) {
     const n = scene.nodes[i]!
-    if (n.isRoot) continue
+    if (n.isRoot || ignoredUfbxNodes.has(i)) continue
     const childGltfIdx = nodeIndexByUfbxIndex.get(i)
     if (childGltfIdx === undefined) continue
     const parentGltfIdx = n.parent >= 0 ? nodeIndexByUfbxIndex.get(n.parent) : undefined
@@ -219,15 +220,22 @@ export function buildGlbFromUfbxScene(
     return mat
   })
 
-  // 4. Meshes
+  // 4. Meshes（只为保留的节点写出网格与顶点/索引缓冲）
+  const usedUfbxMeshes = new Set<number>()
   const meshNodeName: string[] = new Array(scene.meshes.length).fill('')
-  for (const n of scene.nodes) {
-    if (n.mesh >= 0 && n.mesh < meshNodeName.length && !meshNodeName[n.mesh]) {
-      meshNodeName[n.mesh] = n.name
+  for (let i = 0; i < scene.nodes.length; i += 1) {
+    if (ignoredUfbxNodes.has(i)) continue
+    const n = scene.nodes[i]!
+    if (n.mesh >= 0 && n.mesh < scene.meshes.length) {
+      usedUfbxMeshes.add(n.mesh)
+      if (!meshNodeName[n.mesh]) meshNodeName[n.mesh] = n.name
     }
   }
 
-  const gltfMeshes: Array<Record<string, unknown>> = scene.meshes.map((m, mi) => {
+  const gltfMeshes: Array<Record<string, unknown>> = []
+  const meshIndexByUfbxMeshIndex = new Map<number, number>()
+  scene.meshes.forEach((m, mi) => {
+    if (!usedUfbxMeshes.has(mi)) return
     const primitives: Array<Record<string, unknown>> = m.primitives.map(p => {
       const attrs: Record<string, number> = {}
       const posArr = ufbxF32(scene, p.pos, p.vertexCount * 3)
@@ -262,10 +270,11 @@ export function buildGlbFromUfbxScene(
         ...(p.material >= 0 && p.material < gltfMaterials.length ? { material: p.material } : {}),
       }
     })
-    return {
+    meshIndexByUfbxMeshIndex.set(mi, gltfMeshes.length)
+    gltfMeshes.push({
       name: m.name || meshNodeName[mi] || `Mesh_${mi}`,
       primitives,
-    }
+    })
   })
 
   // 5. Skins
@@ -301,7 +310,8 @@ export function buildGlbFromUfbxScene(
     const gltfIdx = nodeIndexByUfbxIndex.get(i)
     if (gltfIdx === undefined) continue
     const gNode = gltfNodes[gltfIdx]!
-    if (n.mesh >= 0 && n.mesh < gltfMeshes.length) gNode.mesh = n.mesh
+    const gltfMeshIdx = n.mesh >= 0 ? meshIndexByUfbxMeshIndex.get(n.mesh) : undefined
+    if (gltfMeshIdx !== undefined) gNode.mesh = gltfMeshIdx
     if (n.skin >= 0 && n.skin < gltfSkins.length) gNode.skin = n.skin
   }
 
@@ -529,4 +539,152 @@ function encodeGlb(json: Record<string, unknown>, bin: Uint8Array): ArrayBuffer 
     bytes.set(bin, binHeader + 8)
   }
   return out
+}
+
+const COLLISION_NODE_NAME_RE = /^(?:ucx|ubx|usp|ucp|mcdcx)_|(?:^|[_.\s-])(?:convexhulls?|collisionmesh|colmesh)(?:[_.\s-]?\d+)?$/i
+
+function isCollisionNodeName(name: string): boolean {
+  return COLLISION_NODE_NAME_RE.test(name.trim())
+}
+
+function normalizeLodStem(raw: string): string {
+  return raw.toLowerCase().replace(/[^a-z0-9\u4e00-\u9fff]+/g, '')
+}
+
+function parseLodNodeName(name: string): { stem: string; level: number } | null {
+  const trimmed = name.trim()
+  const bare = /^lod_?(\d+)$/i.exec(trimmed)
+  if (bare) return { stem: '', level: Number(bare[1]) }
+  const sep = /^(.*?)[_.\s-]+lod_?(\d+)$/i.exec(trimmed)
+  if (sep) return { stem: normalizeLodStem(sep[1]!), level: Number(sep[2]) }
+  const camel = /^(.*[a-z0-9])LOD_?(\d+)$/.exec(trimmed)
+  if (camel) return { stem: normalizeLodStem(camel[1]!), level: Number(camel[2]) }
+  return null
+}
+
+/**
+ * 过滤 FBX 中不该进渲染模板的辅助网格节点：
+ * 1. 碰撞体凸包网格（`UCX_*`、`*_ConvexHulls` 等，前提是场景里还有正常渲染网格）；
+ * 2. 同文件已存在 `LOD0` 时的低模层级（`LOD1`~`LOD9`）。
+ * 骨骼及蒙皮关节祖先一律受保护不裁剪。
+ */
+function computeIgnoredUfbxNodes(scene: UfbxScene): Set<number> {
+  const count = scene.nodes.length
+  const ignored = new Set<number>()
+  if (count === 0) return ignored
+
+  const protectedNodes = new Set<number>()
+  const markProtectedWithAncestors = (startIdx: number) => {
+    let cur = startIdx
+    let guard = 0
+    while (cur >= 0 && cur < count && guard < 512) {
+      if (protectedNodes.has(cur)) break
+      protectedNodes.add(cur)
+      cur = scene.nodes[cur]?.parent ?? -1
+      guard += 1
+    }
+  }
+  for (let i = 0; i < count; i += 1) {
+    if (scene.nodes[i]?.isBone) markProtectedWithAncestors(i)
+  }
+  for (const skin of scene.skins) {
+    for (const jointIdx of skin.joints) markProtectedWithAncestors(jointIdx)
+  }
+
+  const childrenOf: number[][] = Array.from({ length: count }, () => [])
+  for (let i = 0; i < count; i += 1) {
+    const p = scene.nodes[i]!.parent
+    if (p >= 0 && p < count) childrenOf[p]!.push(i)
+  }
+
+  // 检查是否存在非碰撞体的可视网格（若整个 FBX 只有碰撞体则不裁剪，避免导出空模型）
+  let nonCollisionMeshCount = 0
+  for (let i = 0; i < count; i += 1) {
+    const n = scene.nodes[i]!
+    if (n.isRoot || n.mesh < 0) continue
+    const meshName = scene.meshes[n.mesh]?.name ?? ''
+    if (!isCollisionNodeName(n.name) && !isCollisionNodeName(meshName)) {
+      nonCollisionMeshCount += 1
+    }
+  }
+
+  if (nonCollisionMeshCount > 0) {
+    for (let i = 0; i < count; i += 1) {
+      const n = scene.nodes[i]!
+      if (n.isRoot || protectedNodes.has(i)) continue
+      const meshName = n.mesh >= 0 ? (scene.meshes[n.mesh]?.name ?? '') : ''
+      if (isCollisionNodeName(n.name) || (n.mesh >= 0 && isCollisionNodeName(meshName))) {
+        ignored.add(i)
+      }
+    }
+  }
+
+  const hasMeshInSubtree = new Array<boolean>(count).fill(false)
+  const checkMeshSubtree = (idx: number): boolean => {
+    if (ignored.has(idx)) return false
+    const n = scene.nodes[idx]!
+    let has = n.mesh >= 0
+    for (const child of childrenOf[idx]!) {
+      if (checkMeshSubtree(child)) has = true
+    }
+    hasMeshInSubtree[idx] = has
+    return has
+  }
+  for (let i = 0; i < count; i += 1) {
+    if (scene.nodes[i]!.parent < 0) checkMeshSubtree(i)
+  }
+
+  const lod0Stems = new Set<string>()
+  for (let i = 0; i < count; i += 1) {
+    const n = scene.nodes[i]!
+    if (n.isRoot || n.isBone || ignored.has(i) || !hasMeshInSubtree[i]) continue
+    const lod = parseLodNodeName(n.name)
+    if (lod && lod.level === 0) lod0Stems.add(lod.stem)
+  }
+
+  if (lod0Stems.size > 0) {
+    for (let i = 0; i < count; i += 1) {
+      const n = scene.nodes[i]!
+      if (n.isRoot || protectedNodes.has(i) || ignored.has(i)) continue
+      const lod = parseLodNodeName(n.name)
+      if (lod && lod.level >= 1 && (lod0Stems.has(lod.stem) || lod0Stems.has(''))) {
+        ignored.add(i)
+      }
+    }
+  }
+
+  if (ignored.size === 0) return ignored
+
+  // 向下传播：被忽略节点的非骨骼子节点一并忽略
+  const propagate = (idx: number, parentIgnored: boolean) => {
+    const nowIgnored = (parentIgnored || ignored.has(idx)) && !protectedNodes.has(idx)
+    if (nowIgnored) ignored.add(idx)
+    for (const child of childrenOf[idx]!) propagate(child, nowIgnored)
+  }
+  for (let i = 0; i < count; i += 1) {
+    if (scene.nodes[i]!.parent < 0) propagate(i, false)
+  }
+
+  // 若某个空父节点原本挂着被裁剪的子节点，裁剪后子树已无任何保留内容，则一并省掉
+  const pruneEmptyCutBranches = (idx: number): boolean => {
+    if (ignored.has(idx)) return true
+    const n = scene.nodes[idx]!
+    const children = childrenOf[idx]!
+    let hadIgnoredChild = false
+    let keptChildren = 0
+    for (const child of children) {
+      if (pruneEmptyCutBranches(child)) hadIgnoredChild = true
+      else keptChildren += 1
+    }
+    if (!n.isRoot && !protectedNodes.has(idx) && n.mesh < 0 && hadIgnoredChild && keptChildren === 0) {
+      ignored.add(idx)
+      return true
+    }
+    return false
+  }
+  for (let i = 0; i < count; i += 1) {
+    if (scene.nodes[i]!.parent < 0) pruneEmptyCutBranches(i)
+  }
+
+  return ignored
 }

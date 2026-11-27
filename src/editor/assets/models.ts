@@ -107,11 +107,17 @@ const listeners = new Set<() => void>()
 let modelWarmDeferred = false
 let modelWarmPending = false
 let modelNotifyTimer = 0
+const deferredNodeSlotSyncs = new Map<string, PbrSlot[]>()
 
 function flushModelNotify() {
   if (modelNotifyTimer) {
     window.clearTimeout(modelNotifyTimer)
     modelNotifyTimer = 0
+  }
+  if (deferredNodeSlotSyncs.size > 0) {
+    const batch = new Map(deferredNodeSlotSyncs)
+    deferredNodeSlotSyncs.clear()
+    applyModelNodeSlotsBatch(batch)
   }
   useAssetStore.getState().bump()
   listeners.forEach(listener => listener())
@@ -129,6 +135,11 @@ function notifyModelReady(immediate = false) {
   if (modelNotifyTimer) return
   modelNotifyTimer = window.setTimeout(() => {
     modelNotifyTimer = 0
+    if (deferredNodeSlotSyncs.size > 0) {
+      const batch = new Map(deferredNodeSlotSyncs)
+      deferredNodeSlotSyncs.clear()
+      applyModelNodeSlotsBatch(batch)
+    }
     useAssetStore.getState().bump()
     listeners.forEach(listener => listener())
   }, 16)
@@ -136,7 +147,7 @@ function notifyModelReady(immediate = false) {
 
 export function setModelWarmDeferred(deferred: boolean) {
   modelWarmDeferred = deferred
-  if (!deferred && modelWarmPending) {
+  if (!deferred && (modelWarmPending || deferredNodeSlotSyncs.size > 0)) {
     modelWarmPending = false
     flushModelNotify()
   }
@@ -342,20 +353,59 @@ export function loadModelTemplate(asset: FileAsset, forceSource = false): Promis
 
 function syncLoadedModelNodes(assetId: string, templateSlots: PbrSlot[]) {
   if (templateSlots.length === 0) return
+  if (useEditorStore.getState().playState !== 'stopped') return
+  if (modelWarmDeferred) {
+    deferredNodeSlotSyncs.set(assetId, templateSlots)
+    return
+  }
+  applyModelNodeSlotsBatch(new Map([[assetId, templateSlots]]))
+}
+
+function applyModelNodeSlotsBatch(batch: ReadonlyMap<string, PbrSlot[]>) {
+  if (batch.size === 0) return
   const editor = useEditorStore.getState()
   if (editor.playState !== 'stopped') return
-  const byName = new Map(templateSlots.map(slot => [slot.name, slot]))
+  let nextNodes: Record<string, (typeof editor.nodes)[string]> | null = null
+
   for (const node of Object.values(editor.nodes)) {
-    if (node.kind !== 'model' || node.assetId !== assetId || node.slots.length === 0) continue
+    if (node.kind !== 'model' || !node.assetId) continue
+    const templateSlots = batch.get(node.assetId)
+    if (!templateSlots || templateSlots.length === 0) continue
+
+    if (node.slots.length === 0) {
+      let backfilled = structuredClone(templateSlots)
+      // 若节点只有单部位材质覆盖且全槽位一致，同步回填到材质槽，方便检查器直接查看与编辑
+      const overrideEntries = node.partOverrides ? Object.values(node.partOverrides) : []
+      if (backfilled.length === 1 && overrideEntries.length === 1 && overrideEntries[0]?.materialAssetId) {
+        const matId = overrideEntries[0].materialAssetId
+        if (backfilled[0]!.materialAssetId !== matId) {
+          backfilled = [{
+            ...backfilled[0]!,
+            materialAssetId: matId,
+            mapAssetId: null,
+            normalAssetId: null,
+            metallicRoughnessAssetId: null,
+            emissiveAssetId: null,
+            aoAssetId: null,
+          }]
+        }
+      }
+      nextNodes ??= { ...editor.nodes }
+      nextNodes[node.id] = { ...node, slots: backfilled }
+      continue
+    }
+
+    const byName = new Map(templateSlots.map(slot => [slot.name, slot]))
     let changed = false
     const nextSlots = node.slots.map((slot, index) => {
       const fresh = byName.get(slot.name) ?? templateSlots[index]
       if (!fresh) return slot
-      const needMat = Boolean(fresh.materialAssetId && slot.materialAssetId !== fresh.materialAssetId)
-      const needMap = !slot.mapAssetId && fresh.mapAssetId
-      const needNormal = !slot.normalAssetId && fresh.normalAssetId
-      const needMr = !slot.metallicRoughnessAssetId && fresh.metallicRoughnessAssetId
-      const needAo = !slot.aoAssetId && fresh.aoAssetId
+      const needMat = Boolean(!slot.materialAssetId && fresh.materialAssetId)
+      const sameOrUnsetMat = !slot.materialAssetId || slot.materialAssetId === fresh.materialAssetId
+      const needMap = Boolean(sameOrUnsetMat && !slot.mapAssetId && fresh.mapAssetId)
+      const needNormal = Boolean(sameOrUnsetMat && !slot.normalAssetId && fresh.normalAssetId)
+      const needMr = Boolean(sameOrUnsetMat && !slot.metallicRoughnessAssetId && fresh.metallicRoughnessAssetId)
+      const needAo = Boolean(sameOrUnsetMat && !slot.aoAssetId && fresh.aoAssetId)
       if (!needMat && !needMap && !needNormal && !needMr && !needAo) return slot
       changed = true
       return {
@@ -375,7 +425,14 @@ function syncLoadedModelNodes(assetId: string, templateSlots: PbrSlot[]) {
         ...(needAo ? { aoAssetId: fresh.aoAssetId } : {}),
       }
     })
-    if (changed) editor.updateNode(node.id, { slots: nextSlots })
+    if (changed) {
+      nextNodes ??= { ...editor.nodes }
+      nextNodes[node.id] = { ...node, slots: nextSlots }
+    }
+  }
+
+  if (nextNodes) {
+    useEditorStore.setState({ nodes: nextNodes })
   }
 }
 

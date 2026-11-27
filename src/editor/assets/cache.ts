@@ -37,7 +37,7 @@ const SCENE = 'scene'
 const ORIGINALS = 'originals'
 const SCENE_KEY = 'current'
 
-export const MODEL_IMPORTER_VERSION = 't3d-glb-artifact-9-ufbx-biped'
+export const MODEL_IMPORTER_VERSION = 't3d-glb-artifact-10-ufbx-lod0'
 export const TEXTURE_ARTIFACT_VERSION = 't3d-tex-1'
 
 export interface CachedFile {

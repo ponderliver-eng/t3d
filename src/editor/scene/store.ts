@@ -408,20 +408,37 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
   alignCameraToView: () => {
     if (get().playState !== 'stopped') return
-    const id = selectedCameraId(get(), true)
-    const view = readViewportPose()
-    if (!id || !view) return
     const nodes = get().nodes
-    const node = nodes[id]
-    const parent = node.parentId ? worldPose(nodes, node.parentId) : null
-    const current = worldPose(nodes, id)
-    const local = poseComponents(localPoseFromWorld(parent, {
-      position: new Vector3(view.position[0], view.position[1], view.position[2]),
-      quaternion: new Quaternion(view.quaternion[0], view.quaternion[1], view.quaternion[2], view.quaternion[3]),
-      scale: current.scale,
-    }))
+    const selectedTargets = get().selection.filter(id => {
+      const n = nodes[id]
+      return Boolean(n && !n.locked)
+    })
+    const targets = selectedTargets.length > 0
+      ? selectedTargets
+      : (() => {
+          const camId = selectedCameraId(get(), true)
+          return camId ? [camId] : []
+        })()
+    const view = readViewportPose()
+    if (targets.length === 0 || !view) return
+    const targetPos = new Vector3(view.position[0], view.position[1], view.position[2])
+    const targetQuat = new Quaternion(view.quaternion[0], view.quaternion[1], view.quaternion[2], view.quaternion[3])
+    const lightForwardOffset = new Quaternion().setFromAxisAngle(new Vector3(1, 0, 0), Math.PI / 2)
     get().beginGesture(translate('gesture.alignCamera'))
-    get().updateNode(id, { position: local.position, rotation: local.rotation })
+    for (const id of targets) {
+      const node = nodes[id]
+      if (!node || node.locked) continue
+      const parent = node.parentId ? worldPose(nodes, node.parentId) : null
+      const current = worldPose(nodes, id)
+      const isDirectionalOrSpotLight = node.kind === 'directional-light' || node.kind === 'spot-light'
+      const worldQuat = isDirectionalOrSpotLight ? targetQuat.clone().multiply(lightForwardOffset) : targetQuat
+      const local = poseComponents(localPoseFromWorld(parent, {
+        position: targetPos,
+        quaternion: worldQuat,
+        scale: current.scale,
+      }))
+      get().updateNode(id, { position: local.position, rotation: local.rotation })
+    }
     get().endGesture()
   },
 

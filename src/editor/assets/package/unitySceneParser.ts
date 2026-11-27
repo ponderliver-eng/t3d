@@ -133,6 +133,12 @@ interface ParsedUnityYaml {
   animators: Map<string, string>
   /** 被 SkinnedMeshRenderer 当作骨骼引用的 Transform */
   boneIds: Set<string>
+  /** 挂了 LODGroup 组件的 GameObject */
+  lodGroups: Set<string>
+  /** LODGroup 中属于 LOD1+ 的 Renderer fileID（只保留 LOD0） */
+  lodCulledRenderers: Set<string>
+  /** 挂了 Unity Collider 组件的 GameObject */
+  colliders: Set<string>
   prefabInstances: Map<string, RawPrefabInstance>
   /** 挂在 Prefab 实例内部节点下时，场景里留下的占位 Transform */
   strippedTransforms: Map<string, RawStrippedTransform>
@@ -264,15 +270,62 @@ export function parseUnitySceneText(
     return node
   }
 
-  /** 把一个 Renderer 的材质写成部位级覆盖（只记录和模型默认绑定不同的）。 */
-  function assignPartMaterials(
-    assetId: string,
+  /** 把 Renderer 的材质写入模型材质槽；同一槽位被不同部位赋予不同材质时再回退到部位级覆盖。 */
+  function assignModelMaterials(
+    slots: PbrSlot[],
+    slotAssigned: Map<number, string>,
     matched: MeshPart[],
     refs: ReadonlyArray<RawMeshRef | undefined>,
     overrides: Record<string, ModelPartOverride>,
+    singleMemberFallback: boolean,
   ): void {
-    if (matched.length === 0 || refs.length === 0) return
-    const slots = ctx.modelInfoByAssetId?.get(assetId)?.slots
+    if (refs.length === 0) return
+
+    const bindSlotOrOverride = (slotIdx: number, materialId: string, partPath?: string) => {
+      const prev = slotAssigned.get(slotIdx)
+      if (prev && prev !== materialId) {
+        if (partPath) overrides[partPath] = { materialAssetId: materialId }
+        return
+      }
+      slotAssigned.set(slotIdx, materialId)
+      const target = slots[slotIdx]
+      if (!target) {
+        if (partPath) overrides[partPath] = { materialAssetId: materialId }
+        return
+      }
+      if (target.materialAssetId !== materialId) {
+        slots[slotIdx] = {
+          ...target,
+          materialAssetId: materialId,
+          mapAssetId: null,
+          normalAssetId: null,
+          metallicRoughnessAssetId: null,
+          emissiveAssetId: null,
+          aoAssetId: null,
+        }
+      }
+    }
+
+    if (matched.length === 0) {
+      if (singleMemberFallback && slots.length > 0) {
+        refs.forEach((ref, idx) => {
+          const materialId = ref?.guid ? ctx.guidToMaterial.get(ref.guid) : undefined
+          if (materialId && idx < slots.length) bindSlotOrOverride(idx, materialId)
+        })
+      }
+      return
+    }
+
+    if (matched.length === 1 && matched[0]!.slotIndices.length > 1) {
+      const part = matched[0]!
+      part.slotIndices.forEach((slotIdx, subIdx) => {
+        const ref = refs[subIdx] ?? (refs.length === 1 ? refs[0] : undefined)
+        const materialId = ref?.guid ? ctx.guidToMaterial.get(ref.guid) : undefined
+        if (materialId) bindSlotOrOverride(slotIdx, materialId, part.path)
+      })
+      return
+    }
+
     matched.forEach((part, index) => {
       let ref: RawMeshRef | undefined
       if (refs.length === 1) ref = refs[0]
@@ -280,18 +333,23 @@ export function parseUnitySceneText(
       else if (part.slotIndices.length <= 1) ref = refs[0]
       const materialId = ref?.guid ? ctx.guidToMaterial.get(ref.guid) : undefined
       if (!materialId) return
-      const current = part.slotIndices.length === 1 ? slots?.[part.slotIndices[0]!]?.materialAssetId : undefined
-      if (current === materialId) return
-      overrides[part.path] = { materialAssetId: materialId }
+      if (part.slotIndices.length === 1) {
+        bindSlotOrOverride(part.slotIndices[0]!, materialId, part.path)
+      } else {
+        overrides[part.path] = { materialAssetId: materialId }
+      }
     })
   }
 
   function clusterNodeProps(cluster: ModelCluster): Partial<SceneNode> & { anyActive: boolean } {
     const parts = meshPartsOf(cluster.assetId)
+    const slots = structuredClone(ctx.modelInfoByAssetId?.get(cluster.assetId)?.slots ?? [])
+    const slotAssigned = new Map<number, string>()
     const names = ctx.modelMeshNamesByGuid.get(cluster.guid)
     const shown = new Set<string>()
     const hidden = new Set<string>()
     const overrides: Record<string, ModelPartOverride> = {}
+    const singleMember = cluster.members.length === 1
     let allMatched = true
     let anyActive = false
     let castShadow = false
@@ -303,12 +361,12 @@ export function parseUnitySceneText(
       }
       anyActive = true
       if (member.renderer.castShadows) castShadow = true
+      assignModelMaterials(slots, slotAssigned, matched, member.materials, overrides, singleMember)
       if (matched.length === 0) {
         allMatched = false
         continue
       }
       for (const part of matched) shown.add(part.path)
-      assignPartMaterials(cluster.assetId, matched, member.materials, overrides)
     }
     // 模型文件里有、但这个物体没用到的网格（一个文件装多套外观时很常见）也要藏起来
     if (allMatched && shown.size > 0) {
@@ -318,6 +376,7 @@ export function parseUnitySceneText(
     return {
       anyActive,
       castShadow: anyActive ? castShadow : true,
+      ...(slots.length > 0 ? { slots } : {}),
       ...(hidden.size > 0 ? { hiddenParts: [...hidden] } : {}),
       ...(Object.keys(overrides).length > 0 ? { partOverrides: overrides } : {}),
     }
@@ -525,6 +584,8 @@ export function parseUnitySceneText(
     const modelAssetId = ctx.guidToModel.get(pi.sourcePrefabGuid)
     if (modelAssetId) {
       const parts = meshPartsOf(modelAssetId)
+      const slots = structuredClone(ctx.modelInfoByAssetId?.get(modelAssetId)?.slots ?? [])
+      const slotAssigned = new Map<number, string>()
       const names = ctx.modelMeshNamesByGuid.get(pi.sourcePrefabGuid)
       const hidden = new Set<string>()
       const overrides: Record<string, ModelPartOverride> = {}
@@ -541,7 +602,7 @@ export function parseUnitySceneText(
         }
         if (materialRefs.length > 0) {
           const targets = matched.length > 0 ? matched : (parts.length === 1 ? parts : [])
-          assignPartMaterials(modelAssetId, targets, materialRefs, overrides)
+          assignModelMaterials(slots, slotAssigned, targets, materialRefs, overrides, parts.length <= 1)
         }
       }
       registerNode(makeNode({
@@ -550,6 +611,7 @@ export function parseUnitySceneText(
         kind: 'model',
         assetId: modelAssetId,
         visible: rootActive,
+        ...(slots.length > 0 ? { slots } : {}),
         ...(hidden.size > 0 ? { hiddenParts: [...hidden] } : {}),
         ...(Object.keys(overrides).length > 0 ? { partOverrides: overrides } : {}),
       }))
@@ -601,21 +663,117 @@ export function collectUnityAssetGuids(text: string): Set<string> {
 // 在 T3D 里只对应一个模型节点。
 // ---------------------------------------------------------------------------
 
+const COLLISION_MESH_RE = /^(?:ucx|ubx|usp|ucp|mcdcx)_|(?:^|[_.\s-])(?:convexhulls?|collisionmesh|colmesh)(?:[_.\s-]?\d+)?$/i
+const PURE_COLLIDER_GO_RE = /^(?:box|mesh|sphere|capsule)?collider(?:object)?(?:\s*\(\d+\))?$/i
+
+function isCollisionMeshName(name: string): boolean {
+  return COLLISION_MESH_RE.test(name.trim())
+}
+
+function parseSceneLodName(name: string): { stem: string; level: number } | null {
+  const trimmed = name.trim()
+  const bare = /^lod_?(\d+)$/i.exec(trimmed)
+  if (bare) return { stem: '', level: Number(bare[1]) }
+  const sep = /^(.*?)[_.\s-]+lod_?(\d+)$/i.exec(trimmed)
+  if (sep) return { stem: normalizePartName(sep[1]!), level: Number(sep[2]) }
+  const camel = /^(.*[a-z0-9])LOD_?(\d+)$/.exec(trimmed)
+  if (camel) return { stem: normalizePartName(camel[1]!), level: Number(camel[2]) }
+  return null
+}
+
+function isIdentityLocalTransform(tr: RawTransform, mods: ModsByTarget | null): boolean {
+  let pos = tr.position
+  let rot = tr.rotation
+  let scl = tr.scale
+  const trMods = mods?.get(tr.fileId)
+  if (trMods) {
+    pos = applyVec3Mod(pos, trMods, 'm_LocalPosition')
+    rot = applyQuatMod(rot, trMods, 'm_LocalRotation')
+    scl = applyVec3Mod(scl, trMods, 'm_LocalScale')
+  }
+  const eps = 1e-4
+  return Math.abs(pos[0]) <= eps
+    && Math.abs(pos[1]) <= eps
+    && Math.abs(pos[2]) <= eps
+    && Math.abs(rot[0]) <= eps
+    && Math.abs(rot[1]) <= eps
+    && Math.abs(rot[2]) <= eps
+    && Math.abs(Math.abs(rot[3]) - 1) <= eps
+    && Math.abs(scl[0] - 1) <= eps
+    && Math.abs(scl[1] - 1) <= eps
+    && Math.abs(scl[2] - 1) <= eps
+}
+
+function computeCulledRenderers(
+  doc: ParsedUnityYaml,
+  mods: ModsByTarget | null,
+  ctx: UnitySceneParseContext,
+): Set<string> {
+  const culled = new Set<string>(doc.lodCulledRenderers)
+
+  for (const renderer of doc.renderers.values()) {
+    const go = doc.gameObjects.get(renderer.gameObjectId)
+    if (!go) continue
+    const goName = gameObjectState(go, mods).name
+    const meshRef = doc.meshFilters.get(go.fileId)?.mesh ?? renderer.mesh
+    const meshName = meshRef?.guid ? ctx.modelMeshNamesByGuid.get(meshRef.guid)?.get(meshRef.fileId) : undefined
+    if (isCollisionMeshName(goName) || (meshName && isCollisionMeshName(meshName))) {
+      culled.add(renderer.fileId)
+    }
+  }
+
+  // 同一个父节点下存在 LOD0 时，把同组兄弟 LOD1~LOD9 Renderer 一并剔除（兼容没有挂 LODGroup 或已拆开的场景）
+  const byParent = new Map<string, Array<{ renderer: RawRenderer; lod: { stem: string; level: number } }>>()
+  for (const renderer of doc.renderers.values()) {
+    if (culled.has(renderer.fileId)) continue
+    const go = doc.gameObjects.get(renderer.gameObjectId)
+    const tr = doc.transformByGameObject.get(renderer.gameObjectId)
+    if (!go || !tr || tr.fatherId === '0') continue
+    const meshRef = doc.meshFilters.get(go.fileId)?.mesh ?? renderer.mesh
+    const meshName = meshRef?.guid ? ctx.modelMeshNamesByGuid.get(meshRef.guid)?.get(meshRef.fileId) : undefined
+    const lod = parseSceneLodName(meshName ?? '') ?? parseSceneLodName(gameObjectState(go, mods).name)
+    if (!lod) continue
+    const list = byParent.get(tr.fatherId)
+    if (list) list.push({ renderer, lod })
+    else byParent.set(tr.fatherId, [{ renderer, lod }])
+  }
+
+  for (const siblings of byParent.values()) {
+    const lod0Stems = new Set<string>()
+    for (const item of siblings) {
+      if (item.lod.level === 0) lod0Stems.add(item.lod.stem)
+    }
+    if (lod0Stems.size === 0) continue
+    for (const item of siblings) {
+      if (item.lod.level >= 1 && (lod0Stems.has(item.lod.stem) || lod0Stems.has(''))) {
+        culled.add(item.renderer.fileId)
+      }
+    }
+  }
+
+  return culled
+}
+
 function planModelClusters(doc: ParsedUnityYaml, mods: ModsByTarget | null, ctx: UnitySceneParseContext): ClusterPlan {
   const byRoot = new Map<string, ModelCluster[]>()
   const absorbed = new Set<string>()
   const pruned = new Set<string>()
+  const culledRenderers = computeCulledRenderers(doc, mods, ctx)
 
   for (const renderer of doc.renderers.values()) {
     const go = doc.gameObjects.get(renderer.gameObjectId)
     const tr = doc.transformByGameObject.get(renderer.gameObjectId)
     if (!go || !tr) continue
+    if (culledRenderers.has(renderer.fileId)) {
+      absorbed.add(tr.fileId)
+      continue
+    }
     const meshRef = doc.meshFilters.get(go.fileId)?.mesh ?? renderer.mesh
     if (!meshRef?.guid) continue
     const assetId = ctx.guidToModel.get(meshRef.guid)
     if (!assetId) continue
 
-    const root = findClusterRoot(doc, tr, renderer, meshRef.guid)
+    const root = findClusterRoot(doc, mods, culledRenderers, tr, renderer, meshRef.guid)
     let active = renderer.enabled && gameObjectState(go, mods).active
     if (tr.fileId !== root.fileId) {
       absorbed.add(tr.fileId)
@@ -640,36 +798,71 @@ function planModelClusters(doc: ParsedUnityYaml, mods: ModsByTarget | null, ctx:
     }
     cluster.members.push({ go, renderer, meshRef, materials: rendererMaterials(renderer, mods), active })
   }
-  if (byRoot.size === 0) return { byRoot, absorbed, pruned }
 
   const instanceParents = new Set<string>()
   for (const pi of doc.prefabInstances.values()) instanceParents.add(pi.transformParentId)
+
+  const isPureColliderObject = (tr: RawTransform): boolean => {
+    if (doc.colliders.has(tr.gameObjectId)) return true
+    const go = doc.gameObjects.get(tr.gameObjectId)
+    return Boolean(go && PURE_COLLIDER_GO_RE.test(gameObjectState(go, mods).name.trim()))
+  }
 
   const hasOwnContent = (tr: RawTransform): boolean => {
     if (byRoot.has(tr.fileId) || instanceParents.has(tr.fileId)) return true
     if (doc.lights.has(tr.gameObjectId) || doc.terrains.has(tr.gameObjectId)) return true
     if (absorbed.has(tr.fileId)) return false
     const renderer = doc.renderers.get(tr.gameObjectId)
-    return Boolean(renderer && (doc.meshFilters.get(tr.gameObjectId)?.mesh ?? renderer.mesh)?.guid)
+    if (!renderer || culledRenderers.has(renderer.fileId)) return false
+    return Boolean((doc.meshFilters.get(tr.gameObjectId)?.mesh ?? renderer.mesh)?.guid)
   }
-  // 返回这棵子树能不能整个省掉：骨骼、已合并的网格节点，以及只装着它们的中间节点
+
+  const visited = new Set<string>()
+  const resultOf = new Map<string, boolean>()
+  // 返回这棵子树能不能整个省掉：骨骼、已合并/剔除的 LOD 网格节点、纯碰撞体子节点，以及只装着它们的中间节点
   const visit = (tr: RawTransform): boolean => {
+    const cached = resultOf.get(tr.fileId)
+    if (cached !== undefined) return cached
+    if (visited.has(tr.fileId)) return false
+    visited.add(tr.fileId)
     const children = doc.childrenOf.get(tr.fileId) ?? []
     let allPruned = true
     for (const child of children) if (!visit(child)) allPruned = false
     const removable = allPruned
       && !hasOwnContent(tr)
-      && (doc.boneIds.has(tr.fileId) || absorbed.has(tr.fileId) || children.length > 0)
+      && (doc.boneIds.has(tr.fileId) || absorbed.has(tr.fileId) || isPureColliderObject(tr) || children.length > 0)
     if (removable) pruned.add(tr.fileId)
+    resultOf.set(tr.fileId, removable)
     return removable
   }
   for (const rootId of byRoot.keys()) {
     for (const child of doc.childrenOf.get(rootId) ?? []) visit(child)
   }
+  for (const goId of doc.lodGroups) {
+    const lodTr = doc.transformByGameObject.get(goId)
+    if (lodTr) {
+      for (const child of doc.childrenOf.get(lodTr.fileId) ?? []) visit(child)
+    }
+  }
+  for (const trId of absorbed) {
+    const tr = doc.transforms.get(trId)
+    if (tr) visit(tr)
+  }
+  for (const goId of doc.colliders) {
+    const tr = doc.transformByGameObject.get(goId)
+    if (tr && !doc.renderers.has(goId)) visit(tr)
+  }
   return { byRoot, absorbed, pruned }
 }
 
-function findClusterRoot(doc: ParsedUnityYaml, tr: RawTransform, renderer: RawRenderer, modelGuid: string): RawTransform {
+function findClusterRoot(
+  doc: ParsedUnityYaml,
+  mods: ModsByTarget | null,
+  culledRenderers: ReadonlySet<string>,
+  tr: RawTransform,
+  renderer: RawRenderer,
+  modelGuid: string,
+): RawTransform {
   const chain: RawTransform[] = []
   for (let cursor: RawTransform | undefined = tr; cursor && chain.length < 256; cursor = doc.transforms.get(cursor.fatherId)) {
     chain.push(cursor)
@@ -678,7 +871,40 @@ function findClusterRoot(doc: ParsedUnityYaml, tr: RawTransform, renderer: RawRe
   for (const item of chain) {
     if (doc.animators.get(item.gameObjectId) === modelGuid) return item
   }
-  if (!renderer.skinned) return tr
+  if (!renderer.skinned) {
+    const parentTr = tr.fatherId !== '0' ? doc.transforms.get(tr.fatherId) : undefined
+    if (
+      parentTr
+      && !doc.renderers.has(parentTr.gameObjectId)
+      && !doc.lights.has(parentTr.gameObjectId)
+      && !doc.terrains.has(parentTr.gameObjectId)
+      && isIdentityLocalTransform(tr, mods)
+    ) {
+      const siblings = doc.childrenOf.get(parentTr.fileId) ?? []
+      let hasCulledOrColliderSibling = doc.lodGroups.has(parentTr.gameObjectId)
+      let otherActiveRendererConflict = false
+      for (const sib of siblings) {
+        if (sib.fileId === tr.fileId) continue
+        const sibRenderer = doc.renderers.get(sib.gameObjectId)
+        if (sibRenderer) {
+          if (culledRenderers.has(sibRenderer.fileId)) {
+            hasCulledOrColliderSibling = true
+          } else {
+            const sibMesh = doc.meshFilters.get(sib.gameObjectId)?.mesh ?? sibRenderer.mesh
+            if (sibMesh?.guid !== modelGuid || !isIdentityLocalTransform(sib, mods)) {
+              otherActiveRendererConflict = true
+            }
+          }
+        } else if (doc.colliders.has(sib.gameObjectId)) {
+          hasCulledOrColliderSibling = true
+        }
+      }
+      if (hasCulledOrColliderSibling && !otherActiveRendererConflict) {
+        return parentTr
+      }
+    }
+    return tr
+  }
   for (const item of chain) {
     if (doc.animators.has(item.gameObjectId)) return item
   }
@@ -807,7 +1033,8 @@ function createLightNode(base: NodeBase, name: string, light: RawLight): SceneNo
     intensity: Math.max(0, light.intensity),
     range: kind === 'directional-light' ? 0 : Math.max(0.1, light.range),
     spotAngle: kind === 'spot-light' ? Math.max(5, Math.min(175, light.spotAngle)) : 45,
-    castShadow: light.shadows,
+    // 点光源实时阴影在 WebGPU 下每盏需要 6 次立方体贴图渲染，批量导入场景默认关闭，保留平行光与聚光灯阴影
+    castShadow: kind === 'point-light' ? false : light.shadows,
   })
 }
 
@@ -948,6 +1175,9 @@ function parseUnityYamlDocument(text: string): ParsedUnityYaml {
     terrains: new Set(),
     animators: new Map(),
     boneIds: new Set(),
+    lodGroups: new Set(),
+    lodCulledRenderers: new Set(),
+    colliders: new Set(),
     prefabInstances: new Map(),
     strippedTransforms: new Map(),
     strippedByInstance: new Map(),
@@ -1042,9 +1272,25 @@ function parseUnityYamlDocument(text: string): ParsedUnityYaml {
         })
         break
       }
+      case '64': // MeshCollider
+      case '65': // BoxCollider
+      case '135': // SphereCollider
+      case '136': { // CapsuleCollider
+        const gameObjectId = readFileIdRef(body, 'm_GameObject')
+        if (gameObjectId) result.colliders.add(gameObjectId)
+        break
+      }
       case '95': { // Animator
         const gameObjectId = readFileIdRef(body, 'm_GameObject')
         if (gameObjectId) result.animators.set(gameObjectId, readObjectRef(body, 'm_Avatar')?.guid ?? '')
+        break
+      }
+      case '205': { // LODGroup
+        const gameObjectId = readFileIdRef(body, 'm_GameObject')
+        if (gameObjectId) result.lodGroups.add(gameObjectId)
+        for (const rId of readLodGroupCulledRenderers(body)) {
+          result.lodCulledRenderers.add(rId)
+        }
         break
       }
       case '108': { // Light
@@ -1277,4 +1523,35 @@ function readPrefabModifications(body: string): RawPrefabModification[] {
   }
   if (current) mods.push(current)
   return mods
+}
+
+/** 读取 LODGroup.m_LODs 中除第 0 级（LOD0）外所有低模层级的 Renderer fileID。 */
+function readLodGroupCulledRenderers(body: string): string[] {
+  const startMatch = /^(\s*)m_LODs:\s*$/m.exec(body)
+  if (!startMatch) return []
+  const baseIndent = startMatch[1]!.length
+  const rest = body.slice(startMatch.index + startMatch[0].length)
+  const culled: string[] = []
+  let lodIndex = -1
+  let itemIndent = -1
+
+  for (const line of rest.split(/\r?\n/)) {
+    if (!line.trim()) continue
+    const indent = line.match(/^\s*/)?.[0].length ?? 0
+    if (indent <= baseIndent && !/^\s*-/.test(line)) break
+    if (/^\s*-\s*screenRelativeHeight:/.test(line)) {
+      lodIndex += 1
+      itemIndent = indent
+      continue
+    }
+    if (itemIndent >= 0 && indent === itemIndent && /^\s*-\s+\w+:/.test(line)) {
+      lodIndex += 1
+      continue
+    }
+    if (lodIndex >= 1) {
+      const m = /^\s*-?\s*renderer:\s*\{[^}]*fileID:\s*(-?\d+)/.exec(line)
+      if (m && m[1] && m[1] !== '0') culled.push(m[1])
+    }
+  }
+  return culled
 }

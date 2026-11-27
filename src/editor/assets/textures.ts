@@ -1,4 +1,4 @@
-import { CanvasTexture, CompressedTexture, DataTexture, EquirectangularReflectionMapping, NoColorSpace, RGBA_BPTC_Format, RGBAFormat, SRGBColorSpace, Texture, TextureLoader, UnsignedByteType } from 'three'
+import { CanvasTexture, CompressedTexture, DataTexture, EquirectangularReflectionMapping, NoColorSpace, RepeatWrapping, RGBA_BPTC_Format, RGBAFormat, SRGBColorSpace, Texture, TextureLoader, UnsignedByteType } from 'three'
 import { KTX2Loader } from 'three/addons/loaders/KTX2Loader.js'
 import { RGBELoader } from 'three/addons/loaders/RGBELoader.js'
 import { EXRLoader } from 'three/addons/loaders/EXRLoader.js'
@@ -327,10 +327,8 @@ function unpackTextureArtifact(buffer: ArrayBuffer): { width: number, height: nu
 function buildDataTexture(width: number, height: number, rgba: Uint8Array, base?: Texture): DataTexture {
   const tex = new DataTexture(rgba, width, height, RGBAFormat, UnsignedByteType)
   tex.flipY = base ? base.flipY : false
-  if (base) {
-    tex.wrapS = base.wrapS
-    tex.wrapT = base.wrapT
-  }
+  tex.wrapS = base ? base.wrapS : RepeatWrapping
+  tex.wrapT = base ? base.wrapT : RepeatWrapping
   tex.generateMipmaps = true
   tex.needsUpdate = true
   return tex
@@ -354,10 +352,8 @@ function buildBc7Texture(width: number, height: number, allMips: Bc7Mip[], base?
   }
   const tex = new CompressedTexture(mips as unknown as ImageData[], width, height, RGBA_BPTC_Format)
   tex.flipY = base ? base.flipY : false
-  if (base) {
-    tex.wrapS = base.wrapS
-    tex.wrapT = base.wrapT
-  }
+  tex.wrapS = base ? base.wrapS : RepeatWrapping
+  tex.wrapT = base ? base.wrapT : RepeatWrapping
   tex.needsUpdate = true
   return tex
 }
@@ -723,6 +719,8 @@ export function loadTextureAsset(asset: FileAsset): Promise<void> {
       const url = await ensureAssetUrl(asset.id)
       if (!ktx2) throw new Error('KTX2 转码器还没就绪')
       const texture = await ktx2.loadAsync(url)
+      texture.wrapS = RepeatWrapping
+      texture.wrapT = RepeatWrapping
       imageSources.set(asset.id, 'source')
       images.set(asset.id, texture)
       imageHashes.set(asset.id, asset.hash)
@@ -870,6 +868,8 @@ async function loadBitmapTexture(url: string): Promise<Texture> {
       const bitmap = await decodeBitmap(blob)
       const texture = new Texture(bitmap)
       texture.flipY = false
+      texture.wrapS = RepeatWrapping
+      texture.wrapT = RepeatWrapping
       texture.needsUpdate = true
       return texture
     } catch {
@@ -878,6 +878,8 @@ async function loadBitmapTexture(url: string): Promise<Texture> {
   }
   const texture = await loader.loadAsync(url)
   texture.flipY = false
+  texture.wrapS = RepeatWrapping
+  texture.wrapT = RepeatWrapping
   texture.needsUpdate = true
   return texture
 }
@@ -899,6 +901,8 @@ function loadSvgTexture(assetId: string, hash: string, url: string): Promise<voi
       const texture = new CanvasTexture(canvas)
       texture.colorSpace = SRGBColorSpace
       texture.flipY = false
+      texture.wrapS = RepeatWrapping
+      texture.wrapT = RepeatWrapping
       texture.needsUpdate = true
       images.set(assetId, texture)
       imageHashes.set(assetId, hash)

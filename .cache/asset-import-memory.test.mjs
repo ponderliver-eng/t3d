@@ -427,7 +427,6 @@ var MODEL_EXTENSIONS = /* @__PURE__ */ new Set(["fbx", "obj", "dae", "3ds", "stl
 var TEXTURE_EXTENSIONS = /* @__PURE__ */ new Set(["png", "jpg", "jpeg", "webp", "ktx2", "tga"]);
 var HIDDEN_EXTENSIONS = /* @__PURE__ */ new Set([
   "prefab",
-  "unity",
   "controller",
   "overridecontroller",
   "cs",
@@ -736,6 +735,14 @@ function classifyExtractableAsset(originalPath, extension) {
       kind: "material",
       outputExtension: "gm3dmat",
       conversionNote: "Unity .mat -> \u6750\u8D28",
+      warnings: []
+    };
+  }
+  if (extension === "unity") {
+    return {
+      kind: "scene",
+      outputExtension: "scene",
+      conversionNote: "Unity .unity -> \u573A\u666F",
       warnings: []
     };
   }

@@ -42,6 +42,12 @@ export default function MenuBar() {
   const canUndo = uiOpen ? uiUndo : sceneUndo
   const canRedo = uiOpen ? uiRedo : sceneRedo
   const hasSelection = useEditorStore(state => state.selection.length > 0)
+  const hasUnlockedSelection = useEditorStore(state =>
+    state.selection.some(id => {
+      const n = state.nodes[id]
+      return Boolean(n && !n.locked)
+    }),
+  )
   const selectedCamera = useEditorStore(state => {
     const id = state.selection[state.selection.length - 1]
     const node = id ? state.nodes[id] : undefined
@@ -171,7 +177,7 @@ export default function MenuBar() {
         </Dropdown>
         <Dropdown label={t('menu.view')}>
           <Item icon={<Focus size={13} />} disabled={!hasSelection} onClick={() => useEditorStore.getState().requestFocus()}>{t('menu.focus')}<span className="menubar__hint">F</span></Item>
-          <Item icon={<Camera size={13} />} disabled={playing || !selectedCamera || selectedCamera.locked} onClick={() => useEditorStore.getState().alignCameraToView()}>{t('menu.alignCamera')}<span className="menubar__hint">Ctrl+Shift+F</span></Item>
+          <Item icon={<Camera size={13} />} disabled={playing || (!hasUnlockedSelection && (!selectedCamera || selectedCamera.locked))} onClick={() => useEditorStore.getState().alignCameraToView()}>{t('menu.alignCamera')}<span className="menubar__hint">Ctrl+Shift+F</span></Item>
           <Item icon={<Eye size={13} />} disabled={playing || !selectedCamera} onClick={() => useEditorStore.getState().alignViewToCamera()}>{t('menu.alignView')}<span className="menubar__hint">Shift+F</span></Item>
           <Sep />
           <Submenu icon={<Box size={13} />} label={t('menu.views')}>

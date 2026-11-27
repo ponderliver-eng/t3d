@@ -61,9 +61,12 @@ const DEFAULTS = {
 }
 
 export function packedMetallicRoughness(slot: Partial<PbrSlot>): string | null {
-  if (slot.metallicRoughnessAssetId) return slot.metallicRoughnessAssetId
-  const roughness = slot.roughnessAssetId ?? null
-  const metalness = slot.metalnessAssetId ?? null
+  const normal = slot.normalAssetId ?? null
+  if (slot.metallicRoughnessAssetId && slot.metallicRoughnessAssetId !== normal) {
+    return slot.metallicRoughnessAssetId
+  }
+  const roughness = slot.roughnessAssetId && slot.roughnessAssetId !== normal ? slot.roughnessAssetId : null
+  const metalness = slot.metalnessAssetId && slot.metalnessAssetId !== normal ? slot.metalnessAssetId : null
   if (roughness && metalness) return roughness === metalness ? roughness : metalness
   return metalness ?? roughness
 }
@@ -141,7 +144,8 @@ export function resolveModelSlotWithHost(slot: PbrSlot, host: MaterialEngineHost
     const surface = normalizeSlot({ ...linked, materialAssetId: null })
     const mapAssetId = surface.mapAssetId ?? slot.mapAssetId ?? null
     const normalAssetId = surface.normalAssetId ?? slot.normalAssetId ?? null
-    const metallicRoughnessAssetId = surface.metallicRoughnessAssetId ?? packedMetallicRoughness(slot) ?? null
+    const rawMetallicRoughness = surface.metallicRoughnessAssetId ?? packedMetallicRoughness(slot) ?? null
+    const metallicRoughnessAssetId = normalAssetId && rawMetallicRoughness === normalAssetId ? null : rawMetallicRoughness
     const emissiveAssetId = surface.emissiveAssetId ?? slot.emissiveAssetId ?? null
     const aoAssetId = surface.aoAssetId ?? slot.aoAssetId ?? null
     const hasMap = Boolean(mapAssetId || normalAssetId || metallicRoughnessAssetId)
