@@ -78,6 +78,45 @@ export interface SceneAsset {
   picture: ScenePicture
   /** 编辑器视口相机。缺省表示还没记过。 */
   editorView?: EditorView | null
+  /**
+   * 目录工程里没打开的场景只留一个壳：nodes 为空，内容还在磁盘的场景文件里。
+   * 要读 nodes 之前先 `ensureScenesLoaded`，只要数量或引用就看 summary。
+   */
+  unloaded?: boolean
+  summary?: SceneSummary
+}
+
+/** 场景文件头里的摘要，没加载的场景靠它回答「有多少物体、用了哪些资源」。 */
+export interface SceneSummary {
+  nodeCount: number
+  /** 节点和画面设置引用到的资源 id。 */
+  assets: string[]
+  /** 自定义着色器（`custom:<id>`）→ 用到它的节点数。 */
+  shaders: Record<string, number>
+  /** 工程脚本 id → 挂了它的节点数。 */
+  scripts: Record<string, number>
+}
+
+type SceneLoader = (ids: string[] | null) => Promise<void>
+let sceneLoader: SceneLoader | null = null
+
+export function bindSceneLoader(loader: SceneLoader | null) {
+  sceneLoader = loader
+}
+
+/** 把还留在磁盘上的场景读进内存。不传 ids 表示全部。没有壳场景时立即返回。 */
+export async function ensureScenesLoaded(ids?: string[]): Promise<void> {
+  const assets = useAssetStore.getState().assets
+  const pending = (ids ?? Object.keys(assets)).filter(id => {
+    const asset = assets[id]
+    return asset?.kind === 'scene' && asset.unloaded
+  })
+  if (pending.length === 0 || !sceneLoader) return
+  await sceneLoader(ids ? pending : null)
+}
+
+export function sceneNodeCount(asset: SceneAsset): number {
+  return asset.unloaded ? asset.summary?.nodeCount ?? 0 : Object.keys(asset.nodes).length
 }
 
 export type ProjectAsset = FileAsset | MaterialAsset | PrefabAsset | SceneAsset | EffectAsset | UiAsset | CutsceneAsset
@@ -162,7 +201,8 @@ export const useAssetStore = create<AssetState>((set, get) => ({
       && JSON.stringify(asset.picture) === JSON.stringify(picture)
       && JSON.stringify(asset.editorView ?? null) === JSON.stringify(view)
     ) return {}
-    return { assets: { ...state.assets, [id]: { ...asset, nodes, picture, editorView: view } }, revision: state.revision + 1 }
+    const { unloaded: _unloaded, summary: _summary, ...rest } = asset
+    return { assets: { ...state.assets, [id]: { ...rest, nodes, picture, editorView: view } }, revision: state.revision + 1 }
   }),
   updateMaterial: (id, slot) => set(state => {
     const asset = state.assets[id]

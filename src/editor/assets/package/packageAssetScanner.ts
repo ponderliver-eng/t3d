@@ -1,4 +1,4 @@
-export type PackageExtractableAssetKind = 'model' | 'texture' | 'animation' | 'material'
+export type PackageExtractableAssetKind = 'model' | 'texture' | 'animation' | 'material' | 'scene'
 
 import type { PackageModelAssetRoleGuess } from './packageAssetRoleGuess'
 import { applyPackageModelAssetRoleGuesses } from './packageAssetRoleGuess'
@@ -125,7 +125,6 @@ const MODEL_EXTENSIONS = new Set(['fbx', 'obj', 'dae', '3ds', 'stl', 'glb', 'glt
 const TEXTURE_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'webp', 'ktx2', 'tga'])
 const HIDDEN_EXTENSIONS = new Set([
   'prefab',
-  'unity',
   'controller',
   'overridecontroller',
   'cs',
@@ -543,6 +542,14 @@ function classifyExtractableAsset(
       kind: 'material',
       outputExtension: 'gm3dmat',
       conversionNote: 'Unity .mat -> 材质',
+      warnings: [],
+    }
+  }
+  if (extension === 'unity') {
+    return {
+      kind: 'scene',
+      outputExtension: 'scene',
+      conversionNote: 'Unity .unity -> 场景',
       warnings: [],
     }
   }

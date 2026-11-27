@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Box, Clapperboard, Image, Minus, Palette, Plus, Search, X } from 'lucide-react'
+import { Box, Clapperboard, Globe, Image, Minus, Palette, Plus, Search, X } from 'lucide-react'
 import { scanPackageArchive, scanPackageAssets, type PackageAssetScannerDirectory, type PackageAssetScannerEntry, type PackageAssetScannerResult, type PackageExtractableAssetKind } from '../assets/package/packageAssetScanner'
 import { extractPackageEntries, withReferencedTextures, type PackageExtractionProgress } from '../assets/package/extractPackage'
 import type { PackageModelAssetRole } from '../assets/package/packageAssetRoleGuess'
@@ -98,6 +98,7 @@ export function PackageExtractDialog({ file, open, onClose }: { file: File | nul
     texture: entries.filter(entry => entry.kind === 'texture').length,
     animation: entries.filter(entry => entry.kind === 'animation').length,
     material: entries.filter(entry => entry.kind === 'material').length,
+    scene: entries.filter(entry => entry.kind === 'scene').length,
   }), [entries])
   const selected = entries.filter(entry => selectedIds.has(entry.id))
   const expanded = useMemo(
@@ -166,6 +167,7 @@ export function PackageExtractDialog({ file, open, onClose }: { file: File | nul
           <Summary label={t('pkg.textures')} value={totals.texture} icon={Image} color="#a9e7b0" />
           <Summary label={t('pkg.animations')} value={totals.animation} icon={Clapperboard} color="#f2cf7f" />
           <Summary label={t('pkg.materials')} value={totals.material} icon={Palette} color="#d4b8ff" />
+          <Summary label={t('pkg.scenes')} value={totals.scene} icon={Globe} color="#7ce0d3" />
           <Summary label={t('pkg.hidden')} value={result?.stats.hidden ?? 0} />
           <Summary label={t('pkg.unsupported')} value={result?.stats.unsupported ?? 0} />
         </section>
@@ -194,6 +196,7 @@ export function PackageExtractDialog({ file, open, onClose }: { file: File | nul
                 <button type="button" onClick={() => setSelectedIds(new Set(entries.filter(entry => entry.kind === 'texture').map(entry => entry.id)))}>{t('pkg.selectTextures')}</button>
                 <button type="button" onClick={() => setSelectedIds(new Set(entries.filter(entry => entry.kind === 'animation').map(entry => entry.id)))}>{t('pkg.selectAnimations')}</button>
                 <button type="button" onClick={() => setSelectedIds(new Set(entries.filter(entry => entry.kind === 'material').map(entry => entry.id)))}>{t('pkg.selectMaterials')}</button>
+                <button type="button" onClick={() => setSelectedIds(new Set(entries.filter(entry => entry.kind === 'scene').map(entry => entry.id)))}>{t('pkg.selectScenes')}</button>
                 <label className="pkg-extract__target">
                   <span>{t('pkg.targetDirectory')}</span>
                   <input value={targetDirectory} onChange={event => setTargetDirectory(event.target.value)} onBlur={() => setTargetDirectory(normalizeDir(targetDirectory))} />
@@ -296,6 +299,7 @@ const KIND_MARK: Record<PackageExtractableAssetKind, typeof Box> = {
   texture: Image,
   animation: Clapperboard,
   material: Palette,
+  scene: Globe,
 }
 
 function KindMark({ kind }: { kind: PackageExtractableAssetKind }) {

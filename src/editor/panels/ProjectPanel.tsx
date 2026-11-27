@@ -7,8 +7,9 @@ import { savePrefabFromSelection } from '../assets/import'
 import { readPrefab } from '../assets/prefab'
 import { ASSETS_ROOT, directoryTree, findDir, isWithin, parentDir, type DirNode } from '../assets/folders'
 import { MaterialBall } from '../assets/materialBall'
-import { assetDirectory, useAssetStore, type ProjectAsset } from '../assets/library'
+import { assetDirectory, sceneNodeCount, useAssetStore, type ProjectAsset } from '../assets/library'
 import { assetDiskPath, folderDiskPath, projectDirectoryPath } from '../project/disk'
+import { libraryAssetDiskPath } from '../project/libraryFiles'
 import { electronBridge, joinProjectPath } from '../project/electronBridge'
 import { clipDuration, clipNamesFor, subscribeModels } from '../assets/models'
 import { useEditorStore } from '../scene/store'
@@ -610,7 +611,7 @@ export default function ProjectPanel() {
           {(assetKind(menu.id) === 'material' || assetKind(menu.id) === 'scene' || assetKind(menu.id) === 'prefab') && (
             <button type="button" onClick={() => { duplicateAsset(menu.id); setMenu(null) }}><CopyPlus size={12} />{t('project.duplicate')}</button>
           )}
-          <button type="button" onClick={() => { void revealOnDisk(assetDiskPath(menu.id)); setMenu(null) }}><FolderSearch size={12} />{t('project.reveal')}</button>
+          <button type="button" onClick={() => { void revealOnDisk(assetDiskPath(menu.id) ?? libraryAssetDiskPath(menu.id)); setMenu(null) }}><FolderSearch size={12} />{t('project.reveal')}</button>
           <div className="project-panel__sep" />
           <button type="button" onClick={() => { reportAssetUsers(menu.id); setMenu(null) }}><ListTree size={12} />{t('project.findRefs')}</button>
           <button type="button" onClick={() => { setRenameId(menu.id); setMenu(null) }}><Pencil size={12} />{t('project.rename')}</button>
@@ -745,6 +746,8 @@ function countCodeAssetReferences(
     for (const asset of Object.values(assets)) {
       if (asset.kind === 'material' && asset.slot.shader === target) {
         count += 1
+      } else if (asset.kind === 'scene' && asset.unloaded) {
+        count += asset.summary?.shaders[target] ?? 0
       } else if ((asset.kind === 'scene' && asset.id !== activeSceneId) || asset.kind === 'prefab') {
         for (const node of Object.values(asset.nodes)) {
           if (node.shader === target || node.slots?.some(slot => slot.shader === target)) count += 1
@@ -759,7 +762,9 @@ function countCodeAssetReferences(
     if (projectScripts?.[item.id] !== undefined) count += 1
   }
   for (const asset of Object.values(assets)) {
-    if ((asset.kind === 'scene' && asset.id !== activeSceneId) || asset.kind === 'prefab') {
+    if (asset.kind === 'scene' && asset.unloaded) {
+      count += asset.summary?.scripts[item.id] ?? 0
+    } else if ((asset.kind === 'scene' && asset.id !== activeSceneId) || asset.kind === 'prefab') {
       for (const node of Object.values(asset.nodes)) {
         const projectScripts = node.gameplay?.packs?.__project__ as Record<string, unknown> | undefined
         if (projectScripts?.[item.id] !== undefined) count += 1
@@ -967,7 +972,7 @@ function AssetRow({
 }
 
 function detailOf(asset: ProjectAsset, used: boolean): string {
-  if (asset.kind === 'scene') return translate('project.objects', { count: Object.keys(asset.nodes).length })
+  if (asset.kind === 'scene') return translate('project.objects', { count: sceneNodeCount(asset) })
   if (asset.kind === 'prefab') return translate('project.objects', { count: Object.keys(readPrefab(asset).nodes).length })
   if (asset.kind === 'material') return asset.slot.color
   if ('fileName' in asset) return asset.fileName.split('.').pop()?.toUpperCase() ?? ''
@@ -1014,6 +1019,7 @@ function referencedIds(nodes: Record<string, { assetId?: string | null, clipAsse
     if (asset.kind === 'material') collect(asset.slot, ids)
     if (asset.kind === 'scene') {
       if (asset.picture.envAssetId) ids.add(asset.picture.envAssetId)
+      if (asset.unloaded) for (const id of asset.summary?.assets ?? []) ids.add(id)
       for (const node of Object.values(asset.nodes)) collect(node, ids)
     }
     if (asset.kind === 'prefab') for (const node of Object.values(readPrefab(asset).nodes)) collect(node, ids)

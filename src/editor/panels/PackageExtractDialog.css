@@ -646,6 +646,11 @@
   background: rgba(170, 130, 240, 0.14);
 }
 
+.pkg-extract__kind--scene {
+  color: #7ce0d3;
+  background: rgba(124, 224, 211, 0.14);
+}
+
 .pkg-extract__entry-main {
   min-width: 0;
   display: flex;

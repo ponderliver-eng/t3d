@@ -7,6 +7,8 @@ export interface ElectronBridge {
   fs: {
     authorizeRoot?: (dirPath: string) => Promise<string>
     readTextFile: (filePath: string) => Promise<string>
+    /** 读到 marker 为止（含 marker）；文件里没有 marker 就返回全文。旧版主进程没有这个接口。 */
+    readTextHead?: (filePath: string, marker: string) => Promise<string>
     writeTextFile: (filePath: string, content: string) => Promise<void>
     exists: (filePath: string) => Promise<boolean>
     mkdir: (dirPath: string) => Promise<void>

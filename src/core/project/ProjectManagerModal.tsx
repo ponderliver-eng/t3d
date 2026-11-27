@@ -23,7 +23,7 @@ import {
 } from 'lucide-react'
 import { create } from 'zustand'
 import { useAgentStore } from '../../ai/agentLoop'
-import { useAssetStore } from '../../editor/assets/library'
+import { ensureScenesLoaded, sceneNodeCount, useAssetStore } from '../../editor/assets/library'
 import { AssetPicker } from '../../editor/panels/AssetPicker'
 import { electronBridge } from '../../editor/project/electronBridge'
 import { useI18n } from '../../editor/i18n'
@@ -126,6 +126,19 @@ export function ProjectManagerModal() {
     const ids = sceneIdsKey ? sceneIdsKey.split(',') : []
     void loadBuildSettingsFromProject(ids, activeSceneId)
   }, [open, tab, sceneIdsKey, activeSceneId])
+
+  // 发布页要统计各构建场景的依赖：没打开的场景节点还在磁盘上，先读进来。
+  const pendingBuildScenes = buildSettings.scenes
+    .filter((entry) => {
+      const scene = assets[entry.sceneId]
+      return entry.enabled && scene?.kind === 'scene' && scene.unloaded
+    })
+    .map((entry) => entry.sceneId)
+    .join(',')
+  useEffect(() => {
+    if (!open || tab !== 'publish' || !pendingBuildScenes) return
+    void ensureScenesLoaded(pendingBuildScenes.split(','))
+  }, [open, tab, pendingBuildScenes])
 
   const updateBuild = (updater: (prev: BuildSettings) => BuildSettings) => {
     const ids = Object.values(assets).filter((a) => a.kind === 'scene').map((a) => a.id)
@@ -334,7 +347,7 @@ export function ProjectManagerModal() {
                                 <span>{sc.name}</span>
                                 {active && <span className="pm-pill pm-pill--ok">{t('pm.current')}</span>}
                               </div>
-                              <div className="pm-row__sub">{t('pm.nodeCount', { count: Object.keys(sc.nodes).length })}</div>
+                              <div className="pm-row__sub">{t('pm.nodeCount', { count: sc.kind === 'scene' ? sceneNodeCount(sc) : 0 })}</div>
                               <div className="pm-actions">
                                 {!active && (
                                   <button
@@ -864,7 +877,7 @@ export function ProjectManagerModal() {
                         const sc = assets[entry.sceneId]
                         if (!sc || sc.kind !== 'scene') return null
                         const isEntry = buildSettings.entrySceneId === entry.sceneId
-                        const nodeCount = entry.sceneId === activeSceneId ? Object.keys(editorNodes).length : Object.keys(sc.nodes).length
+                        const nodeCount = entry.sceneId === activeSceneId ? Object.keys(editorNodes).length : sceneNodeCount(sc)
                         return (
                           <div
                             key={entry.sceneId}

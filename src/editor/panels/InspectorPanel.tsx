@@ -66,7 +66,7 @@ import { TagLayerStrip } from './TagLayerCards'
 import { ScreenCard } from '../ui/ScreenCard'
 import { openUiEditor } from '../ui/session'
 import { normalizeSlot, resolveModelSlot, slotFromNode } from '../assets/materials'
-import { assetDirectory, useAssetStore, type FileAsset } from '../assets/library'
+import { assetDirectory, sceneNodeCount, useAssetStore, type FileAsset } from '../assets/library'
 import { instanceDirty, isPrefabRoot } from '../assets/prefab'
 import { translate, useI18n, type MessageKey } from '../i18n'
 import { AssetPicker } from './AssetPicker'
@@ -563,7 +563,7 @@ function AssetSettings({ asset }: { asset: import('../assets/library').ProjectAs
           <Section title={t('inspector.type')} color="#4a9eff">
           <label className="field"><span>{t('inspector.type')}</span><span>{assetKindLabel(asset.kind)}</span></label>
           {'fileName' in asset && <label className="field"><span>{t('inspector.file')}</span><span>{asset.fileName}</span></label>}
-          {asset.kind === 'scene' && <label className="field"><span>{t('inspector.objects')}</span><span>{Object.keys(asset.nodes).length}</span></label>}
+          {asset.kind === 'scene' && <label className="field"><span>{t('inspector.objects')}</span><span>{sceneNodeCount(asset)}</span></label>}
           {asset.kind === 'prefab' && <label className="field"><span>{t('inspector.objects')}</span><span>{Object.keys(asset.nodes).length}</span></label>}
           {asset.kind === 'ui' && <button type="button" onClick={() => openUiEditor(asset.id)}>{t('ui.open')}</button>}
           {asset.kind === 'model' && <label className="field"><span>{t('inspector.clips')}</span><span>{clipNamesFor(asset.id).length}</span></label>}

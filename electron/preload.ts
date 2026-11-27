@@ -6,6 +6,7 @@ contextBridge.exposeInMainWorld('__electron', {
   fs: {
     authorizeRoot: (dirPath: string) => ipcRenderer.invoke('fs:authorizeRoot', dirPath),
     readTextFile: (filePath: string) => ipcRenderer.invoke('fs:readTextFile', filePath),
+    readTextHead: (filePath: string, marker: string) => ipcRenderer.invoke('fs:readTextHead', filePath, marker),
     writeTextFile: (filePath: string, content: string) => ipcRenderer.invoke('fs:writeTextFile', filePath, content),
     exists: (filePath: string) => ipcRenderer.invoke('fs:exists', filePath),
     mkdir: (dirPath: string) => ipcRenderer.invoke('fs:mkdir', dirPath),

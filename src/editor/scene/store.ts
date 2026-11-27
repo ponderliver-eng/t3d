@@ -2,7 +2,7 @@ import { Quaternion, Vector3 } from 'three'
 import { create } from 'zustand'
 import { getSpawn } from './spawn'
 import { createFreshScene, createSeed } from './seed'
-import { assetDirectory, useAssetStore } from '../assets/library'
+import { assetDirectory, ensureScenesLoaded, useAssetStore } from '../assets/library'
 import { useCodeAssetStore } from '../../core/codeAssets/workspace'
 import {
   applyInstance,
@@ -1127,6 +1127,15 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       return
     }
     if (get().activeSceneId === id && !get().prefabSession) return
+    if (asset.unloaded) {
+      // 节点还在磁盘上：读进来再打开。
+      void ensureScenesLoaded([id]).then(() => {
+        const loaded = useAssetStore.getState().assets[id]
+        if (loaded?.kind === 'scene' && !loaded.unloaded) get().openScene(id)
+        else get().log('error', translate('log.sceneLoadFail', { name: asset.name }))
+      })
+      return
+    }
     if (get().prefabSession) get().closePrefab(true)
     if (get().activeSceneId === id) return
     if (get().gesture) get().endGesture()
@@ -1159,8 +1168,18 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       return
     }
     if (get().activeSceneId === id) {
-      const next = scenes.find(scene => scene.id !== id)
+      const others = scenes.filter(scene => scene.id !== id)
+      const next = others.find(scene => !scene.unloaded) ?? others[0]
       if (!next) return
+      if (next.unloaded) {
+        // 要切过去的场景还在磁盘上：读进来再删。
+        void ensureScenesLoaded([next.id]).then(() => {
+          const loaded = useAssetStore.getState().assets[next.id]
+          if (loaded?.kind === 'scene' && !loaded.unloaded) get().deleteScene(id)
+          else get().log('error', translate('log.sceneLoadFail', { name: next.name }))
+        })
+        return
+      }
       set({
         activeSceneId: next.id,
         nodes: structuredClone(next.nodes),
@@ -1195,6 +1214,9 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       useAssetStore.getState().writePrefab(session.assetId, root?.id ?? '', editing)
       reconcilePrefab(session.sceneNodes, session.assetId, readPrefab({ rootId: root?.id ?? '', nodes: editing }), lookupPrefab)
     }
+    const target = useAssetStore.getState().assets[id]
+    // 当前场景的内容还没从磁盘读进来：编辑器里是空的，写回去会把场景文件清空。
+    if (target?.kind === 'scene' && target.unloaded) return
     const nodes = session ? session.sceneNodes : get().nodes
     const liveView = get().prefabSession ? get().editorView : readEditorViewPose()
     useAssetStore.getState().writeScene(id, structuredClone(nodes), structuredClone(get().picture), liveView ?? undefined)
@@ -1216,13 +1238,21 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       return
     }
     if (!scenes.some(scene => scene.id === get().activeSceneId)) {
-      const first = scenes[0]
+      const first = scenes.find(scene => !scene.unloaded) ?? scenes[0]
       set({
         activeSceneId: first.id,
         nodes: structuredClone(first.nodes),
-        picture: structuredClone(first.picture),
+        picture: normalizePicture(first.picture),
         selection: [],
       })
+      if (first.unloaded) {
+        // 只剩没读进来的场景：先占位，读完再把节点换上。期间 flushActiveScene 不会回写这个壳。
+        void ensureScenesLoaded([first.id]).then(() => {
+          const loaded = useAssetStore.getState().assets[first.id]
+          if (loaded?.kind !== 'scene' || loaded.unloaded || get().activeSceneId !== first.id) return
+          set({ nodes: structuredClone(loaded.nodes), picture: normalizePicture(loaded.picture), selection: [] })
+        })
+      }
     }
   },
 

@@ -1,7 +1,7 @@
 import type { CutsceneAsset, EffectAsset, MaterialAsset, PrefabAsset, SceneAsset, UiAsset } from '../assets/library'
 import type { StoredNavMesh } from '../../capabilities/navigation/archive'
 import type { LayerDefinition, TagDefinition } from '../project/taxonomy'
-import type { SceneNode, ScenePicture } from './types'
+import type { EditorView, SceneNode, ScenePicture } from './types'
 
 export interface ProjectDocument {
   schemaVersion: 1 | 2
@@ -30,6 +30,12 @@ export interface ProjectDocument {
   workspace?: ProjectWorkspace
 }
 
+/**
+ * 目录工程里 project.t3d 存的部分：只有工程设置。
+ * 场景、材质、预制体等库资源和导航网格各自是 Assets/ 下的独立文件。
+ */
+export type ProjectSettingsDocument = Omit<ProjectDocument, 'nodes' | 'picture' | 'library' | 'navMeshes'>
+
 /** 跟工程走的界面位置，换工程时各自恢复。 */
 export interface ProjectWorkspace {
   assetExpanded?: string[]
@@ -40,4 +46,6 @@ export interface ProjectWorkspace {
   /** AI 助手面板的打开状态与对话列表滚动位置。 */
   aiPanelOpen?: boolean
   aiPanelScrollTop?: number
+  /** 目录工程里各场景的视口相机，按场景 id。不放进场景文件，免得转一下镜头就重写整个场景。 */
+  sceneViews?: Record<string, EditorView>
 }

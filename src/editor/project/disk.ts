@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import type { AssetMeta } from '../assets/cache'
-import type { ProjectDocument } from '../scene/document'
+import type { ProjectDocument, ProjectSettingsDocument } from '../scene/document'
 import { ASSETS_ROOT, normalizeDir } from '../assets/folders'
 import { directoryBaseName, electronBridge, joinProjectPath, toArrayBuffer } from './electronBridge'
 
@@ -8,9 +8,10 @@ import { directoryBaseName, electronBridge, joinProjectPath, toArrayBuffer } fro
  * 目录工程，对应 GM 的 project.gm3d + Assets/ + .cache/gm3d/。
  *
  *   <工程文件夹>/
- *     project.t3d
+ *     project.t3d         # 工程设置 + 文件资源索引，不含场景/材质等内容
  *     .gitignore          # 忽略 .cache/
  *     Assets/             # 源文件，子目录与资源面板一致
+ *                         # 场景、材质、预制体、特效、界面、过场、导航网格各自一个文件（见 libraryFiles.ts）
  *     .cache/t3d/
  *       import-artifacts/ # 可丢弃的 GLB 成品
  *       editor-library/v1/cache-index.json
@@ -72,6 +73,8 @@ let texArtifactsDirPromise: Promise<FileSystemDirectoryHandle | null> | null = n
 let projectName = ''
 let records = new Map<string, DirectoryAssetRecord>()
 let storedDocument: ProjectDocument | null = null
+/** 上次写进 project.t3d 的内容（不含保存时间），用来跳过没变化的保存。 */
+let projectFileFingerprint = ''
 let cacheIndex: CacheIndexFile = emptyIndex()
 let flushHook: (() => void) | null = null
 let flushTimer = 0
@@ -244,6 +247,7 @@ async function beginRoot(
   projectName = name
   records = new Map(assets.map(asset => [asset.id, asset]))
   storedDocument = document
+  projectFileFingerprint = ''
   cacheIndex = await readIndex()
   useProjectDirectory.setState(state => ({ active: true, name: projectName, epoch: state.epoch + 1 }))
 }
@@ -501,20 +505,72 @@ export async function pruneArtifacts(validKeys: ReadonlySet<string>): Promise<nu
   return removed
 }
 
-export async function flushDocument(document: ProjectDocument): Promise<void> {
+/**
+ * 写 project.t3d。场景、材质、预制体等库资源各自成文件（见 libraryFiles.ts），这里只留工程设置和文件资源索引。
+ * 内容没变就不落盘。
+ */
+export async function flushDocument(document: ProjectDocument | ProjectSettingsDocument): Promise<void> {
   const handle = requireRoot()
-  storedDocument = document
-  const payload = {
-    schemaVersion: 1 as const,
+  const { nodes: _nodes, picture: _picture, library: _library, navMeshes: _navMeshes, savedAt: _savedAt, ...settings } = document as ProjectDocument
+  storedDocument = document as ProjectDocument
+  const body = {
+    schemaVersion: 2 as const,
     name: projectName,
-    savedAt: Date.now(),
-    document,
-    assets: [...records.values()].map(record => ({ ...record })),
+    document: settings,
+    assets: [...records.values()],
   }
-  const text = JSON.stringify(payload, null, 2)
+  const fingerprint = JSON.stringify(body)
+  if (fingerprint === projectFileFingerprint) return
+  const text = JSON.stringify({ ...body, savedAt: Date.now() }, null, 2)
   await chainIo(async () => {
     await writeTextAtomic(handle, PROJECT_FILE, text)
   })
+  projectFileFingerprint = fingerprint
+}
+
+/** 读 Assets/ 下的一个文本文件，不存在返回 null。 */
+export async function readProjectTextFile(path: string): Promise<string | null> {
+  assertLayoutPath(path)
+  return readText(requireRoot(), path)
+}
+
+/**
+ * 只读文件开头到 marker 为止（含 marker）。桌面端由主进程分块读，不会把整个文件搬过来；
+ * 浏览器目录句柄或旧版主进程退回读全文。文件里没有 marker 时也是全文。
+ */
+export async function readProjectTextHead(path: string, marker: string): Promise<string | null> {
+  assertLayoutPath(path)
+  const current = requireRoot()
+  const desktop = current.kind === 'path' ? electronBridge() : null
+  if (current.kind === 'path' && desktop?.fs.readTextHead) {
+    const full = joinProjectPath(current.path, path)
+    if (!(await desktop.fs.exists(full))) return null
+    return desktop.fs.readTextHead(full, marker)
+  }
+  return readText(current, path)
+}
+
+/** 先写临时文件再换名，中途断电不会留下半截文件。 */
+export async function writeProjectTextFile(path: string, text: string): Promise<void> {
+  assertLayoutPath(path)
+  await writeTextAtomic(requireRoot(), path, text)
+}
+
+export async function removeProjectFile(path: string): Promise<void> {
+  assertLayoutPath(path)
+  await removeFile(requireRoot(), path)
+}
+
+export async function moveProjectFile(fromPath: string, toPath: string): Promise<boolean> {
+  assertLayoutPath(fromPath)
+  assertLayoutPath(toPath)
+  if (normalizeLayoutPath(fromPath) === normalizeLayoutPath(toPath)) return true
+  return moveFile(requireRoot(), fromPath, toPath)
+}
+
+export function projectFileDiskPath(relativePath: string): string | null {
+  const base = projectRootPath()
+  return base ? joinProjectPath(base, relativePath) : null
 }
 
 export function parentProjectPath(path: string): string {
@@ -570,7 +626,7 @@ function allocatePath(directory: string, fileName: string, selfId: string): stri
   return `${dir}/${stem}-${index}${ext}`
 }
 
-function safeFileName(name: string): string {
+export function safeFileName(name: string): string {
   const cleaned = name.replace(/[<>:"|?*\u0000-\u001f\\/]/g, '_').replace(/[. ]+$/g, '')
   return cleaned || 'asset'
 }

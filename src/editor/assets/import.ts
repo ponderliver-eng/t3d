@@ -10,7 +10,7 @@ import { readPrefab } from './prefab'
 import { translate } from '../i18n'
 import { QUARKS_VERSION } from '../../capabilities/particles/defaults'
 import { readQuarksDocument } from '../../capabilities/particles/readQuarks'
-import { assetDirectory, assetName, useAssetStore, type FileAsset, type FileKind, type ProjectAsset } from './library'
+import { assetDirectory, assetName, ensureScenesLoaded, useAssetStore, type FileAsset, type FileKind, type ProjectAsset } from './library'
 import { selectTab } from '../layout/events'
 import { createScoreDocument } from '../../runtime/ui/spec'
 import { playSound } from '../../runtime/audio'
@@ -633,6 +633,14 @@ export function createDefaultMaterial(dir?: string) {
 export function duplicateAsset(id: string) {
   const asset = useAssetStore.getState().assets[id]
   if (!asset || (asset.kind !== 'material' && asset.kind !== 'scene' && asset.kind !== 'prefab' && asset.kind !== 'effect' && asset.kind !== 'ui' && asset.kind !== 'cutscene')) return
+  if (asset.kind === 'scene' && asset.unloaded) {
+    // 节点还在磁盘上：读进来再复制。
+    void ensureScenesLoaded([id]).then(() => {
+      const loaded = useAssetStore.getState().assets[id]
+      if (loaded?.kind === 'scene' && !loaded.unloaded) duplicateAsset(id)
+    })
+    return
+  }
   const copy = structuredClone(asset)
   copy.id = crypto.randomUUID()
   copy.name = uniqueAssetName(`${asset.name} ${translate('project.copySuffix')}`)
@@ -814,7 +822,9 @@ function referencedBy(assetId: string): { name: string, assetId?: string }[] {
   }
   for (const asset of Object.values(useAssetStore.getState().assets)) {
     if (asset.kind === 'prefab' && Object.values(readPrefab(asset).nodes).some(node => usesAsset(node, assetId) || node.nestedPrefabId === assetId)) users.push({ name: asset.name, assetId: asset.id })
-    if (asset.kind === 'scene') {
+    if (asset.kind === 'scene' && asset.unloaded) {
+      if (asset.summary?.assets.includes(assetId)) users.push({ name: asset.name, assetId: asset.id })
+    } else if (asset.kind === 'scene') {
       for (const node of Object.values(asset.nodes)) {
         if (usesAsset(node, assetId)) {
           users.push({ name: asset.name, assetId: asset.id })

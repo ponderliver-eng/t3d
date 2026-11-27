@@ -256,6 +256,27 @@ function registerIpc() {
     const safe = pathGuard.assertAllowed(filePath, '读取文本文件')
     return fs.readFile(safe, 'utf-8')
   })
+  // 只读到标记为止（含标记）。标记不在文件里就返回全文。场景文件靠它只取文件头，不必把几兆节点读进来。
+  ipcMain.handle('fs:readTextHead', async (_event, filePath: string, marker: string) => {
+    const safe = pathGuard.assertAllowed(filePath, '读取文本文件')
+    const needle = Buffer.from(marker, 'utf-8')
+    if (needle.length === 0) return fs.readFile(safe, 'utf-8')
+    const handle = await fs.open(safe, 'r')
+    try {
+      const chunk = Buffer.allocUnsafe(64 * 1024)
+      let data = Buffer.alloc(0)
+      for (;;) {
+        const { bytesRead } = await handle.read(chunk, 0, chunk.length, data.length)
+        if (bytesRead === 0) return data.toString('utf-8')
+        const from = Math.max(0, data.length - needle.length)
+        data = Buffer.concat([data, chunk.subarray(0, bytesRead)])
+        const index = data.indexOf(needle, from)
+        if (index >= 0) return data.subarray(0, index + needle.length).toString('utf-8')
+      }
+    } finally {
+      await handle.close()
+    }
+  })
   ipcMain.handle('fs:writeTextFile', async (_event, filePath: string, content: string) => {
     const safe = pathGuard.assertAllowed(filePath, '写入文本文件')
     await fs.mkdir(path.dirname(safe), { recursive: true })

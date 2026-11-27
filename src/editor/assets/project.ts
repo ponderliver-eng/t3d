@@ -1,5 +1,6 @@
 import type { CutsceneAsset, EffectAsset, MaterialAsset, PrefabAsset, SceneAsset, UiAsset } from './library'
-import { assetDirectory, assetName, useAssetStore, type FileAsset } from './library'
+import { assetDirectory, assetName, bindSceneLoader, ensureScenesLoaded, useAssetStore, type FileAsset } from './library'
+import { isLibraryAsset, loadLibraryFiles, loadSceneFiles, resetLibraryFiles, syncLibraryFiles } from '../project/libraryFiles'
 import {
   artifactKey,
   migrateLegacyFilesToMeta,
@@ -28,12 +29,12 @@ import {
 } from '../../core/codeAssets/workspace'
 import { translate } from '../i18n'
 import { usePrefsStore } from '../prefs/store'
-import type { ProjectDocument, ProjectWorkspace } from '../scene/document'
+import type { ProjectDocument, ProjectSettingsDocument, ProjectWorkspace } from '../scene/document'
 import { restoreInspectorEntries, snapshotInspectorEntries, useInspectorMemory } from '../panels/inspectorMemory'
 import { defaultCapabilities, normalizeCapabilities } from '../../capabilities/registry'
 import { ensureGameDatabase, resolveEnabledPackIds } from '../../gameplay/registry'
 import { ALL_LAYERS_VISIBLE_MASK, defaultLayers, defaultTags, ensureLayers, ensureTags } from '../project/taxonomy'
-import { normalizePicture, type SceneNode } from '../scene/types'
+import { normalizeEditorView, normalizePicture, type SceneNode } from '../scene/types'
 import { serializeNavMeshes } from '../../capabilities/navigation/archive'
 import { collectUiImageIds } from '../../runtime/ui/tree'
 import { modelLoadedFromArtifact, releaseModel } from './models'
@@ -49,6 +50,7 @@ import {
   bindDirectoryFlush,
   DEFAULT_ASSET_FOLDERS,
   ensureDirectory,
+  flushDocument,
   isDirectoryProject,
   listAssetDirectories,
   listAssetFiles,
@@ -78,6 +80,12 @@ const MAP_KEYS = ['mapAssetId', 'normalAssetId', 'metallicRoughnessAssetId', 'ro
 
 let opening: Promise<void> | null = null
 let saveTimer = 0
+let saveRunning: Promise<void> | null = null
+let saveQueued = false
+/** 换工程期间不许保存，否则会把上一个工程的内容写进新目录。 */
+let saveSuspended = 0
+/** 目录已经换了、内存里的会话还没换。这期间保存会把旧工程写进新目录，一律跳过。 */
+let sessionStale = false
 let autosaveBound = false
 let warmToken = 0
 let layoutBound = false
@@ -120,6 +128,7 @@ export function bindProjectAutosave() {
   if (autosaveBound) return
   autosaveBound = true
   bindDirectoryFlush(() => { void saveProjectNow() })
+  bindSceneLoader(ids => (isDirectoryProject() ? loadSceneFiles(ids) : Promise.resolve()))
   bindDirectoryLayout()
   useEditorStore.subscribe(scheduleSave)
   useAssetStore.subscribe(scheduleSave)
@@ -190,6 +199,7 @@ export async function createDirectoryProject(): Promise<void> {
     suspendLayout()
     setDirectoryFlushEnabled(false)
     try {
+      await settleSave()
       await scaffold(picked)
       if (typeof picked === 'string') {
         await beginPath(picked, name, [], null)
@@ -198,8 +208,10 @@ export async function createDirectoryProject(): Promise<void> {
         await begin(picked, name, [], null)
         RecentProjectService.add(picked, name)
       }
+      resetLibraryFiles()
       const freshDocument = createFreshProjectDocument()
       replaceSession(freshDocument)
+      sessionStale = false
       useEditorStore.getState().ensureSceneAsset()
     } finally {
       setDirectoryFlushEnabled(true)
@@ -241,6 +253,9 @@ async function publishSessionToDirectory(picked: FileSystemDirectoryHandle | str
   suspendLayout()
   setDirectoryFlushEnabled(false)
   try {
+    await settleSave()
+    // 没打开的场景内容还在旧目录里，换目录前先全部读进内存。
+    await ensureScenesLoaded()
     const codeAssets = Object.values(useCodeAssetStore.getState().assets).map(a => ({
       relativePath: a.relativePath,
       source: a.source,
@@ -256,6 +271,8 @@ async function publishSessionToDirectory(picked: FileSystemDirectoryHandle | str
       await begin(picked, name, [], null)
       RecentProjectService.add(picked, name)
     }
+    resetLibraryFiles()
+    sessionStale = false
     useAssetStore.setState({ folders: withDefaultFolders(useAssetStore.getState().folders) })
     await runPool(sources, 4, async file => {
       const meta = metaForSource(file, artifacts.has(file.hash))
@@ -282,23 +299,39 @@ export async function openDirectoryProject(): Promise<void> {
   }
 }
 
-export async function saveProjectNow() {
+/** 保存排队执行：同一时刻只有一次在写盘，期间再来的请求合并成紧跟着的一次。 */
+export function saveProjectNow(): Promise<void> {
+  if (saveRunning) {
+    saveQueued = true
+    return saveRunning
+  }
+  saveRunning = (async () => {
+    try {
+      do {
+        saveQueued = false
+        await saveOnce()
+      } while (saveQueued)
+    } finally {
+      saveRunning = null
+    }
+  })()
+  return saveRunning
+}
+
+async function settleSave() {
+  await saveRunning?.catch(() => undefined)
+}
+
+async function saveOnce() {
   const editor = useEditorStore.getState()
-  if (editor.playState !== 'stopped' || editor.gesture) return
+  if (saveSuspended > 0 || sessionStale || editor.playState !== 'stopped' || editor.gesture) return
   editor.flushActiveScene()
-  const library = Object.values(useAssetStore.getState().assets).filter(
-    (asset): asset is MaterialAsset | PrefabAsset | SceneAsset | EffectAsset | UiAsset | CutsceneAsset =>
-      asset.kind === 'material' || asset.kind === 'prefab' || asset.kind === 'scene' || asset.kind === 'effect' || asset.kind === 'ui' || asset.kind === 'cutscene',
-  )
   const catalog = useAssetStore.getState()
-  const document: ProjectDocument = {
+  const settings: ProjectSettingsDocument = {
     schemaVersion: 2,
     savedAt: Date.now(),
     activeSceneId: editor.activeSceneId,
-    nodes: editor.nodes,
     selection: editor.selection,
-    picture: editor.picture,
-    library,
     folders: catalog.folders,
     assetDirs: catalog.assetDirs,
     capabilities: editor.capabilities,
@@ -309,8 +342,21 @@ export async function saveProjectNow() {
     editorCullingMask: editor.editorCullingMask,
     physicsCollisionMatrixEnabled: editor.physicsCollisionMatrixEnabled,
     physicsCollisionRowMasks: editor.physicsCollisionRowMasks,
-    navMeshes: serializeNavMeshes(),
     workspace: currentWorkspace(),
+  }
+  if (isDirectoryProject()) {
+    // 目录工程：库资源和导航网格各写各的文件，project.t3d 只留设置。
+    await layoutChain
+    await syncLibraryFiles(editor.activeSceneId)
+    await flushDocument(settings)
+    return
+  }
+  const document: ProjectDocument = {
+    ...settings,
+    nodes: editor.nodes,
+    picture: editor.picture,
+    library: Object.values(catalog.assets).filter(isLibraryAsset),
+    navMeshes: serializeNavMeshes(),
   }
   await writeSceneDocument(document)
 }
@@ -447,20 +493,55 @@ async function openSource(source: FileSystemDirectoryHandle | string, announce: 
   suspendLayout()
   setDirectoryFlushEnabled(false)
   let metas: AssetMeta[] = parsed.assets
-  let document = parsed.document
+  let document: ProjectDocument
   try {
+    await settleSave()
+    // 从这里到会话换好之前，内存里还是上一个工程；中途失败也不能把它存进新目录。
+    sessionStale = true
     if (typeof source === 'string') {
-      await beginPath(source, parsed.name, parsed.assets, parsed.document)
+      await beginPath(source, parsed.name, parsed.assets, null)
       RecentProjectService.addPath(source, parsed.name)
     } else {
-      await begin(source, parsed.name, parsed.assets, parsed.document)
+      await begin(source, parsed.name, parsed.assets, null)
       await RecentProjectService.add(source, parsed.name)
     }
     timeline.mark('session')
-    const folders = mergeFolders(parsed.document.folders ?? [], await listAssetDirectories())
+    let loaded: ProjectDocument | null
+    if (parsed.embedded) {
+      // 早期工程把库资源整个存在 project.t3d 里：照原样读进来，下一次保存会拆成独立文件。
+      resetLibraryFiles()
+      loaded = validDocument(parsed.embedded)
+    } else {
+      const library = await loadLibraryFiles(parsed.settings.activeSceneId ?? '')
+      // 视口相机存在 workspace 里，读进来挂回各场景（就地改，保存时按引用比较不会当成变更）。
+      const views = parsed.settings.workspace?.sceneViews
+      if (views && typeof views === 'object') {
+        for (const asset of library.assets) {
+          const view = asset.kind === 'scene' ? normalizeEditorView(views[asset.id]) : null
+          if (view && asset.kind === 'scene') asset.editorView = view
+        }
+      }
+      const active = library.assets.find(asset => asset.id === library.activeSceneId)
+      loaded = validDocument({
+        ...parsed.settings,
+        schemaVersion: 2,
+        savedAt: parsed.settings.savedAt ?? Date.now(),
+        selection: parsed.settings.selection ?? [],
+        activeSceneId: library.activeSceneId,
+        nodes: active?.kind === 'scene' ? structuredClone(active.nodes) : {},
+        picture: normalizePicture(active?.kind === 'scene' ? active.picture : null),
+        library: library.assets,
+        assetDirs: { ...parsed.settings.assetDirs, ...library.dirs },
+        navMeshes: library.navMeshes,
+      })
+    }
+    timeline.mark('read')
+    if (!loaded) throw new Error(translate('log.projectInvalid'))
+    const folders = mergeFolders(loaded.folders ?? [], await listAssetDirectories())
     timeline.mark('scan')
-    document = { ...parsed.document, folders }
+    document = { ...loaded, folders }
     replaceSession(document)
+    sessionStale = false
     timeline.mark('session')
     const adopted = await reconcileLooseAssets()
     timeline.mark('scan')
@@ -1114,9 +1195,11 @@ function bindDirectoryLayout() {
 
 function suspendLayout() {
   layoutSuspended += 1
+  saveSuspended += 1
 }
 
 async function resumeLayout() {
+  saveSuspended = Math.max(0, saveSuspended - 1)
   layoutSuspended = Math.max(0, layoutSuspended - 1)
   if (layoutSuspended > 0 || !isDirectoryProject()) return
   for (const folder of useAssetStore.getState().folders) await ensureDirectory(folder)
@@ -1138,17 +1221,27 @@ async function resumeLayout() {
   }
 }
 
-async function readDirectoryFile(source: FileSystemDirectoryHandle | string): Promise<{ name: string, document: ProjectDocument, assets: DirectoryAssetRecord[] } | 'missing' | 'invalid'> {
+interface DirectoryFile {
+  name: string
+  /** project.t3d 里的工程设置。库资源在 Assets/ 下的独立文件里。 */
+  settings: Partial<ProjectSettingsDocument>
+  /** 早期格式：整份文档（含全部库资源）都在 project.t3d 里。 */
+  embedded: ProjectDocument | null
+  assets: DirectoryAssetRecord[]
+}
+
+async function readDirectoryFile(source: FileSystemDirectoryHandle | string): Promise<DirectoryFile | 'missing' | 'invalid'> {
   const text = await readProjectText(source)
   if (!text) return 'missing'
   try {
     const parsed = JSON.parse(text) as { schemaVersion?: number, name?: string, document?: ProjectDocument, assets?: unknown }
-    if (parsed.schemaVersion !== 1) return 'invalid'
-    const document = validDocument(parsed.document ?? null)
-    if (!document) return 'invalid'
+    if (parsed.schemaVersion !== 1 && parsed.schemaVersion !== 2) return 'invalid'
+    if (!parsed.document || typeof parsed.document !== 'object') return 'invalid'
+    const embedded = parsed.schemaVersion === 1 ? validDocument(parsed.document) : null
+    if (parsed.schemaVersion === 1 && !embedded) return 'invalid'
     const fallback = typeof source === 'string' ? directoryBaseName(source) : source.name
     const name = typeof parsed.name === 'string' && parsed.name.trim() ? parsed.name.trim() : fallback
-    return { name, document, assets: recordsFromUnknown(parsed.assets) }
+    return { name, settings: parsed.document, embedded, assets: recordsFromUnknown(parsed.assets) }
   } catch {
     return 'invalid'
   }
@@ -1393,7 +1486,14 @@ let projectSessionLive = false
 function currentWorkspace(): ProjectWorkspace {
   const catalog = useAssetStore.getState()
   const agent = useAgentStore.getState()
+  const sceneViews: NonNullable<ProjectWorkspace['sceneViews']> = {}
+  if (isDirectoryProject()) {
+    for (const asset of Object.values(catalog.assets)) {
+      if (asset.kind === 'scene' && asset.editorView) sceneViews[asset.id] = asset.editorView
+    }
+  }
   return {
+    ...(Object.keys(sceneViews).length > 0 ? { sceneViews } : {}),
     assetExpanded: Object.entries(catalog.expanded).filter(([, open]) => open).map(([path]) => path),
     assetBrowseDir: catalog.browseDir,
     inspectedAssetId: useEditorStore.getState().inspectedAssetId,
@@ -1422,7 +1522,15 @@ function cleanWorkspace(value: ProjectWorkspace): ProjectWorkspace {
       }
     }
   }
+  const sceneViews: NonNullable<ProjectWorkspace['sceneViews']> = {}
+  if (value.sceneViews && typeof value.sceneViews === 'object') {
+    for (const [id, raw] of Object.entries(value.sceneViews)) {
+      const view = normalizeEditorView(raw)
+      if (view) sceneViews[id] = view
+    }
+  }
   return {
+    ...(Object.keys(sceneViews).length > 0 ? { sceneViews } : {}),
     assetExpanded,
     assetBrowseDir: typeof value.assetBrowseDir === 'string' ? normalizeDir(value.assetBrowseDir) : ASSETS_ROOT,
     inspectedAssetId: typeof value.inspectedAssetId === 'string' ? value.inspectedAssetId : null,

@@ -1,15 +1,18 @@
 import { importExtractedBytes, type ImportOptions } from '../import'
-import { releaseUnreferencedAssets } from '../assetMemory'
-import { useAssetStore } from '../library'
+import { collectLiveReferences, releaseUnreferencedAssets } from '../assetMemory'
+import { useAssetStore, type SceneAsset } from '../library'
 import { normalizeDir } from '../folders'
-import { getModelTemplate, normalizeMaterialKey, retargetClipsOntoModel, type ModelMaterialHint } from '../models'
+import { getModelTemplate, isModelBusy, loadedModelSlots, loadModelTemplate, normalizeMaterialKey, releaseModel, retargetClipsOntoModel, waitForModelArtifact, type ModelMaterialHint } from '../models'
+import { useEditorStore } from '../../scene/store'
+import { translate } from '../../i18n'
 import { importUnityMatText, textureGuidRegex, UNITY_MAT_TEXTURE_PROPERTIES } from '../unityMaterial'
 import { decodeTgaToRgba, encodeRgbaToPng } from '../ufbx/tgaTexture'
 import type { PackageAssetScannerCompanionFile, PackageAssetScannerEntry, PackageMaterialBindingSource } from './packageAssetScanner'
 import type { PackageModelAssetRole } from './packageAssetRoleGuess'
+import { collectUnityAssetGuids, parseUnitySceneText, type UnityModelInfo } from './unitySceneParser'
 
 export interface PackageExtractionProgress {
-  phase: 'textures' | 'models' | 'animations' | 'materials' | 'retarget'
+  phase: 'textures' | 'models' | 'animations' | 'materials' | 'retarget' | 'scenes'
   completed: number
   total: number
   fileName?: string
@@ -24,6 +27,7 @@ export function withReferencedTextures(
   const textureByGuid = new Map<string, PackageAssetScannerEntry>()
   const materialByGuid = new Map<string, PackageAssetScannerEntry>()
   const materialByKey = new Map<string, PackageAssetScannerEntry>()
+  const modelByGuid = new Map<string, PackageAssetScannerEntry>()
   for (const entry of all) {
     if (entry.kind === 'texture') {
     const guid = guidOf(entry.metaBytes)
@@ -33,10 +37,48 @@ export function withReferencedTextures(
       if (guid) materialByGuid.set(guid, entry)
       const key = normalizeMaterialKey(entry.fileName.replace(/\.mat$/i, ''))
       if (key && !materialByKey.has(key)) materialByKey.set(key, entry)
+    } else if (entry.kind === 'model') {
+      const guid = guidOf(entry.metaBytes)
+      if (guid) modelByGuid.set(guid, entry)
+    }
+  }
+
+  // 若选中了 .unity 场景，追踪其及引用的 .prefab 中用到的模型/材质/贴图
+  const prefabByGuid = new Map<string, PackageMaterialBindingSource>()
+  const sourceByPath = new Map<string, PackageMaterialBindingSource>()
+  if (materialBindingSources?.length) {
+    for (const source of materialBindingSources) {
+      sourceByPath.set(source.originalPath, source)
+      const sourceGuid = guidOf(source.metaBytes)
+      if (source.extension === 'prefab' && sourceGuid) {
+        prefabByGuid.set(sourceGuid, source)
+      }
+    }
+  }
+  const visitedPrefabs = new Set<string>()
+  const collectSceneDeps = (text: string) => {
+    for (const guid of collectUnityAssetGuids(text)) {
+      const model = modelByGuid.get(guid)
+      if (model) ids.add(model.id)
+      const mat = materialByGuid.get(guid)
+      if (mat) ids.add(mat.id)
+      const tex = textureByGuid.get(guid)
+      if (tex) ids.add(tex.id)
+      const prefab = prefabByGuid.get(guid)
+      if (prefab && !visitedPrefabs.has(guid)) {
+        visitedPrefabs.add(guid)
+        collectSceneDeps(new TextDecoder().decode(prefab.assetBytes))
+      }
     }
   }
   for (const entry of selected) {
-    if (entry.kind !== 'model') continue
+    if (entry.kind !== 'scene') continue
+    const bytes = entry.assetBytes ?? sourceByPath.get(entry.originalPath)?.assetBytes
+    if (bytes) collectSceneDeps(new TextDecoder().decode(bytes))
+  }
+
+  for (const entry of all) {
+    if (!ids.has(entry.id) || entry.kind !== 'model') continue
     if (entry.metaBytes) {
       const metaText = new TextDecoder().decode(entry.metaBytes)
       for (const alias of parseMetaExternalMaterialObjects(metaText)) {
@@ -104,6 +146,8 @@ export async function extractPackageEntries(
   const guidToTexture = new Map<string, string>()
   const guidToMaterial = new Map<string, string>()
   const nameToMaterial = new Map<string, string>()
+  const guidToModel = new Map<string, string>()
+  const modelMeshNamesByGuid = new Map<string, Map<string, string>>()
   const total = entries.length
   let completed = 0
   const report = (phase: PackageExtractionProgress['phase'], fileName?: string) => {
@@ -111,7 +155,8 @@ export async function extractPackageEntries(
   }
   const textures = entries.filter(entry => entry.kind === 'texture')
   const materials = entries.filter(entry => entry.kind === 'material')
-  const models = entries.filter(entry => entry.kind !== 'texture' && entry.kind !== 'material')
+  const scenes = entries.filter(entry => entry.kind === 'scene')
+  const models = entries.filter(entry => entry.kind !== 'texture' && entry.kind !== 'material' && entry.kind !== 'scene')
 
   // 1. 先导贴图（记录 GUID -> 贴图 AssetId）
   for (const entry of textures) {
@@ -170,6 +215,12 @@ export async function extractPackageEntries(
       if (id) {
         imported.push(id)
         importedIds.set(entry.id, id)
+        const modelGuid = guidOf(entry.metaBytes)
+        if (modelGuid) {
+          guidToModel.set(modelGuid, id)
+          const meshNames = parseModelMeshNamesByFileId(entry.metaBytes)
+          if (meshNames.size > 0) modelMeshNamesByGuid.set(modelGuid, meshNames)
+        }
       }
     } catch (error) {
       failed.push({ name: entry.fileName, error: error instanceof Error ? error.message : String(error) })
@@ -208,9 +259,112 @@ export async function extractPackageEntries(
     }
   }
 
+  // 5. 最后解析并导入 .unity 场景（此时所有贴图、材质、模型均已入库，可直接绑定）
+  if (scenes.length > 0 && !cancelled()) {
+    const prefabTextsByGuid = new Map<string, string>()
+    if (options.materialBindingSources?.length) {
+      const decoder = new TextDecoder()
+      for (const source of options.materialBindingSources) {
+        const sourceGuid = guidOf(source.metaBytes)
+        if (source.extension === 'prefab' && sourceGuid) {
+          prefabTextsByGuid.set(sourceGuid, decoder.decode(source.assetBytes))
+        }
+      }
+    }
+    // 场景要知道每个模型里有哪些网格部位，才能把 Unity 的多个 Renderer 并成一个模型节点。
+    // 只读场景真正引用到的模型；批量模式下读完结构就放掉，不把模板留在内存里。
+    const modelInfoByAssetId = new Map<string, UnityModelInfo>()
+    const liveBefore = options.bulk ? collectLiveReferences() : null
+    const ensureModelInfo = async (assetId: string) => {
+      if (modelInfoByAssetId.has(assetId)) return
+      const asset = useAssetStore.getState().assets[assetId]
+      if (!asset || asset.kind !== 'model') return
+      const wasLoaded = loadedModelSlots(assetId) !== undefined
+      try {
+        const template = await loadModelTemplate(asset)
+        modelInfoByAssetId.set(assetId, { name: asset.name, tree: template.tree, slots: template.slots })
+      } catch {
+        return
+      }
+      if (liveBefore && !wasLoaded && !liveBefore.has(assetId)) {
+        await waitForModelArtifact(assetId)
+        if (!isModelBusy(assetId)) releaseModel(assetId, { dispose: true })
+      }
+    }
+    const referencedModelIds = (text: string): string[] => {
+      const ids = new Set<string>()
+      const visited = new Set<string>()
+      const visit = (source: string) => {
+        for (const guid of collectUnityAssetGuids(source)) {
+          const modelId = guidToModel.get(guid)
+          if (modelId) ids.add(modelId)
+          const prefab = visited.has(guid) ? undefined : prefabTextsByGuid.get(guid)
+          if (prefab) {
+            visited.add(guid)
+            visit(prefab)
+          }
+        }
+      }
+      visit(text)
+      return [...ids]
+    }
+    for (const entry of scenes) {
+      if (cancelled()) break
+      report('scenes', entry.fileName)
+      try {
+        const dir = destinationDir(entry, options.targetDirectory, options.directoryMode)
+        ensureFolder(dir)
+        const bytes = entry.assetBytes ?? await entry.readAsset()
+        const text = new TextDecoder().decode(bytes)
+        const baseName = entry.fileName.replace(/\.unity$/i, '') || 'Scene'
+        for (const modelId of referencedModelIds(text)) {
+          if (cancelled()) break
+          await ensureModelInfo(modelId)
+        }
+        const parsed = parseUnitySceneText(text, baseName, {
+          guidToModel,
+          guidToMaterial,
+          modelMeshNamesByGuid,
+          modelInfoByAssetId,
+          prefabTextsByGuid,
+        })
+        if (!parsed.ok) {
+          failed.push({ name: entry.fileName, error: parsed.warning })
+        } else {
+          const store = useAssetStore.getState()
+          const uniqueName = makeUniqueSceneName(baseName, Object.values(store.assets))
+          const sceneAsset: SceneAsset = {
+            id: crypto.randomUUID(),
+            name: uniqueName,
+            kind: 'scene',
+            nodes: parsed.nodes,
+            picture: parsed.picture,
+          }
+          store.add(sceneAsset)
+          store.place(sceneAsset.id, dir)
+          imported.push(sceneAsset.id)
+          useEditorStore.getState().log('info', translate('pkg.sceneImported', {
+            name: uniqueName,
+            nodes: parsed.stats.totalNodes,
+            models: parsed.stats.models,
+            merged: parsed.stats.mergedRenderers,
+            skipped: parsed.stats.skippedModelTransforms,
+            missing: parsed.stats.missingAssets,
+          }))
+          if (parsed.warnings.length > 0) {
+            console.warn('[T3D][UnitySceneImport]', parsed.warnings.join(' | '))
+          }
+        }
+      } catch (error) {
+        failed.push({ name: entry.fileName, error: error instanceof Error ? error.message : String(error) })
+      }
+      completed += 1
+    }
+  }
+
   // 批量但没有逐个释放时（合并动画），做完后把场景没用到的统一放掉
   if (options.bulk && !releaseEach) releaseUnreferencedAssets()
-  options.onProgress?.({ phase: 'materials', completed, total })
+  options.onProgress?.({ phase: 'scenes', completed, total })
   return { imported, failed, cancelled: cancelled() }
 }
 
@@ -306,7 +460,16 @@ function destinationDir(entry: PackageAssetScannerEntry, target: string, mode: '
   if (entry.kind === 'texture') return normalizeDir(`${root}/Textures`)
   if (entry.kind === 'material') return normalizeDir(`${root}/Materials`)
   if (entry.kind === 'animation') return normalizeDir(`${root}/Animations`)
+  if (entry.kind === 'scene') return normalizeDir(`${root}/Scenes`)
   return root
+}
+
+function makeUniqueSceneName(baseName: string, existingAssets: ReadonlyArray<{ kind: string; name: string }>): string {
+  const existing = new Set(existingAssets.filter(a => a.kind === 'scene').map(a => a.name.toLowerCase()))
+  if (!existing.has(baseName.toLowerCase())) return baseName
+  let idx = 2
+  while (existing.has(`${baseName} (${idx})`.toLowerCase())) idx += 1
+  return `${baseName} (${idx})`
 }
 
 function ensureFolder(path: string) {

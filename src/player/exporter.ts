@@ -8,7 +8,7 @@ import {
 } from '../core/project/buildSettings'
 import { diagnoseProject } from '../core/query/diagnose'
 import { readModelArtifact, readTextureArtifact } from '../editor/assets/cache'
-import { useAssetStore, type ProjectAsset, type SceneAsset } from '../editor/assets/library'
+import { ensureScenesLoaded, useAssetStore, type ProjectAsset, type SceneAsset } from '../editor/assets/library'
 import { applyModelMaterialBindings, getModelTemplate, loadModelTemplate } from '../editor/assets/models'
 import { bakeTextureArtifact } from '../editor/assets/textures'
 import { trimBc7ArtifactToMaxSize } from '../runtime/engine/bc7'
@@ -477,6 +477,8 @@ export async function exportWebPlayerBundle(
   }
 
   const reportProgress = options?.onProgress
+  // 没打开的场景只有文件头在内存里，打包前把节点全部读进来。
+  await ensureScenesLoaded()
   useEditorStore.getState().flushActiveScene()
   const editor = useEditorStore.getState()
   const allAssets = useAssetStore.getState().assets
