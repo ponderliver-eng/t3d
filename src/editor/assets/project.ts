@@ -37,7 +37,7 @@ import { ALL_LAYERS_VISIBLE_MASK, defaultLayers, defaultTags, ensureLayers, ensu
 import { normalizeEditorView, normalizePicture, type SceneNode } from '../scene/types'
 import { serializeNavMeshes } from '../../capabilities/navigation/archive'
 import { collectUiImageIds } from '../../runtime/ui/tree'
-import { modelLoadedFromArtifact, releaseModel } from './models'
+import { modelLoadedFromArtifact, releaseModel, setModelWarmDeferred } from './models'
 import { compareShadersWithLastRun, gpuCounters, pipelineRecordCount, pipelineRecordsSince, startCostCapture, stopCostCapture, type PipelineRecord } from '../../runtime/frameProfile'
 import { releaseTexture, rendererInitMs, rendererReadyAt, setWarmBumpDeferred, textureLoadBytes, textureLoadSource, textureReadMs, unityMrLoadInfo, warmUnityMetallicRoughness } from './textures'
 import { ASSETS_ROOT, normalizeDir } from './folders'
@@ -627,6 +627,7 @@ async function warmAssets(token: number, metas: AssetMeta[], document: ProjectDo
     useEditorStore.getState().log('info', `打开时补登记了场景未引用的资源：${shown}${more}`)
   }
   setWarmBumpDeferred(true)
+  setModelWarmDeferred(true)
   useAssetStore.getState().addMany(initialAssets)
 
   const totalWarm = warmQueue.length
@@ -714,6 +715,7 @@ async function warmAssets(token: number, metas: AssetMeta[], document: ProjectDo
     })
   } finally {
     setWarmBumpDeferred(false)
+    setModelWarmDeferred(false)
   }
   if (!warmCurrent(token)) {
     timeline.stop()

@@ -785,15 +785,18 @@ export class EditorViewport {
         || data.syncedEditing !== editing
         || data.syncedHelpers !== helpers
         || (data.splineGizmo !== undefined && (data.splineGizmo.selected !== splineSelected || data.splineGizmo.activeIndices.join(',') !== splineActiveKey))
+      let modelReplaced = false
       if (viewDirty) {
-        this.updateView(group, node, editing)
+        modelReplaced = this.updateView(group, node, editing, nodeChanged)
         data.syncedNode = node
         data.syncedAssetRevision = assetRevision
         data.syncedCodeRevision = codeRevision
         data.syncedEditing = editing
         data.syncedHelpers = helpers
       }
-      if (viewDirty || data.syncedLayerBit !== layerBit) {
+      const needLayers = data.syncedLayerBit !== layerBit
+        || (viewDirty && (node.kind !== 'model' || modelReplaced || nodeChanged))
+      if (needLayers) {
         applyNodeLayers(group, layerBit)
         data.syncedLayerBit = layerBit
       }
@@ -912,8 +915,9 @@ export class EditorViewport {
     return group
   }
 
-  private updateView(group: Group, node: SceneNode, editing: boolean) {
+  private updateView(group: Group, node: SceneNode, editing: boolean, nodeChanged = true): boolean {
     const data = dataOf(group)
+    let modelReplaced = false
     group.name = node.name
     if (isMesh(node.kind)) {
       const mesh = data.pick as Mesh | undefined
@@ -925,13 +929,15 @@ export class EditorViewport {
       }
     }
     if (node.kind === 'model') {
-      this.ensureModel(group, node)
+      modelReplaced = this.ensureModel(group, node)
       if (data.modelRoot) {
         const file = node.assetId ? useAssetStore.getState().assets[node.assetId] : undefined
         const importScale = file && 'importScale' in file && typeof file.importScale === 'number' && file.importScale > 0 ? file.importScale : 1
         data.modelRoot.scale.setScalar(importScale)
         applyModelMaterials(data.modelRoot, node.slots, node.partOverrides)
-        applyPartAttributes(data.modelRoot, node.hiddenParts ?? [], node.partOverrides, node.castShadow, node.receiveShadow)
+        if (modelReplaced || nodeChanged) {
+          applyPartAttributes(data.modelRoot, node.hiddenParts ?? [], node.partOverrides, node.castShadow, node.receiveShadow)
+        }
       }
       this.syncClip(data, node)
     }
@@ -984,6 +990,7 @@ export class EditorViewport {
     if (data.pick && data.pick !== data.guide?.icon && data.pick !== data.splineGizmo?.curveLine && !isMesh(node.kind) && node.kind !== 'model') data.pick.visible = showHelpers
     const pickMesh = data.pick as Mesh | undefined
     if (pickMesh?.material instanceof MeshBasicMaterial && !isMesh(node.kind)) pickMesh.material.color.set(node.color)
+    return modelReplaced
   }
 
   private measureSnap(ids: string[]) {
@@ -2327,12 +2334,12 @@ export class EditorViewport {
     })
   }
 
-  private ensureModel(group: Group, node: SceneNode) {
+  private ensureModel(group: Group, node: SceneNode): boolean {
     const data = dataOf(group)
     const key = node.assetId ? `${node.assetId}@${modelRevision(node.assetId)}` : ''
-    if (!node.assetId || data.modelKey === key) return
+    if (!node.assetId || data.modelKey === key) return false
     const instance = instantiateModel(node.assetId)
-    if (!instance) return
+    if (!instance) return false
     if (data.modelRoot) group.remove(data.modelRoot)
     data.mixer?.stopAllAction()
     instance.object.traverse(child => { child.userData.nodeId = node.id })
@@ -2348,6 +2355,7 @@ export class EditorViewport {
     data.bodyBlend = undefined
     data.overlayBlend = undefined
     this.selectionKey = ''
+    return true
   }
 
   private playbackSource(node: SceneNode) {

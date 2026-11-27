@@ -104,6 +104,44 @@ const pending = new Map<string, Promise<ModelTemplate>>()
 const revisions = new Map<string, number>()
 const listeners = new Set<() => void>()
 
+let modelWarmDeferred = false
+let modelWarmPending = false
+let modelNotifyTimer = 0
+
+function flushModelNotify() {
+  if (modelNotifyTimer) {
+    window.clearTimeout(modelNotifyTimer)
+    modelNotifyTimer = 0
+  }
+  useAssetStore.getState().bump()
+  listeners.forEach(listener => listener())
+}
+
+function notifyModelReady(immediate = false) {
+  if (modelWarmDeferred) {
+    modelWarmPending = true
+    return
+  }
+  if (immediate) {
+    flushModelNotify()
+    return
+  }
+  if (modelNotifyTimer) return
+  modelNotifyTimer = window.setTimeout(() => {
+    modelNotifyTimer = 0
+    useAssetStore.getState().bump()
+    listeners.forEach(listener => listener())
+  }, 16)
+}
+
+export function setModelWarmDeferred(deferred: boolean) {
+  modelWarmDeferred = deferred
+  if (!deferred && modelWarmPending) {
+    modelWarmPending = false
+    flushModelNotify()
+  }
+}
+
 export function modelRevision(assetId: string): number {
   return revisions.get(assetId) ?? 0
 }
@@ -291,8 +329,7 @@ export function loadModelTemplate(asset: FileAsset, forceSource = false): Promis
       rememberClipCatalog(asset.id, nextTemplate.clips)
       loadFailures.clear(asset.id)
       syncLoadedModelNodes(asset.id, resolvedSlots)
-      useAssetStore.getState().bump()
-      listeners.forEach(listener => listener())
+      notifyModelReady(false)
       return nextTemplate
   }).catch(error => {
     pending.delete(asset.id)
@@ -377,8 +414,7 @@ export function retargetClipsOntoModel(bodyId: string, sourceId: string, preferr
     sessionEdited.add(bodyId)
     rememberClipCatalog(bodyId, body.clips)
     revisions.set(bodyId, (revisions.get(bodyId) ?? 0) + 1)
-    useAssetStore.getState().bump()
-    listeners.forEach(listener => listener())
+    notifyModelReady(true)
   }
   return added
 }
@@ -438,8 +474,7 @@ export function applyModelMaterialBindings(assetId: string, hint?: ModelMaterial
   applyModelMaterials(template.scene, slots)
   revisions.set(assetId, (revisions.get(assetId) ?? 0) + 1)
   syncLoadedModelNodes(assetId, slots)
-  useAssetStore.getState().bump()
-  listeners.forEach(listener => listener())
+  notifyModelReady(true)
   return slots
 }
 
@@ -694,7 +729,7 @@ function rememberHumanoidImportScale(assetId: string, template: ModelTemplate, f
   const asset = useAssetStore.getState().assets[assetId]
   if (!asset || !('fileName' in asset)) return
   const existing = typeof asset.importScale === 'number' && asset.importScale > 0 ? asset.importScale : undefined
-  if (existing !== undefined && existing !== 1 && !forceRecalc) return
+  if (!forceRecalc && (existing !== undefined || asset.clipCatalog !== undefined || asset.humanoidAvatar !== undefined)) return
   const recommended = inferHumanoidImportScale(template)
   if (recommended === 1) return
   if (existing !== undefined && existing !== 1) {
@@ -778,22 +813,56 @@ function sourceBindingForSlot(
   return undefined
 }
 
+interface IndexedProjectAssets {
+  source: ReturnType<typeof useAssetStore.getState>['assets']
+  materials: Array<{ mat: MaterialAsset; key: string; stem: string }>
+  matByKey: Map<string, MaterialAsset>
+  texturesByBase: Map<string, Array<{ id: string; kind: 'albedo' | 'normal' | 'metallic' | 'emissive' | 'ao'; unityPacked?: boolean }>>
+}
+
+let cachedAssetIndex: IndexedProjectAssets | null = null
+
+function getIndexedProjectAssets(): IndexedProjectAssets {
+  const assets = useAssetStore.getState().assets
+  if (cachedAssetIndex?.source === assets) return cachedAssetIndex
+  const materials: IndexedProjectAssets['materials'] = []
+  const matByKey = new Map<string, MaterialAsset>()
+  const texturesByBase = new Map<string, Array<{ id: string; kind: 'albedo' | 'normal' | 'metallic' | 'emissive' | 'ao'; unityPacked?: boolean }>>()
+
+  for (const item of Object.values(assets)) {
+    if (item.kind === 'material') {
+      const key = normalizeMaterialKey(item.name)
+      const stem = materialStem(item.name)
+      materials.push({ mat: item, key, stem })
+      if (key && !matByKey.has(key)) matByKey.set(key, item)
+    } else if (item.kind === 'texture' && 'fileName' in item) {
+      const raw = item.name.trim().toLowerCase().replace(/^t[_-]/i, '')
+      const role = classifyTextureRole(raw)
+      const baseKey = normalizeMaterialKey(role.base)
+      if (!baseKey) continue
+      let list = texturesByBase.get(baseKey)
+      if (!list) {
+        list = []
+        texturesByBase.set(baseKey, list)
+      }
+      list.push({ id: item.id, kind: role.kind, unityPacked: role.unityPacked })
+    }
+  }
+
+  cachedAssetIndex = { source: assets, materials, matByKey, texturesByBase }
+  return cachedAssetIndex
+}
+
 function bindSlotsToProjectAssets(
   slots: PbrSlot[],
   root: Object3D,
   modelName: string,
   hint?: ModelMaterialHint,
 ): PbrSlot[] {
+  if (slots.length === 0) return slots
   const assets = useAssetStore.getState().assets
-  const materials = Object.values(assets).filter((item): item is MaterialAsset => item.kind === 'material')
-  const textures = Object.values(assets).filter((item): item is FileAsset => item.kind === 'texture' && 'fileName' in item)
+  const { materials, matByKey, texturesByBase } = getIndexedProjectAssets()
   const meshNamesBySlot = collectMeshNamesBySlot(root)
-
-  const matByKey = new Map<string, MaterialAsset>()
-  for (const mat of materials) {
-    const key = normalizeMaterialKey(mat.name)
-    if (key && !matByKey.has(key)) matByKey.set(key, mat)
-  }
 
   return slots.map((slot, index) => {
     const primaryCandidates = [slot.name].filter(Boolean)
@@ -821,20 +890,14 @@ function bindSlotsToProjectAssets(
       for (const candidate of list) {
         const key = normalizeMaterialKey(candidate)
         if (!key || key.length < 3) continue
-        const suffixMatches = materials.filter(mat => {
-          const matKey = normalizeMaterialKey(mat.name)
-          return matKey && (matKey.endsWith(key) || key.endsWith(matKey))
-        })
-        if (suffixMatches.length === 1) return suffixMatches[0]
+        const suffixMatches = materials.filter(entry => entry.key && (entry.key.endsWith(key) || key.endsWith(entry.key)))
+        if (suffixMatches.length === 1) return suffixMatches[0].mat
       }
       for (const candidate of list) {
         const stem = materialStem(candidate)
         if (!stem || stem.length < 4) continue
-        const stemMatches = materials.filter(mat => {
-          const mStem = materialStem(mat.name)
-          return mStem === stem || withinOneEdit(mStem, stem)
-        })
-        if (stemMatches.length === 1) return stemMatches[0]
+        const stemMatches = materials.filter(entry => entry.stem === stem || withinOneEdit(entry.stem, stem))
+        if (stemMatches.length === 1) return stemMatches[0].mat
       }
       return undefined
     }
@@ -852,12 +915,12 @@ function bindSlotsToProjectAssets(
       }
     }
     if (!matchedMat && slots.length === 1 && materials.length === 1) {
-      matchedMat = materials[0]
+      matchedMat = materials[0].mat
     }
 
     if (matchedMat) {
       const surface = normalizeSlot(matchedMat.slot)
-      const inferred = inferTextureSet(candidates, textures)
+      const inferred = inferTextureSet(candidates, texturesByBase)
       const mapAssetId = surface.mapAssetId ?? slot.mapAssetId ?? inferred.mapAssetId
       const normalAssetId = surface.normalAssetId ?? slot.normalAssetId ?? inferred.normalAssetId
       const metallicRoughnessAssetId = surface.metallicRoughnessAssetId ?? slot.metallicRoughnessAssetId ?? inferred.metallicRoughnessAssetId
@@ -876,7 +939,7 @@ function bindSlotsToProjectAssets(
     }
 
     // 2. 没有匹配到材质球时，按槽位名/网格名自动推断 PBR 全套贴图
-    const inferred = inferTextureSet(candidates, textures)
+    const inferred = inferTextureSet(candidates, texturesByBase)
     const hasAnyMap = Boolean(
       slot.mapAssetId || inferred.mapAssetId
       || slot.normalAssetId || inferred.normalAssetId
@@ -897,7 +960,7 @@ function bindSlotsToProjectAssets(
 
 function inferTextureSet(
   candidates: string[],
-  textures: FileAsset[],
+  texturesByBase: IndexedProjectAssets['texturesByBase'],
 ): {
   mapAssetId: string | null
   normalAssetId: string | null
@@ -917,18 +980,16 @@ function inferTextureSet(
   let unityPacked = false
 
   for (const stem of stems) {
-    for (const tex of textures) {
-      const raw = tex.name.trim().toLowerCase().replace(/^t[_-]/i, '')
-      const role = classifyTextureRole(raw)
-      const baseKey = normalizeMaterialKey(role.base)
-      if (!baseKey || baseKey !== stem) continue
-      if (role.kind === 'albedo' && !mapAssetId) mapAssetId = tex.id
-      else if (role.kind === 'normal' && !normalAssetId) normalAssetId = tex.id
+    const matches = texturesByBase.get(stem)
+    if (!matches) continue
+    for (const role of matches) {
+      if (role.kind === 'albedo' && !mapAssetId) mapAssetId = role.id
+      else if (role.kind === 'normal' && !normalAssetId) normalAssetId = role.id
       else if (role.kind === 'metallic' && !metallicRoughnessAssetId) {
-        metallicRoughnessAssetId = tex.id
+        metallicRoughnessAssetId = role.id
         if (role.unityPacked) unityPacked = true
-      } else if (role.kind === 'emissive' && !emissiveAssetId) emissiveAssetId = tex.id
-      else if (role.kind === 'ao' && !aoAssetId) aoAssetId = tex.id
+      } else if (role.kind === 'emissive' && !emissiveAssetId) emissiveAssetId = role.id
+      else if (role.kind === 'ao' && !aoAssetId) aoAssetId = role.id
     }
   }
   return { mapAssetId, normalAssetId, metallicRoughnessAssetId, emissiveAssetId, aoAssetId, unityPacked }
